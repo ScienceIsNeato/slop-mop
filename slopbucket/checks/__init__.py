@@ -15,7 +15,11 @@ def register_all_checks() -> None:
 
     # Import and register Python checks
     from slopbucket.checks.python.complexity import PythonComplexityCheck
-    from slopbucket.checks.python.coverage import PythonCoverageCheck
+    from slopbucket.checks.python.coverage import (
+        PythonCoverageCheck,
+        PythonDiffCoverageCheck,
+        PythonNewCodeCoverageCheck,
+    )
     from slopbucket.checks.python.lint_format import PythonLintFormatCheck
     from slopbucket.checks.python.security import (
         PythonSecurityCheck,
@@ -32,6 +36,8 @@ def register_all_checks() -> None:
     registry.register(PythonLintFormatCheck)
     registry.register(PythonTestsCheck)
     registry.register(PythonCoverageCheck)
+    registry.register(PythonDiffCoverageCheck)
+    registry.register(PythonNewCodeCoverageCheck)
     registry.register(PythonStaticAnalysisCheck)
     registry.register(PythonComplexityCheck)
     registry.register(PythonSecurityCheck)
@@ -78,6 +84,8 @@ def register_all_checks() -> None:
             "python-static-analysis",
             "python-tests",
             "python-coverage",
+            "python-diff-coverage",
+            "python-new-code-coverage",
             "python-complexity",
             "python-security",
             "duplication",

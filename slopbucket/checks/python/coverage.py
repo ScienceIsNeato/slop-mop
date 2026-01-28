@@ -1,5 +1,6 @@
 """Python coverage analysis check."""
 
+import os
 import re
 import sys
 import time
@@ -8,6 +9,36 @@ from typing import Optional
 
 from slopbucket.checks.base import BaseCheck, PythonCheckMixin
 from slopbucket.core.result import CheckResult, CheckStatus
+
+COVERAGE_THRESHOLD = 80
+CI_BUFFER = 0.5  # CI environments get slight buffer for timing variance
+COVERAGE_POLL_TIMEOUT = 10  # seconds to wait for coverage.xml
+
+
+def _wait_for_coverage_xml(path: str) -> bool:
+    """Poll for coverage.xml to appear when running alongside python-tests.
+
+    In parallel mode, python-tests may still be generating .coverage and
+    coverage.xml when this check starts.
+    """
+    deadline = time.time() + COVERAGE_POLL_TIMEOUT
+    while time.time() < deadline:
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _get_compare_branch() -> str:
+    """Resolve the branch to diff against.
+
+    Precedence: COMPARE_BRANCH env → GITHUB_BASE_REF (set in PR CI) → origin/main.
+    """
+    return (
+        os.environ.get("COMPARE_BRANCH")
+        or os.environ.get("GITHUB_BASE_REF")
+        or "origin/main"
+    )
 
 
 class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
@@ -99,3 +130,140 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             return float(match.group(1))
 
         return None
+
+
+class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
+    """Coverage enforcement on changed files only (diff-cover).
+
+    Uses diff-cover to check coverage on files changed vs compare branch.
+    Useful for PRs to ensure new code is tested.
+    """
+
+    @property
+    def name(self) -> str:
+        return "python-diff-coverage"
+
+    @property
+    def display_name(self) -> str:
+        return f"📈 Python Diff Coverage ({COVERAGE_THRESHOLD}%)"
+
+    @property
+    def depends_on(self):
+        return ["python-tests"]
+
+    def is_applicable(self, project_root: str) -> bool:
+        return self.is_python_project(project_root)
+
+    def run(self, project_root: str) -> CheckResult:
+        start_time = time.time()
+        coverage_file = os.path.join(project_root, "coverage.xml")
+
+        if not _wait_for_coverage_xml(coverage_file):
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=time.time() - start_time,
+                error="coverage.xml not found",
+                fix_suggestion="Run python-tests first to generate coverage data",
+            )
+
+        compare_branch = _get_compare_branch()
+        cmd = [
+            sys.executable, "-m", "diff_cover.diff_cover_script",
+            "coverage.xml",
+            f"--compare-branch={compare_branch}",
+            f"--fail-under={COVERAGE_THRESHOLD}",
+        ]
+
+        result = self._run_command(cmd, cwd=project_root, timeout=60)
+        duration = time.time() - start_time
+
+        if result.success:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output=f"Changed files have adequate coverage (vs {compare_branch})",
+            )
+
+        # diff-cover not finding changes is fine
+        if "No diff" in result.output:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output="No changed files to check coverage on",
+            )
+
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output=result.output,
+            error=f"Changed files have <{COVERAGE_THRESHOLD}% coverage",
+            fix_suggestion="Add tests for the new code shown above.",
+        )
+
+
+class PythonNewCodeCoverageCheck(BaseCheck, PythonCheckMixin):
+    """Coverage on new/changed code only — CI-oriented diff-cover gate.
+
+    Semantically identical to PythonDiffCoverageCheck but registered
+    under the python-new-code-coverage name that CI workflows reference.
+    """
+
+    @property
+    def name(self) -> str:
+        return "python-new-code-coverage"
+
+    @property
+    def display_name(self) -> str:
+        return f"🆕 Python New Code Coverage ({COVERAGE_THRESHOLD}%)"
+
+    @property
+    def depends_on(self):
+        return ["python-tests"]
+
+    def is_applicable(self, project_root: str) -> bool:
+        return self.is_python_project(project_root)
+
+    def run(self, project_root: str) -> CheckResult:
+        start_time = time.time()
+        coverage_file = os.path.join(project_root, "coverage.xml")
+
+        if not _wait_for_coverage_xml(coverage_file):
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=time.time() - start_time,
+                error="coverage.xml not found",
+                fix_suggestion="Run python-tests first to generate coverage data",
+            )
+
+        compare_branch = _get_compare_branch()
+        cmd = [
+            sys.executable, "-m", "diff_cover.diff_cover_script",
+            "coverage.xml",
+            f"--compare-branch={compare_branch}",
+            f"--fail-under={COVERAGE_THRESHOLD}",
+        ]
+
+        result = self._run_command(cmd, cwd=project_root, timeout=60)
+        duration = time.time() - start_time
+
+        if result.success:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output=f"New code coverage adequate (vs {compare_branch})",
+            )
+
+        if "No diff" in result.output:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output="No changed files to check coverage on",
+            )
+
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output=result.output,
+            error=f"New code has <{COVERAGE_THRESHOLD}% coverage",
+            fix_suggestion="Add tests for the changed lines shown above.",
+        )
