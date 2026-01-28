@@ -47,7 +47,11 @@ slopbucket/
 │   ├── js_format.py        # ESLint + Prettier
 │   ├── js_tests.py         # Jest test runner
 │   ├── js_coverage.py      # Jest coverage threshold
-│   └── template_validation.py # Jinja2 template syntax check
+│   ├── template_validation.py # Jinja2 template syntax check
+│   ├── smoke_check.py      # Selenium smoke tests (requires running server)
+│   ├── e2e_check.py        # Playwright E2E tests (requires running server)
+│   ├── integration_check.py # Database integration tests (requires DATABASE_URL)
+│   └── frontend_check.py   # Quick ESLint errors-only frontend validation
 ├── profiles.py             # Predefined check groups (commit, pr, integration, smoke, full)
 ├── setup.py                # pip-installable entry point with comprehensive --help
 └── tests/                  # Self-test suite (TDD-first)
@@ -117,6 +121,11 @@ All shell commands go through `subprocess_guard.py`:
 | ship_it.py:run_single_check("jest") → gate.sh | js-tests | `checks/js_tests.py` | npm run test |
 | ship_it.py:run_single_check("jest-coverage") → gate.sh | js-coverage | `checks/js_coverage.py` | 80% lines |
 | ship_it.py:run_single_check("template-validation") | template-check | `checks/template_validation.py` | Jinja2 syntax |
+| quality-gate.yml smoke-tests job | smoke | `checks/smoke_check.py` | Selenium, requires running server (TEST_PORT) |
+| quality-gate.yml e2e-tests job | e2e | `checks/e2e_check.py` | Playwright, requires server (E2E port) |
+| quality-gate.yml integration-tests job | integration | `checks/integration_check.py` | Database-backed, requires DATABASE_URL |
+| ship_it.py `--checks frontend-check` | frontend-check | `checks/frontend_check.py` | Quick ESLint errors-only (~5s) |
+| quality-gate.yml coverage-new-code job | python-new-code-coverage | `checks/python_coverage.py` | diff-cover, COMPARE_BRANCH-aware |
 
 ---
 
@@ -124,15 +133,16 @@ All shell commands go through `subprocess_guard.py`:
 
 | Profile | Checks Included | Use Case |
 |---------|-----------------|----------|
-| `commit` | python-format, python-lint, python-types, python-tests, python-coverage, python-complexity, js-format, js-tests, js-coverage, template-check | Fast pre-commit (~3 min) |
-| `pr` | All checks | Full PR validation before merge |
-| `security-local` | python-security-bandit, python-security-semgrep, python-security-secrets | Quick security without network |
-| `security` | security-local + python-security-safety | Full security audit |
-| `integration` | python-format, python-lint, python-tests | Database integration focus |
-| `smoke` | python-format, python-lint, python-tests, smoke | Server + browser tests |
+| `commit` | python-format, python-lint, python-types, python-tests, python-coverage, python-complexity, js-format, js-tests, js-coverage, template-validation | Fast pre-commit (~3 min) |
+| `pr` | All static checks + python-new-code-coverage + frontend-check | Full PR validation before merge |
+| `security-local` | python-security-local | Quick security without network |
+| `security` | python-security (bandit + semgrep + detect-secrets + safety) | Full security audit |
+| `integration` | python-format, python-lint, python-tests, integration | Database-backed integration tests (requires DATABASE_URL) |
+| `smoke` | python-format, python-lint, python-tests, smoke | Selenium smoke tests (requires running server on TEST_PORT) |
+| `e2e` | e2e | Playwright E2E tests (requires server on E2E port) |
 | `full` | All checks | Maximum validation |
 | `format` | python-format, js-format | Auto-fix only |
-| `lint` | python-lint, python-types, js-lint | Static analysis |
+| `lint` | python-lint, python-types | Static analysis |
 | `tests` | python-tests, python-coverage, js-tests, js-coverage | Testing only |
 
 ---
@@ -189,37 +199,55 @@ All shell commands go through `subprocess_guard.py`:
 - [x] Implement js_tests.py (jest) + unit tests (4 tests)
 - [x] Implement js_coverage.py (jest coverage) + unit tests (4 tests)
 - [x] Implement template_validation.py + unit tests (4 tests)
-- [x] Run slopbucket against itself — commit profile passes (6 passed, 4 skipped, 90% coverage, 118 tests)
+- [x] Implement smoke_check.py (Selenium smoke tests) + unit tests (6 tests)
+- [x] Implement e2e_check.py (Playwright E2E) + unit tests (6 tests)
+- [x] Implement integration_check.py (database integration) + unit tests (6 tests)
+- [x] Implement frontend_check.py (quick ESLint) + unit tests (5 tests)
+- [x] Implement python-new-code-coverage check + unit tests (5 tests, including COMPARE_BRANCH resolution)
+- [x] Fix python-diff-coverage to use COMPARE_BRANCH env var (was hardcoded origin/main)
+- [x] Add wave-based parallel ordering to runner (coverage checks after tests)
+- [x] Register all 19 checks in CHECK_REGISTRY
+- [x] Differentiate smoke vs integration profiles (previously identical)
+- [x] Run slopbucket against itself — commit profile passes (6 passed, 4 skipped, ~90% coverage)
 - [x] Create slopbucket PR (#2)
 - [x] Update course_record_updater to use submodule
 - [x] Create course_record_updater PR (#56)
 - [x] Fix coverage-new-code CI job to route through slopbucket
 - [x] Fix YAML indentation errors in quality-gate.yml
-- [ ] Verify both PRs are green (pending push of Turn 2 fixes)
+- [ ] Verify both PRs are green (pending CI run)
 
 ---
 
-## Known Gaps & Intentionally Out of Scope
+## Server-Dependent Checks — Host CI Responsibility
 
-The following checks from the original ship_it.py / quality-gate.yml are **not** implemented in slopbucket. Each gap is documented with the rationale:
+Checks that require a running server or seeded database are implemented
+as **orchestration checks**: slopbucket invokes pytest against the
+appropriate test directory but does NOT manage server lifecycle.  The
+host CI workflow is responsible for database seeding and server startup
+before invoking slopbucket.
 
-| Gap | Original Location | Rationale |
-|-----|-------------------|-----------|
-| **Smoke tests** (Playwright/Selenium E2E) | quality-gate.yml `smoke-tests` job | Requires a running Flask server + seeded database. This is host-repo-specific infrastructure (seed scripts, server startup, port config). Slopbucket is a static analysis tool; smoke/E2E tests belong in the host repo's test suite and CI, orchestrated by the host repo's CI workflow directly (already `if: false` / disabled in course_record_updater). |
-| **E2E browser tests** | quality-gate.yml (Playwright) | Same rationale as smoke: requires live server. Host-repo responsibility. |
-| **frontend-check** (quick JS validation) | ship_it.py `--checks frontend-check` | Subsumed by `js-format` check. The original frontend-check was a 5s quick-check alias; slopbucket's `js-format` does ESLint + Prettier with auto-fix, which is the same validation. Use `--checks js-format` for equivalent behavior. |
-| **SonarQube / sonar** | Not present in current CI | Was never part of the active quality gate. No implementation needed. |
-| **coverage-new-code** (CI job) | quality-gate.yml `coverage-new-code` job | The direct `pytest --cov` + `diff-cover` invocations have been replaced with `python slopbucket/setup.py --checks python-tests python-diff-coverage` in the CI workflow. Slopbucket now owns this path. |
+| Check | Requires | Env Vars | Graceful Skip When |
+|-------|----------|----------|-------------------|
+| `smoke` | Running server + Selenium | TEST_PORT or PORT | No tests/smoke/ dir, or no port configured |
+| `e2e` | Running server + Playwright | LOOPCLOSER_DEFAULT_PORT_E2E or TEST_PORT | No tests/e2e/ dir, or no port, or no playwright |
+| `integration` | Seeded database | DATABASE_URL | No tests/integration/ dir, or no DATABASE_URL |
 
 **Profile mapping for legacy check names:**
 
 | Old Name | New Equivalent |
 |----------|----------------|
-| `frontend-check` | `js-format` |
-| `smoke` | Use host-repo CI directly (not slopbucket) |
+| `frontend-check` | `frontend-check` (registered check) |
+| `smoke` | `smoke` (registered check + profile) |
 | `python-unit-tests` | `python-tests` (alias registered) |
 | `coverage` | `python-coverage` (alias registered) |
+| `python-new-code-coverage` | `python-new-code-coverage` (registered check) |
 | `security-local` | `python-security-local` (profile) |
+
+**Intentionally not implemented:**
+
+| Item | Rationale |
+|------|-----------|
+| SonarQube / sonar | Was never part of the active quality gate in course_record_updater |
 
 ---
 
@@ -233,3 +261,5 @@ The following checks from the original ship_it.py / quality-gate.yml are **not**
 6. **AI-optimized output** — Designed for LLM consumption: structured, unambiguous, actionable.
 7. **Plugin architecture** — Checks are discovered via the registry; adding new checks requires zero changes to core.
 8. **Submodule-friendly** — Designed to be dropped into any repo as a git submodule. `setup.py` handles bootstrapping.
+9. **Wave-ordered parallelism** — Coverage checks (Wave 2) run after test checks (Wave 1) to avoid race conditions on `.coverage` / `coverage.xml` artifacts.
+10. **COMPARE_BRANCH-aware diff coverage** — Reads from COMPARE_BRANCH env → GITHUB_BASE_REF → origin/main. No hardcoded branch.

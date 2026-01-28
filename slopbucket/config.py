@@ -151,6 +151,46 @@ CHECK_REGISTRY: Dict[str, CheckDef] = {
         language="any",
         category="lint",
     ),
+    "smoke": CheckDef(
+        name="smoke",
+        module_path="slopbucket.checks.smoke_check",
+        class_name="SmokeCheck",
+        description="Smoke tests (Selenium, requires running server)",
+        language="python",
+        category="tests",
+    ),
+    "e2e": CheckDef(
+        name="e2e",
+        module_path="slopbucket.checks.e2e_check",
+        class_name="E2ECheck",
+        description="E2E browser tests (Playwright, requires running server)",
+        language="python",
+        category="tests",
+    ),
+    "integration": CheckDef(
+        name="integration",
+        module_path="slopbucket.checks.integration_check",
+        class_name="IntegrationCheck",
+        description="Integration tests (database-backed, tests/integration/)",
+        language="python",
+        category="tests",
+    ),
+    "frontend-check": CheckDef(
+        name="frontend-check",
+        module_path="slopbucket.checks.frontend_check",
+        class_name="FrontendCheck",
+        description="Quick frontend validation (ESLint errors-only)",
+        language="javascript",
+        category="lint",
+    ),
+    "python-new-code-coverage": CheckDef(
+        name="python-new-code-coverage",
+        module_path="slopbucket.checks.python_coverage",
+        class_name="PythonNewCodeCoverageCheck",
+        description="New-code coverage gate (80%, CI-oriented)",
+        language="python",
+        category="coverage",
+    ),
 }
 
 # =============================================================================
@@ -177,12 +217,14 @@ PROFILES: Dict[str, List[str]] = {
         "python-tests",
         "python-coverage",
         "python-diff-coverage",
+        "python-new-code-coverage",
         "python-complexity",
         "python-security",
         "python-duplication",
         "js-format",
         "js-tests",
         "js-coverage",
+        "frontend-check",
         "template-validation",
     ],
     "security-local": [
@@ -209,11 +251,16 @@ PROFILES: Dict[str, List[str]] = {
         "python-format",
         "python-lint",
         "python-tests",
+        "integration",
     ],
     "smoke": [
         "python-format",
         "python-lint",
         "python-tests",
+        "smoke",
+    ],
+    "e2e": [
+        "e2e",
     ],
     "full": list(CHECK_REGISTRY.keys()),
 }
@@ -226,8 +273,9 @@ PROFILE_DESCRIPTIONS: Dict[str, str] = {
     "format": "Auto-fix formatting (Python + JS)",
     "lint": "Static analysis (flake8 + mypy)",
     "tests": "Test suite + coverage enforcement",
-    "integration": "Integration-focused validation",
-    "smoke": "Smoke test profile",
+    "integration": "Database-backed integration tests (requires DATABASE_URL)",
+    "smoke": "Smoke tests (Selenium, requires running server on TEST_PORT)",
+    "e2e": "End-to-end Playwright tests (requires server on E2E port)",
     "full": "Maximum validation (everything)",
 }
 

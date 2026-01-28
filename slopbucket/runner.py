@@ -79,8 +79,35 @@ class Runner:
 
         return results
 
+    # Checks that consume artifacts produced by Wave 1 (e.g. coverage.xml).
+    # These must run after python-tests completes to avoid race conditions.
+    _WAVE_2_CHECKS = {
+        "python-coverage",
+        "python-diff-coverage",
+        "python-new-code-coverage",
+    }
+
     def _run_parallel(self, checks: List[BaseCheck]) -> list:
-        """Run checks in parallel threads. Respects fail-fast."""
+        """Run checks in parallel with dependency ordering.
+
+        Wave 1: all checks except coverage consumers (run in parallel).
+        Wave 2: coverage checks that depend on Wave 1 artifacts.
+        """
+        wave1 = [c for c in checks if c.name not in self._WAVE_2_CHECKS]
+        wave2 = [c for c in checks if c.name in self._WAVE_2_CHECKS]
+
+        results = self._run_wave(wave1)
+        if not self._stop_flag and wave2:
+            results.extend(self._run_wave(wave2))
+
+        # Sort results to match original check order
+        check_order = {check.name: i for i, check in enumerate(checks)}
+        results.sort(key=lambda r: check_order.get(r.name, 999))
+
+        return results
+
+    def _run_wave(self, checks: List[BaseCheck]) -> list:
+        """Execute a batch of checks in parallel."""
         results = []
         results_lock = __import__("threading").Lock()
 
@@ -105,9 +132,5 @@ class Runner:
                         self._stop_flag = True
                         if self.config.verbose:
                             logger.info("  FAIL-FAST triggered by: %s", result.name)
-
-        # Sort results to match original check order
-        check_order = {check.name: i for i, check in enumerate(checks)}
-        results.sort(key=lambda r: check_order.get(r.name, 999))
 
         return results
