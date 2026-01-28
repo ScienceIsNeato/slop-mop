@@ -67,7 +67,6 @@ Check Aliases (expand to predefined check groups):
   commit      Fast validation for commits (lint, tests, coverage)
   pr          Full PR validation (all checks)
   quick       Ultra-fast lint-only check
-  security    Security-focused checks only
 
 For more information, see: https://github.com/ScienceIsNeato/slopbucket
 """,

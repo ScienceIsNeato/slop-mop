@@ -109,21 +109,13 @@ slopbucket uses a whitelist-based security model for subprocess execution:
 
 ## Configuration
 
-Create a `slopbucket.toml` in your project root:
+slopbucket is designed to work out of the box with **zero required configuration**.
 
-```toml
-[slopbucket]
-version = "1.0.0"
+Currently, behavior is controlled by:
+- Built-in defaults
+- Command-line options (e.g., `--checks commit`)
 
-[checks]
-enabled = ["python-lint-format", "python-tests"]
-
-[checks.python-coverage]
-threshold = 80
-
-[aliases]
-my-check = ["python-lint-format", "python-tests"]
-```
+**Note:** File-based configuration via `slopbucket.toml` is planned but not yet implemented.
 
 ## Adding Custom Checks
 
