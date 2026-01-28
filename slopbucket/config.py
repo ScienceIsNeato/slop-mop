@@ -6,7 +6,7 @@ Each profile expands to an ordered list of check names that the runner
 will execute.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
 

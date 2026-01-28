@@ -21,7 +21,6 @@ class PythonLintCheck(BaseCheck):
     """Flake8 check scoped to critical errors only."""
 
     CRITICAL_CODES = ["E9", "F63", "F7", "F82", "F401"]
-    DEFAULT_DIRS = ["src", "tests", "scripts"]
 
     @property
     def name(self) -> str:
@@ -44,7 +43,9 @@ class PythonLintCheck(BaseCheck):
         result = run(cmd, cwd=working_dir)
 
         if result.success:
-            return self._make_result(status=CheckStatus.PASSED, output="No critical lint errors")
+            return self._make_result(
+                status=CheckStatus.PASSED, output="No critical lint errors"
+            )
 
         return self._make_result(
             status=CheckStatus.FAILED,
@@ -55,5 +56,10 @@ class PythonLintCheck(BaseCheck):
     def _find_target_dirs(self, working_dir: Optional[str]) -> list:
         import os
 
+        from slopbucket.checks.python_tests import _find_source_packages
+
         base = working_dir or os.getcwd()
-        return [d for d in self.DEFAULT_DIRS if os.path.isdir(os.path.join(base, d))]
+        dirs = list(_find_source_packages(base))
+        if os.path.isdir(os.path.join(base, "tests")):
+            dirs.append("tests")
+        return dirs

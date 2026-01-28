@@ -171,30 +171,55 @@ All shell commands go through `subprocess_guard.py`:
 - [x] Deep dive analysis of ship_it.py and maintAInability-gate.sh
 - [x] Design class hierarchy and interface contracts
 - [x] Document source-to-target mapping for every check
-- [ ] Implement subprocess_guard.py with tests
-- [ ] Implement result.py with tests
-- [ ] Implement config.py with tests
-- [ ] Implement base_check.py and check_discovery.py with tests
-- [ ] Implement runner.py with tests
-- [ ] Implement cli.py (setup.py) with tests
-- [ ] Implement python_format.py (black, isort, autoflake)
-- [ ] Implement python_lint.py (flake8)
-- [ ] Implement python_type_check.py (mypy)
-- [ ] Implement python_tests.py (pytest)
-- [ ] Implement python_coverage.py (coverage, diff-cover)
-- [ ] Implement python_complexity.py (radon)
-- [ ] Implement python_security.py (bandit, semgrep, detect-secrets, safety)
-- [ ] Implement python_duplication.py (jscpd)
-- [ ] Implement js_format.py (eslint, prettier)
-- [ ] Implement js_tests.py (jest)
-- [ ] Implement js_coverage.py (jest coverage)
-- [ ] Implement template_validation.py
-- [ ] Implement profiles.py (commit, pr, full, etc.)
-- [ ] Run slopbucket against itself — all checks pass
-- [ ] Create slopbucket PR
-- [ ] Update course_record_updater to use submodule
-- [ ] Create course_record_updater PR
-- [ ] Verify both PRs are green
+- [x] Implement subprocess_guard.py with tests (15 tests)
+- [x] Implement result.py with tests (11 tests)
+- [x] Implement config.py with tests (10 tests)
+- [x] Implement base_check.py and check_discovery.py with tests (6 tests)
+- [x] Implement runner.py with tests (6 tests)
+- [x] Implement cli.py (setup.py) with tests (5 tests)
+- [x] Implement python_format.py (black, isort, autoflake) + unit tests (6 tests)
+- [x] Implement python_lint.py (flake8) + unit tests (5 tests)
+- [x] Implement python_type_check.py (mypy) + unit tests (4 tests)
+- [x] Implement python_tests.py (pytest) + unit tests (8 tests)
+- [x] Implement python_coverage.py (coverage, diff-cover) + unit tests (8 tests)
+- [x] Implement python_complexity.py (radon) + unit tests (5 tests)
+- [x] Implement python_security.py (bandit, semgrep, detect-secrets, safety) + unit tests (11 tests)
+- [x] Implement python_duplication.py (jscpd) + unit tests (3 tests)
+- [x] Implement js_format.py (eslint, prettier) + unit tests (4 tests)
+- [x] Implement js_tests.py (jest) + unit tests (4 tests)
+- [x] Implement js_coverage.py (jest coverage) + unit tests (4 tests)
+- [x] Implement template_validation.py + unit tests (4 tests)
+- [x] Run slopbucket against itself — commit profile passes (6 passed, 4 skipped, 90% coverage, 118 tests)
+- [x] Create slopbucket PR (#2)
+- [x] Update course_record_updater to use submodule
+- [x] Create course_record_updater PR (#56)
+- [x] Fix coverage-new-code CI job to route through slopbucket
+- [x] Fix YAML indentation errors in quality-gate.yml
+- [ ] Verify both PRs are green (pending push of Turn 2 fixes)
+
+---
+
+## Known Gaps & Intentionally Out of Scope
+
+The following checks from the original ship_it.py / quality-gate.yml are **not** implemented in slopbucket. Each gap is documented with the rationale:
+
+| Gap | Original Location | Rationale |
+|-----|-------------------|-----------|
+| **Smoke tests** (Playwright/Selenium E2E) | quality-gate.yml `smoke-tests` job | Requires a running Flask server + seeded database. This is host-repo-specific infrastructure (seed scripts, server startup, port config). Slopbucket is a static analysis tool; smoke/E2E tests belong in the host repo's test suite and CI, orchestrated by the host repo's CI workflow directly (already `if: false` / disabled in course_record_updater). |
+| **E2E browser tests** | quality-gate.yml (Playwright) | Same rationale as smoke: requires live server. Host-repo responsibility. |
+| **frontend-check** (quick JS validation) | ship_it.py `--checks frontend-check` | Subsumed by `js-format` check. The original frontend-check was a 5s quick-check alias; slopbucket's `js-format` does ESLint + Prettier with auto-fix, which is the same validation. Use `--checks js-format` for equivalent behavior. |
+| **SonarQube / sonar** | Not present in current CI | Was never part of the active quality gate. No implementation needed. |
+| **coverage-new-code** (CI job) | quality-gate.yml `coverage-new-code` job | The direct `pytest --cov` + `diff-cover` invocations have been replaced with `python slopbucket/setup.py --checks python-tests python-diff-coverage` in the CI workflow. Slopbucket now owns this path. |
+
+**Profile mapping for legacy check names:**
+
+| Old Name | New Equivalent |
+|----------|----------------|
+| `frontend-check` | `js-format` |
+| `smoke` | Use host-repo CI directly (not slopbucket) |
+| `python-unit-tests` | `python-tests` (alias registered) |
+| `coverage` | `python-coverage` (alias registered) |
+| `security-local` | `python-security-local` (profile) |
 
 ---
 

@@ -22,15 +22,15 @@ MAX_COMPLEXITY = 20
 class PythonComplexityCheck(BaseCheck):
     """Radon cyclomatic complexity enforcement."""
 
-    DEFAULT_DIRS = ["src", "tests", "scripts"]
-
     @property
     def name(self) -> str:
         return "python-complexity"
 
     @property
     def description(self) -> str:
-        return f"Cyclomatic complexity (max rank {MAX_RANK}, complexity <{MAX_COMPLEXITY})"
+        return (
+            f"Cyclomatic complexity (max rank {MAX_RANK}, complexity <{MAX_COMPLEXITY})"
+        )
 
     def execute(self, working_dir: Optional[str] = None) -> CheckResult:
         dirs = self._find_target_dirs(working_dir)
@@ -41,7 +41,17 @@ class PythonComplexityCheck(BaseCheck):
             )
 
         # Run radon cc — show only D-F ranked functions
-        cmd = [sys.executable, "-m", "radon", "cc", "--min", "D", "-s", "-a", "--md"] + dirs
+        cmd = [
+            sys.executable,
+            "-m",
+            "radon",
+            "cc",
+            "--min",
+            "D",
+            "-s",
+            "-a",
+            "--md",
+        ] + dirs
         result = run(cmd, cwd=working_dir)
 
         # Parse output for violations
@@ -65,8 +75,13 @@ class PythonComplexityCheck(BaseCheck):
     def _find_target_dirs(self, working_dir: Optional[str]) -> list:
         import os
 
+        from slopbucket.checks.python_tests import _find_source_packages
+
         base = working_dir or os.getcwd()
-        return [d for d in self.DEFAULT_DIRS if os.path.isdir(os.path.join(base, d))]
+        dirs = list(_find_source_packages(base))
+        if os.path.isdir(os.path.join(base, "tests")):
+            dirs.append("tests")
+        return dirs
 
     def _parse_violations(self, output: str) -> list:
         """Extract D/E/F ranked functions from radon output."""

@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from slopbucket.base_check import BaseCheck
 from slopbucket.config import RunnerConfig
-from slopbucket.result import CheckStatus, RunSummary
+from slopbucket.result import CheckResult, CheckStatus, RunSummary
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +84,8 @@ class Runner:
         results = []
         results_lock = __import__("threading").Lock()
 
-        def _execute(check: BaseCheck) -> "CheckResult":  # noqa: F821
+        def _execute(check: BaseCheck) -> CheckResult:
             if self._stop_flag:
-                from slopbucket.result import CheckResult
-
                 return CheckResult(
                     name=check.name,
                     status=CheckStatus.SKIPPED,
@@ -106,9 +104,7 @@ class Runner:
                     if result.failed and self.config.fail_fast:
                         self._stop_flag = True
                         if self.config.verbose:
-                            logger.info(
-                                "  FAIL-FAST triggered by: %s", result.name
-                            )
+                            logger.info("  FAIL-FAST triggered by: %s", result.name)
 
         # Sort results to match original check order
         check_order = {check.name: i for i, check in enumerate(checks)}

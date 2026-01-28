@@ -10,14 +10,11 @@ from typing import Optional
 
 from slopbucket.base_check import BaseCheck
 from slopbucket.result import CheckResult, CheckStatus
-from slopbucket.subprocess_guard import run
+from slopbucket.subprocess_guard import SubprocessResult, run
 
 
 class PythonFormatCheck(BaseCheck):
     """Validates Python code formatting via Black, isort, and autoflake."""
-
-    # Directories to format (relative paths, configured per-project)
-    DEFAULT_DIRS = ["src", "tests", "scripts"]
 
     @property
     def name(self) -> str:
@@ -66,16 +63,17 @@ class PythonFormatCheck(BaseCheck):
         return self._make_result(status=CheckStatus.PASSED, output="All formatting OK")
 
     def _find_target_dirs(self, working_dir: Optional[str]) -> list:
-        """Find which target directories exist in the working directory."""
+        """Find Python directories to format via auto-discovery."""
         import os
 
+        from slopbucket.checks.python_tests import _find_source_packages
+
         base = working_dir or os.getcwd()
-        found = []
-        for d in self.DEFAULT_DIRS:
-            path = os.path.join(base, d)
-            if os.path.isdir(path):
-                found.append(d)
-        return found
+        dirs = list(_find_source_packages(base))
+        # Always include tests/ if present
+        if os.path.isdir(os.path.join(base, "tests")):
+            dirs.append("tests")
+        return dirs
 
     def _run_autoflake(self, dirs: list, working_dir: Optional[str]) -> None:
         """Run autoflake to remove unused imports (best-effort, non-blocking)."""
@@ -91,12 +89,12 @@ class PythonFormatCheck(BaseCheck):
         ] + dirs
         run(cmd, cwd=working_dir)
 
-    def _run_black(self, dirs: list, working_dir: Optional[str]) -> "SubprocessResult":  # noqa: F821
+    def _run_black(self, dirs: list, working_dir: Optional[str]) -> SubprocessResult:
         """Run black with auto-fix."""
         cmd = [sys.executable, "-m", "black", "--line-length", "88"] + dirs
         return run(cmd, cwd=working_dir)
 
-    def _run_isort(self, dirs: list, working_dir: Optional[str]) -> "SubprocessResult":  # noqa: F821
+    def _run_isort(self, dirs: list, working_dir: Optional[str]) -> SubprocessResult:
         """Run isort with auto-fix."""
         cmd = [sys.executable, "-m", "isort", "--profile", "black"] + dirs
         return run(cmd, cwd=working_dir)
@@ -112,7 +110,15 @@ class PythonFormatCheck(BaseCheck):
             issues.append(("black-check", result.stderr or result.stdout))
 
         # Check isort
-        cmd = [sys.executable, "-m", "isort", "--check-only", "--diff", "--profile", "black"] + dirs
+        cmd = [
+            sys.executable,
+            "-m",
+            "isort",
+            "--check-only",
+            "--diff",
+            "--profile",
+            "black",
+        ] + dirs
         result = run(cmd, cwd=working_dir)
         if not result.success:
             issues.append(("isort-check", result.stdout or result.stderr))

@@ -195,4 +195,6 @@ def add_to_allowlist(executable: str) -> None:
 
 def is_allowed(executable: str) -> bool:
     """Check if an executable is in the allowlist."""
-    return executable in ALLOWED_EXECUTABLES or _resolve_executable(executable) is not None
+    return (
+        executable in ALLOWED_EXECUTABLES or _resolve_executable(executable) is not None
+    )

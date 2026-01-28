@@ -5,7 +5,6 @@ Flags code duplication above the configured threshold.
 Works across Python (and JS if present) source files.
 """
 
-import sys
 from typing import Optional
 
 from slopbucket.base_check import BaseCheck

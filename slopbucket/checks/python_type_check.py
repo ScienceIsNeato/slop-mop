@@ -2,6 +2,7 @@
 Python type checking — Mypy strict mode.
 
 Validates type annotations across the source tree.
+Auto-discovers source packages (src/ or top-level packages).
 Excludes test directories (typically less strictly typed).
 """
 
@@ -9,6 +10,7 @@ import sys
 from typing import Optional
 
 from slopbucket.base_check import BaseCheck
+from slopbucket.checks.python_tests import _find_source_packages
 from slopbucket.result import CheckResult, CheckStatus
 from slopbucket.subprocess_guard import run
 
@@ -29,32 +31,37 @@ class PythonTypeCheck(BaseCheck):
 
         base = working_dir or os.getcwd()
 
-        # Find src/ directory
-        src_dir = os.path.join(base, "src")
-        if not os.path.isdir(src_dir):
+        source_packages = _find_source_packages(base)
+        if not source_packages:
             return self._make_result(
                 status=CheckStatus.SKIPPED,
-                output="No src/ directory found.",
+                output="No source packages found (looked for src/ or packages with __init__.py).",
             )
 
-        cmd = [
-            sys.executable,
-            "-m",
-            "mypy",
-            "src/",
-            "--ignore-missing-imports",
-            "--disallow-untyped-defs",
-            "--explicit-package-bases",
-            "--exclude",
-            "tests/",
-        ]
-        result = run(cmd, cwd=working_dir)
+        cmd = (
+            [
+                sys.executable,
+                "-m",
+                "mypy",
+            ]
+            + source_packages
+            + [
+                "--ignore-missing-imports",
+                "--disallow-untyped-defs",
+                "--explicit-package-bases",
+                "--exclude",
+                "tests/",
+            ]
+        )
+        result = run(cmd, cwd=working_dir, timeout=120)
 
         if result.success:
-            return self._make_result(status=CheckStatus.PASSED, output="All types check out")
+            return self._make_result(
+                status=CheckStatus.PASSED, output="All types check out"
+            )
 
         return self._make_result(
             status=CheckStatus.FAILED,
             output=result.stdout or result.stderr,
-            fix_hint="Add type annotations to flagged functions. Run: mypy src/ --show-error-codes",
+            fix_hint="Add type annotations to flagged functions. Run: mypy <package>/ --show-error-codes",
         )

@@ -5,10 +5,10 @@ Designed for maximum signal-to-noise ratio. AI agents reading this output
 should be able to identify and fix issues without re-running commands.
 """
 
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
-import time
 
 
 class CheckStatus(Enum):
@@ -116,9 +116,7 @@ class RunSummary:
 
         # Header
         lines.append("")
-        lines.append(
-            f"  {'═' * 70}"
-        )
+        lines.append(f"  {'═' * 70}")
         profile_label = f" [{self.profile_name}]" if self.profile_name else ""
         lines.append(f"  SLOPBUCKET VALIDATION RESULTS{profile_label}")
         lines.append(f"  {'═' * 70}")

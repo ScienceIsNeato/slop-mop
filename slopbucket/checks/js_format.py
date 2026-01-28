@@ -42,7 +42,9 @@ class JSFormatCheck(BaseCheck):
         issues = []
 
         # 1. Prettier auto-fix
-        npm_format = run([sys.executable, "-m", "npm", "run", "format"], cwd=working_dir)
+        npm_format = run(
+            [sys.executable, "-m", "npm", "run", "format"], cwd=working_dir
+        )
         # Try npm directly if python -m npm doesn't work
         if npm_format.returncode == 1 and "No module named npm" in npm_format.stderr:
             npm_format = run(["npm", "run", "format"], cwd=working_dir)
@@ -69,7 +71,9 @@ class JSFormatCheck(BaseCheck):
                 fix_hint="Fix ESLint errors shown above. Run: npx eslint static/**/*.js --fix",
             )
 
-        return self._make_result(status=CheckStatus.PASSED, output="JavaScript formatting OK")
+        return self._make_result(
+            status=CheckStatus.PASSED, output="JavaScript formatting OK"
+        )
 
     def _has_js_source(self, base: str) -> bool:
         import os

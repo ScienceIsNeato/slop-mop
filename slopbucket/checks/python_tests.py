@@ -2,15 +2,42 @@
 Python test runner — Pytest with coverage generation.
 
 Executes unit and integration tests. Generates coverage.xml
-for downstream coverage checks. Supports parallel test execution.
+for downstream coverage checks. Auto-discovers test and source
+directories so it works in any repo layout.
 """
 
 import sys
-from typing import Optional
+from typing import List, Optional
 
 from slopbucket.base_check import BaseCheck
 from slopbucket.result import CheckResult, CheckStatus
 from slopbucket.subprocess_guard import run
+
+
+def _find_source_packages(base: str) -> List[str]:
+    """Auto-discover Python source packages for coverage.
+
+    Looks for: src/, or any top-level directory containing __init__.py.
+    Excludes tests, venv, node_modules, archives.
+    """
+    import os
+
+    exclude = {"tests", "venv", ".venv", "node_modules", "archives", ".git", "docs"}
+
+    # Prefer explicit src/ if it exists
+    if os.path.isdir(os.path.join(base, "src")):
+        return ["src"]
+
+    # Otherwise find packages with __init__.py
+    packages = []
+    for entry in os.listdir(base):
+        path = os.path.join(base, entry)
+        if entry.startswith(".") or entry in exclude:
+            continue
+        if os.path.isdir(path) and os.path.exists(os.path.join(path, "__init__.py")):
+            packages.append(entry)
+
+    return packages
 
 
 class PythonTestsCheck(BaseCheck):
@@ -30,7 +57,7 @@ class PythonTestsCheck(BaseCheck):
         base = working_dir or os.getcwd()
 
         # Discover test directories
-        test_dirs = []
+        test_dirs: List[str] = []
         for candidate in ["tests/unit", "tests/integration", "tests"]:
             path = os.path.join(base, candidate)
             if os.path.isdir(path):
@@ -44,17 +71,16 @@ class PythonTestsCheck(BaseCheck):
                 output="No test directories found.",
             )
 
-        cmd = [
-            sys.executable,
-            "-m",
-            "pytest",
-        ] + test_dirs + [
-            "--cov=src",
-            "--cov-report=term-missing",
-            "--cov-report=xml:coverage.xml",
-            "-v",
-            "--tb=short",
-        ]
+        # Discover source packages for coverage
+        source_packages = _find_source_packages(base)
+
+        cmd = [sys.executable, "-m", "pytest"] + test_dirs + ["--tb=short", "-v"]
+
+        # Add coverage flags only if we found source packages
+        if source_packages:
+            for pkg in source_packages:
+                cmd.extend(["--cov", pkg])
+            cmd.extend(["--cov-report=term-missing", "--cov-report=xml:coverage.xml"])
 
         result = run(cmd, cwd=working_dir, timeout=600)
 

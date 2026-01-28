@@ -13,7 +13,7 @@ import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from slopbucket.base_check import BaseCheck
 from slopbucket.result import CheckResult, CheckStatus
@@ -63,7 +63,9 @@ def _run_bandit(working_dir: Optional[str]) -> _SecuritySubCheck:
             if r.get("issue_severity") in ("HIGH", "MEDIUM")
         ]
         if not issues:
-            return _SecuritySubCheck("bandit", True, "Only LOW severity issues (ignored)")
+            return _SecuritySubCheck(
+                "bandit", True, "Only LOW severity issues (ignored)"
+            )
 
         detail = "\n".join(
             f"  [{r['issue_severity']}] {r['issue_text']} ({r['test_name']}) - {r.get('filename', '')}:{r.get('line_number', '')}"
@@ -71,7 +73,11 @@ def _run_bandit(working_dir: Optional[str]) -> _SecuritySubCheck:
         )
         return _SecuritySubCheck("bandit", False, detail)
     except json.JSONDecodeError:
-        return _SecuritySubCheck("bandit", False, result.stdout[-500:] if result.stdout else result.stderr[-500:])
+        return _SecuritySubCheck(
+            "bandit",
+            False,
+            result.stdout[-500:] if result.stdout else result.stderr[-500:],
+        )
 
 
 def _run_semgrep(working_dir: Optional[str]) -> _SecuritySubCheck:
@@ -108,7 +114,11 @@ def _run_semgrep(working_dir: Optional[str]) -> _SecuritySubCheck:
     except json.JSONDecodeError:
         # If output isn't JSON, check return code meaning
         if result.returncode == 1:
-            return _SecuritySubCheck("semgrep", False, result.stderr[-300:] if result.stderr else "Unknown error")
+            return _SecuritySubCheck(
+                "semgrep",
+                False,
+                result.stderr[-300:] if result.stderr else "Unknown error",
+            )
         return _SecuritySubCheck("semgrep", True, "Scan completed (non-JSON output)")
 
 
@@ -141,7 +151,11 @@ def _run_detect_secrets(working_dir: Optional[str]) -> _SecuritySubCheck:
         except json.JSONDecodeError:
             return _SecuritySubCheck("detect-secrets", True, "Scan completed")
 
-    return _SecuritySubCheck("detect-secrets", False, result.stderr[-300:] if result.stderr else "Scan failed")
+    return _SecuritySubCheck(
+        "detect-secrets",
+        False,
+        result.stderr[-300:] if result.stderr else "Scan failed",
+    )
 
 
 def _run_safety(working_dir: Optional[str]) -> _SecuritySubCheck:
@@ -169,7 +183,11 @@ def _run_safety(working_dir: Optional[str]) -> _SecuritySubCheck:
         )
         return _SecuritySubCheck("safety", False, detail)
     except json.JSONDecodeError:
-        return _SecuritySubCheck("safety", False, result.stdout[-300:] if result.stdout else "Safety scan failed")
+        return _SecuritySubCheck(
+            "safety",
+            False,
+            result.stdout[-300:] if result.stdout else "Safety scan failed",
+        )
 
 
 class PythonSecurityLocalCheck(BaseCheck):
@@ -194,7 +212,9 @@ class PythonSecurityLocalCheck(BaseCheck):
         results: List[_SecuritySubCheck] = []
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(fn, working_dir): fn.__name__ for fn in self._sub_checks}
+            futures = {
+                executor.submit(fn, working_dir): fn.__name__ for fn in self._sub_checks
+            }
             for future in futures:
                 try:
                     results.append(future.result(timeout=180))

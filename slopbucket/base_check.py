@@ -62,7 +62,9 @@ class BaseCheck(ABC):
             details=details or {},
         )
 
-    def _tool_available(self, tool_name: str, working_dir: Optional[str] = None) -> bool:
+    def _tool_available(
+        self, tool_name: str, working_dir: Optional[str] = None
+    ) -> bool:
         """Check if a CLI tool is installed and accessible."""
         from slopbucket.subprocess_guard import run
 
