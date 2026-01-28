@@ -17,8 +17,8 @@ A language-agnostic, bolt-on code validation tool designed to catch AI-generated
 # 1. Clone slopbucket into your project
 git submodule add https://github.com/ScienceIsNeato/slopbucket.git
 
-# 2. Run setup (auto-configures for your project)
-cd slopbucket && python setup.py
+# 2. Run interactive setup (auto-detects project type)
+cd slopbucket && pip install -e . && sb init
 
 # 3. Run validation
 sb validate              # Full suite
@@ -31,6 +31,11 @@ sb validate pr --verbose # PR validation with details
 The `sb` command uses a verb-based interface:
 
 ```bash
+# Setup commands
+sb init                               # Interactive project setup
+sb init --non-interactive             # Auto-configure with defaults
+sb init --config setup_config.json    # Use pre-populated config
+
 # Validate commands
 sb validate                           # Run full validation suite
 sb validate commit                    # Run commit profile (fast)
@@ -48,6 +53,39 @@ sb config --json config.json          # Update config from JSON file
 sb help                               # List all quality gates
 sb help python-lint-format            # Detailed help for specific gate
 sb help commit                        # Show what's in a profile
+```
+
+## Interactive Setup
+
+The `sb init` command provides intelligent project configuration:
+
+```bash
+# Interactive mode (prompts for settings)
+sb init
+
+# Non-interactive mode (uses detected defaults)
+sb init --non-interactive
+
+# Pre-populated answers (for CI/automation)
+sb init --config setup_config.json --non-interactive
+```
+
+### What it detects:
+
+- **Python projects**: setup.py, pyproject.toml, requirements.txt, *.py files
+- **JavaScript projects**: package.json, tsconfig.json, *.js/*.ts files  
+- **Test frameworks**: pytest, Jest
+- **Test directories**: tests/, test/, spec/, __tests__/
+
+### Pre-populated config (setup_config.json):
+
+```json
+{
+  "default_profile": "commit",
+  "test_dirs": ["tests", "integration_tests"],
+  "coverage_threshold": 80,
+  "disabled_gates": ["python-security"]
+}
 ```
 
 ## Available Quality Gates
