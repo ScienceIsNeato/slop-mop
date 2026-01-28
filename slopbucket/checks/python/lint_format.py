@@ -202,7 +202,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "flake8",
                 "--select=E9,F63,F7,F82,F401",
                 "--max-line-length=88",
-                "--exclude=venv,.venv,build,dist,node_modules,.git",
+                "--exclude=venv,.venv,build,dist,node_modules,.git,cursor-rules,tools",
                 ".",
             ],
             cwd=project_root,
