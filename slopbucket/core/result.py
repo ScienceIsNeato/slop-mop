@@ -118,7 +118,9 @@ class ExecutionSummary:
         return self.failed == 0 and self.errors == 0
 
     @classmethod
-    def from_results(cls, results: List[CheckResult], duration: float) -> "ExecutionSummary":
+    def from_results(
+        cls, results: List[CheckResult], duration: float
+    ) -> "ExecutionSummary":
         """Create summary from a list of check results."""
         return cls(
             total_checks=len(results),

@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from .validator import CommandValidator, SecurityError, get_validator
+from .validator import CommandValidator, get_validator
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,9 @@ class SubprocessRunner:
 
             last_result = result
             if attempt < max_retries:
-                logger.info(f"Retry {attempt + 1}/{max_retries} for: {' '.join(command)}")
+                logger.info(
+                    f"Retry {attempt + 1}/{max_retries} for: {' '.join(command)}"
+                )
 
         return last_result  # type: ignore
 

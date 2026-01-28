@@ -3,9 +3,6 @@
 Provides clear, AI-friendly output with actionable error messages.
 """
 
-import sys
-from typing import Optional
-
 from slopbucket.core.result import CheckResult, CheckStatus, ExecutionSummary
 
 

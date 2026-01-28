@@ -1,8 +1,10 @@
 """Python coverage analysis check."""
 
 import re
+import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 from slopbucket.checks.base import BaseCheck, PythonCheckMixin
 from slopbucket.core.result import CheckResult, CheckStatus
@@ -49,7 +51,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
         # Get coverage report
         result = self._run_command(
-            ["python", "-m", "coverage", "report", "--fail-under=0"],
+            [sys.executable, "-m", "coverage", "report", "--fail-under=0"],
             cwd=project_root,
             timeout=30,
         )
@@ -84,7 +86,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             output=f"Coverage: {coverage_pct:.1f}% (threshold: {threshold}%)\n{result.output}",
         )
 
-    def _parse_coverage(self, output: str) -> float | None:
+    def _parse_coverage(self, output: str) -> Optional[float]:
         """Parse coverage percentage from output."""
         # Look for TOTAL line with percentage
         match = re.search(r"TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%", output)

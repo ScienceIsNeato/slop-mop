@@ -13,7 +13,7 @@ Security Principles:
 
 import re
 from pathlib import Path
-from typing import FrozenSet, List, Set
+from typing import FrozenSet, List, Optional, Set
 
 
 class SecurityError(Exception):
@@ -129,7 +129,7 @@ class CommandValidator:
         re.compile(r";\s*\w"),  # Semicolon followed by command
     ]
 
-    def __init__(self, additional_allowed: Set[str] | None = None):
+    def __init__(self, additional_allowed: Optional[Set[str]] = None):
         """Initialize validator with optional additional allowed executables.
 
         Args:
@@ -232,7 +232,7 @@ class CommandValidator:
 
 
 # Module-level singleton for convenience
-_default_validator: CommandValidator | None = None
+_default_validator: Optional[CommandValidator] = None
 
 
 def get_validator() -> CommandValidator:

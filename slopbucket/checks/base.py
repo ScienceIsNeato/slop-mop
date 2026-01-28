@@ -5,7 +5,6 @@ This enables the Open/Closed principle - add new checks without modifying
 existing code.
 """
 
-import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional

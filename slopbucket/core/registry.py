@@ -157,9 +157,7 @@ class CheckRegistry:
         """List all registered aliases and their checks."""
         return dict(self._aliases)
 
-    def get_applicable_checks(
-        self, project_root: str, config: Dict
-    ) -> List[BaseCheck]:
+    def get_applicable_checks(self, project_root: str, config: Dict) -> List[BaseCheck]:
         """Get all checks that are applicable to a project.
 
         Args:

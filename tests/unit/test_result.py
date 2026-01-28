@@ -1,7 +1,5 @@
 """Tests for core result types."""
 
-import pytest
-
 from slopbucket.core.result import (
     CheckDefinition,
     CheckResult,

@@ -51,9 +51,7 @@ class CheckExecutor:
         self._results: Dict[str, CheckResult] = {}
         self._on_check_complete: Optional[Callable[[CheckResult], None]] = None
 
-    def set_progress_callback(
-        self, callback: Callable[[CheckResult], None]
-    ) -> None:
+    def set_progress_callback(self, callback: Callable[[CheckResult], None]) -> None:
         """Set callback for check completion events.
 
         Args:
@@ -114,16 +112,12 @@ class CheckExecutor:
         dep_graph = self._build_dependency_graph(applicable)
 
         # Execute checks respecting dependencies
-        self._execute_with_dependencies(
-            applicable, dep_graph, project_root, auto_fix
-        )
+        self._execute_with_dependencies(applicable, dep_graph, project_root, auto_fix)
 
         duration = time.time() - start_time
         return ExecutionSummary.from_results(list(self._results.values()), duration)
 
-    def _build_dependency_graph(
-        self, checks: List[BaseCheck]
-    ) -> Dict[str, Set[str]]:
+    def _build_dependency_graph(self, checks: List[BaseCheck]) -> Dict[str, Set[str]]:
         """Build dependency graph for checks.
 
         Args:
@@ -168,7 +162,7 @@ class CheckExecutor:
         ) as executor:
             futures: Dict[concurrent.futures.Future, str] = {}
 
-            while pending and not self._stop_event.is_set():
+            while (pending or futures) and not self._stop_event.is_set():
                 # Find checks whose dependencies are all completed
                 ready = []
                 for name in pending:
@@ -176,7 +170,9 @@ class CheckExecutor:
                     if deps <= completed:
                         # Check if dependencies all passed
                         deps_passed = all(
-                            self._results.get(d, CheckResult(d, CheckStatus.PASSED, 0)).passed
+                            self._results.get(
+                                d, CheckResult(d, CheckStatus.PASSED, 0)
+                            ).passed
                             for d in deps
                         )
                         if deps_passed or not deps:

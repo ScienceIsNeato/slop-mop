@@ -14,10 +14,10 @@ def register_all_checks() -> None:
     registry = get_registry()
 
     # Import and register Python checks
-    from slopbucket.checks.python.lint_format import PythonLintFormatCheck
-    from slopbucket.checks.python.tests import PythonTestsCheck
     from slopbucket.checks.python.coverage import PythonCoverageCheck
+    from slopbucket.checks.python.lint_format import PythonLintFormatCheck
     from slopbucket.checks.python.static_analysis import PythonStaticAnalysisCheck
+    from slopbucket.checks.python.tests import PythonTestsCheck
 
     registry.register(PythonLintFormatCheck)
     registry.register(PythonTestsCheck)

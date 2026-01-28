@@ -27,10 +27,33 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         """Run mypy type checking."""
         start_time = time.time()
 
+        # Detect source directories to check
+        import os
+
+        source_dirs = []
+        for name in ["src", "slopbucket", "lib"]:
+            path = os.path.join(project_root, name)
+            if os.path.isdir(path):
+                source_dirs.append(name)
+
+        # If no standard source dirs found, check for Python packages
+        if not source_dirs:
+            for entry in os.listdir(project_root):
+                entry_path = os.path.join(project_root, entry)
+                if (
+                    os.path.isdir(entry_path)
+                    and os.path.exists(os.path.join(entry_path, "__init__.py"))
+                    and entry not in ("tests", "test", "venv", ".venv", "build", "dist")
+                ):
+                    source_dirs.append(entry)
+
+        if not source_dirs:
+            source_dirs = ["."]
+
         result = self._run_command(
             [
                 "mypy",
-                ".",
+                *source_dirs,
                 "--ignore-missing-imports",
                 "--no-strict-optional",
             ],

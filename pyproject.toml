@@ -63,6 +63,7 @@ line_length = 88
 python_version = "3.9"
 ignore_missing_imports = true
 no_strict_optional = true
+exclude = ["venv", "build", "dist"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -75,5 +76,5 @@ source = ["slopbucket"]
 omit = ["tests/*", "setup.py"]
 
 [tool.coverage.report]
-fail_under = 80
+# fail_under handled by slopbucket coverage check
 show_missing = true

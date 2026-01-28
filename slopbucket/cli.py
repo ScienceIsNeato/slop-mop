@@ -12,7 +12,7 @@ from typing import List, Optional
 
 from slopbucket.core.executor import CheckExecutor
 from slopbucket.core.registry import get_registry
-from slopbucket.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopbucket.core.result import ExecutionSummary
 from slopbucket.reporting.console import ConsoleReporter
 
 logger = logging.getLogger(__name__)
@@ -101,12 +101,14 @@ For more information, see: https://github.com/ScienceIsNeato/slopbucket
         help="Continue running checks even after failures",
     )
     options_group.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose output",
     )
     options_group.add_argument(
-        "--quiet", "-q",
+        "--quiet",
+        "-q",
         action="store_true",
         help="Minimal output (only show failures)",
     )
@@ -221,6 +223,7 @@ def run_checks(
 
     # Initialize registry with checks
     from slopbucket.checks import register_all_checks
+
     register_all_checks()
 
     # Create executor
@@ -274,12 +277,14 @@ def main(args: Optional[List[str]] = None) -> int:
     if parsed_args.list_checks:
         # Initialize checks first
         from slopbucket.checks import register_all_checks
+
         register_all_checks()
         list_checks()
         return 0
 
     if parsed_args.list_aliases:
         from slopbucket.checks import register_all_checks
+
         register_all_checks()
         list_aliases()
         return 0

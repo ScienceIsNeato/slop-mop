@@ -1,5 +1,6 @@
 """Python test execution check using pytest."""
 
+import sys
 import time
 
 from slopbucket.checks.base import BaseCheck, PythonCheckMixin
@@ -31,7 +32,9 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         # Run pytest with coverage to generate coverage.xml
         result = self._run_command(
             [
-                "python", "-m", "pytest",
+                sys.executable,
+                "-m",
+                "pytest",
                 "--cov=.",
                 "--cov-report=xml:coverage.xml",
                 "--cov-report=term-missing",
@@ -57,6 +60,22 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
             # Extract failure summary
             lines = result.output.split("\n")
             failed_tests = [l for l in lines if "FAILED" in l]
+
+            # Check if failure is due to coverage threshold (not test failures)
+            coverage_fail = any(
+                "coverage failure" in l.lower()
+                or "fail required test coverage" in l.lower()
+                for l in lines
+            )
+
+            if coverage_fail and not failed_tests:
+                # All tests passed but coverage is low - don't fail here,
+                # let the coverage check handle it
+                return self._create_result(
+                    status=CheckStatus.PASSED,
+                    duration=duration,
+                    output=result.output,
+                )
 
             error_msg = f"{len(failed_tests)} test(s) failed"
             if failed_tests:

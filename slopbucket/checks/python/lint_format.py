@@ -6,6 +6,7 @@ This check:
 3. Checks for critical lint errors with flake8
 """
 
+import os
 import time
 from typing import List, Optional
 
@@ -42,18 +43,33 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         """Auto-fix formatting issues with black and isort."""
         fixed = False
 
-        # Run black
-        result = self._run_command(
-            ["black", "--line-length", "88", "."],
-            cwd=project_root,
-            timeout=60,
-        )
-        if result.success:
-            fixed = True
+        # Find Python source directories to format
+        targets = self._get_python_targets(project_root)
+        if not targets:
+            targets = ["."]
+
+        # Run black on each target
+        for target in targets:
+            result = self._run_command(
+                ["black", "--line-length", "88", target],
+                cwd=project_root,
+                timeout=60,
+            )
+            if result.success:
+                fixed = True
 
         # Run isort
         result = self._run_command(
-            ["isort", "--profile", "black", "."],
+            [
+                "isort",
+                "--profile",
+                "black",
+                "--skip=venv",
+                "--skip=.venv",
+                "--skip=build",
+                "--skip=dist",
+                ".",
+            ],
             cwd=project_root,
             timeout=60,
         )
@@ -61,6 +77,26 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             fixed = True
 
         return fixed
+
+    def _get_python_targets(self, project_root: str) -> List[str]:
+        """Get Python directories to lint/format."""
+        targets = []
+        exclude_dirs = {"venv", ".venv", "build", "dist", "node_modules", ".git"}
+
+        for entry in os.listdir(project_root):
+            if entry in exclude_dirs or entry.startswith("."):
+                continue
+            entry_path = os.path.join(project_root, entry)
+            if os.path.isdir(entry_path):
+                # Check if it's a Python package or has Python files
+                if os.path.exists(os.path.join(entry_path, "__init__.py")):
+                    targets.append(entry)
+                elif entry in ("src", "tests", "test", "lib"):
+                    targets.append(entry)
+            elif entry.endswith(".py"):
+                targets.append(entry)
+
+        return targets
 
     def run(self, project_root: str) -> CheckResult:
         """Run lint and format checks."""
@@ -111,11 +147,21 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
     def _check_black(self, project_root: str) -> Optional[str]:
         """Check black formatting."""
-        result = self._run_command(
-            ["black", "--check", "--line-length", "88", "."],
-            cwd=project_root,
-            timeout=60,
-        )
+        targets = self._get_python_targets(project_root)
+        if not targets:
+            return None  # No Python targets found
+
+        # Check each target
+        all_passed = True
+        for target in targets:
+            result = self._run_command(
+                ["black", "--check", "--line-length", "88", target],
+                cwd=project_root,
+                timeout=60,
+            )
+            if not result.success:
+                all_passed = False
+                break
 
         if not result.success:
             # Extract files that need formatting
@@ -129,7 +175,17 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     def _check_isort(self, project_root: str) -> Optional[str]:
         """Check isort import order."""
         result = self._run_command(
-            ["isort", "--check-only", "--profile", "black", "."],
+            [
+                "isort",
+                "--check-only",
+                "--profile",
+                "black",
+                "--skip=venv",
+                "--skip=.venv",
+                "--skip=build",
+                "--skip=dist",
+                ".",
+            ],
             cwd=project_root,
             timeout=60,
         )
@@ -146,6 +202,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "flake8",
                 "--select=E9,F63,F7,F82,F401",
                 "--max-line-length=88",
+                "--exclude=venv,.venv,build,dist,node_modules,.git",
                 ".",
             ],
             cwd=project_root,
