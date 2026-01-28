@@ -14,7 +14,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List
 
 from slopbucket.checks.base import BaseCheck, PythonCheckMixin
 from slopbucket.core.result import CheckResult, CheckStatus
@@ -25,7 +25,7 @@ EXCLUDED_DIRS = ["venv", ".venv", "node_modules", "cursor-rules", "archives", "l
 @dataclass
 class SecuritySubResult:
     """Result from a single security scanner."""
-    
+
     name: str
     passed: bool
     findings: str
@@ -33,7 +33,7 @@ class SecuritySubResult:
 
 class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
     """Local security checks (no network required).
-    
+
     Runs bandit, semgrep, and detect-secrets in parallel.
     """
 
@@ -51,19 +51,18 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
     def run(self, project_root: str) -> CheckResult:
         """Run all local security checks in parallel."""
         start_time = time.time()
-        
+
         sub_checks: List[Callable[[str], SecuritySubResult]] = [
             self._run_bandit,
             self._run_semgrep,
             self._run_detect_secrets,
         ]
-        
+
         results: List[SecuritySubResult] = []
-        
+
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {
-                executor.submit(fn, project_root): fn.__name__ 
-                for fn in sub_checks
+                executor.submit(fn, project_root): fn.__name__ for fn in sub_checks
             }
             for future in futures:
                 try:
@@ -74,7 +73,7 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]
-        
+
         if not failures:
             tools = ", ".join(r.name for r in results)
             return self._create_result(
@@ -100,8 +99,10 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
             "bandit",
             "-r",
             ".",
-            "--skip", "B101,B110",
-            "--format", "json",
+            "--skip",
+            "B101,B110",
+            "--format",
+            "json",
             "--quiet",
         ]
         for d in EXCLUDED_DIRS:
@@ -115,7 +116,8 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
         try:
             report = json.loads(result.output)
             issues = [
-                r for r in report.get("results", [])
+                r
+                for r in report.get("results", [])
                 if r.get("issue_severity") in ("HIGH", "MEDIUM")
             ]
             if not issues:
@@ -149,7 +151,8 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 return SecuritySubResult("semgrep", True, "No issues found")
 
             critical = [
-                f for f in findings
+                f
+                for f in findings
                 if f.get("extra", {}).get("severity") in ("ERROR", "WARNING")
             ]
             if not critical:
@@ -177,11 +180,12 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 report = json.loads(result.output)
                 detected = report.get("results", {})
                 real_secrets = {
-                    k: v for k, v in detected.items() 
-                    if v and "constants.py" not in k
+                    k: v for k, v in detected.items() if v and "constants.py" not in k
                 }
                 if not real_secrets:
-                    return SecuritySubResult("detect-secrets", True, "No secrets detected")
+                    return SecuritySubResult(
+                        "detect-secrets", True, "No secrets detected"
+                    )
 
                 detail = "\n".join(
                     f"  Potential secret in {path}: "
@@ -193,14 +197,15 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 return SecuritySubResult("detect-secrets", True, "Scan completed")
 
         return SecuritySubResult(
-            "detect-secrets", False, 
-            result.output[-300:] if result.output else "Scan failed"
+            "detect-secrets",
+            False,
+            result.output[-300:] if result.output else "Scan failed",
         )
 
 
 class PythonSecurityCheck(PythonSecurityLocalCheck):
     """Full security checks including dependency vulnerability scanning.
-    
+
     Extends PythonSecurityLocalCheck with safety for dependency audit.
     Requires network access.
     """
@@ -216,20 +221,19 @@ class PythonSecurityCheck(PythonSecurityLocalCheck):
     def run(self, project_root: str) -> CheckResult:
         """Run all security checks including dependency scanning."""
         start_time = time.time()
-        
+
         sub_checks: List[Callable[[str], SecuritySubResult]] = [
             self._run_bandit,
             self._run_semgrep,
             self._run_detect_secrets,
             self._run_safety,
         ]
-        
+
         results: List[SecuritySubResult] = []
-        
+
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
-                executor.submit(fn, project_root): fn.__name__ 
-                for fn in sub_checks
+                executor.submit(fn, project_root): fn.__name__ for fn in sub_checks
             }
             for future in futures:
                 try:
@@ -240,7 +244,7 @@ class PythonSecurityCheck(PythonSecurityLocalCheck):
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]
-        
+
         if not failures:
             tools = ", ".join(r.name for r in results)
             return self._create_result(
@@ -284,6 +288,7 @@ class PythonSecurityCheck(PythonSecurityLocalCheck):
             return SecuritySubResult("safety", False, detail)
         except json.JSONDecodeError:
             return SecuritySubResult(
-                "safety", False,
-                result.output[-300:] if result.output else "Safety scan failed"
+                "safety",
+                False,
+                result.output[-300:] if result.output else "Safety scan failed",
             )

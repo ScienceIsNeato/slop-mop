@@ -53,7 +53,8 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         # Run Jest with coverage and JSON reporter
         result = self._run_command(
             [
-                "npx", "jest",
+                "npx",
+                "jest",
                 "--coverage",
                 "--coverageReporters=json-summary",
                 "--passWithNoTests",
@@ -136,7 +137,9 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 low_files.append((path, file_pct))
 
         low_files.sort(key=lambda x: x[1])
-        detail = f"Line coverage: {pct:.1f}% < {self.threshold}%\n\nLowest coverage files:\n"
+        detail = (
+            f"Line coverage: {pct:.1f}% < {self.threshold}%\n\nLowest coverage files:\n"
+        )
         for path, file_pct in low_files[:5]:
             detail += f"  {path}: {file_pct:.1f}%\n"
 

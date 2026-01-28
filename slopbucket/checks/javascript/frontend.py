@@ -54,9 +54,12 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
 
         # Run ESLint in errors-only mode (fast path)
         cmd = [
-            "npx", "eslint",
-            "--ext", ".js",
-            "--rule", '{"no-undef": "error", "no-unused-vars": "warn"}',
+            "npx",
+            "eslint",
+            "--ext",
+            ".js",
+            "--rule",
+            '{"no-undef": "error", "no-unused-vars": "warn"}',
             "--quiet",  # errors only
         ] + js_dirs
 

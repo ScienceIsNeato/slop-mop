@@ -79,7 +79,7 @@ class CommandValidator:
             # Build tools
             "make",
             "cmake",
-            # General utilities (read-only/safe)
+            # General utilities (some can mutate files - use with caution)
             "timeout",
             "find",
             "wc",
@@ -92,6 +92,8 @@ class CommandValidator:
             "sort",
             "uniq",
             "tee",
+            # Note: touch, mkdir, cp, mv can mutate filesystem but are
+            # sometimes needed by build tools. They're allowed but logged.
             "touch",
             "mkdir",
             "cp",
@@ -187,21 +189,15 @@ class CommandValidator:
         Raises:
             SecurityError: If argument contains dangerous patterns
         """
-        # Check for simple dangerous patterns
+        # Check for ALL dangerous patterns - any pattern in DANGEROUS_PATTERNS
+        # is considered unsafe and will raise an error
         for pattern in self.DANGEROUS_PATTERNS:
-            # Allow some patterns in specific contexts
-            # e.g., pytest -k "test_foo and test_bar" uses "and"
-            # But we should catch bare shell metacharacters
             if pattern in arg:
-                # Allow quoted strings that might contain these
-                # (they won't be interpreted by subprocess without shell=True)
-                # But warn about truly dangerous patterns
-                if pattern in (";", "&&", "||", "|", "`", "$("):
-                    raise SecurityError(
-                        f"Dangerous shell pattern in argument {position}: '{pattern}'\n"
-                        f"Full argument: {arg}\n"
-                        f"This pattern could enable shell injection attacks."
-                    )
+                raise SecurityError(
+                    f"Dangerous shell pattern in argument {position}: '{pattern}'\n"
+                    f"Full argument: {arg}\n"
+                    f"This pattern could enable shell injection attacks."
+                )
 
         # Check regex patterns for more complex attacks
         for regex in self.DANGEROUS_REGEX_PATTERNS:

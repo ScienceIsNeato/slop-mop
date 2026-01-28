@@ -222,8 +222,13 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
             )
 
         cmd = [
-            sys.executable, "-m", "pytest",
-            "tests/e2e", "--tb=short", "-v", "--timeout=30",
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/e2e",
+            "--tb=short",
+            "-v",
+            "--timeout=30",
         ]
         result = self._run_command(cmd, cwd=project_root, timeout=600)
         duration = time.time() - start_time

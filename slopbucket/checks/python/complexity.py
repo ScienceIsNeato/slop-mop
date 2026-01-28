@@ -43,7 +43,17 @@ class PythonComplexityCheck(BaseCheck, PythonCheckMixin):
                 output="No Python directories found.",
             )
 
-        cmd = [sys.executable, "-m", "radon", "cc", "--min", "D", "-s", "-a", "--md"] + dirs
+        cmd = [
+            sys.executable,
+            "-m",
+            "radon",
+            "cc",
+            "--min",
+            "D",
+            "-s",
+            "-a",
+            "--md",
+        ] + dirs
         result = self._run_command(cmd, cwd=project_root, timeout=120)
         duration = time.time() - start_time
 
@@ -63,7 +73,9 @@ class PythonComplexityCheck(BaseCheck, PythonCheckMixin):
                 output="All functions within complexity limits",
             )
 
-        detail = "Functions exceeding complexity:\n" + "\n".join(f"  {v}" for v in violations)
+        detail = "Functions exceeding complexity:\n" + "\n".join(
+            f"  {v}" for v in violations
+        )
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,

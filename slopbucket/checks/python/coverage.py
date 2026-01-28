@@ -168,7 +168,9 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
 
         compare_branch = _get_compare_branch()
         cmd = [
-            sys.executable, "-m", "diff_cover.diff_cover_script",
+            sys.executable,
+            "-m",
+            "diff_cover.diff_cover_script",
             "coverage.xml",
             f"--compare-branch={compare_branch}",
             f"--fail-under={COVERAGE_THRESHOLD}",
@@ -237,7 +239,9 @@ class PythonNewCodeCoverageCheck(BaseCheck, PythonCheckMixin):
 
         compare_branch = _get_compare_branch()
         cmd = [
-            sys.executable, "-m", "diff_cover.diff_cover_script",
+            sys.executable,
+            "-m",
+            "diff_cover.diff_cover_script",
             "coverage.xml",
             f"--compare-branch={compare_branch}",
             f"--fail-under={COVERAGE_THRESHOLD}",

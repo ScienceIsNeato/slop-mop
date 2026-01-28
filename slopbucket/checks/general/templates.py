@@ -62,8 +62,13 @@ class TemplateValidationCheck(BaseCheck):
     ) -> CheckResult:
         """Run existing template smoke test."""
         cmd = [
-            sys.executable, "-m", "pytest",
-            test_path, "-v", "--tb=short", "-x",
+            sys.executable,
+            "-m",
+            "pytest",
+            test_path,
+            "-v",
+            "--tb=short",
+            "-x",
         ]
         result = self._run_command(cmd, cwd=project_root, timeout=60)
         duration = time.time() - start_time

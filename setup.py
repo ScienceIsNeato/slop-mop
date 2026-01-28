@@ -41,7 +41,8 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "slopbucket=slopbucket.cli:main",
+            "sb=slopbucket.sb:main",
+            "slopbucket=slopbucket.cli:main",  # Legacy alias
         ],
     },
     classifiers=[
