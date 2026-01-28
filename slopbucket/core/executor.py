@@ -165,7 +165,8 @@ class CheckExecutor:
             while (pending or futures) and not self._stop_event.is_set():
                 # Find checks whose dependencies are all completed
                 ready = []
-                for name in pending:
+                skipped_due_to_deps = []
+                for name in list(pending):  # Iterate over a copy
                     deps = dep_graph.get(name, set())
                     if deps <= completed:
                         # Check if dependencies all passed
@@ -178,15 +179,19 @@ class CheckExecutor:
                         if deps_passed or not deps:
                             ready.append(name)
                         else:
-                            # Skip check if dependency failed
-                            self._results[name] = CheckResult(
-                                name=name,
-                                status=CheckStatus.SKIPPED,
-                                duration=0,
-                                output="Skipped due to failed dependency",
-                            )
-                            pending.discard(name)
-                            completed.add(name)
+                            # Mark for skipping due to failed dependency
+                            skipped_due_to_deps.append(name)
+
+                # Process skipped checks
+                for name in skipped_due_to_deps:
+                    self._results[name] = CheckResult(
+                        name=name,
+                        status=CheckStatus.SKIPPED,
+                        duration=0,
+                        output="Skipped due to failed dependency",
+                    )
+                    pending.discard(name)
+                    completed.add(name)
 
                 # Submit ready checks
                 for name in ready:
