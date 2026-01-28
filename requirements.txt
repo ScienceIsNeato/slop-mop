@@ -1,0 +1,13 @@
+# Core dependencies for slopbucket
+# These are the tools slopbucket invokes; they must be installed in the target project
+
+black>=23.0
+isort>=5.12
+autoflake>=2.0
+flake8>=6.0
+mypy>=1.0
+pytest>=7.0
+pytest-cov>=4.0
+coverage>=7.0
+radon>=6.0
+bandit>=1.7
