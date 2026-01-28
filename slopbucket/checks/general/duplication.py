@@ -6,9 +6,8 @@ Reports specific file pairs and line ranges for deduplication.
 
 import json
 import os
-import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from slopbucket.checks.base import BaseCheck
 from slopbucket.core.result import CheckResult, CheckStatus
@@ -45,7 +44,9 @@ class DuplicationCheck(BaseCheck):
         start_time = time.time()
 
         # Check jscpd availability
-        result = self._run_command(["npx", "jscpd", "--version"], cwd=project_root, timeout=30)
+        result = self._run_command(
+            ["npx", "jscpd", "--version"], cwd=project_root, timeout=30
+        )
         if result.returncode != 0:
             return self._create_result(
                 status=CheckStatus.ERROR,
@@ -56,13 +57,20 @@ class DuplicationCheck(BaseCheck):
 
         # Run jscpd
         cmd = [
-            "npx", "jscpd",
-            "--min-tokens", str(MIN_TOKENS),
-            "--min-lines", str(MIN_LINES),
-            "--threshold", str(self.threshold),
-            "--reporters", "json",
-            "--output", "/tmp/jscpd-report",
-            "--ignore", "node_modules,dist,build,.git,__pycache__,.venv,venv",
+            "npx",
+            "jscpd",
+            "--min-tokens",
+            str(MIN_TOKENS),
+            "--min-lines",
+            str(MIN_LINES),
+            "--threshold",
+            str(self.threshold),
+            "--reporters",
+            "json",
+            "--output",
+            "/tmp/jscpd-report",
+            "--ignore",
+            "node_modules,dist,build,.git,__pycache__,.venv,venv",
             ".",
         ]
 
@@ -107,7 +115,9 @@ class DuplicationCheck(BaseCheck):
 
         # Format violation details
         violations = self._format_duplicates(duplicates)
-        detail = f"Duplication: {total_percentage:.1f}% exceeds {self.threshold}% limit\n\n"
+        detail = (
+            f"Duplication: {total_percentage:.1f}% exceeds {self.threshold}% limit\n\n"
+        )
         detail += "Duplicate blocks:\n" + "\n".join(violations[:10])
         if len(violations) > 10:
             detail += f"\n... and {len(violations) - 10} more"
