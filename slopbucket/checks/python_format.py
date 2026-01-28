@@ -77,7 +77,9 @@ class PythonFormatCheck(BaseCheck):
 
     def _run_autoflake(self, dirs: list, working_dir: Optional[str]) -> None:
         """Run autoflake to remove unused imports (best-effort, non-blocking)."""
-        if not self._tool_available("autoflake", working_dir):
+        # Use `python -m autoflake --version` — `which` misses module-only installs
+        probe = run([sys.executable, "-m", "autoflake", "--version"], cwd=working_dir)
+        if not probe.success:
             return
         cmd = [
             sys.executable,

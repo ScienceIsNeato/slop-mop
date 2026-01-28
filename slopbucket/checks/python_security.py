@@ -220,7 +220,7 @@ class PythonSecurityLocalCheck(BaseCheck):
                     results.append(future.result(timeout=180))
                 except Exception as e:
                     name = futures[future].replace("_run_", "")
-                    results.append(_SecuritySubCheck(name, True, f"Skipped: {e}"))
+                    results.append(_SecuritySubCheck(name, False, f"Error: {e}"))
 
         failures = [r for r in results if not r.passed]
         if not failures:

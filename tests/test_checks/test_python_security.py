@@ -117,8 +117,13 @@ class TestPythonSecurityLocalCheck:
 
     @patch("slopbucket.checks.python_security.run")
     def test_passes_when_all_subchecks_pass(self, mock_run: object) -> None:
-        # All tools return success
-        mock_run.return_value = _ok(stdout=json.dumps({"results": []}))  # type: ignore[attr-defined]
+        # All tools return success — detect-secrets expects results as dict, others as list
+        def side_effect(cmd: list, **kwargs: object) -> SubprocessResult:
+            if "detect_secrets" in str(cmd):
+                return _ok(stdout=json.dumps({"results": {}}))
+            return _ok(stdout=json.dumps({"results": []}))
+
+        mock_run.side_effect = side_effect  # type: ignore[attr-defined]
         result = self.check.execute(working_dir="/tmp")
         assert result.status == CheckStatus.PASSED
 

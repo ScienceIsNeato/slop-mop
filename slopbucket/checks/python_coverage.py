@@ -146,7 +146,7 @@ class PythonDiffCoverageCheck(BaseCheck):
             )
 
         # diff-cover not finding changes is fine (not an error)
-        if "No diff" in result.stdout or result.returncode == 0:
+        if "No diff" in result.stdout:
             return self._make_result(
                 status=CheckStatus.PASSED,
                 output="No changed files to check coverage on",
@@ -205,7 +205,7 @@ class PythonNewCodeCoverageCheck(BaseCheck):
                 output=f"New code coverage adequate (vs {compare_branch})",
             )
 
-        if "No diff" in result.stdout or result.returncode == 0:
+        if "No diff" in result.stdout:
             return self._make_result(
                 status=CheckStatus.PASSED,
                 output="No changed files to check coverage on",

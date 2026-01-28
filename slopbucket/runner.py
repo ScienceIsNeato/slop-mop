@@ -8,6 +8,7 @@ Executes checks concurrently via ThreadPoolExecutor. Supports:
 """
 
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
@@ -109,7 +110,7 @@ class Runner:
     def _run_wave(self, checks: List[BaseCheck]) -> list:
         """Execute a batch of checks in parallel."""
         results = []
-        results_lock = __import__("threading").Lock()
+        results_lock = threading.Lock()
 
         def _execute(check: BaseCheck) -> CheckResult:
             if self._stop_flag:

@@ -204,6 +204,7 @@ PROFILES: Dict[str, List[str]] = {
         "python-types",
         "python-tests",
         "python-coverage",
+        "python-new-code-coverage",
         "python-complexity",
         "js-format",
         "js-tests",

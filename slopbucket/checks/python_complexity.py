@@ -54,6 +54,16 @@ class PythonComplexityCheck(BaseCheck):
         ] + dirs
         result = run(cmd, cwd=working_dir)
 
+        # rc=127 or empty stdout with stderr indicates radon is not installed
+        if result.returncode == 127 or (
+            not result.success and not result.stdout.strip()
+        ):
+            return self._make_result(
+                status=CheckStatus.ERROR,
+                output=f"Radon not available: {result.stderr.strip()}",
+                fix_hint="Install radon: pip install radon",
+            )
+
         # Parse output for violations
         violations = self._parse_violations(result.stdout)
 
