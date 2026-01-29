@@ -139,16 +139,45 @@ class TestCheckRegistry:
         assert len(checks) == 0
 
     def test_get_checks_passes_config(self):
-        """Test getting checks passes config."""
+        """Test getting checks extracts gate-specific config."""
         registry = CheckRegistry()
         check_class = make_mock_check_class("check1")
         registry.register(check_class)
 
-        config = {"threshold": 90}
-        checks = registry.get_checks(["python:check1"], config)
+        # Config structure: { "category": { "gates": { "check-name": {...} } } }
+        full_config = {"python": {"gates": {"check1": {"threshold": 90}}}}
+        checks = registry.get_checks(["python:check1"], full_config)
 
         assert len(checks) == 1
-        assert checks[0].config == config
+        assert checks[0].config == {"threshold": 90}
+
+    def test_extract_gate_config(self):
+        """Test _extract_gate_config extracts correct nested config."""
+        registry = CheckRegistry()
+
+        full_config = {
+            "python": {
+                "enabled": True,
+                "gates": {"coverage": {"threshold": 80}, "tests": {"timeout": 300}},
+            },
+            "javascript": {"gates": {"lint": {"auto_fix": True}}},
+        }
+
+        # Extract python:coverage config
+        config = registry._extract_gate_config("python:coverage", full_config)
+        assert config == {"threshold": 80}
+
+        # Extract javascript:lint config
+        config = registry._extract_gate_config("javascript:lint", full_config)
+        assert config == {"auto_fix": True}
+
+        # Extract nonexistent gate returns empty dict
+        config = registry._extract_gate_config("python:nonexistent", full_config)
+        assert config == {}
+
+        # Invalid name format returns empty dict
+        config = registry._extract_gate_config("invalid", full_config)
+        assert config == {}
 
     def test_get_single_check(self):
         """Test getting a single check instance."""

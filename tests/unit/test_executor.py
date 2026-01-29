@@ -81,21 +81,21 @@ def make_mock_check_class(
 class TestCheckExecutor:
     """Tests for CheckExecutor class."""
 
-    def test_run_single_check(self):
+    def test_run_single_check(self, tmp_path):
         """Test running a single check."""
         registry = CheckRegistry()
         check_class = make_mock_check_class("check1")
         registry.register(check_class)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["python:check1"])
+        summary = executor.run_checks(str(tmp_path), ["python:check1"])
 
         assert summary.total_checks == 1
         assert summary.passed == 1
         assert summary.failed == 0
         assert check_class.run_count == 1
 
-    def test_run_multiple_checks(self):
+    def test_run_multiple_checks(self, tmp_path):
         """Test running multiple checks."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1")
@@ -104,14 +104,14 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
+        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
         assert summary.total_checks == 2
         assert summary.passed == 2
         assert check_class1.run_count == 1
         assert check_class2.run_count == 1
 
-    def test_fail_fast_stops_on_failure(self):
+    def test_fail_fast_stops_on_failure(self, tmp_path):
         """Test fail-fast mode stops after first failure."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class(
@@ -122,12 +122,12 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=True)
-        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
+        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
         assert summary.failed >= 1
         # check2 may or may not run depending on timing
 
-    def test_no_fail_fast_runs_all(self):
+    def test_no_fail_fast_runs_all(self, tmp_path):
         """Test without fail-fast, all checks run."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", status=CheckStatus.FAILED)
@@ -136,13 +136,13 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=False)
-        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
+        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
         assert summary.total_checks == 2
         assert check_class1.run_count == 1
         assert check_class2.run_count == 1
 
-    def test_skips_inapplicable_checks(self):
+    def test_skips_inapplicable_checks(self, tmp_path):
         """Test that inapplicable checks are skipped."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", applicable=True)
@@ -151,14 +151,14 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
+        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
         assert summary.passed == 1
         assert summary.skipped == 1
         assert check_class1.run_count == 1
         assert check_class2.run_count == 0
 
-    def test_respects_dependencies(self):
+    def test_respects_dependencies(self, tmp_path):
         """Test that dependencies are respected."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1")
@@ -167,12 +167,12 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
+        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
         assert summary.total_checks == 2
         assert summary.passed == 2
 
-    def test_skips_check_if_dependency_fails(self):
+    def test_skips_check_if_dependency_fails(self, tmp_path):
         """Test that checks are skipped if dependency fails."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", status=CheckStatus.FAILED)
@@ -181,13 +181,13 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=False)
-        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
+        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
         assert summary.failed == 1
         assert summary.skipped == 1
         assert check_class2.run_count == 0
 
-    def test_progress_callback(self):
+    def test_progress_callback(self, tmp_path):
         """Test progress callback is called."""
         registry = CheckRegistry()
         check_class = make_mock_check_class("check1")
@@ -196,33 +196,33 @@ class TestCheckExecutor:
         callback = MagicMock()
         executor = CheckExecutor(registry=registry)
         executor.set_progress_callback(callback)
-        executor.run_checks("/tmp", ["python:check1"])
+        executor.run_checks(str(tmp_path), ["python:check1"])
 
         callback.assert_called_once()
         result = callback.call_args[0][0]
         assert isinstance(result, CheckResult)
         assert result.name == "check1"
 
-    def test_empty_check_list(self):
+    def test_empty_check_list(self, tmp_path):
         """Test running with empty check list."""
         registry = CheckRegistry()
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", [])
+        summary = executor.run_checks(str(tmp_path), [])
 
         assert summary.total_checks == 0
 
-    def test_summary_includes_duration(self):
+    def test_summary_includes_duration(self, tmp_path):
         """Test that summary includes total duration."""
         registry = CheckRegistry()
         check_class = make_mock_check_class("check1", duration=0.05)
         registry.register(check_class)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["python:check1"])
+        summary = executor.run_checks(str(tmp_path), ["python:check1"])
 
         assert summary.total_duration >= 0.05
 
-    def test_handles_check_exception(self):
+    def test_handles_check_exception(self, tmp_path):
         """Test that check exceptions are handled gracefully."""
         registry = CheckRegistry()
 
@@ -236,19 +236,19 @@ class TestCheckExecutor:
         registry.register(ExceptionCheck)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["python:exception-check"])
+        summary = executor.run_checks(str(tmp_path), ["python:exception-check"])
 
         assert summary.errors == 1
 
-    def test_unknown_check_returns_empty_summary(self):
+    def test_unknown_check_returns_empty_summary(self, tmp_path):
         """Test running unknown check returns empty summary."""
         registry = CheckRegistry()
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["nonexistent"])
+        summary = executor.run_checks(str(tmp_path), ["nonexistent"])
 
         assert summary.total_checks == 0
 
-    def test_auto_fix_attempted_when_enabled(self):
+    def test_auto_fix_attempted_when_enabled(self, tmp_path):
         """Test auto-fix is attempted when enabled and check supports it."""
         registry = CheckRegistry()
 
@@ -267,11 +267,11 @@ class TestCheckExecutor:
         registry.register(FixableCheck)
 
         executor = CheckExecutor(registry=registry)
-        executor.run_checks("/tmp", ["python:fixable-check"], auto_fix=True)
+        executor.run_checks(str(tmp_path), ["python:fixable-check"], auto_fix=True)
 
         assert FixableCheck.fix_called
 
-    def test_auto_fix_not_called_when_disabled(self):
+    def test_auto_fix_not_called_when_disabled(self, tmp_path):
         """Test auto-fix is not called when disabled."""
         registry = CheckRegistry()
 
@@ -290,12 +290,12 @@ class TestCheckExecutor:
         registry.register(FixableCheck)
 
         executor = CheckExecutor(registry=registry)
-        executor.run_checks("/tmp", ["python:fixable-check2"], auto_fix=False)
+        executor.run_checks(str(tmp_path), ["python:fixable-check2"], auto_fix=False)
 
         assert not FixableCheck.fix_called
 
-    def test_config_passed_to_checks(self):
-        """Test that config is passed to check instances."""
+    def test_config_passed_to_checks(self, tmp_path):
+        """Test that config is extracted and passed to check instances."""
         registry = CheckRegistry()
 
         class ConfigCheck(MockCheck):
@@ -309,7 +309,9 @@ class TestCheckExecutor:
 
         registry.register(ConfigCheck)
 
+        # Config structure: { "category": { "gates": { "check-name": {...} } } }
+        full_config = {"python": {"gates": {"config-check": {"key": "value"}}}}
         executor = CheckExecutor(registry=registry)
-        executor.run_checks("/tmp", ["python:config-check"], config={"key": "value"})
+        executor.run_checks(str(tmp_path), ["python:config-check"], config=full_config)
 
         assert ConfigCheck.received_config == {"key": "value"}

@@ -245,7 +245,7 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
 
     def _detect_server_port(self) -> Optional[str]:
         return (
-            os.environ.get("LOOPCLOSER_DEFAULT_PORT_E2E")
+            os.environ.get("E2E_PORT")
             or os.environ.get("TEST_PORT")
             or os.environ.get("PORT")
         )

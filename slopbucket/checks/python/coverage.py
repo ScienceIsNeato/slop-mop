@@ -1,11 +1,17 @@
-"""Python coverage analysis check."""
+"""Python coverage analysis check.
+
+Output is designed to be prescriptive for AI agents:
+- Shows exactly which lines need tests
+- Removes meta-information that doesn't help fix the problem
+- Provides copy-paste-ready line references
+"""
 
 import os
 import re
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from slopbucket.checks.base import (
     BaseCheck,
@@ -18,6 +24,7 @@ from slopbucket.core.result import CheckResult, CheckStatus
 COVERAGE_THRESHOLD = 80
 CI_BUFFER = 0.5  # CI environments get slight buffer for timing variance
 COVERAGE_POLL_TIMEOUT = 10  # seconds to wait for coverage.xml
+MAX_FILES_TO_SHOW = 5  # Limit files shown to avoid overwhelming output
 
 
 def _wait_for_coverage_xml(path: str) -> bool:
@@ -88,7 +95,10 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         return self.is_python_project(project_root)
 
     def run(self, project_root: str) -> CheckResult:
-        """Analyze coverage data."""
+        """Analyze coverage data and provide prescriptive output.
+
+        Instead of meta-information, outputs exactly which lines need tests.
+        """
         start_time = time.time()
 
         # Check for coverage.xml
@@ -102,9 +112,16 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 fix_suggestion="Run python-tests check first to generate coverage data",
             )
 
-        # Get coverage report
+        # Get coverage report with missing lines
         result = self._run_command(
-            [sys.executable, "-m", "coverage", "report", "--fail-under=0"],
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "report",
+                "--show-missing",
+                "--fail-under=0",
+            ],
             cwd=project_root,
             timeout=30,
         )
@@ -113,7 +130,6 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
         # Parse coverage percentage
         coverage_pct = self._parse_coverage(result.output)
-
         threshold = self.config.get("threshold", self.DEFAULT_THRESHOLD)
 
         if coverage_pct is None:
@@ -124,20 +140,89 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 error="Could not parse coverage percentage",
             )
 
-        if coverage_pct < threshold:
+        if coverage_pct >= threshold:
             return self._create_result(
-                status=CheckStatus.FAILED,
+                status=CheckStatus.PASSED,
                 duration=duration,
-                output=result.output,
-                error=f"Coverage {coverage_pct:.1f}% is below {threshold}% threshold",
-                fix_suggestion=f"Add tests to increase coverage above {threshold}%",
+                output=f"Coverage: {coverage_pct:.1f}% (threshold: {threshold}%)",
             )
 
-        return self._create_result(
-            status=CheckStatus.PASSED,
-            duration=duration,
-            output=f"Coverage: {coverage_pct:.1f}% (threshold: {threshold}%)\n{result.output}",
+        # Coverage below threshold - provide prescriptive output
+        missing_files = self._parse_missing_lines(result.output)
+        prescriptive_output = self._format_prescriptive_output(
+            coverage_pct, threshold, missing_files
         )
+
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output=prescriptive_output,
+            error=f"Coverage {coverage_pct:.1f}% < {threshold}%",
+            fix_suggestion="Add tests for the lines listed above before next iteration.",
+        )
+
+    def _parse_missing_lines(self, output: str) -> List[Tuple[str, int, int, str]]:
+        """Parse missing line info from coverage report.
+
+        Returns list of (file, stmts, missing_count, missing_lines).
+        Sorted by missing_count descending (biggest gaps first).
+        """
+        results = []
+        # Pattern: filename  stmts  miss  cover  missing
+        # slopbucket/sb.py   456    386    15%   45-67, 89, 120-150
+        pattern = re.compile(r"^(\S+\.py)\s+(\d+)\s+(\d+)\s+\d+%\s+(.+)$", re.MULTILINE)
+
+        for match in pattern.finditer(output):
+            filepath = match.group(1)
+            stmts = int(match.group(2))
+            missing = int(match.group(3))
+            missing_lines = match.group(4).strip()
+
+            # Skip files with 100% coverage or no missing lines
+            if missing > 0 and missing_lines:
+                results.append((filepath, stmts, missing, missing_lines))
+
+        # Sort by missing count (biggest gaps first)
+        results.sort(key=lambda x: x[2], reverse=True)
+        return results
+
+    def _format_prescriptive_output(
+        self,
+        coverage_pct: float,
+        threshold: int,
+        missing_files: List[Tuple[str, int, int, str]],
+    ) -> str:
+        """Format prescriptive output telling exactly what to do.
+
+        No meta-info, just: "Add tests for these lines"
+        """
+        lines = []
+        lines.append(
+            "This commit doesn't meet code coverage standards. "
+            "Add high-quality test coverage to the following areas:"
+        )
+        lines.append("")
+
+        # Show top files with most missing coverage
+        for filepath, stmts, missing, missing_lines in missing_files[
+            :MAX_FILES_TO_SHOW
+        ]:
+            lines.append(f"  {filepath}")
+            lines.append(f"    Lines: {missing_lines}")
+            lines.append("")
+
+        if len(missing_files) > MAX_FILES_TO_SHOW:
+            remaining = len(missing_files) - MAX_FILES_TO_SHOW
+            lines.append(f"  ... and {remaining} more files")
+            lines.append("")
+
+        lines.append(
+            "When adding coverage, extend existing tests when possible. "
+            "Focus on meaningful assertions, not just line coverage."
+        )
+        lines.append("")
+
+        return "\n".join(lines)
 
     def _parse_coverage(self, output: str) -> Optional[float]:
         """Parse coverage percentage from output."""

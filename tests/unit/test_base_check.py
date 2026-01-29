@@ -62,10 +62,10 @@ class TestBaseCheck:
         check = ConcreteCheck({})
         assert check.can_auto_fix() is False
 
-    def test_auto_fix_default(self):
+    def test_auto_fix_default(self, tmp_path):
         """Test default auto_fix returns False."""
         check = ConcreteCheck({})
-        assert check.auto_fix("/tmp") is False
+        assert check.auto_fix(str(tmp_path)) is False
 
     def test_create_result(self):
         """Test _create_result helper."""
@@ -96,17 +96,17 @@ class TestBaseCheck:
         assert result.error == "Something went wrong"
         assert result.fix_suggestion == "Fix it"
 
-    def test_run_command(self):
+    def test_run_command(self, tmp_path):
         """Test _run_command helper."""
         mock_runner = MagicMock()
         mock_runner.run.return_value = MagicMock(returncode=0)
         check = ConcreteCheck({}, runner=mock_runner)
 
-        check._run_command(["echo", "test"], cwd="/tmp")
+        check._run_command(["echo", "test"], cwd=str(tmp_path))
 
         mock_runner.run.assert_called_once_with(
             ["echo", "test"],
-            cwd="/tmp",
+            cwd=str(tmp_path),
             timeout=None,
         )
 

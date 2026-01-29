@@ -107,9 +107,14 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
-                output=result.output,
+                output=(
+                    "This commit doesn't meet code coverage standards. "
+                    f"Coverage is {coverage:.1f}%, need {self.threshold}%.\n\n"
+                    "When adding coverage, extend existing tests when possible. "
+                    "Focus on meaningful assertions, not just line coverage."
+                ),
                 error=f"Coverage {coverage:.1f}% < {self.threshold}%",
-                fix_suggestion="Add tests for uncovered code paths.",
+                fix_suggestion="",
             )
 
         # Can't determine coverage
@@ -163,18 +168,26 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 low_files.append((path, file_pct))
 
         low_files.sort(key=lambda x: x[1])
-        detail = (
-            f"Line coverage: {pct:.1f}% < {self.threshold}%\n\nLowest coverage files:\n"
-        )
+
+        lines = [
+            "This commit doesn't meet code coverage standards. "
+            "Add high-quality test coverage to the following areas:",
+            "",
+        ]
         for path, file_pct in low_files[:5]:
-            detail += f"  {path}: {file_pct:.1f}%\n"
+            lines.append(f"  {path}: {file_pct:.1f}%")
+        lines.append("")
+        lines.append(
+            "When adding coverage, extend existing tests when possible. "
+            "Focus on meaningful assertions, not just line coverage."
+        )
 
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
-            output=detail,
+            output="\n".join(lines),
             error=f"Coverage {pct:.1f}% < {self.threshold}%",
-            fix_suggestion="Add tests for the files listed above.",
+            fix_suggestion="",
         )
 
     def _parse_coverage_output(self, output: str) -> Optional[float]:

@@ -76,8 +76,8 @@ class CheckRegistry:
         """Get a single check instance by name.
 
         Args:
-            name: Check name
-            config: Configuration for the check
+            name: Check name (format: 'category:check-name')
+            config: Full configuration dictionary
 
         Returns:
             Check instance or None if not found
@@ -85,7 +85,35 @@ class CheckRegistry:
         check_class = self._check_classes.get(name)
         if check_class is None:
             return None
-        return check_class(config)
+
+        # Extract gate-specific config from full config
+        # Config structure: { "category": { "gates": { "check-name": {...} } } }
+        gate_config = self._extract_gate_config(name, config)
+        return check_class(gate_config)
+
+    def _extract_gate_config(self, name: str, full_config: Dict) -> Dict:
+        """Extract gate-specific config from full config.
+
+        Args:
+            name: Check name in format 'category:check-name'
+            full_config: Full configuration dictionary
+
+        Returns:
+            Configuration dictionary for the specific gate
+        """
+        if ":" not in name:
+            return {}
+
+        category, gate_name = name.split(":", 1)
+
+        # Get category config (e.g., python, javascript, security)
+        cat_config = full_config.get(category, {})
+
+        # Get gates config
+        gates = cat_config.get("gates", {})
+
+        # Get specific gate config
+        return gates.get(gate_name, {})
 
     def get_checks(self, names: List[str], config: Dict) -> List[BaseCheck]:
         """Get check instances by name, expanding aliases.
