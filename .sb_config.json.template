@@ -1,0 +1,185 @@
+{
+  "version": "1.0",
+  "default_profile": "commit",
+  "python": {
+    "enabled": false,
+    "include_dirs": [],
+    "exclude_dirs": [],
+    "gates": {
+      "lint-format": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "line_length": 88
+      },
+      "tests": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "test_dirs": [
+          "tests"
+        ],
+        "timeout": 300
+      },
+      "coverage": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "threshold": 80
+      },
+      "diff-coverage": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null
+      },
+      "new-code-coverage": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null
+      },
+      "static-analysis": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null
+      }
+    }
+  },
+  "javascript": {
+    "enabled": false,
+    "include_dirs": [],
+    "exclude_dirs": [],
+    "gates": {
+      "lint-format": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null
+      },
+      "tests": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "test_command": "npm test"
+      },
+      "coverage": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "threshold": 80
+      },
+      "frontend": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "frontend_dirs": []
+      }
+    }
+  },
+  "security": {
+    "enabled": false,
+    "include_dirs": [],
+    "exclude_dirs": [],
+    "gates": {
+      "full": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "scanners": [
+          "bandit",
+          "semgrep",
+          "detect-secrets"
+        ],
+        "exclude_dirs": [
+          "venv",
+          ".venv",
+          "node_modules",
+          "cursor-rules",
+          "archives",
+          "logs"
+        ]
+      },
+      "local": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "scanners": [
+          "bandit",
+          "semgrep",
+          "detect-secrets"
+        ],
+        "exclude_dirs": [
+          "venv",
+          ".venv",
+          "node_modules",
+          "cursor-rules",
+          "archives",
+          "logs"
+        ]
+      }
+    }
+  },
+  "quality": {
+    "enabled": false,
+    "include_dirs": [],
+    "exclude_dirs": [],
+    "gates": {
+      "complexity": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "max_rank": "C",
+        "max_complexity": 15,
+        "src_dirs": []
+      },
+      "duplication": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "threshold": 5,
+        "include_dirs": [
+          "."
+        ],
+        "min_tokens": 50,
+        "min_lines": 5
+      }
+    }
+  },
+  "general": {
+    "enabled": false,
+    "include_dirs": [],
+    "exclude_dirs": [],
+    "gates": {
+      "templates": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "templates_dir": null
+      }
+    }
+  },
+  "integration": {
+    "enabled": false,
+    "include_dirs": [],
+    "exclude_dirs": [],
+    "gates": {
+      "smoke-tests": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "test_dir": "tests/smoke"
+      },
+      "integration-tests": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "test_dir": "tests/integration"
+      },
+      "e2e-tests": {
+        "enabled": false,
+        "auto_fix": false,
+        "config_file_path": null,
+        "test_dir": "tests/e2e",
+        "test_command": null
+      }
+    }
+  }
+}
