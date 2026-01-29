@@ -149,8 +149,11 @@ class TestPRCommentsCheck:
 
         assert result.status == CheckStatus.FAILED
         assert "1 unresolved" in result.error
-        assert "PRRT_123" in result.output
-        assert "reviewer" in result.output
+        # Summary output should have category counts and file path
+        assert "Logic/Correctness" in result.output
+        assert "pr_123_comments_report.md" in result.output
+        # Full report is in temp file, referenced in fix_suggestion
+        assert "pr_123_comments_report.md" in result.fix_suggestion
 
     def test_run_with_fail_on_unresolved_disabled(self, tmp_path):
         """Test run returns PASSED when fail_on_unresolved is False."""
@@ -198,8 +201,8 @@ class TestPRCommentsCheck:
 
         # Check key elements are present
         assert "PR COMMENT RESOLUTION PROTOCOL" in guidance
-        assert "UNRESOLVED COMMENTS" in guidance
-        assert "AI AGENT INSTRUCTIONS" in guidance
+        assert "COMMENTS BY CATEGORY" in guidance
+        assert "AI AGENT WORKFLOW" in guidance
         assert "PRRT_456" in guidance
         assert "@testuser" in guidance
         assert "OUTDATED" in guidance
@@ -267,8 +270,8 @@ class TestPRCommentsCheck:
         assert threads[0]["body"] == "Fix this"
         assert threads[0]["author"] == "user1"
 
-    def test_long_comment_truncated(self, tmp_path):
-        """Test that long comments are truncated in guidance output."""
+    def test_full_comment_in_report(self, tmp_path):
+        """Test that full comments are included in the report file."""
         long_comment = "x" * 300  # 300 character comment
 
         threads = [
@@ -286,7 +289,7 @@ class TestPRCommentsCheck:
         check = PRCommentsCheck({})
         guidance = check._format_guidance(threads, 1, "owner", "repo")
 
-        # The full 300 char comment should not appear
-        assert long_comment not in guidance
-        # But a truncated version should
-        assert "..." in guidance
+        # The full report should contain the complete comment (normalized)
+        # since it's written to a file, not shown in gate output
+        normalized_comment = " ".join(long_comment.split())
+        assert normalized_comment in guidance

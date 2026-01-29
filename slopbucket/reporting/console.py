@@ -77,10 +77,18 @@ class ConsoleReporter:
 
         if result.output:
             print("   📋 Output:")
-            for line in result.output.split("\n")[:20]:
-                print(f"      {line}")
-            if len(result.output.split("\n")) > 20:
+            lines = result.output.split("\n")
+            # PR checks get full output, others get truncated unless verbose
+            is_pr_check = result.name.startswith("pr:")
+            max_lines = None if (is_pr_check or self.verbose) else 20
+
+            if max_lines and len(lines) > max_lines:
+                for line in lines[:max_lines]:
+                    print(f"      {line}")
                 print("      ... (truncated)")
+            else:
+                for line in lines:
+                    print(f"      {line}")
 
         if result.fix_suggestion:
             print()

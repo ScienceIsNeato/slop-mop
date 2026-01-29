@@ -8,6 +8,7 @@ clear guidance on the strategic process for addressing them.
 import json
 import os
 import subprocess
+import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -218,6 +219,136 @@ class PRCommentsCheck(BaseCheck):
         except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
             return []
 
+    def _categorize_comment(self, body: str) -> str:
+        """Categorize a comment by its likely type."""
+        body_lower = body.lower()
+
+        # Security-related keywords
+        if any(
+            kw in body_lower
+            for kw in [
+                "security",
+                "vulnerability",
+                "injection",
+                "xss",
+                "auth",
+                "password",
+                "secret",
+                "credential",
+                "permission",
+                "sanitize",
+                "escape",
+                "unsafe",
+            ]
+        ):
+            return "🔐 Security"
+
+        # Logic/correctness
+        if any(
+            kw in body_lower
+            for kw in [
+                "bug",
+                "incorrect",
+                "wrong",
+                "error",
+                "fix",
+                "broken",
+                "fail",
+                "crash",
+                "exception",
+                "null",
+                "undefined",
+                "race condition",
+                "deadlock",
+            ]
+        ):
+            return "🐛 Logic/Correctness"
+
+        # Architecture/design
+        if any(
+            kw in body_lower
+            for kw in [
+                "architecture",
+                "design",
+                "pattern",
+                "refactor",
+                "abstract",
+                "interface",
+                "coupling",
+                "dependency",
+                "solid",
+                "separation",
+            ]
+        ):
+            return "🏗️ Architecture"
+
+        # Testing
+        if any(
+            kw in body_lower
+            for kw in [
+                "test",
+                "coverage",
+                "mock",
+                "assert",
+                "spec",
+                "edge case",
+            ]
+        ):
+            return "🧪 Testing"
+
+        # Documentation
+        if any(
+            kw in body_lower
+            for kw in [
+                "document",
+                "comment",
+                "docstring",
+                "readme",
+                "explain",
+                "clarify",
+            ]
+        ):
+            return "📚 Documentation"
+
+        # Style/formatting
+        if any(
+            kw in body_lower
+            for kw in [
+                "style",
+                "format",
+                "naming",
+                "convention",
+                "lint",
+                "whitespace",
+                "indent",
+            ]
+        ):
+            return "🎨 Style"
+
+        # Performance
+        if any(
+            kw in body_lower
+            for kw in [
+                "performance",
+                "slow",
+                "optimize",
+                "cache",
+                "memory",
+                "efficient",
+                "complexity",
+                "o(n)",
+            ]
+        ):
+            return "⚡ Performance"
+
+        # Questions/clarifications
+        if "?" in body or any(
+            kw in body_lower for kw in ["why", "what", "how", "could you", "can you"]
+        ):
+            return "❓ Question"
+
+        return "💭 General"
+
     def _format_guidance(
         self,
         threads: List[Dict[str, Any]],
@@ -227,75 +358,153 @@ class PRCommentsCheck(BaseCheck):
     ) -> str:
         """Format actionable guidance for resolving PR comments."""
         lines = []
-        lines.append("=" * 70)
+        lines.append("=" * 80)
         lines.append("🔀 PR COMMENT RESOLUTION PROTOCOL")
-        lines.append("=" * 70)
+        lines.append("=" * 80)
         lines.append("")
         lines.append(f"PR #{pr_number} has {len(threads)} unresolved comment(s).")
+        lines.append(f"Repository: {owner}/{repo}")
         lines.append("")
-        lines.append("━" * 70)
-        lines.append("📋 UNRESOLVED COMMENTS")
-        lines.append("━" * 70)
 
+        # Group comments by category
+        categorized: Dict[str, List[Tuple[int, Dict[str, Any]]]] = {}
         for i, thread in enumerate(threads, 1):
-            body = thread["body"]
-            # Truncate long comments
-            if len(body) > 200:
-                body = body[:200] + "..."
-            # Replace newlines with spaces for compact display
-            body = " ".join(body.split())
+            category = self._categorize_comment(thread["body"])
+            if category not in categorized:
+                categorized[category] = []
+            categorized[category].append((i, thread))
+
+        # Priority order for categories (most critical first)
+        priority_order = [
+            "🔐 Security",
+            "🐛 Logic/Correctness",
+            "🏗️ Architecture",
+            "⚡ Performance",
+            "🧪 Testing",
+            "📚 Documentation",
+            "🎨 Style",
+            "❓ Question",
+            "💭 General",
+        ]
+
+        lines.append("━" * 80)
+        lines.append(
+            "📋 COMMENTS BY CATEGORY (work top-to-bottom, most critical first)"
+        )
+        lines.append("━" * 80)
+
+        for category in priority_order:
+            if category not in categorized:
+                continue
 
             lines.append("")
-            lines.append(f"[{i}] Thread: {thread['thread_id']}")
-            lines.append(f"    Author: @{thread['author']}")
-            if thread["path"]:
-                location = thread["path"]
-                if thread["line"]:
-                    location += f":{thread['line']}"
-                lines.append(f"    Location: {location}")
-            if thread["is_outdated"]:
-                lines.append("    ⚠️  OUTDATED (code has changed)")
-            lines.append(f"    Comment: {body}")
+            lines.append(f"┌─ {category} ({len(categorized[category])} comment(s))")
+            lines.append("│")
+
+            for idx, thread in categorized[category]:
+                body = thread["body"]
+                # Show full comment, just normalize whitespace
+                body = " ".join(body.split())
+
+                lines.append(f"│  [{idx}] {thread['thread_id']}")
+                lines.append(f"│      Author: @{thread['author']}")
+                if thread["path"]:
+                    location = thread["path"]
+                    if thread["line"]:
+                        location += f":{thread['line']}"
+                    lines.append(f"│      Location: {location}")
+                if thread["is_outdated"]:
+                    lines.append("│      ⚠️  OUTDATED (code has changed)")
+                lines.append(f"│      Comment: {body}")
+                lines.append("│")
+
+            lines.append("└" + "─" * 79)
 
         lines.append("")
-        lines.append("━" * 70)
-        lines.append("🤖 AI AGENT INSTRUCTIONS")
-        lines.append("━" * 70)
+        lines.append("━" * 80)
+        lines.append("🤖 AI AGENT WORKFLOW")
+        lines.append("━" * 80)
         lines.append("")
-        lines.append("Follow the PR Closing Protocol:")
+        lines.append("STEP 1: TRIAGE (do this first for ALL comments)")
+        lines.append("─" * 40)
+        lines.append("For each comment, determine its status:")
         lines.append("")
-        lines.append("1. ANALYZE: Group comments by underlying concept, not by file")
-        lines.append("   - Security issues")
-        lines.append("   - Logic/correctness")
-        lines.append("   - Code quality/style")
-        lines.append("   - Performance")
+        lines.append(
+            "  ✅ ALREADY FIXED  → Resolve immediately (code already addresses this)"
+        )
+        lines.append("  📝 NEEDS FIX      → Plan the fix, implement it")
+        lines.append("  ❓ NEEDS CLARITY  → Ask reviewer before implementing")
+        lines.append("  🚫 WONT_RESOLVE   → Open-ended question or out of scope")
         lines.append("")
-        lines.append("2. TRIAGE: For each comment, determine:")
-        lines.append("   - Is it already fixed? → Resolve immediately")
-        lines.append("   - Is it outdated/stale? → Resolve with explanation")
-        lines.append("   - Needs clarification? → Ask before implementing")
-        lines.append("   - Needs fix? → Plan the fix")
+        lines.append("STEP 2: WORK TOP-TO-BOTTOM BY CATEGORY")
+        lines.append("─" * 40)
+        lines.append("Categories are ordered by risk/impact. Start with Security,")
+        lines.append("then Logic/Correctness, etc. Lower-level fixes often resolve")
+        lines.append("related comments automatically.")
         lines.append("")
-        lines.append("3. PRIORITIZE: Address highest-risk changes first")
-        lines.append("   - Lower-level fixes often obviate related comments")
-        lines.append("   - Group related fixes into thematic commits")
+        lines.append("STEP 3: FOR EACH FIX")
+        lines.append("─" * 40)
+        lines.append("1. Make the code change")
+        lines.append("2. Commit with descriptive message")
+        lines.append("3. Resolve the thread using the command below")
+        lines.append("4. Move to next comment")
         lines.append("")
-        lines.append("4. IMPLEMENT: For each fix:")
-        lines.append("   - Make the change")
-        lines.append("   - Commit with descriptive message")
-        lines.append("   - Immediately resolve the thread:")
+
+        lines.append("━" * 80)
+        lines.append("🔧 RESOLUTION COMMANDS (copy-paste ready)")
+        lines.append("━" * 80)
         lines.append("")
-        lines.append("     gh api graphql -f query='mutation {")
-        lines.append('       resolveReviewThread(input: {threadId: "THREAD_ID"}) {')
-        lines.append("         thread { id isResolved }")
-        lines.append("       }")
-        lines.append("     }'")
+
+        for i, thread in enumerate(threads, 1):
+            thread_id = thread["thread_id"]
+            body_preview = " ".join(thread["body"].split())[:60]
+            if len(thread["body"]) > 60:
+                body_preview += "..."
+
+            lines.append(f"# [{i}] {body_preview}")
+            lines.append(f"# Location: {thread['path'] or 'N/A'}")
+            lines.append("")
+
+            # Resolve command
+            lines.append("# To RESOLVE (after fixing):")
+            lines.append(
+                f"gh api graphql -f query='mutation {{ resolveReviewThread(input: {{threadId: \"{thread_id}\"}}) {{ thread {{ id isResolved }} }} }}'"
+            )
+            lines.append("")
+
+            # Reply with fix explanation
+            lines.append("# To REPLY with fix explanation:")
+            lines.append(
+                f"echo 'Fixed in commit $(git rev-parse --short HEAD). [YOUR EXPLANATION]' | gh pr comment {pr_number} --body-file -"
+            )
+            lines.append("")
+
+            # WONT_RESOLVE option
+            lines.append("# To mark as WONT_RESOLVE (for questions/out-of-scope):")
+            lines.append(
+                f"echo '[WONT_RESOLVE] [YOUR REASON - e.g., open-ended question, out of PR scope, deferred to issue #X]' | gh pr comment {pr_number} --body-file -"
+            )
+            lines.append("")
+            lines.append("─" * 40)
+            lines.append("")
+
+        lines.append("━" * 80)
+        lines.append("📊 VERIFY ALL RESOLVED")
+        lines.append("━" * 80)
         lines.append("")
-        lines.append("5. ITERATE: Re-run this check until all comments resolved")
+        lines.append("# Check remaining unresolved count (should return 0):")
+        lines.append(
+            f"gh api graphql -f query='query {{ repository(owner: \"{owner}\", name: \"{repo}\") {{ pullRequest(number: {pr_number}) {{ reviewThreads(first: 100) {{ nodes {{ isResolved }} }} }} }} }}' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length'"
+        )
         lines.append("")
-        lines.append("━" * 70)
-        lines.append("⚠️  DO NOT push until all comments are resolved!")
-        lines.append("━" * 70)
+        lines.append("# Re-run this check:")
+        lines.append("sb validate pr:comments")
+        lines.append("")
+        lines.append("━" * 80)
+        lines.append(
+            "⚠️  DO NOT push until all comments are resolved or marked WONT_RESOLVE!"
+        )
+        lines.append("━" * 80)
 
         return "\n".join(lines)
 
@@ -334,23 +543,125 @@ class PRCommentsCheck(BaseCheck):
                 output=f"✅ PR #{pr_number} has no unresolved comment threads",
             )
 
-        # We have unresolved threads - fail with guidance
+        # We have unresolved threads - generate full report and save to file
         fail_on_unresolved = self.config.get("fail_on_unresolved", True)
+        full_report = self._format_guidance(threads, pr_number, owner, repo)
 
-        guidance = self._format_guidance(threads, pr_number, owner, repo)
+        # Save full report to temp file
+        report_file = self._save_report_to_file(full_report, pr_number)
+
+        # Create concise summary for gate output
+        summary = self._format_summary(threads, pr_number, report_file)
 
         if fail_on_unresolved:
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
-                output=guidance,
+                output=summary,
                 error=f"{len(threads)} unresolved PR comment(s)",
-                fix_suggestion="Address all unresolved comments following the protocol above",
+                fix_suggestion=f"Read full report: cat {report_file}",
             )
         else:
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
                 output=f"⚠️ {len(threads)} unresolved comments (check disabled)\n\n"
-                + guidance,
+                + summary,
             )
+
+    def _save_report_to_file(self, report: str, pr_number: int) -> str:
+        """Save the full PR comments report to a temp file.
+
+        Args:
+            report: Full report content
+            pr_number: PR number for filename
+
+        Returns:
+            Path to the saved report file
+        """
+        # Use a consistent location so agents can find it
+        report_dir = tempfile.gettempdir()
+        report_path = os.path.join(report_dir, f"pr_{pr_number}_comments_report.md")
+
+        with open(report_path, "w") as f:
+            f.write(report)
+
+        return report_path
+
+    def _format_summary(
+        self, threads: List[Dict[str, Any]], pr_number: int, report_file: str
+    ) -> str:
+        """Format a concise summary for gate output.
+
+        Args:
+            threads: List of unresolved thread data
+            pr_number: PR number
+            report_file: Path to full report file
+
+        Returns:
+            Concise summary string
+        """
+        # Group by category
+        grouped = self._group_threads_by_category(threads)
+
+        lines = []
+        lines.append(f"PR #{pr_number}: {len(threads)} unresolved comment(s)")
+        lines.append("")
+        lines.append("By category:")
+        for category, cat_threads in grouped.items():
+            lines.append(f"  • {category}: {len(cat_threads)}")
+        lines.append("")
+        lines.append(f"📄 Full report with commands: {report_file}")
+        lines.append("")
+        lines.append("To view: cat " + report_file)
+        lines.append("")
+        lines.append("Quick start:")
+        lines.append("  1. Read the full report above")
+        lines.append("  2. Address comments by category (most complex first)")
+        lines.append("  3. Use provided commands to resolve each thread")
+        lines.append("  4. Re-run: sb validate pr:comments")
+
+        return "\n".join(lines)
+
+    def _group_threads_by_category(
+        self, threads: List[Dict[str, Any]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Group threads by their category.
+
+        Args:
+            threads: List of thread data
+
+        Returns:
+            Dict mapping category name to list of threads
+        """
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+
+        for thread in threads:
+            category = self._categorize_comment(thread.get("body", ""))
+            if category not in grouped:
+                grouped[category] = []
+            grouped[category].append(thread)
+
+        # Sort by priority (security first, then logic, etc.)
+        priority_order = [
+            "🔐 Security",
+            "🐛 Logic/Correctness",
+            "🏗️ Architecture/Design",
+            "⚡ Performance",
+            "🧪 Testing",
+            "📝 Documentation",
+            "🎨 Style/Formatting",
+            "❓ Other",
+        ]
+
+        sorted_grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for category in priority_order:
+            if category in grouped:
+                sorted_grouped[category] = grouped[category]
+
+        # Add any categories not in priority order
+        for category in grouped:
+            if category not in sorted_grouped:
+                sorted_grouped[category] = grouped[category]
+
+        return sorted_grouped
