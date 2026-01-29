@@ -1,9 +1,10 @@
-"""Python lint and format check using black, isort, and flake8.
+"""Python lint and format check using black, isort, autoflake, and flake8.
 
 This check:
-1. Auto-fixes formatting with black
-2. Auto-fixes import order with isort
-3. Checks for critical lint errors with flake8
+1. Auto-removes unused imports with autoflake
+2. Auto-fixes formatting with black
+3. Auto-fixes import order with isort
+4. Checks for critical lint errors with flake8
 """
 
 import os
@@ -36,7 +37,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🎨 Lint & Format (black, isort, flake8)"
+        return "🎨 Lint & Format (autoflake, black, isort, flake8)"
 
     @property
     def category(self) -> GateCategory:
@@ -60,13 +61,29 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         return True
 
     def auto_fix(self, project_root: str) -> bool:
-        """Auto-fix formatting issues with black and isort."""
+        """Auto-fix formatting issues with autoflake, black, and isort."""
         fixed = False
 
         # Find Python source directories to format
         targets = self._get_python_targets(project_root)
         if not targets:
             targets = ["."]
+
+        # Run autoflake first to remove unused imports
+        result = self._run_command(
+            [
+                "autoflake",
+                "--in-place",
+                "--remove-all-unused-imports",
+                "--recursive",
+                "--exclude=venv,__pycache__,.git,.venv,build,dist,node_modules",
+                ".",
+            ],
+            cwd=project_root,
+            timeout=60,
+        )
+        if result.success:
+            fixed = True
 
         # Run black on each target
         for target in targets:

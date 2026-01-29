@@ -19,8 +19,6 @@ from typing import FrozenSet, List, Optional, Set
 class SecurityError(Exception):
     """Raised when a command fails security validation."""
 
-    pass
-
 
 class CommandValidator:
     """Validates commands before subprocess execution.

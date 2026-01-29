@@ -114,7 +114,7 @@ class TemplateValidationCheck(BaseCheck):
         templates_path = os.path.join(project_root, templates_dir)
 
         try:
-            from jinja2 import Environment, FileSystemLoader
+            from jinja2 import Environment, FileSystemLoader, select_autoescape
         except ImportError:
             return self._create_result(
                 status=CheckStatus.SKIPPED,
@@ -123,7 +123,12 @@ class TemplateValidationCheck(BaseCheck):
                 fix_suggestion="Install: pip install jinja2",
             )
 
-        env = Environment(loader=FileSystemLoader(templates_path))
+        env = Environment(
+            loader=FileSystemLoader(templates_path),
+            autoescape=select_autoescape(
+                ["html", "htm", "xml", "j2", "jinja", "jinja2"]
+            ),
+        )
         errors = []
         count = 0
 

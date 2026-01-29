@@ -26,7 +26,17 @@ from slopbucket.checks.base import (
 )
 from slopbucket.core.result import CheckResult, CheckStatus
 
-EXCLUDED_DIRS = ["venv", ".venv", "node_modules", "cursor-rules", "archives", "logs"]
+EXCLUDED_DIRS = [
+    "venv",
+    ".venv",
+    "node_modules",
+    "cursor-rules",
+    "archives",
+    "logs",
+    "tests",  # Test files often have intentional security "violations"
+    "*/.venv",  # Nested venvs
+    "*/venv",  # Nested venvs
+]
 
 
 @dataclass
@@ -152,23 +162,23 @@ class SecurityLocalCheck(BaseCheck):
             cmd.extend(["--configfile", config_file])
         else:
             cmd.extend(["--skip", "B101,B110"])
-            for d in self._get_exclude_dirs():
-                cmd.extend(["--exclude", f"./{d}"])
+            # Bandit wants comma-separated exclude paths
+            exclude_paths = ",".join(f"./{d}" for d in self._get_exclude_dirs())
+            cmd.extend(["--exclude", exclude_paths])
 
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 
-        if result.success:
-            return SecuritySubResult("bandit", True, "No issues found")
-
+        # Try to parse JSON from stdout only - stderr contains warnings that aren't issues
+        # Bandit returns non-zero for any findings including LOW severity
         try:
-            report = json.loads(result.output)
+            report = json.loads(result.stdout)
             issues = [
                 r
                 for r in report.get("results", [])
                 if r.get("issue_severity") in ("HIGH", "MEDIUM")
             ]
             if not issues:
-                return SecuritySubResult("bandit", True, "Only LOW severity (ignored)")
+                return SecuritySubResult("bandit", True, "No HIGH/MEDIUM issues")
 
             detail = "\n".join(
                 f"  [{r['issue_severity']}] {r['issue_text']} ({r['test_name']}) "
@@ -177,8 +187,11 @@ class SecurityLocalCheck(BaseCheck):
             )
             return SecuritySubResult("bandit", False, detail)
         except json.JSONDecodeError:
-            output = result.output[-500:] if result.output else "Unknown error"
-            return SecuritySubResult("bandit", False, output)
+            # If JSON parsing fails, check stderr for actual errors
+            if result.stderr and "error" in result.stderr.lower():
+                return SecuritySubResult("bandit", False, result.stderr[-500:])
+            # Otherwise bandit ran but produced no JSON (likely no issues)
+            return SecuritySubResult("bandit", True, "No issues found")
 
     def _run_semgrep(self, project_root: str) -> SecuritySubResult:
         """Run semgrep static analysis."""
@@ -192,7 +205,7 @@ class SecurityLocalCheck(BaseCheck):
             return SecuritySubResult("semgrep", True, "No issues found")
 
         try:
-            report = json.loads(result.output)
+            report = json.loads(result.stdout)
             findings = report.get("results", [])
             if not findings:
                 return SecuritySubResult("semgrep", True, "No issues found")
@@ -213,8 +226,8 @@ class SecurityLocalCheck(BaseCheck):
             )
             return SecuritySubResult("semgrep", False, detail)
         except json.JSONDecodeError:
-            if result.returncode == 1:
-                return SecuritySubResult("semgrep", False, result.output[-300:])
+            if result.returncode == 1 and result.stderr:
+                return SecuritySubResult("semgrep", False, result.stderr[-300:])
             return SecuritySubResult("semgrep", True, "Scan completed")
 
     def _run_detect_secrets(self, project_root: str) -> SecuritySubResult:

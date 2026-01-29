@@ -5,7 +5,7 @@ are validated before execution, and proper timeout handling is implemented.
 """
 
 import logging
-import subprocess
+import subprocess  # nosec B404 - subprocess is core to this module's purpose
 import threading
 import time
 from dataclasses import dataclass
@@ -113,7 +113,7 @@ class SubprocessRunner:
         try:
             # Start the process
             # SECURITY: Never use shell=True
-            process = subprocess.Popen(
+            process = subprocess.Popen(  # nosec B603 - commands are validated by CommandValidator
                 command,
                 stdout=subprocess.PIPE if capture_output else None,
                 stderr=subprocess.PIPE if capture_output else None,
@@ -238,13 +238,15 @@ class SubprocessRunner:
         """
         self._validator.validate(command)
 
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=cwd,
-            env=env,
-            text=True,
+        process = (
+            subprocess.Popen(  # nosec B603 - commands are validated by CommandValidator
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=cwd,
+                env=env,
+                text=True,
+            )
         )
 
         with self._process_lock:

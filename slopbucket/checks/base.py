@@ -108,7 +108,6 @@ class BaseCheck(ABC):
         This should be a lowercase, hyphenated string like 'lint-format'.
         Note: Do NOT include the language prefix - that comes from category.
         """
-        pass
 
     @property
     @abstractmethod
@@ -117,7 +116,6 @@ class BaseCheck(ABC):
 
         Example: '🎨 Lint & Format (black, isort, flake8)'
         """
-        pass
 
     @property
     @abstractmethod
@@ -127,7 +125,6 @@ class BaseCheck(ABC):
         Returns:
             GateCategory enum value (PYTHON, JAVASCRIPT, GENERAL, INTEGRATION)
         """
-        pass
 
     @property
     def full_name(self) -> str:
@@ -177,7 +174,6 @@ class BaseCheck(ABC):
         Returns:
             True if check should run, False to skip
         """
-        pass
 
     @abstractmethod
     def run(self, project_root: str) -> CheckResult:
@@ -189,7 +185,6 @@ class BaseCheck(ABC):
         Returns:
             CheckResult with status, output, and any error info
         """
-        pass
 
     def can_auto_fix(self) -> bool:
         """Return True if this check can automatically fix issues.

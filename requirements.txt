@@ -1,0 +1,19 @@
+# Core dependencies (none - slopbucket is a standalone tool)
+
+# Development dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Linting and formatting
+black>=23.0.0
+isort>=5.12.0
+autoflake>=2.0.0
+flake8>=6.0.0
+
+# Type checking
+mypy>=1.0.0
+
+# Security scanning
+bandit>=1.7.0
+detect-secrets>=1.4.0
+semgrep>=1.0.0

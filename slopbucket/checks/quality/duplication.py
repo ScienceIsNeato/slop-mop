@@ -9,6 +9,7 @@ all languages supported by jscpd.
 
 import json
 import os
+import tempfile
 import time
 from typing import Any, Dict, List
 
@@ -97,80 +98,82 @@ class DuplicationCheck(BaseCheck):
         min_tokens = self.config.get("min_tokens", MIN_TOKENS)
         min_lines = self.config.get("min_lines", MIN_LINES)
 
-        # Run jscpd
-        cmd = [
-            "npx",
-            "jscpd",
-            "--min-tokens",
-            str(min_tokens),
-            "--min-lines",
-            str(min_lines),
-            "--threshold",
-            str(self.threshold),
-            "--reporters",
-            "json",
-            "--output",
-            "/tmp/jscpd-report",
-            "--ignore",
-            "node_modules,dist,build,.git,__pycache__,.venv,venv",
-            ".",
-        ]
+        # Use a proper temp directory for the report
+        with tempfile.TemporaryDirectory(prefix="jscpd-") as temp_dir:
+            report_output = os.path.join(temp_dir, "jscpd-report")
 
-        result = self._run_command(cmd, cwd=project_root, timeout=300)
-        duration = time.time() - start_time
+            # Run jscpd
+            cmd = [
+                "npx",
+                "jscpd",
+                "--min-tokens",
+                str(min_tokens),
+                "--min-lines",
+                str(min_lines),
+                "--threshold",
+                str(self.threshold),
+                "--reporters",
+                "json",
+                "--output",
+                report_output,
+                "--ignore",
+                "node_modules,dist,build,.git,__pycache__,.venv,venv",
+                ".",
+            ]
 
-        # Parse results
-        report_path = "/tmp/jscpd-report/jscpd-report.json"
-        if not os.path.exists(report_path):
-            if result.returncode == 0:
+            result = self._run_command(cmd, cwd=project_root, timeout=300)
+            duration = time.time() - start_time
+
+            # Parse results
+            report_path = os.path.join(report_output, "jscpd-report.json")
+            if not os.path.exists(report_path):
+                if result.returncode == 0:
+                    return self._create_result(
+                        status=CheckStatus.PASSED,
+                        duration=duration,
+                        output="No duplication detected",
+                    )
+                return self._create_result(
+                    status=CheckStatus.ERROR,
+                    duration=duration,
+                    error=result.error or "jscpd failed to produce report",
+                )
+
+            try:
+                with open(report_path) as f:
+                    report = json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                return self._create_result(
+                    status=CheckStatus.ERROR,
+                    duration=duration,
+                    error=f"Failed to parse jscpd report: {e}",
+                )
+
+            duplicates = report.get("duplicates", [])
+            stats = report.get("statistics", {})
+            total_percentage = stats.get("total", {}).get("percentage", 0)
+
+            if total_percentage <= self.threshold and not duplicates:
                 return self._create_result(
                     status=CheckStatus.PASSED,
                     duration=duration,
-                    output="No duplication detected",
+                    output=f"Duplication: {total_percentage:.1f}% (within {self.threshold}% limit)",
                 )
+
+            # Format violation details
+            violations = self._format_duplicates(duplicates)
+            detail = f"Duplication: {total_percentage:.1f}% exceeds {self.threshold}% limit\n\n"
+            detail += "Duplicate blocks:\n" + "\n".join(violations[:10])
+            if len(violations) > 10:
+                detail += f"\n... and {len(violations) - 10} more"
+
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.FAILED,
                 duration=duration,
-                error=result.error or "jscpd failed to produce report",
+                output=detail,
+                error=f"{total_percentage:.1f}% duplication ({len(duplicates)} blocks)",
+                fix_suggestion="Extract duplicated code into shared functions or modules.",
             )
-
-        try:
-            with open(report_path) as f:
-                report = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            return self._create_result(
-                status=CheckStatus.ERROR,
-                duration=duration,
-                error=f"Failed to parse jscpd report: {e}",
-            )
-
-        duplicates = report.get("duplicates", [])
-        stats = report.get("statistics", {})
-        total_percentage = stats.get("total", {}).get("percentage", 0)
-
-        if total_percentage <= self.threshold and not duplicates:
-            return self._create_result(
-                status=CheckStatus.PASSED,
-                duration=duration,
-                output=f"Duplication: {total_percentage:.1f}% (within {self.threshold}% limit)",
-            )
-
-        # Format violation details
-        violations = self._format_duplicates(duplicates)
-        detail = (
-            f"Duplication: {total_percentage:.1f}% exceeds {self.threshold}% limit\n\n"
-        )
-        detail += "Duplicate blocks:\n" + "\n".join(violations[:10])
-        if len(violations) > 10:
-            detail += f"\n... and {len(violations) - 10} more"
-
-        return self._create_result(
-            status=CheckStatus.FAILED,
-            duration=duration,
-            output=detail,
-            error=f"{total_percentage:.1f}% duplication ({len(duplicates)} blocks)",
-            fix_suggestion="Extract duplicated code into shared functions or modules.",
-        )
 
     def _format_duplicates(self, duplicates: List[Dict[str, Any]]) -> List[str]:
         """Format duplicate entries for display."""
