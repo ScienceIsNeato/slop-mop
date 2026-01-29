@@ -14,6 +14,7 @@ from slopbucket.sb import (
     _generate_hook_script,
     _get_git_hooks_dir,
     _parse_hook_info,
+    cmd_ci,
     cmd_commit_hooks,
     cmd_config,
     cmd_help,
@@ -526,3 +527,149 @@ class TestMain:
             result = main(["commit-hooks", "status"])
             mock_cmd.assert_called_once()
             assert result == 0
+
+    def test_main_ci_calls_cmd_ci(self):
+        """Main routes ci to cmd_ci."""
+        with patch("slopbucket.sb.cmd_ci") as mock_cmd:
+            mock_cmd.return_value = 0
+            result = main(["ci"])
+            mock_cmd.assert_called_once()
+            assert result == 0
+
+
+class TestCmdCi:
+    """Tests for cmd_ci function."""
+
+    def test_ci_no_pr_context(self, tmp_path):
+        """Returns error when no PR context available."""
+        args = argparse.Namespace(
+            pr_number=None,
+            watch=False,
+            interval=30,
+            project_root=str(tmp_path),
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="")
+            result = cmd_ci(args)
+
+        assert result == 2  # No PR context error
+
+    def test_ci_with_explicit_pr_number(self, tmp_path, capsys):
+        """Uses explicit PR number when provided."""
+        args = argparse.Namespace(
+            pr_number=42,
+            watch=False,
+            interval=30,
+            project_root=str(tmp_path),
+        )
+
+        # Mock gh pr checks returning all passed
+        checks_response = json.dumps(
+            [
+                {"name": "test", "state": "completed", "bucket": "pass"},
+            ]
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=checks_response, stderr=""
+            )
+            result = cmd_ci(args)
+
+        captured = capsys.readouterr()
+        assert result == 0
+        assert "PR: #42" in captured.out
+        assert "CI CLEAN" in captured.out
+
+    def test_ci_with_failures(self, tmp_path, capsys):
+        """Returns failure when checks fail."""
+        args = argparse.Namespace(
+            pr_number=1,
+            watch=False,
+            interval=30,
+            project_root=str(tmp_path),
+        )
+
+        checks_response = json.dumps(
+            [
+                {"name": "passed-check", "state": "completed", "bucket": "pass"},
+                {
+                    "name": "failed-check",
+                    "state": "completed",
+                    "bucket": "fail",
+                    "link": "https://example.com",
+                },
+            ]
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=checks_response, stderr=""
+            )
+            result = cmd_ci(args)
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert "SLOP IN CI" in captured.out
+        assert "failed-check" in captured.out
+
+    def test_ci_in_progress_no_watch(self, tmp_path, capsys):
+        """Returns exit code 1 with in-progress checks when not watching."""
+        args = argparse.Namespace(
+            pr_number=1,
+            watch=False,
+            interval=30,
+            project_root=str(tmp_path),
+        )
+
+        checks_response = json.dumps(
+            [
+                {"name": "running-check", "state": "in_progress", "bucket": "pending"},
+            ]
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=checks_response, stderr=""
+            )
+            result = cmd_ci(args)
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert "CI IN PROGRESS" in captured.out
+        assert "Use --watch" in captured.out
+
+    def test_ci_no_checks(self, tmp_path, capsys):
+        """Returns success when no checks found."""
+        args = argparse.Namespace(
+            pr_number=1,
+            watch=False,
+            interval=30,
+            project_root=str(tmp_path),
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+            result = cmd_ci(args)
+
+        captured = capsys.readouterr()
+        assert result == 0
+        assert "No CI checks found" in captured.out
+
+    def test_ci_gh_not_found(self, tmp_path, capsys):
+        """Returns error when gh CLI not available."""
+        args = argparse.Namespace(
+            pr_number=1,
+            watch=False,
+            interval=30,
+            project_root=str(tmp_path),
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+            result = cmd_ci(args)
+
+        captured = capsys.readouterr()
+        assert result == 2
+        assert "gh" in captured.out.lower()

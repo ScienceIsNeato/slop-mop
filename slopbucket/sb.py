@@ -8,6 +8,7 @@ Usage:
     sb commit-hooks status
     sb commit-hooks install <profile>
     sb commit-hooks uninstall
+    sb ci [PR_NUMBER] [--watch]
     sb help [GATE]
 
 Verbs:
@@ -15,6 +16,7 @@ Verbs:
     config        View or update configuration
     init          Interactive setup and project configuration
     commit-hooks  Manage git pre-commit hooks
+    ci            Check CI status for current PR
     help          Show help for quality gates
 """
 
@@ -275,6 +277,38 @@ Examples:
         help="Remove all sb-managed commit hooks",
     )
     hooks_uninstall.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Project root directory (default: current directory)",
+    )
+
+    # === ci verb ===
+    ci_parser = subparsers.add_parser(
+        "ci",
+        help="Check CI status for current PR",
+        description="Check if CI checks are passing on the current PR.",
+    )
+    ci_parser.add_argument(
+        "pr_number",
+        nargs="?",
+        type=int,
+        default=None,
+        help="PR number to check (auto-detects from current branch if omitted)",
+    )
+    ci_parser.add_argument(
+        "--watch",
+        "-w",
+        action="store_true",
+        help="Poll CI status until all checks complete",
+    )
+    ci_parser.add_argument(
+        "--interval",
+        type=int,
+        default=30,
+        help="Polling interval in seconds (default: 30)",
+    )
+    ci_parser.add_argument(
         "--project-root",
         type=str,
         default=".",
@@ -1191,6 +1225,174 @@ def _hooks_uninstall(project_root: Path, hooks_dir: Path) -> int:
     return 0
 
 
+def cmd_ci(args: argparse.Namespace) -> int:
+    """Handle the ci command - check CI status for current PR."""
+    import subprocess
+    import time
+
+    project_root = Path(args.project_root).resolve()
+
+    # Detect PR number if not provided
+    pr_number = args.pr_number
+    if pr_number is None:
+        try:
+            result = subprocess.run(
+                ["gh", "pr", "view", "--json", "number"],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                pr_number = data.get("number")
+        except (subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError):
+            pass
+
+    if pr_number is None:
+        print("❌ Could not detect PR number")
+        print("   Run from a branch with an open PR, or specify: sb ci <pr_number>")
+        return 2
+
+    print()
+    print("🪣 sb ci - CI Status Check")
+    print("=" * 60)
+    print(f"📂 Project: {project_root}")
+    print(f"🔀 PR: #{pr_number}")
+    if args.watch:
+        print(f"👀 Watch mode: polling every {args.interval}s")
+    print("=" * 60)
+    print()
+
+    while True:
+        # Get check status
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "checks",
+                    str(pr_number),
+                    "--json",
+                    "name,state,bucket,link",
+                ],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            print("❌ GitHub CLI (gh) not found")
+            print("   Install: https://cli.github.com/")
+            return 2
+
+        # Handle "no checks" case (gh returns error for this)
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "no checks" in stderr.lower():
+                print("ℹ️  No CI checks found for this PR")
+                print("   (CI workflow may not be set up yet)")
+                return 0
+            print(f"❌ Failed to get check status: {stderr}")
+            return 1
+
+        try:
+            checks = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            # Empty output is OK - means no checks
+            if not result.stdout.strip():
+                print("ℹ️  No CI checks found for this PR")
+                return 0
+            print(f"❌ Failed to parse check data: {result.stdout}")
+            return 1
+
+        if not checks:
+            print("ℹ️  No CI checks found for this PR")
+            return 0
+
+        # Categorize checks using 'bucket' field (pass, fail, pending, skipping, cancel)
+        completed = []
+        in_progress = []
+        failed = []
+
+        for check in checks:
+            bucket = check.get("bucket", "").lower()
+            name = check.get("name", "Unknown")
+            url = check.get("link", "")
+            state = check.get("state", "")
+
+            if bucket == "pass":
+                completed.append((name, "✅", "passed"))
+            elif bucket == "fail":
+                failed.append((name, "❌", "failed", url))
+            elif bucket == "cancel":
+                failed.append((name, "🚫", "cancelled", url))
+            elif bucket in ("pending", "skipping"):
+                in_progress.append((name, "🔄", state or bucket))
+            else:
+                in_progress.append((name, "❓", state or bucket))
+
+        # Print status
+        total = len(checks)
+        passed_count = len(completed)
+        failed_count = len(failed)
+        pending_count = len(in_progress)
+
+        if failed:
+            print("🪣 SLOP IN CI")
+            print()
+            print(
+                f"   ✅ {passed_count} passed · ❌ {failed_count} failed · 🔄 {pending_count} pending"
+            )
+            print()
+            print("❌ FAILED:")
+            for name, _, conclusion, url in failed:
+                print(f"   • {name}: {conclusion}")
+                if url:
+                    print(f"     └─ {url}")
+            print()
+
+            if in_progress:
+                print("🔄 IN PROGRESS:")
+                for name, _, state in in_progress:
+                    print(f"   • {name}: {state}")
+                print()
+
+            if args.watch and in_progress:
+                print(f"⏳ Waiting {args.interval}s before next check...")
+                time.sleep(args.interval)
+                print()
+                continue
+
+            return 1
+
+        elif in_progress:
+            print("🔄 CI IN PROGRESS")
+            print()
+            print(f"   ✅ {passed_count} passed · 🔄 {pending_count} pending")
+            print()
+            print("🔄 IN PROGRESS:")
+            for name, _, state in in_progress:
+                print(f"   • {name}: {state}")
+            print()
+
+            if args.watch:
+                print(f"⏳ Waiting {args.interval}s before next check...")
+                time.sleep(args.interval)
+                print()
+                continue
+            else:
+                print("💡 Use --watch to poll until complete")
+                return 1
+
+        else:
+            # All passed!
+            print(f"✨ CI CLEAN · {passed_count}/{total} checks passed")
+            print()
+            for name, emoji, conclusion in completed:
+                print(f"   {emoji} {name}")
+            print()
+            return 0
+
+
 def main(args: Optional[List[str]] = None) -> int:
     """Main entry point for sb CLI."""
     parser = create_parser()
@@ -1213,6 +1415,8 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_init(parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return cmd_commit_hooks(parsed_args)
+    elif parsed_args.verb == "ci":
+        return cmd_ci(parsed_args)
     else:
         parser.print_help()
         return 0

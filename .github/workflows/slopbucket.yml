@@ -1,0 +1,41 @@
+# 🪣 Slopbucket Dogfooding CI
+# Runs slopbucket on itself to validate PRs
+
+name: slopbucket
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    name: 🪣 Slopbucket Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git operations
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run commit profile
+        run: sb validate commit --no-fail-fast
+        
+      - name: Run PR profile
+        if: github.event_name == 'pull_request'
+        run: sb validate pr --no-fail-fast
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
