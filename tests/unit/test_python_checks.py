@@ -16,12 +16,13 @@ class TestPythonLintFormatCheck:
     def test_name(self):
         """Test check name."""
         check = PythonLintFormatCheck({})
-        assert check.name == "python-lint-format"
+        assert check.name == "lint-format"
 
     def test_display_name(self):
         """Test check display name."""
         check = PythonLintFormatCheck({})
-        assert "Python Lint" in check.display_name
+        assert "Lint" in check.display_name
+        assert "Format" in check.display_name
         assert "black" in check.display_name
 
     def test_is_applicable_python_project(self, tmp_path):
@@ -96,12 +97,12 @@ class TestPythonTestsCheck:
     def test_name(self):
         """Test check name."""
         check = PythonTestsCheck({})
-        assert check.name == "python-tests"
+        assert check.name == "tests"
 
     def test_display_name(self):
         """Test check display name."""
         check = PythonTestsCheck({})
-        assert "Python Tests" in check.display_name
+        assert "Tests" in check.display_name or "test" in check.display_name.lower()
 
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project."""
@@ -112,8 +113,8 @@ class TestPythonTestsCheck:
     def test_depends_on(self):
         """Test check dependencies."""
         check = PythonTestsCheck({})
-        # Test check has no dependencies
-        assert check.depends_on == []
+        # Tests depend on lint-format being run first
+        assert "python:lint-format" in check.depends_on
 
     def test_run_success(self, tmp_path):
         """Test run with passing tests."""
@@ -165,7 +166,7 @@ class TestPythonCoverageCheck:
     def test_name(self):
         """Test check name."""
         check = PythonCoverageCheck({})
-        assert check.name == "python-coverage"
+        assert check.name == "coverage"
 
     def test_display_name(self):
         """Test check display name."""
@@ -175,7 +176,7 @@ class TestPythonCoverageCheck:
     def test_depends_on(self):
         """Test check dependencies."""
         check = PythonCoverageCheck({})
-        assert "python-tests" in check.depends_on
+        assert "python:tests" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project."""
@@ -232,7 +233,7 @@ class TestPythonStaticAnalysisCheck:
     def test_name(self):
         """Test check name."""
         check = PythonStaticAnalysisCheck({})
-        assert check.name == "python-static-analysis"
+        assert check.name == "static-analysis"
 
     def test_display_name(self):
         """Test check display name."""
@@ -242,8 +243,8 @@ class TestPythonStaticAnalysisCheck:
     def test_depends_on(self):
         """Test check dependencies."""
         check = PythonStaticAnalysisCheck({})
-        # Static analysis check has no dependencies
-        assert check.depends_on == []
+        # Static analysis depends on lint-format being run first
+        assert "python:lint-format" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project."""

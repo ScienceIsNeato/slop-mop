@@ -40,7 +40,6 @@ dev = [
 
 [project.scripts]
 sb = "slopbucket.sb:main"
-slopbucket = "slopbucket.cli:main"  # Legacy alias
 
 [project.urls]
 Homepage = "https://github.com/ScienceIsNeato/slopbucket"

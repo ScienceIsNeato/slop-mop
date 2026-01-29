@@ -96,8 +96,8 @@ class CheckExecutor:
 
         # Log skipped checks
         for check in skipped:
-            logger.info(f"Skipping {check.name}: not applicable to this project")
-            self._results[check.name] = CheckResult(
+            logger.info(f"Skipping {check.full_name}: not applicable to this project")
+            self._results[check.full_name] = CheckResult(
                 name=check.name,
                 status=CheckStatus.SKIPPED,
                 duration=0,
@@ -124,15 +124,15 @@ class CheckExecutor:
             checks: List of checks to analyze
 
         Returns:
-            Dict mapping check name to set of dependency names
+            Dict mapping check full_name to set of dependency full_names
         """
-        check_names = {c.name for c in checks}
+        check_names = {c.full_name for c in checks}
         graph: Dict[str, Set[str]] = {}
 
         for check in checks:
             # Only include dependencies that are in our check list
             deps = set(check.depends_on) & check_names
-            graph[check.name] = deps
+            graph[check.full_name] = deps
 
         return graph
 
@@ -153,7 +153,7 @@ class CheckExecutor:
             project_root: Project root path
             auto_fix: Whether to auto-fix
         """
-        check_map = {c.name: c for c in checks}
+        check_map = {c.full_name: c for c in checks}
         completed: Set[str] = set()
         pending = set(check_map.keys())
 

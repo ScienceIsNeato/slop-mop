@@ -1,8 +1,14 @@
 """JavaScript test execution check using Jest."""
 
 import time
+from typing import List
 
-from slopbucket.checks.base import BaseCheck, JavaScriptCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    ConfigField,
+    GateCategory,
+    JavaScriptCheckMixin,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 
@@ -14,11 +20,30 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def name(self) -> str:
-        return "js-tests"
+        return "tests"
 
     @property
     def display_name(self) -> str:
-        return "🧪 JavaScript Tests (Jest)"
+        return "🧪 Tests (Jest)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.JAVASCRIPT
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["javascript:lint-format"]
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="test_command",
+                field_type="string",
+                default="npm test",
+                description="Command to run tests",
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_javascript_project(project_root)

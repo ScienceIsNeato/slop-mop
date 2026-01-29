@@ -219,6 +219,8 @@ def ensure_checks_registered() -> None:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     """Handle the validate command."""
+    import tempfile
+
     ensure_checks_registered()
 
     # Determine project root
@@ -231,6 +233,38 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if not project_root.is_dir():
         print(f"❌ Project root not found: {project_root}")
         return 1
+
+    # For --self validation, use a temp config to protect user's real config
+    temp_config_dir = None
+    original_config_file = project_root / ".sb_config.json"
+
+    if args.self_validate:
+        # Generate a fresh config in a temp location for self-validation
+        from slopbucket.utils.generate_base_config import generate_base_config
+
+        temp_config_dir = tempfile.mkdtemp(prefix="sb_self_validate_")
+        temp_config_file = Path(temp_config_dir) / ".sb_config.json"
+
+        # Generate config with auto-detection
+        base_config = generate_base_config()
+
+        # Enable Python gates for slopbucket itself
+        base_config["python"]["enabled"] = True
+        for gate in ["lint-format", "tests", "coverage", "static-analysis"]:
+            if gate in base_config["python"]["gates"]:
+                base_config["python"]["gates"][gate]["enabled"] = True
+
+        # Set test_dirs
+        if "tests" in base_config["python"]["gates"]:
+            base_config["python"]["gates"]["tests"]["test_dirs"] = ["tests"]
+
+        # Write temp config
+        temp_config_file.write_text(json.dumps(base_config, indent=2) + "\n")
+
+        # Use the temp config for validation (set env var for config loading)
+        import os
+
+        os.environ["SB_CONFIG_FILE"] = str(temp_config_file)
 
     # Determine which gates to run
     gates: List[str] = []
@@ -262,21 +296,30 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print("=" * 60)
         print(f"📂 Project: {project_root}")
         if args.self_validate:
-            print("🔄 Mode: Self-validation")
+            print("🔄 Mode: Self-validation (using isolated config)")
         print(f"🔍 Quality Gates: {', '.join(gates)}")
         print("=" * 60)
         print()
 
-    # Run checks
-    summary = executor.run_checks(
-        project_root=str(project_root),
-        check_names=gates,
-        auto_fix=not args.no_auto_fix,
-    )
+    try:
+        # Run checks
+        summary = executor.run_checks(
+            project_root=str(project_root),
+            check_names=gates,
+            auto_fix=not args.no_auto_fix,
+        )
 
-    # Print summary
-    reporter.print_summary(summary)
-    return 0 if summary.all_passed else 1
+        # Print summary
+        reporter.print_summary(summary)
+        return 0 if summary.all_passed else 1
+    finally:
+        # Clean up temp config dir if used
+        if temp_config_dir:
+            import os
+            import shutil
+
+            os.environ.pop("SB_CONFIG_FILE", None)
+            shutil.rmtree(temp_config_dir, ignore_errors=True)
 
 
 def cmd_config(args: argparse.Namespace) -> int:
@@ -284,7 +327,7 @@ def cmd_config(args: argparse.Namespace) -> int:
     ensure_checks_registered()
 
     project_root = Path(args.project_root).resolve()
-    config_file = project_root / "slopbucket.json"
+    config_file = project_root / ".sb_config.json"
 
     # Load existing config
     config = {}
@@ -595,6 +638,23 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
     return response in ("y", "yes", "1", "true")
 
 
+def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
+    """Deep merge updates into base dict, modifying base in place.
+
+    For nested dicts, recursively merges. For other values, updates
+    take precedence (overwrite base).
+
+    Args:
+        base: Base dictionary to merge into
+        updates: Dictionary with values to merge in
+    """
+    for key, value in updates.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Handle the init command - interactive project setup."""
     project_root = Path(args.project_root).resolve()
@@ -603,7 +663,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"❌ Project root not found: {project_root}")
         return 1
 
-    config_file = project_root / "slopbucket.json"
+    config_file = project_root / ".sb_config.json"
     setup_config_file = Path(args.config) if args.config else None
 
     print("\n🪣 Slopbucket Interactive Setup")
@@ -713,16 +773,82 @@ def cmd_init(args: argparse.Namespace) -> int:
     # Write configuration
     print("💾 Writing configuration...")
 
-    # Merge with existing config if present
+    # Generate base config from check classes (IaC pattern)
+    from slopbucket.utils.generate_base_config import (
+        backup_config,
+        generate_base_config,
+        write_template_config,
+    )
+
+    # Always generate the template file (shows all options, for git history)
+    template_path = write_template_config(project_root)
+    print(f"📄 Template saved to: {template_path}")
+
+    base_config = generate_base_config()
+
+    # Apply detected project settings to the base config
+    if detected["has_python"]:
+        base_config["python"]["enabled"] = True
+        if detected["test_dirs"]:
+            if "tests" in base_config["python"]["gates"]:
+                base_config["python"]["gates"]["tests"]["test_dirs"] = detected[
+                    "test_dirs"
+                ]
+        # Enable standard gates
+        for gate in ["lint-format", "tests", "coverage", "static-analysis"]:
+            if gate in base_config["python"]["gates"]:
+                base_config["python"]["gates"][gate]["enabled"] = True
+
+    if detected["has_javascript"]:
+        base_config["javascript"]["enabled"] = True
+        # Enable standard gates
+        for gate in ["lint-format", "tests"]:
+            if gate in base_config["javascript"]["gates"]:
+                base_config["javascript"]["gates"][gate]["enabled"] = True
+
+    # Apply user config overrides
+    base_config["default_profile"] = config.get("default_profile", "commit")
+
+    # Apply disabled gates from user config
+    for gate_full_name in config.get("disabled_gates", []):
+        # Handle old-style gate names like "python-security"
+        if ":" not in gate_full_name and "-" in gate_full_name:
+            # Try to parse as category-gatename (e.g., "python-security")
+            parts = gate_full_name.split("-", 1)
+            if len(parts) == 2:
+                category, gate = parts[0], parts[1]
+                if category in base_config and "gates" in base_config[category]:
+                    if gate in base_config[category]["gates"]:
+                        base_config[category]["gates"][gate]["enabled"] = False
+
+    # Apply coverage threshold if set
+    if "coverage_threshold" in config:
+        if "python" in base_config and "gates" in base_config["python"]:
+            if "coverage" in base_config["python"]["gates"]:
+                base_config["python"]["gates"]["coverage"]["threshold"] = config[
+                    "coverage_threshold"
+                ]
+        if "javascript" in base_config and "gates" in base_config["javascript"]:
+            if "coverage" in base_config["javascript"]["gates"]:
+                base_config["javascript"]["gates"]["coverage"]["threshold"] = config[
+                    "coverage_threshold"
+                ]
+
+    # Merge with existing config if present (preserve user customizations)
     if config_file.exists():
         try:
             existing = json.loads(config_file.read_text())
-            existing.update(config)
-            config = existing
+            # Back up before overwriting
+            backup_path = backup_config(config_file)
+            if backup_path:
+                print(f"📦 Backed up existing config to: {backup_path}")
+            # Deep merge: existing values take precedence for user customizations
+            # but new structure is used as base
+            _deep_merge(base_config, existing)
         except json.JSONDecodeError:
             pass
 
-    config_file.write_text(json.dumps(config, indent=2) + "\n")
+    config_file.write_text(json.dumps(base_config, indent=2) + "\n")
     print(f"✅ Configuration saved to: {config_file}")
 
     # Show next steps

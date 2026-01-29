@@ -138,10 +138,9 @@ sb init --config setup_config.json --non-interactive
 
 ```
 slopbucket/
-├── setup.py                    # Interactive setup + setuptools
+├── setup.py                    # Package setup
 ├── slopbucket/
-│   ├── sb.py                   # sb CLI (verb-based interface)
-│   ├── cli.py                  # Legacy CLI (--checks style)
+│   ├── sb.py                   # CLI entry point (verb-based)
 │   ├── core/
 │   │   ├── executor.py         # Parallel check execution
 │   │   ├── registry.py         # Check registration
@@ -156,7 +155,7 @@ slopbucket/
 │   │   └── runner.py           # Secure execution
 │   └── reporting/
 │       └── console.py          # Output formatting
-└── tests/                      # Test suite (191 tests, 80% coverage)
+└── tests/                      # Test suite
 ```
 
 ## Security
@@ -172,18 +171,21 @@ slopbucket uses a whitelist-based security model for subprocess execution:
 
 slopbucket works out of the box with **zero required configuration**.
 
-Configuration is stored in `slopbucket.json` in your project root:
+Configuration is stored in `.sb_config.json` in your project root:
 
 ```json
 {
-  "disabled_gates": ["js-tests"],
-  "paths": {
-    "tests": "tests/",
-    "src": "src/"
-  },
-  "thresholds": {
-    "coverage": 80,
-    "complexity": "C"
+  "version": "1.0",
+  "default_profile": "commit",
+  
+  "python": {
+    "enabled": true,
+    "include_dirs": ["src"],
+    "gates": {
+      "lint-format": { "enabled": true },
+      "tests": { "enabled": true, "test_dirs": ["tests"] },
+      "coverage": { "enabled": true, "threshold": 80 }
+    }
   }
 }
 ```
@@ -234,7 +236,7 @@ pip install -e ".[dev]"
 pytest
 
 # Run self-validation (slopbucket validates itself!)
-python setup.py --checks commit
+sb validate --self
 ```
 
 ## Migration from ship_it.py

@@ -2,8 +2,14 @@
 
 import sys
 import time
+from typing import List
 
-from slopbucket.checks.base import BaseCheck, PythonCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    ConfigField,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 
@@ -16,11 +22,36 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def name(self) -> str:
-        return "python-tests"
+        return "tests"
 
     @property
     def display_name(self) -> str:
-        return "🧪 Python Tests (pytest)"
+        return "🧪 Tests (pytest)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["python:lint-format"]
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="test_dirs",
+                field_type="string[]",
+                default=["tests"],
+                description="Directories containing test files",
+            ),
+            ConfigField(
+                name="timeout",
+                field_type="integer",
+                default=300,
+                description="Test execution timeout in seconds",
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)

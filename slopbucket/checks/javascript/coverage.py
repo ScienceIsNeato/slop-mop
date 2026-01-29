@@ -8,9 +8,14 @@ import json
 import os
 import re
 import time
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
-from slopbucket.checks.base import BaseCheck, JavaScriptCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    ConfigField,
+    GateCategory,
+    JavaScriptCheckMixin,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 80
@@ -25,11 +30,32 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def name(self) -> str:
-        return "js-coverage"
+        return "coverage"
 
     @property
     def display_name(self) -> str:
-        return f"📊 JavaScript Coverage ({self.threshold}%)"
+        return f"📊 Coverage ({self.threshold}%)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.JAVASCRIPT
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["javascript:tests"]
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="threshold",
+                field_type="integer",
+                default=80,
+                description="Minimum coverage percentage required",
+                min_value=0,
+                max_value=100,
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_javascript_project(project_root)

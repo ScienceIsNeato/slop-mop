@@ -35,3 +35,10 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# cursor files
+cursor-rules/
+
+# Slopbucket config (user-specific, not template)
+.sb_config.json
+.sb_config.json.backup.*

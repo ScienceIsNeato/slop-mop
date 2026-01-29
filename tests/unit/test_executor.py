@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock
 
-from slopbucket.checks.base import BaseCheck
+from slopbucket.checks.base import BaseCheck, GateCategory
 from slopbucket.core.executor import CheckExecutor
 from slopbucket.core.registry import CheckRegistry
 from slopbucket.core.result import CheckResult, CheckStatus
@@ -28,6 +28,10 @@ class MockCheck(BaseCheck):
     @property
     def display_name(self) -> str:
         return self._mock_display_name
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
 
     @property
     def depends_on(self) -> list:
@@ -84,7 +88,7 @@ class TestCheckExecutor:
         registry.register(check_class)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["check1"])
+        summary = executor.run_checks("/tmp", ["python:check1"])
 
         assert summary.total_checks == 1
         assert summary.passed == 1
@@ -100,7 +104,7 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["check1", "check2"])
+        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
 
         assert summary.total_checks == 2
         assert summary.passed == 2
@@ -118,7 +122,7 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=True)
-        summary = executor.run_checks("/tmp", ["check1", "check2"])
+        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
 
         assert summary.failed >= 1
         # check2 may or may not run depending on timing
@@ -132,7 +136,7 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=False)
-        summary = executor.run_checks("/tmp", ["check1", "check2"])
+        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
 
         assert summary.total_checks == 2
         assert check_class1.run_count == 1
@@ -147,7 +151,7 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["check1", "check2"])
+        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
 
         assert summary.passed == 1
         assert summary.skipped == 1
@@ -158,12 +162,12 @@ class TestCheckExecutor:
         """Test that dependencies are respected."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1")
-        check_class2 = make_mock_check_class("check2", depends_on=["check1"])
+        check_class2 = make_mock_check_class("check2", depends_on=["python:check1"])
         registry.register(check_class1)
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["check1", "check2"])
+        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
 
         assert summary.total_checks == 2
         assert summary.passed == 2
@@ -172,12 +176,12 @@ class TestCheckExecutor:
         """Test that checks are skipped if dependency fails."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", status=CheckStatus.FAILED)
-        check_class2 = make_mock_check_class("check2", depends_on=["check1"])
+        check_class2 = make_mock_check_class("check2", depends_on=["python:check1"])
         registry.register(check_class1)
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=False)
-        summary = executor.run_checks("/tmp", ["check1", "check2"])
+        summary = executor.run_checks("/tmp", ["python:check1", "python:check2"])
 
         assert summary.failed == 1
         assert summary.skipped == 1
@@ -192,7 +196,7 @@ class TestCheckExecutor:
         callback = MagicMock()
         executor = CheckExecutor(registry=registry)
         executor.set_progress_callback(callback)
-        executor.run_checks("/tmp", ["check1"])
+        executor.run_checks("/tmp", ["python:check1"])
 
         callback.assert_called_once()
         result = callback.call_args[0][0]
@@ -214,7 +218,7 @@ class TestCheckExecutor:
         registry.register(check_class)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["check1"])
+        summary = executor.run_checks("/tmp", ["python:check1"])
 
         assert summary.total_duration >= 0.05
 
@@ -232,7 +236,7 @@ class TestCheckExecutor:
         registry.register(ExceptionCheck)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks("/tmp", ["exception-check"])
+        summary = executor.run_checks("/tmp", ["python:exception-check"])
 
         assert summary.errors == 1
 
@@ -263,7 +267,7 @@ class TestCheckExecutor:
         registry.register(FixableCheck)
 
         executor = CheckExecutor(registry=registry)
-        executor.run_checks("/tmp", ["fixable-check"], auto_fix=True)
+        executor.run_checks("/tmp", ["python:fixable-check"], auto_fix=True)
 
         assert FixableCheck.fix_called
 
@@ -286,7 +290,7 @@ class TestCheckExecutor:
         registry.register(FixableCheck)
 
         executor = CheckExecutor(registry=registry)
-        executor.run_checks("/tmp", ["fixable-check2"], auto_fix=False)
+        executor.run_checks("/tmp", ["python:fixable-check2"], auto_fix=False)
 
         assert not FixableCheck.fix_called
 
@@ -306,6 +310,6 @@ class TestCheckExecutor:
         registry.register(ConfigCheck)
 
         executor = CheckExecutor(registry=registry)
-        executor.run_checks("/tmp", ["config-check"], config={"key": "value"})
+        executor.run_checks("/tmp", ["python:config-check"], config={"key": "value"})
 
         assert ConfigCheck.received_config == {"key": "value"}

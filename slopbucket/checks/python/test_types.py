@@ -13,9 +13,14 @@ starting servers and seeding databases before invoking slopbucket.
 import os
 import sys
 import time
-from typing import Optional
+from typing import List, Optional
 
-from slopbucket.checks.base import BaseCheck, PythonCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    ConfigField,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 
@@ -29,6 +34,21 @@ class SmokeTestCheck(BaseCheck, PythonCheckMixin):
     @property
     def display_name(self) -> str:
         return "💨 Smoke Tests (Selenium)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.INTEGRATION
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="test_dir",
+                field_type="string",
+                default="tests/smoke",
+                description="Directory containing smoke tests",
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
         smoke_dir = os.path.join(project_root, "tests", "smoke")
@@ -105,6 +125,25 @@ class IntegrationTestCheck(BaseCheck, PythonCheckMixin):
     def display_name(self) -> str:
         return "🔗 Integration Tests (database-backed)"
 
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.INTEGRATION
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["integration:smoke-tests"]
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="test_dir",
+                field_type="string",
+                default="tests/integration",
+                description="Directory containing integration tests",
+            ),
+        ]
+
     def is_applicable(self, project_root: str) -> bool:
         integration_dir = os.path.join(project_root, "tests", "integration")
         return os.path.isdir(integration_dir)
@@ -174,6 +213,31 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
     @property
     def display_name(self) -> str:
         return "🎭 E2E Tests (Playwright)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.INTEGRATION
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["integration:integration-tests"]
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="test_dir",
+                field_type="string",
+                default="tests/e2e",
+                description="Directory containing E2E tests",
+            ),
+            ConfigField(
+                name="test_command",
+                field_type="string",
+                default=None,
+                description="Custom test command (optional)",
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
         e2e_dir = os.path.join(project_root, "tests", "e2e")

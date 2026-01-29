@@ -2,6 +2,9 @@
 
 Detects copy-paste code across multiple languages.
 Reports specific file pairs and line ranges for deduplication.
+
+Note: This is a cross-cutting quality check that works across
+all languages supported by jscpd.
 """
 
 import json
@@ -9,7 +12,7 @@ import os
 import time
 from typing import Any, Dict, List
 
-from slopbucket.checks.base import BaseCheck
+from slopbucket.checks.base import BaseCheck, ConfigField, GateCategory
 from slopbucket.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
@@ -31,6 +34,41 @@ class DuplicationCheck(BaseCheck):
     @property
     def display_name(self) -> str:
         return f"📋 Code Duplication (max {self.threshold}%)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.QUALITY
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="threshold",
+                field_type="integer",
+                default=5,
+                description="Maximum allowed duplication percentage",
+                min_value=0,
+                max_value=100,
+            ),
+            ConfigField(
+                name="include_dirs",
+                field_type="string[]",
+                default=["."],
+                description="Directories to scan for duplication",
+            ),
+            ConfigField(
+                name="min_tokens",
+                field_type="integer",
+                default=50,
+                description="Minimum token count to consider as duplicate",
+            ),
+            ConfigField(
+                name="min_lines",
+                field_type="integer",
+                default=5,
+                description="Minimum line count to consider as duplicate",
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
         # Applicable to any project with code
@@ -55,14 +93,18 @@ class DuplicationCheck(BaseCheck):
                 fix_suggestion="Install jscpd: npm install -g jscpd",
             )
 
+        # Get config values
+        min_tokens = self.config.get("min_tokens", MIN_TOKENS)
+        min_lines = self.config.get("min_lines", MIN_LINES)
+
         # Run jscpd
         cmd = [
             "npx",
             "jscpd",
             "--min-tokens",
-            str(MIN_TOKENS),
+            str(min_tokens),
             "--min-lines",
-            str(MIN_LINES),
+            str(min_lines),
             "--threshold",
             str(self.threshold),
             "--reporters",

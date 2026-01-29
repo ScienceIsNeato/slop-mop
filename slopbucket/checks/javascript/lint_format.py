@@ -3,7 +3,11 @@
 import time
 from typing import List, Optional
 
-from slopbucket.checks.base import BaseCheck, JavaScriptCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    GateCategory,
+    JavaScriptCheckMixin,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 
@@ -19,11 +23,15 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def name(self) -> str:
-        return "js-lint-format"
+        return "lint-format"
 
     @property
     def display_name(self) -> str:
-        return "🎨 JavaScript Lint & Format (ESLint, Prettier)"
+        return "🎨 Lint & Format (ESLint, Prettier)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.JAVASCRIPT
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_javascript_project(project_root)

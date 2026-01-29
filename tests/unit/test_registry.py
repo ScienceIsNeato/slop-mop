@@ -1,6 +1,6 @@
 """Tests for check registry."""
 
-from slopbucket.checks.base import BaseCheck
+from slopbucket.checks.base import BaseCheck, GateCategory
 from slopbucket.core.registry import CheckRegistry, get_registry
 from slopbucket.core.result import CheckDefinition, CheckResult, CheckStatus
 
@@ -20,6 +20,10 @@ class MockCheck(BaseCheck):
     @property
     def display_name(self) -> str:
         return self._mock_display_name
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
 
     @property
     def depends_on(self) -> list:
@@ -58,7 +62,8 @@ class TestCheckRegistry:
 
         registry.register(check_class)
 
-        assert "test-check" in registry.list_checks()
+        # Registry now uses full_name (category:name)
+        assert "python:test-check" in registry.list_checks()
 
     def test_register_check_with_definition(self):
         """Test registering a check creates definition."""
@@ -66,10 +71,10 @@ class TestCheckRegistry:
         check_class = make_mock_check_class("test-check")
 
         registry.register(check_class)
-        definition = registry.get_definition("test-check")
+        definition = registry.get_definition("python:test-check")
 
         assert definition is not None
-        assert definition.flag == "test-check"
+        assert definition.flag == "python:test-check"
         assert definition.name == "Mock: test-check"
 
     def test_register_duplicate_check_overwrites(self):
@@ -82,7 +87,7 @@ class TestCheckRegistry:
         # Should not raise, just warn and overwrite
         registry.register(check_class2)
 
-        assert "test-check" in registry.list_checks()
+        assert "python:test-check" in registry.list_checks()
 
     def test_register_alias(self):
         """Test registering an alias."""
@@ -92,11 +97,11 @@ class TestCheckRegistry:
 
         registry.register(check_class1)
         registry.register(check_class2)
-        registry.register_alias("both", ["check1", "check2"])
+        registry.register_alias("both", ["python:check1", "python:check2"])
 
         aliases = registry.list_aliases()
         assert "both" in aliases
-        assert aliases["both"] == ["check1", "check2"]
+        assert aliases["both"] == ["python:check1", "python:check2"]
 
     def test_get_checks_by_name(self):
         """Test getting checks by name."""
@@ -107,7 +112,7 @@ class TestCheckRegistry:
         registry.register(check_class1)
         registry.register(check_class2)
 
-        checks = registry.get_checks(["check1"], {})
+        checks = registry.get_checks(["python:check1"], {})
         assert len(checks) == 1
         assert checks[0].name == "check1"
 
@@ -119,7 +124,7 @@ class TestCheckRegistry:
 
         registry.register(check_class1)
         registry.register(check_class2)
-        registry.register_alias("both", ["check1", "check2"])
+        registry.register_alias("both", ["python:check1", "python:check2"])
 
         checks = registry.get_checks(["both"], {})
         assert len(checks) == 2
@@ -140,7 +145,7 @@ class TestCheckRegistry:
         registry.register(check_class)
 
         config = {"threshold": 90}
-        checks = registry.get_checks(["check1"], config)
+        checks = registry.get_checks(["python:check1"], config)
 
         assert len(checks) == 1
         assert checks[0].config == config
@@ -151,7 +156,7 @@ class TestCheckRegistry:
         check_class = make_mock_check_class("check1")
         registry.register(check_class)
 
-        check = registry.get_check("check1", {})
+        check = registry.get_check("python:check1", {})
         assert check is not None
         assert check.name == "check1"
 
@@ -179,18 +184,18 @@ class TestCheckRegistry:
     def test_is_alias(self):
         """Test checking if name is an alias."""
         registry = CheckRegistry()
-        registry.register_alias("myalias", ["check1", "check2"])
+        registry.register_alias("myalias", ["python:check1", "python:check2"])
 
         assert registry.is_alias("myalias") is True
-        assert registry.is_alias("check1") is False
+        assert registry.is_alias("python:check1") is False
 
     def test_expand_alias(self):
         """Test expanding an alias."""
         registry = CheckRegistry()
-        registry.register_alias("myalias", ["check1", "check2"])
+        registry.register_alias("myalias", ["python:check1", "python:check2"])
 
         expanded = registry.expand_alias("myalias")
-        assert expanded == ["check1", "check2"]
+        assert expanded == ["python:check1", "python:check2"]
 
     def test_expand_alias_non_alias(self):
         """Test expanding a non-alias returns itself."""
@@ -215,7 +220,7 @@ class TestCheckRegistry:
         check_class = make_mock_check_class("check1")
         registry.register(check_class)
 
-        checks = registry.get_checks(["check1", "check1"], {})
+        checks = registry.get_checks(["python:check1", "python:check1"], {})
         assert len(checks) == 1
 
 
@@ -237,4 +242,6 @@ class TestCheckDefinition:
         def2 = CheckDefinition("test", "Test")
 
         assert hash(def1) == hash(def2)
-        assert len({def1, def2}) == 1
+        # Can be used in sets
+        s = {def1, def2}
+        assert len(s) == 1

@@ -1,11 +1,14 @@
-"""Python security checks using bandit, semgrep, and detect-secrets.
+"""Security checks using bandit, semgrep, and detect-secrets.
 
 Two variants:
-- PythonSecurityLocalCheck: Local-only checks (bandit + semgrep + detect-secrets)
-- PythonSecurityCheck: Full audit including dependency scanning via safety
+- SecurityLocalCheck: Local-only checks (bandit + semgrep + detect-secrets)
+- SecurityCheck: Full audit including dependency scanning via safety
 
 Runs sub-checks concurrently for speed. Reports only HIGH/MEDIUM findings
 to reduce noise while catching real security issues.
+
+Note: These are cross-cutting security checks that apply to any project
+with code files, not just Python projects.
 """
 
 import json
@@ -16,7 +19,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable, List
 
-from slopbucket.checks.base import BaseCheck, PythonCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    ConfigField,
+    GateCategory,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 EXCLUDED_DIRS = ["venv", ".venv", "node_modules", "cursor-rules", "archives", "logs"]
@@ -31,22 +38,51 @@ class SecuritySubResult:
     findings: str
 
 
-class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
+class SecurityLocalCheck(BaseCheck):
     """Local security checks (no network required).
 
     Runs bandit, semgrep, and detect-secrets in parallel.
+    Cross-cutting check that applies to any project with source files.
     """
 
     @property
     def name(self) -> str:
-        return "python-security-local"
+        return "local"
 
     @property
     def display_name(self) -> str:
-        return "🔐 Python Security Local (bandit + semgrep + detect-secrets)"
+        return "🔐 Security Local (bandit + semgrep + detect-secrets)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.SECURITY
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="scanners",
+                field_type="string[]",
+                default=["bandit", "semgrep", "detect-secrets"],
+                description="Security scanners to run",
+            ),
+            ConfigField(
+                name="exclude_dirs",
+                field_type="string[]",
+                default=EXCLUDED_DIRS.copy(),
+                description="Directories to exclude from scanning",
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_python_project(project_root)
+        """Check if there are any source files to scan."""
+        from pathlib import Path
+
+        root = Path(project_root)
+        # Look for Python or JS files
+        has_py = any(root.rglob("*.py"))
+        has_js = any(root.rglob("*.js")) or any(root.rglob("*.ts"))
+        return has_py or has_js
 
     def run(self, project_root: str) -> CheckResult:
         """Run all local security checks in parallel."""
@@ -91,22 +127,33 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
             fix_suggestion="Address HIGH severity issues first. They block merge.",
         )
 
+    def _get_exclude_dirs(self) -> List[str]:
+        """Get directories to exclude from config or defaults."""
+        return self.config.get("exclude_dirs", EXCLUDED_DIRS)
+
     def _run_bandit(self, project_root: str) -> SecuritySubResult:
         """Run bandit static analysis."""
+        # Check for config file
+        config_file = self.config.get("config_file_path")
+
         cmd = [
             sys.executable,
             "-m",
             "bandit",
             "-r",
             ".",
-            "--skip",
-            "B101,B110",
             "--format",
             "json",
             "--quiet",
         ]
-        for d in EXCLUDED_DIRS:
-            cmd.extend(["--exclude", f"./{d}"])
+
+        # Use config file if specified, otherwise use defaults
+        if config_file:
+            cmd.extend(["--configfile", config_file])
+        else:
+            cmd.extend(["--skip", "B101,B110"])
+            for d in self._get_exclude_dirs():
+                cmd.extend(["--exclude", f"./{d}"])
 
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 
@@ -136,7 +183,7 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
     def _run_semgrep(self, project_root: str) -> SecuritySubResult:
         """Run semgrep static analysis."""
         cmd = ["semgrep", "scan", "--config=auto", "--json", "--quiet"]
-        for d in EXCLUDED_DIRS:
+        for d in self._get_exclude_dirs():
             cmd.extend(["--exclude", d])
 
         result = self._run_command(cmd, cwd=project_root, timeout=120)
@@ -172,7 +219,13 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     def _run_detect_secrets(self, project_root: str) -> SecuritySubResult:
         """Run detect-secrets hook."""
+        # Check for baseline file
+        config_file = self.config.get("config_file_path")
+
         cmd = [sys.executable, "-m", "detect_secrets", "scan"]
+        if config_file:
+            cmd.extend(["--baseline", config_file])
+
         result = self._run_command(cmd, cwd=project_root, timeout=60)
 
         if result.success:
@@ -203,20 +256,20 @@ class PythonSecurityLocalCheck(BaseCheck, PythonCheckMixin):
         )
 
 
-class PythonSecurityCheck(PythonSecurityLocalCheck):
+class SecurityCheck(SecurityLocalCheck):
     """Full security checks including dependency vulnerability scanning.
 
-    Extends PythonSecurityLocalCheck with safety for dependency audit.
+    Extends SecurityLocalCheck with safety for dependency audit.
     Requires network access.
     """
 
     @property
     def name(self) -> str:
-        return "python-security"
+        return "full"
 
     @property
     def display_name(self) -> str:
-        return "🔒 Python Security Full (bandit + semgrep + detect-secrets + safety)"
+        return "🔒 Security Full (bandit + semgrep + detect-secrets + safety)"
 
     def run(self, project_root: str) -> CheckResult:
         """Run all security checks including dependency scanning."""
@@ -265,9 +318,15 @@ class PythonSecurityCheck(PythonSecurityLocalCheck):
     def _run_safety(self, project_root: str) -> SecuritySubResult:
         """Run safety dependency vulnerability scan."""
         api_key = os.environ.get("SAFETY_API_KEY", "")
+
+        # Check for safety config file
+        safety_config = self.config.get("safety_config_file")
+
         cmd = [sys.executable, "-m", "safety", "scan", "--output", "json"]
         if api_key:
             cmd.extend(["--key", api_key])
+        if safety_config:
+            cmd.extend(["--policy-file", safety_config])
 
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 

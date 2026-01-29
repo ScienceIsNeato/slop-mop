@@ -7,33 +7,51 @@ Far faster than discovering them at runtime.
 import os
 import sys
 import time
-from typing import Optional
+from typing import List, Optional
 
-from slopbucket.checks.base import BaseCheck
+from slopbucket.checks.base import BaseCheck, ConfigField, GateCategory
 from slopbucket.core.result import CheckResult, CheckStatus
 
 
 class TemplateValidationCheck(BaseCheck):
-    """Jinja2 template syntax validation."""
+    """Jinja2 template syntax validation.
+
+    Uses 'templates_dir' from .sb_config.json config.
+    """
 
     @property
     def name(self) -> str:
-        return "template-validation"
+        return "templates"
 
     @property
     def display_name(self) -> str:
         return "📄 Template Validation (Jinja2)"
 
-    def is_applicable(self, project_root: str) -> bool:
-        # Applicable if templates directory exists
-        return self._find_templates_dir(project_root) is not None
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.GENERAL
 
-    def _find_templates_dir(self, project_root: str) -> Optional[str]:
-        """Find templates directory."""
-        candidates = ["templates", "src/templates", "app/templates"]
-        for c in candidates:
-            if os.path.isdir(os.path.join(project_root, c)):
-                return c
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="templates_dir",
+                field_type="string",
+                default=None,
+                description="Directory containing Jinja2 templates",
+                required=True,
+            ),
+        ]
+
+    def is_applicable(self, project_root: str) -> bool:
+        # Applicable if templates_dir is configured and exists
+        return self._get_templates_dir(project_root) is not None
+
+    def _get_templates_dir(self, project_root: str) -> Optional[str]:
+        """Get templates directory from config."""
+        configured = self.config.get("templates_dir")
+        if configured and os.path.isdir(os.path.join(project_root, configured)):
+            return configured
         return None
 
     def run(self, project_root: str) -> CheckResult:
@@ -46,13 +64,14 @@ class TemplateValidationCheck(BaseCheck):
         if os.path.exists(template_test):
             return self._run_template_test(project_root, template_test, start_time)
 
-        # Fallback: compile templates directly
-        templates_dir = self._find_templates_dir(project_root)
+        # Use configured templates directory
+        templates_dir = self._get_templates_dir(project_root)
         if not templates_dir:
             return self._create_result(
                 status=CheckStatus.SKIPPED,
                 duration=time.time() - start_time,
-                output="No templates directory found.",
+                output="No templates_dir configured in .sb_config.json.",
+                fix_suggestion='Add "templates_dir": "templates" to .sb_config.json',
             )
 
         return self._validate_templates(project_root, templates_dir, start_time)

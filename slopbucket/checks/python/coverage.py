@@ -5,9 +5,14 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from slopbucket.checks.base import BaseCheck, PythonCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    ConfigField,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 COVERAGE_THRESHOLD = 80
@@ -52,15 +57,32 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def name(self) -> str:
-        return "python-coverage"
+        return "coverage"
 
     @property
     def display_name(self) -> str:
-        return "📊 Python Coverage (80% threshold)"
+        return "📊 Coverage (80% threshold)"
 
     @property
-    def depends_on(self):
-        return ["python-tests"]
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["python:tests"]
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="threshold",
+                field_type="integer",
+                default=80,
+                description="Minimum coverage percentage required",
+                min_value=0,
+                max_value=100,
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
@@ -141,15 +163,19 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def name(self) -> str:
-        return "python-diff-coverage"
+        return "diff-coverage"
 
     @property
     def display_name(self) -> str:
-        return f"📈 Python Diff Coverage ({COVERAGE_THRESHOLD}%)"
+        return f"📈 Diff Coverage ({COVERAGE_THRESHOLD}%)"
 
     @property
-    def depends_on(self):
-        return ["python-tests"]
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["python:tests"]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
@@ -207,20 +233,24 @@ class PythonNewCodeCoverageCheck(BaseCheck, PythonCheckMixin):
     """Coverage on new/changed code only — CI-oriented diff-cover gate.
 
     Semantically identical to PythonDiffCoverageCheck but registered
-    under the python-new-code-coverage name that CI workflows reference.
+    under the new-code-coverage name that CI workflows reference.
     """
 
     @property
     def name(self) -> str:
-        return "python-new-code-coverage"
+        return "new-code-coverage"
 
     @property
     def display_name(self) -> str:
-        return f"🆕 Python New Code Coverage ({COVERAGE_THRESHOLD}%)"
+        return f"🆕 New Code Coverage ({COVERAGE_THRESHOLD}%)"
 
     @property
-    def depends_on(self):
-        return ["python-tests"]
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["python:tests"]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)

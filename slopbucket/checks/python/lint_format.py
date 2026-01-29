@@ -10,7 +10,12 @@ import os
 import time
 from typing import List, Optional
 
-from slopbucket.checks.base import BaseCheck, PythonCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    ConfigField,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 
@@ -27,11 +32,26 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def name(self) -> str:
-        return "python-lint-format"
+        return "lint-format"
 
     @property
     def display_name(self) -> str:
-        return "🎨 Python Lint & Format (black, isort, flake8)"
+        return "🎨 Lint & Format (black, isort, flake8)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="line_length",
+                field_type="integer",
+                default=88,
+                description="Maximum line length for black",
+            ),
+        ]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)

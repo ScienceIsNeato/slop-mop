@@ -14,17 +14,12 @@ def register_all_checks() -> None:
     registry = get_registry()
 
     # Import and register Python checks
-    from slopbucket.checks.python.complexity import PythonComplexityCheck
     from slopbucket.checks.python.coverage import (
         PythonCoverageCheck,
         PythonDiffCoverageCheck,
         PythonNewCodeCoverageCheck,
     )
     from slopbucket.checks.python.lint_format import PythonLintFormatCheck
-    from slopbucket.checks.python.security import (
-        PythonSecurityCheck,
-        PythonSecurityLocalCheck,
-    )
     from slopbucket.checks.python.static_analysis import PythonStaticAnalysisCheck
     from slopbucket.checks.python.test_types import (
         E2ETestCheck,
@@ -39,9 +34,6 @@ def register_all_checks() -> None:
     registry.register(PythonDiffCoverageCheck)
     registry.register(PythonNewCodeCoverageCheck)
     registry.register(PythonStaticAnalysisCheck)
-    registry.register(PythonComplexityCheck)
-    registry.register(PythonSecurityCheck)
-    registry.register(PythonSecurityLocalCheck)
     registry.register(SmokeTestCheck)
     registry.register(IntegrationTestCheck)
     registry.register(E2ETestCheck)
@@ -57,93 +49,109 @@ def register_all_checks() -> None:
     registry.register(JavaScriptCoverageCheck)
     registry.register(FrontendCheck)
 
+    # Import and register security checks (cross-cutting)
+    from slopbucket.checks.security import SecurityCheck, SecurityLocalCheck
+
+    registry.register(SecurityCheck)
+    registry.register(SecurityLocalCheck)
+
+    # Import and register quality checks (cross-cutting)
+    from slopbucket.checks.quality import ComplexityCheck, DuplicationCheck
+
+    registry.register(ComplexityCheck)
+    registry.register(DuplicationCheck)
+
     # Import and register general checks
-    from slopbucket.checks.general.duplication import DuplicationCheck
     from slopbucket.checks.general.templates import TemplateValidationCheck
 
-    registry.register(DuplicationCheck)
     registry.register(TemplateValidationCheck)
 
     # Register aliases
     registry.register_alias(
         "commit",
         [
-            "python-lint-format",
-            "python-static-analysis",
-            "python-tests",
-            "python-coverage",
-            "python-complexity",
-            "python-security-local",
+            "python:lint-format",
+            "python:static-analysis",
+            "python:tests",
+            "python:coverage",
+            "quality:complexity",
+            "security:local",
         ],
     )
 
     registry.register_alias(
         "pr",
         [
-            "python-lint-format",
-            "python-static-analysis",
-            "python-tests",
-            "python-coverage",
-            "python-diff-coverage",
-            "python-new-code-coverage",
-            "python-complexity",
-            "python-security",
-            "duplication",
-            "js-lint-format",
-            "js-tests",
-            "js-coverage",
+            "python:lint-format",
+            "python:static-analysis",
+            "python:tests",
+            "python:coverage",
+            "python:diff-coverage",
+            "python:new-code-coverage",
+            "quality:complexity",
+            "security:full",
+            "quality:duplication",
+            "javascript:lint-format",
+            "javascript:tests",
+            "javascript:coverage",
         ],
     )
 
     registry.register_alias(
         "quick",
         [
-            "python-lint-format",
-            "python-security-local",
+            "python:lint-format",
+            "security:local",
         ],
     )
 
     registry.register_alias(
         "python",
         [
-            "python-lint-format",
-            "python-static-analysis",
-            "python-tests",
-            "python-coverage",
-            "python-complexity",
-            "python-security",
+            "python:lint-format",
+            "python:static-analysis",
+            "python:tests",
+            "python:coverage",
         ],
     )
 
     registry.register_alias(
         "javascript",
         [
-            "js-lint-format",
-            "js-tests",
-            "js-coverage",
-            "frontend-check",
+            "javascript:lint-format",
+            "javascript:tests",
+            "javascript:coverage",
+            "javascript:frontend",
         ],
     )
 
     registry.register_alias(
         "security",
         [
-            "python-security",
+            "security:full",
         ],
     )
 
     registry.register_alias(
         "security-local",
         [
-            "python-security-local",
+            "security:local",
+        ],
+    )
+
+    registry.register_alias(
+        "quality",
+        [
+            "quality:complexity",
+            "quality:duplication",
         ],
     )
 
     registry.register_alias(
         "e2e",
         [
-            "smoke-tests",
-            "integration-tests",
-            "e2e-tests",
+            "integration:smoke-tests",
+            "integration:integration-tests",
+            "integration:e2e-tests",
         ],
     )

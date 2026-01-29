@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from slopbucket.checks.base import (
     BaseCheck,
+    GateCategory,
     JavaScriptCheckMixin,
     PythonCheckMixin,
 )
@@ -20,6 +21,10 @@ class ConcreteCheck(BaseCheck):
     @property
     def display_name(self) -> str:
         return "Test Check"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
 
     def is_applicable(self, project_root: str) -> bool:
         return True

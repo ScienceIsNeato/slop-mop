@@ -1,8 +1,13 @@
 """Python static analysis check using mypy."""
 
 import time
+from typing import List
 
-from slopbucket.checks.base import BaseCheck, PythonCheckMixin
+from slopbucket.checks.base import (
+    BaseCheck,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopbucket.core.result import CheckResult, CheckStatus
 
 
@@ -14,11 +19,19 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def name(self) -> str:
-        return "python-static-analysis"
+        return "static-analysis"
 
     @property
     def display_name(self) -> str:
-        return "🔍 Python Static Analysis (mypy)"
+        return "🔍 Static Analysis (mypy)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.PYTHON
+
+    @property
+    def depends_on(self) -> List[str]:
+        return ["python:lint-format"]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)

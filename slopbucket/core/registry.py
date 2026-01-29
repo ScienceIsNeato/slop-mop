@@ -42,7 +42,8 @@ class CheckRegistry:
         """
         # Create temporary instance to get name
         temp_instance = check_class({})
-        name = temp_instance.name
+        # Use full_name (category:name) for unique registration
+        name = temp_instance.full_name
 
         if name in self._check_classes:
             logger.warning(f"Overwriting existing check: {name}")
