@@ -24,6 +24,7 @@ class GateCategory(Enum):
     QUALITY = ("quality", "📊", "Quality")
     GENERAL = ("general", "🔧", "General")
     INTEGRATION = ("integration", "🎭", "Integration")
+    PR = ("pr", "🔀", "Pull Request")
 
     def __init__(self, key: str, emoji: str, display_name: str):
         self.key = key

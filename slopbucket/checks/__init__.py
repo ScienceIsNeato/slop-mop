@@ -66,6 +66,11 @@ def register_all_checks() -> None:
 
     registry.register(TemplateValidationCheck)
 
+    # Import and register PR checks
+    from slopbucket.checks.pr.comments import PRCommentsCheck
+
+    registry.register(PRCommentsCheck)
+
     # Register aliases
     registry.register_alias(
         "commit",
@@ -82,6 +87,7 @@ def register_all_checks() -> None:
     registry.register_alias(
         "pr",
         [
+            "pr:comments",
             "python:lint-format",
             "python:static-analysis",
             "python:tests",
