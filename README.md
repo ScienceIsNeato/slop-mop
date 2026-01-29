@@ -10,6 +10,7 @@ A language-agnostic, bolt-on code validation tool designed to catch AI-generated
 - **Maximum value, minimum time**: Prioritize quick, high-impact checks
 - **AI-friendly output**: Clear errors with exact fixes
 - **Zero configuration required**: Works out of the box
+- **Simple, iterative workflow**: Use aliases, fix failures one at a time
 
 ## Quick Start
 
@@ -20,34 +21,86 @@ git submodule add https://github.com/ScienceIsNeato/slopbucket.git
 # 2. Run interactive setup (auto-detects project type)
 cd slopbucket && pip install -e . && sb init
 
-# 3. Run validation
-sb validate              # Full suite
-sb validate commit       # Fast commit validation
-sb validate pr --verbose # PR validation with details
+# 3. Run validation (use profiles, not gate lists!)
+sb validate commit       # Fast commit validation ← USE THIS
+sb validate pr           # Full PR validation
 ```
+
+## AI Agent Workflow
+
+**🤖 For AI coding assistants: This is the intended workflow.**
+
+### The Simple Pattern
+
+```bash
+# Just run the profile - don't overthink it!
+sb validate commit
+```
+
+That's it. When a check fails, slopbucket tells you exactly what to do next:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ 🤖 AI AGENT ITERATION GUIDANCE                           │
+├──────────────────────────────────────────────────────────┤
+│ Profile: commit                                          │
+│ Failed Gate: python-coverage                             │
+├──────────────────────────────────────────────────────────┤
+│ NEXT STEPS:                                              │
+│                                                          │
+│ 1. Fix the issue described above                         │
+│ 2. Validate: sb validate python-coverage                 │
+│ 3. Resume:   sb validate commit                          │
+│                                                          │
+│ Keep iterating until all checks pass.                    │
+└──────────────────────────────────────────────────────────┘
+```
+
+### What NOT to Do
+
+```bash
+# ❌ DON'T do this - it's verbose and misses the point
+sb validate -g python:lint-format,python:static-analysis,python:tests,python:coverage
+
+# ✅ DO this - simple, iterative, self-guiding
+sb validate commit
+```
+
+### The Iteration Loop
+
+1. **Run the profile**: `sb validate commit`
+2. **See what fails**: Output shows exactly which gate failed
+3. **Fix the issue**: Follow the guidance in the error output
+4. **Validate the fix**: `sb validate <failed-gate>` (just that one gate)
+5. **Resume the profile**: `sb validate commit` (to catch any remaining issues)
+6. **Repeat until green**: Keep iterating until all checks pass
+
+This fail-fast, iterative approach is faster than running everything, easier to reason about, and produces cleaner commits.
 
 ## Usage
 
-The `sb` command uses a verb-based interface:
+The `sb` command uses a verb-based interface with **profiles** (not gate lists!):
 
 ```bash
+# Validation - USE PROFILES
+sb validate commit                    # ← Primary workflow (fast)
+sb validate pr                        # ← Before opening/updating PR
+sb validate quick                     # ← Ultra-fast lint only
+sb validate python                    # ← Python-only validation
+sb validate javascript                # ← JS-only validation
+
+# For specific gates (rare - prefer profiles)
+sb validate python-coverage           # Validate single gate
+sb validate --self                    # Validate slopbucket itself
+
 # Setup commands
 sb init                               # Interactive project setup
 sb init --non-interactive             # Auto-configure with defaults
-sb init --config setup_config.json    # Use pre-populated config
-
-# Validate commands
-sb validate                           # Run full validation suite
-sb validate commit                    # Run commit profile (fast)
-sb validate pr                        # Run PR profile (thorough)
-sb validate --quality-gates python-tests,python-coverage
-sb validate --self                    # Validate slopbucket itself
 
 # Configuration commands
 sb config --show                      # Show enabled gates and settings
 sb config --enable python-security    # Enable a quality gate
 sb config --disable js-tests          # Disable a quality gate
-sb config --json config.json          # Update config from JSON file
 
 # Help commands
 sb help                               # List all quality gates

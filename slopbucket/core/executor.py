@@ -98,7 +98,7 @@ class CheckExecutor:
         for check in skipped:
             logger.info(f"Skipping {check.full_name}: not applicable to this project")
             self._results[check.full_name] = CheckResult(
-                name=check.name,
+                name=check.full_name,
                 status=CheckStatus.SKIPPED,
                 duration=0,
                 output="Check not applicable to this project",
@@ -287,9 +287,9 @@ class CheckExecutor:
             result = check.run(project_root)
             return result
         except Exception as e:
-            logger.error(f"Check {check.name} failed with exception: {e}")
+            logger.error(f"Check {check.full_name} failed with exception: {e}")
             return CheckResult(
-                name=check.name,
+                name=check.full_name,
                 status=CheckStatus.ERROR,
                 duration=0,
                 error=str(e),

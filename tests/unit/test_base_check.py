@@ -76,7 +76,8 @@ class TestBaseCheck:
             output="Test output",
         )
 
-        assert result.name == "test-check"
+        # Result name is the full_name (category:name)
+        assert result.name == "python:test-check"
         assert result.status == CheckStatus.PASSED
         assert result.duration == 1.5
         assert result.output == "Test output"

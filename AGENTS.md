@@ -2,7 +2,7 @@
 
 > **⚠️ AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY**
 > 
-> **Last Updated:** 2026-01-29 06:50:43 UTC  
+> **Last Updated:** 2026-01-29 08:03:53 UTC  
 > **Source:** `cursor-rules/.cursor/rules/`  
 > **To modify:** Edit source files in `cursor-rules/.cursor/rules/*.mdc` and run `cursor-rules/build_agent_instructions.sh`
 
@@ -1187,17 +1187,67 @@ Slopbucket is a language-agnostic, bolt-on code validation tool designed to catc
 - **Maximum value, minimum time**: Prioritize quick, high-impact checks
 - **AI-friendly output**: Clear errors with exact fixes
 - **Zero configuration required**: Works out of the box
+- **Simple, iterative workflow**: Use profiles, fix failures one at a time
+
+## AI Agent Workflow (IMPORTANT!)
+
+**🤖 This is the intended workflow for AI coding assistants.**
+
+### The Simple Pattern
+
+```bash
+# Just run the profile - don't overthink it!
+sb validate commit
+```
+
+When a check fails, slopbucket shows you exactly what to do next:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ 🤖 AI AGENT ITERATION GUIDANCE                           │
+├──────────────────────────────────────────────────────────┤
+│ Profile: commit                                          │
+│ Failed Gate: python:coverage                             │
+├──────────────────────────────────────────────────────────┤
+│ NEXT STEPS:                                              │
+│                                                          │
+│ 1. Fix the issue described above                         │
+│ 2. Validate: sb validate python:coverage                 │
+│ 3. Resume:   sb validate commit                          │
+│                                                          │
+│ Keep iterating until all checks pass.                    │
+└──────────────────────────────────────────────────────────┘
+```
+
+### What NOT to Do
+
+```bash
+# ❌ DON'T do this - verbose, misses the point of profiles
+sb validate -g python:lint-format,python:static-analysis,python:tests
+
+# ✅ DO this - simple, iterative, self-guiding
+sb validate commit
+```
+
+### The Iteration Loop
+
+1. **Run the profile**: `sb validate commit`
+2. **See what fails**: Output shows exactly which gate failed
+3. **Fix the issue**: Follow the guidance in the error output
+4. **Validate the fix**: `sb validate <failed-gate>` (just that one gate)
+5. **Resume the profile**: `sb validate commit`
+6. **Repeat until green**: Keep iterating until all checks pass
 
 ## CLI Commands
 
 ### Verb-Based CLI (`sb`)
 
 ```bash
-# Run validation
-sb validate                             # Full validation suite
-sb validate commit                      # Fast commit profile
-sb validate pr --verbose                # PR validation with details
-sb validate --quality-gates python-tests,python-coverage
+# Run validation - USE PROFILES (not gate lists!)
+sb validate commit                      # ← Primary workflow (fast)
+sb validate pr                          # ← Before opening PR
+sb validate quick                       # ← Ultra-fast lint only
+sb validate python:coverage             # Validate single gate (when iterating)
 sb validate --self                      # Validate slopbucket itself
 
 # Configuration
@@ -1208,7 +1258,6 @@ sb config --disable python-complexity   # Disable a gate
 # Interactive Setup
 sb init                                 # Interactive prompts
 sb init --non-interactive               # Use detected defaults
-sb init --config setup_config.json      # Pre-populated answers
 
 # Help
 sb help                                 # General help

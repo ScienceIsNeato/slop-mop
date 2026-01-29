@@ -1,7 +1,10 @@
 """Console output formatting for quality gate results.
 
-Provides clear, AI-friendly output with actionable error messages.
+Provides clear, AI-friendly output with actionable error messages
+that guide iterative fix-validate-resume workflows.
 """
+
+from typing import Optional
 
 from slopbucket.core.result import CheckResult, CheckStatus, ExecutionSummary
 
@@ -14,6 +17,7 @@ class ConsoleReporter:
     - Color-coded status
     - Clear error messages
     - Actionable fix suggestions
+    - Explicit iteration guidance for AI agents
     """
 
     # Status emoji mapping
@@ -24,15 +28,22 @@ class ConsoleReporter:
         CheckStatus.ERROR: "💥",
     }
 
-    def __init__(self, quiet: bool = False, verbose: bool = False):
+    def __init__(
+        self,
+        quiet: bool = False,
+        verbose: bool = False,
+        profile: Optional[str] = None,
+    ):
         """Initialize reporter.
 
         Args:
             quiet: Minimal output mode (only failures)
             verbose: Verbose output mode (include all output)
+            profile: The profile being run (commit, pr, etc.) for iteration guidance
         """
         self.quiet = quiet
         self.verbose = verbose
+        self.profile = profile
 
     def on_check_complete(self, result: CheckResult) -> None:
         """Called when a check completes.
@@ -141,6 +152,40 @@ class ConsoleReporter:
             print("❌ QUALITY GATE FAILED")
             print(f"🔧 {summary.failed + summary.errors} check(s) need attention")
             print()
-            print("💡 Fix the issues above and run the checks again")
+            # Provide explicit iteration guidance for AI agents
+            self._print_iteration_guidance(failed, errors)
         print("=" * 60)
         print()
+
+    def _print_iteration_guidance(
+        self,
+        failed: list[CheckResult],
+        errors: list[CheckResult],
+    ) -> None:
+        """Print explicit iteration guidance for AI agents.
+
+        This tells the agent exactly what to do next in a fail-fast,
+        iterative workflow.
+        """
+        # Get the first failure (fail-fast means this is what stopped us)
+        first_failure = failed[0] if failed else (errors[0] if errors else None)
+        if not first_failure:
+            return
+
+        profile = self.profile or "commit"
+        gate_name = first_failure.name
+
+        print("┌" + "─" * 58 + "┐")
+        print("│ 🤖 AI AGENT ITERATION GUIDANCE" + " " * 27 + "│")
+        print("├" + "─" * 58 + "┤")
+        print(f"│ Profile: {profile:<48} │")
+        print(f"│ Failed Gate: {gate_name:<44} │")
+        print("├" + "─" * 58 + "┤")
+        print("│ NEXT STEPS:                                              │")
+        print("│                                                          │")
+        print("│ 1. Fix the issue described above                         │")
+        print(f"│ 2. Validate: sb validate {gate_name:<32} │")
+        print(f"│ 3. Resume:   sb validate {profile:<32} │")
+        print("│                                                          │")
+        print("│ Keep iterating until all checks pass.                    │")
+        print("└" + "─" * 58 + "┘")

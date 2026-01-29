@@ -268,16 +268,21 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
     # Determine which gates to run
     gates: List[str] = []
+    profile_name: Optional[str] = None  # Track the profile/alias for iteration guidance
 
     if args.profile:
         gates = [args.profile]
+        profile_name = args.profile
     elif args.quality_gates:
         # Handle both comma-separated and space-separated
         for gate in args.quality_gates:
             gates.extend(g.strip() for g in gate.split(",") if g.strip())
+        # No profile when using -g (explicit gate list)
+        profile_name = None
     else:
         # Default to commit profile for validate without args
         gates = ["commit"]
+        profile_name = "commit"
 
     # Create executor
     registry = get_registry()
@@ -287,7 +292,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
     )
 
     # Set up progress reporting
-    reporter = ConsoleReporter(quiet=args.quiet, verbose=args.verbose)
+    reporter = ConsoleReporter(
+        quiet=args.quiet,
+        verbose=args.verbose,
+        profile=profile_name,
+    )
     executor.set_progress_callback(reporter.on_check_complete)
 
     # Print header

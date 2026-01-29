@@ -227,7 +227,7 @@ class BaseCheck(ABC):
             CheckResult instance
         """
         return CheckResult(
-            name=self.name,
+            name=self.full_name,
             status=status,
             duration=duration,
             output=output,
