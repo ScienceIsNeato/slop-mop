@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "slopbucket"
+name = "slopmop"
 version = "1.0.0"
 description = "AI-Focused Quality Gate Framework"
 readme = "README.md"
@@ -44,16 +44,16 @@ dev = [
 ]
 
 [project.scripts]
-sb = "slopbucket.sb:main"
+sm = "slopmop.sm:main"
 
 [project.urls]
-Homepage = "https://github.com/ScienceIsNeato/slopbucket"
-Repository = "https://github.com/ScienceIsNeato/slopbucket"
-Issues = "https://github.com/ScienceIsNeato/slopbucket/issues"
+Homepage = "https://github.com/ScienceIsNeato/slop-mop"
+Repository = "https://github.com/ScienceIsNeato/slop-mop"
+Issues = "https://github.com/ScienceIsNeato/slop-mop/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["slopbucket*"]
+include = ["slopmop*"]
 exclude = ["tests*"]
 
 [tool.black]
@@ -77,9 +77,9 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 
 [tool.coverage.run]
-source = ["slopbucket"]
+source = ["slopmop"]
 omit = ["tests/*", "setup.py"]
 
 [tool.coverage.report]
-# fail_under handled by slopbucket coverage check
+# fail_under handled by slopmop coverage check
 show_missing = true

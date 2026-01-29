@@ -2,9 +2,9 @@
 
 from unittest.mock import patch
 
-from slopbucket.checks.general.jinja2_templates import TemplateValidationCheck
-from slopbucket.core.result import CheckStatus
-from slopbucket.subprocess.runner import SubprocessResult
+from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
+from slopmop.core.result import CheckStatus
+from slopmop.subprocess.runner import SubprocessResult
 
 
 def _make_result(output: str = "", returncode: int = 0):

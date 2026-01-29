@@ -5,10 +5,10 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from slopbucket.checks.base import BaseCheck, ConfigField, GateCategory
-from slopbucket.core.registry import CheckRegistry
-from slopbucket.core.result import CheckResult, CheckStatus
-from slopbucket.utils.generate_base_config import (
+from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.core.registry import CheckRegistry
+from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.utils.generate_base_config import (
     backup_config,
     generate_base_config,
     generate_config_schema,
@@ -250,7 +250,7 @@ class TestMain:
     def test_main_defaults_to_cwd(self):
         """Test that main defaults to current directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("slopbucket.utils.generate_base_config.Path") as mock_path:
+            with patch("slopmop.utils.generate_base_config.Path") as mock_path:
                 mock_cwd = MagicMock()
                 mock_cwd.__truediv__ = MagicMock(
                     return_value=Path(tmpdir) / ".sb_config.json"

@@ -1,4 +1,4 @@
-# 🪣 slopbucket
+# 🧹 Slop-Mop
 
 **AI-Focused Quality Gate Framework**
 
@@ -15,15 +15,15 @@ A language-agnostic, bolt-on code validation tool designed to catch AI-generated
 ## Quick Start
 
 ```bash
-# 1. Clone slopbucket into your project
-git submodule add https://github.com/ScienceIsNeato/slopbucket.git
+# 1. Clone slopmop into your project
+git submodule add https://github.com/ScienceIsNeato/slop-mop.git
 
 # 2. Run interactive setup (auto-detects project type)
-cd slopbucket && pip install -e . && sb init
+cd slopmop && pip install -e . && sm init
 
 # 3. Run validation (use profiles, not gate lists!)
-sb validate commit       # Fast commit validation ← USE THIS
-sb validate pr           # Full PR validation
+sm validate commit       # Fast commit validation ← USE THIS
+sm validate pr           # Full PR validation
 ```
 
 ## AI Agent Workflow
@@ -34,10 +34,10 @@ sb validate pr           # Full PR validation
 
 ```bash
 # Just run the profile - don't overthink it!
-sb validate commit
+sm validate commit
 ```
 
-That's it. When a check fails, slopbucket tells you exactly what to do next:
+That's it. When a check fails, slopmop tells you exactly what to do next:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -49,8 +49,8 @@ That's it. When a check fails, slopbucket tells you exactly what to do next:
 │ NEXT STEPS:                                              │
 │                                                          │
 │ 1. Fix the issue described above                         │
-│ 2. Validate: sb validate python-coverage                 │
-│ 3. Resume:   sb validate commit                          │
+│ 2. Validate: sm validate python-coverage                 │
+│ 3. Resume:   sm validate commit                          │
 │                                                          │
 │ Keep iterating until all checks pass.                    │
 └──────────────────────────────────────────────────────────┘
@@ -60,19 +60,19 @@ That's it. When a check fails, slopbucket tells you exactly what to do next:
 
 ```bash
 # ❌ DON'T do this - it's verbose and misses the point
-sb validate -g python:lint-format,python:static-analysis,python:tests,python:coverage
+sm validate -g python:lint-format,python:static-analysis,python:tests,python:coverage
 
 # ✅ DO this - simple, iterative, self-guiding
-sb validate commit
+sm validate commit
 ```
 
 ### The Iteration Loop
 
-1. **Run the profile**: `sb validate commit`
+1. **Run the profile**: `sm validate commit`
 2. **See what fails**: Output shows exactly which gate failed
 3. **Fix the issue**: Follow the guidance in the error output
-4. **Validate the fix**: `sb validate <failed-gate>` (just that one gate)
-5. **Resume the profile**: `sb validate commit` (to catch any remaining issues)
+4. **Validate the fix**: `sm validate <failed-gate>` (just that one gate)
+5. **Resume the profile**: `sm validate commit` (to catch any remaining issues)
 6. **Repeat until green**: Keep iterating until all checks pass
 
 This fail-fast, iterative approach is faster than running everything, easier to reason about, and produces cleaner commits.
@@ -83,44 +83,44 @@ The `sb` command uses a verb-based interface with **profiles** (not gate lists!)
 
 ```bash
 # Validation - USE PROFILES
-sb validate commit                    # ← Primary workflow (fast)
-sb validate pr                        # ← Before opening/updating PR
-sb validate quick                     # ← Ultra-fast lint only
-sb validate python                    # ← Python-only validation
-sb validate javascript                # ← JS-only validation
+sm validate commit                    # ← Primary workflow (fast)
+sm validate pr                        # ← Before opening/updating PR
+sm validate quick                     # ← Ultra-fast lint only
+sm validate python                    # ← Python-only validation
+sm validate javascript                # ← JS-only validation
 
 # For specific gates (rare - prefer profiles)
-sb validate python-coverage           # Validate single gate
-sb validate --self                    # Validate slopbucket itself
+sm validate python-coverage           # Validate single gate
+sm validate --self                    # Validate slopmop itself
 
 # Setup commands
-sb init                               # Interactive project setup
-sb init --non-interactive             # Auto-configure with defaults
+sm init                               # Interactive project setup
+sm init --non-interactive             # Auto-configure with defaults
 
 # Configuration commands
-sb config --show                      # Show enabled gates and settings
-sb config --enable python-security    # Enable a quality gate
-sb config --disable js-tests          # Disable a quality gate
+sm config --show                      # Show enabled gates and settings
+sm config --enable python-security    # Enable a quality gate
+sm config --disable js-tests          # Disable a quality gate
 
 # Help commands
-sb help                               # List all quality gates
-sb help python-lint-format            # Detailed help for specific gate
-sb help commit                        # Show what's in a profile
+sm help                               # List all quality gates
+sm help python-lint-format            # Detailed help for specific gate
+sm help commit                        # Show what's in a profile
 ```
 
 ## Interactive Setup
 
-The `sb init` command provides intelligent project configuration:
+The `sm init` command provides intelligent project configuration:
 
 ```bash
 # Interactive mode (prompts for settings)
-sb init
+sm init
 
 # Non-interactive mode (uses detected defaults)
-sb init --non-interactive
+sm init --non-interactive
 
 # Pre-populated answers (for CI/automation)
-sb init --config setup_config.json --non-interactive
+sm init --config setup_config.json --non-interactive
 ```
 
 ### What it detects:
@@ -190,9 +190,9 @@ sb init --config setup_config.json --non-interactive
 ## Architecture
 
 ```
-slopbucket/
+slopmop/
 ├── setup.py                    # Package setup
-├── slopbucket/
+├── slopmop/
 │   ├── sb.py                   # CLI entry point (verb-based)
 │   ├── core/
 │   │   ├── executor.py         # Parallel check execution
@@ -213,7 +213,7 @@ slopbucket/
 
 ## Security
 
-slopbucket uses a whitelist-based security model for subprocess execution:
+slopmop uses a whitelist-based security model for subprocess execution:
 
 - Only known, safe executables can be run (python, npm, black, etc.)
 - No shell=True execution
@@ -222,7 +222,7 @@ slopbucket uses a whitelist-based security model for subprocess execution:
 
 ## Configuration
 
-slopbucket works out of the box with **zero required configuration**.
+slopmop works out of the box with **zero required configuration**.
 
 Configuration is stored in `.sb_config.json` in your project root:
 
@@ -243,18 +243,18 @@ Configuration is stored in `.sb_config.json` in your project root:
 }
 ```
 
-Use `sb config` to view and update settings:
-- `sb config --show` - View current configuration
-- `sb config --enable python-security` - Enable a gate
-- `sb config --disable js-tests` - Disable a gate
-- `sb config --json myconfig.json` - Load config from file
+Use `sm config` to view and update settings:
+- `sm config --show` - View current configuration
+- `sm config --enable python-security` - Enable a gate
+- `sm config --disable js-tests` - Disable a gate
+- `sm config --json myconfig.json` - Load config from file
 
 ## Adding Custom Checks
 
 ```python
-from slopbucket.checks.base import BaseCheck
-from slopbucket.core.result import CheckResult, CheckStatus
-from slopbucket.core.registry import register_check
+from slopmop.checks.base import BaseCheck
+from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.registry import register_check
 
 @register_check
 class MyCustomCheck(BaseCheck):
@@ -288,8 +288,8 @@ pip install -e ".[dev]"
 # Run tests
 pytest
 
-# Run self-validation (slopbucket validates itself!)
-sb validate --self
+# Run self-validation (slopmop validates itself!)
+sm validate --self
 ```
 
 ## Migration from ship_it.py

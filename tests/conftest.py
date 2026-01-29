@@ -1,4 +1,4 @@
-"""Pytest configuration and fixtures for slopbucket tests."""
+"""Pytest configuration and fixtures for slopmop tests."""
 
 from pathlib import Path
 from typing import Generator
@@ -59,6 +59,6 @@ module.exports = { hello };
 
 
 @pytest.fixture
-def slopbucket_root() -> Path:
-    """Return the slopbucket project root directory."""
+def slopmop_root() -> Path:
+    """Return the slopmop project root directory."""
     return Path(__file__).parent.parent

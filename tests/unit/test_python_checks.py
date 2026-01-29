@@ -2,12 +2,12 @@
 
 from unittest.mock import MagicMock
 
-from slopbucket.checks.python.coverage import PythonCoverageCheck
-from slopbucket.checks.python.lint_format import PythonLintFormatCheck
-from slopbucket.checks.python.static_analysis import PythonStaticAnalysisCheck
-from slopbucket.checks.python.tests import PythonTestsCheck
-from slopbucket.core.result import CheckStatus
-from slopbucket.subprocess.runner import SubprocessResult
+from slopmop.checks.python.coverage import PythonCoverageCheck
+from slopmop.checks.python.lint_format import PythonLintFormatCheck
+from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
+from slopmop.checks.python.tests import PythonTestsCheck
+from slopmop.core.result import CheckStatus
+from slopmop.subprocess.runner import SubprocessResult
 
 
 class TestPythonLintFormatCheck:
@@ -44,8 +44,8 @@ class TestPythonLintFormatCheck:
 
     def test_auto_fix_success(self, tmp_path):
         """Test auto_fix runs black and isort."""
-        (tmp_path / "slopbucket").mkdir()
-        (tmp_path / "slopbucket" / "__init__.py").touch()
+        (tmp_path / "slopmop").mkdir()
+        (tmp_path / "slopmop" / "__init__.py").touch()
 
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(

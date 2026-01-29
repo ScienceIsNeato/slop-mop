@@ -4,13 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from slopbucket.subprocess.runner import (
+from slopmop.subprocess.runner import (
     SubprocessResult,
     SubprocessRunner,
     get_runner,
     run_command,
 )
-from slopbucket.subprocess.validator import SecurityError
+from slopmop.subprocess.validator import SecurityError
 
 
 class TestSubprocessResult:
@@ -237,7 +237,7 @@ class TestSubprocessRunnerSingleton:
 
     def test_get_runner_singleton(self):
         """Test that get_runner returns singleton."""
-        import slopbucket.subprocess.runner as runner_module
+        import slopmop.subprocess.runner as runner_module
 
         runner_module._default_runner = None
 
