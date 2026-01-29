@@ -105,63 +105,77 @@ class ConsoleReporter:
         """
         print()
         print("=" * 60)
-        print("📊 Quality Gate Summary")
-        print("=" * 60)
 
-        # Counts
-        print(f"   Total: {summary.total_checks} checks")
-        print(f"   ✅ Passed:  {summary.passed}")
-        print(f"   ❌ Failed:  {summary.failed}")
-        print(f"   ⏭️ Skipped: {summary.skipped}")
-        print(f"   💥 Errors:  {summary.errors}")
-        print(f"   ⏱️ Duration: {summary.total_duration:.2f}s")
-        print()
-
-        # Result lists
+        # Categorize results
         passed = [r for r in summary.results if r.status == CheckStatus.PASSED]
         failed = [r for r in summary.results if r.status == CheckStatus.FAILED]
         skipped = [r for r in summary.results if r.status == CheckStatus.SKIPPED]
         errors = [r for r in summary.results if r.status == CheckStatus.ERROR]
 
-        if passed and not self.quiet:
-            print("✅ PASSED:")
-            for r in passed:
-                print(f"   • {r.name}")
+        if summary.all_passed:
+            # Clean, minimal success output
+            print(
+                f"🎉 ALL {summary.passed} CHECKS PASSED in {summary.total_duration:.1f}s"
+            )
+            print("=" * 60)
+            if not self.quiet:
+                for r in passed:
+                    print(f"   ✅ {r.name}")
+            if skipped:
+                print()
+                print(f"   ⏭️  {len(skipped)} skipped (not applicable)")
             print()
+            return
 
+        # Failure output - more detailed
+        print("📊 Quality Gate Results")
+        print("=" * 60)
+
+        # Show counts only for non-zero statuses
+        counts = []
+        if passed:
+            counts.append(f"✅ {len(passed)} passed")
+        if failed:
+            counts.append(f"❌ {len(failed)} failed")
+        if errors:
+            counts.append(f"💥 {len(errors)} errored")
+        if skipped:
+            counts.append(f"⏭️  {len(skipped)} skipped")
+
+        print(f"   {' · '.join(counts)} · ⏱️  {summary.total_duration:.1f}s")
+        print()
+
+        # Show failures with details
         if failed:
             print("❌ FAILED:")
             for r in failed:
                 print(f"   • {r.name}")
                 if r.error:
-                    print(f"     Error: {r.error}")
+                    print(f"     └─ {r.error}")
                 if r.fix_suggestion:
-                    print(f"     Fix: {r.fix_suggestion}")
+                    print(f"     💡 {r.fix_suggestion}")
             print()
 
+        # Show errors (check couldn't run at all)
         if errors:
-            print("💥 ERRORS:")
+            print("💥 ERRORS (check couldn't run):")
             for r in errors:
-                print(f"   • {r.name}: {r.error}")
+                print(f"   • {r.name}")
+                print(f"     └─ {r.error}")
             print()
 
+        # Show skipped only in verbose mode
         if skipped and self.verbose:
-            print("⏭️ SKIPPED:")
+            print("⏭️  SKIPPED (not applicable):")
             for r in skipped:
                 print(f"   • {r.name}")
             print()
 
-        # Final verdict
-        print("=" * 60)
-        if summary.all_passed:
-            print("🎉 ALL CHECKS PASSED!")
-            print("✅ Ready to commit with confidence!")
-        else:
-            print("❌ QUALITY GATE FAILED")
-            print(f"🔧 {summary.failed + summary.errors} check(s) need attention")
-            print()
-            # Provide explicit iteration guidance for AI agents
-            self._print_iteration_guidance(failed, errors)
+        # Final verdict with iteration guidance
+        print("─" * 60)
+        print(f"🔧 {summary.failed + summary.errors} check(s) need attention")
+        print()
+        self._print_iteration_guidance(failed, errors)
         print("=" * 60)
         print()
 

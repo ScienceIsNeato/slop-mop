@@ -169,11 +169,12 @@ class TestConsoleReporter:
         reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        assert "Quality Gate Summary" in captured.out
-        assert "Total: 2 checks" in captured.out
-        assert "Passed:  2" in captured.out
-        assert "Failed:  0" in captured.out
-        assert "ALL CHECKS PASSED" in captured.out
+        # Clean success output - shows count and time
+        assert "ALL 2 CHECKS PASSED" in captured.out
+        assert "3.0s" in captured.out
+        # Should list the passing checks
+        assert "check1" in captured.out
+        assert "check2" in captured.out
 
     def test_print_summary_with_failures(self, capsys):
         """Test printing summary with failures."""
@@ -187,10 +188,13 @@ class TestConsoleReporter:
         reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        assert "Passed:  1" in captured.out
-        assert "Failed:  1" in captured.out
-        assert "QUALITY GATE FAILED" in captured.out
+        # Compact counts format
+        assert "1 passed" in captured.out
+        assert "1 failed" in captured.out
+        # Failure details
+        assert "FAILED:" in captured.out
         assert "check2" in captured.out
+        assert "Something broke" in captured.out
 
     def test_print_summary_with_errors(self, capsys):
         """Test printing summary with errors."""
@@ -203,24 +207,27 @@ class TestConsoleReporter:
         reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        assert "Errors:  1" in captured.out
-        assert "ERRORS:" in captured.out
+        # Compact counts format
+        assert "1 errored" in captured.out
+        # Error details
+        assert "ERRORS" in captured.out
         assert "Exception!" in captured.out
 
     def test_print_summary_with_skipped_verbose(self, capsys):
-        """Test printing summary shows skipped in verbose mode."""
+        """Test printing summary shows skipped info."""
         results = [
             CheckResult("check1", CheckStatus.PASSED, 1.0),
             CheckResult("check2", CheckStatus.SKIPPED, 0.0),
         ]
         summary = ExecutionSummary.from_results(results, 1.0)
-        reporter = ConsoleReporter(verbose=True)
+        reporter = ConsoleReporter()
 
         reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        assert "SKIPPED:" in captured.out
-        assert "check2" in captured.out
+        # All passed with skipped note
+        assert "ALL 1 CHECKS PASSED" in captured.out
+        assert "1 skipped" in captured.out
 
     def test_print_summary_quiet_mode(self, capsys):
         """Test printing summary in quiet mode doesn't show passed list."""
@@ -234,12 +241,11 @@ class TestConsoleReporter:
         reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        # Summary should still appear, but PASSED list should not
-        assert "Quality Gate Summary" in captured.out
-        # The line "✅ PASSED:" should not appear in quiet mode
-        lines = captured.out.split("\n")
-        passed_header_lines = [l for l in lines if l.strip() == "✅ PASSED:"]
-        assert len(passed_header_lines) == 0
+        # Success message should appear
+        assert "ALL 2 CHECKS PASSED" in captured.out
+        # But individual check names should not be listed in quiet mode
+        assert "   ✅ check1" not in captured.out
+        assert "   ✅ check2" not in captured.out
 
     def test_print_summary_with_fix_suggestion(self, capsys):
         """Test printing summary shows fix suggestions for failures."""
