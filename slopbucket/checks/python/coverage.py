@@ -68,7 +68,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "📊 Coverage (80% threshold)"
+        return "📊 Coverage"
 
     @property
     def category(self) -> GateCategory:
@@ -144,7 +144,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
-                output=f"Coverage: {coverage_pct:.1f}% (threshold: {threshold}%)",
+                output="Coverage meets required threshold.",
             )
 
         # Coverage below threshold - provide prescriptive output
@@ -157,8 +157,8 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             status=CheckStatus.FAILED,
             duration=duration,
             output=prescriptive_output,
-            error=f"Coverage {coverage_pct:.1f}% < {threshold}%",
-            fix_suggestion="Add tests for the lines listed above before next iteration.",
+            error="Coverage below threshold",
+            fix_suggestion="Add tests for the files and lines listed above.",
         )
 
     def _parse_missing_lines(self, output: str) -> List[Tuple[str, int, int, str]]:

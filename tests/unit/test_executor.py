@@ -4,7 +4,7 @@ import time
 from unittest.mock import MagicMock
 
 from slopbucket.checks.base import BaseCheck, GateCategory
-from slopbucket.core.executor import CheckExecutor
+from slopbucket.core.executor import CheckExecutor, run_quality_checks
 from slopbucket.core.registry import CheckRegistry
 from slopbucket.core.result import CheckResult, CheckStatus
 
@@ -172,6 +172,26 @@ class TestCheckExecutor:
         assert summary.total_checks == 2
         assert summary.passed == 2
 
+    def test_auto_includes_dependencies(self, tmp_path):
+        """Test that dependencies are auto-included when not explicitly requested."""
+        registry = CheckRegistry()
+        check_class1 = make_mock_check_class("dep-check")
+        check_class2 = make_mock_check_class(
+            "main-check", depends_on=["python:dep-check"]
+        )
+        registry.register(check_class1)
+        registry.register(check_class2)
+
+        executor = CheckExecutor(registry=registry)
+        # Only request main-check, but it depends on dep-check
+        summary = executor.run_checks(str(tmp_path), ["python:main-check"])
+
+        # Both checks should run (dep-check auto-included)
+        assert summary.total_checks == 2
+        assert summary.passed == 2
+        assert check_class1.run_count == 1  # dep-check was auto-included and ran
+        assert check_class2.run_count == 1
+
     def test_skips_check_if_dependency_fails(self, tmp_path):
         """Test that checks are skipped if dependency fails."""
         registry = CheckRegistry()
@@ -315,3 +335,131 @@ class TestCheckExecutor:
         executor.run_checks(str(tmp_path), ["python:config-check"], config=full_config)
 
         assert ConfigCheck.received_config == {"key": "value"}
+
+    def test_all_checks_inapplicable_returns_early(self, tmp_path):
+        """Test that when all checks are inapplicable, we return early with skipped."""
+        registry = CheckRegistry()
+        check_class1 = make_mock_check_class("check1", applicable=False)
+        check_class2 = make_mock_check_class("check2", applicable=False)
+        registry.register(check_class1)
+        registry.register(check_class2)
+
+        executor = CheckExecutor(registry=registry)
+        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
+
+        # All checks should be skipped
+        assert summary.total_checks == 2
+        assert summary.skipped == 2
+        assert summary.passed == 0
+        assert check_class1.run_count == 0
+        assert check_class2.run_count == 0
+
+    def test_fail_fast_skips_remaining_pending_checks(self, tmp_path):
+        """Test that fail-fast marks remaining pending checks as skipped."""
+        registry = CheckRegistry()
+        # First check fails quickly
+        check_class1 = make_mock_check_class(
+            "check1", status=CheckStatus.FAILED, duration=0.01
+        )
+        # Second check depends on first (so would be pending)
+        check_class2 = make_mock_check_class(
+            "check2", depends_on=["python:check1"], duration=0.5
+        )
+        # Third check also depends on first
+        check_class3 = make_mock_check_class(
+            "check3", depends_on=["python:check1"], duration=0.5
+        )
+        registry.register(check_class1)
+        registry.register(check_class2)
+        registry.register(check_class3)
+
+        executor = CheckExecutor(registry=registry, fail_fast=True)
+        summary = executor.run_checks(
+            str(tmp_path), ["python:check1", "python:check2", "python:check3"]
+        )
+
+        # check1 failed, check2/check3 should be skipped due to dependency failure
+        assert summary.failed == 1
+        assert summary.skipped >= 2
+
+    def test_auto_fix_exception_handled(self, tmp_path):
+        """Test that auto-fix exceptions are handled gracefully."""
+        registry = CheckRegistry()
+
+        class FixExceptionCheck(MockCheck):
+            _mock_name = "fix-exception-check"
+            _mock_display_name = "Fix Exception Check"
+
+            def can_auto_fix(self) -> bool:
+                return True
+
+            def auto_fix(self, project_root: str) -> bool:
+                raise RuntimeError("Auto-fix error")
+
+            def run(self, project_root: str) -> CheckResult:
+                return CheckResult(
+                    name=self.name,
+                    status=CheckStatus.PASSED,
+                    duration=0.01,
+                    output="Check passed",
+                )
+
+        registry.register(FixExceptionCheck)
+
+        executor = CheckExecutor(registry=registry)
+        # Should not raise, just log warning and continue
+        summary = executor.run_checks(
+            str(tmp_path), ["python:fix-exception-check"], auto_fix=True
+        )
+
+        # Check should still run and pass
+        assert summary.passed == 1
+
+
+class TestRunQualityChecks:
+    """Tests for the run_quality_checks convenience function."""
+
+    def test_run_quality_checks_convenience_function(self, tmp_path):
+        """Test run_quality_checks is a convenience wrapper."""
+        # Reset the global registry to avoid interference from other tests
+        import slopbucket.core.registry as registry_module
+
+        registry_module._default_registry = None
+
+        # Register a test check
+        from slopbucket.core.registry import register_check
+
+        @register_check
+        class ConvenienceTestCheck(BaseCheck):
+            @property
+            def name(self) -> str:
+                return "convenience-test"
+
+            @property
+            def display_name(self) -> str:
+                return "Convenience Test"
+
+            @property
+            def category(self) -> GateCategory:
+                return GateCategory.PYTHON
+
+            def is_applicable(self, project_root: str) -> bool:
+                return True
+
+            def run(self, project_root: str) -> CheckResult:
+                return CheckResult(
+                    name=self.name,
+                    status=CheckStatus.PASSED,
+                    duration=0.01,
+                    output="Pass",
+                )
+
+        summary = run_quality_checks(
+            str(tmp_path),
+            ["python:convenience-test"],
+            config=None,
+            fail_fast=True,
+            auto_fix=False,
+        )
+
+        assert summary.passed >= 1

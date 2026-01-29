@@ -90,6 +90,74 @@ class TestPythonLintFormatCheck:
 
         assert result.status == CheckStatus.FAILED
 
+    def test_get_python_targets_excludes_special_dirs(self, tmp_path):
+        """Test _get_python_targets excludes venv, .git, etc."""
+        # Create excluded directories
+        (tmp_path / "venv").mkdir()
+        (tmp_path / "venv" / "__init__.py").touch()
+        (tmp_path / ".hidden").mkdir()
+        (tmp_path / ".hidden" / "__init__.py").touch()
+        (tmp_path / "node_modules").mkdir()
+
+        # Create valid target
+        (tmp_path / "mypackage").mkdir()
+        (tmp_path / "mypackage" / "__init__.py").touch()
+
+        check = PythonLintFormatCheck({})
+        targets = check._get_python_targets(str(tmp_path))
+
+        assert "mypackage" in targets
+        assert "venv" not in targets
+        assert ".hidden" not in targets
+        assert "node_modules" not in targets
+
+    def test_get_python_targets_includes_standard_dirs(self, tmp_path):
+        """Test _get_python_targets includes src, tests, lib dirs."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "tests").mkdir()
+
+        check = PythonLintFormatCheck({})
+        targets = check._get_python_targets(str(tmp_path))
+
+        assert "src" in targets
+        assert "tests" in targets
+
+    def test_auto_fix_falls_back_to_current_dir(self, tmp_path):
+        """Test auto_fix uses '.' when no targets found."""
+        # Empty directory
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="", stderr="", duration=1.0
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check.auto_fix(str(tmp_path))
+
+        assert result is True
+
+    def test_check_black_no_targets(self, tmp_path):
+        """Test _check_black returns None when no targets."""
+        # Empty directory
+        check = PythonLintFormatCheck({})
+        result = check._check_black(str(tmp_path))
+
+        assert result is None
+
+    def test_check_black_fails_no_specific_files(self, tmp_path):
+        """Test _check_black when black fails but no specific files listed."""
+        (tmp_path / "test.py").touch()
+
+        mock_runner = MagicMock()
+        # Black fails but no "would reformat" lines
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1, stdout="oh no an error occurred", stderr="", duration=1.0
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_black(str(tmp_path))
+
+        assert result == "Formatting check failed"
+
 
 class TestPythonTestsCheck:
     """Tests for PythonTestsCheck."""
@@ -284,3 +352,58 @@ class TestPythonStaticAnalysisCheck:
         result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+    def test_run_finds_python_packages(self, tmp_path):
+        """Test run finds Python packages when no standard dirs exist."""
+        # Create a custom package (not src, lib, etc.)
+        (tmp_path / "mypackage").mkdir()
+        (tmp_path / "mypackage" / "__init__.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="Success: no issues found", stderr="", duration=1.0
+        )
+
+        check = PythonStaticAnalysisCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        # Verify mypackage was included in the command
+        call_args = mock_runner.run.call_args
+        assert "mypackage" in call_args[0][0]
+
+    def test_run_falls_back_to_current_dir(self, tmp_path):
+        """Test run uses '.' when no source dirs or packages found."""
+        # Empty directory - no Python packages
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="Success: no issues found", stderr="", duration=1.0
+        )
+
+        check = PythonStaticAnalysisCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        # Verify '.' was used as fallback
+        call_args = mock_runner.run.call_args
+        assert "." in call_args[0][0]
+
+    def test_run_timeout(self, tmp_path):
+        """Test run handles timeout."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=-1,
+            stdout="",
+            stderr="",
+            duration=120.0,
+            timed_out=True,
+        )
+
+        check = PythonStaticAnalysisCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "timed out" in result.error.lower()

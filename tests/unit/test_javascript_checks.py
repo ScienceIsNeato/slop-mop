@@ -154,6 +154,87 @@ class TestJavaScriptLintFormatCheck:
         check = JavaScriptLintFormatCheck({})
         assert check.can_auto_fix() is True
 
+    def test_auto_fix_with_node_modules(self, tmp_path):
+        """Test auto_fix() runs eslint and prettier."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptLintFormatCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.auto_fix(str(tmp_path))
+
+        assert result is True
+
+    def test_auto_fix_installs_deps(self, tmp_path):
+        """Test auto_fix() installs deps when node_modules missing."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        check = JavaScriptLintFormatCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            result = check.auto_fix(str(tmp_path))
+
+        # Should call npm install, eslint --fix, prettier --write
+        assert mock_run.call_count == 3
+        assert result is True
+
+    def test_auto_fix_eslint_fails_prettier_succeeds(self, tmp_path):
+        """Test auto_fix() returns True if prettier succeeds even if eslint fails."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptLintFormatCheck({})
+
+        eslint_result = MagicMock()
+        eslint_result.success = False
+        prettier_result = MagicMock()
+        prettier_result.success = True
+
+        with patch.object(
+            check, "_run_command", side_effect=[eslint_result, prettier_result]
+        ):
+            result = check.auto_fix(str(tmp_path))
+
+        assert result is True
+
+    def test_run_without_node_modules_installs(self, tmp_path):
+        """Test run() installs deps when node_modules missing."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        check = JavaScriptLintFormatCheck({})
+
+        npm_result = MagicMock()
+        npm_result.success = True
+
+        lint_result = MagicMock()
+        lint_result.success = True
+        lint_result.output = ""
+
+        with patch.object(
+            check, "_run_command", side_effect=[npm_result, lint_result, lint_result]
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
+    def test_run_npm_install_fails(self, tmp_path):
+        """Test run() when npm install fails."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        check = JavaScriptLintFormatCheck({})
+
+        npm_result = MagicMock()
+        npm_result.success = False
+        npm_result.output = "npm ERR! install failed"
+
+        with patch.object(check, "_run_command", return_value=npm_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.ERROR
+        assert "npm install failed" in result.error
+
     def test_run_lint_passes(self, tmp_path):
         """Test run() when lint passes."""
         (tmp_path / "package.json").write_text('{"name": "test"}')

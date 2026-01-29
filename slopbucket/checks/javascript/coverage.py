@@ -34,7 +34,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return f"📊 Coverage ({self.threshold}%)"
+        return "📊 Coverage"
 
     @property
     def category(self) -> GateCategory:
@@ -102,19 +102,19 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 return self._create_result(
                     status=CheckStatus.PASSED,
                     duration=duration,
-                    output=f"Line coverage: {coverage:.1f}% (>= {self.threshold}%)",
+                    output="Coverage meets required threshold.",
                 )
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=(
                     "This commit doesn't meet code coverage standards. "
-                    f"Coverage is {coverage:.1f}%, need {self.threshold}%.\n\n"
+                    "Add high-quality test coverage to the codebase.\n\n"
                     "When adding coverage, extend existing tests when possible. "
                     "Focus on meaningful assertions, not just line coverage."
                 ),
-                error=f"Coverage {coverage:.1f}% < {self.threshold}%",
-                fix_suggestion="",
+                error="Coverage below threshold",
+                fix_suggestion="Add tests to increase coverage.",
             )
 
         # Can't determine coverage
@@ -155,7 +155,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
-                output=f"Line coverage: {pct:.1f}% (>= {self.threshold}%)",
+                output="Coverage meets required threshold.",
             )
 
         # Find lowest coverage files
@@ -175,7 +175,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             "",
         ]
         for path, file_pct in low_files[:5]:
-            lines.append(f"  {path}: {file_pct:.1f}%")
+            lines.append(f"  {path}")
         lines.append("")
         lines.append(
             "When adding coverage, extend existing tests when possible. "
@@ -186,8 +186,8 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             status=CheckStatus.FAILED,
             duration=duration,
             output="\n".join(lines),
-            error=f"Coverage {pct:.1f}% < {self.threshold}%",
-            fix_suggestion="",
+            error="Coverage below threshold",
+            fix_suggestion="Add tests to increase coverage.",
         )
 
     def _parse_coverage_output(self, output: str) -> Optional[float]:

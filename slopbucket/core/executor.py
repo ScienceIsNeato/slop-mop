@@ -90,6 +90,9 @@ class CheckExecutor:
             logger.warning("No checks to run")
             return ExecutionSummary.from_results([], 0)
 
+        # Auto-include dependencies that weren't explicitly requested
+        checks = self._expand_dependencies(checks, config)
+
         # Filter to applicable checks
         applicable = [c for c in checks if c.is_applicable(project_root)]
         skipped = [c for c in checks if c not in applicable]
@@ -116,6 +119,47 @@ class CheckExecutor:
 
         duration = time.time() - start_time
         return ExecutionSummary.from_results(list(self._results.values()), duration)
+
+    def _expand_dependencies(
+        self, checks: List[BaseCheck], config: Dict
+    ) -> List[BaseCheck]:
+        """Expand check list to include all dependencies.
+
+        If a check depends on another check that wasn't explicitly requested,
+        automatically add the dependency to the check list.
+
+        Args:
+            checks: Initial list of checks
+            config: Configuration dictionary
+
+        Returns:
+            Expanded list including all dependencies
+        """
+        check_map = {c.full_name: c for c in checks}
+        to_process = list(checks)
+        processed: Set[str] = set()
+
+        while to_process:
+            check = to_process.pop(0)
+            if check.full_name in processed:
+                continue
+            processed.add(check.full_name)
+
+            # Check each dependency
+            for dep_name in check.depends_on:
+                if dep_name not in check_map:
+                    # Dependency not in our list - try to get it
+                    dep_checks = self._registry.get_checks([dep_name], config)
+                    if dep_checks:
+                        dep_check = dep_checks[0]
+                        check_map[dep_check.full_name] = dep_check
+                        to_process.append(dep_check)
+                        logger.info(
+                            f"Auto-including {dep_check.full_name} "
+                            f"(dependency of {check.full_name})"
+                        )
+
+        return list(check_map.values())
 
     def _build_dependency_graph(self, checks: List[BaseCheck]) -> Dict[str, Set[str]]:
         """Build dependency graph for checks.

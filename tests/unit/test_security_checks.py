@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from slopbucket.checks.security import (
     EXCLUDED_DIRS,
+    SecurityCheck,
     SecurityLocalCheck,
     SecuritySubResult,
 )
@@ -276,3 +277,338 @@ class TestExcludedDirs:
     def test_contains_tests(self):
         """Test tests dir is excluded."""
         assert "tests" in EXCLUDED_DIRS
+
+
+class TestRunSemgrep:
+    """Tests for _run_semgrep method."""
+
+    def test_semgrep_no_issues(self, tmp_path):
+        """Test _run_semgrep with no issues found."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_semgrep(str(tmp_path))
+
+        assert result.name == "semgrep"
+        assert result.passed is True
+        assert "No issues found" in result.findings
+
+    def test_semgrep_with_findings(self, tmp_path):
+        """Test _run_semgrep with findings."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.stdout = json.dumps(
+            {
+                "results": [
+                    {
+                        "extra": {"severity": "ERROR", "message": "SQL injection risk"},
+                        "path": "app.py",
+                        "start": {"line": 25},
+                    }
+                ]
+            }
+        )
+        mock_result.returncode = 1
+        mock_result.stderr = ""
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_semgrep(str(tmp_path))
+
+        assert result.passed is False
+        assert "ERROR" in result.findings
+        assert "SQL injection" in result.findings
+
+    def test_semgrep_only_informational(self, tmp_path):
+        """Test _run_semgrep ignores INFO findings."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.stdout = json.dumps(
+            {
+                "results": [
+                    {
+                        "extra": {
+                            "severity": "INFO",
+                            "message": "Consider refactoring",
+                        },
+                        "path": "app.py",
+                        "start": {"line": 10},
+                    }
+                ]
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_semgrep(str(tmp_path))
+
+        assert result.passed is True
+        assert "Only informational" in result.findings
+
+    def test_semgrep_no_results(self, tmp_path):
+        """Test _run_semgrep with empty results."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.stdout = json.dumps({"results": []})
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_semgrep(str(tmp_path))
+
+        assert result.passed is True
+
+    def test_semgrep_json_error(self, tmp_path):
+        """Test _run_semgrep handles JSON parse errors."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.stdout = "not valid json"
+        mock_result.returncode = 1
+        mock_result.stderr = "Some error"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_semgrep(str(tmp_path))
+
+        assert result.passed is False
+
+
+class TestRunDetectSecrets:
+    """Tests for _run_detect_secrets method."""
+
+    def test_detect_secrets_no_findings(self, tmp_path):
+        """Test _run_detect_secrets with no secrets found."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps({"results": {}})
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.name == "detect-secrets"
+        assert result.passed is True
+        assert "No secrets" in result.findings
+
+    def test_detect_secrets_with_findings(self, tmp_path):
+        """Test _run_detect_secrets with secrets found."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {"results": {"config.py": [{"type": "Secret Keyword", "line_number": 5}]}}
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is False
+        assert "config.py" in result.findings
+        assert "Secret Keyword" in result.findings
+
+    def test_detect_secrets_ignores_constants(self, tmp_path):
+        """Test _run_detect_secrets ignores constants.py."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {"results": {"constants.py": [{"type": "High Entropy String"}]}}
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True  # constants.py is ignored
+
+    def test_detect_secrets_json_error(self, tmp_path):
+        """Test _run_detect_secrets handles JSON errors."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = "not json"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True  # Scan completed
+
+    def test_detect_secrets_failure(self, tmp_path):
+        """Test _run_detect_secrets with command failure."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.output = "Error running scan"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is False
+
+    def test_detect_secrets_with_baseline(self, tmp_path):
+        """Test _run_detect_secrets uses baseline config."""
+        check = SecurityLocalCheck({"config_file_path": "/path/to/baseline.json"})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps({"results": {}})
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            check._run_detect_secrets(str(tmp_path))
+
+        call_args = mock_run.call_args[0][0]
+        assert "--baseline" in call_args
+        assert "/path/to/baseline.json" in call_args
+
+
+class TestSecurityCheck:
+    """Tests for SecurityCheck (full security with safety)."""
+
+    def test_name(self):
+        """Test check name."""
+        check = SecurityCheck({})
+        assert check.name == "full"
+
+    def test_full_name(self):
+        """Test full check name with category."""
+        check = SecurityCheck({})
+        assert check.full_name == "security:full"
+
+    def test_display_name(self):
+        """Test display name includes safety."""
+        check = SecurityCheck({})
+        assert "Security Full" in check.display_name
+        assert "safety" in check.display_name
+
+    def test_run_all_checks_passed(self, tmp_path):
+        """Test run() when all checks including safety pass."""
+        (tmp_path / "app.py").write_text("print('hello')")
+        check = SecurityCheck({})
+
+        passing_results = [
+            SecuritySubResult("bandit", True, "OK"),
+            SecuritySubResult("semgrep", True, "OK"),
+            SecuritySubResult("detect-secrets", True, "OK"),
+            SecuritySubResult("safety", True, "OK"),
+        ]
+
+        with patch(
+            "slopbucket.checks.security.ThreadPoolExecutor"
+        ) as mock_executor_class:
+            mock_executor = MagicMock()
+            mock_executor_class.return_value.__enter__.return_value = mock_executor
+            mock_futures = [MagicMock() for _ in passing_results]
+            for future, result in zip(mock_futures, passing_results):
+                future.result.return_value = result
+            mock_executor.submit.side_effect = mock_futures
+
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert "security:full" in result.name
+
+    def test_run_safety_failure(self, tmp_path):
+        """Test run() when safety check fails."""
+        (tmp_path / "app.py").write_text("print('hello')")
+        check = SecurityCheck({})
+
+        results = [
+            SecuritySubResult("bandit", True, "OK"),
+            SecuritySubResult("semgrep", True, "OK"),
+            SecuritySubResult("detect-secrets", True, "OK"),
+            SecuritySubResult("safety", False, "Vulnerable dependency found"),
+        ]
+
+        with patch(
+            "slopbucket.checks.security.ThreadPoolExecutor"
+        ) as mock_executor_class:
+            mock_executor = MagicMock()
+            mock_executor_class.return_value.__enter__.return_value = mock_executor
+            mock_futures = [MagicMock() for _ in results]
+            for future, res in zip(mock_futures, results):
+                future.result.return_value = res
+            mock_executor.submit.side_effect = mock_futures
+
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "safety" in result.output
+
+
+class TestRunSafety:
+    """Tests for _run_safety method."""
+
+    def test_safety_no_vulnerabilities(self, tmp_path):
+        """Test _run_safety with no vulnerable dependencies."""
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_safety(str(tmp_path))
+
+        assert result.name == "safety"
+        assert result.passed is True
+        assert "No vulnerable" in result.findings
+
+    def test_safety_with_vulnerabilities(self, tmp_path):
+        """Test _run_safety with vulnerabilities found."""
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.output = json.dumps(
+            {
+                "vulnerabilities": [
+                    {
+                        "severity": "HIGH",
+                        "package_name": "requests",
+                        "installed_version": "2.25.0",
+                        "vulnerability_id": "CVE-2023-1234",
+                    }
+                ]
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_safety(str(tmp_path))
+
+        assert result.passed is False
+        assert "HIGH" in result.findings
+        assert "requests" in result.findings
+        assert "CVE-2023-1234" in result.findings
+
+    def test_safety_no_vulnerabilities_in_report(self, tmp_path):
+        """Test _run_safety with empty vulnerabilities list."""
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.output = json.dumps({"vulnerabilities": []})
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_safety(str(tmp_path))
+
+        assert result.passed is True
+
+    def test_safety_json_error(self, tmp_path):
+        """Test _run_safety handles JSON parse errors."""
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.output = "Error running safety"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_safety(str(tmp_path))
+
+        assert result.passed is False
+
+    def test_safety_with_config_file(self, tmp_path):
+        """Test _run_safety uses config file."""
+        check = SecurityCheck({"safety_config_file": "/path/to/.safety.yaml"})
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            check._run_safety(str(tmp_path))
+
+        call_args = mock_run.call_args[0][0]
+        assert "--policy-file" in call_args
+        assert "/path/to/.safety.yaml" in call_args

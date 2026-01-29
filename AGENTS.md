@@ -2,7 +2,7 @@
 
 > **⚠️ AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY**
 > 
-> **Last Updated:** 2026-01-29 08:03:53 UTC  
+> **Last Updated:** 2026-01-29 08:38:28 UTC  
 > **Source:** `cursor-rules/.cursor/rules/`  
 > **To modify:** Edit source files in `cursor-rules/.cursor/rules/*.mdc` and run `cursor-rules/build_agent_instructions.sh`
 
@@ -1189,6 +1189,36 @@ Slopbucket is a language-agnostic, bolt-on code validation tool designed to catc
 - **Zero configuration required**: Works out of the box
 - **Simple, iterative workflow**: Use profiles, fix failures one at a time
 
+## 🚨 CRITICAL: sb IS THE ONLY TOOL 🚨
+
+**ABSOLUTE PROHIBITION**: AI assistants MUST NOT bypass `sb` by running raw commands.
+
+### FORBIDDEN Commands (Groundhog Day Violations)
+
+```bash
+# ❌ NEVER run these directly - they bypass sb
+pytest --cov=slopbucket ...      # Use: sb validate python:coverage
+pytest tests/ ...                 # Use: sb validate python:tests
+black --check ...                 # Use: sb validate python:lint-format
+flake8 ...                        # Use: sb validate python:lint-format
+mypy ...                          # Use: sb validate python:static-analysis
+bandit ...                        # Use: sb validate security:local
+```
+
+### WHY This Matters
+
+1. **sb provides iteration guidance** - raw commands don't tell you what to do next
+2. **sb respects config** - thresholds, exclusions, and settings from `.sb_config.json`
+3. **sb is the product** - using raw commands means ignoring friction points we should fix
+4. **Consistency** - same workflow everywhere, no context switching
+
+### If sb Output Is Insufficient
+
+**DO NOT work around it.** Instead:
+1. Identify what information is missing from sb output
+2. Update the relevant check to provide that information
+3. Make sb better, don't bypass it
+
 ## AI Agent Workflow (IMPORTANT!)
 
 **🤖 This is the intended workflow for AI coding assistants.**
@@ -1225,6 +1255,9 @@ When a check fails, slopbucket shows you exactly what to do next:
 # ❌ DON'T do this - verbose, misses the point of profiles
 sb validate -g python:lint-format,python:static-analysis,python:tests
 
+# ❌ DON'T do this - bypasses sb entirely (GROUNDHOG DAY VIOLATION)
+pytest --cov=slopbucket --cov-report=term-missing
+
 # ✅ DO this - simple, iterative, self-guiding
 sb validate commit
 ```
@@ -1237,6 +1270,15 @@ sb validate commit
 4. **Validate the fix**: `sb validate <failed-gate>` (just that one gate)
 5. **Resume the profile**: `sb validate commit`
 6. **Repeat until green**: Keep iterating until all checks pass
+
+### Coverage Failures - DO NOT Analyze Manually
+
+When coverage fails:
+- ❌ DON'T run `pytest --cov` to "see what's missing"
+- ❌ DON'T manually calculate what tests to add
+- ✅ DO read the output from `sb validate python:coverage`
+- ✅ DO follow the guidance it provides
+- ✅ DO improve sb's coverage output if it's not actionable enough
 
 ## CLI Commands
 
@@ -1268,32 +1310,35 @@ sb help python-lint-format              # Help for specific gate
 
 | Profile | Checks Included | Use Case |
 |---------|-----------------|----------|
-| `commit` | lint-format, static-analysis, tests, coverage | Fast local validation |
+| `commit` | lint-format, static-analysis, tests, coverage, security | Fast local validation |
 | `pr` | All checks | Full PR validation |
 | `quick` | lint-format only | Ultra-fast check |
 | `python` | All Python checks | Python-only validation |
 | `javascript` | All JavaScript checks | JS-only validation |
 
-## Test Commands
+## Running Tests
 
-### Running Tests
+### ✅ CORRECT Way (Always Use sb)
 
 ```bash
-# Full test suite
-pytest
-
-# Specific test file
-pytest tests/unit/test_executor.py -v
-
-# Specific test function
-pytest tests/unit/test_executor.py::test_function_name -v -s
-
-# With coverage
-pytest --cov=slopbucket --cov-report=term-missing
-
-# Self-validation (dogfooding)
-sb validate --self
+sb validate python:tests               # Run tests through sb
+sb validate commit                      # Run full commit profile
 ```
+
+### ❌ WRONG Way (Bypasses sb)
+
+```bash
+pytest                                  # Direct pytest - NO
+pytest tests/unit/test_foo.py -v       # Direct pytest - NO  
+pytest --cov=slopbucket                # Direct coverage - NO
+```
+
+### When You Need More Test Detail
+
+If sb's test output doesn't give enough detail for debugging:
+1. **First**: Check if sb has a `--verbose` flag
+2. **If not**: Add verbose output support to the tests check
+3. **Never**: Just run pytest directly as a workaround
 
 ### Test Directory Structure
 ```
@@ -1384,15 +1429,25 @@ sb validate --self pr
 4. Add tests in `tests/unit/`
 5. Update aliases in registry if needed
 
-### Configuration File
+### Improving sb When It's Not Enough
 
-`.sb_config.json` in project root:
+**This is critical**: When sb output doesn't give you what you need, FIX SB.
+
+Examples:
+- Coverage check doesn't show which files need tests? → Update coverage.py to show top uncovered files
+- Test failures don't show enough context? → Add verbose flag to tests check
+- Security check flags something you can't understand? → Improve the error message
+
+**Anti-pattern**: Running raw `pytest --cov` to "get more info" - this is a workaround that ignores the real problem (sb's output isn't good enough).
+
+## Configuration
+
+### .sb_config.json Structure
 
 ```json
 {
   "version": "1.0",
   "default_profile": "commit",
-  
   "python": {
     "enabled": true,
     "include_dirs": ["slopbucket"],
@@ -1405,16 +1460,28 @@ sb validate --self pr
 }
 ```
 
+### Adjusting Thresholds
+
+If a threshold is wrong, update `.sb_config.json`:
+```bash
+# View current config
+sb config --show
+
+# Edit .sb_config.json directly for threshold changes
+```
+
 ## Common Issues
 
-### "No checks registered" Error
-Run `sb init` to set up the project, or ensure `register_all_checks()` is called.
+### "Coverage Below Threshold"
+- Read the sb output - it tells you what to do
+- DO NOT run `pytest --cov` manually
+- If sb's guidance isn't clear, improve the coverage check output
 
-### Coverage Below Threshold
-Default threshold is 80%. Adjust in config or focus on adding tests for uncovered code.
+### "No checks registered" Error
+Run `sb init` to set up the project.
 
 ### Subprocess Security Errors
-If you need to run a command that's not whitelisted, add it to the validator's allowed executables list in `slopbucket/subprocess/validator.py`.
+Add the executable to the validator's allowed list in `slopbucket/subprocess/validator.py`.
 
 ## PR Review Notes
 

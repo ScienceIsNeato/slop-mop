@@ -252,6 +252,73 @@ class TestCheckRegistry:
         checks = registry.get_checks(["python:check1", "python:check1"], {})
         assert len(checks) == 1
 
+    def test_get_applicable_checks(self, tmp_path):
+        """Test get_applicable_checks returns only applicable checks."""
+        registry = CheckRegistry()
+
+        class ApplicableCheck(MockCheck):
+            _mock_name = "applicable"
+            _mock_applicable = True
+
+        class NotApplicableCheck(MockCheck):
+            _mock_name = "not-applicable"
+            _mock_applicable = False
+
+        registry.register(ApplicableCheck)
+        registry.register(NotApplicableCheck)
+
+        applicable = registry.get_applicable_checks(str(tmp_path), {})
+
+        # Only one check should be applicable
+        assert len(applicable) == 1
+        assert applicable[0].name == "applicable"
+
+    def test_get_applicable_checks_empty(self, tmp_path):
+        """Test get_applicable_checks with no registered checks."""
+        registry = CheckRegistry()
+        applicable = registry.get_applicable_checks(str(tmp_path), {})
+        assert applicable == []
+
+
+class TestRegisterCheckDecorator:
+    """Tests for @register_check decorator."""
+
+    def test_register_check_decorator(self):
+        """Test the register_check decorator adds check to registry."""
+        # Reset the global registry
+        import slopbucket.core.registry as registry_module
+        from slopbucket.core.registry import get_registry, register_check
+
+        registry_module._default_registry = None
+
+        @register_check
+        class DecoratedCheck(BaseCheck):
+            @property
+            def name(self) -> str:
+                return "decorated-check"
+
+            @property
+            def display_name(self) -> str:
+                return "Decorated Check"
+
+            @property
+            def category(self) -> GateCategory:
+                return GateCategory.PYTHON
+
+            def is_applicable(self, project_root: str) -> bool:
+                return True
+
+            def run(self, project_root: str) -> CheckResult:
+                return CheckResult(
+                    name=self.name,
+                    status=CheckStatus.PASSED,
+                    duration=0.01,
+                    output="Success",
+                )
+
+        reg = get_registry()
+        assert "python:decorated-check" in reg.list_checks()
+
 
 class TestCheckDefinition:
     """Tests for CheckDefinition."""

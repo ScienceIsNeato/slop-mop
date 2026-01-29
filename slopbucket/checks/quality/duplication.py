@@ -34,7 +34,7 @@ class DuplicationCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return f"📋 Code Duplication (max {self.threshold}%)"
+        return "📋 Code Duplication"
 
     @property
     def category(self) -> GateCategory:
@@ -157,12 +157,12 @@ class DuplicationCheck(BaseCheck):
                 return self._create_result(
                     status=CheckStatus.PASSED,
                     duration=duration,
-                    output=f"Duplication: {total_percentage:.1f}% (within {self.threshold}% limit)",
+                    output="No excessive duplication detected.",
                 )
 
             # Format violation details
             violations = self._format_duplicates(duplicates)
-            detail = f"Duplication: {total_percentage:.1f}% exceeds {self.threshold}% limit\n\n"
+            detail = "Code duplication exceeds acceptable levels.\n\n"
             detail += "Duplicate blocks:\n" + "\n".join(violations[:10])
             if len(violations) > 10:
                 detail += f"\n... and {len(violations) - 10} more"
@@ -171,7 +171,7 @@ class DuplicationCheck(BaseCheck):
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=detail,
-                error=f"{total_percentage:.1f}% duplication ({len(duplicates)} blocks)",
+                error="Excessive code duplication detected",
                 fix_suggestion="Extract duplicated code into shared functions or modules.",
             )
 
