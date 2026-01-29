@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from slopbucket.checks.javascript.coverage import JavaScriptCoverageCheck
-from slopbucket.checks.javascript.frontend import FrontendCheck
+from slopbucket.checks.javascript.eslint_quick import FrontendCheck
 from slopbucket.checks.javascript.lint_format import JavaScriptLintFormatCheck
 from slopbucket.checks.javascript.tests import JavaScriptTestsCheck
 from slopbucket.core.result import CheckStatus

@@ -40,7 +40,7 @@ def register_all_checks() -> None:
 
     # Import and register JavaScript checks
     from slopbucket.checks.javascript.coverage import JavaScriptCoverageCheck
-    from slopbucket.checks.javascript.frontend import FrontendCheck
+    from slopbucket.checks.javascript.eslint_quick import FrontendCheck
     from slopbucket.checks.javascript.lint_format import JavaScriptLintFormatCheck
     from slopbucket.checks.javascript.tests import JavaScriptTestsCheck
 
@@ -62,7 +62,7 @@ def register_all_checks() -> None:
     registry.register(DuplicationCheck)
 
     # Import and register general checks
-    from slopbucket.checks.general.templates import TemplateValidationCheck
+    from slopbucket.checks.general.jinja2_templates import TemplateValidationCheck
 
     registry.register(TemplateValidationCheck)
 

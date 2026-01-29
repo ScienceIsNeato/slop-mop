@@ -1,8 +1,8 @@
-"""Tests for TemplateValidationCheck."""
+"""Tests for TemplateValidationCheck (Jinja2 templates)."""
 
 from unittest.mock import patch
 
-from slopbucket.checks.general.templates import TemplateValidationCheck
+from slopbucket.checks.general.jinja2_templates import TemplateValidationCheck
 from slopbucket.core.result import CheckStatus
 from slopbucket.subprocess.runner import SubprocessResult
 
