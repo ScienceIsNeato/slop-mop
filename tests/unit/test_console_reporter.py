@@ -169,8 +169,9 @@ class TestConsoleReporter:
         reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        # Clean success output - shows count and time
-        assert "ALL 2 CHECKS PASSED" in captured.out
+        # Clean success output with slopbucket branding
+        assert "NO SLOP DETECTED" in captured.out
+        assert "2 checks passed" in captured.out
         assert "3.0s" in captured.out
         # Should list the passing checks
         assert "check1" in captured.out
@@ -226,7 +227,8 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # All passed with skipped note
-        assert "ALL 1 CHECKS PASSED" in captured.out
+        assert "NO SLOP DETECTED" in captured.out
+        assert "1 checks passed" in captured.out
         assert "1 skipped" in captured.out
 
     def test_print_summary_quiet_mode(self, capsys):
@@ -242,7 +244,7 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # Success message should appear
-        assert "ALL 2 CHECKS PASSED" in captured.out
+        assert "NO SLOP DETECTED" in captured.out
         # But individual check names should not be listed in quiet mode
         assert "   ✅ check1" not in captured.out
         assert "   ✅ check2" not in captured.out

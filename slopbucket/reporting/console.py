@@ -115,7 +115,7 @@ class ConsoleReporter:
         if summary.all_passed:
             # Clean, minimal success output
             print(
-                f"🎉 ALL {summary.passed} CHECKS PASSED in {summary.total_duration:.1f}s"
+                f"✨ NO SLOP DETECTED · {summary.passed} checks passed in {summary.total_duration:.1f}s"
             )
             print("=" * 60)
             if not self.quiet:
@@ -128,7 +128,7 @@ class ConsoleReporter:
             return
 
         # Failure output - more detailed
-        print("📊 Quality Gate Results")
+        print("🪣 SLOP DETECTED")
         print("=" * 60)
 
         # Show counts only for non-zero statuses
@@ -173,7 +173,7 @@ class ConsoleReporter:
 
         # Final verdict with iteration guidance
         print("─" * 60)
-        print(f"🔧 {summary.failed + summary.errors} check(s) need attention")
+        print(f"🧹 Time to mop up {summary.failed + summary.errors} issue(s)")
         print()
         self._print_iteration_guidance(failed, errors)
         print("=" * 60)
@@ -209,5 +209,5 @@ class ConsoleReporter:
         print(f"│ 2. Validate: sb validate {gate_name:<32} │")
         print(f"│ 3. Resume:   sb validate {profile:<32} │")
         print("│                                                          │")
-        print("│ Keep iterating until all checks pass.                    │")
+        print("│ Keep iterating until the bucket is empty.                │")
         print("└" + "─" * 58 + "┘")
