@@ -3,8 +3,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from slopbucket.checks.pr.comments import PRCommentsCheck
-from slopbucket.core.result import CheckStatus
+from slopmop.checks.pr.comments import PRCommentsCheck
+from slopmop.core.result import CheckStatus
 
 
 class TestPRCommentsCheck:
@@ -22,7 +22,7 @@ class TestPRCommentsCheck:
 
     def test_category(self):
         """Test check category."""
-        from slopbucket.checks.base import GateCategory
+        from slopmop.checks.base import GateCategory
 
         check = PRCommentsCheck({})
         assert check.category == GateCategory.PR

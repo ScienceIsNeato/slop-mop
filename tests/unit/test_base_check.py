@@ -2,13 +2,13 @@
 
 from unittest.mock import MagicMock
 
-from slopbucket.checks.base import (
+from slopmop.checks.base import (
     BaseCheck,
     GateCategory,
     JavaScriptCheckMixin,
     PythonCheckMixin,
 )
-from slopbucket.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus
 
 
 class ConcreteCheck(BaseCheck):

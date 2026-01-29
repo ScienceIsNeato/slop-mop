@@ -1,8 +1,8 @@
 """Tests for check registry."""
 
-from slopbucket.checks.base import BaseCheck, GateCategory
-from slopbucket.core.registry import CheckRegistry, get_registry
-from slopbucket.core.result import CheckDefinition, CheckResult, CheckStatus
+from slopmop.checks.base import BaseCheck, GateCategory
+from slopmop.core.registry import CheckRegistry, get_registry
+from slopmop.core.result import CheckDefinition, CheckResult, CheckStatus
 
 
 class MockCheck(BaseCheck):
@@ -235,7 +235,7 @@ class TestCheckRegistry:
     def test_get_registry_singleton(self):
         """Test get_registry returns singleton."""
         # Reset global registry for this test
-        import slopbucket.core.registry as registry_module
+        import slopmop.core.registry as registry_module
 
         registry_module._default_registry = None
 
@@ -286,8 +286,8 @@ class TestRegisterCheckDecorator:
     def test_register_check_decorator(self):
         """Test the register_check decorator adds check to registry."""
         # Reset the global registry
-        import slopbucket.core.registry as registry_module
-        from slopbucket.core.registry import get_registry, register_check
+        import slopmop.core.registry as registry_module
+        from slopmop.core.registry import get_registry, register_check
 
         registry_module._default_registry = None
 

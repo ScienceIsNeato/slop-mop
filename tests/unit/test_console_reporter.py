@@ -2,8 +2,8 @@
 
 import pytest  # noqa: F401  # Required for fixtures
 
-from slopbucket.core.result import CheckResult, CheckStatus, ExecutionSummary
-from slopbucket.reporting.console import ConsoleReporter
+from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.reporting.console import ConsoleReporter
 
 
 class TestConsoleReporter:
@@ -169,7 +169,7 @@ class TestConsoleReporter:
         reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        # Clean success output with slopbucket branding
+        # Clean success output with slopmop branding
         assert "NO SLOP DETECTED" in captured.out
         assert "2 checks passed" in captured.out
         assert "3.0s" in captured.out

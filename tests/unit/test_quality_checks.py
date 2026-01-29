@@ -3,9 +3,9 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from slopbucket.checks.quality.complexity import ComplexityCheck
-from slopbucket.checks.quality.duplication import DuplicationCheck
-from slopbucket.core.result import CheckStatus
+from slopmop.checks.quality.complexity import ComplexityCheck
+from slopmop.checks.quality.duplication import DuplicationCheck
+from slopmop.core.result import CheckStatus
 
 
 class TestComplexityCheck:

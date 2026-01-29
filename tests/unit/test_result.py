@@ -1,6 +1,6 @@
 """Tests for core result types."""
 
-from slopbucket.core.result import (
+from slopmop.core.result import (
     CheckDefinition,
     CheckResult,
     CheckStatus,

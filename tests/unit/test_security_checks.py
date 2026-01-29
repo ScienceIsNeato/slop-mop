@@ -3,13 +3,13 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from slopbucket.checks.security import (
+from slopmop.checks.security import (
     EXCLUDED_DIRS,
     SecurityCheck,
     SecurityLocalCheck,
     SecuritySubResult,
 )
-from slopbucket.core.result import CheckStatus
+from slopmop.core.result import CheckStatus
 
 
 class TestSecuritySubResult:
@@ -200,9 +200,7 @@ class TestSecurityLocalCheck:
             SecuritySubResult("detect-secrets", True, "OK"),
         ]
 
-        with patch(
-            "slopbucket.checks.security.ThreadPoolExecutor"
-        ) as mock_executor_class:
+        with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_executor_class.return_value.__enter__.return_value = mock_executor
             mock_futures = [MagicMock() for _ in passing_results]
@@ -226,9 +224,7 @@ class TestSecurityLocalCheck:
             SecuritySubResult("detect-secrets", True, "OK"),
         ]
 
-        with patch(
-            "slopbucket.checks.security.ThreadPoolExecutor"
-        ) as mock_executor_class:
+        with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_executor_class.return_value.__enter__.return_value = mock_executor
             mock_futures = [MagicMock() for _ in results]
@@ -247,9 +243,7 @@ class TestSecurityLocalCheck:
         (tmp_path / "app.py").write_text("print('hello')")
         check = SecurityLocalCheck({})
 
-        with patch(
-            "slopbucket.checks.security.ThreadPoolExecutor"
-        ) as mock_executor_class:
+        with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_executor_class.return_value.__enter__.return_value = mock_executor
             mock_future = MagicMock()
@@ -491,9 +485,7 @@ class TestSecurityCheck:
             SecuritySubResult("safety", True, "OK"),
         ]
 
-        with patch(
-            "slopbucket.checks.security.ThreadPoolExecutor"
-        ) as mock_executor_class:
+        with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_executor_class.return_value.__enter__.return_value = mock_executor
             mock_futures = [MagicMock() for _ in passing_results]
@@ -518,9 +510,7 @@ class TestSecurityCheck:
             SecuritySubResult("safety", False, "Vulnerable dependency found"),
         ]
 
-        with patch(
-            "slopbucket.checks.security.ThreadPoolExecutor"
-        ) as mock_executor_class:
+        with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_executor_class.return_value.__enter__.return_value = mock_executor
             mock_futures = [MagicMock() for _ in results]

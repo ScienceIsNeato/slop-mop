@@ -152,7 +152,7 @@ When a dependency fails:
 ### Taxonomy
 
 ```
-sb help
+sm help
 ├── 🐍 Python
 │   ├── python-lint-format     🎨 Code formatting (black, isort, flake8)
 │   ├── python-static-analysis 🔍 Type checking (mypy)
@@ -248,9 +248,9 @@ def get_threshold(self, key: str, default: int, min_val: int = 0, max_val: int =
 3. Update display helpers
 
 ### Phase 3: CLI Display
-1. Update `sb help` for hierarchical display
-2. Update `sb config --show` for category grouping
-3. Add `sb help <category>` support
+1. Update `sm help` for hierarchical display
+2. Update `sm config --show` for category grouping
+3. Add `sm help <category>` support
 
 ### Phase 4: Validation Integration
 1. Wire up config validation before check execution
@@ -263,17 +263,17 @@ def get_threshold(self, key: str, default: int, min_val: int = 0, max_val: int =
 
 1. **Custom profiles**: Defer for later. Built-in profiles (commit, pr, quick) are sufficient for now.
 
-2. **Discovery behavior**: No auto-discovery when new checks are added to codebase. Auto-discovery **only** happens during `sb init`. Adding new gates to an existing project is a manual config step.
+2. **Discovery behavior**: No auto-discovery when new checks are added to codebase. Auto-discovery **only** happens during `sm init`. Adding new gates to an existing project is a manual config step.
 
 3. **Include_dirs defaults**: Everything comes **disabled by default** with `include_dirs: null`. 
-   - `sb init` uses canonical language-specific detection
+   - `sm init` uses canonical language-specific detection
    - Never default to `.` - could accidentally scan terabyte filesystems
    - Explicit > implicit
 
 ### Design Principles (Updated)
 
 1. **Nothing runs until configured**: All gates disabled by default
-2. **Setup does discovery**: `sb init` is the only auto-detection point  
+2. **Setup does discovery**: `sm init` is the only auto-detection point  
 3. **Safe defaults**: `enabled: false, include_dirs: null`
 4. **Canonical detection**: Per-language smart discovery in setup only
    - Python: Look for setup.py, pyproject.toml, src/, then scan for .py files

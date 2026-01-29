@@ -3,13 +3,13 @@
 import os
 from unittest.mock import patch
 
-from slopbucket.checks.python.test_types import (
+from slopmop.checks.python.test_types import (
     E2ETestCheck,
     IntegrationTestCheck,
     SmokeTestCheck,
 )
-from slopbucket.core.result import CheckStatus
-from slopbucket.subprocess.runner import SubprocessResult
+from slopmop.core.result import CheckStatus
+from slopmop.subprocess.runner import SubprocessResult
 
 
 def _make_result(output: str = "", returncode: int = 0):

@@ -2,7 +2,7 @@
 
 import pytest
 
-from slopbucket.subprocess.validator import CommandValidator, SecurityError
+from slopmop.subprocess.validator import CommandValidator, SecurityError
 
 
 class TestCommandValidator:

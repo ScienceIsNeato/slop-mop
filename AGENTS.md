@@ -1173,14 +1173,14 @@ gh pr comment <PR_NUMBER> --body-file /tmp/pr_comment.md
 
 _Including project rules matching: 
 
-✓ Including: slopbucket.mdc
-# slopbucket
+✓ Including: slop-mop.mdc
+# slop-mop
 
-# Slopbucket Project Rules 🪣
+# Slop-Mop Project Rules 🧹
 
 ## Project Overview
 
-Slopbucket is a language-agnostic, bolt-on code validation tool designed to catch AI-generated slop before it lands in your codebase. It provides fast, actionable feedback for both human developers and AI coding assistants.
+Slop-Mop is a language-agnostic, bolt-on code validation tool designed to catch AI-generated slop before it lands in your codebase. It provides fast, actionable feedback for both human developers and AI coding assistants.
 
 ### Core Philosophy
 - **Fail fast**: Stop at first failure to save time
@@ -1197,12 +1197,12 @@ Slopbucket is a language-agnostic, bolt-on code validation tool designed to catc
 
 ```bash
 # ❌ NEVER run these directly - they bypass sb
-pytest --cov=slopbucket ...      # Use: sb validate python:coverage
-pytest tests/ ...                 # Use: sb validate python:tests
-black --check ...                 # Use: sb validate python:lint-format
-flake8 ...                        # Use: sb validate python:lint-format
-mypy ...                          # Use: sb validate python:static-analysis
-bandit ...                        # Use: sb validate security:local
+pytest --cov=slop-mop ...      # Use: sm validate python:coverage
+pytest tests/ ...                 # Use: sm validate python:tests
+black --check ...                 # Use: sm validate python:lint-format
+flake8 ...                        # Use: sm validate python:lint-format
+mypy ...                          # Use: sm validate python:static-analysis
+bandit ...                        # Use: sm validate security:local
 ```
 
 ### WHY This Matters
@@ -1227,10 +1227,10 @@ bandit ...                        # Use: sb validate security:local
 
 ```bash
 # Just run the profile - don't overthink it!
-sb validate commit
+sm validate commit
 ```
 
-When a check fails, slopbucket shows you exactly what to do next:
+When a check fails, slop-mop shows you exactly what to do next:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -1242,8 +1242,8 @@ When a check fails, slopbucket shows you exactly what to do next:
 │ NEXT STEPS:                                              │
 │                                                          │
 │ 1. Fix the issue described above                         │
-│ 2. Validate: sb validate python:coverage                 │
-│ 3. Resume:   sb validate commit                          │
+│ 2. Validate: sm validate python:coverage                 │
+│ 3. Resume:   sm validate commit                          │
 │                                                          │
 │ Keep iterating until all checks pass.                    │
 └──────────────────────────────────────────────────────────┘
@@ -1253,22 +1253,22 @@ When a check fails, slopbucket shows you exactly what to do next:
 
 ```bash
 # ❌ DON'T do this - verbose, misses the point of profiles
-sb validate -g python:lint-format,python:static-analysis,python:tests
+sm validate -g python:lint-format,python:static-analysis,python:tests
 
 # ❌ DON'T do this - bypasses sb entirely (GROUNDHOG DAY VIOLATION)
-pytest --cov=slopbucket --cov-report=term-missing
+pytest --cov=slop-mop --cov-report=term-missing
 
 # ✅ DO this - simple, iterative, self-guiding
-sb validate commit
+sm validate commit
 ```
 
 ### The Iteration Loop
 
-1. **Run the profile**: `sb validate commit`
+1. **Run the profile**: `sm validate commit`
 2. **See what fails**: Output shows exactly which gate failed
 3. **Fix the issue**: Follow the guidance in the error output
-4. **Validate the fix**: `sb validate <failed-gate>` (just that one gate)
-5. **Resume the profile**: `sb validate commit`
+4. **Validate the fix**: `sm validate <failed-gate>` (just that one gate)
+5. **Resume the profile**: `sm validate commit`
 6. **Repeat until green**: Keep iterating until all checks pass
 
 ### Coverage Failures - DO NOT Analyze Manually
@@ -1276,7 +1276,7 @@ sb validate commit
 When coverage fails:
 - ❌ DON'T run `pytest --cov` to "see what's missing"
 - ❌ DON'T manually calculate what tests to add
-- ✅ DO read the output from `sb validate python:coverage`
+- ✅ DO read the output from `sm validate python:coverage`
 - ✅ DO follow the guidance it provides
 - ✅ DO improve sb's coverage output if it's not actionable enough
 
@@ -1286,24 +1286,24 @@ When coverage fails:
 
 ```bash
 # Run validation - USE PROFILES (not gate lists!)
-sb validate commit                      # ← Primary workflow (fast)
-sb validate pr                          # ← Before opening PR
-sb validate quick                       # ← Ultra-fast lint only
-sb validate python:coverage             # Validate single gate (when iterating)
-sb validate --self                      # Validate slopbucket itself
+sm validate commit                      # ← Primary workflow (fast)
+sm validate pr                          # ← Before opening PR
+sm validate quick                       # ← Ultra-fast lint only
+sm validate python:coverage             # Validate single gate (when iterating)
+sm validate --self                      # Validate slop-mop itself
 
 # Configuration
-sb config --show                        # Show current config
-sb config --enable python-security      # Enable a gate
-sb config --disable python-complexity   # Disable a gate
+sm config --show                        # Show current config
+sm config --enable python-security      # Enable a gate
+sm config --disable python-complexity   # Disable a gate
 
 # Interactive Setup
-sb init                                 # Interactive prompts
-sb init --non-interactive               # Use detected defaults
+sm init                                 # Interactive prompts
+sm init --non-interactive               # Use detected defaults
 
 # Help
-sb help                                 # General help
-sb help python-lint-format              # Help for specific gate
+sm help                                 # General help
+sm help python-lint-format              # Help for specific gate
 ```
 
 ## Quality Gate Profiles
@@ -1321,8 +1321,8 @@ sb help python-lint-format              # Help for specific gate
 ### ✅ CORRECT Way (Always Use sb)
 
 ```bash
-sb validate python:tests               # Run tests through sb
-sb validate commit                      # Run full commit profile
+sm validate python:tests               # Run tests through sb
+sm validate commit                      # Run full commit profile
 ```
 
 ### ❌ WRONG Way (Bypasses sb)
@@ -1330,7 +1330,7 @@ sb validate commit                      # Run full commit profile
 ```bash
 pytest                                  # Direct pytest - NO
 pytest tests/unit/test_foo.py -v       # Direct pytest - NO  
-pytest --cov=slopbucket                # Direct coverage - NO
+pytest --cov=slop-mop                # Direct coverage - NO
 ```
 
 ### When You Need More Test Detail
@@ -1359,9 +1359,9 @@ tests/
 All checks inherit from `BaseCheck`:
 
 ```python
-from slopbucket.checks.base import BaseCheck
-from slopbucket.core.result import CheckResult, CheckStatus
-from slopbucket.core.registry import register_check
+from slop-mop.checks.base import BaseCheck
+from slop-mop.core.result import CheckResult, CheckStatus
+from slop-mop.core.registry import register_check
 
 @register_check
 class MyCheck(BaseCheck):
@@ -1390,18 +1390,18 @@ class MyCheck(BaseCheck):
 
 | Module | Purpose |
 |--------|---------|
-| `slopbucket/sb.py` | CLI entry point (verb-based) |
-| `slopbucket/core/executor.py` | Parallel check execution |
-| `slopbucket/core/registry.py` | Check registration and discovery |
-| `slopbucket/core/result.py` | Result types and status |
-| `slopbucket/subprocess/runner.py` | Secure subprocess execution |
-| `slopbucket/subprocess/validator.py` | Command whitelist validation |
-| `slopbucket/checks/` | Check implementations |
-| `slopbucket/reporting/console.py` | Output formatting |
+| `slop-mop/sb.py` | CLI entry point (verb-based) |
+| `slop-mop/core/executor.py` | Parallel check execution |
+| `slop-mop/core/registry.py` | Check registration and discovery |
+| `slop-mop/core/result.py` | Result types and status |
+| `slop-mop/subprocess/runner.py` | Secure subprocess execution |
+| `slop-mop/subprocess/validator.py` | Command whitelist validation |
+| `slop-mop/checks/` | Check implementations |
+| `slop-mop/reporting/console.py` | Output formatting |
 
 ### Security Model
 
-Slopbucket uses a whitelist-based security model for subprocess execution:
+Slop-Mop uses a whitelist-based security model for subprocess execution:
 - Only known, safe executables can be run (python, npm, black, etc.)
 - No `shell=True` execution
 - All arguments validated for injection patterns
@@ -1411,14 +1411,14 @@ Slopbucket uses a whitelist-based security model for subprocess execution:
 
 ### Self-Validation (Dogfooding)
 
-Always run slopbucket on itself before committing:
+Always run slop-mop on itself before committing:
 
 ```bash
 # Quick check
-sb validate --self commit
+sm validate --self commit
 
 # Full PR check
-sb validate --self pr
+sm validate --self pr
 ```
 
 ### Adding New Checks
@@ -1450,7 +1450,7 @@ Examples:
   "default_profile": "commit",
   "python": {
     "enabled": true,
-    "include_dirs": ["slopbucket"],
+    "include_dirs": ["slop-mop"],
     "gates": {
       "lint-format": { "enabled": true },
       "tests": { "enabled": true, "test_dirs": ["tests"] },
@@ -1465,7 +1465,7 @@ Examples:
 If a threshold is wrong, update `.sb_config.json`:
 ```bash
 # View current config
-sb config --show
+sm config --show
 
 # Edit .sb_config.json directly for threshold changes
 ```
@@ -1478,10 +1478,10 @@ sb config --show
 - If sb's guidance isn't clear, improve the coverage check output
 
 ### "No checks registered" Error
-Run `sb init` to set up the project.
+Run `sm init` to set up the project.
 
 ### Subprocess Security Errors
-Add the executable to the validator's allowed list in `slopbucket/subprocess/validator.py`.
+Add the executable to the validator's allowed list in `slop-mop/subprocess/validator.py`.
 
 ## PR Review Notes
 

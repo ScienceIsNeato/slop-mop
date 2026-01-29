@@ -1,6 +1,6 @@
 """Tests for CLI helper functions."""
 
-from slopbucket.sb import _deep_merge
+from slopmop.sm import _deep_merge
 
 
 class TestDeepMerge:
@@ -55,7 +55,7 @@ class TestDeepMerge:
         assert base == {"a": 1, "b": {"c": 2}}
 
     def test_config_like_structure(self):
-        """Works with slopbucket config-like structures."""
+        """Works with slopmop config-like structures."""
         base = {
             "version": "1.0",
             "python": {
@@ -111,17 +111,17 @@ class TestCmdValidateSelf:
         )
 
         # Mock the executor to avoid actually running checks
-        with patch("slopbucket.sb.CheckExecutor") as mock_executor_class:
+        with patch("slopmop.sm.CheckExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_summary = MagicMock()
             mock_summary.all_passed = True
             mock_executor.run_checks.return_value = mock_summary
             mock_executor_class.return_value = mock_executor
 
-            with patch("slopbucket.sb.ConsoleReporter"):
+            with patch("slopmop.sm.ConsoleReporter"):
                 import os
 
-                from slopbucket.sb import cmd_validate
+                from slopmop.sm import cmd_validate
 
                 # Store original env
                 original_env = os.environ.get("SB_CONFIG_FILE")
@@ -166,16 +166,16 @@ class TestCmdValidateSelf:
                 captured_temp_dir.append(result)
             return result
 
-        with patch("slopbucket.sb.CheckExecutor") as mock_executor_class:
+        with patch("slopmop.sm.CheckExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_summary = MagicMock()
             mock_summary.all_passed = True
             mock_executor.run_checks.return_value = mock_summary
             mock_executor_class.return_value = mock_executor
 
-            with patch("slopbucket.sb.ConsoleReporter"):
+            with patch("slopmop.sm.ConsoleReporter"):
                 with patch("tempfile.mkdtemp", capture_mkdtemp):
-                    from slopbucket.sb import cmd_validate
+                    from slopmop.sm import cmd_validate
 
                     cmd_validate(args)
 

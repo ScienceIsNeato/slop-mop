@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setup script for slopbucket - AI-Focused Quality Gate Framework."""
+"""Setup script for slopmop - AI-Focused Quality Gate Framework."""
 
 from pathlib import Path
 
@@ -25,14 +25,14 @@ dev_requirements = [
 ]
 
 setup(
-    name="slopbucket",
+    name="slopmop",
     version="1.0.0",
     author="ScienceIsNeato",
     author_email="scienceisneato@example.com",
     description="AI-Focused Quality Gate Framework",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/ScienceIsNeato/slopbucket",
+    url="https://github.com/ScienceIsNeato/slopmop",
     packages=find_packages(exclude=["tests", "tests.*"]),
     python_requires=">=3.9",
     install_requires=requirements,
@@ -41,7 +41,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "sb=slopbucket.sb:main",
+            "sm=slopmop.sm:main",
         ],
     },
     classifiers=[

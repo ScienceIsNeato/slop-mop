@@ -3,10 +3,10 @@
 import time
 from unittest.mock import MagicMock
 
-from slopbucket.checks.base import BaseCheck, GateCategory
-from slopbucket.core.executor import CheckExecutor, run_quality_checks
-from slopbucket.core.registry import CheckRegistry
-from slopbucket.core.result import CheckResult, CheckStatus
+from slopmop.checks.base import BaseCheck, GateCategory
+from slopmop.core.executor import CheckExecutor, run_quality_checks
+from slopmop.core.registry import CheckRegistry
+from slopmop.core.result import CheckResult, CheckStatus
 
 
 class MockCheck(BaseCheck):
@@ -422,12 +422,12 @@ class TestRunQualityChecks:
     def test_run_quality_checks_convenience_function(self, tmp_path):
         """Test run_quality_checks is a convenience wrapper."""
         # Reset the global registry to avoid interference from other tests
-        import slopbucket.core.registry as registry_module
+        import slopmop.core.registry as registry_module
 
         registry_module._default_registry = None
 
         # Register a test check
-        from slopbucket.core.registry import register_check
+        from slopmop.core.registry import register_check
 
         @register_check
         class ConvenienceTestCheck(BaseCheck):
