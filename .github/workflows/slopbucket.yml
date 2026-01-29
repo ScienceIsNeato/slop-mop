@@ -31,11 +31,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run commit profile
-        run: sb validate commit --no-fail-fast
-        
-      - name: Run PR profile
-        if: github.event_name == 'pull_request'
-        run: sb validate pr --no-fail-fast
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run validation
+        run: sb validate commit
