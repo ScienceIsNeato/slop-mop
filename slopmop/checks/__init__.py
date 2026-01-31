@@ -43,11 +43,13 @@ def register_all_checks() -> None:
     from slopmop.checks.javascript.eslint_quick import FrontendCheck
     from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
     from slopmop.checks.javascript.tests import JavaScriptTestsCheck
+    from slopmop.checks.javascript.types import JavaScriptTypesCheck
 
     registry.register(JavaScriptLintFormatCheck)
     registry.register(JavaScriptTestsCheck)
     registry.register(JavaScriptCoverageCheck)
     registry.register(FrontendCheck)
+    registry.register(JavaScriptTypesCheck)
 
     # Import and register security checks (cross-cutting)
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
@@ -125,6 +127,7 @@ def register_all_checks() -> None:
         "javascript",
         [
             "javascript:lint-format",
+            "javascript:types",
             "javascript:tests",
             "javascript:coverage",
             "javascript:frontend",
