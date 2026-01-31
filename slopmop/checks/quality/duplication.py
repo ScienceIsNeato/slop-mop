@@ -156,7 +156,7 @@ class DuplicationCheck(BaseCheck):
             stats = report.get("statistics", {})
             total_percentage = stats.get("total", {}).get("percentage", 0)
 
-            if total_percentage <= self.threshold and not duplicates:
+            if total_percentage <= self.threshold:
                 return self._create_result(
                     status=CheckStatus.PASSED,
                     duration=duration,
