@@ -58,6 +58,12 @@ class DuplicationCheck(BaseCheck):
                 description="Directories to scan for duplication",
             ),
             ConfigField(
+                name="exclude_dirs",
+                field_type="string[]",
+                default=[],
+                description="Additional directories to exclude from duplication scanning",
+            ),
+            ConfigField(
                 name="min_tokens",
                 field_type="integer",
                 default=50,
@@ -98,6 +104,20 @@ class DuplicationCheck(BaseCheck):
         min_tokens = self.config.get("min_tokens", MIN_TOKENS)
         min_lines = self.config.get("min_lines", MIN_LINES)
 
+        # Build exclude list: defaults + config exclude_dirs
+        default_excludes = [
+            "node_modules",
+            "dist",
+            "build",
+            ".git",
+            "__pycache__",
+            ".venv",
+            "venv",
+        ]
+        config_excludes = self.config.get("exclude_dirs", [])
+        all_excludes = default_excludes + config_excludes
+        ignore_pattern = ",".join(all_excludes)
+
         # Use a proper temp directory for the report
         with tempfile.TemporaryDirectory(prefix="jscpd-") as temp_dir:
             report_output = os.path.join(temp_dir, "jscpd-report")
@@ -117,7 +137,7 @@ class DuplicationCheck(BaseCheck):
                 "--output",
                 report_output,
                 "--ignore",
-                "node_modules,dist,build,.git,__pycache__,.venv,venv",
+                ignore_pattern,
                 ".",
             ]
 
