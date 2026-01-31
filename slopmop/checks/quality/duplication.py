@@ -102,6 +102,12 @@ class DuplicationCheck(BaseCheck):
         with tempfile.TemporaryDirectory(prefix="jscpd-") as temp_dir:
             report_output = os.path.join(temp_dir, "jscpd-report")
 
+            # Build ignore list from config exclude_dirs + hardcoded defaults
+            default_ignores = ["node_modules", "dist", "build", ".git", "__pycache__", ".venv", "venv", "coverage"]
+            config_excludes = self.config.get("exclude_dirs", [])
+            all_ignores = list(dict.fromkeys(default_ignores + config_excludes))
+            ignore_str = ",".join(all_ignores)
+
             # Run jscpd
             cmd = [
                 "npx",
@@ -117,7 +123,7 @@ class DuplicationCheck(BaseCheck):
                 "--output",
                 report_output,
                 "--ignore",
-                "node_modules,dist,build,.git,__pycache__,.venv,venv",
+                ignore_str,
                 ".",
             ]
 
@@ -153,11 +159,11 @@ class DuplicationCheck(BaseCheck):
             stats = report.get("statistics", {})
             total_percentage = stats.get("total", {}).get("percentage", 0)
 
-            if total_percentage <= self.threshold and not duplicates:
+            if total_percentage <= self.threshold:
                 return self._create_result(
                     status=CheckStatus.PASSED,
                     duration=duration,
-                    output="No excessive duplication detected.",
+                    output=f"Duplication at {total_percentage:.1f}% (threshold: {self.threshold}%). {len(duplicates)} clone(s) found but within limits.",
                 )
 
             # Format violation details
