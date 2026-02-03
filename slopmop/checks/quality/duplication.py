@@ -115,7 +115,8 @@ class DuplicationCheck(BaseCheck):
             "venv",
         ]
         config_excludes = self.config.get("exclude_dirs", [])
-        all_excludes = default_excludes + config_excludes
+        # Deduplicate while preserving order (defaults first, then config additions)
+        all_excludes = list(dict.fromkeys(default_excludes + config_excludes))
         ignore_pattern = ",".join(all_excludes)
 
         # Use a proper temp directory for the report

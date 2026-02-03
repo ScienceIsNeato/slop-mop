@@ -135,6 +135,7 @@ class TestDuplicationCheck:
         field_names = [f.name for f in schema]
         assert "threshold" in field_names
         assert "min_tokens" in field_names
+        assert "exclude_dirs" in field_names
 
     def test_is_applicable_with_python(self, tmp_path):
         """Test is_applicable returns True for Python projects."""
@@ -242,3 +243,77 @@ class TestDuplicationCheck:
                 result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+    def test_exclude_dirs_merged_with_defaults(self, tmp_path):
+        """Test that config exclude_dirs are merged with default excludes."""
+        (tmp_path / "app.py").write_text("def test(): pass")
+        check = DuplicationCheck({"exclude_dirs": ["custom_dir", "another_dir"]})
+
+        version_result = MagicMock()
+        version_result.returncode = 0
+        version_result.output = "6.0.0"
+
+        analysis_result = MagicMock()
+        analysis_result.returncode = 0
+        analysis_result.output = ""
+
+        # Track the command that was run
+        commands_run = []
+
+        def capture_command(cmd, **kwargs):
+            commands_run.append(cmd)
+            if "--version" in cmd:
+                return version_result
+            return analysis_result
+
+        with patch.object(check, "_run_command", side_effect=capture_command):
+            check.run(str(tmp_path))
+
+        # Find the jscpd command (not the version check)
+        jscpd_cmd = [c for c in commands_run if "--ignore" in c][0]
+        ignore_idx = jscpd_cmd.index("--ignore") + 1
+        ignore_str = jscpd_cmd[ignore_idx]
+
+        # Verify defaults are included
+        assert "node_modules" in ignore_str
+        assert "dist" in ignore_str
+        assert ".git" in ignore_str
+        # Verify config excludes are included
+        assert "custom_dir" in ignore_str
+        assert "another_dir" in ignore_str
+
+    def test_exclude_dirs_deduplicates(self, tmp_path):
+        """Test that duplicate exclude_dirs entries are removed."""
+        (tmp_path / "app.py").write_text("def test(): pass")
+        # Include 'dist' which is already in defaults
+        check = DuplicationCheck({"exclude_dirs": ["dist", "custom_dir", "node_modules"]})
+
+        version_result = MagicMock()
+        version_result.returncode = 0
+        version_result.output = "6.0.0"
+
+        analysis_result = MagicMock()
+        analysis_result.returncode = 0
+        analysis_result.output = ""
+
+        commands_run = []
+
+        def capture_command(cmd, **kwargs):
+            commands_run.append(cmd)
+            if "--version" in cmd:
+                return version_result
+            return analysis_result
+
+        with patch.object(check, "_run_command", side_effect=capture_command):
+            check.run(str(tmp_path))
+
+        jscpd_cmd = [c for c in commands_run if "--ignore" in c][0]
+        ignore_idx = jscpd_cmd.index("--ignore") + 1
+        ignore_str = jscpd_cmd[ignore_idx]
+
+        # Count occurrences - 'dist' should only appear once
+        ignore_list = ignore_str.split(",")
+        assert ignore_list.count("dist") == 1
+        assert ignore_list.count("node_modules") == 1
+        # custom_dir should still be present
+        assert "custom_dir" in ignore_list
