@@ -38,12 +38,6 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
     def config_schema(self) -> List[ConfigField]:
         return [
             ConfigField(
-                name="type_check_command",
-                field_type="string",
-                default="npx tsc --noEmit",
-                description="Command to run TypeScript type checking",
-            ),
-            ConfigField(
                 name="tsconfig",
                 field_type="string",
                 default="tsconfig.json",
@@ -55,7 +49,13 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
         """Check if this is a TypeScript project."""
         import os
 
-        # Check for tsconfig.json
+        # First, check if user has configured a specific tsconfig
+        configured_tsconfig = self.config.get("tsconfig", "tsconfig.json")
+        configured_path = os.path.join(project_root, configured_tsconfig)
+        if os.path.exists(configured_path):
+            return True
+
+        # Check for standard tsconfig.json
         tsconfig_path = os.path.join(project_root, "tsconfig.json")
         if os.path.exists(tsconfig_path):
             return True
@@ -86,13 +86,20 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                     output=npm_result.output,
                 )
 
-        # Get the tsconfig to use
-        tsconfig = self.config.get("tsconfig", "tsconfig.json")
-
-        # Check for CI-specific tsconfig
-        tsconfig_ci_path = os.path.join(project_root, "tsconfig.ci.json")
-        if os.path.exists(tsconfig_ci_path):
-            tsconfig = "tsconfig.ci.json"
+        # Get the tsconfig to use - respect user config, fallback to CI config if no user config
+        user_tsconfig = self.config.get("tsconfig")
+        default_tsconfig = "tsconfig.json"
+        
+        if user_tsconfig and user_tsconfig != default_tsconfig:
+            # User explicitly configured a specific tsconfig - use it
+            tsconfig = user_tsconfig
+        else:
+            # No explicit user config - check for CI-specific tsconfig as fallback
+            tsconfig_ci_path = os.path.join(project_root, "tsconfig.ci.json")
+            if os.path.exists(tsconfig_ci_path):
+                tsconfig = "tsconfig.ci.json"
+            else:
+                tsconfig = default_tsconfig
 
         # Build the type check command
         cmd = ["npx", "tsc", "--noEmit", "-p", tsconfig]
@@ -124,7 +131,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                 duration=duration,
                 output=result.output,
                 error=f"{error_count} TypeScript error(s) found",
-                fix_suggestion="Run: npx tsc --noEmit to see detailed errors",
+                fix_suggestion=f"Run: npx tsc --noEmit -p {tsconfig} to see detailed errors",
             )
 
         return self._create_result(
