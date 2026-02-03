@@ -135,6 +135,7 @@ class TestDuplicationCheck:
         field_names = [f.name for f in schema]
         assert "threshold" in field_names
         assert "min_tokens" in field_names
+        assert "exclude_dirs" in field_names
 
     def test_is_applicable_with_python(self, tmp_path):
         """Test is_applicable returns True for Python projects."""
@@ -242,3 +243,52 @@ class TestDuplicationCheck:
                 result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+    def test_run_with_duplication_below_threshold(self, tmp_path):
+        """Test run() passes when duplicates exist but percentage is below threshold."""
+        (tmp_path / "app.py").write_text("def copy(): pass")
+        check = DuplicationCheck({"threshold": 5})
+
+        version_result = MagicMock()
+        version_result.returncode = 0
+        version_result.output = "6.0.0"
+
+        analysis_result = MagicMock()
+        analysis_result.returncode = 0
+        analysis_result.output = ""
+        analysis_result.error = None
+
+        # Mock the temp directory and report file with duplicates below threshold
+        report_data = {
+            "duplicates": [
+                {"firstFile": {"name": "a.py"}, "secondFile": {"name": "b.py"}}
+            ],
+            "statistics": {
+                "total": {
+                    "duplicatedLines": 6,
+                    "lines": 200,
+                    "percentage": 3.0,  # Below 5% threshold
+                }
+            },
+        }
+
+        with (
+            patch.object(
+                check, "_run_command", side_effect=[version_result, analysis_result]
+            ),
+            patch("tempfile.TemporaryDirectory") as mock_temp,
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", create=True) as mock_open,
+        ):
+            import tempfile as tf
+
+            mock_temp.return_value.__enter__.return_value = tf.gettempdir()
+            mock_file = MagicMock()
+            mock_file.__enter__.return_value.read.return_value = json.dumps(report_data)
+            mock_open.return_value = mock_file
+            with patch("json.load", return_value=report_data):
+                result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert "within limits" in result.output
+        assert "1 clone(s)" in result.output

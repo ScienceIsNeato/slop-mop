@@ -69,6 +69,12 @@ class DuplicationCheck(BaseCheck):
                 default=5,
                 description="Minimum line count to consider as duplicate",
             ),
+            ConfigField(
+                name="exclude_dirs",
+                field_type="string[]",
+                default=[],
+                description="Additional directories to exclude from duplication scanning",
+            ),
         ]
 
     def is_applicable(self, project_root: str) -> bool:
@@ -103,7 +109,16 @@ class DuplicationCheck(BaseCheck):
             report_output = os.path.join(temp_dir, "jscpd-report")
 
             # Build ignore list from config exclude_dirs + hardcoded defaults
-            default_ignores = ["node_modules", "dist", "build", ".git", "__pycache__", ".venv", "venv", "coverage"]
+            default_ignores = [
+                "node_modules",
+                "dist",
+                "build",
+                ".git",
+                "__pycache__",
+                ".venv",
+                "venv",
+                "coverage",
+            ]
             config_excludes = self.config.get("exclude_dirs", [])
             all_ignores = list(dict.fromkeys(default_ignores + config_excludes))
             ignore_str = ",".join(all_ignores)
@@ -160,10 +175,14 @@ class DuplicationCheck(BaseCheck):
             total_percentage = stats.get("total", {}).get("percentage", 0)
 
             if total_percentage <= self.threshold:
+                if len(duplicates) == 0:
+                    output_msg = "No duplication detected"
+                else:
+                    output_msg = f"Duplication at {total_percentage:.1f}% (threshold: {self.threshold}%). {len(duplicates)} clone(s) found but within limits."
                 return self._create_result(
                     status=CheckStatus.PASSED,
                     duration=duration,
-                    output=f"Duplication at {total_percentage:.1f}% (threshold: {self.threshold}%). {len(duplicates)} clone(s) found but within limits.",
+                    output=output_msg,
                 )
 
             # Format violation details
