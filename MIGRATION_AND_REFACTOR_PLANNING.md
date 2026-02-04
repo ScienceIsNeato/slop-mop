@@ -8,10 +8,10 @@ This document outlines the migration of quality gate infrastructure from `course
 
 ### Current State (course_record_updater)
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `scripts/ship_it.py` | 2784 | Python orchestrator with parallel execution, PR integration |
-| `scripts/maintAInability-gate.sh` | 2230 | Bash implementation of individual checks |
+| File                              | Lines | Purpose                                                     |
+| --------------------------------- | ----- | ----------------------------------------------------------- |
+| `scripts/ship_it.py`              | 2784  | Python orchestrator with parallel execution, PR integration |
+| `scripts/maintAInability-gate.sh` | 2230  | Bash implementation of individual checks                    |
 
 ### Key Problems with Current Implementation
 
@@ -23,37 +23,37 @@ This document outlines the migration of quality gate infrastructure from `course
 
 ### Checks Currently Implemented
 
-| Check ID | Shell Flag | Description | Implementation |
-|----------|------------|-------------|----------------|
-| `python-lint-format` | `--python-lint-format` | black, isort, flake8 | Shell |
-| `js-lint-format` | `--js-lint-format` | ESLint, Prettier | Shell |
-| `python-static-analysis` | `--python-static-analysis` | mypy, imports | Shell |
-| `python-unit-tests` | `--python-unit-tests` | pytest | Shell |
-| `python-coverage` | `--python-coverage` | pytest-cov 80% | Shell |
-| `python-new-code-coverage` | `--python-new-code-coverage` | diff-cover | Shell |
-| `js-tests` | `--js-tests` | Jest | Shell |
-| `js-coverage` | `--js-coverage` | Jest coverage | Shell |
-| `security` | `--security` | bandit, semgrep, safety | Shell |
-| `security-local` | `--security-local` | bandit, semgrep (no network) | Shell |
-| `complexity` | `--complexity` | radon/xenon | Python |
-| `duplication` | `--duplication` | jscpd | Shell |
-| `integration` | `--integration-tests` | pytest integration | Shell |
-| `e2e` | `--e2e` | Playwright | Shell |
-| `smoke` | `--smoke-tests` | Selenium | Shell |
-| `frontend-check` | `--frontend-check` | Quick UI validation | Shell |
-| `sonar-analyze` | `--sonar-analyze` | SonarCloud upload | Shell |
-| `sonar-status` | `--sonar-status` | SonarCloud fetch | Shell |
-| `template-validation` | N/A | Jinja2 syntax | Python |
+| Check ID                   | Shell Flag                   | Description                  | Implementation |
+| -------------------------- | ---------------------------- | ---------------------------- | -------------- |
+| `python-lint-format`       | `--python-lint-format`       | black, isort, flake8         | Shell          |
+| `js-lint-format`           | `--js-lint-format`           | ESLint, Prettier             | Shell          |
+| `python-static-analysis`   | `--python-static-analysis`   | mypy, imports                | Shell          |
+| `python-unit-tests`        | `--python-unit-tests`        | pytest                       | Shell          |
+| `python-coverage`          | `--python-coverage`          | pytest-cov 80%               | Shell          |
+| `python-new-code-coverage` | `--python-new-code-coverage` | diff-cover                   | Shell          |
+| `js-tests`                 | `--js-tests`                 | Jest                         | Shell          |
+| `js-coverage`              | `--js-coverage`              | Jest coverage                | Shell          |
+| `security`                 | `--security`                 | bandit, semgrep, safety      | Shell          |
+| `security-local`           | `--security-local`           | bandit, semgrep (no network) | Shell          |
+| `complexity`               | `--complexity`               | radon/xenon                  | Python         |
+| `duplication`              | `--duplication`              | jscpd                        | Shell          |
+| `integration`              | `--integration-tests`        | pytest integration           | Shell          |
+| `e2e`                      | `--e2e`                      | Playwright                   | Shell          |
+| `smoke`                    | `--smoke-tests`              | Selenium                     | Shell          |
+| `frontend-check`           | `--frontend-check`           | Quick UI validation          | Shell          |
+| `sonar-analyze`            | `--sonar-analyze`            | SonarCloud upload            | Shell          |
+| `sonar-status`             | `--sonar-status`             | SonarCloud fetch             | Shell          |
+| `template-validation`      | N/A                          | Jinja2 syntax                | Python         |
 
 ### Check Aliases (Groups)
 
-| Alias | Checks Included |
-|-------|-----------------|
-| `commit` | lint-format, static-analysis, unit-tests, coverage, complexity |
-| `pr` | All checks |
-| `integration` | lint-format, unit-tests, integration |
-| `smoke` | lint-format, unit-tests, smoke |
-| `full` | All + security (full) |
+| Alias         | Checks Included                                                |
+| ------------- | -------------------------------------------------------------- |
+| `commit`      | lint-format, static-analysis, unit-tests, coverage, complexity |
+| `pr`          | All checks                                                     |
+| `integration` | lint-format, unit-tests, integration                           |
+| `smoke`       | lint-format, unit-tests, smoke                                 |
+| `full`        | All + security (full)                                          |
 
 ---
 
@@ -318,47 +318,47 @@ class CheckRegistry:
 
 ### From ship_it.py
 
-| Original Method | Target Location | Notes |
-|-----------------|-----------------|-------|
-| `run_subprocess()` | `slopbucket/subprocess/runner.py` | Add validation layer |
-| `start_subprocess()` | `slopbucket/subprocess/runner.py` | Background execution |
-| `CheckDef` | `slopbucket/core/result.py` | Renamed to `CheckDefinition` |
-| `CheckStatus` | `slopbucket/core/result.py` | Keep as-is |
-| `CheckResult` | `slopbucket/core/result.py` | Add fix_suggestion field |
-| `QualityGateExecutor` | `slopbucket/core/executor.py` | Refactor to use registry |
-| `_run_complexity_analysis()` | `slopbucket/checks/python/complexity.py` | Standalone check class |
-| `_run_template_validation()` | `slopbucket/checks/python/templates.py` | Standalone check class |
-| `check_pr_comments()` | `slopbucket/integrations/github.py` | Optional module |
-| `check_ci_status()` | `slopbucket/integrations/github.py` | Optional module |
-| `generate_pr_issues_report()` | `slopbucket/reporting/pr_report.py` | Optional module |
-| `main()` | `slopbucket/cli.py` | Simplified entry point |
+| Original Method               | Target Location                          | Notes                        |
+| ----------------------------- | ---------------------------------------- | ---------------------------- |
+| `run_subprocess()`            | `slopbucket/subprocess/runner.py`        | Add validation layer         |
+| `start_subprocess()`          | `slopbucket/subprocess/runner.py`        | Background execution         |
+| `CheckDef`                    | `slopbucket/core/result.py`              | Renamed to `CheckDefinition` |
+| `CheckStatus`                 | `slopbucket/core/result.py`              | Keep as-is                   |
+| `CheckResult`                 | `slopbucket/core/result.py`              | Add fix_suggestion field     |
+| `QualityGateExecutor`         | `slopbucket/core/executor.py`            | Refactor to use registry     |
+| `_run_complexity_analysis()`  | `slopbucket/checks/python/complexity.py` | Standalone check class       |
+| `_run_template_validation()`  | `slopbucket/checks/python/templates.py`  | Standalone check class       |
+| `check_pr_comments()`         | `slopbucket/integrations/github.py`      | Optional module              |
+| `check_ci_status()`           | `slopbucket/integrations/github.py`      | Optional module              |
+| `generate_pr_issues_report()` | `slopbucket/reporting/pr_report.py`      | Optional module              |
+| `main()`                      | `slopbucket/cli.py`                      | Simplified entry point       |
 
 ### From maintAInability-gate.sh
 
-| Original Function/Section | Target Location | Notes |
-|---------------------------|-----------------|-------|
-| Environment variable check | `slopbucket/utils/detection.py` | Auto-detect, don't require |
-| `check_venv()` | `slopbucket/utils/detection.py` | Warning only |
-| Black formatting | `slopbucket/checks/python/lint_format.py` | `PythonLintFormatCheck.run_black()` |
-| Isort formatting | `slopbucket/checks/python/lint_format.py` | `PythonLintFormatCheck.run_isort()` |
-| Flake8 check | `slopbucket/checks/python/lint_format.py` | `PythonLintFormatCheck.run_flake8()` |
-| Mypy check | `slopbucket/checks/python/static_analysis.py` | `PythonStaticAnalysisCheck` |
-| Pytest execution | `slopbucket/checks/python/tests.py` | `PythonTestsCheck` |
-| Coverage analysis | `slopbucket/checks/python/coverage.py` | `PythonCoverageCheck` |
-| Bandit scan | `slopbucket/checks/python/security.py` | `PythonSecurityCheck.run_bandit()` |
-| Semgrep scan | `slopbucket/checks/python/security.py` | `PythonSecurityCheck.run_semgrep()` |
-| Safety scan | `slopbucket/checks/python/security.py` | `PythonSecurityCheck.run_safety()` |
-| Detect-secrets | `slopbucket/checks/general/secrets.py` | `SecretsCheck` |
-| Radon complexity | `slopbucket/checks/python/complexity.py` | `PythonComplexityCheck` |
-| ESLint | `slopbucket/checks/javascript/lint_format.py` | `JavaScriptLintFormatCheck` |
-| Prettier | `slopbucket/checks/javascript/lint_format.py` | `JavaScriptLintFormatCheck` |
-| Jest tests | `slopbucket/checks/javascript/tests.py` | `JavaScriptTestsCheck` |
-| Jest coverage | `slopbucket/checks/javascript/coverage.py` | `JavaScriptCoverageCheck` |
-| jscpd duplication | `slopbucket/checks/general/duplication.py` | `DuplicationCheck` |
-| SonarCloud analyze | `slopbucket/integrations/sonarcloud.py` | Optional module |
-| SonarCloud status | `slopbucket/integrations/sonarcloud.py` | Optional module |
-| Smoke tests | `slopbucket/checks/general/smoke.py` | Project-specific, optional |
-| Summary report | `slopbucket/reporting/summary.py` | `SummaryReporter` |
+| Original Function/Section  | Target Location                               | Notes                                |
+| -------------------------- | --------------------------------------------- | ------------------------------------ |
+| Environment variable check | `slopbucket/utils/detection.py`               | Auto-detect, don't require           |
+| `check_venv()`             | `slopbucket/utils/detection.py`               | Warning only                         |
+| Black formatting           | `slopbucket/checks/python/lint_format.py`     | `PythonLintFormatCheck.run_black()`  |
+| Isort formatting           | `slopbucket/checks/python/lint_format.py`     | `PythonLintFormatCheck.run_isort()`  |
+| Flake8 check               | `slopbucket/checks/python/lint_format.py`     | `PythonLintFormatCheck.run_flake8()` |
+| Mypy check                 | `slopbucket/checks/python/static_analysis.py` | `PythonStaticAnalysisCheck`          |
+| Pytest execution           | `slopbucket/checks/python/tests.py`           | `PythonTestsCheck`                   |
+| Coverage analysis          | `slopbucket/checks/python/coverage.py`        | `PythonCoverageCheck`                |
+| Bandit scan                | `slopbucket/checks/python/security.py`        | `PythonSecurityCheck.run_bandit()`   |
+| Semgrep scan               | `slopbucket/checks/python/security.py`        | `PythonSecurityCheck.run_semgrep()`  |
+| Safety scan                | `slopbucket/checks/python/security.py`        | `PythonSecurityCheck.run_safety()`   |
+| Detect-secrets             | `slopbucket/checks/general/secrets.py`        | `SecretsCheck`                       |
+| Radon complexity           | `slopbucket/checks/python/complexity.py`      | `PythonComplexityCheck`              |
+| ESLint                     | `slopbucket/checks/javascript/lint_format.py` | `JavaScriptLintFormatCheck`          |
+| Prettier                   | `slopbucket/checks/javascript/lint_format.py` | `JavaScriptLintFormatCheck`          |
+| Jest tests                 | `slopbucket/checks/javascript/tests.py`       | `JavaScriptTestsCheck`               |
+| Jest coverage              | `slopbucket/checks/javascript/coverage.py`    | `JavaScriptCoverageCheck`            |
+| jscpd duplication          | `slopbucket/checks/general/duplication.py`    | `DuplicationCheck`                   |
+| SonarCloud analyze         | `slopbucket/integrations/sonarcloud.py`       | Optional module                      |
+| SonarCloud status          | `slopbucket/integrations/sonarcloud.py`       | Optional module                      |
+| Smoke tests                | `slopbucket/checks/general/smoke.py`          | Project-specific, optional           |
+| Summary report             | `slopbucket/reporting/summary.py`             | `SummaryReporter`                    |
 
 ---
 
@@ -485,6 +485,7 @@ show_fix_suggestions = true
 ## Implementation Timeline
 
 ### Sprint 1: Foundation (Current Focus)
+
 - [x] Create planning document
 - [ ] Implement `slopbucket/core/result.py`
 - [ ] Implement `slopbucket/subprocess/validator.py`
@@ -492,24 +493,28 @@ show_fix_suggestions = true
 - [ ] Write tests for above
 
 ### Sprint 2: Check Infrastructure
+
 - [ ] Implement `slopbucket/checks/base.py`
 - [ ] Implement `slopbucket/core/registry.py`
 - [ ] Implement `slopbucket/core/executor.py`
 - [ ] Write tests for above
 
 ### Sprint 3: Python Checks
+
 - [ ] Implement `slopbucket/checks/python/lint_format.py`
 - [ ] Implement `slopbucket/checks/python/tests.py`
 - [ ] Implement `slopbucket/checks/python/coverage.py`
 - [ ] Write tests for above
 
 ### Sprint 4: CLI and Self-Validation
+
 - [ ] Implement `slopbucket/cli.py`
 - [ ] Implement `setup.py` entry point
 - [ ] Self-validation test passes
 - [ ] Documentation
 
 ### Sprint 5: course_record_updater Migration
+
 - [ ] Add slopbucket as submodule
 - [ ] Remove ship_it.py and maintAInability-gate.sh
 - [ ] Update CI/CD configuration

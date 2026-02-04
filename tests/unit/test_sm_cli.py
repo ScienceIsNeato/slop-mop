@@ -218,6 +218,27 @@ class TestDetectProjectType:
         result = detect_project_type(tmp_path)
         assert result["recommended_profile"] == "pr"
 
+    def test_detects_typescript_from_tsconfig(self, tmp_path):
+        """Detects TypeScript from tsconfig.json."""
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        result = detect_project_type(tmp_path)
+        assert result["has_typescript"] is True
+        assert result["has_javascript"] is True  # TS implies JS
+
+    def test_detects_typescript_from_ci_config(self, tmp_path):
+        """Detects TypeScript from tsconfig.ci.json."""
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "tsconfig.ci.json").write_text('{"compilerOptions": {}}')
+        result = detect_project_type(tmp_path)
+        assert result["has_typescript"] is True
+
+    def test_typescript_recommends_types_gate(self, tmp_path):
+        """TypeScript projects recommend javascript-types gate."""
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        result = detect_project_type(tmp_path)
+        assert "javascript-types" in result["recommended_gates"]
+
 
 class TestPromptFunctions:
     """Tests for prompt_user and prompt_yes_no."""

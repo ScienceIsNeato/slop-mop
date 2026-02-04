@@ -103,6 +103,10 @@ class DuplicationCheck(BaseCheck):
         # Get config values
         min_tokens = self.config.get("min_tokens", MIN_TOKENS)
         min_lines = self.config.get("min_lines", MIN_LINES)
+        # Get directories to scan from config
+        include_dirs = self.config.get("include_dirs", ["."])
+        if not include_dirs:
+            include_dirs = ["."]
 
         # Use a proper temp directory for the report
         with tempfile.TemporaryDirectory(prefix="jscpd-") as temp_dir:
@@ -138,9 +142,8 @@ class DuplicationCheck(BaseCheck):
                 "--output",
                 report_output,
                 "--ignore",
-                ignore_str,
-                ".",
-            ]
+                ignore_str + ",cursor-rules,**/__tests__/**,**/*.test.*,**/*.spec.*",
+            ] + include_dirs
 
             result = self._run_command(cmd, cwd=project_root, timeout=300)
             duration = time.time() - start_time
