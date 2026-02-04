@@ -455,7 +455,9 @@ class TestJavaScriptTypesCheck:
         mock_result = MagicMock()
         mock_result.success = False
         mock_result.timed_out = False
-        mock_result.output = "error TS2345: Something is wrong\nerror TS2322: Another error"
+        mock_result.output = (
+            "error TS2345: Something is wrong\nerror TS2322: Another error"
+        )
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))

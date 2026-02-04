@@ -89,7 +89,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
         # Get the tsconfig to use - respect user config, fallback to CI config if no user config
         user_tsconfig = self.config.get("tsconfig")
         default_tsconfig = "tsconfig.json"
-        
+
         if user_tsconfig and user_tsconfig != default_tsconfig:
             # User explicitly configured a specific tsconfig - use it
             tsconfig = user_tsconfig

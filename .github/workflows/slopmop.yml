@@ -13,12 +13,12 @@ jobs:
   validate:
     name: 🧹 Slop-Mop Validation
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for git operations
+          fetch-depth: 0 # Full history for git operations
 
       - name: Set up Python
         uses: actions/setup-python@v5

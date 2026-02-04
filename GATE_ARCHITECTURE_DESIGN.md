@@ -3,6 +3,7 @@
 ## 🍷 Strategic Overview
 
 This document outlines the restructuring of slopbucket's quality gate system to be:
+
 1. Config-first (no magic directory guessing)
 2. Language-organized (clear taxonomy)
 3. Dependency-aware (first-class `depends_on`)
@@ -12,24 +13,24 @@ This document outlines the restructuring of slopbucket's quality gate system to 
 
 ### Existing Checks
 
-| Category | Check | Dependencies | Config Needs |
-|----------|-------|--------------|--------------|
-| **Python** | python-lint-format | none | include_dirs, exclude_dirs |
-| | python-static-analysis | python-lint-format | include_dirs, exclude_dirs |
-| | python-tests | python-lint-format | test_dirs |
-| | python-coverage | python-tests | test_dirs, threshold |
-| | python-complexity | none | include_dirs, max_rank |
-| | python-security | none | include_dirs, scanner |
-| | python-test-types | none | test_dirs |
-| **JavaScript** | js-lint-format | none | include_dirs, exclude_dirs |
-| | js-tests | js-lint-format | test_dirs |
-| | js-coverage | js-tests | test_dirs, threshold |
-| | frontend-check | none | frontend_dirs |
-| **General** | template-validation | none | templates_dir |
-| | duplication | none | include_dirs, threshold |
-| **Meta** | smoke-tests | none | test_dirs |
-| | integration-tests | smoke-tests | test_dirs |
-| | e2e-tests | integration-tests | test_command |
+| Category       | Check                  | Dependencies       | Config Needs               |
+| -------------- | ---------------------- | ------------------ | -------------------------- |
+| **Python**     | python-lint-format     | none               | include_dirs, exclude_dirs |
+|                | python-static-analysis | python-lint-format | include_dirs, exclude_dirs |
+|                | python-tests           | python-lint-format | test_dirs                  |
+|                | python-coverage        | python-tests       | test_dirs, threshold       |
+|                | python-complexity      | none               | include_dirs, max_rank     |
+|                | python-security        | none               | include_dirs, scanner      |
+|                | python-test-types      | none               | test_dirs                  |
+| **JavaScript** | js-lint-format         | none               | include_dirs, exclude_dirs |
+|                | js-tests               | js-lint-format     | test_dirs                  |
+|                | js-coverage            | js-tests           | test_dirs, threshold       |
+|                | frontend-check         | none               | frontend_dirs              |
+| **General**    | template-validation    | none               | templates_dir              |
+|                | duplication            | none               | include_dirs, threshold    |
+| **Meta**       | smoke-tests            | none               | test_dirs                  |
+|                | integration-tests      | smoke-tests        | test_dirs                  |
+|                | e2e-tests              | integration-tests  | test_command               |
 
 ## Proposed Config Schema
 
@@ -95,12 +96,14 @@ Gates are now namespaced by language: `python:lint-format`, `javascript:tests`, 
 ### Validation Rules
 
 1. **include_dirs required**: If gate uses include_dirs and none configured → ERROR
+
    ```
    ❌ python:lint-format: No include_dirs configured.
    💡 Add to .sb_config.json: "python": { "include_dirs": ["src"] }
    ```
 
 2. **exclude_dirs subset check**: If exclude dir not under include dir → WARNING
+
    ```
    ⚠️  Exclude pattern 'vendor/' doesn't match any include_dirs. Filter will have no effect.
    ```
@@ -143,6 +146,7 @@ class PythonCoverageCheck(BaseCheck):
 ### Fail-Fast Behavior
 
 When a dependency fails:
+
 1. All dependents are marked SKIPPED (not ERROR)
 2. Reason clearly stated: "Skipped: dependency 'python-tests' failed"
 3. Other independent checks continue running
@@ -199,12 +203,12 @@ class BaseCheck(ABC):
     def category(self) -> str:
         """Category: 'python', 'javascript', 'general', 'integration'"""
         pass
-    
+
     @property
     def config_schema(self) -> Dict[str, Any]:
         """JSON Schema for this check's config options."""
         return {}
-    
+
     def validate_config(self, project_root: str) -> Optional[str]:
         """Validate config. Return error message or None if valid."""
         return None
@@ -238,21 +242,25 @@ def get_threshold(self, key: str, default: int, min_val: int = 0, max_val: int =
 ## Implementation Plan
 
 ### Phase 1: Config Schema & Validation
+
 1. Create `slopbucket/core/config.py` with schema and validation
 2. Add config loading to sb.py
 3. Update BaseCheck with config helpers
 
 ### Phase 2: Check Categories
+
 1. Add `category` property to all checks
 2. Create category enum/registry
 3. Update display helpers
 
 ### Phase 3: CLI Display
+
 1. Update `sm help` for hierarchical display
 2. Update `sm config --show` for category grouping
 3. Add `sm help <category>` support
 
 ### Phase 4: Validation Integration
+
 1. Wire up config validation before check execution
 2. Implement include_dirs/exclude_dirs validation
 3. Add threshold validation
@@ -265,7 +273,7 @@ def get_threshold(self, key: str, default: int, min_val: int = 0, max_val: int =
 
 2. **Discovery behavior**: No auto-discovery when new checks are added to codebase. Auto-discovery **only** happens during `sm init`. Adding new gates to an existing project is a manual config step.
 
-3. **Include_dirs defaults**: Everything comes **disabled by default** with `include_dirs: null`. 
+3. **Include_dirs defaults**: Everything comes **disabled by default** with `include_dirs: null`.
    - `sm init` uses canonical language-specific detection
    - Never default to `.` - could accidentally scan terabyte filesystems
    - Explicit > implicit
@@ -273,10 +281,10 @@ def get_threshold(self, key: str, default: int, min_val: int = 0, max_val: int =
 ### Design Principles (Updated)
 
 1. **Nothing runs until configured**: All gates disabled by default
-2. **Setup does discovery**: `sm init` is the only auto-detection point  
+2. **Setup does discovery**: `sm init` is the only auto-detection point
 3. **Safe defaults**: `enabled: false, include_dirs: null`
 4. **Canonical detection**: Per-language smart discovery in setup only
    - Python: Look for setup.py, pyproject.toml, src/, then scan for .py files
    - JavaScript: Look for package.json, then find src/app/lib with .js/.ts
-   - Ignore: .venv, venv, node_modules, __pycache__, .git, dist, build
+   - Ignore: .venv, venv, node_modules, **pycache**, .git, dist, build
 5. **Fail-safe validation**: Running unconfigured gate = ERROR with clear fix instructions

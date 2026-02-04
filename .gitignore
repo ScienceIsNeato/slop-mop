@@ -42,3 +42,6 @@ cursor-rules/
 # Slopbucket config (user-specific, not template)
 .sb_config.json
 .sb_config.json.backup.*
+
+# Generated Copilot instructions (from cursor-rules)
+.github/instructions/*.instructions.md
