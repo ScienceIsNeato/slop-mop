@@ -31,5 +31,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run validation
-        run: sm validate commit
+      - name: Run slop-mop on itself
+        run: sm validate --self
