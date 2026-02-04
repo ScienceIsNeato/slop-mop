@@ -125,10 +125,10 @@ sm init --config setup_config.json --non-interactive
 
 ### What it detects:
 
-- **Python projects**: setup.py, pyproject.toml, requirements.txt, *.py files
-- **JavaScript projects**: package.json, tsconfig.json, *.js/*.ts files  
+- **Python projects**: setup.py, pyproject.toml, requirements.txt, \*.py files
+- **JavaScript projects**: package.json, tsconfig.json, _.js/_.ts files
 - **Test frameworks**: pytest, Jest
-- **Test directories**: tests/, test/, spec/, __tests__/
+- **Test directories**: tests/, test/, spec/, **tests**/
 
 ### Pre-populated config (setup_config.json):
 
@@ -145,47 +145,47 @@ sm init --config setup_config.json --non-interactive
 
 ### Python Gates
 
-| Gate | Description |
-|------|-------------|
-| `python-lint-format` | 🎨 Code formatting (black, isort, flake8) |
-| `python-static-analysis` | 🔍 Type checking (mypy) |
-| `python-tests` | 🧪 Test execution (pytest) |
-| `python-coverage` | 📊 Coverage analysis (80% threshold) |
-| `python-diff-coverage` | 📊 Coverage on changed files only |
-| `python-new-code-coverage` | 📊 Coverage for new code in PR |
-| `python-complexity` | 📐 Cyclomatic complexity (radon) |
-| `python-security` | 🔒 Security scan (bandit, semgrep) |
-| `python-security-local` | 🔒 Fast local security scan |
+| Gate                       | Description                               |
+| -------------------------- | ----------------------------------------- |
+| `python-lint-format`       | 🎨 Code formatting (black, isort, flake8) |
+| `python-static-analysis`   | 🔍 Type checking (mypy)                   |
+| `python-tests`             | 🧪 Test execution (pytest)                |
+| `python-coverage`          | 📊 Coverage analysis (80% threshold)      |
+| `python-diff-coverage`     | 📊 Coverage on changed files only         |
+| `python-new-code-coverage` | 📊 Coverage for new code in PR            |
+| `python-complexity`        | 📐 Cyclomatic complexity (radon)          |
+| `python-security`          | 🔒 Security scan (bandit, semgrep)        |
+| `python-security-local`    | 🔒 Fast local security scan               |
 
 ### JavaScript Gates
 
-| Gate | Description |
-|------|-------------|
+| Gate             | Description                              |
+| ---------------- | ---------------------------------------- |
 | `js-lint-format` | 🎨 Linting/formatting (ESLint, Prettier) |
-| `js-tests` | 🧪 Test execution (Jest) |
-| `js-coverage` | 📊 Coverage analysis |
-| `frontend-check` | 🖥️ Frontend validation |
+| `js-tests`       | 🧪 Test execution (Jest)                 |
+| `js-coverage`    | 📊 Coverage analysis                     |
+| `frontend-check` | 🖥️ Frontend validation                   |
 
 ### General Gates
 
-| Gate | Description |
-|------|-------------|
-| `duplication` | 📋 Code duplication detection (jscpd) |
-| `template-validation` | 📄 Template syntax validation |
-| `smoke-tests` | 💨 Quick smoke tests |
-| `integration-tests` | 🔗 Integration tests |
-| `e2e-tests` | 🎭 End-to-end tests |
+| Gate                  | Description                           |
+| --------------------- | ------------------------------------- |
+| `duplication`         | 📋 Code duplication detection (jscpd) |
+| `template-validation` | 📄 Template syntax validation         |
+| `smoke-tests`         | 💨 Quick smoke tests                  |
+| `integration-tests`   | 🔗 Integration tests                  |
+| `e2e-tests`           | 🎭 End-to-end tests                   |
 
 ### Profiles (Quality Gate Groups)
 
-| Profile | Description | Gates Included |
-|---------|-------------|----------------|
-| `commit` | Fast commit validation | lint, static-analysis, tests, coverage, complexity, security-local |
-| `pr` | Full PR validation | All Python + JS gates |
-| `quick` | Ultra-fast lint check | lint, security-local |
-| `python` | All Python gates | All python-* gates |
-| `javascript` | All JavaScript gates | All js-* gates + frontend |
-| `e2e` | End-to-end tests | smoke, integration, e2e |
+| Profile      | Description            | Gates Included                                                     |
+| ------------ | ---------------------- | ------------------------------------------------------------------ |
+| `commit`     | Fast commit validation | lint, static-analysis, tests, coverage, complexity, security-local |
+| `pr`         | Full PR validation     | All Python + JS gates                                              |
+| `quick`      | Ultra-fast lint check  | lint, security-local                                               |
+| `python`     | All Python gates       | All python-\* gates                                                |
+| `javascript` | All JavaScript gates   | All js-\* gates + frontend                                         |
+| `e2e`        | End-to-end tests       | smoke, integration, e2e                                            |
 
 ## Architecture
 
@@ -230,7 +230,7 @@ Configuration is stored in `.sb_config.json` in your project root:
 {
   "version": "1.0",
   "default_profile": "commit",
-  
+
   "python": {
     "enabled": true,
     "include_dirs": ["src"],
@@ -244,6 +244,7 @@ Configuration is stored in `.sb_config.json` in your project root:
 ```
 
 Use `sm config` to view and update settings:
+
 - `sm config --show` - View current configuration
 - `sm config --enable python-security` - Enable a gate
 - `sm config --disable js-tests` - Disable a gate

@@ -6,6 +6,7 @@ from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
 from slopmop.checks.javascript.eslint_quick import FrontendCheck
 from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
 from slopmop.checks.javascript.tests import JavaScriptTestsCheck
+from slopmop.checks.javascript.types import JavaScriptTypesCheck
 from slopmop.core.result import CheckStatus
 
 
@@ -371,3 +372,196 @@ class TestFrontendCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+
+class TestJavaScriptTypesCheck:
+    """Tests for JavaScriptTypesCheck."""
+
+    def test_name(self):
+        """Test check name."""
+        check = JavaScriptTypesCheck({})
+        assert check.name == "types"
+
+    def test_full_name(self):
+        """Test full check name with category."""
+        check = JavaScriptTypesCheck({})
+        assert check.full_name == "javascript:types"
+
+    def test_display_name(self):
+        """Test display name."""
+        check = JavaScriptTypesCheck({})
+        assert "TypeScript" in check.display_name
+
+    def test_depends_on(self):
+        """Test dependencies."""
+        check = JavaScriptTypesCheck({})
+        assert "javascript:lint-format" in check.depends_on
+
+    def test_config_schema(self):
+        """Test config schema includes expected fields."""
+        check = JavaScriptTypesCheck({})
+        schema = check.config_schema
+        field_names = [f.name for f in schema]
+        assert "tsconfig" in field_names
+        # type_check_command should NOT be in schema (it was removed)
+        assert "type_check_command" not in field_names
+
+    def test_is_applicable_with_tsconfig(self, tmp_path):
+        """Test is_applicable returns True for TS projects with tsconfig.json."""
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        check = JavaScriptTypesCheck({})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_is_applicable_with_tsconfig_ci(self, tmp_path):
+        """Test is_applicable returns True for TS projects with tsconfig.ci.json."""
+        (tmp_path / "tsconfig.ci.json").write_text('{"compilerOptions": {}}')
+        check = JavaScriptTypesCheck({})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_is_applicable_with_custom_tsconfig(self, tmp_path):
+        """Test is_applicable returns True when custom tsconfig exists."""
+        (tmp_path / "tsconfig.prod.json").write_text('{"compilerOptions": {}}')
+        check = JavaScriptTypesCheck({"tsconfig": "tsconfig.prod.json"})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_is_applicable_no_tsconfig(self, tmp_path):
+        """Test is_applicable returns False when no tsconfig exists."""
+        (tmp_path / "app.js").write_text("console.log('hello')")
+        check = JavaScriptTypesCheck({})
+        assert check.is_applicable(str(tmp_path)) is False
+
+    def test_run_passes(self, tmp_path):
+        """Test run() when type checking passes."""
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTypesCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.timed_out = False
+        mock_result.output = ""
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
+    def test_run_with_errors(self, tmp_path):
+        """Test run() when type errors are found."""
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTypesCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.timed_out = False
+        mock_result.output = (
+            "error TS2345: Something is wrong\nerror TS2322: Another error"
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "2 TypeScript error(s)" in result.error
+        # Check fix_suggestion includes -p flag
+        assert "-p tsconfig.json" in result.fix_suggestion
+
+    def test_run_timeout(self, tmp_path):
+        """Test run() when type checking times out."""
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTypesCheck({})
+
+        mock_result = MagicMock()
+        mock_result.timed_out = True
+        mock_result.output = ""
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "timed out" in result.error
+
+    def test_run_installs_deps_when_missing(self, tmp_path):
+        """Test run() installs deps when node_modules missing."""
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        check = JavaScriptTypesCheck({})
+
+        npm_result = MagicMock()
+        npm_result.success = True
+
+        tsc_result = MagicMock()
+        tsc_result.success = True
+        tsc_result.timed_out = False
+        tsc_result.output = ""
+
+        with patch.object(check, "_run_command", side_effect=[npm_result, tsc_result]):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
+    def test_run_npm_install_fails(self, tmp_path):
+        """Test run() when npm install fails."""
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        check = JavaScriptTypesCheck({})
+
+        npm_result = MagicMock()
+        npm_result.success = False
+        npm_result.output = "npm ERR!"
+
+        with patch.object(check, "_run_command", return_value=npm_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.ERROR
+        assert "npm install failed" in result.error
+
+    def test_run_respects_user_configured_tsconfig(self, tmp_path):
+        """Test run() uses user-configured tsconfig over CI fallback."""
+        (tmp_path / "tsconfig.prod.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "tsconfig.ci.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTypesCheck({"tsconfig": "tsconfig.prod.json"})
+
+        commands_run = []
+
+        def capture_command(cmd, **kwargs):
+            commands_run.append(cmd)
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.timed_out = False
+            mock_result.output = ""
+            return mock_result
+
+        with patch.object(check, "_run_command", side_effect=capture_command):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        # Verify the correct tsconfig was used
+        tsc_cmd = commands_run[0]
+        assert "tsconfig.prod.json" in tsc_cmd
+
+    def test_run_uses_ci_tsconfig_as_fallback(self, tmp_path):
+        """Test run() falls back to tsconfig.ci.json when no user config."""
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "tsconfig.ci.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTypesCheck({})  # No explicit tsconfig config
+
+        commands_run = []
+
+        def capture_command(cmd, **kwargs):
+            commands_run.append(cmd)
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.timed_out = False
+            mock_result.output = ""
+            return mock_result
+
+        with patch.object(check, "_run_command", side_effect=capture_command):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        # Verify tsconfig.ci.json was used
+        tsc_cmd = commands_run[0]
+        assert "tsconfig.ci.json" in tsc_cmd
