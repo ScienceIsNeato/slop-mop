@@ -1,4 +1,28 @@
-"""TypeScript type checking gate."""
+"""TypeScript type checking gate.
+
+This gate runs the TypeScript compiler (tsc) with the --noEmit flag to perform
+static type analysis without generating any JavaScript output files.
+
+Why --noEmit?
+-------------
+The --noEmit flag tells TypeScript to:
+1. Parse all TypeScript/JavaScript files according to tsconfig.json
+2. Perform full type checking and report any type errors
+3. NOT write any output files (.js, .d.ts, .js.map)
+
+This is ideal for CI/pre-commit checks because:
+- It's faster than a full build (no file I/O for outputs)
+- It validates types without side effects
+- It works alongside other build tools (Webpack, Vite, etc.)
+
+The check respects tsconfig.json settings including:
+- strict mode options
+- path aliases
+- include/exclude patterns
+- compiler options
+
+See: https://www.typescriptlang.org/tsconfig#noEmit
+"""
 
 import time
 from typing import List
@@ -15,7 +39,15 @@ from slopmop.core.result import CheckResult, CheckStatus
 class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
     """TypeScript type checking gate.
 
-    Runs the TypeScript compiler (tsc) in noEmit mode to check for type errors.
+    Runs the TypeScript compiler (tsc) with --noEmit to check for type errors
+    without producing output files. This is the standard approach for CI/CD
+    type validation in TypeScript projects.
+
+    The --noEmit flag means:
+    - Full type checking is performed
+    - No .js, .d.ts, or .map files are written
+    - Faster execution than a full build
+    - Safe to run in parallel with other build processes
     """
 
     @property
@@ -24,7 +56,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🏗️ TypeScript Types (tsc)"
+        return "🏗️ TypeScript Types (tsc --noEmit)"
 
     @property
     def category(self) -> GateCategory:

@@ -45,3 +45,7 @@ cursor-rules/
 
 # Generated Copilot instructions (from cursor-rules)
 .github/instructions/*.instructions.md
+
+# Auto-generated AI agent instructions (from cursor-rules)
+AGENTS.md
+.windsurfrules

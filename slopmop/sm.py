@@ -630,6 +630,7 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     Returns a dict with detected features:
     - has_python: bool
     - has_javascript: bool
+    - has_typescript: bool
     - has_tests_dir: bool
     - has_pytest: bool
     - has_jest: bool
@@ -641,6 +642,7 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     detected: Dict[str, Any] = {
         "has_python": False,
         "has_javascript": False,
+        "has_typescript": False,
         "has_tests_dir": False,
         "has_pytest": False,
         "has_jest": False,
@@ -670,6 +672,15 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
         detected["has_javascript"] = any(project_root.glob("**/*.js")) or any(
             project_root.glob("**/*.ts")
         )
+
+    # Check specifically for TypeScript (tsconfig.json or .ts files)
+    ts_indicators = ["tsconfig.json", "tsconfig.ci.json"]
+    for indicator in ts_indicators:
+        if (project_root / indicator).exists():
+            detected["has_typescript"] = True
+            break
+    if not detected["has_typescript"]:
+        detected["has_typescript"] = any(project_root.glob("**/*.ts"))
 
     # Check for test directories
     test_dirs = []
@@ -732,6 +743,9 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
         recommended.extend(["js-lint-format", "js-tests"])
         if detected["has_jest"]:
             recommended.append("js-coverage")
+        # Add TypeScript type checking if TypeScript is detected
+        if detected["has_typescript"]:
+            recommended.append("javascript-types")
 
     detected["recommended_gates"] = recommended
 
