@@ -373,9 +373,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
         if "tests" in base_config["python"]["gates"]:
             base_config["python"]["gates"]["tests"]["test_dirs"] = ["tests"]
 
-        # Set coverage threshold for self-validation (we're still building coverage)
+        # Set coverage threshold for self-validation
         if "coverage" in base_config["python"]["gates"]:
-            base_config["python"]["gates"]["coverage"]["threshold"] = 60
+            base_config["python"]["gates"]["coverage"]["threshold"] = 80
 
         # Write temp config
         temp_config_file.write_text(json.dumps(base_config, indent=2) + "\n")
