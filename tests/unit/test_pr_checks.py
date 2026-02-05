@@ -45,7 +45,19 @@ class TestPRCommentsCheck:
         """Test is_applicable returns False without PR context."""
         (tmp_path / ".git").mkdir()
 
-        with patch("subprocess.run") as mock_run:
+        # Clear all PR-related environment variables
+        env_overrides = {
+            "GITHUB_PR_NUMBER": "",
+            "PR_NUMBER": "",
+            "PULL_REQUEST_NUMBER": "",
+            "GITHUB_REF": "",
+            "GITHUB_EVENT_PATH": "",
+        }
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch.dict("os.environ", env_overrides, clear=False),
+        ):
             # gh --version succeeds
             mock_run.side_effect = [
                 MagicMock(returncode=0),  # gh --version
@@ -70,15 +82,43 @@ class TestPRCommentsCheck:
         """Test PR number detection from environment variable."""
         check = PRCommentsCheck({})
 
-        with patch.dict("os.environ", {"GITHUB_PR_NUMBER": "42"}):
+        with patch.dict("os.environ", {"GITHUB_PR_NUMBER": "42"}, clear=False):
             pr_num = check._detect_pr_number(str(tmp_path))
             assert pr_num == 42
+
+    def test_detect_pr_number_from_github_ref(self, tmp_path):
+        """Test PR number detection from GITHUB_REF (refs/pull/N/merge format)."""
+        check = PRCommentsCheck({})
+
+        env_overrides = {
+            "GITHUB_PR_NUMBER": "",
+            "PR_NUMBER": "",
+            "PULL_REQUEST_NUMBER": "",
+            "GITHUB_REF": "refs/pull/123/merge",
+            "GITHUB_EVENT_PATH": "",
+        }
+
+        with patch.dict("os.environ", env_overrides, clear=False):
+            pr_num = check._detect_pr_number(str(tmp_path))
+            assert pr_num == 123
 
     def test_detect_pr_number_from_branch(self, tmp_path):
         """Test PR number detection from current branch."""
         check = PRCommentsCheck({})
 
-        with patch("subprocess.run") as mock_run:
+        # Clear all PR-related environment variables to ensure gh pr view is used
+        env_overrides = {
+            "GITHUB_PR_NUMBER": "",
+            "PR_NUMBER": "",
+            "PULL_REQUEST_NUMBER": "",
+            "GITHUB_REF": "",
+            "GITHUB_EVENT_PATH": "",
+        }
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch.dict("os.environ", env_overrides, clear=False),
+        ):
             mock_run.return_value = MagicMock(returncode=0, stdout='{"number": 99}')
             pr_num = check._detect_pr_number(str(tmp_path))
             assert pr_num == 99
