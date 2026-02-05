@@ -50,7 +50,7 @@ sm validate commit       # Fast commit validation
 sm validate pr           # Full PR validation
 ```
 
-Auto-detects your project type and enables relevant gates. See [`sm init`](#setup-sm-init) and [`sm config`](#configuration-sm-config) for details on customization.
+Auto-detects your project type and enables relevant gates. See [`sm init`](#setup-sm-init) for setup details, [`sm commit-hooks`](#git-hooks-sm-commit-hooks) to enforce gates on every commit, and [`sm config`](#configuration-sm-config) for customization.
 
 ---
 
@@ -257,6 +257,109 @@ The config file (`.sb_config.json`) supports per-gate customization:
 
 ---
 
+## Git Hooks: `sm commit-hooks`
+
+This is where slop-mop stops being a tool you run manually and starts being a guardrail on your machine.
+
+```bash
+sm commit-hooks install commit    # Install pre-commit hook with 'commit' profile
+sm commit-hooks status            # Show installed hooks
+sm commit-hooks uninstall         # Remove slop-mop hooks
+```
+
+Once installed, `sm validate commit` runs automatically before every `git commit`. If any gate fails, the commit is blocked. The agent has to fix the issue before it can land code.
+
+**Why this matters:** The combination of Phase 1 remediation + hook installation means the AI does all the hard work itself. You remediate the existing debt, install the hook, and from that point forward every new commit is forced through the gates. You can steer with your hands off the wheel — the agent is structurally prevented from introducing the same categories of debt that accumulated before.
+
+The hook uses your project's venv for deterministic execution (falls back to system `sm` if no venv is found). You can install it with any profile — `commit` for the standard set, `quick` for fast lint-only, or a custom profile if you've defined one.
+
+---
+
+## CI Integration: `sm ci`
+
+Hooks enforce gates locally. CI enforces them in the cloud. You want both.
+
+Slop-mop ships a GitHub Actions workflow that dogfoods itself. Use it as a template for your own project:
+
+```yaml
+# .github/workflows/slopmop.yml
+name: slop-mop
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -e ".[dev]"
+
+      - name: Run slop-mop
+        run: sm validate commit
+
+      - name: Check PR comments (PRs only)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sm validate pr:comments
+```
+
+**Checking CI status locally:**
+
+```bash
+sm ci               # Check CI status for current PR
+sm ci 42            # Check CI status for PR #42
+sm ci --watch       # Poll until CI completes (runs unattended)
+```
+
+Watch mode polls every 30 seconds and reports results automatically when CI finishes — no tab-switching or manual refreshing.
+
+**Why both hooks and CI?** Hooks catch problems before they're pushed. CI catches problems that hooks can't — like platform-specific failures, PR-level checks (comment resolution), and the "I bypassed the hook" escape hatch. Together they form two layers of enforcement: one on your machine, one in the cloud.
+
+---
+
+## Commit vs. PR Profiles
+
+Slop-mop distinguishes between two levels of validation because they serve different purposes.
+
+### `sm validate commit` — Keep Each Commit Clean
+
+The commit profile runs the gates that matter for individual chunks of work:
+
+- Lint and formatting
+- Static analysis (mypy)
+- Tests and coverage
+- Complexity analysis
+- Source duplication detection
+- Fast security scan
+
+This is the profile you run (or hook into) on every commit. It keeps each increment of work maintainable. When an agent is iterating on a feature, commit-level gates prevent it from introducing debt along the way — bad formatting, missing tests, duplicated code, complexity spikes all get caught immediately while the context is fresh.
+
+### `sm validate pr` — Ensure the PR as a Whole Is Ready
+
+The PR profile runs everything in the commit profile *plus* checks that only make sense at the PR level:
+
+- **`pr:comments`** — Are all PR review comments addressed? This gate checks GitHub for unresolved review threads and blocks until they're handled.
+- **`python:diff-coverage`** — Does the changed code specifically have coverage? Not just "is overall coverage above threshold" but "are the lines you touched tested?"
+- **`python:new-code-coverage`** — Is the new code introduced in this PR tested?
+- **Full security scan** — The slower, more thorough security analysis that's too heavy for every commit.
+- **JavaScript gates** — Full JS/TS validation for mixed-language projects.
+
+The distinction matters. Commit-level gates keep the agent honest while it's working. PR-level gates ensure the deliverable as a whole is ready to merge — CI is green, reviewers are satisfied, and the new code specifically (not just the project overall) meets the quality bar.
+
+---
+
 ## Usage
 
 ```bash
@@ -273,6 +376,16 @@ sm validate --self                    # Validate slop-mop itself
 sm init                               # Interactive project setup
 sm init --non-interactive             # Auto-configure with defaults
 sm config --show                      # Show current configuration
+
+# Git hooks
+sm commit-hooks install commit        # Install pre-commit hook
+sm commit-hooks status                # Show installed hooks
+sm commit-hooks uninstall             # Remove slop-mop hooks
+
+# CI status
+sm ci                                 # Check CI for current PR
+sm ci 42                              # Check CI for PR #42
+sm ci --watch                         # Poll until CI completes
 
 # Help
 sm help                               # List all quality gates
