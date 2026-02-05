@@ -10,6 +10,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml"><img src="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml/badge.svg" alt="Slop-Mop CI"/></a>
+  <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"/></a>
+</p>
+
+<p align="center">
   <a href="#the-problem">The Problem</a> •
   <a href="#the-solution">The Solution</a> •
   <a href="#quick-start">Quick Start</a> •
@@ -181,6 +187,35 @@ This fail-fast, iterative approach is:
 - **Configurable thresholds**: Adjust to your project's reality
 - **Profile-based workflow**: One command for common scenarios
 - **Self-validation**: `sm validate --self` dogfoods the tool itself
+
+### 5. Tool Use Over One-Offs
+
+> **🚨 CRITICAL PRINCIPLE FOR AI AGENTS 🚨**
+
+If you find yourself running manual commands to verify something:
+
+```bash
+# ❌ STOP! Don't do this!
+pytest tests/unit/test_foo.py -v
+black --check src/
+mypy src/
+```
+
+**Ask yourself**: *"Why isn't slop-mop doing this for me?"*
+
+The answer is one of:
+1. **Slop-mop already does this** → Use `sm validate <gate>` instead
+2. **Slop-mop's output isn't sufficient** → Improve the gate's output, then use it
+3. **This check doesn't exist yet** → Add it to slop-mop, then use it
+
+**Never work around slop-mop. Improve it.**
+
+Every manual command you run is:
+- A friction point you're ignoring instead of fixing
+- Context you're not capturing for future runs
+- A pattern you're not enforcing consistently
+
+Slop-mop exists to be the single source of truth for code quality. If it's not meeting that bar, make it meet that bar.
 
 ---
 
