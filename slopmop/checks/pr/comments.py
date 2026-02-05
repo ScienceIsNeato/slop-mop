@@ -106,9 +106,11 @@ class PRCommentsCheck(BaseCheck):
 
         Checks:
         1. Environment variable (CI context)
-        2. Current branch has an open PR
+        2. GitHub Actions GITHUB_REF (refs/pull/N/merge format)
+        3. GitHub event payload file (GITHUB_EVENT_PATH)
+        4. Current branch has an open PR (via gh pr view)
         """
-        # Check CI environment variables
+        # Check explicit CI environment variables first
         for env_var in [
             "GITHUB_PR_NUMBER",
             "PR_NUMBER",
@@ -121,7 +123,35 @@ class PRCommentsCheck(BaseCheck):
                 except ValueError:
                     pass
 
-        # Try to detect from current branch
+        # Check GitHub Actions GITHUB_REF (format: refs/pull/N/merge)
+        github_ref = os.environ.get("GITHUB_REF", "")
+        if github_ref.startswith("refs/pull/"):
+            try:
+                # Extract number from refs/pull/N/merge
+                parts = github_ref.split("/")
+                if len(parts) >= 3:
+                    return int(parts[2])
+            except (ValueError, IndexError):
+                pass
+
+        # Check GitHub Actions event payload
+        event_path = os.environ.get("GITHUB_EVENT_PATH")
+        if event_path and os.path.exists(event_path):
+            try:
+                with open(event_path) as f:
+                    event_data = json.load(f)
+                    # pull_request event
+                    if "pull_request" in event_data:
+                        return event_data["pull_request"].get("number")
+                    # issue_comment on a PR
+                    if "issue" in event_data and event_data.get("issue", {}).get(
+                        "pull_request"
+                    ):
+                        return event_data["issue"].get("number")
+            except (json.JSONDecodeError, IOError, KeyError):
+                pass
+
+        # Try to detect from current branch using gh CLI
         try:
             result = subprocess.run(
                 ["gh", "pr", "view", "--json", "number"],

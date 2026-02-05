@@ -6,6 +6,7 @@ existing code.
 """
 
 import logging
+import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -281,84 +282,101 @@ class BaseCheck(ABC):
 class PythonCheckMixin:
     """Mixin for Python-specific check utilities."""
 
+    # Class-level cache for venv warning (only warn once per project_root)
+    _venv_warning_shown: set = set()
+    # Cache resolved Python path per project_root
+    _python_cache: dict = {}
+
+    def _find_python_in_venv(self, venv_path: Path) -> Optional[str]:
+        """Find Python executable in a venv directory (Unix or Windows)."""
+        for subpath in ["bin/python", "Scripts/python.exe"]:
+            python_path = venv_path / subpath
+            if python_path.exists():
+                return str(python_path)
+        return None
+
+    def _cache_and_return(self, project_root: str, python_path: str) -> str:
+        """Cache and return the Python path."""
+        PythonCheckMixin._python_cache[project_root] = python_path
+        return python_path
+
+    def _get_python_version(self, python_path: str) -> str:
+        """Get Python version string, or 'unknown version' on error."""
+        try:
+            result = subprocess.run(
+                [python_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.stdout.strip()
+        except Exception:
+            return "unknown version"
+
     def get_project_python(self, project_root: str) -> str:
         """Get the Python executable for the project.
 
         Uses stepped fallback with warnings:
         1. VIRTUAL_ENV environment variable (if set and valid)
-        2. ./venv/bin/python (Unix) or ./venv/Scripts/python.exe (Windows)
-        3. ./.venv/bin/python (Unix) or ./.venv/Scripts/python.exe (Windows)
-        4. python3/python in PATH (system Python)
-        5. sys.executable (slop-mop's Python - last resort)
+        2. ./venv/bin/python or ./.venv/bin/python
+        3. python3/python in PATH (system Python)
+        4. sys.executable (slop-mop's Python - last resort)
 
-        Warnings are logged when falling back to non-venv Python to help
-        diagnose "python not found" errors.
-
-        Args:
-            project_root: Path to project root directory
-
-        Returns:
-            Path to Python executable
+        Warnings are logged once per project when falling back to non-venv Python.
         """
+        if project_root in PythonCheckMixin._python_cache:
+            return PythonCheckMixin._python_cache[project_root]
+
         import os
         import shutil
         import sys
 
         root = Path(project_root)
+        should_warn = project_root not in PythonCheckMixin._venv_warning_shown
 
         # Check VIRTUAL_ENV environment variable first
         virtual_env = os.environ.get("VIRTUAL_ENV")
         if virtual_env:
-            venv_path = Path(virtual_env)
-            # Unix-style
-            python_path = venv_path / "bin" / "python"
-            if python_path.exists():
-                return str(python_path)
-            # Windows-style
-            python_path = venv_path / "Scripts" / "python.exe"
-            if python_path.exists():
-                return str(python_path)
-            # VIRTUAL_ENV set but python not found there
-            logger.warning(
-                f"VIRTUAL_ENV={virtual_env} set but no Python found there. "
-                "Continuing with fallback detection."
-            )
+            python_path = self._find_python_in_venv(Path(virtual_env))
+            if python_path:
+                return self._cache_and_return(project_root, python_path)
+            if should_warn:
+                logger.warning(
+                    f"VIRTUAL_ENV={virtual_env} set but no Python found there. "
+                    "Continuing with fallback detection."
+                )
 
         # Check common venv locations in project
         for venv_dir in ["venv", ".venv"]:
-            # Unix-style
-            python_path = root / venv_dir / "bin" / "python"
-            if python_path.exists():
-                return str(python_path)
-            # Windows-style
-            python_path = root / venv_dir / "Scripts" / "python.exe"
-            if python_path.exists():
-                return str(python_path)
+            python_path = self._find_python_in_venv(root / venv_dir)
+            if python_path:
+                return self._cache_and_return(project_root, python_path)
 
-        # No venv found - warn and try system Python
-        logger.warning(
-            f"⚠️  No virtual environment found in {project_root}. "
-            "Checked: VIRTUAL_ENV env var, ./venv, ./.venv. "
-            "Python checks may fail if dependencies aren't installed globally."
-        )
+        # No venv found - mark as warned and try system Python
+        if should_warn:
+            PythonCheckMixin._venv_warning_shown.add(project_root)
 
         # Try to find python3 or python in PATH
         for python_name in ["python3", "python"]:
             system_python = shutil.which(python_name)
             if system_python:
-                logger.warning(
-                    f"Using system Python: {system_python}. "
-                    "Consider creating a venv with project dependencies."
-                )
-                return system_python
+                if should_warn:
+                    version = self._get_python_version(system_python)
+                    logger.warning(
+                        f"⚠️  No virtual environment found in {project_root}. "
+                        f"Using system Python: {system_python} ({version}). "
+                        "Consider creating a venv with project dependencies."
+                    )
+                return self._cache_and_return(project_root, system_python)
 
         # Ultimate fallback: slop-mop's own Python
-        logger.warning(
-            f"⚠️  No Python found in PATH. Using slop-mop's Python: {sys.executable}. "
-            "This will likely fail if the project has dependencies not installed "
-            "in slop-mop's environment. Create a venv in your project!"
-        )
-        return sys.executable
+        if should_warn:
+            logger.warning(
+                f"⚠️  No Python found in PATH. Using slop-mop's Python: {sys.executable}. "
+                "This will likely fail if the project has dependencies not installed "
+                "in slop-mop's environment. Create a venv in your project!"
+            )
+        return self._cache_and_return(project_root, sys.executable)
 
     def _python_execution_failed_hint(self) -> str:
         """Return helpful hint text for Python execution failures.

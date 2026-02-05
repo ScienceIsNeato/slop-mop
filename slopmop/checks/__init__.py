@@ -171,8 +171,13 @@ def ensure_checks_registered() -> None:
     """Ensure all checks are registered (idempotent).
 
     This is safe to call multiple times - checks will only be registered once.
+    Checks the registry state, not just a flag, to handle test scenarios where
+    the registry might have been reset.
     """
     global _checks_registered
-    if not _checks_registered:
+    registry = get_registry()
+    # Also check if registry is actually populated, not just the flag
+    # This handles test scenarios where registry was reset
+    if not _checks_registered or len(registry._check_classes) == 0:
         register_all_checks()
         _checks_registered = True

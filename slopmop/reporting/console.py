@@ -120,7 +120,7 @@ class ConsoleReporter:
             print("=" * 60)
             if not self.quiet:
                 for r in passed:
-                    print(f"   ✅ {r.name}")
+                    print(f"   ✅ {r.name} ({r.duration:.2f}s)")
             if skipped:
                 print()
                 print("⏭️  SKIPPED:")

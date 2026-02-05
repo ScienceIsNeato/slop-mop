@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 # Import all checks to ensure they're registered
 # noqa: E402 - must come after registry import
-from slopmop.checks import register_all_checks  # noqa: E402
+from slopmop.checks import ensure_checks_registered  # noqa: E402
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.config import CONFIG_FILE
 from slopmop.core.registry import CheckRegistry, get_registry
@@ -104,8 +104,8 @@ def generate_base_config(registry: Optional[CheckRegistry] = None) -> Dict[str, 
         Complete configuration dictionary
     """
     if registry is None:
-        # Ensure all checks are registered
-        register_all_checks()
+        # Ensure all checks are registered (idempotent)
+        ensure_checks_registered()
         registry = get_registry()
 
     config: Dict[str, Any] = {
@@ -147,7 +147,7 @@ def generate_config_schema(registry: Optional[CheckRegistry] = None) -> Dict[str
         JSON schema dictionary
     """
     if registry is None:
-        register_all_checks()
+        ensure_checks_registered()
         registry = get_registry()
 
     # Build schema structure
