@@ -93,7 +93,7 @@ The more the LLM sees good patterns, the more it generates good patterns. Slop-M
 git submodule add https://github.com/ScienceIsNeato/slop-mop.git
 
 # Install and run interactive setup
-cd slopmop && pip install -e . && sm init
+cd slop-mop && pip install -e . && sm init
 
 # Validate your code
 sm validate commit       # Fast commit validation
@@ -220,36 +220,36 @@ Slop-mop exists to be the single source of truth for code quality. If it's not m
 
 | Gate                       | Description                               |
 | -------------------------- | ----------------------------------------- |
-| `python-lint-format`       | 🎨 Code formatting (black, isort, flake8) |
-| `python-static-analysis`   | 🔍 Type checking (mypy)                   |
-| `python-tests`             | 🧪 Test execution (pytest)                |
-| `python-coverage`          | 📊 Coverage analysis (80% threshold)      |
-| `python-diff-coverage`     | 📊 Coverage on changed files only         |
-| `python-new-code-coverage` | 📊 Coverage for new code in PR            |
+| `python:lint-format`       | 🎨 Code formatting (black, isort, flake8) |
+| `python:static-analysis`   | 🔍 Type checking (mypy)                   |
+| `python:tests`             | 🧪 Test execution (pytest)                |
+| `python:coverage`          | 📊 Coverage analysis (80% threshold)      |
+| `python:diff-coverage`     | 📊 Coverage on changed files only         |
+| `python:new-code-coverage` | 📊 Coverage for new code in PR            |
 
 ### JavaScript Gates
 
-| Gate                 | Description                              |
-| -------------------- | ---------------------------------------- |
-| `javascript-lint`    | 🎨 Linting/formatting (ESLint, Prettier) |
-| `javascript-tests`   | 🧪 Test execution (Jest)                 |
-| `javascript-coverage`| 📊 Coverage analysis                     |
-| `javascript-types`   | 📝 TypeScript type checking (tsc)        |
+| Gate                    | Description                              |
+| ----------------------- | ---------------------------------------- |
+| `javascript:lint-format`| 🎨 Linting/formatting (ESLint, Prettier) |
+| `javascript:tests`      | 🧪 Test execution (Jest)                 |
+| `javascript:coverage`   | 📊 Coverage analysis                     |
+| `javascript:types`      | 📝 TypeScript type checking (tsc)        |
 
 ### Quality Gates
 
-| Gate                  | Description                           |
-| --------------------- | ------------------------------------- |
-| `complexity`          | 🌀 Cyclomatic complexity (radon)      |
-| `duplication`         | 📋 Code duplication detection (jscpd) |
-| `template-validation` | 📄 Template syntax validation         |
+| Gate                       | Description                           |
+| -------------------------- | ------------------------------------- |
+| `quality:complexity`       | 🌀 Cyclomatic complexity (radon)      |
+| `quality:source-duplication`| 📋 Code duplication detection (jscpd)|
+| `general:templates`        | 📄 Template syntax validation         |
 
 ### Security Gates
 
-| Gate             | Description                                    |
-| ---------------- | ---------------------------------------------- |
-| `security-local` | 🔐 Fast local scan (bandit + semgrep + secrets)|
-| `security-full`  | 🔒 Comprehensive security analysis             |
+| Gate              | Description                                    |
+| ----------------- | ---------------------------------------------- |
+| `security:local`  | 🔐 Fast local scan (bandit + semgrep + secrets)|
+| `security:full`   | 🔒 Comprehensive security analysis             |
 
 ### Profiles (Gate Groups)
 
@@ -270,7 +270,7 @@ sm validate pr                        # Full PR validation
 sm validate quick                     # Ultra-fast lint only
 
 # Validation with specific gates
-sm validate python-coverage           # Single gate validation
+sm validate python:coverage           # Single gate validation
 sm validate --self                    # Validate slop-mop itself
 
 # Setup and configuration
@@ -281,7 +281,7 @@ sm config --show                      # Show current configuration
 # Help
 sm help                               # List all quality gates
 sm help commit                        # Show what's in a profile
-sm help python-coverage               # Detailed gate documentation
+sm help python:coverage               # Detailed gate documentation
 ```
 
 ---
