@@ -58,10 +58,11 @@ def register_all_checks() -> None:
     registry.register(SecurityLocalCheck)
 
     # Import and register quality checks (cross-cutting)
-    from slopmop.checks.quality import ComplexityCheck, DuplicationCheck
+    from slopmop.checks.quality import ComplexityCheck, DuplicationCheck, LocLockCheck
 
     registry.register(ComplexityCheck)
     registry.register(DuplicationCheck)
+    registry.register(LocLockCheck)
 
     # Import and register general checks
     from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
