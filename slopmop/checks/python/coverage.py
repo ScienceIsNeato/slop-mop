@@ -8,7 +8,6 @@ Output is designed to be prescriptive for AI agents:
 
 import os
 import re
-import sys
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -115,7 +114,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         # Get coverage report with missing lines
         result = self._run_command(
             [
-                sys.executable,
+                self.get_project_python(project_root),
                 "-m",
                 "coverage",
                 "report",
@@ -279,7 +278,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
 
         compare_branch = _get_compare_branch()
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "diff_cover.diff_cover_script",
             "coverage.xml",
@@ -354,7 +353,7 @@ class PythonNewCodeCoverageCheck(BaseCheck, PythonCheckMixin):
 
         compare_branch = _get_compare_branch()
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "diff_cover.diff_cover_script",
             "coverage.xml",

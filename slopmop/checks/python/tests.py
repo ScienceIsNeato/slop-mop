@@ -1,6 +1,5 @@
 """Python test execution check using pytest."""
 
-import sys
 import time
 from typing import List
 
@@ -63,7 +62,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         # Run pytest with coverage to generate coverage.xml
         result = self._run_command(
             [
-                sys.executable,
+                self.get_project_python(project_root),
                 "-m",
                 "pytest",
                 "--cov=.",

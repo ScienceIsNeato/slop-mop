@@ -5,6 +5,7 @@ This enables the Open/Closed principle - add new checks without modifying
 existing code.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -13,6 +14,8 @@ from typing import Any, Dict, List, Optional
 
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.subprocess.runner import SubprocessRunner, get_runner
+
+logger = logging.getLogger(__name__)
 
 
 class GateCategory(Enum):
@@ -258,6 +261,96 @@ class BaseCheck(ABC):
 
 class PythonCheckMixin:
     """Mixin for Python-specific check utilities."""
+
+    def get_project_python(self, project_root: str) -> str:
+        """Get the Python executable for the project.
+
+        Uses stepped fallback with warnings:
+        1. VIRTUAL_ENV environment variable (if set and valid)
+        2. ./venv/bin/python (Unix) or ./venv/Scripts/python.exe (Windows)
+        3. ./.venv/bin/python (Unix) or ./.venv/Scripts/python.exe (Windows)
+        4. python3/python in PATH (system Python)
+        5. sys.executable (slop-mop's Python - last resort)
+
+        Warnings are logged when falling back to non-venv Python to help
+        diagnose "python not found" errors.
+
+        Args:
+            project_root: Path to project root directory
+
+        Returns:
+            Path to Python executable
+        """
+        import os
+        import shutil
+        import sys
+
+        root = Path(project_root)
+
+        # Check VIRTUAL_ENV environment variable first
+        virtual_env = os.environ.get("VIRTUAL_ENV")
+        if virtual_env:
+            venv_path = Path(virtual_env)
+            # Unix-style
+            python_path = venv_path / "bin" / "python"
+            if python_path.exists():
+                return str(python_path)
+            # Windows-style
+            python_path = venv_path / "Scripts" / "python.exe"
+            if python_path.exists():
+                return str(python_path)
+            # VIRTUAL_ENV set but python not found there
+            logger.warning(
+                f"VIRTUAL_ENV={virtual_env} set but no Python found there. "
+                "Continuing with fallback detection."
+            )
+
+        # Check common venv locations in project
+        for venv_dir in ["venv", ".venv"]:
+            # Unix-style
+            python_path = root / venv_dir / "bin" / "python"
+            if python_path.exists():
+                return str(python_path)
+            # Windows-style
+            python_path = root / venv_dir / "Scripts" / "python.exe"
+            if python_path.exists():
+                return str(python_path)
+
+        # No venv found - warn and try system Python
+        logger.warning(
+            f"⚠️  No virtual environment found in {project_root}. "
+            "Checked: VIRTUAL_ENV env var, ./venv, ./.venv. "
+            "Python checks may fail if dependencies aren't installed globally."
+        )
+
+        # Try to find python3 or python in PATH
+        for python_name in ["python3", "python"]:
+            system_python = shutil.which(python_name)
+            if system_python:
+                logger.warning(
+                    f"Using system Python: {system_python}. "
+                    "Consider creating a venv with project dependencies."
+                )
+                return system_python
+
+        # Ultimate fallback: slop-mop's own Python
+        logger.warning(
+            f"⚠️  No Python found in PATH. Using slop-mop's Python: {sys.executable}. "
+            "This will likely fail if the project has dependencies not installed "
+            "in slop-mop's environment. Create a venv in your project!"
+        )
+        return sys.executable
+
+    def _python_execution_failed_hint(self) -> str:
+        """Return helpful hint text for Python execution failures.
+
+        Use this in fix_suggestion when a Python tool fails to run.
+        """
+        return (
+            "If this is a 'python not found' or 'module not found' error, "
+            "ensure your project has a venv/ or .venv/ directory with dependencies "
+            "installed. slop-mop will auto-detect and use it."
+        )
 
     def has_python_files(self, project_root: str) -> bool:
         """Check if project has Python files."""
