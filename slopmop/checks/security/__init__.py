@@ -335,7 +335,14 @@ class SecurityCheck(SecurityLocalCheck):
         # Check for safety config file
         safety_config = self.config.get("safety_config_file")
 
-        cmd = [self.get_project_python(project_root), "-m", "safety", "scan", "--output", "json"]
+        cmd = [
+            self.get_project_python(project_root),
+            "-m",
+            "safety",
+            "scan",
+            "--output",
+            "json",
+        ]
         if api_key:
             cmd.extend(["--key", api_key])
         if safety_config:

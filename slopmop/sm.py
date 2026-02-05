@@ -1020,9 +1020,9 @@ def cmd_init(args: argparse.Namespace) -> int:
 # COMMIT-HOOKS COMMAND
 # =============================================================================
 
-# Marker to identify sb-managed hooks
-SB_HOOK_MARKER = "# MANAGED BY SLOPBUCKET - DO NOT EDIT"
-SB_HOOK_END_MARKER = "# END SLOPBUCKET HOOK"
+# Marker to identify slop-mop managed hooks
+SB_HOOK_MARKER = "# MANAGED BY SLOP-MOP - DO NOT EDIT"
+SB_HOOK_END_MARKER = "# END SLOP-MOP HOOK"
 
 
 def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
@@ -1043,24 +1043,45 @@ def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
 
 
 def _generate_hook_script(profile: str) -> str:
-    """Generate the pre-commit hook script content."""
+    """Generate the pre-commit hook script content.
+
+    The hook uses the project's venv Python to ensure consistent execution.
+    It searches for venv in: ./venv, ./.venv
+    Falls back to system 'sm' command if no venv is found.
+    """
     return f"""{SB_HOOK_MARKER}
 #!/bin/sh
 #
-# Pre-commit hook managed by slopmop
+# Pre-commit hook managed by slop-mop
 # Profile: {profile}
-# To remove: sb commit-hooks uninstall
+# To remove: sm commit-hooks uninstall
 #
 
-# Run slopmop validation
-sm validate {profile}
+# Find the project's venv and use it for deterministic execution
+if [ -f "./venv/bin/sm" ]; then
+    SM_CMD="./venv/bin/sm"
+elif [ -f "./.venv/bin/sm" ]; then
+    SM_CMD="./.venv/bin/sm"
+elif [ -f "./venv/bin/python" ]; then
+    SM_CMD="./venv/bin/python -m slopmop.sm"
+elif [ -f "./.venv/bin/python" ]; then
+    SM_CMD="./.venv/bin/python -m slopmop.sm"
+else
+    # Fallback to system sm (not recommended)
+    echo "⚠️  Warning: No venv found. Using system 'sm' command."
+    echo "   For reliable results, activate your venv or install slop-mop in ./venv"
+    SM_CMD="sm"
+fi
+
+# Run slop-mop validation
+$SM_CMD validate {profile}
 
 # Capture exit code
 result=$?
 
 if [ $result -ne 0 ]; then
     echo ""
-    echo "❌ Commit blocked by slopmop quality gates"
+    echo "❌ Commit blocked by slop-mop quality gates"
     echo "   Run 'sm validate {profile}' to see details"
     echo ""
     exit 1

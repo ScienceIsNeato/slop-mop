@@ -238,7 +238,9 @@ class TestPythonCheckMixin:
         result = self.mixin.get_project_python(str(tmp_path))
         assert result == str(env_python)
 
-    def test_get_project_python_falls_back_to_system_python(self, tmp_path, monkeypatch):
+    def test_get_project_python_falls_back_to_system_python(
+        self, tmp_path, monkeypatch
+    ):
         """Test get_project_python falls back to system Python when no venv."""
         import shutil
 
@@ -254,6 +256,7 @@ class TestPythonCheckMixin:
         else:
             # If no system Python, falls back to sys.executable
             import sys
+
             assert result == sys.executable
 
     def test_get_project_python_falls_back_to_sys_executable_no_path(
@@ -271,7 +274,9 @@ class TestPythonCheckMixin:
         result = self.mixin.get_project_python(str(tmp_path))
         assert result == sys.executable
 
-    def test_get_project_python_logs_warning_no_venv(self, tmp_path, monkeypatch, caplog):
+    def test_get_project_python_logs_warning_no_venv(
+        self, tmp_path, monkeypatch, caplog
+    ):
         """Test get_project_python logs warning when no venv found."""
         import logging
 
@@ -290,7 +295,9 @@ class TestPythonCheckMixin:
         assert "venv" in hint
         assert "module not found" in hint
 
-    def test_get_project_python_venv_takes_priority_over_dot_venv(self, tmp_path, monkeypatch):
+    def test_get_project_python_venv_takes_priority_over_dot_venv(
+        self, tmp_path, monkeypatch
+    ):
         """Test get_project_python prefers ./venv over ./.venv."""
         # Create both venvs
         venv_dir = tmp_path / "venv" / "bin"

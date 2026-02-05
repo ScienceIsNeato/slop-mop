@@ -76,7 +76,14 @@ class SmokeTestCheck(BaseCheck, PythonCheckMixin):
                 "Smoke tests require a running server.",
             )
 
-        cmd = [self.get_project_python(project_root), "-m", "pytest", "tests/smoke", "--tb=short", "-v"]
+        cmd = [
+            self.get_project_python(project_root),
+            "-m",
+            "pytest",
+            "tests/smoke",
+            "--tb=short",
+            "-v",
+        ]
         result = self._run_command(cmd, cwd=project_root, timeout=300)
         duration = time.time() - start_time
 
@@ -166,7 +173,14 @@ class IntegrationTestCheck(BaseCheck, PythonCheckMixin):
                 output="DATABASE_URL not set. Integration tests require a seeded database.",
             )
 
-        cmd = [self.get_project_python(project_root), "-m", "pytest", "tests/integration", "--tb=short", "-v"]
+        cmd = [
+            self.get_project_python(project_root),
+            "-m",
+            "pytest",
+            "tests/integration",
+            "--tb=short",
+            "-v",
+        ]
         result = self._run_command(cmd, cwd=project_root, timeout=300)
         duration = time.time() - start_time
 

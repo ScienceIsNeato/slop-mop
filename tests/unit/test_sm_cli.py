@@ -417,11 +417,13 @@ class TestGitHooksFunctions:
         """Generates valid hook script."""
         script = _generate_hook_script("commit")
         assert "sm validate commit" in script
-        assert "MANAGED BY SLOPBUCKET" in script
+        assert "MANAGED BY SLOP-MOP" in script
+        # Should detect venv for deterministic execution
+        assert "./venv/bin/sm" in script or "./venv/bin/python" in script
 
     def test_parse_hook_info_managed(self):
         """Parses managed hook info."""
-        content = """# MANAGED BY SLOPBUCKET - DO NOT EDIT
+        content = """# MANAGED BY SLOP-MOP - DO NOT EDIT
 #!/bin/sh
 # Profile: commit
 sm validate commit
@@ -490,7 +492,7 @@ class TestCmdCommitHooks:
         """Uninstall removes managed hooks."""
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
         hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
-        hook_file.write_text("# MANAGED BY SLOPBUCKET - DO NOT EDIT\nsm validate")
+        hook_file.write_text("# MANAGED BY SLOP-MOP - DO NOT EDIT\nsm validate")
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
