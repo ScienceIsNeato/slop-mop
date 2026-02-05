@@ -1,6 +1,6 @@
 """Tests for CLI helper functions."""
 
-from slopmop.sm import _deep_merge
+from slopmop.cli.init import _deep_merge
 
 
 class TestDeepMerge:
@@ -111,17 +111,17 @@ class TestCmdValidateSelf:
         )
 
         # Mock the executor to avoid actually running checks
-        with patch("slopmop.sm.CheckExecutor") as mock_executor_class:
+        with patch("slopmop.cli.validate.CheckExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_summary = MagicMock()
             mock_summary.all_passed = True
             mock_executor.run_checks.return_value = mock_summary
             mock_executor_class.return_value = mock_executor
 
-            with patch("slopmop.sm.ConsoleReporter"):
+            with patch("slopmop.cli.validate.ConsoleReporter"):
                 import os
 
-                from slopmop.sm import cmd_validate
+                from slopmop.cli.validate import cmd_validate
 
                 # Store original env
                 original_env = os.environ.get("SB_CONFIG_FILE")
@@ -166,16 +166,16 @@ class TestCmdValidateSelf:
                 captured_temp_dir.append(result)
             return result
 
-        with patch("slopmop.sm.CheckExecutor") as mock_executor_class:
+        with patch("slopmop.cli.validate.CheckExecutor") as mock_executor_class:
             mock_executor = MagicMock()
             mock_summary = MagicMock()
             mock_summary.all_passed = True
             mock_executor.run_checks.return_value = mock_summary
             mock_executor_class.return_value = mock_executor
 
-            with patch("slopmop.sm.ConsoleReporter"):
+            with patch("slopmop.cli.validate.ConsoleReporter"):
                 with patch("tempfile.mkdtemp", capture_mkdtemp):
-                    from slopmop.sm import cmd_validate
+                    from slopmop.cli.validate import cmd_validate
 
                     cmd_validate(args)
 

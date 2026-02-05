@@ -3,17 +3,11 @@
 This module provides registration for all available checks and aliases.
 """
 
-from slopmop.core.registry import get_registry
+from slopmop.core.registry import CheckRegistry, get_registry
 
 
-def register_all_checks() -> None:
-    """Register all available checks and aliases with the registry.
-
-    Call this function before running checks to ensure all checks are available.
-    """
-    registry = get_registry()
-
-    # Import and register Python checks
+def _register_python_checks(registry: CheckRegistry) -> None:
+    """Register all Python-related checks."""
     from slopmop.checks.python.coverage import (
         PythonCoverageCheck,
         PythonDiffCoverageCheck,
@@ -38,7 +32,9 @@ def register_all_checks() -> None:
     registry.register(IntegrationTestCheck)
     registry.register(E2ETestCheck)
 
-    # Import and register JavaScript checks
+
+def _register_javascript_checks(registry: CheckRegistry) -> None:
+    """Register all JavaScript-related checks."""
     from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
     from slopmop.checks.javascript.eslint_quick import FrontendCheck
     from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
@@ -51,30 +47,25 @@ def register_all_checks() -> None:
     registry.register(FrontendCheck)
     registry.register(JavaScriptTypesCheck)
 
-    # Import and register security checks (cross-cutting)
+
+def _register_crosscutting_checks(registry: CheckRegistry) -> None:
+    """Register security, quality, and general checks."""
+    from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
+    from slopmop.checks.pr.comments import PRCommentsCheck
+    from slopmop.checks.quality import ComplexityCheck, DuplicationCheck, LocLockCheck
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
 
     registry.register(SecurityCheck)
     registry.register(SecurityLocalCheck)
-
-    # Import and register quality checks (cross-cutting)
-    from slopmop.checks.quality import ComplexityCheck, DuplicationCheck, LocLockCheck
-
     registry.register(ComplexityCheck)
     registry.register(DuplicationCheck)
     registry.register(LocLockCheck)
-
-    # Import and register general checks
-    from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
-
     registry.register(TemplateValidationCheck)
-
-    # Import and register PR checks
-    from slopmop.checks.pr.comments import PRCommentsCheck
-
     registry.register(PRCommentsCheck)
 
-    # Register aliases
+
+def _register_aliases(registry: CheckRegistry) -> None:
+    """Register all profile aliases."""
     registry.register_alias(
         "commit",
         [
@@ -84,7 +75,7 @@ def register_all_checks() -> None:
             "python:coverage",
             "quality:complexity",
             "quality:duplication",
-            # "quality:loc-lock",  # TODO: Re-enable after refactoring sm.py
+            "quality:loc-lock",
             "security:local",
         ],
     )
@@ -109,13 +100,7 @@ def register_all_checks() -> None:
         ],
     )
 
-    registry.register_alias(
-        "quick",
-        [
-            "python:lint-format",
-            "security:local",
-        ],
-    )
+    registry.register_alias("quick", ["python:lint-format", "security:local"])
 
     registry.register_alias(
         "python",
@@ -138,27 +123,12 @@ def register_all_checks() -> None:
         ],
     )
 
-    registry.register_alias(
-        "security",
-        [
-            "security:full",
-        ],
-    )
-
-    registry.register_alias(
-        "security-local",
-        [
-            "security:local",
-        ],
-    )
+    registry.register_alias("security", ["security:full"])
+    registry.register_alias("security-local", ["security:local"])
 
     registry.register_alias(
         "quality",
-        [
-            "quality:complexity",
-            "quality:duplication",
-            "quality:loc-lock",
-        ],
+        ["quality:complexity", "quality:duplication", "quality:loc-lock"],
     )
 
     registry.register_alias(
@@ -169,3 +139,29 @@ def register_all_checks() -> None:
             "integration:e2e-tests",
         ],
     )
+
+
+def register_all_checks() -> None:
+    """Register all available checks and aliases with the registry.
+
+    Call this function before running checks to ensure all checks are available.
+    """
+    registry = get_registry()
+    _register_python_checks(registry)
+    _register_javascript_checks(registry)
+    _register_crosscutting_checks(registry)
+    _register_aliases(registry)
+
+
+_checks_registered = False
+
+
+def ensure_checks_registered() -> None:
+    """Ensure all checks are registered (idempotent).
+
+    This is safe to call multiple times - checks will only be registered once.
+    """
+    global _checks_registered
+    if not _checks_registered:
+        register_all_checks()
+        _checks_registered = True

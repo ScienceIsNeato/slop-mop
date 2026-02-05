@@ -245,14 +245,11 @@ class PRCommentsCheck(BaseCheck):
         except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
             return []
 
-    def _categorize_comment(self, body: str) -> str:
-        """Categorize a comment by its likely type."""
-        body_lower = body.lower()
-
-        # Security-related keywords
-        if any(
-            kw in body_lower
-            for kw in [
+    # Category keyword mappings for comment classification
+    _COMMENT_CATEGORIES = [
+        (
+            "🔐 Security",
+            [
                 "security",
                 "vulnerability",
                 "injection",
@@ -265,14 +262,11 @@ class PRCommentsCheck(BaseCheck):
                 "sanitize",
                 "escape",
                 "unsafe",
-            ]
-        ):
-            return "🔐 Security"
-
-        # Logic/correctness
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🐛 Logic/Correctness",
+            [
                 "bug",
                 "incorrect",
                 "wrong",
@@ -286,14 +280,11 @@ class PRCommentsCheck(BaseCheck):
                 "undefined",
                 "race condition",
                 "deadlock",
-            ]
-        ):
-            return "🐛 Logic/Correctness"
-
-        # Architecture/design
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🏗️ Architecture",
+            [
                 "architecture",
                 "design",
                 "pattern",
@@ -304,57 +295,23 @@ class PRCommentsCheck(BaseCheck):
                 "dependency",
                 "solid",
                 "separation",
-            ]
-        ):
-            return "🏗️ Architecture"
-
-        # Testing
-        if any(
-            kw in body_lower
-            for kw in [
-                "test",
-                "coverage",
-                "mock",
-                "assert",
-                "spec",
-                "edge case",
-            ]
-        ):
-            return "🧪 Testing"
-
-        # Documentation
-        if any(
-            kw in body_lower
-            for kw in [
-                "document",
-                "comment",
-                "docstring",
-                "readme",
-                "explain",
-                "clarify",
-            ]
-        ):
-            return "📚 Documentation"
-
-        # Style/formatting
-        if any(
-            kw in body_lower
-            for kw in [
-                "style",
-                "format",
-                "naming",
-                "convention",
-                "lint",
-                "whitespace",
-                "indent",
-            ]
-        ):
-            return "🎨 Style"
-
-        # Performance
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🧪 Testing",
+            ["test", "coverage", "mock", "assert", "spec", "edge case"],
+        ),
+        (
+            "📚 Documentation",
+            ["document", "comment", "docstring", "readme", "explain", "clarify"],
+        ),
+        (
+            "🎨 Style",
+            ["style", "format", "naming", "convention", "lint", "whitespace", "indent"],
+        ),
+        (
+            "⚡ Performance",
+            [
                 "performance",
                 "slow",
                 "optimize",
@@ -363,14 +320,22 @@ class PRCommentsCheck(BaseCheck):
                 "efficient",
                 "complexity",
                 "o(n)",
-            ]
-        ):
-            return "⚡ Performance"
+            ],
+        ),
+    ]
+
+    def _categorize_comment(self, body: str) -> str:
+        """Categorize a comment by its likely type."""
+        body_lower = body.lower()
+
+        # Check against keyword categories
+        for category, keywords in self._COMMENT_CATEGORIES:
+            if any(kw in body_lower for kw in keywords):
+                return category
 
         # Questions/clarifications
-        if "?" in body or any(
-            kw in body_lower for kw in ["why", "what", "how", "could you", "can you"]
-        ):
+        question_keywords = ["why", "what", "how", "could you", "can you"]
+        if "?" in body or any(kw in body_lower for kw in question_keywords):
             return "❓ Question"
 
         return "💭 General"
