@@ -155,7 +155,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
         if not result.success:
             # Parse error count from output
             lines = result.output.split("\n")
-            error_lines = [l for l in lines if "error TS" in l]
+            error_lines = [line for line in lines if "error TS" in line]
             error_count = len(error_lines)
 
             return self._create_result(

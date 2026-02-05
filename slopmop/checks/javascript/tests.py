@@ -85,7 +85,7 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
         if not result.success:
             # Parse failure info
             lines = result.output.split("\n")
-            failed = [l for l in lines if "FAIL" in l]
+            failed = [line for line in lines if "FAIL" in line]
 
             return self._create_result(
                 status=CheckStatus.FAILED,

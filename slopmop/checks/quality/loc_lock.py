@@ -297,7 +297,6 @@ class LocLockCheck(BaseCheck):
         """Find Python function definitions."""
         functions = []
         func_pattern = re.compile(r"^\s*(async\s+)?def\s+(\w+)\s*\(")
-        class_pattern = re.compile(r"^\s*class\s+\w+")
 
         i = 0
         while i < len(lines):

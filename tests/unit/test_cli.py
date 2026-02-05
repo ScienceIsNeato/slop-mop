@@ -119,8 +119,6 @@ class TestCmdValidateSelf:
             mock_executor_class.return_value = mock_executor
 
             with patch("slopmop.cli.validate.ConsoleReporter"):
-                import os
-
                 from slopmop.cli.validate import cmd_validate
 
                 # Store original env

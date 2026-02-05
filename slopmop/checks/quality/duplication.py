@@ -21,7 +21,7 @@ MIN_TOKENS = 50
 MIN_LINES = 5
 
 
-class DuplicationCheck(BaseCheck):
+class SourceDuplicationCheck(BaseCheck):
     """Cross-language code duplication detection via jscpd."""
 
     def __init__(self, config: Dict, threshold: float = DEFAULT_THRESHOLD):
@@ -30,11 +30,11 @@ class DuplicationCheck(BaseCheck):
 
     @property
     def name(self) -> str:
-        return "duplication"
+        return "source-duplication"
 
     @property
     def display_name(self) -> str:
-        return "📋 Code Duplication"
+        return "📋 Source Duplication"
 
     @property
     def category(self) -> GateCategory:
@@ -115,6 +115,7 @@ class DuplicationCheck(BaseCheck):
         ".tox",
         "htmlcov",
         "*.egg-info",
+        "tools",  # vendored third-party tools
     ]
 
     def _check_jscpd_availability(self, project_root: str) -> Optional[str]:

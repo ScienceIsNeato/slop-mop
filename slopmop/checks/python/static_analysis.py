@@ -87,7 +87,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         if not result.success:
             # Count errors
             lines = result.output.split("\n")
-            error_lines = [l for l in lines if ": error:" in l]
+            error_lines = [line for line in lines if ": error:" in line]
 
             return self._create_result(
                 status=CheckStatus.FAILED,

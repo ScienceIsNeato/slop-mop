@@ -189,7 +189,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             return None  # No Python targets found
 
         # Check each target
-        all_passed = True
+        result = None
         for target in targets:
             result = self._run_command(
                 ["black", "--check", "--line-length", "88", target],
@@ -197,13 +197,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 timeout=60,
             )
             if not result.success:
-                all_passed = False
                 break
 
         if not result.success:
             # Extract files that need formatting
             lines = result.output.split("\n")
-            files = [l for l in lines if l.startswith("would reformat")]
+            files = [line for line in lines if line.startswith("would reformat")]
             if files:
                 return f"{len(files)} file(s) need formatting"
             return "Formatting check failed"

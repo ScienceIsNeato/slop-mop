@@ -52,13 +52,19 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     """Register security, quality, and general checks."""
     from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
     from slopmop.checks.pr.comments import PRCommentsCheck
-    from slopmop.checks.quality import ComplexityCheck, DuplicationCheck, LocLockCheck
+    from slopmop.checks.quality import (
+        ComplexityCheck,
+        LocLockCheck,
+        SourceDuplicationCheck,
+        StringDuplicationCheck,
+    )
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
 
     registry.register(SecurityCheck)
     registry.register(SecurityLocalCheck)
     registry.register(ComplexityCheck)
-    registry.register(DuplicationCheck)
+    registry.register(SourceDuplicationCheck)
+    registry.register(StringDuplicationCheck)
     registry.register(LocLockCheck)
     registry.register(TemplateValidationCheck)
     registry.register(PRCommentsCheck)
@@ -74,7 +80,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:tests",
             "python:coverage",
             "quality:complexity",
-            "quality:duplication",
+            "quality:source-duplication",
             "quality:loc-lock",
             "security:local",
         ],
@@ -91,7 +97,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:diff-coverage",
             "python:new-code-coverage",
             "quality:complexity",
-            "quality:duplication",
+            "quality:source-duplication",
             "quality:loc-lock",
             "security:full",
             "javascript:lint-format",
@@ -128,7 +134,12 @@ def _register_aliases(registry: CheckRegistry) -> None:
 
     registry.register_alias(
         "quality",
-        ["quality:complexity", "quality:duplication", "quality:loc-lock"],
+        [
+            "quality:complexity",
+            "quality:source-duplication",
+            "quality:string-duplication",
+            "quality:loc-lock",
+        ],
     )
 
     registry.register_alias(

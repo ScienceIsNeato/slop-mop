@@ -15,14 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Import all checks to ensure they're registered
+# noqa: E402 - must come after registry import
+from slopmop.checks import register_all_checks  # noqa: E402
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.config import CONFIG_FILE
 from slopmop.core.registry import CheckRegistry, get_registry
 
 logger = logging.getLogger(__name__)
-
-# Import all checks to ensure they're registered
-from slopmop.checks import register_all_checks
 
 
 def _config_field_to_default(field: ConfigField) -> Any:
