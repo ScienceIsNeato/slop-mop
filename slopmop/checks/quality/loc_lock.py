@@ -403,7 +403,7 @@ class LocLockCheck(BaseCheck):
 
     def _find_ruby_functions(self, lines: List[str]) -> List[Tuple[str, int, int]]:
         """Find Ruby method definitions."""
-        functions = []
+        functions: List[Tuple[str, int, int]] = []
         def_pattern = re.compile(r"^\s*def\s+(\w+)")
 
         i = 0

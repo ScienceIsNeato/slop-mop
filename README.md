@@ -1,88 +1,38 @@
-<p align="center">
-  <img src="assets/heraldic_splash.png" alt="Slop-Mop" width="800"/>
-</p>
+# 🧹 Slop-Mop
 
-<h1 align="center">🧹 Slop-Mop</h1>
+<a href="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml"><img src="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml/badge.svg" alt="Slop-Mop CI"/></a> <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a> <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"/></a>
 
-<p align="center">
-  <strong>Quality Gates for AI-Generated Code</strong>
-</p>
+**Quality gates for AI-assisted codebases.** Not a silver bullet — just a mop.
 
-<p align="center">
-  <a href="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml"><img src="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml/badge.svg" alt="Slop-Mop CI"/></a>
-  <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"/></a>
-</p>
+<img src="assets/heraldic_splash.png" alt="Slop-Mop" width="300" align="right"/>
 
-<p align="center">
-  <a href="#the-problem">The Problem</a> •
-  <a href="#the-solution">The Solution</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#ai-agent-workflow">AI Workflow</a> •
-  <a href="#available-gates">Gates</a> •
-  <a href="#configuration">Configuration</a>
-</p>
+## The Problem (Which Nobody Has Solved)
 
----
+LLMs are reward hackers. They optimize for task completion — not codebase health. Left unsupervised, they cargo-cult patterns, duplicate code they can't see, and put blinders on for momentum. The result is technical debt that accumulates faster than any human team could produce.
 
-## The Problem
+You can't prompt-engineer this away. The tension between *shipping* and *maintaining* is genuinely unsolved. Humans struggle with it too. But LLMs struggle in predictable, repeatable ways — and that's an opening.
 
-LLMs are trained to **close tickets**—to satisfy acceptance criteria quickly with minimal consideration for long-term consequences. This makes them exceptional at completing individual tasks, but poor stewards of codebase health over time.
+## So What Is This?
 
-### What LLMs Do Well
-- ✅ Complete individual tasks with impressive speed
-- ✅ Produce code that passes tests on the first try
-- ✅ Follow established patterns when they see them
-- ✅ Generate boilerplate and repetitive code instantly
+Slop-Mop is a set of quality gates you bolt onto a project. It works in two phases:
 
-### What LLMs Do Poorly (Without Intervention)
-- ❌ Question whether the work should exist in the first place
-- ❌ Maintain architectural integrity across sessions
-- ❌ Avoid duplicating code they can't see in context
-- ❌ Resist the urge to "fix" things outside scope
-- ❌ Consider consequences beyond the immediate task
+**Phase 1: Remediation.** Bolt it onto an existing repo, run it, and fix what it finds. Duplication, missing tests, complexity rot, security holes, format drift — the accumulated debt that piles up when agents operate unchecked. This alone can bring a neglected codebase back to maintainable.
 
-Without guardrails, you accumulate technical debt at an alarming rate.
+**Phase 2: Maintenance.** Once the gates pass, keep them passing. This is the harder part. Every commit, every PR, every agent session runs through the same gates. Debt doesn't accumulate (as much) because it gets caught before it lands.
 
----
+### The Key Insight
 
-## The Solution
+When you tell an LLM exactly what to do, it typically does it well. When you don't, it decides for itself — and after years of watching what happens when it decides for itself, the answer is usually unnecessary churn.
 
-**Slop-Mop is a bolt-on quality gate framework designed specifically for AI-generated code.**
+Slop-Mop's output has been refined to give agents exact instructions in specific failure scenarios. Instead of vague "fix the code quality" guidance, it tells the model precisely what command to run, what threshold was violated, and what to do next. This keeps agents hyper-focused on the mechanical quality work, freeing up their actual power for the things that matter: architectural decisions and feature integration.
 
-While humans might forget to run a linter or skip writing tests when tired, LLMs have different failure modes: they duplicate code, submit unvetted changes, and optimize for completion over quality.
+### What It Catches
 
-Slop-Mop addresses these LLM-specific failure modes by:
-
-### 🎯 Optimizing for How LLMs Actually Work
-
-| LLM Tendency | Slop-Mop Response |
-|--------------|-------------------|
-| Duplicate code across files | Code duplication detection (jscpd) |
-| Submit unvetted changes | Mandatory test and coverage gates |
-| Overhype capabilities | Security scanning (bandit, semgrep) |
-| Tunnel vision on current task | Complexity analysis, static typing |
-| Cargo-cult patterns | Lint enforcement, format consistency |
-
-### 🛤️ Putting Guardrails on Tool Use
-
-LLMs are excellent at following instructions and terrible at knowing when to stop. Slop-Mop provides:
-
-- **Fail-fast execution**: Stop at the first failure, fix it, move on
-- **Exact fix instructions**: Tell the LLM precisely what command to run next
-- **Profiles, not flags**: `sm validate commit` instead of remembering 12 gate names
-- **Iteration guidance**: Clear next steps after every failure
-
-### 🔧 Helping LLMs Help Themselves
-
-When LLMs see well-structured code with tests, they emulate that pattern. Slop-Mop enforces the patterns you want propagated:
-
-- Coverage requirements force tests to exist
-- Complexity limits prevent spaghetti code
-- Type checking catches errors before runtime
-- Security scans block obviously bad patterns
-
-The more the LLM sees good patterns, the more it generates good patterns. Slop-Mop bootstraps that flywheel.
+- **Duplication** — LLMs reinvent what they can't see. Duplication detection surfaces it.
+- **Coverage gaps** — Tests that don't exercise the code, or code with no tests at all.
+- **Complexity creep** — Functions that grow without pushback.
+- **Security blind spots** — Patterns a human reviewer would flag.
+- **Format entropy** — Consistency erosion across agent sessions.
 
 ---
 
@@ -100,21 +50,19 @@ sm validate commit       # Fast commit validation
 sm validate pr           # Full PR validation
 ```
 
-**That's it.** Zero configuration required. Slop-Mop auto-detects your project type and enables appropriate gates.
+Auto-detects your project type and enables relevant gates. See [`sm init`](#setup-sm-init) and [`sm config`](#configuration-sm-config) for details on customization.
 
 ---
 
-## AI Agent Workflow
+## How It Works (For AI Agents)
 
-**🤖 This is the primary use case. If you're an AI coding assistant, this section is for you.**
-
-### The Simple Pattern
+The intended workflow is simple and iterative. Run a profile, fix what fails, repeat.
 
 ```bash
 sm validate commit
 ```
 
-When a check fails, Slop-Mop tells you exactly what to do next:
+When a gate fails, the output tells you what to do next:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -133,84 +81,51 @@ When a check fails, Slop-Mop tells you exactly what to do next:
 └──────────────────────────────────────────────────────────┘
 ```
 
-### What NOT to Do
+### Prefer Profiles Over Individual Gates
 
 ```bash
-# ❌ DON'T - verbose, error-prone, misses the point
+# ❌ Verbose and error-prone
 sm validate -g python:lint-format,python:static-analysis,python:tests,python:coverage
 
-# ✅ DO - simple, iterative, self-guiding
+# ✅ Profiles group gates for common scenarios
 sm validate commit
 ```
 
-### The Iteration Loop
+### The Loop
 
-1. **Run the profile**: `sm validate commit`
-2. **See what fails**: Output shows exactly which gate failed
-3. **Fix the issue**: Follow the guidance in the error output
-4. **Validate the fix**: `sm validate <failed-gate>` (just that one gate)
-5. **Resume the profile**: `sm validate commit` (catch remaining issues)
-6. **Repeat until green**: Keep iterating until all checks pass
-
-This fail-fast, iterative approach is:
-- **Faster** than running everything at once
-- **Easier** to reason about (one problem at a time)
-- **Cleaner** in commit history (incremental fixes)
+1. `sm validate commit` — see what fails
+2. Fix the first failure
+3. `sm validate <failed-gate>` — verify just that fix
+4. `sm validate commit` — check for remaining issues
+5. Repeat until clean
 
 ---
 
-## Primary Tenets
+## Design Choices
 
-### 1. Easy to Use
-- **Bolt-on installation**: Git submodule, one command setup
-- **Auto-downloads dependencies**: No manual tool installation
-- **Auto-configures on first run**: Detects project type, enables relevant gates
-- **Zero required configuration**: Works out of the box
+Some opinions baked into the tool, for better or worse:
 
-### 2. Immediate Value
-- **Start using instantly**: Run on existing projects to find debt
-- **Prevent future debt**: Install in new projects from day one
-- **Incremental improvement**: Each run chips away at issues
+- **Fail-fast by default.** Stops at the first failing gate rather than running everything. The theory is that fixing one thing at a time produces better results than dumping a wall of errors.
+- **Profiles over flags.** `sm validate commit` is easier to remember (and harder to get wrong) than a list of individual gate names.
+- **Auto-detection.** Slop-Mop looks at your project structure and enables relevant gates. You can override this, but the goal is zero-config for common setups.
+- **Actionable output.** Error messages include the exact command to re-run the failing gate. This matters more for AI agents than humans, but it doesn't hurt either way.
+- **Self-dogfooding.** `sm validate --self` runs slop-mop's own gates against itself. If we can't pass our own checks, something's wrong.
 
-### 3. Optimized for LLM Failure Modes
-- **Detects what LLMs do wrong**: Duplication, unvetted code, complexity creep
-- **Not focused on human errors**: Typos, incomplete refactors, emotional comments
-- **Provides actionable output**: LLMs need exact instructions, not vague guidance
+### A Note on Tool Use
 
-### 4. Minimal Friction
-- **Fail-fast execution**: Don't waste time on checks that will fail anyway
-- **Configurable thresholds**: Adjust to your project's reality
-- **Profile-based workflow**: One command for common scenarios
-- **Self-validation**: `sm validate --self` dogfoods the tool itself
-
-### 5. Tool Use Over One-Offs
-
-> **🚨 CRITICAL PRINCIPLE FOR AI AGENTS 🚨**
-
-If you find yourself running manual commands to verify something:
+If you're an AI agent working in a project that has slop-mop installed, prefer using it over running raw tools:
 
 ```bash
-# ❌ STOP! Don't do this!
+# Instead of this:
 pytest tests/unit/test_foo.py -v
 black --check src/
 mypy src/
+
+# Use this:
+sm validate commit
 ```
 
-**Ask yourself**: *"Why isn't slop-mop doing this for me?"*
-
-The answer is one of:
-1. **Slop-mop already does this** → Use `sm validate <gate>` instead
-2. **Slop-mop's output isn't sufficient** → Improve the gate's output, then use it
-3. **This check doesn't exist yet** → Add it to slop-mop, then use it
-
-**Never work around slop-mop. Improve it.**
-
-Every manual command you run is:
-- A friction point you're ignoring instead of fixing
-- Context you're not capturing for future runs
-- A pattern you're not enforcing consistently
-
-Slop-mop exists to be the single source of truth for code quality. If it's not meeting that bar, make it meet that bar.
+Not because slop-mop is magic, but because it standardizes the workflow. The same gates run the same way every time, which means less drift between sessions.
 
 ---
 
@@ -261,34 +176,62 @@ Slop-mop exists to be the single source of truth for code quality. If it's not m
 
 ---
 
-## Usage
+## Setup: `sm init`
+
+Run once when you first add slop-mop to a project. It scans your repo, figures out what you've got, and writes a `.sb_config.json`.
 
 ```bash
-# Validation with profiles (preferred)
-sm validate commit                    # Fast commit validation
-sm validate pr                        # Full PR validation
-sm validate quick                     # Ultra-fast lint only
-
-# Validation with specific gates
-sm validate python:coverage           # Single gate validation
-sm validate --self                    # Validate slop-mop itself
-
-# Setup and configuration
-sm init                               # Interactive project setup
-sm init --non-interactive             # Auto-configure with defaults
-sm config --show                      # Show current configuration
-
-# Help
-sm help                               # List all quality gates
-sm help commit                        # Show what's in a profile
-sm help python:coverage               # Detailed gate documentation
+sm init                    # Interactive — walks you through it
+sm init --non-interactive  # Auto-detect everything, use defaults
 ```
+
+**What it detects:** Python vs JavaScript (or both), test directories, pytest/jest presence, recommended gates and profiles.
+
+**Re-running:** `sm init` is destructive by design. If you want to start fresh — say your project structure has changed significantly — re-run it. It backs up your existing config and writes a new one from scratch based on current project state.
+
+**Intended flow:**
+1. Run `sm init` to generate a baseline config
+2. Review the config, disable gates you're not ready for
+3. Run `sm validate commit` and fix what fails
+4. Gradually enable more gates and tighten thresholds over time
+
+### The Gradual Ramp (vs. Eating the Whole Pig)
+
+If you bolt slop-mop onto a repo with zero test coverage, turning on the coverage gate at 80% means you're not shipping anything until you write a *lot* of tests. That might be the right call, but usually it isn't.
+
+The alternative:
+
+```bash
+# Start with coverage disabled
+sm config --disable python:coverage
+
+# Get everything else passing first
+sm validate commit
+
+# Enable coverage at a low threshold
+sm config --enable python:coverage
+# Edit .sb_config.json: set coverage threshold to 5
+sm validate commit
+
+# Ramp up over time: 5% → 30% → 50% → 80%
+```
+
+This lets you work on features *while* building up quality infrastructure incrementally. Each threshold bump is a small, manageable chunk of work instead of a multi-hour remediation session.
 
 ---
 
-## Configuration
+## Configuration: `sm config`
 
-Slop-Mop works with **zero configuration** but supports customization via `.sb_config.json`:
+View and modify gate settings after init.
+
+```bash
+sm config --show              # Show all gates and their status
+sm config --enable <gate>     # Enable a disabled gate
+sm config --disable <gate>    # Disable a gate
+sm config --json <file>       # Update config from a JSON file
+```
+
+The config file (`.sb_config.json`) supports per-gate customization:
 
 ```json
 {
@@ -314,6 +257,31 @@ Slop-Mop works with **zero configuration** but supports customization via `.sb_c
 
 ---
 
+## Usage
+
+```bash
+# Validation with profiles (preferred)
+sm validate commit                    # Fast commit validation
+sm validate pr                        # Full PR validation
+sm validate quick                     # Ultra-fast lint only
+
+# Validation with specific gates
+sm validate python:coverage           # Single gate validation
+sm validate --self                    # Validate slop-mop itself
+
+# Setup and configuration
+sm init                               # Interactive project setup
+sm init --non-interactive             # Auto-configure with defaults
+sm config --show                      # Show current configuration
+
+# Help
+sm help                               # List all quality gates
+sm help commit                        # Show what's in a profile
+sm help python:coverage               # Detailed gate documentation
+```
+
+---
+
 ## Development
 
 ```bash
@@ -331,7 +299,7 @@ sm validate --self
 
 ## Further Reading
 
-For a deeper exploration of the philosophy behind this project—why LLMs need guardrails and how to structure human-AI collaboration—see:
+For more on the thinking behind this project — why AI-assisted coding needs structural guardrails and not just better prompts:
 
 📖 [A Hand for Daenerys: Why Tyrion Is Missing from Your Vibe-Coding Council](https://scienceisneato.substack.com/p/a-hand-for-daenerys-why-tyrion-is)
 
