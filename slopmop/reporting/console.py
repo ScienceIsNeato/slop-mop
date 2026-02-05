@@ -123,7 +123,11 @@ class ConsoleReporter:
                     print(f"   ✅ {r.name}")
             if skipped:
                 print()
-                print(f"   ⏭️  {len(skipped)} skipped (not applicable)")
+                print("⏭️  SKIPPED:")
+                for r in skipped:
+                    reason = r.output if r.output else "Not applicable to this project"
+                    print(f"   • {r.name}")
+                    print(f"     └─ {reason}")
             print()
             return
 
@@ -164,11 +168,13 @@ class ConsoleReporter:
                 print(f"     └─ {r.error}")
             print()
 
-        # Show skipped only in verbose mode
-        if skipped and self.verbose:
-            print("⏭️  SKIPPED (not applicable):")
+        # Always show skipped checks with reason
+        if skipped:
+            print("⏭️  SKIPPED:")
             for r in skipped:
+                reason = r.output if r.output else "Not applicable to this project"
                 print(f"   • {r.name}")
+                print(f"     └─ {reason}")
             print()
 
         # Final verdict with iteration guidance

@@ -179,6 +179,25 @@ class BaseCheck(ABC):
             True if check should run, False to skip
         """
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason why this check is not applicable.
+
+        Called when is_applicable returns False to provide a human-readable
+        explanation for why the check was skipped.
+
+        Default implementation provides a generic message based on check type.
+        Override for more specific skip reasons.
+
+        Args:
+            project_root: Path to project root directory
+
+        Returns:
+            Human-readable skip reason
+        """
+        # Default implementation tries to provide helpful context
+        category = self.category._display_name if self.category else "Unknown"
+        return f"No {category} code detected in project"
+
     @abstractmethod
     def run(self, project_root: str) -> CheckResult:
         """Execute the check and return result.
@@ -378,6 +397,18 @@ class PythonCheckMixin:
             or self.has_requirements_txt(project_root)
         )
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping Python checks."""
+        if not self.has_python_files(project_root):
+            return "No Python files found"
+        if not (
+            self.has_setup_py(project_root)
+            or self.has_pyproject_toml(project_root)
+            or self.has_requirements_txt(project_root)
+        ):
+            return "No Python project markers (setup.py, pyproject.toml, or requirements.txt)"
+        return "Python check not applicable"
+
 
 class JavaScriptCheckMixin:
     """Mixin for JavaScript-specific check utilities."""
@@ -398,3 +429,11 @@ class JavaScriptCheckMixin:
     def has_node_modules(self, project_root: str) -> bool:
         """Check if node_modules exists."""
         return (Path(project_root) / "node_modules").is_dir()
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping JavaScript checks."""
+        if not self.has_package_json(project_root):
+            return "No package.json found (not a JavaScript/TypeScript project)"
+        if not self.has_js_files(project_root):
+            return "No JavaScript/TypeScript files found"
+        return "JavaScript check not applicable"

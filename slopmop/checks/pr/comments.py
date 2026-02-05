@@ -75,6 +75,32 @@ class PRCommentsCheck(BaseCheck):
         pr_number = self._detect_pr_number(project_root)
         return pr_number is not None
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping."""
+        git_dir = os.path.join(project_root, ".git")
+        if not os.path.isdir(git_dir):
+            return "Not a git repository"
+
+        try:
+            result = subprocess.run(
+                ["gh", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                return "GitHub CLI (gh) not available"
+        except FileNotFoundError:
+            return "GitHub CLI (gh) not installed"
+        except subprocess.TimeoutExpired:
+            return "GitHub CLI check timed out"
+
+        pr_number = self._detect_pr_number(project_root)
+        if pr_number is None:
+            return "No PR context detected (not on a PR branch)"
+
+        return "PR comments check not applicable"
+
     def _detect_pr_number(self, project_root: str) -> Optional[int]:
         """Detect PR number from current context.
 

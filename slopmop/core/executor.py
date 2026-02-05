@@ -97,14 +97,15 @@ class CheckExecutor:
         applicable = [c for c in checks if c.is_applicable(project_root)]
         skipped = [c for c in checks if c not in applicable]
 
-        # Log skipped checks
+        # Log skipped checks with reason
         for check in skipped:
-            logger.info(f"Skipping {check.full_name}: not applicable to this project")
+            reason = check.skip_reason(project_root)
+            logger.info(f"Skipping {check.full_name}: {reason}")
             self._results[check.full_name] = CheckResult(
                 name=check.full_name,
                 status=CheckStatus.SKIPPED,
                 duration=0,
-                output="Check not applicable to this project",
+                output=reason,
             )
 
         if not applicable:

@@ -85,6 +85,21 @@ class DuplicationCheck(BaseCheck):
                     return True
         return False
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping."""
+        # Check for source files first
+        has_code = False
+        for ext in [".py", ".js", ".ts", ".jsx", ".tsx"]:
+            for root, _, files in os.walk(project_root):
+                if any(f.endswith(ext) for f in files):
+                    has_code = True
+                    break
+            if has_code:
+                break
+        if not has_code:
+            return "No Python or JavaScript/TypeScript source files found"
+        return "Duplication check not applicable"
+
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
 
@@ -122,6 +137,11 @@ class DuplicationCheck(BaseCheck):
                 ".venv",
                 "venv",
                 "coverage",
+                ".mypy_cache",
+                ".pytest_cache",
+                ".tox",
+                "htmlcov",
+                "*.egg-info",
             ]
             config_excludes = self.config.get("exclude_dirs", [])
             all_ignores = list(dict.fromkeys(default_ignores + config_excludes))

@@ -229,7 +229,9 @@ class TestConsoleReporter:
         # All passed with skipped note
         assert "NO SLOP DETECTED" in captured.out
         assert "1 checks passed" in captured.out
-        assert "1 skipped" in captured.out
+        # Skipped section shown with reason
+        assert "SKIPPED:" in captured.out
+        assert "check2" in captured.out
 
     def test_print_summary_quiet_mode(self, capsys):
         """Test printing summary in quiet mode doesn't show passed list."""

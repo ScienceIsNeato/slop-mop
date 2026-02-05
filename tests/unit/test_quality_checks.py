@@ -292,3 +292,17 @@ class TestDuplicationCheck:
         assert result.status == CheckStatus.PASSED
         assert "within limits" in result.output
         assert "1 clone(s)" in result.output
+
+    def test_skip_reason_no_source_files(self, tmp_path):
+        """Test skip_reason returns correct message when no source files."""
+        (tmp_path / "README.md").write_text("# Hello")
+        check = DuplicationCheck({})
+        reason = check.skip_reason(str(tmp_path))
+        assert "No Python or JavaScript/TypeScript source files" in reason
+
+    def test_skip_reason_with_source_files(self, tmp_path):
+        """Test skip_reason returns generic message when source files exist."""
+        (tmp_path / "app.py").write_text("print('hello')")
+        check = DuplicationCheck({})
+        reason = check.skip_reason(str(tmp_path))
+        assert "not applicable" in reason.lower()

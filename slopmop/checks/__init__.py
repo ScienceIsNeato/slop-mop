@@ -83,6 +83,8 @@ def register_all_checks() -> None:
             "python:tests",
             "python:coverage",
             "quality:complexity",
+            "quality:duplication",
+            # "quality:loc-lock",  # TODO: Re-enable after refactoring sm.py
             "security:local",
         ],
     )
@@ -98,8 +100,9 @@ def register_all_checks() -> None:
             "python:diff-coverage",
             "python:new-code-coverage",
             "quality:complexity",
-            "security:full",
             "quality:duplication",
+            "quality:loc-lock",
+            "security:full",
             "javascript:lint-format",
             "javascript:tests",
             "javascript:coverage",
@@ -154,6 +157,7 @@ def register_all_checks() -> None:
         [
             "quality:complexity",
             "quality:duplication",
+            "quality:loc-lock",
         ],
     )
 

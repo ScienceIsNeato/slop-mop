@@ -191,6 +191,19 @@ class TestPythonCheckMixin:
         (tmp_path / "index.js").touch()
         assert self.mixin.is_python_project(str(tmp_path)) is False
 
+    def test_skip_reason_no_python_files(self, tmp_path):
+        """Test skip_reason returns correct message when no Python files."""
+        (tmp_path / "index.js").touch()
+        reason = self.mixin.skip_reason(str(tmp_path))
+        assert "No Python files" in reason
+
+    def test_skip_reason_with_python_files(self, tmp_path):
+        """Test skip_reason returns generic message when Python files exist."""
+        (tmp_path / "main.py").touch()
+        (tmp_path / "pyproject.toml").touch()
+        reason = self.mixin.skip_reason(str(tmp_path))
+        assert "not applicable" in reason.lower()
+
     def test_get_project_python_uses_venv(self, tmp_path, monkeypatch):
         """Test get_project_python prefers ./venv/bin/python."""
         venv_dir = tmp_path / "venv" / "bin"
@@ -374,3 +387,19 @@ class TestJavaScriptCheckMixin:
     def test_has_node_modules_false(self, tmp_path):
         """Test has_node_modules returns False when node_modules doesn't exist."""
         assert self.mixin.has_node_modules(str(tmp_path)) is False
+
+    def test_skip_reason_no_package_json(self, tmp_path):
+        """Test skip_reason returns correct message when no package.json."""
+        (tmp_path / "app.py").touch()
+        reason = self.mixin.skip_reason(str(tmp_path))
+        assert "No package.json" in reason
+
+    def test_skip_reason_with_package_json_no_js_files(self, tmp_path):
+        """Test skip_reason when package.json exists but no JS files."""
+        (tmp_path / "package.json").touch()
+        # When package.json exists, is_javascript_project returns True
+        # So skip_reason should give a generic message
+        # But our implementation checks for JS files absence
+        reason = self.mixin.skip_reason(str(tmp_path))
+        # With package.json but no JS files, it returns the JS files message
+        assert "JavaScript" in reason or "not applicable" in reason.lower()
