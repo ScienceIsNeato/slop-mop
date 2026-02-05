@@ -1,12 +1,11 @@
 <p align="center">
-  <img src="assets/heraldic_splash.png" alt="Slop-Mop: Give Daenerys a Hand" width="800"/>
+  <img src="assets/heraldic_splash.png" alt="Slop-Mop" width="800"/>
 </p>
 
 <h1 align="center">🧹 Slop-Mop</h1>
 
 <p align="center">
-  <strong>Quality Gates for AI-Generated Code</strong><br/>
-  <em>Because when all problems are solved with dragons, you end up with a kingdom of ashes.</em>
+  <strong>Quality Gates for AI-Generated Code</strong>
 </p>
 
 <p align="center">
@@ -28,11 +27,7 @@
 
 ## The Problem
 
-> *"There's a growing sense among developers that vibe coding is 'cooked.' It works amazingly well... until it doesn't."*
-
-LLMs weren't trained to build sustainable codebases. They were trained to **close tickets**—to satisfy acceptance criteria with minimal consideration for long-term consequences. This makes them exceptional mercenary engineers and dangerous long-term stewards.
-
-For a deeper exploration of this dynamic, see [A Hand for Daenerys: Why Tyrion Is Missing from Your Vibe-Coding Council](https://scienceisneato.substack.com/p/a-hand-for-daenerys-why-tyrion-is).
+LLMs are trained to **close tickets**—to satisfy acceptance criteria quickly with minimal consideration for long-term consequences. This makes them exceptional at completing individual tasks, but poor stewards of codebase health over time.
 
 ### What LLMs Do Well
 - ✅ Complete individual tasks with impressive speed
@@ -47,15 +42,15 @@ For a deeper exploration of this dynamic, see [A Hand for Daenerys: Why Tyrion I
 - ❌ Resist the urge to "fix" things outside scope
 - ❌ Consider consequences beyond the immediate task
 
-The training data optimized for "issue opened → code committed → tests pass → issue closed." That's **Daenerys-mode**: decisive, effective, and optimized for velocity. But without a **Tyrion** asking the uncomfortable questions, you accumulate technical debt at an alarming rate.
+Without guardrails, you accumulate technical debt at an alarming rate.
 
 ---
 
 ## The Solution
 
-**Slop-Mop is Tyrion in a box.**
+**Slop-Mop is a bolt-on quality gate framework designed specifically for AI-generated code.**
 
-It's a bolt-on quality gate framework designed specifically for AI-generated code. While humans might forget to run a linter or skip writing tests when tired, LLMs have different failure modes: they duplicate code, submit unvetted changes, overhype features, and optimize for completion over quality.
+While humans might forget to run a linter or skip writing tests when tired, LLMs have different failure modes: they duplicate code, submit unvetted changes, and optimize for completion over quality.
 
 Slop-Mop addresses these LLM-specific failure modes by:
 
@@ -334,39 +329,14 @@ sm validate --self
 
 ---
 
-## Philosophy Deep Dive
+## Further Reading
 
-Slop-Mop emerged from a senior developer's choice to pivot early to LLM-driven code generation in 2024. The realization: **LLMs need heavy steering** to produce sustainable code.
+For a deeper exploration of the philosophy behind this project—why LLMs need guardrails and how to structure human-AI collaboration—see:
 
-Some of that steering happens mid-conversation ("No, don't refactor that file"). But a significant portion can be automated via context and protocol—forcing LLMs to follow best practices before they can introduce slop.
-
-### The Dany/Tyrion Framework
-
-From the [Substack article](https://scienceisneato.substack.com/p/a-hand-for-daenerys-why-tyrion-is):
-
-> **Daenerys** is a mid-level contractor optimized for velocity. Her PRs sail through review: acceptance criteria satisfied, tests written, docs updated. She wins battles.
->
-> **Tyrion** has been around longer. He's methodical, strategic, and excellent at seeing around corners. He wins wars.
->
-> You need both: the dragon to win today, the strategist to survive tomorrow. The problem is, your coding agent only came with the dragon.
-
-Slop-Mop provides automated Tyrion-level oversight:
-- **Before merge**: "Did you actually test this? Is coverage acceptable?"
-- **During development**: "This function is too complex. Break it down."
-- **At code review**: "There are unaddressed PR comments. Handle them."
-
-The goal isn't to slow down the dragon—it's to ensure the dragon doesn't burn down the kingdom.
+📖 [A Hand for Daenerys: Why Tyrion Is Missing from Your Vibe-Coding Council](https://scienceisneato.substack.com/p/a-hand-for-daenerys-why-tyrion-is)
 
 ---
 
 ## License
 
 MIT
-
----
-
-<p align="center">
-  <em>"I drink and I know things."</em> — Tyrion Lannister<br/>
-  <em>"Dracarys."</em> — Daenerys Targaryen<br/><br/>
-  <strong>Use both. That's the point.</strong>
-</p>
