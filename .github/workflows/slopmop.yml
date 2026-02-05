@@ -33,3 +33,9 @@ jobs:
 
       - name: Run slop-mop on itself
         run: sm validate --self
+
+      - name: Check PR comments (PRs only)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sm validate pr:comments

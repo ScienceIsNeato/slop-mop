@@ -1,6 +1,5 @@
 """Python test execution check using pytest."""
 
-import sys
 import time
 from typing import List
 
@@ -63,7 +62,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         # Run pytest with coverage to generate coverage.xml
         result = self._run_command(
             [
-                sys.executable,
+                self.get_project_python(project_root),
                 "-m",
                 "pytest",
                 "--cov=.",
@@ -90,13 +89,13 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         if not result.success:
             # Extract failure summary
             lines = result.output.split("\n")
-            failed_tests = [l for l in lines if "FAILED" in l]
+            failed_tests = [line for line in lines if "FAILED" in line]
 
             # Check if failure is due to coverage threshold (not test failures)
             coverage_fail = any(
-                "coverage failure" in l.lower()
-                or "fail required test coverage" in l.lower()
-                for l in lines
+                "coverage failure" in line.lower()
+                or "fail required test coverage" in line.lower()
+                for line in lines
             )
 
             if coverage_fail and not failed_tests:

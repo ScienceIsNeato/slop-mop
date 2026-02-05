@@ -13,7 +13,6 @@ with code files, not just Python projects.
 
 import json
 import os
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -23,6 +22,7 @@ from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
     GateCategory,
+    PythonCheckMixin,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -48,7 +48,7 @@ class SecuritySubResult:
     findings: str
 
 
-class SecurityLocalCheck(BaseCheck):
+class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     """Local security checks (no network required).
 
     Runs bandit, semgrep, and detect-secrets in parallel.
@@ -147,7 +147,7 @@ class SecurityLocalCheck(BaseCheck):
         config_file = self.config.get("config_file_path")
 
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "bandit",
             "-r",
@@ -235,7 +235,7 @@ class SecurityLocalCheck(BaseCheck):
         # Check for baseline file
         config_file = self.config.get("config_file_path")
 
-        cmd = [sys.executable, "-m", "detect_secrets", "scan"]
+        cmd = [self.get_project_python(project_root), "-m", "detect_secrets", "scan"]
         if config_file:
             cmd.extend(["--baseline", config_file])
 
@@ -335,7 +335,14 @@ class SecurityCheck(SecurityLocalCheck):
         # Check for safety config file
         safety_config = self.config.get("safety_config_file")
 
-        cmd = [sys.executable, "-m", "safety", "scan", "--output", "json"]
+        cmd = [
+            self.get_project_python(project_root),
+            "-m",
+            "safety",
+            "scan",
+            "--output",
+            "json",
+        ]
         if api_key:
             cmd.extend(["--key", api_key])
         if safety_config:

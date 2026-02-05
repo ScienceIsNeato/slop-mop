@@ -5,15 +5,19 @@ Far faster than discovering them at runtime.
 """
 
 import os
-import sys
 import time
 from typing import List, Optional
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 
-class TemplateValidationCheck(BaseCheck):
+class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     """Jinja2 template syntax validation.
 
     Uses 'templates_dir' from .sb_config.json config.
@@ -81,7 +85,7 @@ class TemplateValidationCheck(BaseCheck):
     ) -> CheckResult:
         """Run existing template smoke test."""
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "pytest",
             test_path,

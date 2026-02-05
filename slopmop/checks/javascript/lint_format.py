@@ -36,6 +36,9 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         return self.is_javascript_project(project_root)
 
+    def skip_reason(self, project_root: str) -> str:
+        return "No package.json found (not a JavaScript/TypeScript project)"
+
     def can_auto_fix(self) -> bool:
         return True
 

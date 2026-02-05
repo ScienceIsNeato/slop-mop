@@ -1,0 +1,51 @@
+{
+	"name": "find-duplicate-strings",
+	"version": "3.1.1",
+	"description": "Easy to use CLI that finds duplicate strings in a directory and stores them in a external file for easy reference",
+	"author": "Erwin Heitzman",
+	"homepage": "https://github.com/erwinheitzman/find-duplicate-strings/blob/master/README.md",
+	"license": "MIT",
+	"main": "lib/cli/index.js",
+	"types": "lib/cli/index.d.ts",
+	"bin": "lib/cli/index.js",
+	"type": "module",
+	"files": ["/lib"],
+	"scripts": {
+		"prepare": "husky || true",
+		"prepublishOnly": "tsc",
+		"test": "node --import=tsx --experimental-test-module-mocks --test"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/erwinheitzman/find-duplicate-strings.git"
+	},
+	"keywords": [
+		"duplicate",
+		"duplicates",
+		"strings",
+		"duplication",
+		"scan",
+		"find",
+		"find-duplicate-strings",
+		"search"
+	],
+	"bugs": {
+		"url": "https://github.com/erwinheitzman/find-duplicate-strings/issues"
+	},
+	"dependencies": {
+		"@inquirer/prompts": "7.5.3",
+		"commander": "14.0.0",
+		"glob": "11.0.2"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "1.9.4",
+		"@types/node": "22.15.30",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.1.0",
+		"tsx": "^4.19.4",
+		"typescript": "^5.8.3"
+	},
+	"lint-staged": {
+		"*": ["biome check --write --no-errors-on-unmatched"]
+	}
+}

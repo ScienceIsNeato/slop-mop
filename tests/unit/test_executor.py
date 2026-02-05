@@ -422,44 +422,54 @@ class TestRunQualityChecks:
     def test_run_quality_checks_convenience_function(self, tmp_path):
         """Test run_quality_checks is a convenience wrapper."""
         # Reset the global registry to avoid interference from other tests
+        import slopmop.checks as checks_module
         import slopmop.core.registry as registry_module
 
-        registry_module._default_registry = None
+        old_registry = registry_module._default_registry
+        old_checks_registered = checks_module._checks_registered
 
-        # Register a test check
-        from slopmop.core.registry import register_check
+        try:
+            registry_module._default_registry = None
+            checks_module._checks_registered = False
 
-        @register_check
-        class ConvenienceTestCheck(BaseCheck):
-            @property
-            def name(self) -> str:
-                return "convenience-test"
+            # Register a test check
+            from slopmop.core.registry import register_check
 
-            @property
-            def display_name(self) -> str:
-                return "Convenience Test"
+            @register_check
+            class ConvenienceTestCheck(BaseCheck):
+                @property
+                def name(self) -> str:
+                    return "convenience-test"
 
-            @property
-            def category(self) -> GateCategory:
-                return GateCategory.PYTHON
+                @property
+                def display_name(self) -> str:
+                    return "Convenience Test"
 
-            def is_applicable(self, project_root: str) -> bool:
-                return True
+                @property
+                def category(self) -> GateCategory:
+                    return GateCategory.PYTHON
 
-            def run(self, project_root: str) -> CheckResult:
-                return CheckResult(
-                    name=self.name,
-                    status=CheckStatus.PASSED,
-                    duration=0.01,
-                    output="Pass",
-                )
+                def is_applicable(self, project_root: str) -> bool:
+                    return True
 
-        summary = run_quality_checks(
-            str(tmp_path),
-            ["python:convenience-test"],
-            config=None,
-            fail_fast=True,
-            auto_fix=False,
-        )
+                def run(self, project_root: str) -> CheckResult:
+                    return CheckResult(
+                        name=self.name,
+                        status=CheckStatus.PASSED,
+                        duration=0.01,
+                        output="Pass",
+                    )
 
-        assert summary.passed >= 1
+            summary = run_quality_checks(
+                str(tmp_path),
+                ["python:convenience-test"],
+                config=None,
+                fail_fast=True,
+                auto_fix=False,
+            )
+
+            assert summary.passed >= 1
+        finally:
+            # Restore registry state for subsequent tests
+            registry_module._default_registry = old_registry
+            checks_module._checks_registered = old_checks_registered

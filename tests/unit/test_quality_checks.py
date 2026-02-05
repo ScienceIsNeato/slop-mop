@@ -1,10 +1,10 @@
-"""Tests for quality checks (complexity, duplication)."""
+"""Tests for quality checks (complexity, source duplication)."""
 
 import json
 from unittest.mock import MagicMock, patch
 
 from slopmop.checks.quality.complexity import ComplexityCheck
-from slopmop.checks.quality.duplication import DuplicationCheck
+from slopmop.checks.quality.duplication import SourceDuplicationCheck
 from slopmop.core.result import CheckStatus
 
 
@@ -110,27 +110,27 @@ class TestComplexityCheck:
         assert "Radon not available" in result.error
 
 
-class TestDuplicationCheck:
-    """Tests for DuplicationCheck."""
+class TestSourceDuplicationCheck:
+    """Tests for SourceDuplicationCheck."""
 
     def test_name(self):
         """Test check name."""
-        check = DuplicationCheck({})
-        assert check.name == "duplication"
+        check = SourceDuplicationCheck({})
+        assert check.name == "source-duplication"
 
     def test_full_name(self):
         """Test full check name with category."""
-        check = DuplicationCheck({})
-        assert check.full_name == "quality:duplication"
+        check = SourceDuplicationCheck({})
+        assert check.full_name == "quality:source-duplication"
 
     def test_display_name(self):
         """Test display name."""
-        check = DuplicationCheck({})
+        check = SourceDuplicationCheck({})
         assert "Duplication" in check.display_name
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
-        check = DuplicationCheck({})
+        check = SourceDuplicationCheck({})
         schema = check.config_schema
         field_names = [f.name for f in schema]
         assert "threshold" in field_names
@@ -140,25 +140,25 @@ class TestDuplicationCheck:
     def test_is_applicable_with_python(self, tmp_path):
         """Test is_applicable returns True for Python projects."""
         (tmp_path / "app.py").write_text("print('hello')")
-        check = DuplicationCheck({})
+        check = SourceDuplicationCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
     def test_is_applicable_with_js(self, tmp_path):
         """Test is_applicable returns True for JS projects."""
         (tmp_path / "app.js").write_text("console.log('hello')")
-        check = DuplicationCheck({})
+        check = SourceDuplicationCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
     def test_is_applicable_no_code(self, tmp_path):
         """Test is_applicable returns False for non-code projects."""
         (tmp_path / "README.md").write_text("# Hello")
-        check = DuplicationCheck({})
+        check = SourceDuplicationCheck({})
         assert check.is_applicable(str(tmp_path)) is False
 
     def test_run_jscpd_not_available(self, tmp_path):
         """Test run() when jscpd is not installed."""
         (tmp_path / "app.py").write_text("def test(): pass")
-        check = DuplicationCheck({})
+        check = SourceDuplicationCheck({})
 
         mock_result = MagicMock()
         mock_result.returncode = 1
@@ -173,7 +173,7 @@ class TestDuplicationCheck:
     def test_run_no_duplication(self, tmp_path):
         """Test run() when no duplication found."""
         (tmp_path / "app.py").write_text("def unique(): pass")
-        check = DuplicationCheck({})
+        check = SourceDuplicationCheck({})
 
         # First call checks jscpd availability, second runs the analysis
         version_result = MagicMock()
@@ -197,7 +197,7 @@ class TestDuplicationCheck:
     def test_run_with_duplication(self, tmp_path):
         """Test run() when duplication exceeds threshold."""
         (tmp_path / "app.py").write_text("def copy(): pass")
-        check = DuplicationCheck({"threshold": 5})
+        check = SourceDuplicationCheck({"threshold": 5})
 
         version_result = MagicMock()
         version_result.returncode = 0
@@ -247,7 +247,7 @@ class TestDuplicationCheck:
     def test_run_with_duplication_below_threshold(self, tmp_path):
         """Test run() passes when duplicates exist but percentage is below threshold."""
         (tmp_path / "app.py").write_text("def copy(): pass")
-        check = DuplicationCheck({"threshold": 5})
+        check = SourceDuplicationCheck({"threshold": 5})
 
         version_result = MagicMock()
         version_result.returncode = 0
@@ -292,3 +292,17 @@ class TestDuplicationCheck:
         assert result.status == CheckStatus.PASSED
         assert "within limits" in result.output
         assert "1 clone(s)" in result.output
+
+    def test_skip_reason_no_source_files(self, tmp_path):
+        """Test skip_reason returns correct message when no source files."""
+        (tmp_path / "README.md").write_text("# Hello")
+        check = SourceDuplicationCheck({})
+        reason = check.skip_reason(str(tmp_path))
+        assert "No Python or JavaScript/TypeScript source files" in reason
+
+    def test_skip_reason_with_source_files(self, tmp_path):
+        """Test skip_reason returns generic message when source files exist."""
+        (tmp_path / "app.py").write_text("print('hello')")
+        check = SourceDuplicationCheck({})
+        reason = check.skip_reason(str(tmp_path))
+        assert "not applicable" in reason.lower()

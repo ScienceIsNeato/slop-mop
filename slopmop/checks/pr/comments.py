@@ -75,14 +75,42 @@ class PRCommentsCheck(BaseCheck):
         pr_number = self._detect_pr_number(project_root)
         return pr_number is not None
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping."""
+        git_dir = os.path.join(project_root, ".git")
+        if not os.path.isdir(git_dir):
+            return "Not a git repository"
+
+        try:
+            result = subprocess.run(
+                ["gh", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                return "GitHub CLI (gh) not available"
+        except FileNotFoundError:
+            return "GitHub CLI (gh) not installed"
+        except subprocess.TimeoutExpired:
+            return "GitHub CLI check timed out"
+
+        pr_number = self._detect_pr_number(project_root)
+        if pr_number is None:
+            return "No PR context detected (not on a PR branch)"
+
+        return "PR comments check not applicable"
+
     def _detect_pr_number(self, project_root: str) -> Optional[int]:
         """Detect PR number from current context.
 
         Checks:
         1. Environment variable (CI context)
-        2. Current branch has an open PR
+        2. GitHub Actions GITHUB_REF (refs/pull/N/merge format)
+        3. GitHub event payload file (GITHUB_EVENT_PATH)
+        4. Current branch has an open PR (via gh pr view)
         """
-        # Check CI environment variables
+        # Check explicit CI environment variables first
         for env_var in [
             "GITHUB_PR_NUMBER",
             "PR_NUMBER",
@@ -95,7 +123,35 @@ class PRCommentsCheck(BaseCheck):
                 except ValueError:
                     pass
 
-        # Try to detect from current branch
+        # Check GitHub Actions GITHUB_REF (format: refs/pull/N/merge)
+        github_ref = os.environ.get("GITHUB_REF", "")
+        if github_ref.startswith("refs/pull/"):
+            try:
+                # Extract number from refs/pull/N/merge
+                parts = github_ref.split("/")
+                if len(parts) >= 3:
+                    return int(parts[2])
+            except (ValueError, IndexError):
+                pass
+
+        # Check GitHub Actions event payload
+        event_path = os.environ.get("GITHUB_EVENT_PATH")
+        if event_path and os.path.exists(event_path):
+            try:
+                with open(event_path) as f:
+                    event_data = json.load(f)
+                    # pull_request event
+                    if "pull_request" in event_data:
+                        return event_data["pull_request"].get("number")
+                    # issue_comment on a PR
+                    if "issue" in event_data and event_data.get("issue", {}).get(
+                        "pull_request"
+                    ):
+                        return event_data["issue"].get("number")
+            except (json.JSONDecodeError, IOError, KeyError):
+                pass
+
+        # Try to detect from current branch using gh CLI
         try:
             result = subprocess.run(
                 ["gh", "pr", "view", "--json", "number"],
@@ -219,14 +275,11 @@ class PRCommentsCheck(BaseCheck):
         except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
             return []
 
-    def _categorize_comment(self, body: str) -> str:
-        """Categorize a comment by its likely type."""
-        body_lower = body.lower()
-
-        # Security-related keywords
-        if any(
-            kw in body_lower
-            for kw in [
+    # Category keyword mappings for comment classification
+    _COMMENT_CATEGORIES = [
+        (
+            "🔐 Security",
+            [
                 "security",
                 "vulnerability",
                 "injection",
@@ -239,14 +292,11 @@ class PRCommentsCheck(BaseCheck):
                 "sanitize",
                 "escape",
                 "unsafe",
-            ]
-        ):
-            return "🔐 Security"
-
-        # Logic/correctness
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🐛 Logic/Correctness",
+            [
                 "bug",
                 "incorrect",
                 "wrong",
@@ -260,14 +310,11 @@ class PRCommentsCheck(BaseCheck):
                 "undefined",
                 "race condition",
                 "deadlock",
-            ]
-        ):
-            return "🐛 Logic/Correctness"
-
-        # Architecture/design
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🏗️ Architecture",
+            [
                 "architecture",
                 "design",
                 "pattern",
@@ -278,57 +325,23 @@ class PRCommentsCheck(BaseCheck):
                 "dependency",
                 "solid",
                 "separation",
-            ]
-        ):
-            return "🏗️ Architecture"
-
-        # Testing
-        if any(
-            kw in body_lower
-            for kw in [
-                "test",
-                "coverage",
-                "mock",
-                "assert",
-                "spec",
-                "edge case",
-            ]
-        ):
-            return "🧪 Testing"
-
-        # Documentation
-        if any(
-            kw in body_lower
-            for kw in [
-                "document",
-                "comment",
-                "docstring",
-                "readme",
-                "explain",
-                "clarify",
-            ]
-        ):
-            return "📚 Documentation"
-
-        # Style/formatting
-        if any(
-            kw in body_lower
-            for kw in [
-                "style",
-                "format",
-                "naming",
-                "convention",
-                "lint",
-                "whitespace",
-                "indent",
-            ]
-        ):
-            return "🎨 Style"
-
-        # Performance
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🧪 Testing",
+            ["test", "coverage", "mock", "assert", "spec", "edge case"],
+        ),
+        (
+            "📚 Documentation",
+            ["document", "comment", "docstring", "readme", "explain", "clarify"],
+        ),
+        (
+            "🎨 Style",
+            ["style", "format", "naming", "convention", "lint", "whitespace", "indent"],
+        ),
+        (
+            "⚡ Performance",
+            [
                 "performance",
                 "slow",
                 "optimize",
@@ -337,14 +350,22 @@ class PRCommentsCheck(BaseCheck):
                 "efficient",
                 "complexity",
                 "o(n)",
-            ]
-        ):
-            return "⚡ Performance"
+            ],
+        ),
+    ]
+
+    def _categorize_comment(self, body: str) -> str:
+        """Categorize a comment by its likely type."""
+        body_lower = body.lower()
+
+        # Check against keyword categories
+        for category, keywords in self._COMMENT_CATEGORIES:
+            if any(kw in body_lower for kw in keywords):
+                return category
 
         # Questions/clarifications
-        if "?" in body or any(
-            kw in body_lower for kw in ["why", "what", "how", "could you", "can you"]
-        ):
+        question_keywords = ["why", "what", "how", "could you", "can you"]
+        if "?" in body or any(kw in body_lower for kw in question_keywords):
             return "❓ Question"
 
         return "💭 General"

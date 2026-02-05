@@ -11,7 +11,6 @@ starting servers and seeding databases before invoking slopmop.
 """
 
 import os
-import sys
 import time
 from typing import List, Optional
 
@@ -77,7 +76,14 @@ class SmokeTestCheck(BaseCheck, PythonCheckMixin):
                 "Smoke tests require a running server.",
             )
 
-        cmd = [sys.executable, "-m", "pytest", "tests/smoke", "--tb=short", "-v"]
+        cmd = [
+            self.get_project_python(project_root),
+            "-m",
+            "pytest",
+            "tests/smoke",
+            "--tb=short",
+            "-v",
+        ]
         result = self._run_command(cmd, cwd=project_root, timeout=300)
         duration = time.time() - start_time
 
@@ -167,7 +173,14 @@ class IntegrationTestCheck(BaseCheck, PythonCheckMixin):
                 output="DATABASE_URL not set. Integration tests require a seeded database.",
             )
 
-        cmd = [sys.executable, "-m", "pytest", "tests/integration", "--tb=short", "-v"]
+        cmd = [
+            self.get_project_python(project_root),
+            "-m",
+            "pytest",
+            "tests/integration",
+            "--tb=short",
+            "-v",
+        ]
         result = self._run_command(cmd, cwd=project_root, timeout=300)
         duration = time.time() - start_time
 
@@ -272,7 +285,7 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
 
         # Verify playwright is available
         probe = self._run_command(
-            [sys.executable, "-c", "import playwright"],
+            [self.get_project_python(project_root), "-c", "import playwright"],
             cwd=project_root,
             timeout=10,
         )
@@ -286,7 +299,7 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
             )
 
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "pytest",
             "tests/e2e",

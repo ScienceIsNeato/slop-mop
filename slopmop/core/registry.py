@@ -45,9 +45,7 @@ class CheckRegistry:
         # Use full_name (category:name) for unique registration
         name = temp_instance.full_name
 
-        if name in self._check_classes:
-            logger.warning(f"Overwriting existing check: {name}")
-
+        # Re-registration is expected (idempotent), no warning needed
         self._check_classes[name] = check_class
 
         # Create definition if not provided

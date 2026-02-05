@@ -1,0 +1,4 @@
+[flake8]
+# Line length handled by black (88 chars), ignore E501
+extend-ignore = E501
+max-line-length = 88

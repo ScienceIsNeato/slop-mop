@@ -10,7 +10,6 @@ Note: This is a cross-cutting quality check. While it uses radon
 
 import os
 import re
-import sys
 import time
 from typing import List
 
@@ -18,6 +17,7 @@ from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
     GateCategory,
+    PythonCheckMixin,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -25,7 +25,7 @@ MAX_RANK = "C"
 MAX_COMPLEXITY = 20
 
 
-class ComplexityCheck(BaseCheck):
+class ComplexityCheck(BaseCheck, PythonCheckMixin):
     """Radon cyclomatic complexity enforcement.
 
     Uses 'src_dirs' from config, or defaults to scanning Python files
@@ -98,7 +98,7 @@ class ComplexityCheck(BaseCheck):
             )
 
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "radon",
             "cc",
