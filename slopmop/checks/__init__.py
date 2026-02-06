@@ -83,9 +83,13 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:coverage",
             "quality:complexity",
             "quality:source-duplication",
+            "quality:string-duplication",
             "quality:bogus-tests",
             "quality:loc-lock",
             "security:local",
+            "javascript:lint-format",
+            "javascript:tests",
+            "javascript:coverage",
         ],
     )
 
@@ -101,6 +105,8 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:new-code-coverage",
             "quality:complexity",
             "quality:source-duplication",
+            "quality:string-duplication",
+            "quality:bogus-tests",
             "quality:loc-lock",
             "security:full",
             "javascript:lint-format",

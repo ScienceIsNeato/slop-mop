@@ -45,22 +45,29 @@ class StringDuplicationCheck(BaseCheck):
             ConfigField(
                 name="threshold",
                 field_type="integer",
-                default=3,
+                default=5,
                 description="Minimum occurrences to report a duplicate",
                 min_value=2,
             ),
             ConfigField(
                 name="min_file_count",
                 field_type="integer",
-                default=2,
+                default=3,
                 description="Minimum number of files a string must appear in",
                 min_value=1,
             ),
             ConfigField(
                 name="min_length",
                 field_type="integer",
-                default=4,
+                default=8,
                 description="Minimum string length to consider",
+                min_value=1,
+            ),
+            ConfigField(
+                name="min_words",
+                field_type="integer",
+                default=3,
+                description="Minimum word count to consider (filters single-word identifiers)",
                 min_value=1,
             ),
             ConfigField(
@@ -73,14 +80,17 @@ class StringDuplicationCheck(BaseCheck):
                 name="ignore_patterns",
                 field_type="string[]",
                 default=[
-                    "node_modules",
-                    ".venv",
-                    "venv",
-                    "__pycache__",
-                    ".git",
-                    "*.egg-info",
+                    "**/node_modules/**",
+                    "**/.venv/**",
+                    "**/venv/**",
+                    "**/__pycache__/**",
+                    "**/.git/**",
+                    "**/*.egg-info/**",
+                    "**/test_*",
+                    "**/tests/**",
+                    "**/conftest.py",
                 ],
-                description="Patterns to ignore",
+                description="Glob patterns to ignore",
             ),
         ]
 
@@ -107,17 +117,21 @@ class StringDuplicationCheck(BaseCheck):
     def _get_effective_config(self) -> dict[str, Any]:
         """Get effective configuration with defaults."""
         defaults = {
-            "threshold": 3,
-            "min_file_count": 2,
-            "min_length": 4,
+            "threshold": 5,
+            "min_file_count": 3,
+            "min_length": 8,
+            "min_words": 3,
             "include_patterns": ["**/*.py"],
             "ignore_patterns": [
-                "node_modules",
-                ".venv",
-                "venv",
-                "__pycache__",
-                ".git",
-                "*.egg-info",
+                "**/node_modules/**",
+                "**/.venv/**",
+                "**/venv/**",
+                "**/__pycache__/**",
+                "**/.git/**",
+                "**/*.egg-info/**",
+                "**/test_*",
+                "**/tests/**",
+                "**/conftest.py",
             ],
         }
         return {**defaults, **self.config}
@@ -166,6 +180,7 @@ class StringDuplicationCheck(BaseCheck):
         """Filter findings based on configuration."""
         min_file_count = config.get("min_file_count", 2)
         min_length = config.get("min_length", 4)
+        min_words = config.get("min_words", 3)
 
         filtered = []
         for finding in findings:
@@ -174,6 +189,14 @@ class StringDuplicationCheck(BaseCheck):
 
             # Skip strings that are too short
             if len(key) < min_length:
+                continue
+
+            # Skip strings with fewer words than the minimum
+            # This is the primary noise filter — single-word strings like
+            # "store_true", "description", "__main__" are identifiers,
+            # not human-authored messages worth extracting to constants
+            word_count = len(key.split())
+            if word_count < min_words:
                 continue
 
             # Skip strings that only appear in one file
@@ -189,55 +212,31 @@ class StringDuplicationCheck(BaseCheck):
         return filtered
 
     def _is_noise(self, value: str) -> bool:
-        """Check if string is common noise that should be ignored."""
-        noise_patterns = {
-            # Whitespace and punctuation
-            "\\n",
-            "\\t",
-            " ",
-            "",
-            ".",
-            ",",
-            ":",
-            ";",
-            "-",
-            "_",
-            "/",
-            "\\",
-            # Common single words that are often duplicated legitimately
-            "id",
-            "name",
-            "type",
-            "key",
-            "value",
-            "data",
-            "error",
-            "message",
-            "status",
-            "result",
-            "output",
-            "input",
-            "path",
-            "file",
-            "test",
-            "true",
-            "false",
-            "null",
-            "none",
-            "utf-8",
-            "utf8",
-            "r",
-            "w",
-            "rb",
-            "wb",
-            "a",
-            "GET",
-            "POST",
-            "PUT",
-            "DELETE",
-            "PATCH",
-        }
-        return value.lower() in noise_patterns or value in noise_patterns
+        """Check if string is common noise that should be ignored.
+
+        Filters out short tokens, common programming terms, file names,
+        CLI flags, and other strings that naturally repeat across files
+        without indicating a constants-extraction opportunity.
+        """
+        lower = value.lower().strip()
+
+        # Skip very short strings (< 8 chars are almost never worth extracting)
+        if len(lower) < 8:
+            return True
+
+        # File paths / basenames that naturally repeat
+        if lower.endswith((".py", ".js", ".ts", ".json", ".md", ".txt", ".cfg")):
+            return True
+
+        # CLI flags
+        if lower.startswith("-"):
+            return True
+
+        # Looks like a module/package import path
+        if "." in lower and all(part.isidentifier() for part in lower.split(".")):
+            return True
+
+        return False
 
     def _format_findings(self, findings: list[dict[str, Any]]) -> str:
         """Format findings into human-readable output."""

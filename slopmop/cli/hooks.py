@@ -89,7 +89,9 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     print()
     print("🪝 Git Hooks Status")
     print("=" * 60)
-    print(f"📂 Project: {project_root}")
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
     print(f"📁 Hooks dir: {hooks_dir}")
     print()
 
@@ -163,7 +165,9 @@ def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
     print()
     print("✅ Pre-commit hook installed!")
     print("=" * 60)
-    print(f"📂 Project: {project_root}")
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
     print(f"📄 Hook: {hook_file}")
     print(f"🎯 Profile: {profile}")
     print()

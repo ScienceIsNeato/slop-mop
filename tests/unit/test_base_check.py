@@ -370,9 +370,9 @@ class TestJavaScriptCheckMixin:
         assert self.mixin.is_javascript_project(str(tmp_path)) is True
 
     def test_is_javascript_project_with_js_files(self, tmp_path):
-        """Test is_javascript_project returns True with JS files."""
+        """Test is_javascript_project returns False with only JS files (no package.json)."""
         (tmp_path / "index.js").touch()
-        assert self.mixin.is_javascript_project(str(tmp_path)) is True
+        assert self.mixin.is_javascript_project(str(tmp_path)) is False
 
     def test_is_javascript_project_false(self, tmp_path):
         """Test is_javascript_project returns False for non-JS project."""

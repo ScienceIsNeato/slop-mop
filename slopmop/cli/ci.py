@@ -145,7 +145,9 @@ def cmd_ci(args: argparse.Namespace) -> int:
     print()
     print("🧹 sm ci - CI Status Check")
     print("=" * 60)
-    print(f"📂 Project: {project_root}")
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
     print(f"🔀 PR: #{pr_number}")
     if args.watch:
         print(f"👀 Watch mode: polling every {args.interval}s")

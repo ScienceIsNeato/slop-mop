@@ -441,8 +441,12 @@ class JavaScriptCheckMixin:
         return any(root.rglob("*.js")) or any(root.rglob("*.ts"))
 
     def is_javascript_project(self, project_root: str) -> bool:
-        """Check if this is a JavaScript project."""
-        return self.has_package_json(project_root) or self.has_js_files(project_root)
+        """Check if this is a JavaScript project.
+
+        Requires package.json at project root — scattered .js files
+        (e.g., vendored tools) don't constitute a JS project we can lint.
+        """
+        return self.has_package_json(project_root)
 
     def has_node_modules(self, project_root: str) -> bool:
         """Check if node_modules exists."""
