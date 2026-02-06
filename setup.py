@@ -16,12 +16,23 @@ if readme_path.exists():
 requirements = []
 
 dev_requirements = [
+    # Testing
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "diff-cover>=7.0.0",
+    "jinja2>=3.0.0",
+    # Linting and formatting
     "black>=23.0.0",
     "isort>=5.12.0",
-    "mypy>=1.0.0",
+    "autoflake>=2.0.0",
     "flake8>=6.0.0",
+    # Type checking
+    "mypy>=1.0.0",
+    # Security scanning
+    "bandit>=1.7.0",
+    "detect-secrets>=1.4.0",
+    "semgrep>=1.0.0",
+    "pip-audit>=2.0.0",
 ]
 
 setup(
