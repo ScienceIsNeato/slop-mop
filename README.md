@@ -10,13 +10,13 @@
 
 LLMs are reward hackers. They optimize for task completion — not codebase health. Left unsupervised, they cargo-cult patterns, duplicate code they can't see, and put blinders on for momentum. The result is technical debt that accumulates faster than any human team could produce.
 
-You can't prompt-engineer this away. The tension between *shipping* and *maintaining* is genuinely unsolved. Humans struggle with it too. But LLMs struggle in predictable, repeatable ways, which at least makes some of it automatable.
+You can't prompt-engineer this away. The tension between _shipping_ and _maintaining_ is genuinely unsolved. Humans struggle with it too. But LLMs struggle in predictable, repeatable ways, which at least makes some of it automatable.
 
 ### Who This Is For
 
 Slop-Mop was built for dev teams of one — a single human partnered with AI coding agents. On a traditional team, you have code review, pair programming, and institutional knowledge spread across people. When it's just you and your LLMs, you don't have any of that. You're the only mind reviewing tens of thousands of lines of generated code, and there aren't enough hours in the day to catch everything your AI partners are producing.
 
-You need something that watches the codebase *for* you. Not perfectly — but well enough to catch the predictable stuff so you can focus on the decisions only a human can make.
+You need something that watches the codebase _for_ you. Not perfectly — but well enough to catch the predictable stuff so you can focus on the decisions only a human can make.
 
 ## So What Is This?
 
@@ -106,6 +106,8 @@ sm validate commit
 4. `sm validate commit` — check for remaining issues
 5. Repeat until clean
 
+If you want to see everything at once instead of fail-fast, `sm status` runs the same gates but doesn't stop at the first failure. It prints a report card at the end.
+
 ---
 
 ## Design Choices
@@ -140,48 +142,48 @@ The reason is consistency. The same gates run the same way every time, regardles
 
 ### Python Gates
 
-| Gate                       | Description                               |
-| -------------------------- | ----------------------------------------- |
-| `python:lint-format`       | 🎨 Code formatting (black, isort, flake8) |
-| `python:static-analysis`   | 🔍 Type checking (mypy)                   |
-| `python:tests`             | 🧪 Test execution (pytest)                |
-| `python:coverage`          | 📊 Coverage analysis (80% threshold)      |
+| Gate                       | Description                                    |
+| -------------------------- | ---------------------------------------------- |
+| `python:lint-format`       | 🎨 Code formatting (black, isort, flake8)      |
+| `python:static-analysis`   | 🔍 Type checking (mypy)                        |
+| `python:tests`             | 🧪 Test execution (pytest)                     |
+| `python:coverage`          | 📊 Coverage analysis (80% threshold)           |
 | `python:diff-coverage`     | 📊 Coverage on changed lines only (diff-cover) |
-| `python:new-code-coverage` | 📊 Alias for diff-coverage (CI compat)    |
+| `python:new-code-coverage` | 📊 Alias for diff-coverage (CI compat)         |
 
 ### JavaScript Gates
 
-| Gate                    | Description                              |
-| ----------------------- | ---------------------------------------- |
-| `javascript:lint-format`| 🎨 Linting/formatting (ESLint, Prettier) |
-| `javascript:tests`      | 🧪 Test execution (Jest)                 |
-| `javascript:coverage`   | 📊 Coverage analysis                     |
-| `javascript:types`      | 📝 TypeScript type checking (tsc)        |
+| Gate                     | Description                              |
+| ------------------------ | ---------------------------------------- |
+| `javascript:lint-format` | 🎨 Linting/formatting (ESLint, Prettier) |
+| `javascript:tests`       | 🧪 Test execution (Jest)                 |
+| `javascript:coverage`    | 📊 Coverage analysis                     |
+| `javascript:types`       | 📝 TypeScript type checking (tsc)        |
 
 ### Quality Gates
 
-| Gate                       | Description                           |
-| -------------------------- | ------------------------------------- |
-| `quality:complexity`       | 🌀 Cyclomatic complexity (radon)      |
-| `quality:source-duplication`| 📋 Code duplication detection (jscpd)     |
-| `quality:string-duplication`| 🔤 Duplicate string literal detection     |
-| `quality:bogus-tests`      | 🧟 Bogus test detection (AST analysis)    |
-| `general:templates`        | 📄 Template syntax validation             |
+| Gate                         | Description                            |
+| ---------------------------- | -------------------------------------- |
+| `quality:complexity`         | 🌀 Cyclomatic complexity (radon)       |
+| `quality:source-duplication` | 📋 Code duplication detection (jscpd)  |
+| `quality:string-duplication` | 🔤 Duplicate string literal detection  |
+| `quality:bogus-tests`        | 🧟 Bogus test detection (AST analysis) |
+| `general:templates`          | 📄 Template syntax validation          |
 
 ### Security Gates
 
-| Gate              | Description                                    |
-| ----------------- | ---------------------------------------------- |
-| `security:local`  | 🔐 Fast local scan (bandit + semgrep + detect-secrets)|
-| `security:full`   | 🔒 Full audit (local scan + dependency vulnerability checking via safety)|
+| Gate             | Description                                                               |
+| ---------------- | ------------------------------------------------------------------------- |
+| `security:local` | 🔐 Fast local scan (bandit + semgrep + detect-secrets)                    |
+| `security:full`  | 🔒 Full audit (local scan + dependency vulnerability checking via safety) |
 
 ### Profiles (Gate Groups)
 
-| Profile      | Description            | Gates Included                                                     |
-| ------------ | ---------------------- | ------------------------------------------------------------------ |
-| `commit`     | Fast commit validation | lint, static-analysis, tests, coverage, complexity, bogus-tests, security-local |
-| `pr`         | Full PR validation     | All gates + PR comment check                                       |
-| `quick`      | Ultra-fast lint check  | lint, security-local                                               |
+| Profile  | Description           | Gates Included                                                                                                           |
+| -------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `commit` | Commit validation     | lint, static-analysis, tests, coverage, complexity, duplication (source + string), bogus-tests, security-local, JS gates |
+| `pr`     | Full PR validation    | All commit gates + PR comments, diff-coverage, new-code-coverage                                                         |
+| `quick`  | Ultra-fast lint check | lint, security-local                                                                                                     |
 
 ---
 
@@ -199,14 +201,16 @@ sm init --non-interactive  # Auto-detect everything, use defaults
 **Re-running:** `sm init` is destructive by design. If you want to start fresh — say your project structure has changed significantly — re-run it. It backs up your existing config and writes a new one from scratch based on current project state.
 
 **Intended flow:**
+
 1. Run `sm init` to generate a baseline config
-2. Review the config, disable gates you're not ready for
-3. Run `sm validate commit` and fix what fails
-4. Gradually enable more gates and tighten thresholds over time
+2. Review the report card it prints — that's where the repo stands right now
+3. Disable gates you're not ready for
+4. Run `sm validate commit` and fix what fails
+5. Gradually enable more gates and tighten thresholds over time
 
 ### The Gradual Ramp (vs. Eating the Whole Pig)
 
-If you bolt slop-mop onto a repo with zero test coverage, turning on the coverage gate at 80% means you're not shipping anything until you write a *lot* of tests. That might be the right call, but usually it isn't.
+If you bolt slop-mop onto a repo with zero test coverage, turning on the coverage gate at 80% means you're not shipping anything until you write a _lot_ of tests. That might be the right call, but usually it isn't.
 
 The alternative:
 
@@ -225,7 +229,7 @@ sm validate commit
 # Ramp up over time: 5% → 30% → 50% → 80%
 ```
 
-This lets you work on features *while* building up quality infrastructure incrementally. Each threshold bump is a small, manageable chunk of work instead of a multi-hour remediation session.
+This lets you work on features _while_ building up quality infrastructure incrementally. Each threshold bump is a small, manageable chunk of work instead of a multi-hour remediation session.
 
 ---
 
@@ -255,7 +259,7 @@ The config file (`.sb_config.json`) supports per-gate customization:
   },
   "quality": {
     "gates": {
-      "duplication": { 
+      "duplication": {
         "threshold": 5,
         "exclude_dirs": ["generated", "vendor"]
       }
@@ -346,24 +350,25 @@ Slop-mop distinguishes between two levels of validation because they serve diffe
 
 The commit profile runs the gates that matter for individual chunks of work:
 
-- Lint and formatting
+- Lint and formatting (Python + JavaScript)
 - Static analysis (mypy)
-- Tests and coverage
+- Tests and coverage (Python + JavaScript)
 - Complexity analysis
-- Source duplication detection
+- Source and string duplication detection
 - Bogus test detection
-- Fast security scan
+- Fast security scan (bandit, semgrep, detect-secrets)
+
+JavaScript gates auto-skip when no JS is detected, so the profile works for Python-only, JS-only, and mixed projects alike.
 
 This is the profile intended for every commit. The idea is to catch things like bad formatting, missing tests, duplicated code, and complexity spikes while the agent is still working on the change — when the context is fresh and the fix is small.
 
 ### `sm validate pr` — Ensure the PR as a Whole Is Ready
 
-The PR profile runs everything in the commit profile *plus* checks that might make more sense at the PR level:
+The PR profile runs everything in the commit profile _plus_ checks that only make sense at the PR level:
 
 - **`pr:comments`** — Are all PR review comments addressed? This gate checks GitHub for unresolved review threads and blocks until they're handled.
-- **`python:diff-coverage`** / **`python:new-code-coverage`** — These are aliases for the same check: does the code you changed in this PR specifically have test coverage? `python:coverage` measures the whole project; this measures only the lines the PR touches, using `diff-cover` against the target branch. Two names exist because some CI workflows reference one and some the other.
-- **Full security scan** — The slower, more thorough version of the security scan (adds dependency vulnerability checking via `safety`, which requires network access). Too heavy for every commit.
-- **JavaScript gates** — Full JS/TS validation for mixed-language projects.
+- **`python:diff-coverage`** / **`python:new-code-coverage`** — Does the code you changed in this PR specifically have test coverage? `python:coverage` measures the whole project; this measures only the lines the PR touches, using `diff-cover` against the target branch.
+- **`security:full`** — The full security scan replaces `security:local` at PR level, adding dependency vulnerability checking via `safety` (requires network access).
 
 Commit-level gates catch problems while the agent is still working and the context is fresh. PR-level gates check whether the deliverable as a whole is ready to merge — CI is green, reviewers are satisfied, and the new code specifically (not just the project overall) is tested.
 
@@ -395,6 +400,10 @@ sm commit-hooks uninstall             # Remove slop-mop hooks
 sm ci                                 # Check CI for current PR
 sm ci 42                              # Check CI for PR #42
 sm ci --watch                         # Poll until CI completes
+
+# Full report card
+sm status                             # Run all commit gates, show report
+sm status pr                          # Report card for PR profile
 
 # Help
 sm help                               # List all quality gates

@@ -9,6 +9,7 @@
 **New Feature**: slop-mop now always shows skipped checks with human-readable reasons explaining WHY they were skipped.
 
 **Changes**:
+
 - Added `skip_reason(project_root: str) -> str` method to `BaseCheck`
 - Added skip_reason methods to `PythonCheckMixin` and `JavaScriptCheckMixin`
 - Added specific skip_reason to `quality:duplication`, `quality:loc-lock`, `pr:comments`
@@ -18,6 +19,7 @@
 - Added tests for skip_reason methods
 
 **Example Output**:
+
 ```
 ⏭️  SKIPPED:
    • javascript:lint-format
@@ -31,6 +33,7 @@
 ### Previously Completed: LOC Lock Check
 
 **New Feature**: Added `quality:loc-lock` check that enforces:
+
 - Maximum file length (default: 1000 lines)
 - Maximum function/method length (default: 100 lines)
 
@@ -41,10 +44,12 @@
 ### TODO: sm.py Refactoring
 
 The following violations need to be addressed in a future PR:
+
 - `slopmop/sm.py: 1461 lines` (over 1000 line limit)
 - `cmd_init(): 223 lines`, `cmd_ci(): 168 lines`, etc. (over 100 line limit)
 
 Once fixed, re-enable `quality:loc-lock` in commit profile.
+
 - `slopmop/checks/general/jinja2_templates.py`
 - `slopmop/checks/python/*.py`
 - `slopmop/checks/security/__init__.py`
@@ -52,7 +57,7 @@ Once fixed, re-enable `quality:loc-lock` in commit profile.
 - `README.md`
 
 ### Next Steps:
+
 1. Commit all changes
 2. Push to PR #8
 3. Address LOC violations in future PR (optional - not blocking)
-
