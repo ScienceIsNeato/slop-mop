@@ -2,7 +2,7 @@
 
 Two variants:
 - SecurityLocalCheck: Local-only checks (bandit + semgrep + detect-secrets)
-- SecurityCheck: Full audit including dependency scanning via safety
+- SecurityCheck: Full audit including dependency scanning via pip-audit
 
 Runs sub-checks concurrently for speed. Reports only HIGH/MEDIUM findings
 to reduce noise while catching real security issues.
@@ -272,7 +272,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 class SecurityCheck(SecurityLocalCheck):
     """Full security checks including dependency vulnerability scanning.
 
-    Extends SecurityLocalCheck with safety for dependency audit.
+    Extends SecurityLocalCheck with pip-audit for dependency audit.
     Requires network access.
     """
 
