@@ -36,16 +36,6 @@ ASSERTION_HELPERS: Set[str] = {
     "assert_not_called",
 }
 
-# Tautological assertion patterns (always true, test nothing)
-TAUTOLOGY_PATTERNS: Set[str] = {
-    "assert True",
-    "assert not False",
-    "assert 1 == 1",
-    "assert 1",
-    "assert not 0",
-    "assert not None",
-}
-
 
 @dataclass
 class BogusTestFinding:
@@ -69,7 +59,10 @@ class _TestAnalyzer(ast.NodeVisitor):
         self.findings: List[BogusTestFinding] = []
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        if node.name.startswith("test_") or node.name.startswith("test"):
+        if node.name.startswith("test_") or (
+            node.name.startswith("test")
+            and (len(node.name) == 4 or node.name[4].isupper())
+        ):
             self._analyze_test(node)
         self.generic_visit(node)
 
@@ -326,7 +319,7 @@ class BogusTestsCheck(BaseCheck):
                     analyzer = _TestAnalyzer(str(test_file), project_root)
                     analyzer.visit(tree)
                     all_findings.extend(analyzer.findings)
-                except SyntaxError as e:
+                except (SyntaxError, UnicodeDecodeError) as e:
                     parse_errors.append(
                         f"  {os.path.relpath(str(test_file), project_root)}: {e}"
                     )

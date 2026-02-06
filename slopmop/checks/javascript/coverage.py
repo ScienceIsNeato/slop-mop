@@ -26,6 +26,7 @@ from slopmop.constants import (
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 80
+MAX_FILES_TO_SHOW = 5
 
 
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
@@ -180,7 +181,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             + "Add high-quality test coverage to the following areas:",
             "",
         ]
-        for path, file_pct in low_files[:5]:
+        for path, file_pct in low_files[:MAX_FILES_TO_SHOW]:
             lines.append(f"  {path}")
         lines.append("")
         lines.append(COVERAGE_GUIDANCE_FOOTER)
