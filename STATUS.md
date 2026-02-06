@@ -2,26 +2,42 @@
 
 ## Current Work: feat/dead-code-gate branch
 
-### Just Completed: --verbose in NEXT STEPS + pyright type-checking fixes
+### In Progress: UX Improvements — status recommendations + less noise
 
-**Pending Commit** — 12/12 gates passing
+**Changes ready to commit**:
 
-**Changes in this commit**:
+1. **Removed "Running" noise from validate output**
+   - Changed logger.info to logger.debug for "Running", "Auto-fixed", and "Fail-fast triggered" messages
+   - Files: executor.py
 
-1. Added `--verbose` to NEXT STEPS guidance box
-   - AI agents now see `sm validate <gate> --verbose` in step 2
-   - Ensures agents use the tool instead of bypassing to raw commands
+2. **Updated README quick-start**
+   - Added `sm status` step after `sm init`
+   - Users now see recommendations immediately after setup
 
-2. Updated all 25 gate docstrings
-   - Re-validate section now shows `sm validate <gate> --verbose`
-   - Consistent across all 20 gate files
+3. **Added recommendations section to `sm status`**
+   - Shows applicable gates NOT in current profile
+   - Displays exact `sm config --enable <gate>` commands
+   - Encourages incremental adoption ("one gate at a time")
 
-3. Fixed 26 pyright type-completeness errors
-   - Added `cast()` for dict.get() return values
-   - Typed dataclass field default factories
-   - Fixed Optional access issues in lint_format.py
+4. **Implemented `--verbose` JSON output for `sm status`**
+   - Writes `sm_status_<timestamp>.json` with full gate details
+   - Contains: summary stats, per-gate output, applicability info
+   - Useful for AI agents and external tooling
 
-4. Files modified: console.py, 20 gate check files, config.py, result.py, init.py
+5. **Added "Status and Reports" section to README**
+   - Documents `sm status` workflow and outputs
+   - Explains recommendations section
+   - Documents `--verbose` for machine-readable reports
+
+6. **Fixed confusing skip_reason messages**
+   - `general:templates` now says "No templates_dir configured in .sb_config.json"
+     instead of "No General code detected in project"
+   - Integration checks now say "No tests/<type>/ directory found"
+     instead of "No Integration code detected in project"
+
+### Previously Committed: --verbose in NEXT STEPS + pyright type-checking fixes
+
+**Committed**: cbed230 — 12/12 gates passing
 
 ### Previously Committed: Strict Typing + CONTRIBUTING Guide + README Refresh
 

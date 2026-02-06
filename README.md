@@ -52,6 +52,9 @@ git submodule add https://github.com/ScienceIsNeato/slop-mop.git
 # Install and run interactive setup
 cd slop-mop && pip install -e . && sm init
 
+# See current state and recommendations
+sm status
+
 # Validate your code
 sm validate commit       # Fast commit validation
 sm validate pr           # Full PR validation
@@ -246,6 +249,60 @@ sm config --disable <gate>    # Disable a gate
 sm config --json <file>       # Update config from a JSON file
 ```
 
+### Include and Exclude Directories
+
+When a gate reports false positives (or misses code you care about), use include/exclude directories to scope what gets checked. This is one of the most powerful tools for fixing large swaths of noise all at once.
+
+```bash
+# Exclude generated code from quality checks
+sm config --exclude-dir quality:generated
+
+# Exclude vendor/third-party code from python checks  
+sm config --exclude-dir python:vendor
+sm config --exclude-dir python:third_party
+
+# Exclude test files from security scanning (test secrets are intentional)
+sm config --exclude-dir security:tests
+sm config --exclude-dir security:fixtures
+
+# Focus python checks on specific directories only
+sm config --include-dir python:src
+sm config --include-dir python:lib
+```
+
+**Format:** `--include-dir CATEGORY:DIR` or `--exclude-dir CATEGORY:DIR`
+
+**Valid categories:** `python`, `javascript`, `security`, `quality`, `general`, `integration`
+
+**How it works:**
+- `include_dirs`: If set, ONLY these directories are scanned (whitelist)
+- `exclude_dirs`: These directories are always skipped (blacklist)
+- Excludes take precedence over includes
+
+**Common patterns:**
+
+| Problem | Solution |
+|---------|----------|
+| Dead code check flags test mocks | `sm config --exclude-dir python:tests` |
+| Security scanner finds test credentials | `sm config --exclude-dir security:fixtures` |
+| Duplication check flags generated code | `sm config --exclude-dir quality:generated` |
+| Want to check only `src/` for now | `sm config --include-dir python:src` |
+
+The changes are written to `.sb_config.json`. You can also edit that file directly for more complex configurations like per-gate excludes:
+
+```json
+{
+  "quality": {
+    "exclude_dirs": ["generated", "vendor"],
+    "gates": {
+      "duplication": {
+        "exclude_dirs": ["templates"]
+      }
+    }
+  }
+}
+```
+
 The config file (`.sb_config.json`) supports per-gate customization:
 
 ```json
@@ -341,6 +398,46 @@ sm ci --watch       # Poll until CI completes (runs unattended)
 Watch mode polls every 30 seconds and reports results automatically when CI finishes — no tab-switching or manual refreshing.
 
 **Why both?** Hooks catch problems before code is pushed. CI catches things hooks can't — platform-specific failures, PR-level checks like comment resolution, and the case where someone bypasses the hook entirely.
+
+---
+
+## Status and Reports: `sm status`
+
+The `status` command runs all gates without fail-fast and produces a full report card:
+
+```bash
+sm status          # Run pr profile (default)
+sm status commit   # Run commit profile
+```
+
+### What Status Shows
+
+- **Gate Inventory** — Every registered gate, grouped by category, with pass/fail/n/a status
+- **Remediation** — Specific guidance for each failing gate, including fix suggestions
+- **Verdict** — Bottom-line summary: how many passed, how many failed, total runtime
+- **Recommendations** — Applicable gates not yet in your profile, with exact `sm config` commands to enable them
+
+The recommendations section helps you incrementally adopt stricter quality gates. Instead of enabling everything at once (and drowning in failures), add one gate at a time, fix what it finds, then add the next.
+
+### Generating Full Machine-Readable Reports
+
+For AI agents or external tooling, use `--verbose` to write a JSON report:
+
+```bash
+sm status --verbose
+```
+
+This writes a timestamped file (`sm_status_<timestamp>.json`) containing:
+
+- Summary statistics (passed/failed/skipped/not-applicable counts)
+- Per-gate details: status, duration, output, errors, fix suggestions
+- Applicability info for gates not in the current profile
+
+Use this for:
+
+- Feeding detailed context to AI agents analyzing codebase health
+- Integration with external dashboards or tracking tools
+- Historical comparison of quality metrics over time
 
 ---
 

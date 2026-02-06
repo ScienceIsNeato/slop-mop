@@ -126,7 +126,7 @@ def _print_success_status(completed: List[Any], total: int) -> None:
     """Print status when all checks pass."""
     print(f"✨ CI CLEAN · {len(completed)}/{total} checks passed")
     print()
-    for name, emoji, conclusion in completed:
+    for name, emoji, _conclusion in completed:
         print(f"   {emoji} {name}")
     print()
 

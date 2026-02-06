@@ -228,7 +228,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         lines.append("")
 
         # Show top files with most missing coverage
-        for filepath, stmts, missing, missing_lines in missing_files[
+        for filepath, _stmts, _missing, missing_lines in missing_files[
             :MAX_FILES_TO_SHOW
         ]:
             lines.append(f"  {filepath}")

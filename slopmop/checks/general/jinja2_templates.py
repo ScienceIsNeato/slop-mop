@@ -71,6 +71,18 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
         # Applicable if templates_dir is configured and exists
         return self._get_templates_dir(project_root) is not None
 
+    def skip_reason(self, project_root: str) -> str:
+        """Explain why templates check is not applicable."""
+        configured = self.config.get("templates_dir")
+        if not configured:
+            return "No templates_dir configured in .sb_config.json"
+        import os
+
+        templates_path = os.path.join(project_root, configured)
+        if not os.path.isdir(templates_path):
+            return f"Configured templates_dir '{configured}' does not exist"
+        return "No Jinja2 templates detected"
+
     def _get_templates_dir(self, project_root: str) -> Optional[str]:
         """Get templates directory from config."""
         configured = self.config.get("templates_dir")

@@ -294,6 +294,8 @@ class TestCmdConfig:
             show=True,
             enable=None,
             disable=None,
+            include_dir=None,
+            exclude_dir=None,
             json=None,
         )
 
@@ -322,6 +324,8 @@ class TestCmdConfig:
             show=False,
             enable="python-security",
             disable=None,
+            include_dir=None,
+            exclude_dir=None,
             json=None,
         )
 

@@ -71,6 +71,10 @@ class SmokeTestCheck(BaseCheck, PythonCheckMixin):
         smoke_dir = os.path.join(project_root, "tests", "smoke")
         return os.path.isdir(smoke_dir)
 
+    def skip_reason(self, project_root: str) -> str:
+        """Explain why smoke tests are not applicable."""
+        return "No tests/smoke/ directory found"
+
     def _detect_server_port(self) -> Optional[str]:
         return os.environ.get("TEST_PORT") or os.environ.get("PORT")
 
@@ -189,6 +193,10 @@ class IntegrationTestCheck(BaseCheck, PythonCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         integration_dir = os.path.join(project_root, "tests", "integration")
         return os.path.isdir(integration_dir)
+
+    def skip_reason(self, project_root: str) -> str:
+        """Explain why integration tests are not applicable."""
+        return "No tests/integration/ directory found"
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
@@ -312,6 +320,10 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         e2e_dir = os.path.join(project_root, "tests", "e2e")
         return os.path.isdir(e2e_dir)
+
+    def skip_reason(self, project_root: str) -> str:
+        """Explain why E2E tests are not applicable."""
+        return "No tests/e2e/ directory found"
 
     def _detect_server_port(self) -> Optional[str]:
         return (

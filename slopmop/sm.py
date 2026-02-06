@@ -152,6 +152,16 @@ def _add_config_parser(
         help="Disable a specific quality gate",
     )
     config_parser.add_argument(
+        "--include-dir",
+        metavar="CATEGORY:DIR",
+        help="Add directory to include list (e.g., python:src or quality:lib)",
+    )
+    config_parser.add_argument(
+        "--exclude-dir",
+        metavar="CATEGORY:DIR",
+        help="Add directory to exclude list (e.g., python:tests or quality:vendor)",
+    )
+    config_parser.add_argument(
         "--json",
         metavar="FILE",
         help="Update configuration from JSON file",

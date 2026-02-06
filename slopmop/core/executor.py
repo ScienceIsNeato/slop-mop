@@ -272,7 +272,7 @@ class CheckExecutor:
 
                             # Fail fast
                             if self._fail_fast and result.failed:
-                                logger.info(f"Fail-fast triggered by {name}")
+                                logger.debug(f"Fail-fast triggered by {name}")
                                 self._stop_event.set()
 
                         except Exception as e:
@@ -316,14 +316,14 @@ class CheckExecutor:
         Returns:
             CheckResult
         """
-        logger.info(f"Running {check.display_name}")
+        logger.debug(f"Running {check.display_name}")
 
         # Try auto-fix first if enabled
         if auto_fix and check.can_auto_fix():
             try:
                 fixed = check.auto_fix(project_root)
                 if fixed:
-                    logger.info(f"Auto-fixed issues for {check.name}")
+                    logger.debug(f"Auto-fixed issues for {check.name}")
             except Exception as e:
                 logger.warning(f"Auto-fix failed for {check.name}: {e}")
 

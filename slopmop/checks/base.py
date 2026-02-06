@@ -39,6 +39,11 @@ class GateCategory(Enum):
     def display(self) -> str:
         return f"{self.emoji} {self._display_name}"
 
+    @property
+    def display_name(self) -> str:
+        """Human-readable category name."""
+        return self._display_name
+
 
 @dataclass
 class ConfigField:
@@ -198,7 +203,7 @@ class BaseCheck(ABC):
             Human-readable skip reason
         """
         # Default implementation tries to provide helpful context
-        category = self.category._display_name if self.category else "Unknown"
+        category = self.category.display_name if self.category else "Unknown"
         return f"No {category} code detected in project"
 
     @abstractmethod

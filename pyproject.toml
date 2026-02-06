@@ -83,3 +83,6 @@ omit = ["tests/*", "setup.py"]
 [tool.coverage.report]
 # fail_under handled by slopmop coverage check
 show_missing = true
+
+[tool.pyright]
+exclude = ["tests/**", "venv/**", "build/**", "dist/**"]
