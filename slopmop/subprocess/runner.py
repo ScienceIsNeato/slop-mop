@@ -42,7 +42,7 @@ class SubprocessResult:
     @property
     def output(self) -> str:
         """Return combined stdout and stderr."""
-        parts = []
+        parts: List[str] = []
         if self.stdout:
             parts.append(self.stdout)
         if self.stderr:

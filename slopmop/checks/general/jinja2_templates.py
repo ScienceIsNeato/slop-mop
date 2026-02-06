@@ -40,7 +40,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
       Jinja2 not installed: pip install jinja2
 
     Re-validate:
-      sm validate general:templates
+      sm validate general:templates --verbose
     """
 
     @property
@@ -153,7 +153,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
                 ["html", "htm", "xml", "j2", "jinja", "jinja2"]
             ),
         )
-        errors = []
+        errors: List[str] = []
         count = 0
 
         for root, _, files in os.walk(templates_path):

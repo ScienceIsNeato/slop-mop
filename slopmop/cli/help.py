@@ -88,9 +88,9 @@ def _show_all_gates() -> int:
     print()
 
     # Group by category
-    python_gates = []
-    js_gates = []
-    general_gates = []
+    python_gates: List[str] = []
+    js_gates: List[str] = []
+    general_gates: List[str] = []
 
     for name in sorted(registry.list_checks()):
         if name.startswith("python-"):

@@ -134,15 +134,15 @@ class CheckRegistry:
                 expanded_names.append(name)
 
         # Remove duplicates while preserving order
-        seen = set()
-        unique_names = []
+        seen: set[str] = set()
+        unique_names: List[str] = []
         for name in expanded_names:
             if name not in seen:
                 seen.add(name)
                 unique_names.append(name)
 
         # Create check instances
-        checks = []
+        checks: List[BaseCheck] = []
         for name in unique_names:
             check = self.get_check(name, config)
             if check is not None:
@@ -198,7 +198,7 @@ class CheckRegistry:
         Returns:
             List of applicable check instances
         """
-        applicable = []
+        applicable: List[BaseCheck] = []
         for name, check_class in self._check_classes.items():
             check = check_class(config)
             if check.is_applicable(project_root):

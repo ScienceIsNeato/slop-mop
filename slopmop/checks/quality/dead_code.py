@@ -49,7 +49,7 @@ class DeadCodeCheck(BaseCheck):
       vulture not available: pip install vulture
 
     Re-validate:
-      sm validate quality:dead-code
+      sm validate quality:dead-code --verbose
     """
 
     @property

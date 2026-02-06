@@ -50,7 +50,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
       radon not available: pip install radon
 
     Re-validate:
-      sm validate quality:complexity
+      sm validate quality:complexity --verbose
     """
 
     @property
@@ -160,7 +160,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         )
 
     def _parse_violations(self, output: str) -> List[str]:
-        violations = []
+        violations: List[str] = []
         for line in output.splitlines():
             if re.search(r"\b[DEF]\b", line) and "(" in line:
                 violations.append(line.strip())

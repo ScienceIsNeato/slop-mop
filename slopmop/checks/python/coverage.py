@@ -81,7 +81,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
           to generate coverage data.
 
     Re-validate:
-      sm validate python:coverage
+      sm validate python:coverage --verbose
     """
 
     DEFAULT_THRESHOLD = 80
@@ -191,7 +191,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         Returns list of (file, stmts, missing_count, missing_lines).
         Sorted by missing_count descending (biggest gaps first).
         """
-        results = []
+        results: List[Tuple[str, int, int, str]] = []
         # Pattern: filename  stmts  miss  cover  missing
         # slopmop/sb.py   456    386    15%   45-67, 89, 120-150
         pattern = re.compile(r"^(\S+\.py)\s+(\d+)\s+(\d+)\s+\d+%\s+(.+)$", re.MULTILINE)
@@ -220,7 +220,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
         No meta-info, just: "Add tests for these lines"
         """
-        lines = []
+        lines: List[str] = []
         lines.append(
             COVERAGE_STANDARDS_PREFIX
             + "Add high-quality test coverage to the following areas:"
@@ -281,7 +281,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
           check. Gate passes automatically.
 
     Re-validate:
-      sm validate python:diff-coverage
+      sm validate python:diff-coverage --verbose
     """
 
     @property
@@ -368,7 +368,7 @@ class PythonNewCodeCoverageCheck(BaseCheck, PythonCheckMixin):
       See python:diff-coverage — behavior is identical.
 
     Re-validate:
-      sm validate python:new-code-coverage
+      sm validate python:new-code-coverage --verbose
     """
 
     @property

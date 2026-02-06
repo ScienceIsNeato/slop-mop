@@ -101,8 +101,8 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
         return 0
 
     hook_types = ["pre-commit", "pre-push", "commit-msg"]
-    found_sb_hooks = []
-    found_other_hooks = []
+    found_sb_hooks: list[tuple[str, dict[str, Any]]] = []
+    found_other_hooks: list[str] = []
 
     for hook_type in hook_types:
         hook_file = hooks_dir / hook_type
@@ -185,7 +185,7 @@ def _hooks_uninstall(project_root: Path, hooks_dir: Path) -> int:
         print("ℹ️  No hooks directory found")
         return 0
 
-    removed = []
+    removed: list[str] = []
     hook_types = ["pre-commit", "pre-push", "commit-msg"]
 
     for hook_type in hook_types:

@@ -287,7 +287,7 @@ class PythonCheckMixin:
     # Class-level cache for venv warning (only warn once per project_root)
     _venv_warning_shown: set[str] = set()
     # Cache resolved Python path per project_root
-    _python_cache: dict[str, Optional[str]] = {}
+    _python_cache: dict[str, str] = {}
 
     def _find_python_in_venv(self, venv_path: Path) -> Optional[str]:
         """Find Python executable in a venv directory (Unix or Windows)."""

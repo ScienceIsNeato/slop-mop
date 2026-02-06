@@ -62,9 +62,9 @@ def _categorize_checks(
     checks: List[Dict[str, Any]],
 ) -> Tuple[List[Any], List[Any], List[Any]]:
     """Categorize checks into completed, in_progress, and failed."""
-    completed = []
-    in_progress = []
-    failed = []
+    completed: List[Tuple[str, str, str]] = []
+    in_progress: List[Tuple[str, str, str]] = []
+    failed: List[Tuple[str, str, str, str]] = []
 
     for check in checks:
         bucket = check.get("bucket", "").lower()

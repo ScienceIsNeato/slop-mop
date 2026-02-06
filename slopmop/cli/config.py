@@ -3,7 +3,7 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.core.registry import get_registry
@@ -94,10 +94,10 @@ def cmd_config(args: argparse.Namespace) -> int:
     config_file = project_root / ".sb_config.json"
 
     # Load existing config
-    config = {}
+    config: dict[str, Any] = {}
     if config_file.exists():
         try:
-            config = json.loads(config_file.read_text())
+            config = cast(dict[str, Any], json.loads(config_file.read_text()))
         except json.JSONDecodeError:
             print(f"⚠️  Invalid JSON in {config_file}")
 

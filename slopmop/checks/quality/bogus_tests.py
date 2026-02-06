@@ -228,7 +228,7 @@ class _TestAnalyzer(ast.NodeVisitor):
         if isinstance(node.func, ast.Name):
             return node.func.id
         if isinstance(node.func, ast.Attribute):
-            parts = []
+            parts: list[str] = []
             current: ast.expr = node.func
             while isinstance(current, ast.Attribute):
                 parts.append(current.attr)
@@ -265,7 +265,7 @@ class BogusTestsCheck(BaseCheck):
           mock.assert_called, etc.
 
     Re-validate:
-      sm validate quality:bogus-tests
+      sm validate quality:bogus-tests --verbose
     """
 
     @property

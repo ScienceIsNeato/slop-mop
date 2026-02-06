@@ -43,7 +43,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
           assertion on tuples, undefined names). Fix the code.
 
     Re-validate:
-      sm validate python:lint-format
+      sm validate python:lint-format --verbose
     """
 
     @property
@@ -132,7 +132,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
     def _get_python_targets(self, project_root: str) -> List[str]:
         """Get Python directories to lint/format."""
-        targets = []
+        targets: List[str] = []
         exclude_dirs = {"venv", ".venv", "build", "dist", "node_modules", ".git"}
 
         for entry in os.listdir(project_root):
@@ -214,9 +214,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             if not result.success:
                 break
 
-        if not result.success:
+        if result is None or not result.success:
             # Extract files that need formatting
-            lines = result.output.split("\n")
+            output = result.output if result else ""
+            lines = output.split("\n")
             files = [line for line in lines if line.startswith("would reformat")]
             if files:
                 return f"{len(files)} file(s) need formatting"

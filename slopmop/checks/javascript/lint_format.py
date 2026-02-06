@@ -33,7 +33,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
           or missing registry access.
 
     Re-validate:
-      sm validate javascript:lint-format
+      sm validate javascript:lint-format --verbose
     """
 
     @property

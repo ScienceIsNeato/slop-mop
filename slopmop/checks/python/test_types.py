@@ -41,7 +41,7 @@ class SmokeTestCheck(BaseCheck, PythonCheckMixin):
       Tests fail: Verify the server is healthy on the configured port.
 
     Re-validate:
-      sm validate integration:smoke-tests
+      sm validate integration:smoke-tests --verbose
     """
 
     @property
@@ -156,7 +156,7 @@ class IntegrationTestCheck(BaseCheck, PythonCheckMixin):
       Tests fail: Check database state and test isolation.
 
     Re-validate:
-      sm validate integration:integration-tests
+      sm validate integration:integration-tests --verbose
     """
 
     @property
@@ -273,7 +273,7 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
           generated, verify selectors haven't changed.
 
     Re-validate:
-      sm validate integration:e2e-tests
+      sm validate integration:e2e-tests --verbose
     """
 
     @property

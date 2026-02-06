@@ -176,7 +176,7 @@ class ConsoleReporter:
         print("=" * 60)
 
         # Show counts only for non-zero statuses
-        counts = []
+        counts: list[str] = []
         if passed:
             counts.append(f"✅ {len(passed)} passed")
         if failed:
@@ -230,7 +230,8 @@ class ConsoleReporter:
         print("│ NEXT STEPS:                                              │")
         print("│                                                          │")
         print("│ 1. Fix the issue described above                         │")
-        print(f"│ 2. Validate: sm validate {gate_name:<32} │")
+        validate_cmd = f"sm validate {gate_name} --verbose"
+        print(f"│ 2. Validate: {validate_cmd:<44} │")
         print(f"│ 3. Resume:   sm validate {profile:<32} │")
         print("│                                                          │")
         print("│ Keep iterating until all the slop is mopped.                │")

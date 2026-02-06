@@ -6,7 +6,7 @@ Handles interactive and non-interactive project setup.
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 from slopmop.cli.detection import detect_project_type
 
@@ -34,7 +34,7 @@ def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
     """Deep merge updates into base dict, modifying base in place."""
     for key, value in updates.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _deep_merge(base[key], value)
+            _deep_merge(cast(Dict[str, Any], base[key]), cast(Dict[str, Any], value))
         else:
             base[key] = value
 
@@ -62,7 +62,7 @@ def _build_non_interactive_config(
     detected: Dict[str, Any], preconfig: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Build config using detected defaults and preconfig."""
-    config = {
+    config: Dict[str, Any] = {
         "project_type": (
             "python"
             if detected["has_python"]
@@ -142,7 +142,13 @@ def _apply_detected_settings(
                 base_config["python"]["gates"]["tests"]["test_dirs"] = detected[
                     "test_dirs"
                 ]
-        for gate in ["lint-format", "tests", "coverage", "static-analysis"]:
+        for gate in [
+            "lint-format",
+            "tests",
+            "coverage",
+            "static-analysis",
+            "type-checking",
+        ]:
             if gate in base_config["python"]["gates"]:
                 base_config["python"]["gates"][gate]["enabled"] = True
 

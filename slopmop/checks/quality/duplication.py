@@ -47,7 +47,7 @@ class SourceDuplicationCheck(BaseCheck):
       jscpd not available: npm install -g jscpd
 
     Re-validate:
-      sm validate quality:source-duplication
+      sm validate quality:source-duplication --verbose
     """
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
@@ -279,7 +279,7 @@ class SourceDuplicationCheck(BaseCheck):
 
     def _format_duplicates(self, duplicates: List[Dict[str, Any]]) -> List[str]:
         """Format duplicate entries for display."""
-        violations = []
+        violations: List[str] = []
         for dup in duplicates:
             first = dup.get("firstFile", {})
             second = dup.get("secondFile", {})

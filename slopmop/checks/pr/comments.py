@@ -39,7 +39,7 @@ class PRCommentsCheck(BaseCheck):
           https://cli.github.com/
 
     Re-validate:
-      sm validate pr:comments
+      sm validate pr:comments --verbose
     """
 
     @property
@@ -264,7 +264,7 @@ class PRCommentsCheck(BaseCheck):
             )
 
             # Filter to unresolved threads
-            unresolved = []
+            unresolved: List[Dict[str, Any]] = []
             for thread in threads:
                 if not thread.get("isResolved", True):
                     comments = thread.get("comments", {}).get("nodes", [])
@@ -392,7 +392,7 @@ class PRCommentsCheck(BaseCheck):
         repo: str,
     ) -> str:
         """Format actionable guidance for resolving PR comments."""
-        lines = []
+        lines: List[str] = []
         lines.append("=" * 80)
         lines.append("🔀 PR COMMENT RESOLUTION PROTOCOL")
         lines.append("=" * 80)
@@ -639,7 +639,7 @@ class PRCommentsCheck(BaseCheck):
         # Group by category
         grouped = self._group_threads_by_category(threads)
 
-        lines = []
+        lines: List[str] = []
         lines.append(f"PR #{pr_number}: {len(threads)} unresolved comment(s)")
         lines.append("")
         lines.append("By category:")

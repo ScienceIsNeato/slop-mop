@@ -35,7 +35,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
           Usually a missing dependency or renamed module.
 
     Re-validate:
-      sm validate python:tests
+      sm validate python:tests --verbose
     """
 
     @property

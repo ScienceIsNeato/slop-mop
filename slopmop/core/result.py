@@ -6,7 +6,7 @@ to represent check definitions, statuses, and results.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, cast
 
 
 class CheckStatus(Enum):
@@ -80,7 +80,7 @@ class CheckDefinition:
     flag: str
     name: str
     runner: Optional[Callable[[], CheckResult]] = None
-    depends_on: List[str] = field(default_factory=list)
+    depends_on: List[str] = field(default_factory=lambda: cast(List[str], []))
     auto_fix: bool = False
 
     def __hash__(self) -> int:
@@ -113,7 +113,9 @@ class ExecutionSummary:
     not_applicable: int
     errors: int
     total_duration: float
-    results: List[CheckResult] = field(default_factory=list)
+    results: List[CheckResult] = field(
+        default_factory=lambda: cast(List[CheckResult], [])
+    )
 
     @property
     def all_passed(self) -> bool:

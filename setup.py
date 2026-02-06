@@ -28,6 +28,7 @@ dev_requirements = [
     "flake8>=6.0.0",
     # Type checking
     "mypy>=1.0.0",
+    "pyright>=1.1.0",
     # Security scanning
     "bandit>=1.7.0",
     "detect-secrets>=1.4.0",

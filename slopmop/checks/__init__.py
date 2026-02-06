@@ -21,6 +21,7 @@ def _register_python_checks(registry: CheckRegistry) -> None:
         SmokeTestCheck,
     )
     from slopmop.checks.python.tests import PythonTestsCheck
+    from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
     registry.register(PythonLintFormatCheck)
     registry.register(PythonTestsCheck)
@@ -28,6 +29,7 @@ def _register_python_checks(registry: CheckRegistry) -> None:
     registry.register(PythonDiffCoverageCheck)
     registry.register(PythonNewCodeCoverageCheck)
     registry.register(PythonStaticAnalysisCheck)
+    registry.register(PythonTypeCheckingCheck)
     registry.register(SmokeTestCheck)
     registry.register(IntegrationTestCheck)
     registry.register(E2ETestCheck)
@@ -81,6 +83,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
         [
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
             "quality:complexity",
@@ -102,6 +105,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "pr:comments",
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
             "python:diff-coverage",
@@ -126,6 +130,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
         [
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
         ],

@@ -209,8 +209,8 @@ class CheckExecutor:
 
             while (pending or futures) and not self._stop_event.is_set():
                 # Find checks whose dependencies are all completed
-                ready = []
-                skipped_due_to_deps = []
+                ready: List[str] = []
+                skipped_due_to_deps: List[str] = []
                 for name in list(pending):  # Iterate over a copy
                     deps = dep_graph.get(name, set())
                     if deps <= completed:

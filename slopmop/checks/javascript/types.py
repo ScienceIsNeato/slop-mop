@@ -59,7 +59,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: TypeScript must be in devDependencies.
 
     Re-validate:
-      sm validate javascript:types
+      sm validate javascript:types --verbose
     """
 
     @property
@@ -146,7 +146,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                 tsconfig = default_tsconfig
 
         # Build the type check command
-        cmd = ["npx", "tsc", "--noEmit", "-p", tsconfig]
+        cmd: List[str] = ["npx", "tsc", "--noEmit", "-p", tsconfig]
 
         result = self._run_command(
             cmd,

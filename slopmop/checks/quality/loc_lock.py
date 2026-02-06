@@ -92,7 +92,7 @@ class LocLockCheck(BaseCheck):
           concepts. Three 30-line functions > one 90-line function.
 
     Re-validate:
-      sm validate quality:loc-lock
+      sm validate quality:loc-lock --verbose
     """
 
     @property
@@ -243,7 +243,7 @@ class LocLockCheck(BaseCheck):
             )
 
         # Build violation report
-        output_lines = []
+        output_lines: List[str] = []
 
         if file_violations:
             output_lines.append(
@@ -316,7 +316,7 @@ class LocLockCheck(BaseCheck):
 
     def _find_python_functions(self, lines: List[str]) -> List[Tuple[str, int, int]]:
         """Find Python function definitions."""
-        functions = []
+        functions: List[Tuple[str, int, int]] = []
         func_pattern = re.compile(r"^\s*(async\s+)?def\s+(\w+)\s*\(")
 
         i = 0
@@ -349,7 +349,7 @@ class LocLockCheck(BaseCheck):
 
     def _find_js_functions(self, lines: List[str]) -> List[Tuple[str, int, int]]:
         """Find JavaScript/TypeScript function definitions."""
-        functions = []
+        functions: List[Tuple[str, int, int]] = []
 
         # Match: function name(), const name = () =>, async function name()
         patterns = [
@@ -384,7 +384,7 @@ class LocLockCheck(BaseCheck):
         self, lines: List[str], pattern_str: str
     ) -> List[Tuple[str, int, int]]:
         """Find functions in brace-delimited languages."""
-        functions = []
+        functions: List[Tuple[str, int, int]] = []
         pattern = re.compile(pattern_str)
 
         i = 0
@@ -457,7 +457,7 @@ class LocLockCheck(BaseCheck):
 
     def _find_shell_functions(self, lines: List[str]) -> List[Tuple[str, int, int]]:
         """Find shell function definitions."""
-        functions = []
+        functions: List[Tuple[str, int, int]] = []
         # Match: function_name() { or function function_name {
         pattern = re.compile(r"^\s*(?:function\s+)?(\w+)\s*\(\s*\)\s*\{?")
 

@@ -49,7 +49,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
           produce coverage reports.
 
     Re-validate:
-      sm validate javascript:coverage
+      sm validate javascript:coverage --verbose
     """
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
@@ -186,7 +186,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             )
 
         # Find lowest coverage files
-        low_files = []
+        low_files: List[tuple[str, float]] = []
         for path, stats in data.items():
             if path == "total":
                 continue

@@ -2,36 +2,27 @@
 
 ## Current Work: feat/dead-code-gate branch
 
-### Just Completed: Strict Typing + CONTRIBUTING Guide + README Refresh
+### Just Completed: --verbose in NEXT STEPS + pyright type-checking fixes
 
-**Committed**: 762c968 — 11/11 gates passing, 641 tests
+**Pending Commit** — 12/12 gates passing
 
 **Changes in this commit**:
 
-1. Strict typing for mypy gate (static_analysis.py rewrite)
-   - Configurable strict_typing flag (default: on)
-   - Adds --disallow-untyped-defs and --disallow-any-generics when strict
-   - Output dedup: strips note lines, caps at 20 errors, groups by error code
-   - Display name shows "(mypy strict)" or "(mypy basic)"
+1. Added `--verbose` to NEXT STEPS guidance box
+   - AI agents now see `sm validate <gate> --verbose` in step 2
+   - Ensures agents use the tool instead of bypassing to raw commands
 
-2. Fixed 47 type errors across 14 files
-   - 44 type-arg errors, 2 no-untyped-def, 1 attr-defined bug
+2. Updated all 25 gate docstrings
+   - Re-validate section now shows `sm validate <gate> --verbose`
+   - Consistent across all 20 gate files
 
-3. CONTRIBUTING.md: Complete guide to adding new quality gates
+3. Fixed 26 pyright type-completeness errors
+   - Added `cast()` for dict.get() return values
+   - Typed dataclass field default factories
+   - Fixed Optional access issues in lint_format.py
 
-4. README.md refresh: Added dead-code/loc-lock gates, fixed safety to pip-audit
+4. Files modified: console.py, 20 gate check files, config.py, result.py, init.py
 
-5. Tests expanded: Static analysis tests from ~7 to 51
+### Previously Committed: Strict Typing + CONTRIBUTING Guide + README Refresh
 
-### Previously Committed: Dead Code Gate
-
-**Committed**: f3d6bc5 — Dead code detection via vulture
-
-### Branch History
-
-1. f3d6bc5 — feat: add quality:dead-code gate wrapping vulture
-2. 762c968 — feat: strict typing for mypy + CONTRIBUTING guide + README refresh
-
-### Pending
-
-- Push branch and open PR when ready
+**Committed**: 762c968 — 11/11 gates passing, 641 tests
