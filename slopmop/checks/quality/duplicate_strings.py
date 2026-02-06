@@ -132,7 +132,6 @@ class StringDuplicationCheck(BaseCheck):
                 "**/test_*",
                 "**/tests/**",
                 "**/conftest.py",
-                "**/constants.py",
             ],
         }
         return {**defaults, **self.config}
