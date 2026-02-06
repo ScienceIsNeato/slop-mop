@@ -2,10 +2,10 @@
 const foo = "foo";
 
 describe("", () => {
-	it("", () => {
-		const foo = "foo";
-		const foobar = "f'o''o'bar";
-		const bar = "bar";
-		const baz = `baz`;
-	});
+  it("", () => {
+    const foo = "foo";
+    const foobar = "f'o''o'bar";
+    const bar = "bar";
+    const baz = `baz`;
+  });
 });
