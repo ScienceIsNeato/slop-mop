@@ -130,7 +130,7 @@ class LocLockCheck(BaseCheck):
         return self._has_source_files(project_root)
 
     def skip_reason(self, project_root: str) -> str:
-        """Return reason for skipping."""
+        """Return skip reason when no source files match configured extensions."""
         return "No source files found matching configured extensions"
 
     def _has_source_files(self, project_root: str) -> bool:

@@ -28,6 +28,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from slopmop.constants import PROJECT_ROOT_HELP
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,7 +97,7 @@ def _add_validate_parser(subparsers: argparse._SubParsersAction) -> None:
         "--project-root",
         type=str,
         default=".",
-        help="Project root directory (default: current directory)",
+        help=PROJECT_ROOT_HELP,
     )
     validate_parser.add_argument(
         "--no-auto-fix",
@@ -152,7 +154,7 @@ def _add_config_parser(subparsers: argparse._SubParsersAction) -> None:
         "--project-root",
         type=str,
         default=".",
-        help="Project root directory (default: current directory)",
+        help=PROJECT_ROOT_HELP,
     )
 
 
@@ -193,7 +195,7 @@ def _add_init_parser(subparsers: argparse._SubParsersAction) -> None:
         "--project-root",
         type=str,
         default=".",
-        help="Project root directory (default: current directory)",
+        help=PROJECT_ROOT_HELP,
     )
 
 
@@ -218,7 +220,7 @@ def _add_hooks_parser(subparsers: argparse._SubParsersAction) -> None:
         "--project-root",
         type=str,
         default=".",
-        help="Project root directory (default: current directory)",
+        help=PROJECT_ROOT_HELP,
     )
 
     # commit-hooks install
@@ -234,7 +236,7 @@ def _add_hooks_parser(subparsers: argparse._SubParsersAction) -> None:
         "--project-root",
         type=str,
         default=".",
-        help="Project root directory (default: current directory)",
+        help=PROJECT_ROOT_HELP,
     )
 
     # commit-hooks uninstall
@@ -246,7 +248,7 @@ def _add_hooks_parser(subparsers: argparse._SubParsersAction) -> None:
         "--project-root",
         type=str,
         default=".",
-        help="Project root directory (default: current directory)",
+        help=PROJECT_ROOT_HELP,
     )
 
 
@@ -280,7 +282,7 @@ def _add_ci_parser(subparsers: argparse._SubParsersAction) -> None:
         "--project-root",
         type=str,
         default=".",
-        help="Project root directory (default: current directory)",
+        help=PROJECT_ROOT_HELP,
     )
 
 
@@ -301,7 +303,7 @@ def _add_status_parser(subparsers: argparse._SubParsersAction) -> None:
         "--project-root",
         type=str,
         default=".",
-        help="Project root directory (default: current directory)",
+        help=PROJECT_ROOT_HELP,
     )
     status_parser.add_argument(
         "--verbose",

@@ -70,8 +70,8 @@ class TestStringDuplicationCheck:
     def test_get_effective_config_defaults(self, check):
         """Test effective config has defaults."""
         config = check._get_effective_config()
-        assert config["threshold"] == 5
-        assert config["min_file_count"] == 3
+        assert config["threshold"] == 2
+        assert config["min_file_count"] == 1
         assert config["min_length"] == 8
         assert config["min_words"] == 3
         assert "**/*.py" in config["include_patterns"]
@@ -83,7 +83,7 @@ class TestStringDuplicationCheck:
         assert config["threshold"] == 10
         assert config["min_length"] == 12
         # Default should still be present
-        assert config["min_file_count"] == 3
+        assert config["min_file_count"] == 1
 
     def test_build_command_basic(self, check):
         """Test command building with basic config."""
@@ -93,7 +93,7 @@ class TestStringDuplicationCheck:
         assert "node" in cmd
         assert "--threshold" in cmd
         assert "--json" in cmd
-        assert "5" in cmd  # default threshold
+        assert "2" in cmd  # default threshold
 
     def test_build_command_with_ignore(self, check):
         """Test command includes ignore patterns."""

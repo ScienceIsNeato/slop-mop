@@ -368,7 +368,7 @@ The PR profile runs everything in the commit profile _plus_ checks that only mak
 
 - **`pr:comments`** — Are all PR review comments addressed? This gate checks GitHub for unresolved review threads and blocks until they're handled.
 - **`python:diff-coverage`** / **`python:new-code-coverage`** — Does the code you changed in this PR specifically have test coverage? `python:coverage` measures the whole project; this measures only the lines the PR touches, using `diff-cover` against the target branch.
-- **`security:full`** — The full security scan replaces `security:local` at PR level, adding dependency vulnerability checking via `safety` (requires network access).
+- **`security:full`** — The full security scan replaces `security:local` at PR level, adding dependency vulnerability checking via `pip-audit` (requires network access).
 
 Commit-level gates catch problems while the agent is still working and the context is fresh. PR-level gates check whether the deliverable as a whole is ready to merge — CI is green, reviewers are satisfied, and the new code specifically (not just the project overall) is tested.
 

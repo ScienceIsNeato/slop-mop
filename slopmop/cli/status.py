@@ -10,7 +10,7 @@ import argparse
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
@@ -87,39 +87,58 @@ def _print_gate_inventory(
             gate_name = gate.split(":", 1)[1]
 
             if gate in profile_gates:
-                result = results_map.get(gate)
-                if result is None:
-                    line = f"   ?  {gate_name:<28} — in profile, no result"
-                elif result.status == CheckStatus.PASSED:
-                    line = f"   ✅ {gate_name:<28} — passing"
-                elif result.status == CheckStatus.FAILED:
-                    line = f"   ❌ {gate_name:<28} — FAILING"
-                elif result.status == CheckStatus.ERROR:
-                    line = f"   💥 {gate_name:<28} — ERROR"
-                elif result.status == CheckStatus.NOT_APPLICABLE:
-                    reason = result.output or "not applicable"
-                    line = f"   ⊘  {gate_name:<28} — n/a ({reason})"
-                elif result.status == CheckStatus.SKIPPED:
-                    reason = result.output or "skipped"
-                    line = f"   ⏭️  {gate_name:<28} — skipped ({reason})"
-                else:
-                    line = f"   ?  {gate_name:<28} — unknown status"
+                line = _format_profile_gate(gate_name, results_map.get(gate))
             else:
-                is_applicable, skip_reason = applicability.get(gate, (True, ""))
-                if not is_applicable:
-                    line = f"   ⊘  {gate_name:<28} — n/a ({skip_reason})"
-                else:
-                    other = _find_other_profiles(gate, aliases, profile)
-                    if other:
-                        profiles_str = ", ".join(sorted(other))
-                        line = (
-                            f"   ·  {gate_name:<28}"
-                            f" — not in profile (in: {profiles_str})"
-                        )
-                    else:
-                        line = f"   ·  {gate_name:<28} — not in profile"
+                line = _format_non_profile_gate(
+                    gate, gate_name, applicability, aliases, profile
+                )
 
             print(line)
+
+
+def _format_profile_gate(gate_name: str, result: Optional[CheckResult]) -> str:
+    """Format a gate that's in the active profile."""
+    _STATUS_DISPLAY = {
+        CheckStatus.PASSED: ("✅", "passing"),
+        CheckStatus.FAILED: ("❌", "FAILING"),
+        CheckStatus.ERROR: ("💥", "ERROR"),
+    }
+
+    if result is None:
+        return f"   ?  {gate_name:<28} — in profile, no result"
+
+    if result.status in _STATUS_DISPLAY:
+        icon, label = _STATUS_DISPLAY[result.status]
+        return f"   {icon} {gate_name:<28} — {label}"
+
+    if result.status == CheckStatus.NOT_APPLICABLE:
+        reason = result.output or "not applicable"
+        return f"   ⊘  {gate_name:<28} — n/a ({reason})"
+
+    if result.status == CheckStatus.SKIPPED:
+        reason = result.output or "skipped"
+        return f"   ⏭️  {gate_name:<28} — skipped ({reason})"
+
+    return f"   ?  {gate_name:<28} — unknown status"
+
+
+def _format_non_profile_gate(
+    gate: str,
+    gate_name: str,
+    applicability: Dict[str, Tuple[bool, str]],
+    aliases: Dict[str, List[str]],
+    profile: str,
+) -> str:
+    """Format a gate that's not in the active profile."""
+    is_applicable, skip_reason = applicability.get(gate, (True, ""))
+    if not is_applicable:
+        return f"   ⊘  {gate_name:<28} — n/a ({skip_reason})"
+
+    other = _find_other_profiles(gate, aliases, profile)
+    if other:
+        profiles_str = ", ".join(sorted(other))
+        return f"   ·  {gate_name:<28}" f" — not in profile (in: {profiles_str})"
+    return f"   ·  {gate_name:<28} — not in profile"
 
 
 def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
@@ -279,7 +298,7 @@ def run_status(
 def cmd_status(args: argparse.Namespace) -> int:
     """Handle the status command.
 
-    Runs the specified profile (default: commit) with no per-gate
+    Runs the specified profile (default: pr) with no per-gate
     progress, then prints a full gate inventory and remediation report.
     """
     return run_status(

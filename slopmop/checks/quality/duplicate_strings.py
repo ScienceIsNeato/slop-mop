@@ -45,14 +45,14 @@ class StringDuplicationCheck(BaseCheck):
             ConfigField(
                 name="threshold",
                 field_type="integer",
-                default=5,
+                default=2,
                 description="Minimum occurrences to report a duplicate",
                 min_value=2,
             ),
             ConfigField(
                 name="min_file_count",
                 field_type="integer",
-                default=3,
+                default=1,
                 description="Minimum number of files a string must appear in",
                 min_value=1,
             ),
@@ -117,8 +117,8 @@ class StringDuplicationCheck(BaseCheck):
     def _get_effective_config(self) -> dict[str, Any]:
         """Get effective configuration with defaults."""
         defaults = {
-            "threshold": 5,
-            "min_file_count": 3,
+            "threshold": 2,
+            "min_file_count": 1,
             "min_length": 8,
             "min_words": 3,
             "include_patterns": ["**/*.py"],
@@ -132,6 +132,7 @@ class StringDuplicationCheck(BaseCheck):
                 "**/test_*",
                 "**/tests/**",
                 "**/conftest.py",
+                "**/constants.py",
             ],
         }
         return {**defaults, **self.config}
@@ -220,8 +221,10 @@ class StringDuplicationCheck(BaseCheck):
         """
         lower = value.lower().strip()
 
-        # Skip very short strings (< 8 chars are almost never worth extracting)
-        if len(lower) < 8:
+        # Skip very short strings — already filtered by min_length in
+        # _filter_results, but _is_noise is a secondary guard.
+        # Uses the config default (min_length) rather than a magic number.
+        if len(lower) < self._get_effective_config().get("min_length", 8):
             return True
 
         # File paths / basenames that naturally repeat

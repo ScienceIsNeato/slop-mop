@@ -23,6 +23,7 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
+from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus
 
 EXCLUDED_DIRS = [
@@ -190,7 +191,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             if result.stderr and "error" in result.stderr.lower():
                 return SecuritySubResult("bandit", False, result.stderr[-500:])
             # Otherwise bandit ran but produced no JSON (likely no issues)
-            return SecuritySubResult("bandit", True, "No issues found")
+            return SecuritySubResult("bandit", True, NO_ISSUES_FOUND)
 
     def _run_semgrep(self, project_root: str) -> SecuritySubResult:
         """Run semgrep static analysis."""
@@ -201,13 +202,13 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 
         if result.success:
-            return SecuritySubResult("semgrep", True, "No issues found")
+            return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
 
         try:
             report = json.loads(result.stdout)
             findings = report.get("results", [])
             if not findings:
-                return SecuritySubResult("semgrep", True, "No issues found")
+                return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
 
             critical = [
                 f
@@ -355,7 +356,7 @@ class SecurityCheck(SecurityLocalCheck):
             detail = "\n".join(
                 f"  {d['name']} {d.get('version', '?')}: "
                 + ", ".join(
-                    f"{v.get('id', '?')} ({v.get('fix_versions', ['no fix'])})"
+                    f"{v.get('id', '?')} ({', '.join(map(str, v.get('fix_versions', ['no fix'])))})"
                     for v in d.get("vulns", [])[:3]
                 )
                 for d in vulnerable[:10]
