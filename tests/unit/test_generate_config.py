@@ -4,7 +4,6 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.registry import CheckRegistry
