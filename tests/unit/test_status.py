@@ -298,7 +298,7 @@ class TestPrintGateInventory:
             profile="commit",
         )
         out = capsys.readouterr().out
-        assert "not applicable" in out
+        assert "n/a" in out
         assert "No JavaScript code detected" in out
 
     def test_skipped_gate_in_profile(self, capsys):
@@ -320,6 +320,26 @@ class TestPrintGateInventory:
         out = capsys.readouterr().out
         assert "skipped" in out
         assert "No package.json found" in out
+
+    def test_not_applicable_gate_in_profile(self, capsys):
+        """NOT_APPLICABLE profile gate shows n/a with reason."""
+        r = CheckResult(
+            "javascript:tests",
+            CheckStatus.NOT_APPLICABLE,
+            0.0,
+            output="No package.json found in project root",
+        )
+        _print_gate_inventory(
+            all_gates=["javascript:tests"],
+            profile_gates={"javascript:tests"},
+            results_map={"javascript:tests": r},
+            applicability={},
+            aliases={},
+            profile="pr",
+        )
+        out = capsys.readouterr().out
+        assert "n/a" in out
+        assert "No package.json found in project root" in out
 
     def test_shows_category_header(self, capsys):
         """Inventory groups gates under category headers."""
@@ -460,6 +480,21 @@ class TestPrintVerdict:
                 CheckStatus.SKIPPED,
                 0.0,
                 output="no JS",
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        _print_verdict(summary)
+        assert "no AI slop detected" in capsys.readouterr().out
+
+    def test_not_applicable_excluded_from_count(self, capsys):
+        """NOT_APPLICABLE gates are not counted in the total."""
+        results = [
+            CheckResult("python:tests", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "javascript:tests",
+                CheckStatus.NOT_APPLICABLE,
+                0.0,
+                output="No package.json found",
             ),
         ]
         summary = ExecutionSummary.from_results(results, 1.0)

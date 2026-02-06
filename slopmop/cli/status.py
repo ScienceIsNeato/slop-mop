@@ -96,6 +96,9 @@ def _print_gate_inventory(
                     line = f"   ❌ {gate_name:<28} — FAILING"
                 elif result.status == CheckStatus.ERROR:
                     line = f"   💥 {gate_name:<28} — ERROR"
+                elif result.status == CheckStatus.NOT_APPLICABLE:
+                    reason = result.output or "not applicable"
+                    line = f"   ⊘  {gate_name:<28} — n/a ({reason})"
                 elif result.status == CheckStatus.SKIPPED:
                     reason = result.output or "skipped"
                     line = f"   ⏭️  {gate_name:<28} — skipped ({reason})"
@@ -104,7 +107,7 @@ def _print_gate_inventory(
             else:
                 is_applicable, skip_reason = applicability.get(gate, (True, ""))
                 if not is_applicable:
-                    line = f"   ⊘  {gate_name:<28} — not applicable" f" ({skip_reason})"
+                    line = f"   ⊘  {gate_name:<28} — n/a ({skip_reason})"
                 else:
                     other = _find_other_profiles(gate, aliases, profile)
                     if other:
@@ -149,7 +152,11 @@ def _print_verdict(summary: ExecutionSummary) -> None:
     print()
     print("═" * 60)
 
-    ran = [r for r in summary.results if r.status != CheckStatus.SKIPPED]
+    ran = [
+        r
+        for r in summary.results
+        if r.status not in (CheckStatus.SKIPPED, CheckStatus.NOT_APPLICABLE)
+    ]
     failing = [r for r in ran if r.status in (CheckStatus.FAILED, CheckStatus.ERROR)]
 
     if not failing:

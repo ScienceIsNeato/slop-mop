@@ -455,7 +455,7 @@ class TestRunDetectSecrets:
 
 
 class TestSecurityCheck:
-    """Tests for SecurityCheck (full security with safety)."""
+    """Tests for SecurityCheck (full security with pip-audit)."""
 
     def test_name(self):
         """Test check name."""
@@ -468,13 +468,13 @@ class TestSecurityCheck:
         assert check.full_name == "security:full"
 
     def test_display_name(self):
-        """Test display name includes safety."""
+        """Test display name includes pip-audit."""
         check = SecurityCheck({})
         assert "Security Full" in check.display_name
-        assert "safety" in check.display_name
+        assert "pip-audit" in check.display_name
 
     def test_run_all_checks_passed(self, tmp_path):
-        """Test run() when all checks including safety pass."""
+        """Test run() when all checks including pip-audit pass."""
         (tmp_path / "app.py").write_text("print('hello')")
         check = SecurityCheck({})
 
@@ -482,7 +482,7 @@ class TestSecurityCheck:
             SecuritySubResult("bandit", True, "OK"),
             SecuritySubResult("semgrep", True, "OK"),
             SecuritySubResult("detect-secrets", True, "OK"),
-            SecuritySubResult("safety", True, "OK"),
+            SecuritySubResult("pip-audit", True, "OK"),
         ]
 
         with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
@@ -498,8 +498,8 @@ class TestSecurityCheck:
         assert result.status == CheckStatus.PASSED
         assert "security:full" in result.name
 
-    def test_run_safety_failure(self, tmp_path):
-        """Test run() when safety check fails."""
+    def test_run_pip_audit_failure(self, tmp_path):
+        """Test run() when pip-audit check fails."""
         (tmp_path / "app.py").write_text("print('hello')")
         check = SecurityCheck({})
 
@@ -507,7 +507,7 @@ class TestSecurityCheck:
             SecuritySubResult("bandit", True, "OK"),
             SecuritySubResult("semgrep", True, "OK"),
             SecuritySubResult("detect-secrets", True, "OK"),
-            SecuritySubResult("safety", False, "Vulnerable dependency found"),
+            SecuritySubResult("pip-audit", False, "Vulnerable dependency found"),
         ]
 
         with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
@@ -521,84 +521,90 @@ class TestSecurityCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
-        assert "safety" in result.output
+        assert "pip-audit" in result.output
 
 
-class TestRunSafety:
-    """Tests for _run_safety method."""
+class TestRunPipAudit:
+    """Tests for _run_pip_audit method."""
 
-    def test_safety_no_vulnerabilities(self, tmp_path):
-        """Test _run_safety with no vulnerable dependencies."""
+    def test_pip_audit_no_vulnerabilities(self, tmp_path):
+        """Test _run_pip_audit with no vulnerable dependencies."""
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.stdout = json.dumps(
+            {"dependencies": [{"name": "requests", "version": "2.31.0", "vulns": []}]}
+        )
 
         with patch.object(check, "_run_command", return_value=mock_result):
-            result = check._run_safety(str(tmp_path))
+            result = check._run_pip_audit(str(tmp_path))
 
-        assert result.name == "safety"
+        assert result.name == "pip-audit"
         assert result.passed is True
         assert "No vulnerable" in result.findings
 
-    def test_safety_with_vulnerabilities(self, tmp_path):
-        """Test _run_safety with vulnerabilities found."""
+    def test_pip_audit_with_vulnerabilities(self, tmp_path):
+        """Test _run_pip_audit with vulnerabilities found."""
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.output = json.dumps(
+        mock_result.stdout = json.dumps(
             {
-                "vulnerabilities": [
+                "dependencies": [
                     {
-                        "severity": "HIGH",
-                        "package_name": "requests",
-                        "installed_version": "2.25.0",
-                        "vulnerability_id": "CVE-2023-1234",
+                        "name": "requests",
+                        "version": "2.25.0",
+                        "vulns": [
+                            {
+                                "id": "CVE-2023-1234",
+                                "fix_versions": ["2.31.0"],
+                            }
+                        ],
                     }
                 ]
             }
         )
 
         with patch.object(check, "_run_command", return_value=mock_result):
-            result = check._run_safety(str(tmp_path))
+            result = check._run_pip_audit(str(tmp_path))
 
         assert result.passed is False
-        assert "HIGH" in result.findings
         assert "requests" in result.findings
         assert "CVE-2023-1234" in result.findings
 
-    def test_safety_no_vulnerabilities_in_report(self, tmp_path):
-        """Test _run_safety with empty vulnerabilities list."""
+    def test_pip_audit_empty_dependencies(self, tmp_path):
+        """Test _run_pip_audit with no dependencies listed."""
         check = SecurityCheck({})
         mock_result = MagicMock()
-        mock_result.success = False
-        mock_result.output = json.dumps({"vulnerabilities": []})
+        mock_result.success = True
+        mock_result.stdout = json.dumps({"dependencies": []})
 
         with patch.object(check, "_run_command", return_value=mock_result):
-            result = check._run_safety(str(tmp_path))
+            result = check._run_pip_audit(str(tmp_path))
 
         assert result.passed is True
 
-    def test_safety_json_error(self, tmp_path):
-        """Test _run_safety handles JSON parse errors."""
+    def test_pip_audit_json_error(self, tmp_path):
+        """Test _run_pip_audit handles JSON parse errors."""
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.output = "Error running safety"
+        mock_result.stdout = "Error running pip-audit"
+        mock_result.output = "Error running pip-audit"
 
         with patch.object(check, "_run_command", return_value=mock_result):
-            result = check._run_safety(str(tmp_path))
+            result = check._run_pip_audit(str(tmp_path))
 
         assert result.passed is False
 
-    def test_safety_with_config_file(self, tmp_path):
-        """Test _run_safety uses config file."""
-        check = SecurityCheck({"safety_config_file": "/path/to/.safety.yaml"})
+    def test_pip_audit_json_error_success(self, tmp_path):
+        """Test _run_pip_audit JSON error on successful return."""
+        check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.stdout = "not valid json"
 
-        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
-            check._run_safety(str(tmp_path))
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_pip_audit(str(tmp_path))
 
-        call_args = mock_run.call_args[0][0]
-        assert "--policy-file" in call_args
-        assert "/path/to/.safety.yaml" in call_args
+        assert result.passed is True

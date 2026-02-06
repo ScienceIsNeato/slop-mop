@@ -280,7 +280,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
         cmd = [
             self.get_project_python(project_root),
             "-m",
-            "diff_cover.diff_cover_script",
+            "diff_cover.diff_cover_tool",
             "coverage.xml",
             f"--compare-branch={compare_branch}",
             f"--fail-under={COVERAGE_THRESHOLD}",
@@ -355,7 +355,7 @@ class PythonNewCodeCoverageCheck(BaseCheck, PythonCheckMixin):
         cmd = [
             self.get_project_python(project_root),
             "-m",
-            "diff_cover.diff_cover_script",
+            "diff_cover.diff_cover_tool",
             "coverage.xml",
             f"--compare-branch={compare_branch}",
             f"--fail-under={COVERAGE_THRESHOLD}",

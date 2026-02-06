@@ -15,6 +15,7 @@ class CheckStatus(Enum):
     PASSED = "passed"
     FAILED = "failed"
     SKIPPED = "skipped"
+    NOT_APPLICABLE = "not_applicable"
     ERROR = "error"
 
     def __str__(self) -> str:
@@ -58,6 +59,7 @@ class CheckResult:
             CheckStatus.PASSED: "✅",
             CheckStatus.FAILED: "❌",
             CheckStatus.SKIPPED: "⏭️",
+            CheckStatus.NOT_APPLICABLE: "⊘",
             CheckStatus.ERROR: "💥",
         }.get(self.status, "❓")
         return f"{emoji} {self.name}: {self.status.value} ({self.duration:.2f}s)"
@@ -108,6 +110,7 @@ class ExecutionSummary:
     passed: int
     failed: int
     skipped: int
+    not_applicable: int
     errors: int
     total_duration: float
     results: List[CheckResult] = field(default_factory=list)
@@ -127,6 +130,9 @@ class ExecutionSummary:
             passed=sum(1 for r in results if r.status == CheckStatus.PASSED),
             failed=sum(1 for r in results if r.status == CheckStatus.FAILED),
             skipped=sum(1 for r in results if r.status == CheckStatus.SKIPPED),
+            not_applicable=sum(
+                1 for r in results if r.status == CheckStatus.NOT_APPLICABLE
+            ),
             errors=sum(1 for r in results if r.status == CheckStatus.ERROR),
             total_duration=duration,
             results=results,

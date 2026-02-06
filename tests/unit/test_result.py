@@ -16,6 +16,7 @@ class TestCheckStatus:
         assert CheckStatus.PASSED.value == "passed"
         assert CheckStatus.FAILED.value == "failed"
         assert CheckStatus.SKIPPED.value == "skipped"
+        assert CheckStatus.NOT_APPLICABLE.value == "not_applicable"
         assert CheckStatus.ERROR.value == "error"
 
     def test_status_str(self):
@@ -151,14 +152,16 @@ class TestExecutionSummary:
             CheckResult("check2", CheckStatus.FAILED, 2.0),
             CheckResult("check3", CheckStatus.SKIPPED, 0.0),
             CheckResult("check4", CheckStatus.ERROR, 1.0),
+            CheckResult("check5", CheckStatus.NOT_APPLICABLE, 0.0),
         ]
 
         summary = ExecutionSummary.from_results(results, 4.0)
 
-        assert summary.total_checks == 4
+        assert summary.total_checks == 5
         assert summary.passed == 1
         assert summary.failed == 1
         assert summary.skipped == 1
+        assert summary.not_applicable == 1
         assert summary.errors == 1
         assert summary.all_passed is False
 
