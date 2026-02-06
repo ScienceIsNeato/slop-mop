@@ -33,6 +33,8 @@ dev_requirements = [
     "detect-secrets>=1.4.0",
     "semgrep>=1.0.0",
     "pip-audit>=2.0.0",
+    # Quality analysis
+    "vulture>=2.14",
 ]
 
 setup(

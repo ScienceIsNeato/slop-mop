@@ -55,6 +55,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.quality import (
         BogusTestsCheck,
         ComplexityCheck,
+        DeadCodeCheck,
         LocLockCheck,
         SourceDuplicationCheck,
         StringDuplicationCheck,
@@ -65,6 +66,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(SecurityLocalCheck)
     registry.register(BogusTestsCheck)
     registry.register(ComplexityCheck)
+    registry.register(DeadCodeCheck)
     registry.register(SourceDuplicationCheck)
     registry.register(StringDuplicationCheck)
     registry.register(LocLockCheck)
@@ -82,6 +84,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:tests",
             "python:coverage",
             "quality:complexity",
+            "quality:dead-code",
             "quality:source-duplication",
             "quality:string-duplication",
             "quality:bogus-tests",
@@ -104,6 +107,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:diff-coverage",
             "python:new-code-coverage",
             "quality:complexity",
+            "quality:dead-code",
             "quality:source-duplication",
             "quality:string-duplication",
             "quality:bogus-tests",

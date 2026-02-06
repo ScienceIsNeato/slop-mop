@@ -53,6 +53,7 @@ class CommandValidator:
             "pytest",
             "coverage",
             "radon",
+            "vulture",
             "xenon",
             "bandit",
             "semgrep",
