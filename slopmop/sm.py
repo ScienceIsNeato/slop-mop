@@ -284,6 +284,39 @@ def _add_ci_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
+def _add_status_parser(subparsers: argparse._SubParsersAction) -> None:
+    """Add the status subcommand parser."""
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Run all gates and show full report card",
+        description="Run all gates without fail-fast and print a report card.",
+    )
+    status_parser.add_argument(
+        "profile",
+        nargs="?",
+        default="pr",
+        help="Profile to report on (default: pr)",
+    )
+    status_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Project root directory (default: current directory)",
+    )
+    status_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose output",
+    )
+    status_parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Minimal output (report card only)",
+    )
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser for sm CLI."""
     parser = argparse.ArgumentParser(
@@ -322,6 +355,7 @@ Examples:
     subparsers = parser.add_subparsers(dest="verb", help="Command to run")
 
     _add_validate_parser(subparsers)
+    _add_status_parser(subparsers)
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
     _add_init_parser(subparsers)
@@ -345,6 +379,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_config,
         cmd_help,
         cmd_init,
+        cmd_status,
         cmd_validate,
     )
 
@@ -360,6 +395,8 @@ def main(args: Optional[List[str]] = None) -> int:
     # Handle verbs
     if parsed_args.verb == "validate":
         return cmd_validate(parsed_args)
+    elif parsed_args.verb == "status":
+        return cmd_status(parsed_args)
     elif parsed_args.verb == "config":
         return cmd_config(parsed_args)
     elif parsed_args.verb == "help":
