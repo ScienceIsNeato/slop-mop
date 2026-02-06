@@ -145,7 +145,7 @@ The reason is consistency. The same gates run the same way every time, regardles
 | Gate                       | Description                                    |
 | -------------------------- | ---------------------------------------------- |
 | `python:lint-format`       | 🎨 Code formatting (black, isort, flake8)      |
-| `python:static-analysis`   | 🔍 Type checking (mypy)                        |
+| `python:static-analysis`   | 🔍 Type checking with strict typing (mypy)     |
 | `python:tests`             | 🧪 Test execution (pytest)                     |
 | `python:coverage`          | 📊 Coverage analysis (80% threshold)           |
 | `python:diff-coverage`     | 📊 Coverage on changed lines only (diff-cover) |
@@ -165,6 +165,8 @@ The reason is consistency. The same gates run the same way every time, regardles
 | Gate                         | Description                            |
 | ---------------------------- | -------------------------------------- |
 | `quality:complexity`         | 🌀 Cyclomatic complexity (radon)       |
+| `quality:dead-code`          | 💀 Dead code detection (vulture)       |
+| `quality:loc-lock`           | 📏 File and function length limits     |
 | `quality:source-duplication` | 📋 Code duplication detection (jscpd)  |
 | `quality:string-duplication` | 🔤 Duplicate string literal detection  |
 | `quality:bogus-tests`        | 🧟 Bogus test detection (AST analysis) |
@@ -175,15 +177,15 @@ The reason is consistency. The same gates run the same way every time, regardles
 | Gate             | Description                                                               |
 | ---------------- | ------------------------------------------------------------------------- |
 | `security:local` | 🔐 Fast local scan (bandit + semgrep + detect-secrets)                    |
-| `security:full`  | 🔒 Full audit (local scan + dependency vulnerability checking via safety) |
+| `security:full`  | 🔒 Full audit (local scan + dependency vulnerability checking via pip-audit) |
 
 ### Profiles (Gate Groups)
 
 | Profile  | Description           | Gates Included                                                                                                           |
 | -------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `commit` | Commit validation     | lint, static-analysis, tests, coverage, complexity, duplication (source + string), bogus-tests, security-local, JS gates |
-| `pr`     | Full PR validation    | All commit gates + PR comments, diff-coverage, new-code-coverage                                                         |
-| `quick`  | Ultra-fast lint check | lint, security-local                                                                                                     |
+| `commit` | Commit validation     | lint, static-analysis, tests, coverage, complexity, dead-code, loc-lock, duplication (source + string), bogus-tests, security-local, JS gates |
+| `pr`     | Full PR validation    | All commit gates + PR comments, diff-coverage, new-code-coverage, security-full                                                               |
+| `quick`  | Ultra-fast lint check | lint, security-local                                                                                                                          |
 
 ---
 
@@ -425,6 +427,10 @@ pytest
 # Self-validation (slop-mop validates itself!)
 sm validate --self
 ```
+
+### Adding New Gates
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete guide to adding new quality gates.
 
 ---
 

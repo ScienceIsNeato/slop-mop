@@ -3,12 +3,13 @@
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.core.registry import get_registry
 
 
-def _update_from_json(config_file: Path, config: dict, json_path: str) -> int:
+def _update_from_json(config_file: Path, config: dict[str, Any], json_path: str) -> int:
     """Update config from a JSON file."""
     json_file = Path(json_path)
     if not json_file.exists():
@@ -25,7 +26,7 @@ def _update_from_json(config_file: Path, config: dict, json_path: str) -> int:
     return 0
 
 
-def _enable_gate(config_file: Path, config: dict, gate_name: str) -> int:
+def _enable_gate(config_file: Path, config: dict[str, Any], gate_name: str) -> int:
     """Enable a disabled gate."""
     disabled = config.get("disabled_gates", [])
     if gate_name in disabled:
@@ -38,7 +39,7 @@ def _enable_gate(config_file: Path, config: dict, gate_name: str) -> int:
     return 0
 
 
-def _disable_gate(config_file: Path, config: dict, gate_name: str) -> int:
+def _disable_gate(config_file: Path, config: dict[str, Any], gate_name: str) -> int:
     """Disable a gate."""
     disabled = config.get("disabled_gates", [])
     if gate_name not in disabled:
@@ -51,7 +52,7 @@ def _disable_gate(config_file: Path, config: dict, gate_name: str) -> int:
     return 0
 
 
-def _show_config(project_root: Path, config_file: Path, config: dict) -> int:
+def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) -> int:
     """Display current configuration."""
     print("\n📋 Slop-Mop Configuration")
     print("=" * 60)

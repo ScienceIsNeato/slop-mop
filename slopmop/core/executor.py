@@ -8,7 +8,7 @@ import concurrent.futures
 import logging
 import threading
 import time
-from typing import Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.registry import CheckRegistry, get_registry
@@ -63,7 +63,7 @@ class CheckExecutor:
         self,
         project_root: str,
         check_names: List[str],
-        config: Optional[Dict] = None,
+        config: Optional[Dict[str, Any]] = None,
         auto_fix: bool = True,
     ) -> ExecutionSummary:
         """Run specified checks against a project.
@@ -122,7 +122,7 @@ class CheckExecutor:
         return ExecutionSummary.from_results(list(self._results.values()), duration)
 
     def _expand_dependencies(
-        self, checks: List[BaseCheck], config: Dict
+        self, checks: List[BaseCheck], config: Dict[str, Any]
     ) -> List[BaseCheck]:
         """Expand check list to include all dependencies.
 
@@ -205,7 +205,7 @@ class CheckExecutor:
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self._max_workers
         ) as executor:
-            futures: Dict[concurrent.futures.Future, str] = {}
+            futures: Dict[concurrent.futures.Future[CheckResult], str] = {}
 
             while (pending or futures) and not self._stop_event.is_set():
                 # Find checks whose dependencies are all completed
@@ -345,7 +345,7 @@ class CheckExecutor:
 def run_quality_checks(
     project_root: str,
     checks: List[str],
-    config: Optional[Dict] = None,
+    config: Optional[Dict[str, Any]] = None,
     fail_fast: bool = True,
     auto_fix: bool = True,
 ) -> ExecutionSummary:

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from slopmop.core.result import CheckResult, CheckStatus
-from slopmop.subprocess.runner import SubprocessRunner, get_runner
+from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,9 @@ class BaseCheck(ABC):
     - auto_fix(): Attempt to fix issues automatically
     """
 
-    def __init__(self, config: Dict, runner: Optional[SubprocessRunner] = None):
+    def __init__(
+        self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
+    ):
         """Initialize the check.
 
         Args:
@@ -265,7 +267,7 @@ class BaseCheck(ABC):
         command: List[str],
         cwd: Optional[str] = None,
         timeout: Optional[int] = None,
-    ):
+    ) -> SubprocessResult:
         """Run a command using the subprocess runner.
 
         Args:
@@ -283,9 +285,9 @@ class PythonCheckMixin:
     """Mixin for Python-specific check utilities."""
 
     # Class-level cache for venv warning (only warn once per project_root)
-    _venv_warning_shown: set = set()
+    _venv_warning_shown: set[str] = set()
     # Cache resolved Python path per project_root
-    _python_cache: dict = {}
+    _python_cache: dict[str, Optional[str]] = {}
 
     def _find_python_in_venv(self, venv_path: Path) -> Optional[str]:
         """Find Python executable in a venv directory (Unix or Windows)."""

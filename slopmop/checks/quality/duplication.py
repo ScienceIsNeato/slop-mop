@@ -24,7 +24,7 @@ MIN_LINES = 5
 class SourceDuplicationCheck(BaseCheck):
     """Cross-language code duplication detection via jscpd."""
 
-    def __init__(self, config: Dict, threshold: float = DEFAULT_THRESHOLD):
+    def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)
         self.threshold = config.get("threshold", threshold)
 
@@ -128,8 +128,12 @@ class SourceDuplicationCheck(BaseCheck):
         return None
 
     def _build_jscpd_command(
-        self, report_output: str, include_dirs: list, min_tokens: int, min_lines: int
-    ) -> list:
+        self,
+        report_output: str,
+        include_dirs: list[str],
+        min_tokens: int,
+        min_lines: int,
+    ) -> list[str]:
         """Build the jscpd command with all arguments."""
         config_excludes = self.config.get("exclude_dirs", [])
         all_ignores = list(dict.fromkeys(self._DEFAULT_IGNORES + config_excludes))
@@ -152,7 +156,7 @@ class SourceDuplicationCheck(BaseCheck):
             ignore_str + ",cursor-rules,**/__tests__/**,**/*.test.*,**/*.spec.*",
         ] + include_dirs
 
-    def _parse_report(self, report_path: str) -> Optional[dict]:
+    def _parse_report(self, report_path: str) -> Optional[dict[str, Any]]:
         """Parse jscpd JSON report. Returns None on error."""
         try:
             with open(report_path) as f:
@@ -160,7 +164,7 @@ class SourceDuplicationCheck(BaseCheck):
         except (json.JSONDecodeError, IOError):
             return None
 
-    def _format_result(self, report: dict, duration: float) -> CheckResult:
+    def _format_result(self, report: dict[str, Any], duration: float) -> CheckResult:
         """Format the check result from parsed report."""
         duplicates = report.get("duplicates", [])
         stats = report.get("statistics", {})
@@ -234,7 +238,7 @@ class SourceDuplicationCheck(BaseCheck):
                 return self._create_result(
                     status=CheckStatus.ERROR,
                     duration=duration,
-                    error=result.error or "jscpd failed to produce report",
+                    error=result.stderr or "jscpd failed to produce report",
                 )
 
             report = self._parse_report(report_path)

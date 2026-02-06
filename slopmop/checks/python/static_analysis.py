@@ -1,20 +1,34 @@
 """Python static analysis check using mypy."""
 
+import os
+import re
 import time
-from typing import List
+from collections import Counter
+from typing import Dict, List, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
+    ConfigField,
     GateCategory,
     PythonCheckMixin,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
+# mypy error code pattern: file.py:10: error: message  [code]
+_MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
+
 
 class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     """Python static analysis check.
 
-    Runs mypy for type checking.
+    Runs mypy for type checking. When strict_typing is enabled (default),
+    also enforces:
+      --disallow-untyped-defs   (functions must have type annotations)
+      --disallow-any-generics   (generic types like Dict, List must have
+                                 type parameters — Dict[str, Any] not Dict)
+
+    These catch the root-cause annotations that prevent type checkers from
+    cascading hundreds of "unknown type" errors downstream.
     """
 
     @property
@@ -23,11 +37,30 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🔍 Static Analysis (mypy)"
+        strict = self._is_strict()
+        label = "strict" if strict else "basic"
+        return f"🔍 Static Analysis (mypy {label})"
 
     @property
     def category(self) -> GateCategory:
         return GateCategory.PYTHON
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="strict_typing",
+                field_type="boolean",
+                default=True,
+                description=(
+                    "Enforce strict type annotations: require type params on "
+                    "generics (Dict[str, Any] not Dict) and annotations on all "
+                    "function signatures. Catches root-cause issues that would "
+                    "otherwise cascade into hundreds of 'unknown type' errors "
+                    "in editors like Pylance/pyright."
+                ),
+            ),
+        ]
 
     @property
     def depends_on(self) -> List[str]:
@@ -36,20 +69,18 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
 
-    def run(self, project_root: str) -> CheckResult:
-        """Run mypy type checking."""
-        start_time = time.time()
+    def _is_strict(self) -> bool:
+        """Whether strict typing mode is enabled."""
+        return self.config.get("strict_typing", True)
 
-        # Detect source directories to check
-        import os
+    def _detect_source_dirs(self, project_root: str) -> List[str]:
+        """Detect source directories to type-check."""
+        source_dirs: List[str] = []
 
-        source_dirs = []
         for name in ["src", "slopmop", "lib"]:
-            path = os.path.join(project_root, name)
-            if os.path.isdir(path):
+            if os.path.isdir(os.path.join(project_root, name)):
                 source_dirs.append(name)
 
-        # If no standard source dirs found, check for Python packages
         if not source_dirs:
             for entry in os.listdir(project_root):
                 entry_path = os.path.join(project_root, entry)
@@ -60,19 +91,83 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                 ):
                     source_dirs.append(entry)
 
-        if not source_dirs:
-            source_dirs = ["."]
+        return source_dirs or ["."]
 
-        result = self._run_command(
-            [
-                "mypy",
-                *source_dirs,
-                "--ignore-missing-imports",
-                "--no-strict-optional",
-            ],
-            cwd=project_root,
-            timeout=120,
+    def _build_command(self, source_dirs: List[str]) -> List[str]:
+        """Build the mypy command with configured flags."""
+        cmd = ["mypy", *source_dirs, "--ignore-missing-imports", "--no-strict-optional"]
+
+        if self._is_strict():
+            cmd.extend(["--disallow-untyped-defs", "--disallow-any-generics"])
+
+        return cmd
+
+    @staticmethod
+    def _dedup_output(raw_output: str) -> Tuple[List[str], Dict[str, int]]:
+        """Filter mypy output to root-cause errors only.
+
+        Strips 'note:' lines (hints/context) and returns:
+          - error_lines: the actual error messages
+          - code_counts: Counter of error codes for the summary header
+
+        mypy doesn't cascade like Pylance — each error IS a root cause.
+        The dedup here is about removing noise (notes), not collapsing
+        cascades.
+        """
+        error_lines: List[str] = []
+        code_counts: Dict[str, int] = Counter()
+
+        for line in raw_output.splitlines():
+            line = line.strip()
+            if not line or ": note:" in line:
+                continue
+            if "Found " in line and " error" in line:
+                continue  # Skip the summary line — we make our own
+
+            match = _MYPY_ERROR_RE.match(line)
+            if match:
+                code = match.group(4) or "unknown"
+                code_counts[code] += 1
+                error_lines.append(line)
+
+        return error_lines, dict(code_counts)
+
+    @staticmethod
+    def _format_summary(error_lines: List[str], code_counts: Dict[str, int]) -> str:
+        """Build a concise, LLM-friendly error report.
+
+        Groups errors by code for a summary header, then lists
+        each unique error. Caps output to avoid token bloat.
+        """
+        MAX_ERRORS_TO_SHOW = 20
+
+        parts: List[str] = []
+
+        # Summary header — what categories of errors exist
+        total = sum(code_counts.values())
+        breakdown = ", ".join(
+            f"{count} [{code}]" for code, count in sorted(code_counts.items())
         )
+        parts.append(f"{total} type error(s): {breakdown}")
+        parts.append("")
+
+        # Individual errors (capped)
+        for line in error_lines[:MAX_ERRORS_TO_SHOW]:
+            parts.append(f"  {line}")
+
+        if len(error_lines) > MAX_ERRORS_TO_SHOW:
+            remaining = len(error_lines) - MAX_ERRORS_TO_SHOW
+            parts.append(f"\n  ... and {remaining} more")
+
+        return "\n".join(parts)
+
+    def run(self, project_root: str) -> CheckResult:
+        """Run mypy type checking."""
+        start_time = time.time()
+
+        source_dirs = self._detect_source_dirs(project_root)
+        cmd = self._build_command(source_dirs)
+        result = self._run_command(cmd, cwd=project_root, timeout=120)
 
         duration = time.time() - start_time
 
@@ -85,16 +180,28 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
             )
 
         if not result.success:
-            # Count errors
-            lines = result.output.split("\n")
-            error_lines = [line for line in lines if ": error:" in line]
+            error_lines, code_counts = self._dedup_output(result.output)
+            output = self._format_summary(error_lines, code_counts)
+            total = sum(code_counts.values())
+
+            fix_parts = ["Fix type annotations or add # type: ignore comments."]
+            if "type-arg" in code_counts:
+                fix_parts.append(
+                    "type-arg: Add type parameters to generics "
+                    "(Dict[str, Any] not Dict)."
+                )
+            if "no-untyped-def" in code_counts:
+                fix_parts.append(
+                    "no-untyped-def: Add return type and parameter "
+                    "annotations to functions."
+                )
 
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
-                output=result.output,
-                error=f"{len(error_lines)} type error(s) found",
-                fix_suggestion="Fix type annotations or add # type: ignore comments",
+                output=output,
+                error=f"{total} type error(s) found",
+                fix_suggestion=" ".join(fix_parts),
             )
 
         return self._create_result(

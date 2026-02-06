@@ -8,7 +8,7 @@ import json
 import os
 import re
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -32,7 +32,7 @@ MAX_FILES_TO_SHOW = 5
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
     """Jest coverage threshold enforcement."""
 
-    def __init__(self, config: Dict, threshold: int = DEFAULT_THRESHOLD):
+    def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)
         self.threshold = config.get("threshold", threshold)
 
@@ -139,7 +139,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             error="Jest tests failed",
         )
 
-    def _parse_coverage_json(self, project_root: str) -> Optional[Dict]:
+    def _parse_coverage_json(self, project_root: str) -> Optional[Dict[str, Any]]:
         """Parse coverage-summary.json if available."""
         summary_path = os.path.join(project_root, "coverage", "coverage-summary.json")
         if not os.path.exists(summary_path):
@@ -151,7 +151,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             return None
 
     def _evaluate_coverage(
-        self, data: Dict, output: str, duration: float
+        self, data: Dict[str, Any], output: str, duration: float
     ) -> CheckResult:
         """Evaluate coverage from parsed JSON data."""
         total = data.get("total", {})

@@ -32,7 +32,7 @@ def _detect_typescript(project_root: Path) -> bool:
     return any(project_root.glob("**/*.ts"))
 
 
-def _detect_test_dirs(project_root: Path) -> list:
+def _detect_test_dirs(project_root: Path) -> list[str]:
     """Find test directories."""
     test_dirs = []
     for test_dir in ["tests", "test", "spec", "__tests__"]:
@@ -77,7 +77,7 @@ def _detect_jest(project_root: Path) -> bool:
     return False
 
 
-def _recommend_gates(detected: Dict[str, Any]) -> list:
+def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     """Determine recommended gates based on detection."""
     recommended = []
     if detected["has_python"]:

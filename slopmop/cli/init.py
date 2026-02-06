@@ -131,7 +131,9 @@ def _build_interactive_config(
     return config
 
 
-def _apply_detected_settings(base_config: Dict, detected: Dict[str, Any]) -> None:
+def _apply_detected_settings(
+    base_config: Dict[str, Any], detected: Dict[str, Any]
+) -> None:
     """Apply detected project settings to the base config."""
     if detected["has_python"]:
         base_config["python"]["enabled"] = True
@@ -151,7 +153,7 @@ def _apply_detected_settings(base_config: Dict, detected: Dict[str, Any]) -> Non
                 base_config["javascript"]["gates"][gate]["enabled"] = True
 
 
-def _apply_user_config(base_config: Dict, config: Dict[str, Any]) -> None:
+def _apply_user_config(base_config: Dict[str, Any], config: Dict[str, Any]) -> None:
     """Apply user config overrides to base config."""
     base_config["default_profile"] = config.get("default_profile", "commit")
 

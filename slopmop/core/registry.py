@@ -5,7 +5,7 @@ enabling dynamic check discovery and configuration-based selection.
 """
 
 import logging
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.result import CheckDefinition
@@ -23,7 +23,7 @@ class CheckRegistry:
     - Configuration-based filtering
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize an empty registry."""
         self._check_classes: Dict[str, Type[BaseCheck]] = {}
         self._aliases: Dict[str, List[str]] = {}
@@ -70,7 +70,7 @@ class CheckRegistry:
         self._aliases[alias] = check_names
         logger.debug(f"Registered alias '{alias}': {check_names}")
 
-    def get_check(self, name: str, config: Dict) -> Optional[BaseCheck]:
+    def get_check(self, name: str, config: Dict[str, Any]) -> Optional[BaseCheck]:
         """Get a single check instance by name.
 
         Args:
@@ -89,7 +89,9 @@ class CheckRegistry:
         gate_config = self._extract_gate_config(name, config)
         return check_class(gate_config)
 
-    def _extract_gate_config(self, name: str, full_config: Dict) -> Dict:
+    def _extract_gate_config(
+        self, name: str, full_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Extract gate-specific config from full config.
 
         Args:
@@ -113,7 +115,7 @@ class CheckRegistry:
         # Get specific gate config
         return gates.get(gate_name, {})
 
-    def get_checks(self, names: List[str], config: Dict) -> List[BaseCheck]:
+    def get_checks(self, names: List[str], config: Dict[str, Any]) -> List[BaseCheck]:
         """Get check instances by name, expanding aliases.
 
         Args:
@@ -184,7 +186,9 @@ class CheckRegistry:
         """List all registered aliases and their checks."""
         return dict(self._aliases)
 
-    def get_applicable_checks(self, project_root: str, config: Dict) -> List[BaseCheck]:
+    def get_applicable_checks(
+        self, project_root: str, config: Dict[str, Any]
+    ) -> List[BaseCheck]:
         """Get all checks that are applicable to a project.
 
         Args:

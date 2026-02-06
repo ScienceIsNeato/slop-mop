@@ -4,7 +4,7 @@ import argparse
 import re
 import stat
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 # Hook markers
 SB_HOOK_MARKER = "# MANAGED BY SLOP-MOP"
@@ -73,7 +73,7 @@ exit 0
 """
 
 
-def _parse_hook_info(hook_content: str) -> Optional[dict]:
+def _parse_hook_info(hook_content: str) -> Optional[dict[str, Any]]:
     """Parse sb-managed hook to extract info."""
     if SB_HOOK_MARKER not in hook_content:
         return None

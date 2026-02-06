@@ -123,7 +123,7 @@ class CommandValidator:
     )
 
     # Additional patterns for more sophisticated attacks
-    DANGEROUS_REGEX_PATTERNS: List[re.Pattern] = [
+    DANGEROUS_REGEX_PATTERNS: List[re.Pattern[str]] = [
         re.compile(r"\$\{.*\}"),  # Variable expansion ${...}
         re.compile(r"\$\(.*\)"),  # Command substitution $(...)
         re.compile(r"`.*`"),  # Command substitution `...`

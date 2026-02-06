@@ -146,7 +146,7 @@ class DeadCodeCheck(BaseCheck):
         against directory and file names (not full globs). Extract the
         meaningful name from each pattern.
         """
-        excludes = []
+        excludes: List[str] = []
         for pattern in patterns:
             # Strip glob wrapper: "**/venv/**" → "venv"
             name = pattern.strip("*").strip("/").strip("*")
@@ -192,7 +192,7 @@ class DeadCodeCheck(BaseCheck):
         Each line: file.py:42: unused function 'foo' (80% confidence)
         Returns: [(file, line, description, confidence), ...]
         """
-        findings = []
+        findings: List[Tuple[str, int, str, int]] = []
         pattern = re.compile(r"^(.+?):(\d+): (.+?) \((\d+)% confidence\)$")
         for line in output.splitlines():
             line = line.strip()

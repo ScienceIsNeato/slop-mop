@@ -20,20 +20,22 @@ Verbs:
     help          Show help for quality gates
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from slopmop.constants import PROJECT_ROOT_HELP
 
 logger = logging.getLogger(__name__)
 
 
-def load_config(project_root: Path) -> Dict:
+def load_config(project_root: Path) -> Dict[str, Any]:
     """Load configuration from .sb_config.json.
 
     Args:
@@ -67,7 +69,9 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-def _add_validate_parser(subparsers: argparse._SubParsersAction) -> None:
+def _add_validate_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     """Add the validate subcommand parser."""
     validate_parser = subparsers.add_parser(
         "validate",
@@ -123,7 +127,9 @@ def _add_validate_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _add_config_parser(subparsers: argparse._SubParsersAction) -> None:
+def _add_config_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     """Add the config subcommand parser."""
     config_parser = subparsers.add_parser(
         "config",
@@ -158,7 +164,9 @@ def _add_config_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _add_help_parser(subparsers: argparse._SubParsersAction) -> None:
+def _add_help_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     """Add the help subcommand parser."""
     help_parser = subparsers.add_parser(
         "help",
@@ -173,7 +181,9 @@ def _add_help_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _add_init_parser(subparsers: argparse._SubParsersAction) -> None:
+def _add_init_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     """Add the init subcommand parser."""
     init_parser = subparsers.add_parser(
         "init",
@@ -199,7 +209,9 @@ def _add_init_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _add_hooks_parser(subparsers: argparse._SubParsersAction) -> None:
+def _add_hooks_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     """Add the commit-hooks subcommand parser."""
     hooks_parser = subparsers.add_parser(
         "commit-hooks",
@@ -252,7 +264,9 @@ def _add_hooks_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _add_ci_parser(subparsers: argparse._SubParsersAction) -> None:
+def _add_ci_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     """Add the ci subcommand parser."""
     ci_parser = subparsers.add_parser(
         "ci",
@@ -286,7 +300,9 @@ def _add_ci_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _add_status_parser(subparsers: argparse._SubParsersAction) -> None:
+def _add_status_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
     """Add the status subcommand parser."""
     status_parser = subparsers.add_parser(
         "status",

@@ -5,7 +5,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def _detect_pr_number(project_root: Path) -> Optional[int]:
@@ -27,7 +27,7 @@ def _detect_pr_number(project_root: Path) -> Optional[int]:
 
 def _fetch_checks(
     project_root: Path, pr_number: int
-) -> Tuple[Optional[List[dict]], str]:
+) -> Tuple[Optional[List[Dict[str, Any]]], str]:
     """Fetch check status from GitHub.
 
     Returns (checks_list, error_message).
@@ -58,7 +58,9 @@ def _fetch_checks(
         return None, f"Failed to parse check data: {result.stdout}"
 
 
-def _categorize_checks(checks: List[dict]) -> Tuple[List, List, List]:
+def _categorize_checks(
+    checks: List[Dict[str, Any]],
+) -> Tuple[List[Any], List[Any], List[Any]]:
     """Categorize checks into completed, in_progress, and failed."""
     completed = []
     in_progress = []
@@ -84,7 +86,9 @@ def _categorize_checks(checks: List[dict]) -> Tuple[List, List, List]:
     return completed, in_progress, failed
 
 
-def _print_failed_status(completed: List, in_progress: List, failed: List) -> None:
+def _print_failed_status(
+    completed: List[Any], in_progress: List[Any], failed: List[Any]
+) -> None:
     """Print status when there are failures."""
     print("🧹 SLOP IN CI")
     print()
@@ -106,7 +110,7 @@ def _print_failed_status(completed: List, in_progress: List, failed: List) -> No
         print()
 
 
-def _print_in_progress_status(completed: List, in_progress: List) -> None:
+def _print_in_progress_status(completed: List[Any], in_progress: List[Any]) -> None:
     """Print status when checks are in progress."""
     print("🔄 CI IN PROGRESS")
     print()
@@ -118,7 +122,7 @@ def _print_in_progress_status(completed: List, in_progress: List) -> None:
     print()
 
 
-def _print_success_status(completed: List, total: int) -> None:
+def _print_success_status(completed: List[Any], total: int) -> None:
     """Print status when all checks pass."""
     print(f"✨ CI CLEAN · {len(completed)}/{total} checks passed")
     print()
