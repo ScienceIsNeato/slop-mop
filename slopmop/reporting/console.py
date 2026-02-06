@@ -25,6 +25,7 @@ class ConsoleReporter:
         CheckStatus.PASSED: "✅",
         CheckStatus.FAILED: "❌",
         CheckStatus.SKIPPED: "⏭️",
+        CheckStatus.NOT_APPLICABLE: "⊘",
         CheckStatus.ERROR: "💥",
     }
 
@@ -97,6 +98,51 @@ class ConsoleReporter:
         print("   " + "=" * 56)
         print()
 
+    @staticmethod
+    def _print_skip_sections(
+        skipped: list[CheckResult],
+        na: list[CheckResult],
+    ) -> None:
+        """Print skipped and not-applicable result sections."""
+        if skipped:
+            print()
+            print("⏭️  SKIPPED:")
+            for r in skipped:
+                reason = r.output if r.output else "Skipped"
+                print(f"   • {r.name}")
+                print(f"     └─ {reason}")
+
+        if na:
+            print()
+            print("⊘  NOT APPLICABLE:")
+            for r in na:
+                reason = r.output if r.output else "Not applicable to this project"
+                print(f"   • {r.name}")
+                print(f"     └─ {reason}")
+
+    @staticmethod
+    def _print_failure_sections(
+        failed: list[CheckResult],
+        errors: list[CheckResult],
+    ) -> None:
+        """Print failure and error detail sections."""
+        if failed:
+            print("❌ FAILED:")
+            for r in failed:
+                print(f"   • {r.name}")
+                if r.error:
+                    print(f"     └─ {r.error}")
+                if r.fix_suggestion:
+                    print(f"     💡 {r.fix_suggestion}")
+            print()
+
+        if errors:
+            print("💥 ERRORS (check couldn't run):")
+            for r in errors:
+                print(f"   • {r.name}")
+                print(f"     └─ {r.error}")
+            print()
+
     def print_summary(self, summary: ExecutionSummary) -> None:
         """Print execution summary.
 
@@ -110,10 +156,10 @@ class ConsoleReporter:
         passed = [r for r in summary.results if r.status == CheckStatus.PASSED]
         failed = [r for r in summary.results if r.status == CheckStatus.FAILED]
         skipped = [r for r in summary.results if r.status == CheckStatus.SKIPPED]
+        na = [r for r in summary.results if r.status == CheckStatus.NOT_APPLICABLE]
         errors = [r for r in summary.results if r.status == CheckStatus.ERROR]
 
         if summary.all_passed:
-            # Clean, minimal success output
             print(
                 f"✨ NO SLOP DETECTED · {summary.passed} checks passed in {summary.total_duration:.1f}s"
             )
@@ -121,13 +167,7 @@ class ConsoleReporter:
             if not self.quiet:
                 for r in passed:
                     print(f"   ✅ {r.name} ({r.duration:.2f}s)")
-            if skipped:
-                print()
-                print("⏭️  SKIPPED:")
-                for r in skipped:
-                    reason = r.output if r.output else "Not applicable to this project"
-                    print(f"   • {r.name}")
-                    print(f"     └─ {reason}")
+            self._print_skip_sections(skipped, na)
             print()
             return
 
@@ -145,37 +185,15 @@ class ConsoleReporter:
             counts.append(f"💥 {len(errors)} errored")
         if skipped:
             counts.append(f"⏭️  {len(skipped)} skipped")
+        if na:
+            counts.append(f"⊘  {len(na)} n/a")
 
         print(f"   {' · '.join(counts)} · ⏱️  {summary.total_duration:.1f}s")
         print()
 
-        # Show failures with details
-        if failed:
-            print("❌ FAILED:")
-            for r in failed:
-                print(f"   • {r.name}")
-                if r.error:
-                    print(f"     └─ {r.error}")
-                if r.fix_suggestion:
-                    print(f"     💡 {r.fix_suggestion}")
-            print()
-
-        # Show errors (check couldn't run at all)
-        if errors:
-            print("💥 ERRORS (check couldn't run):")
-            for r in errors:
-                print(f"   • {r.name}")
-                print(f"     └─ {r.error}")
-            print()
-
-        # Always show skipped checks with reason
-        if skipped:
-            print("⏭️  SKIPPED:")
-            for r in skipped:
-                reason = r.output if r.output else "Not applicable to this project"
-                print(f"   • {r.name}")
-                print(f"     └─ {reason}")
-            print()
+        self._print_failure_sections(failed, errors)
+        self._print_skip_sections(skipped, na)
+        print()
 
         # Final verdict with iteration guidance
         print("─" * 60)

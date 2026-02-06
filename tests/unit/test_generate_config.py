@@ -1,9 +1,9 @@
 """Tests for config generation utility."""
 
 import json
+import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.registry import CheckRegistry
@@ -248,19 +248,17 @@ class TestMain:
             assert "version" in config
 
     def test_main_defaults_to_cwd(self):
-        """Test that main defaults to current directory."""
+        """Test that main defaults to current directory when no path given."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("slopmop.utils.generate_base_config.Path") as mock_path:
-                mock_cwd = MagicMock()
-                mock_cwd.__truediv__ = MagicMock(
-                    return_value=Path(tmpdir) / ".sb_config.json"
-                )
-                mock_path.cwd.return_value = mock_cwd
-                mock_path.return_value = Path(tmpdir) / ".sb_config.json"
-
-                # This test is a bit complex due to Path mocking
-                # Just verify the function is callable with no args
-                # The actual default behavior is tested via integration
+            real_tmpdir = os.path.realpath(tmpdir)
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(real_tmpdir)
+                result = main(backup=False)
+                assert result == Path(real_tmpdir) / ".sb_config.json"
+                assert result.exists()
+            finally:
+                os.chdir(original_cwd)
 
 
 class TestTemplateConfig:

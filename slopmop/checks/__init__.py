@@ -53,6 +53,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
     from slopmop.checks.pr.comments import PRCommentsCheck
     from slopmop.checks.quality import (
+        BogusTestsCheck,
         ComplexityCheck,
         LocLockCheck,
         SourceDuplicationCheck,
@@ -62,6 +63,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
 
     registry.register(SecurityCheck)
     registry.register(SecurityLocalCheck)
+    registry.register(BogusTestsCheck)
     registry.register(ComplexityCheck)
     registry.register(SourceDuplicationCheck)
     registry.register(StringDuplicationCheck)
@@ -81,8 +83,13 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:coverage",
             "quality:complexity",
             "quality:source-duplication",
+            "quality:string-duplication",
+            "quality:bogus-tests",
             "quality:loc-lock",
             "security:local",
+            "javascript:lint-format",
+            "javascript:tests",
+            "javascript:coverage",
         ],
     )
 
@@ -98,6 +105,8 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:new-code-coverage",
             "quality:complexity",
             "quality:source-duplication",
+            "quality:string-duplication",
+            "quality:bogus-tests",
             "quality:loc-lock",
             "security:full",
             "javascript:lint-format",
@@ -138,6 +147,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "quality:complexity",
             "quality:source-duplication",
             "quality:string-duplication",
+            "quality:bogus-tests",
             "quality:loc-lock",
         ],
     )

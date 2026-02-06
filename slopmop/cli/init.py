@@ -186,17 +186,16 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print("=" * 60)
     print()
     print("Next steps:")
-    print(
-        f"  1. Run 'sm validate' to run the {config.get('default_profile', 'commit')} profile"
-    )
-    print("  2. Run 'sm validate pr' before opening a pull request")
-    print("  3. Run 'sm config' to view or modify gate settings")
-    print("  4. Run 'sm help' to see all available quality gates")
+    print(f"  1. Review the report card below to see where the repo stands")
+    print(f"  2. Disable any gates you're not ready for: sm config --disable <gate>")
+    print(f"  3. Run 'sm validate commit' and fix what fails")
+    print(f"  4. Gradually enable more gates and tighten thresholds over time")
     print()
-    print("Quick validation:")
-    print("  sm validate quick    # Fast lint-only check")
-    print("  sm validate commit   # Standard pre-commit validation")
+    print("Quick reference:")
+    print("  sm validate commit   # Fast pre-commit validation")
     print("  sm validate pr       # Full PR validation")
+    print("  sm status            # Full report card (no fail-fast)")
+    print("  sm config --show     # View current gate settings")
     print()
 
 
@@ -213,7 +212,9 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     print("\n🧹 Slop-Mop Interactive Setup")
     print("=" * 60)
-    print(f"📂 Project: {project_root}")
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
     print()
 
     # Load pre-populated config if provided
@@ -267,4 +268,14 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"✅ Configuration saved to: {config_file}")
 
     _print_next_steps(config)
+
+    # Run status to show the user where the repo stands
+    print("─" * 60)
+    print("Running all gates to show current repo status...")
+    print("─" * 60)
+
+    from slopmop.cli.status import run_status
+
+    run_status(project_root=str(project_root))
+
     return 0

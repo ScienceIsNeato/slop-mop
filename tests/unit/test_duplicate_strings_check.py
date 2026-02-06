@@ -46,6 +46,7 @@ class TestStringDuplicationCheck:
         assert "threshold" in field_names
         assert "min_file_count" in field_names
         assert "min_length" in field_names
+        assert "min_words" in field_names
         assert "include_patterns" in field_names
         assert "ignore_patterns" in field_names
 
@@ -69,19 +70,20 @@ class TestStringDuplicationCheck:
     def test_get_effective_config_defaults(self, check):
         """Test effective config has defaults."""
         config = check._get_effective_config()
-        assert config["threshold"] == 3
-        assert config["min_file_count"] == 2
-        assert config["min_length"] == 4
+        assert config["threshold"] == 2
+        assert config["min_file_count"] == 1
+        assert config["min_length"] == 8
+        assert config["min_words"] == 3
         assert "**/*.py" in config["include_patterns"]
 
     def test_get_effective_config_overrides(self):
         """Test effective config merges overrides."""
-        check = StringDuplicationCheck({"threshold": 5, "min_length": 10})
+        check = StringDuplicationCheck({"threshold": 10, "min_length": 12})
         config = check._get_effective_config()
-        assert config["threshold"] == 5
-        assert config["min_length"] == 10
+        assert config["threshold"] == 10
+        assert config["min_length"] == 12
         # Default should still be present
-        assert config["min_file_count"] == 2
+        assert config["min_file_count"] == 1
 
     def test_build_command_basic(self, check):
         """Test command building with basic config."""
@@ -91,7 +93,7 @@ class TestStringDuplicationCheck:
         assert "node" in cmd
         assert "--threshold" in cmd
         assert "--json" in cmd
-        assert "3" in cmd  # default threshold
+        assert "2" in cmd  # default threshold
 
     def test_build_command_with_ignore(self, check):
         """Test command includes ignore patterns."""
@@ -99,63 +101,65 @@ class TestStringDuplicationCheck:
         cmd = check._build_command(config)
 
         assert "--ignore" in cmd
-        # Should have comma-separated ignore list
+        # Should have comma-separated ignore list with glob patterns
         ignore_idx = cmd.index("--ignore")
-        assert "node_modules" in cmd[ignore_idx + 1]
+        assert "**/node_modules/**" in cmd[ignore_idx + 1]
 
-    def test_is_noise_whitespace(self, check):
-        """Test that whitespace patterns are detected as noise."""
+    def test_is_noise_short_strings(self, check):
+        """Test that short strings (< 8 chars) are detected as noise."""
         assert check._is_noise("\\n") is True
-        assert check._is_noise("\\t") is True
         assert check._is_noise(" ") is True
-
-    def test_is_noise_common_words(self, check):
-        """Test that common single words are detected as noise."""
         assert check._is_noise("id") is True
         assert check._is_noise("name") is True
-        assert check._is_noise("type") is True
-        assert check._is_noise("error") is True
-
-    def test_is_noise_http_methods(self, check):
-        """Test that HTTP methods are detected as noise."""
         assert check._is_noise("GET") is True
-        assert check._is_noise("POST") is True
-        assert check._is_noise("PUT") is True
+        assert check._is_noise("python") is True
 
-    def test_is_noise_case_insensitive(self, check):
-        """Test noise detection is case insensitive."""
-        assert check._is_noise("Name") is True
-        assert check._is_noise("NAME") is True
-        assert check._is_noise("True") is True
-        assert check._is_noise("FALSE") is True
+    def test_is_noise_file_extensions(self, check):
+        """Test that filenames with extensions are detected as noise."""
+        assert check._is_noise("setup.py") is True
+        assert check._is_noise("index.js") is True
+        assert check._is_noise("config.json") is True
+        assert check._is_noise("README.md") is True
+
+    def test_is_noise_cli_flags(self, check):
+        """Test that CLI flags are detected as noise."""
+        assert check._is_noise("--verbose") is True
+        assert check._is_noise("--threshold") is True
+        assert check._is_noise("-m") is True
+
+    def test_is_noise_import_paths(self, check):
+        """Test that module import paths are detected as noise."""
+        assert check._is_noise("os.path.join") is True
+        assert check._is_noise("slopmop.core.registry") is True
 
     def test_is_not_noise(self, check):
-        """Test that actual strings are not detected as noise."""
+        """Test that actual meaningful strings are not detected as noise."""
         assert check._is_noise("api_endpoint_url") is False
         assert check._is_noise("user_authentication") is False
         assert check._is_noise("database_connection") is False
+        assert check._is_noise("application/json") is False
 
     def test_filter_results_min_file_count(self, check):
         """Test filtering by minimum file count."""
         findings = [
             {
-                "key": "single_file_string",
+                "key": "only in one single file",
                 "count": 5,
                 "fileCount": 1,
                 "files": ["a.py"],
             },
             {
-                "key": "multi_file_string",
+                "key": "appears in multiple files",
                 "count": 3,
                 "fileCount": 2,
                 "files": ["a.py", "b.py"],
             },
         ]
-        config = {"min_file_count": 2, "min_length": 4}
+        config = {"min_file_count": 2, "min_length": 4, "min_words": 1}
         filtered = check._filter_results(findings, config)
 
         assert len(filtered) == 1
-        assert filtered[0]["key"] == "multi_file_string"
+        assert filtered[0]["key"] == "appears in multiple files"
 
     def test_filter_results_min_length(self, check):
         """Test filtering by minimum string length."""
@@ -167,17 +171,17 @@ class TestStringDuplicationCheck:
                 "files": ["a.py", "b.py"],
             },
             {
-                "key": "long_string_here",
+                "key": "a longer string that qualifies",
                 "count": 3,
                 "fileCount": 2,
                 "files": ["a.py", "b.py"],
             },
         ]
-        config = {"min_file_count": 1, "min_length": 4}
+        config = {"min_file_count": 1, "min_length": 4, "min_words": 1}
         filtered = check._filter_results(findings, config)
 
         assert len(filtered) == 1
-        assert filtered[0]["key"] == "long_string_here"
+        assert filtered[0]["key"] == "a longer string that qualifies"
 
     def test_filter_results_noise(self, check):
         """Test filtering removes noise patterns."""
@@ -185,17 +189,61 @@ class TestStringDuplicationCheck:
             {"key": "\\n", "count": 100, "fileCount": 50, "files": ["a.py"]},
             {"key": "name", "count": 50, "fileCount": 25, "files": ["a.py"]},
             {
-                "key": "actual_duplicate",
+                "key": "an actual duplicate string here",
                 "count": 5,
                 "fileCount": 3,
                 "files": ["a.py", "b.py", "c.py"],
             },
         ]
-        config = {"min_file_count": 2, "min_length": 4}
+        config = {"min_file_count": 2, "min_length": 4, "min_words": 1}
         filtered = check._filter_results(findings, config)
 
         assert len(filtered) == 1
-        assert filtered[0]["key"] == "actual_duplicate"
+        assert filtered[0]["key"] == "an actual duplicate string here"
+
+    def test_filter_results_min_words(self, check):
+        """Test filtering by minimum word count."""
+        findings = [
+            {
+                "key": "store_true",
+                "count": 14,
+                "fileCount": 3,
+                "files": ["a.py", "b.py", "c.py"],
+            },
+            {
+                "key": "some identifier",
+                "count": 10,
+                "fileCount": 3,
+                "files": ["a.py", "b.py", "c.py"],
+            },
+            {
+                "key": "please extract this constant string",
+                "count": 5,
+                "fileCount": 3,
+                "files": ["a.py", "b.py", "c.py"],
+            },
+        ]
+        # min_words=3 filters 1-word and 2-word strings
+        config = {"min_file_count": 1, "min_length": 4, "min_words": 3}
+        filtered = check._filter_results(findings, config)
+
+        assert len(filtered) == 1
+        assert filtered[0]["key"] == "please extract this constant string"
+
+    def test_filter_results_min_words_set_to_one(self, check):
+        """Test min_words=1 allows single-word strings through."""
+        findings = [
+            {
+                "key": "description",
+                "count": 10,
+                "fileCount": 3,
+                "files": ["a.py", "b.py", "c.py"],
+            },
+        ]
+        config = {"min_file_count": 1, "min_length": 4, "min_words": 1}
+        filtered = check._filter_results(findings, config)
+
+        assert len(filtered) == 1
 
     def test_format_findings_empty(self, check):
         """Test formatting with no findings."""
@@ -282,10 +330,10 @@ class TestStringDuplicationCheck:
     @patch.object(StringDuplicationCheck, "_run_command")
     def test_run_with_duplicates(self, mock_run, check, tmp_path):
         """Test run when duplicates are found."""
-        # Return findings that pass the filter
+        # Return findings that pass the filter (multi-word to pass min_words=3)
         findings = [
             {
-                "key": "significant_duplicate_string",
+                "key": "a significant duplicate string found here",
                 "count": 10,
                 "fileCount": 5,
                 "files": [f"file{i}.py" for i in range(5)],
@@ -303,7 +351,7 @@ class TestStringDuplicationCheck:
                 result = check.run(str(tmp_path))
 
                 assert result.status == CheckStatus.FAILED
-                assert "significant_duplicate_string" in result.output
+                assert "a significant duplicate string found here" in result.output
 
     @patch.object(StringDuplicationCheck, "_run_command")
     def test_run_json_parse_error(self, mock_run, check, tmp_path):

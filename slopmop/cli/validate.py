@@ -78,7 +78,9 @@ def _print_header(
     """Print validation header."""
     print("\n🧹 sm validate - Quality Gate Validation")
     print("=" * 60)
-    print(f"📂 Project: {project_root}")
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
     if args.self_validate:
         print("🔄 Mode: Self-validation (using isolated config)")
     print(f"🔍 Quality Gates: {', '.join(gates)}")

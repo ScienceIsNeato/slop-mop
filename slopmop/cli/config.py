@@ -55,7 +55,9 @@ def _show_config(project_root: Path, config_file: Path, config: dict) -> int:
     """Display current configuration."""
     print("\n📋 Slop-Mop Configuration")
     print("=" * 60)
-    print(f"📂 Project: {project_root}")
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
     print(f"📄 Config file: {config_file}")
     print()
 

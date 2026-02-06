@@ -18,6 +18,13 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
+from slopmop.constants import (
+    COVERAGE_BELOW_THRESHOLD,
+    COVERAGE_GUIDANCE_FOOTER,
+    COVERAGE_MEETS_THRESHOLD,
+    COVERAGE_STANDARDS_PREFIX,
+    COVERAGE_XML_NOT_FOUND,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 COVERAGE_THRESHOLD = 80
@@ -107,7 +114,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 status=CheckStatus.FAILED,
                 duration=time.time() - start_time,
                 output="",
-                error="coverage.xml not found",
+                error=COVERAGE_XML_NOT_FOUND,
                 fix_suggestion="Run python-tests check first to generate coverage data",
             )
 
@@ -143,7 +150,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
-                output="Coverage meets required threshold.",
+                output=COVERAGE_MEETS_THRESHOLD,
             )
 
         # Coverage below threshold - provide prescriptive output
@@ -156,7 +163,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             status=CheckStatus.FAILED,
             duration=duration,
             output=prescriptive_output,
-            error="Coverage below threshold",
+            error=COVERAGE_BELOW_THRESHOLD,
             fix_suggestion="Add tests for the files and lines listed above.",
         )
 
@@ -197,8 +204,8 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         """
         lines = []
         lines.append(
-            "This commit doesn't meet code coverage standards. "
-            "Add high-quality test coverage to the following areas:"
+            COVERAGE_STANDARDS_PREFIX
+            + "Add high-quality test coverage to the following areas:"
         )
         lines.append("")
 
@@ -215,10 +222,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             lines.append(f"  ... and {remaining} more files")
             lines.append("")
 
-        lines.append(
-            "When adding coverage, extend existing tests when possible. "
-            "Focus on meaningful assertions, not just line coverage."
-        )
+        lines.append(COVERAGE_GUIDANCE_FOOTER)
         lines.append("")
 
         return "\n".join(lines)
@@ -272,7 +276,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
             return self._create_result(
                 status=CheckStatus.ERROR,
                 duration=time.time() - start_time,
-                error="coverage.xml not found",
+                error=COVERAGE_XML_NOT_FOUND,
                 fix_suggestion="Run python-tests first to generate coverage data",
             )
 
@@ -280,7 +284,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
         cmd = [
             self.get_project_python(project_root),
             "-m",
-            "diff_cover.diff_cover_script",
+            "diff_cover.diff_cover_tool",
             "coverage.xml",
             f"--compare-branch={compare_branch}",
             f"--fail-under={COVERAGE_THRESHOLD}",
@@ -347,7 +351,7 @@ class PythonNewCodeCoverageCheck(BaseCheck, PythonCheckMixin):
             return self._create_result(
                 status=CheckStatus.ERROR,
                 duration=time.time() - start_time,
-                error="coverage.xml not found",
+                error=COVERAGE_XML_NOT_FOUND,
                 fix_suggestion="Run python-tests first to generate coverage data",
             )
 
@@ -355,7 +359,7 @@ class PythonNewCodeCoverageCheck(BaseCheck, PythonCheckMixin):
         cmd = [
             self.get_project_python(project_root),
             "-m",
-            "diff_cover.diff_cover_script",
+            "diff_cover.diff_cover_tool",
             "coverage.xml",
             f"--compare-branch={compare_branch}",
             f"--fail-under={COVERAGE_THRESHOLD}",

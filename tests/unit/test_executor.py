@@ -143,7 +143,7 @@ class TestCheckExecutor:
         assert check_class2.run_count == 1
 
     def test_skips_inapplicable_checks(self, tmp_path):
-        """Test that inapplicable checks are skipped."""
+        """Test that inapplicable checks are marked not applicable."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", applicable=True)
         check_class2 = make_mock_check_class("check2", applicable=False)
@@ -154,7 +154,7 @@ class TestCheckExecutor:
         summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
         assert summary.passed == 1
-        assert summary.skipped == 1
+        assert summary.not_applicable == 1
         assert check_class1.run_count == 1
         assert check_class2.run_count == 0
 
@@ -337,7 +337,7 @@ class TestCheckExecutor:
         assert ConfigCheck.received_config == {"key": "value"}
 
     def test_all_checks_inapplicable_returns_early(self, tmp_path):
-        """Test that when all checks are inapplicable, we return early with skipped."""
+        """Test that when all checks are inapplicable, we return early with not_applicable."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", applicable=False)
         check_class2 = make_mock_check_class("check2", applicable=False)
@@ -347,9 +347,9 @@ class TestCheckExecutor:
         executor = CheckExecutor(registry=registry)
         summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
-        # All checks should be skipped
+        # All checks should be not applicable
         assert summary.total_checks == 2
-        assert summary.skipped == 2
+        assert summary.not_applicable == 2
         assert summary.passed == 0
         assert check_class1.run_count == 0
         assert check_class2.run_count == 0

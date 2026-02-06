@@ -16,9 +16,17 @@ from slopmop.checks.base import (
     GateCategory,
     JavaScriptCheckMixin,
 )
+from slopmop.constants import (
+    COVERAGE_BELOW_THRESHOLD,
+    COVERAGE_GUIDANCE_FOOTER,
+    COVERAGE_MEETS_THRESHOLD,
+    COVERAGE_STANDARDS_PREFIX,
+    NPM_INSTALL_FAILED,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 80
+MAX_FILES_TO_SHOW = 5
 
 
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
@@ -72,7 +80,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 return self._create_result(
                     status=CheckStatus.ERROR,
                     duration=time.time() - start_time,
-                    error="npm install failed",
+                    error=NPM_INSTALL_FAILED,
                     output=npm_result.output,
                 )
 
@@ -102,18 +110,17 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 return self._create_result(
                     status=CheckStatus.PASSED,
                     duration=duration,
-                    output="Coverage meets required threshold.",
+                    output=COVERAGE_MEETS_THRESHOLD,
                 )
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=(
-                    "This commit doesn't meet code coverage standards. "
-                    "Add high-quality test coverage to the codebase.\n\n"
-                    "When adding coverage, extend existing tests when possible. "
-                    "Focus on meaningful assertions, not just line coverage."
+                    COVERAGE_STANDARDS_PREFIX
+                    + "Add high-quality test coverage to the codebase.\n\n"
+                    + COVERAGE_GUIDANCE_FOOTER
                 ),
-                error="Coverage below threshold",
+                error=COVERAGE_BELOW_THRESHOLD,
                 fix_suggestion="Add tests to increase coverage.",
             )
 
@@ -155,7 +162,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
-                output="Coverage meets required threshold.",
+                output=COVERAGE_MEETS_THRESHOLD,
             )
 
         # Find lowest coverage files
@@ -170,23 +177,20 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         low_files.sort(key=lambda x: x[1])
 
         lines = [
-            "This commit doesn't meet code coverage standards. "
-            "Add high-quality test coverage to the following areas:",
+            COVERAGE_STANDARDS_PREFIX
+            + "Add high-quality test coverage to the following areas:",
             "",
         ]
-        for path, file_pct in low_files[:5]:
+        for path, file_pct in low_files[:MAX_FILES_TO_SHOW]:
             lines.append(f"  {path}")
         lines.append("")
-        lines.append(
-            "When adding coverage, extend existing tests when possible. "
-            "Focus on meaningful assertions, not just line coverage."
-        )
+        lines.append(COVERAGE_GUIDANCE_FOOTER)
 
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output="\n".join(lines),
-            error="Coverage below threshold",
+            error=COVERAGE_BELOW_THRESHOLD,
             fix_suggestion="Add tests to increase coverage.",
         )
 

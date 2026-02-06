@@ -9,6 +9,7 @@ from slopmop.checks.base import (
     GateCategory,
     JavaScriptCheckMixin,
 )
+from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -61,7 +62,7 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 return self._create_result(
                     status=CheckStatus.ERROR,
                     duration=time.time() - start_time,
-                    error="npm install failed",
+                    error=NPM_INSTALL_FAILED,
                     output=npm_result.output,
                 )
 

@@ -2,7 +2,7 @@
 
 Two variants:
 - SecurityLocalCheck: Local-only checks (bandit + semgrep + detect-secrets)
-- SecurityCheck: Full audit including dependency scanning via safety
+- SecurityCheck: Full audit including dependency scanning via pip-audit
 
 Runs sub-checks concurrently for speed. Reports only HIGH/MEDIUM findings
 to reduce noise while catching real security issues.
@@ -12,7 +12,6 @@ with code files, not just Python projects.
 """
 
 import json
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -24,6 +23,7 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
+from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus
 
 EXCLUDED_DIRS = [
@@ -191,7 +191,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             if result.stderr and "error" in result.stderr.lower():
                 return SecuritySubResult("bandit", False, result.stderr[-500:])
             # Otherwise bandit ran but produced no JSON (likely no issues)
-            return SecuritySubResult("bandit", True, "No issues found")
+            return SecuritySubResult("bandit", True, NO_ISSUES_FOUND)
 
     def _run_semgrep(self, project_root: str) -> SecuritySubResult:
         """Run semgrep static analysis."""
@@ -202,13 +202,13 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 
         if result.success:
-            return SecuritySubResult("semgrep", True, "No issues found")
+            return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
 
         try:
             report = json.loads(result.stdout)
             findings = report.get("results", [])
             if not findings:
-                return SecuritySubResult("semgrep", True, "No issues found")
+                return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
 
             critical = [
                 f
@@ -272,7 +272,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 class SecurityCheck(SecurityLocalCheck):
     """Full security checks including dependency vulnerability scanning.
 
-    Extends SecurityLocalCheck with safety for dependency audit.
+    Extends SecurityLocalCheck with pip-audit for dependency audit.
     Requires network access.
     """
 
@@ -282,7 +282,7 @@ class SecurityCheck(SecurityLocalCheck):
 
     @property
     def display_name(self) -> str:
-        return "🔒 Security Full (bandit + semgrep + detect-secrets + safety)"
+        return "🔒 Security Full (bandit + semgrep + detect-secrets + pip-audit)"
 
     def run(self, project_root: str) -> CheckResult:
         """Run all security checks including dependency scanning."""
@@ -292,7 +292,7 @@ class SecurityCheck(SecurityLocalCheck):
             self._run_bandit,
             self._run_semgrep,
             self._run_detect_secrets,
-            self._run_safety,
+            self._run_pip_audit,
         ]
 
         results: List[SecuritySubResult] = []
@@ -328,46 +328,45 @@ class SecurityCheck(SecurityLocalCheck):
             fix_suggestion="Address HIGH severity issues first. They block merge.",
         )
 
-    def _run_safety(self, project_root: str) -> SecuritySubResult:
-        """Run safety dependency vulnerability scan."""
-        api_key = os.environ.get("SAFETY_API_KEY", "")
+    def _run_pip_audit(self, project_root: str) -> SecuritySubResult:
+        """Run pip-audit dependency vulnerability scan.
 
-        # Check for safety config file
-        safety_config = self.config.get("safety_config_file")
-
+        pip-audit is fast (~1s), offline-capable, and uses the OSV database.
+        Replaces safety which hangs on `safety scan` with no API key.
+        """
         cmd = [
             self.get_project_python(project_root),
             "-m",
-            "safety",
-            "scan",
-            "--output",
+            "pip_audit",
+            "--format",
             "json",
         ]
-        if api_key:
-            cmd.extend(["--key", api_key])
-        if safety_config:
-            cmd.extend(["--policy-file", safety_config])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
-
-        if result.success:
-            return SecuritySubResult("safety", True, "No vulnerable dependencies")
+        result = self._run_command(cmd, cwd=project_root, timeout=30)
 
         try:
-            report = json.loads(result.output)
-            vulns = report.get("vulnerabilities", [])
-            if not vulns:
-                return SecuritySubResult("safety", True, "No vulnerabilities found")
+            report = json.loads(result.stdout)
+            deps = report.get("dependencies", [])
+            vulnerable = [d for d in deps if d.get("vulns")]
+            if not vulnerable:
+                return SecuritySubResult(
+                    "pip-audit", True, "No vulnerable dependencies"
+                )
 
             detail = "\n".join(
-                f"  [{v.get('severity', '?')}] {v.get('package_name', '')} "
-                f"{v.get('installed_version', '')} - {v.get('vulnerability_id', '')}"
-                for v in vulns[:10]
+                f"  {d['name']} {d.get('version', '?')}: "
+                + ", ".join(
+                    f"{v.get('id', '?')} ({', '.join(map(str, v.get('fix_versions', ['no fix'])))})"
+                    for v in d.get("vulns", [])[:3]
+                )
+                for d in vulnerable[:10]
             )
-            return SecuritySubResult("safety", False, detail)
+            return SecuritySubResult("pip-audit", False, detail)
         except json.JSONDecodeError:
+            if result.success:
+                return SecuritySubResult("pip-audit", True, "No vulnerabilities found")
             return SecuritySubResult(
-                "safety",
+                "pip-audit",
                 False,
-                result.output[-300:] if result.output else "Safety scan failed",
+                result.output[-300:] if result.output else "pip-audit scan failed",
             )

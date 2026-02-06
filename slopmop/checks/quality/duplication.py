@@ -86,7 +86,7 @@ class SourceDuplicationCheck(BaseCheck):
         return False
 
     def skip_reason(self, project_root: str) -> str:
-        """Return reason for skipping."""
+        """Return skip reason when no source code is detected."""
         # Check for source files first
         has_code = False
         for ext in [".py", ".js", ".ts", ".jsx", ".tsx"]:

@@ -76,7 +76,7 @@ class PRCommentsCheck(BaseCheck):
         return pr_number is not None
 
     def skip_reason(self, project_root: str) -> str:
-        """Return reason for skipping."""
+        """Return skip reason when git or PR context is unavailable."""
         git_dir = os.path.join(project_root, ".git")
         if not os.path.isdir(git_dir):
             return "Not a git repository"
