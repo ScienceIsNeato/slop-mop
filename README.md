@@ -10,13 +10,19 @@
 
 LLMs are reward hackers. They optimize for task completion — not codebase health. Left unsupervised, they cargo-cult patterns, duplicate code they can't see, and put blinders on for momentum. The result is technical debt that accumulates faster than any human team could produce.
 
-You can't prompt-engineer this away. The tension between *shipping* and *maintaining* is genuinely unsolved. Humans struggle with it too. But LLMs struggle in predictable, repeatable ways — and that's an opening.
+You can't prompt-engineer this away. The tension between *shipping* and *maintaining* is genuinely unsolved. Humans struggle with it too. But LLMs struggle in predictable, repeatable ways, which at least makes some of it automatable.
+
+### Who This Is For
+
+Slop-Mop was built for dev teams of one — a single human partnered with AI coding agents. On a traditional team, you have code review, pair programming, and institutional knowledge spread across people. When it's just you and your LLMs, you don't have any of that. You're the only mind reviewing tens of thousands of lines of generated code, and there aren't enough hours in the day to catch everything your AI partners are producing.
+
+You need something that watches the codebase *for* you. Not perfectly — but well enough to catch the predictable stuff so you can focus on the decisions only a human can make.
 
 ## So What Is This?
 
 Slop-Mop is a set of quality gates you bolt onto a project. It works in two phases:
 
-**Phase 1: Remediation.** Bolt it onto an existing repo, run it, and fix what it finds. Duplication, missing tests, complexity rot, security holes, format drift — the accumulated debt that piles up when agents operate unchecked. This alone can bring a neglected codebase back to maintainable.
+**Phase 1: Remediation.** Bolt it onto an existing repo, run it, and fix what it finds. Duplication, missing tests, complexity rot, security holes, format drift — the accumulated debt that piles up when agents operate unchecked.
 
 **Phase 2: Maintenance.** Once the gates pass, keep them passing. This is the harder part. Every commit, every PR, every agent session runs through the same gates. Debt doesn't accumulate (as much) because it gets caught before it lands.
 
@@ -24,15 +30,16 @@ Slop-Mop is a set of quality gates you bolt onto a project. It works in two phas
 
 When you tell an LLM exactly what to do, it typically does it well. When you don't, it decides for itself — and after years of watching what happens when it decides for itself, the answer is usually unnecessary churn.
 
-Slop-Mop's output has been refined to give agents exact instructions in specific failure scenarios. Instead of vague "fix the code quality" guidance, it tells the model precisely what command to run, what threshold was violated, and what to do next. This keeps agents hyper-focused on the mechanical quality work, freeing up their actual power for the things that matter: architectural decisions and feature integration.
+Slop-Mop's output has been refined to give agents exact instructions in specific failure scenarios. Instead of vague "fix the code quality" guidance, it tells the model precisely what command to run, what threshold was violated, and what to do next. The thinking is that agents left to interpret quality problems on their own tend to go sideways — rewriting things that didn't need rewriting, or "fixing" one issue by creating two more.
 
 ### What It Catches
 
-- **Duplication** — LLMs reinvent what they can't see. Duplication detection surfaces it.
+- **Duplication** — LLMs reinvent what they can't see. Duplication detection surfaces it. There's also a string-level variant (`quality:string-duplication`) that finds repeated string literals across files and pushes them into a shared constants module. A side effect of this: when source and test code reference the same constant instead of independently hardcoding the same string, changing the value in one place updates both. Tests stay in sync with the code they exercise, which makes them less brittle over time.
 - **Coverage gaps** — Tests that don't exercise the code, or code with no tests at all.
 - **Complexity creep** — Functions that grow without pushback.
-- **Security blind spots** — Patterns a human reviewer would flag.
+- **Security blind spots** — `bandit` and `semgrep` catch insecure code patterns (SQL injection, hardcoded credentials, unsafe deserialization). `detect-secrets` uses entropy analysis and pattern matching to find API keys, passwords, and PII that would be embarrassing or dangerous to commit. Agents don't think twice about dropping a connection string inline.
 - **Format entropy** — Consistency erosion across agent sessions.
+- **Bogus tests** — Tests that exist structurally but don't test anything: empty bodies, `assert True`, functions with no assertions. Agents under coverage pressure will create these to satisfy the gate without doing the work. AST analysis catches them.
 
 ---
 
@@ -103,13 +110,13 @@ sm validate commit
 
 ## Design Choices
 
-Some opinions baked into the tool, for better or worse:
+Some opinions baked into the tool:
 
-- **Fail-fast by default.** Stops at the first failing gate rather than running everything. The theory is that fixing one thing at a time produces better results than dumping a wall of errors.
+- **Fail-fast by default.** Stops at the first failing gate rather than running everything. The assumption is that fixing one thing at a time produces fewer regressions than dumping a wall of errors at once.
 - **Profiles over flags.** `sm validate commit` is easier to remember (and harder to get wrong) than a list of individual gate names.
 - **Auto-detection.** Slop-Mop looks at your project structure and enables relevant gates. You can override this, but the goal is zero-config for common setups.
-- **Actionable output.** Error messages include the exact command to re-run the failing gate. This matters more for AI agents than humans, but it doesn't hurt either way.
-- **Self-dogfooding.** `sm validate --self` runs slop-mop's own gates against itself. If we can't pass our own checks, something's wrong.
+- **Actionable output.** Error messages include the exact command to re-run the failing gate.
+- **Self-dogfooding.** `sm validate --self` runs slop-mop's own gates against itself.
 
 ### A Note on Tool Use
 
@@ -125,7 +132,7 @@ mypy src/
 sm validate commit
 ```
 
-Not because slop-mop is magic, but because it standardizes the workflow. The same gates run the same way every time, which means less drift between sessions.
+The reason is consistency. The same gates run the same way every time, regardless of which agent session is running them or how long it's been since the last one.
 
 ---
 
@@ -139,8 +146,8 @@ Not because slop-mop is magic, but because it standardizes the workflow. The sam
 | `python:static-analysis`   | 🔍 Type checking (mypy)                   |
 | `python:tests`             | 🧪 Test execution (pytest)                |
 | `python:coverage`          | 📊 Coverage analysis (80% threshold)      |
-| `python:diff-coverage`     | 📊 Coverage on changed files only         |
-| `python:new-code-coverage` | 📊 Coverage for new code in PR            |
+| `python:diff-coverage`     | 📊 Coverage on changed lines only (diff-cover) |
+| `python:new-code-coverage` | 📊 Alias for diff-coverage (CI compat)    |
 
 ### JavaScript Gates
 
@@ -156,21 +163,23 @@ Not because slop-mop is magic, but because it standardizes the workflow. The sam
 | Gate                       | Description                           |
 | -------------------------- | ------------------------------------- |
 | `quality:complexity`       | 🌀 Cyclomatic complexity (radon)      |
-| `quality:source-duplication`| 📋 Code duplication detection (jscpd)|
-| `general:templates`        | 📄 Template syntax validation         |
+| `quality:source-duplication`| 📋 Code duplication detection (jscpd)     |
+| `quality:string-duplication`| 🔤 Duplicate string literal detection     |
+| `quality:bogus-tests`      | 🧟 Bogus test detection (AST analysis)    |
+| `general:templates`        | 📄 Template syntax validation             |
 
 ### Security Gates
 
 | Gate              | Description                                    |
 | ----------------- | ---------------------------------------------- |
-| `security:local`  | 🔐 Fast local scan (bandit + semgrep + secrets)|
-| `security:full`   | 🔒 Comprehensive security analysis             |
+| `security:local`  | 🔐 Fast local scan (bandit + semgrep + detect-secrets)|
+| `security:full`   | 🔒 Full audit (local scan + dependency vulnerability checking via safety)|
 
 ### Profiles (Gate Groups)
 
 | Profile      | Description            | Gates Included                                                     |
 | ------------ | ---------------------- | ------------------------------------------------------------------ |
-| `commit`     | Fast commit validation | lint, static-analysis, tests, coverage, complexity, security-local |
+| `commit`     | Fast commit validation | lint, static-analysis, tests, coverage, complexity, bogus-tests, security-local |
 | `pr`         | Full PR validation     | All gates + PR comment check                                       |
 | `quick`      | Ultra-fast lint check  | lint, security-local                                               |
 
@@ -259,7 +268,7 @@ The config file (`.sb_config.json`) supports per-gate customization:
 
 ## Git Hooks: `sm commit-hooks`
 
-This is where slop-mop stops being a tool you run manually and starts being a guardrail on your machine.
+Installing a git hook makes the gates automatic — they run before every commit without anyone having to remember.
 
 ```bash
 sm commit-hooks install commit    # Install pre-commit hook with 'commit' profile
@@ -269,7 +278,7 @@ sm commit-hooks uninstall         # Remove slop-mop hooks
 
 Once installed, `sm validate commit` runs automatically before every `git commit`. If any gate fails, the commit is blocked. The agent has to fix the issue before it can land code.
 
-**Why this matters:** The combination of Phase 1 remediation + hook installation means the AI does all the hard work itself. You remediate the existing debt, install the hook, and from that point forward every new commit is forced through the gates. You can steer with your hands off the wheel — the agent is structurally prevented from introducing the same categories of debt that accumulated before.
+The thinking behind this: once you've cleaned up the existing debt (Phase 1) and installed the hook, you've moved the quality enforcement out of your head and into the machine. The agent will still fail gates — it'll try things that don't pass, iterate, try again. But the loop is mechanical now. You're not the one who has to remember to check for duplication or coverage or formatting. The hook does that.
 
 The hook uses your project's venv for deterministic execution (falls back to system `sm` if no venv is found). You can install it with any profile — `commit` for the standard set, `quick` for fast lint-only, or a custom profile if you've defined one.
 
@@ -277,7 +286,7 @@ The hook uses your project's venv for deterministic execution (falls back to sys
 
 ## CI Integration: `sm ci`
 
-Hooks enforce gates locally. CI enforces them in the cloud. You want both.
+Hooks enforce gates locally. CI enforces them in the cloud. They complement each other.
 
 Slop-mop ships a GitHub Actions workflow that dogfoods itself. Use it as a template for your own project:
 
@@ -325,7 +334,7 @@ sm ci --watch       # Poll until CI completes (runs unattended)
 
 Watch mode polls every 30 seconds and reports results automatically when CI finishes — no tab-switching or manual refreshing.
 
-**Why both hooks and CI?** Hooks catch problems before they're pushed. CI catches problems that hooks can't — like platform-specific failures, PR-level checks (comment resolution), and the "I bypassed the hook" escape hatch. Together they form two layers of enforcement: one on your machine, one in the cloud.
+**Why both?** Hooks catch problems before code is pushed. CI catches things hooks can't — platform-specific failures, PR-level checks like comment resolution, and the case where someone bypasses the hook entirely.
 
 ---
 
@@ -342,21 +351,21 @@ The commit profile runs the gates that matter for individual chunks of work:
 - Tests and coverage
 - Complexity analysis
 - Source duplication detection
+- Bogus test detection
 - Fast security scan
 
-This is the profile you run (or hook into) on every commit. It keeps each increment of work maintainable. When an agent is iterating on a feature, commit-level gates prevent it from introducing debt along the way — bad formatting, missing tests, duplicated code, complexity spikes all get caught immediately while the context is fresh.
+This is the profile intended for every commit. The idea is to catch things like bad formatting, missing tests, duplicated code, and complexity spikes while the agent is still working on the change — when the context is fresh and the fix is small.
 
 ### `sm validate pr` — Ensure the PR as a Whole Is Ready
 
-The PR profile runs everything in the commit profile *plus* checks that only make sense at the PR level:
+The PR profile runs everything in the commit profile *plus* checks that might make more sense at the PR level:
 
 - **`pr:comments`** — Are all PR review comments addressed? This gate checks GitHub for unresolved review threads and blocks until they're handled.
-- **`python:diff-coverage`** — Does the changed code specifically have coverage? Not just "is overall coverage above threshold" but "are the lines you touched tested?"
-- **`python:new-code-coverage`** — Is the new code introduced in this PR tested?
-- **Full security scan** — The slower, more thorough security analysis that's too heavy for every commit.
+- **`python:diff-coverage`** / **`python:new-code-coverage`** — These are aliases for the same check: does the code you changed in this PR specifically have test coverage? `python:coverage` measures the whole project; this measures only the lines the PR touches, using `diff-cover` against the target branch. Two names exist because some CI workflows reference one and some the other.
+- **Full security scan** — The slower, more thorough version of the security scan (adds dependency vulnerability checking via `safety`, which requires network access). Too heavy for every commit.
 - **JavaScript gates** — Full JS/TS validation for mixed-language projects.
 
-The distinction matters. Commit-level gates keep the agent honest while it's working. PR-level gates ensure the deliverable as a whole is ready to merge — CI is green, reviewers are satisfied, and the new code specifically (not just the project overall) meets the quality bar.
+Commit-level gates catch problems while the agent is still working and the context is fresh. PR-level gates check whether the deliverable as a whole is ready to merge — CI is green, reviewers are satisfied, and the new code specifically (not just the project overall) is tested.
 
 ---
 
@@ -412,7 +421,7 @@ sm validate --self
 
 ## Further Reading
 
-For more on the thinking behind this project — why AI-assisted coding needs structural guardrails and not just better prompts:
+Background on the thinking behind this project:
 
 📖 [A Hand for Daenerys: Why Tyrion Is Missing from Your Vibe-Coding Council](https://scienceisneato.substack.com/p/a-hand-for-daenerys-why-tyrion-is)
 
