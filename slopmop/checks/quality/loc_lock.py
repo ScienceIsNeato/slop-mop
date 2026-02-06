@@ -65,13 +65,34 @@ EXCLUDED_DIRS = {
 
 
 class LocLockCheck(BaseCheck):
-    """Lines of code enforcement.
+    """File and function length enforcement.
 
-    Enforces:
-    - Maximum file length (default: 1000 lines)
-    - Maximum function/method length (default: 100 lines)
+    Pure Python check (no external tool). Scans source files for
+    length violations. Large files and long functions are harder
+    for both humans and LLMs to reason about.
 
-    Reports specific violations with file paths and line numbers.
+    Profiles: commit, pr
+
+    Configuration:
+      max_file_lines: 1000 — files above this are candidates for
+          splitting into modules. 1000 is generous; most well-
+          structured files stay under 500.
+      max_function_lines: 100 — functions above this need
+          decomposition. Focus on logical separation ("what
+          concepts does this handle?") not line reduction.
+      include_dirs: ["."] — scan everything by default.
+      exclude_dirs: [] — additional dirs to skip (node_modules,
+          venv, etc. are always excluded).
+      extensions: [] — empty means all known source extensions.
+          Set to [".py"] to limit to Python only.
+
+    Common failures:
+      File too long: Split into modules by responsibility.
+      Function too long: Extract helper functions for distinct
+          concepts. Three 30-line functions > one 90-line function.
+
+    Re-validate:
+      sm validate quality:loc-lock
     """
 
     @property

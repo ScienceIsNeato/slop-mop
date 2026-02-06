@@ -11,11 +11,35 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class StringDuplicationCheck(BaseCheck):
-    """Check for duplicate string literals across source files.
+    """Duplicate string literal detection.
 
-    This check wraps the vendored find-duplicate-strings tool to detect
-    string literals that appear multiple times across files, suggesting
-    they should be extracted to a constants module.
+    Wraps the vendored find-duplicate-strings tool to detect string
+    literals repeated across multiple files. These are candidates
+    for extraction to a constants module.
+
+    Profiles: commit, pr
+
+    Configuration:
+      threshold: 2 — minimum occurrences to flag a string.
+      min_file_count: 1 — minimum files the string must appear in.
+      min_length: 8 — strings shorter than this are filtered out
+          (short tokens like "id" or "name" repeat naturally).
+      min_words: 3 — primary noise filter. Single-word strings
+          like "store_true" or "description" are identifiers, not
+          human-authored messages worth extracting.
+      include_patterns: ["**/*.py"] — file globs to scan.
+      ignore_patterns: test files, venv, build dirs — test
+          strings naturally repeat without being a problem.
+
+    Common failures:
+      Duplicate strings found: Extract repeated strings to a
+          constants.py module. The output shows each string,
+          its count, and which files contain it.
+      Tool not found: Requires Node.js. The tool is vendored
+          in tools/find-duplicate-strings/.
+
+    Re-validate:
+      sm validate quality:string-duplication
     """
 
     @property

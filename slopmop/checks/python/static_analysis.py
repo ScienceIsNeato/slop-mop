@@ -19,16 +19,32 @@ _MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
 
 
 class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
-    """Python static analysis check.
+    """Static type checking with mypy.
 
-    Runs mypy for type checking. When strict_typing is enabled (default),
-    also enforces:
-      --disallow-untyped-defs   (functions must have type annotations)
-      --disallow-any-generics   (generic types like Dict, List must have
-                                 type parameters — Dict[str, Any] not Dict)
-
-    These catch the root-cause annotations that prevent type checkers from
+    Wraps mypy to enforce type safety across Python source. In strict
+    mode (default), requires type annotations on all function signatures
+    and type parameters on generics (Dict[str, Any] not bare Dict).
+    These catch root-cause annotations that prevent type checkers from
     cascading hundreds of "unknown type" errors downstream.
+
+    Profiles: commit, pr
+
+    Configuration:
+      strict_typing: True — enforces --disallow-untyped-defs and
+          --disallow-any-generics. Without these, bare Dict/List and
+          unannotated functions silently pass, then Pylance/pyright
+          lights up with hundreds of cascading errors.
+
+    Common failures:
+      type-arg: Add type parameters to generics.
+          Dict → Dict[str, Any], List → List[str], etc.
+      no-untyped-def: Add return type and parameter annotations.
+          def foo(x) → def foo(x: str) -> None
+      attr-defined: Accessing an attribute that doesn't exist on the
+          inferred type. Check your class hierarchy.
+
+    Re-validate:
+      sm validate python:static-analysis
     """
 
     @property

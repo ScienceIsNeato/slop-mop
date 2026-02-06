@@ -22,7 +22,33 @@ MIN_LINES = 5
 
 
 class SourceDuplicationCheck(BaseCheck):
-    """Cross-language code duplication detection via jscpd."""
+    """Cross-language code duplication detection.
+
+    Wraps jscpd to detect copy-paste code across Python, JavaScript,
+    TypeScript, and other languages. Reports specific file pairs and
+    line ranges so you know exactly what to deduplicate.
+
+    Profiles: commit, pr
+
+    Configuration:
+      threshold: 5 — maximum allowed duplication percentage. 5% is
+          generous; tighten to 2-3% for mature codebases.
+      include_dirs: ["."] — directories to scan.
+      min_tokens: 50 — minimum token count to consider a block as
+          duplicate. Filters trivial matches (imports, boilerplate).
+      min_lines: 5 — minimum line count for a duplicate block.
+      exclude_dirs: [] — extra dirs to skip (node_modules, venv,
+          etc. are always excluded).
+
+    Common failures:
+      Duplication exceeds threshold: Extract the duplicated code
+          into a shared function or module. The output shows the
+          specific file pairs and line ranges.
+      jscpd not available: npm install -g jscpd
+
+    Re-validate:
+      sm validate quality:source-duplication
+    """
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)

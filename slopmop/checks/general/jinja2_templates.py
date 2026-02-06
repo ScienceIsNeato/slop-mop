@@ -20,7 +20,27 @@ from slopmop.core.result import CheckResult, CheckStatus
 class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     """Jinja2 template syntax validation.
 
-    Uses 'templates_dir' from .sb_config.json config.
+    Compiles all templates in the configured directory to catch
+    syntax errors early — far faster than discovering them at
+    runtime. Uses Jinja2's own compiler or delegates to a
+    dedicated template smoke test if one exists.
+
+    Profiles: (not in commit/pr by default — add manually)
+
+    Configuration:
+      templates_dir: None (required) — directory containing
+          Jinja2 templates, relative to project root. Must be
+          set in .sb_config.json for the gate to activate.
+
+    Common failures:
+      Template syntax error: The output shows the template file
+          and the Jinja2 error. Fix the template syntax.
+      No templates_dir configured: Add "templates_dir":
+          "templates" to .sb_config.json.
+      Jinja2 not installed: pip install jinja2
+
+    Re-validate:
+      sm validate general:templates
     """
 
     @property

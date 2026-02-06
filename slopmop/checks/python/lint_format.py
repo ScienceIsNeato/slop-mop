@@ -21,14 +21,29 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
-    """Python lint and format check.
+    """Python code formatting and lint enforcement.
 
-    Runs:
-    - black: Code formatting
-    - isort: Import sorting
-    - flake8: Critical lint errors (E9, F63, F7, F82, F401)
+    Wraps autoflake, black, isort, and flake8 to enforce consistent
+    style and catch critical errors. Auto-fix runs autoflake (remove
+    unused imports), black (formatting), and isort (import order)
+    before checking with flake8.
 
-    Auto-fix is enabled by default for black and isort.
+    Profiles: commit, pr, quick
+
+    Configuration:
+      line_length: 88 — black's default; wide enough for modern
+          screens, narrow enough to diff side-by-side.
+
+    Common failures:
+      Formatting drift: Run `sm validate python:lint-format` with
+          auto-fix enabled. Black and isort will fix in place.
+      Unused imports: autoflake removes them automatically during
+          auto-fix. If you need to keep one, add `# noqa: F401`.
+      Flake8 E9/F63/F7/F82: These are critical errors (syntax,
+          assertion on tuples, undefined names). Fix the code.
+
+    Re-validate:
+      sm validate python:lint-format
     """
 
     @property

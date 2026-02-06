@@ -261,7 +261,7 @@ These are the mistakes agents make repeatedly. Read them before you start.
 
 7. **Not handling tool-not-installed** — Always check `returncode == 127`. Return `CheckStatus.ERROR` with `fix_suggestion="pip install <tool>"`.
 
-8. **Stale README** — Added the gate, wrote the tests, forgot to update documentation. Next session wastes time wondering why `sm help` shows it but README doesn't.
+8. **Stale Documentation (Current list includes: README)** — Added the gate, wrote the tests, forgot to update documentation. Next session wastes time wondering why `sm help` shows it but README doesn't.
 
 9. **Config default mismatch** — Getter method hardcodes a fallback that differs from `ConfigField.default`.
 

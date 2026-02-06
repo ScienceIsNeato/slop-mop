@@ -49,10 +49,31 @@ class SecuritySubResult:
 
 
 class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
-    """Local security checks (no network required).
+    """Local security scanning (no network required).
 
-    Runs bandit, semgrep, and detect-secrets in parallel.
-    Cross-cutting check that applies to any project with source files.
+    Wraps bandit, semgrep, and detect-secrets in parallel.
+    Reports only HIGH/MEDIUM severity findings to reduce noise
+    while catching real security issues.
+
+    Profiles: commit, pr, quick
+
+    Configuration:
+      scanners: ["bandit", "semgrep", "detect-secrets"] — all three
+          run in parallel for speed. Each covers different classes
+          of vulnerability.
+      exclude_dirs: venv, node_modules, tests, etc. — test files
+          often have intentional security "violations" (hardcoded
+          test credentials, etc.).
+
+    Common failures:
+      bandit HIGH/MEDIUM: Fix the flagged code pattern. Common
+          issues: hardcoded passwords, SQL injection, unsafe eval.
+      semgrep findings: Follow the rule description in the output.
+      detect-secrets: Rotate the leaked secret, then add to
+          .secrets.baseline if it's a false positive.
+
+    Re-validate:
+      sm validate security:local
     """
 
     @property
@@ -270,10 +291,26 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
 
 class SecurityCheck(SecurityLocalCheck):
-    """Full security checks including dependency vulnerability scanning.
+    """Full security audit including dependency scanning.
 
-    Extends SecurityLocalCheck with pip-audit for dependency audit.
-    Requires network access.
+    Extends security:local with pip-audit for dependency
+    vulnerability checking. Requires network access to query
+    the OSV vulnerability database.
+
+    Profiles: pr
+
+    Configuration:
+      Same as security:local, plus pip-audit runs automatically.
+      pip-audit is fast (~1s) and uses the OSV database.
+
+    Common failures:
+      Vulnerable dependency: Update the package to a fixed version
+          shown in the output. If no fix exists, evaluate risk and
+          consider alternatives.
+      pip-audit not available: pip install pip-audit
+
+    Re-validate:
+      sm validate security:full
     """
 
     @property

@@ -1,63 +1,37 @@
 # Session Status
 
-## Current Work: feat/branding branch
+## Current Work: feat/dead-code-gate branch
 
-### Just Completed: Skip Reason Display Feature ✅
+### Just Completed: Strict Typing + CONTRIBUTING Guide + README Refresh
 
-**Committed**: e2b6fbf - All 7 checks passing, 501 tests, 80% coverage
+**Committed**: 762c968 — 11/11 gates passing, 641 tests
 
-**New Feature**: slop-mop now always shows skipped checks with human-readable reasons explaining WHY they were skipped.
+**Changes in this commit**:
 
-**Changes**:
+1. Strict typing for mypy gate (static_analysis.py rewrite)
+   - Configurable strict_typing flag (default: on)
+   - Adds --disallow-untyped-defs and --disallow-any-generics when strict
+   - Output dedup: strips note lines, caps at 20 errors, groups by error code
+   - Display name shows "(mypy strict)" or "(mypy basic)"
 
-- Added `skip_reason(project_root: str) -> str` method to `BaseCheck`
-- Added skip_reason methods to `PythonCheckMixin` and `JavaScriptCheckMixin`
-- Added specific skip_reason to `quality:duplication`, `quality:loc-lock`, `pr:comments`
-- Updated `ConsoleReporter` to always show skipped section with reasons
-- Updated `Executor` to use `check.skip_reason()` when creating skipped results
-- Fixed duplication check to exclude `.mypy_cache`, `.pytest_cache`, etc.
-- Added tests for skip_reason methods
+2. Fixed 47 type errors across 14 files
+   - 44 type-arg errors, 2 no-untyped-def, 1 attr-defined bug
 
-**Example Output**:
+3. CONTRIBUTING.md: Complete guide to adding new quality gates
 
-```
-⏭️  SKIPPED:
-   • javascript:lint-format
-     └─ No package.json found (not a JavaScript/TypeScript project)
-   • pr:comments
-     └─ No PR context detected (not on a PR branch)
-```
+4. README.md refresh: Added dead-code/loc-lock gates, fixed safety to pip-audit
 
----
+5. Tests expanded: Static analysis tests from ~7 to 51
 
-### Previously Completed: LOC Lock Check
+### Previously Committed: Dead Code Gate
 
-**New Feature**: Added `quality:loc-lock` check that enforces:
+**Committed**: f3d6bc5 — Dead code detection via vulture
 
-- Maximum file length (default: 1000 lines)
-- Maximum function/method length (default: 100 lines)
+### Branch History
 
-**Note**: Temporarily disabled in commit profile pending refactoring of sm.py
+1. f3d6bc5 — feat: add quality:dead-code gate wrapping vulture
+2. 762c968 — feat: strict typing for mypy + CONTRIBUTING guide + README refresh
 
----
+### Pending
 
-### TODO: sm.py Refactoring
-
-The following violations need to be addressed in a future PR:
-
-- `slopmop/sm.py: 1461 lines` (over 1000 line limit)
-- `cmd_init(): 223 lines`, `cmd_ci(): 168 lines`, etc. (over 100 line limit)
-
-Once fixed, re-enable `quality:loc-lock` in commit profile.
-
-- `slopmop/checks/general/jinja2_templates.py`
-- `slopmop/checks/python/*.py`
-- `slopmop/checks/security/__init__.py`
-- `tests/unit/test_base_check.py`
-- `README.md`
-
-### Next Steps:
-
-1. Commit all changes
-2. Push to PR #8
-3. Address LOC violations in future PR (optional - not blocking)
+- Push branch and open PR when ready

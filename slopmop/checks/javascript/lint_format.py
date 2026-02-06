@@ -13,13 +13,27 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
-    """JavaScript lint and format check.
+    """JavaScript/TypeScript lint and format enforcement.
 
-    Runs:
-    - ESLint: Linting
-    - Prettier: Formatting
+    Wraps ESLint and Prettier. Auto-fix runs ESLint --fix and
+    Prettier --write before checking. Installs npm dependencies
+    automatically if node_modules/ is missing.
 
-    Auto-fix is enabled by default.
+    Profiles: commit, pr
+
+    Configuration:
+      Uses project's .eslintrc and .prettierrc. No additional
+      sm-specific config — respects your existing tool configs.
+
+    Common failures:
+      ESLint errors: Run `npx eslint . --fix` to auto-fix.
+          Remaining errors need manual code changes.
+      Prettier drift: Run `npx prettier --write .` to reformat.
+      npm install failed: Check package.json for syntax errors
+          or missing registry access.
+
+    Re-validate:
+      sm validate javascript:lint-format
     """
 
     @property

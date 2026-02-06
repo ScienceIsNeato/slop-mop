@@ -17,15 +17,29 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class PRCommentsCheck(BaseCheck):
-    """Check for unresolved PR comments.
+    """PR comment resolution enforcement.
 
-    This check:
-    1. Detects if we're in a PR context (via branch or environment)
-    2. Fetches unresolved comment threads from GitHub
-    3. Fails with actionable guidance if comments exist
+    Wraps the GitHub CLI (gh) to detect unresolved PR review
+    threads. Fails if any threads are still open, ensuring all
+    reviewer feedback is addressed before merge.
 
-    The guidance is specifically designed for AI agents following
-    the PR closing protocol.
+    Profiles: pr
+
+    Configuration:
+      fail_on_unresolved: True — fail the gate if unresolved
+          comments exist. Set to False to make advisory-only.
+
+    Common failures:
+      Unresolved comments: Address each comment thread, then
+          resolve it via the GitHub UI or gh CLI. Follow the
+          PR closing protocol for systematic resolution.
+      No PR context: This gate only runs on PR branches. If
+          you're on main or a non-PR branch, it skips.
+      gh CLI not available: Install GitHub CLI:
+          https://cli.github.com/
+
+    Re-validate:
+      sm validate pr:comments
     """
 
     @property

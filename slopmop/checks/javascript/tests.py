@@ -14,9 +14,26 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
-    """JavaScript test execution check.
+    """JavaScript test execution via Jest.
 
-    Runs Jest to execute JavaScript tests.
+    Wraps Jest with --coverage and --passWithNoTests. Installs
+    npm dependencies automatically if missing.
+
+    Profiles: commit, pr
+
+    Configuration:
+      test_command: "npm test" — command to run tests. Override
+          if your project uses a custom test script.
+
+    Common failures:
+      Test failures: Output shows FAIL lines. Run `npm test` for
+          full details.
+      Timeout: Suite took > 5 minutes. Look for missing mocks
+          or slow async operations.
+      npm install failed: Check package.json syntax.
+
+    Re-validate:
+      sm validate javascript:tests
     """
 
     @property

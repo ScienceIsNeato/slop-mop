@@ -30,7 +30,27 @@ MAX_FILES_TO_SHOW = 5
 
 
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
-    """Jest coverage threshold enforcement."""
+    """Jest coverage threshold enforcement.
+
+    Wraps Jest with --coverageReporters=json-summary to parse
+    line coverage. Falls back to parsing console output if the
+    JSON summary isn't available.
+
+    Profiles: commit, pr
+
+    Configuration:
+      threshold: 80 — minimum line coverage percentage. Start
+          lower on legacy codebases and ramp up over time.
+
+    Common failures:
+      Below threshold: The output lists files with lowest
+          coverage. Write tests for those files.
+      Coverage data unavailable: Ensure Jest is configured to
+          produce coverage reports.
+
+    Re-validate:
+      sm validate javascript:coverage
+    """
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)

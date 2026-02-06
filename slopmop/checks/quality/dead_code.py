@@ -21,11 +21,35 @@ MAX_FINDINGS_TO_SHOW = 15
 
 
 class DeadCodeCheck(BaseCheck):
-    """Vulture dead code detection gate.
+    """Dead code detection via static AST analysis.
 
-    Scans Python source for unused functions, classes, imports,
-    variables, and unreachable code. Configurable confidence
-    threshold filters out false positives.
+    Wraps vulture to find unused functions, classes, imports,
+    variables, and unreachable code. Uses a confidence threshold
+    to filter false positives — vulture reports confidence based
+    on how certain it is that code is truly unused.
+
+    Profiles: commit, pr
+
+    Configuration:
+      min_confidence: 80 — vulture's confidence score (60-100).
+          At 80% we catch genuinely dead code while ignoring
+          dynamically-referenced symbols that vulture can't trace.
+      exclude_patterns: test files, venv, build dirs, cursor-rules
+          — these naturally contain "unused" symbols (test helpers,
+          vendored code, generated files).
+      src_dirs: ["."] — scan everything by default.
+      whitelist_file: "" — optional vulture whitelist for known
+          false positives.
+
+    Common failures:
+      Unused function/class: Delete it, or add to vulture whitelist
+          if it's used dynamically (e.g., via getattr, entrypoints).
+      Unused import: Remove it or mark with # noqa if needed for
+          side effects.
+      vulture not available: pip install vulture
+
+    Re-validate:
+      sm validate quality:dead-code
     """
 
     @property
