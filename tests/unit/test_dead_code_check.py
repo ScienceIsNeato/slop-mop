@@ -107,7 +107,7 @@ class TestDeadCodeCheck:
     # --- Glob-to-vulture conversion ---
 
     def test_glob_patterns_to_vulture_excludes(self, check):
-        """Test glob pattern conversion strips stars and slashes."""
+        """Test glob pattern conversion preserves filename-level wildcards."""
         patterns = [
             "**/venv/**",
             "**/.venv/**",
@@ -118,7 +118,7 @@ class TestDeadCodeCheck:
         assert "venv" in excludes
         assert ".venv" in excludes
         assert "node_modules" in excludes
-        assert "test_" in excludes
+        assert "test_*" in excludes
 
     def test_glob_patterns_deduplicates(self, check):
         """Test no duplicate exclude names are produced."""
@@ -229,6 +229,7 @@ class TestDeadCodeCheck:
         mock_result.success = True
         mock_result.returncode = 0
         mock_result.output = ""
+        mock_result.timed_out = False
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))
@@ -243,6 +244,7 @@ class TestDeadCodeCheck:
         mock_result.success = False
         mock_result.returncode = 3
         mock_result.output = "app.py:1: unused function 'unused' (80% confidence)\n"
+        mock_result.timed_out = False
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))
@@ -258,6 +260,7 @@ class TestDeadCodeCheck:
         mock_result.returncode = -1
         mock_result.output = ""
         mock_result.stderr = "Command not found: vulture"
+        mock_result.timed_out = False
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))
@@ -276,6 +279,7 @@ class TestDeadCodeCheck:
             "app.py:2: unused variable 'y' (60% confidence)\n"
             "app.py:3: unused function 'foo' (80% confidence)\n"
         )
+        mock_result.timed_out = False
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))

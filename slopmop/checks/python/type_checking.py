@@ -242,6 +242,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         config_path = Path(project_root) / "pyrightconfig.json"
         had_existing_config = config_path.exists()
         backup_path: Optional[Path] = None
+        wrote_temp_config = False
 
         try:
             if had_existing_config:
@@ -250,6 +251,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
 
             pyright_config = self._build_pyright_config(project_root)
             config_path.write_text(json.dumps(pyright_config, indent=2))
+            wrote_temp_config = True
 
             # Run pyright with JSON output
             result = self._run_command(
@@ -271,8 +273,8 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             return self._process_output(result.output, duration)
 
         finally:
-            # Cleanup: restore original config
-            if config_path.exists():
+            # Cleanup: only remove the config we wrote, not a pre-existing one
+            if wrote_temp_config and config_path.exists():
                 config_path.unlink()
             if backup_path and backup_path.exists():
                 backup_path.rename(config_path)

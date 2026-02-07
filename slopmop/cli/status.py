@@ -219,15 +219,15 @@ def _print_recommendations(
     print()
     print("💡 RECOMMENDATIONS")
     print("─" * 60)
-    print("Ready to level up? These gates are applicable but not in your profile:")
+    print("These gates are applicable but not in your current profile:")
     print()
 
     for gate in sorted(recommended):
-        print(f"   sm config --enable {gate:<30}")
+        print(f"   sm validate {gate:<30}  # try it out")
 
     print()
     print(
-        "Add gates incrementally — one at a time — and fix issues before adding more."
+        "Run individually to see results, then add to your profile incrementally."
     )
     print()
 

@@ -167,13 +167,15 @@ class DeadCodeCheck(BaseCheck):
         """Convert glob patterns to vulture-compatible exclude names.
 
         Vulture's --exclude accepts comma-separated names that are matched
-        against directory and file names (not full globs). Extract the
-        meaningful name from each pattern.
+        against directory and file names using fnmatch. Extract the
+        meaningful name from each pattern, preserving any filename-level
+        wildcards (e.g. **/test_* → test_*).
         """
         excludes: List[str] = []
         for pattern in patterns:
-            # Strip glob wrapper: "**/venv/**" → "venv"
-            name = pattern.strip("*").strip("/").strip("*")
+            # Split on / and take the last non-** component
+            parts = [p for p in pattern.split("/") if p != "**"]
+            name = parts[-1] if parts else ""
             if name and name not in excludes:
                 excludes.append(name)
         return excludes
@@ -196,7 +198,7 @@ class DeadCodeCheck(BaseCheck):
             )
 
         # Handle timeout
-        if result.returncode == -1 and "timed out" in result.stderr.lower():
+        if result.timed_out:
             return self._create_result(
                 status=CheckStatus.ERROR,
                 duration=duration,
