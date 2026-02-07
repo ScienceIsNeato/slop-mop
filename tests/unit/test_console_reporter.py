@@ -214,6 +214,48 @@ class TestConsoleReporter:
         assert "ERRORS" in captured.out
         assert "Exception!" in captured.out
 
+    def test_print_summary_with_warnings(self, capsys):
+        """Test printing summary with warnings (non-blocking)."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "check2",
+                CheckStatus.WARNED,
+                0.5,
+                error="vulture not available",
+                fix_suggestion="Install vulture: pip install vulture",
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.5)
+        reporter = ConsoleReporter()
+
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        # Warnings are non-blocking — still passes
+        assert "NO SLOP DETECTED" in captured.out
+        assert "1 warned" in captured.out
+        # Warning details shown
+        assert "WARNINGS" in captured.out
+        assert "vulture not available" in captured.out
+        assert "pip install vulture" in captured.out
+
+    def test_on_check_complete_warned(self, capsys):
+        """Test on_check_complete for warned status."""
+        reporter = ConsoleReporter()
+        result = CheckResult(
+            "check1",
+            CheckStatus.WARNED,
+            0.5,
+            error="tool not found",
+            fix_suggestion="Install tool",
+        )
+        reporter.on_check_complete(result)
+
+        captured = capsys.readouterr()
+        assert "⚠️" in captured.out
+        assert "tool not found" in captured.out
+
     def test_print_summary_with_skipped_verbose(self, capsys):
         """Test printing summary shows skipped info."""
         results = [

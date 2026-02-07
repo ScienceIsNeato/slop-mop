@@ -11,7 +11,6 @@ def _register_python_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.python.coverage import (
         PythonCoverageCheck,
         PythonDiffCoverageCheck,
-        PythonNewCodeCoverageCheck,
     )
     from slopmop.checks.python.lint_format import PythonLintFormatCheck
     from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
@@ -21,13 +20,14 @@ def _register_python_checks(registry: CheckRegistry) -> None:
         SmokeTestCheck,
     )
     from slopmop.checks.python.tests import PythonTestsCheck
+    from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
     registry.register(PythonLintFormatCheck)
     registry.register(PythonTestsCheck)
     registry.register(PythonCoverageCheck)
     registry.register(PythonDiffCoverageCheck)
-    registry.register(PythonNewCodeCoverageCheck)
     registry.register(PythonStaticAnalysisCheck)
+    registry.register(PythonTypeCheckingCheck)
     registry.register(SmokeTestCheck)
     registry.register(IntegrationTestCheck)
     registry.register(E2ETestCheck)
@@ -55,6 +55,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.quality import (
         BogusTestsCheck,
         ComplexityCheck,
+        DeadCodeCheck,
         LocLockCheck,
         SourceDuplicationCheck,
         StringDuplicationCheck,
@@ -65,6 +66,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(SecurityLocalCheck)
     registry.register(BogusTestsCheck)
     registry.register(ComplexityCheck)
+    registry.register(DeadCodeCheck)
     registry.register(SourceDuplicationCheck)
     registry.register(StringDuplicationCheck)
     registry.register(LocLockCheck)
@@ -79,9 +81,11 @@ def _register_aliases(registry: CheckRegistry) -> None:
         [
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
             "quality:complexity",
+            "quality:dead-code",
             "quality:source-duplication",
             "quality:string-duplication",
             "quality:bogus-tests",
@@ -99,11 +103,12 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "pr:comments",
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
             "python:diff-coverage",
-            "python:new-code-coverage",
             "quality:complexity",
+            "quality:dead-code",
             "quality:source-duplication",
             "quality:string-duplication",
             "quality:bogus-tests",
@@ -122,6 +127,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
         [
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
         ],

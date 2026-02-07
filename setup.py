@@ -28,11 +28,14 @@ dev_requirements = [
     "flake8>=6.0.0",
     # Type checking
     "mypy>=1.0.0",
+    "pyright>=1.1.0",
     # Security scanning
     "bandit>=1.7.0",
     "detect-secrets>=1.4.0",
     "semgrep>=1.0.0",
     "pip-audit>=2.0.0",
+    # Quality analysis
+    "vulture>=2.14",
 ]
 
 setup(
@@ -58,7 +61,7 @@ setup(
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
+        "License :: Other/Proprietary License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.9",

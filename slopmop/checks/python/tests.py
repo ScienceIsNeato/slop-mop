@@ -13,10 +13,29 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class PythonTestsCheck(BaseCheck, PythonCheckMixin):
-    """Python test execution check.
+    """Python test execution via pytest.
 
-    Runs pytest to execute unit and integration tests.
-    Generates coverage data for use by coverage checks.
+    Wraps pytest with coverage instrumentation. Runs all tests and
+    generates coverage.xml for the coverage gate. If tests fail,
+    reports the specific failing test names.
+
+    Profiles: commit, pr
+
+    Configuration:
+      test_dirs: ["tests"] — default pytest discovery directory.
+      timeout: 300 — 5-minute timeout. Long enough for large suites,
+          short enough to catch infinite loops.
+
+    Common failures:
+      Test failures: Output lists the specific failing test names.
+          Run `pytest -v --tb=long <test_file>` for full tracebacks.
+      Timeout: Suite took > 5 minutes. Look for infinite loops,
+          missing mocks on network calls, or slow fixtures.
+      Import errors: A test imports something that doesn't exist.
+          Usually a missing dependency or renamed module.
+
+    Re-validate:
+      sm validate python:tests --verbose
     """
 
     @property

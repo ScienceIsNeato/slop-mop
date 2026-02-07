@@ -18,12 +18,29 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
-    """Quick frontend JS validation (ESLint errors-only).
+    """Quick frontend JavaScript validation.
 
-    Requires configuration in .sb_config.json:
-        {
-            "frontend_dirs": ["static", "frontend", "public"]
-        }
+    Wraps ESLint in errors-only (--quiet) mode for rapid feedback
+    (~5s) on frontend JavaScript source directories. Only checks
+    for critical errors (no-undef, no-unused-vars) rather than
+    full lint.
+
+    Profiles: javascript
+
+    Configuration:
+      frontend_dirs: [] (required) — directories containing
+          frontend JS (e.g., ["static", "frontend", "public"]).
+          Must be configured in .sb_config.json. Gate skips if
+          no directories are configured.
+
+    Common failures:
+      ESLint errors: Run `npx eslint --fix <file>` to auto-fix
+          fixable issues. Review remaining errors manually.
+      ESLint config error: Check .eslintrc or eslint.config.js
+          for syntax errors.
+
+    Re-validate:
+      sm validate javascript:frontend --verbose
     """
 
     @property

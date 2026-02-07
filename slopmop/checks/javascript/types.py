@@ -38,17 +38,28 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
-    """TypeScript type checking gate.
+    """TypeScript type checking via tsc --noEmit.
 
-    Runs the TypeScript compiler (tsc) with --noEmit to check for type errors
-    without producing output files. This is the standard approach for CI/CD
-    type validation in TypeScript projects.
+    Wraps the TypeScript compiler in check-only mode. The --noEmit
+    flag performs full type checking without producing output files,
+    making it faster than a full build and safe to run in parallel.
 
-    The --noEmit flag means:
-    - Full type checking is performed
-    - No .js, .d.ts, or .map files are written
-    - Faster execution than a full build
-    - Safe to run in parallel with other build processes
+    Profiles: javascript
+
+    Configuration:
+      tsconfig: "tsconfig.json" — path to tsconfig relative to
+          project root. Falls back to tsconfig.ci.json if it exists
+          and no explicit config is set.
+
+    Common failures:
+      TypeScript errors: Output shows each error with file, line,
+          and error code (e.g., TS2322). Fix the type mismatches.
+      Timeout: Type checking took > 3 minutes. This can happen
+          with very large projects or circular type references.
+      npm install failed: TypeScript must be in devDependencies.
+
+    Re-validate:
+      sm validate javascript:types --verbose
     """
 
     @property
@@ -135,7 +146,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                 tsconfig = default_tsconfig
 
         # Build the type check command
-        cmd = ["npx", "tsc", "--noEmit", "-p", tsconfig]
+        cmd: List[str] = ["npx", "tsc", "--noEmit", "-p", tsconfig]
 
         result = self._run_command(
             cmd,

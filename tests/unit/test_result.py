@@ -18,11 +18,13 @@ class TestCheckStatus:
         assert CheckStatus.SKIPPED.value == "skipped"
         assert CheckStatus.NOT_APPLICABLE.value == "not_applicable"
         assert CheckStatus.ERROR.value == "error"
+        assert CheckStatus.WARNED.value == "warned"
 
     def test_status_str(self):
         """Test string representation."""
         assert str(CheckStatus.PASSED) == "passed"
         assert str(CheckStatus.FAILED) == "failed"
+        assert str(CheckStatus.WARNED) == "warned"
 
 
 class TestCheckResult:
@@ -69,6 +71,21 @@ class TestCheckResult:
         assert "passed" in result_str
         assert "1.50s" in result_str
         assert "✅" in result_str
+
+    def test_str_representation_warned(self):
+        """Test string representation for warned status."""
+        result = CheckResult("test-check", CheckStatus.WARNED, 1.5)
+        result_str = str(result)
+
+        assert "test-check" in result_str
+        assert "warned" in result_str
+        assert "\u26a0\ufe0f" in result_str
+
+    def test_warned_not_passed_not_failed(self):
+        """Test that warned status is neither passed nor failed."""
+        result = CheckResult("test-check", CheckStatus.WARNED, 1.0)
+        assert result.passed is False
+        assert result.failed is False
 
     def test_result_with_error(self):
         """Test result with error info."""
@@ -153,17 +170,30 @@ class TestExecutionSummary:
             CheckResult("check3", CheckStatus.SKIPPED, 0.0),
             CheckResult("check4", CheckStatus.ERROR, 1.0),
             CheckResult("check5", CheckStatus.NOT_APPLICABLE, 0.0),
+            CheckResult("check6", CheckStatus.WARNED, 0.5),
         ]
 
         summary = ExecutionSummary.from_results(results, 4.0)
 
-        assert summary.total_checks == 5
+        assert summary.total_checks == 6
         assert summary.passed == 1
         assert summary.failed == 1
         assert summary.skipped == 1
         assert summary.not_applicable == 1
         assert summary.errors == 1
+        assert summary.warned == 1
         assert summary.all_passed is False
+
+    def test_all_passed_true_with_warnings(self):
+        """Test that warnings alone don't cause all_passed to be False."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult("check2", CheckStatus.WARNED, 0.5),
+        ]
+
+        summary = ExecutionSummary.from_results(results, 1.5)
+        assert summary.all_passed is True
+        assert summary.warned == 1
 
     def test_all_passed_false_with_errors(self):
         """Test that errors cause all_passed to be False."""

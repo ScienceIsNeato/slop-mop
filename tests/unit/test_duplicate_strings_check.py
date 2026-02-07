@@ -308,7 +308,7 @@ class TestStringDuplicationCheck:
 
             result = check.run(str(tmp_path))
 
-            assert result.status == CheckStatus.ERROR
+            assert result.status == CheckStatus.WARNED
             assert "not found" in result.error.lower()
 
     @patch.object(StringDuplicationCheck, "_run_command")

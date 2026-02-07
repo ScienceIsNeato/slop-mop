@@ -26,7 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 
 logger = logging.getLogger(__name__)
 
@@ -153,22 +153,28 @@ class LanguageConfig:
     """Configuration for a language category (python, javascript, general)."""
 
     enabled: bool = False
-    include_dirs: List[str] = field(default_factory=list)
-    exclude_dirs: List[str] = field(default_factory=list)
-    gates: Dict[str, GateConfig] = field(default_factory=dict)
+    include_dirs: List[str] = field(default_factory=lambda: cast(List[str], []))
+    exclude_dirs: List[str] = field(default_factory=lambda: cast(List[str], []))
+    gates: Dict[str, GateConfig] = field(
+        default_factory=lambda: cast(Dict[str, GateConfig], {})
+    )
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LanguageConfig":
         """Create LanguageConfig from dictionary."""
-        gates = {}
-        for gate_name, gate_data in data.get("gates", {}).items():
+        gates: Dict[str, GateConfig] = {}
+        gates_data = cast(Dict[str, Any], data.get("gates", {}))
+        for gate_name, gate_data in gates_data.items():
             if isinstance(gate_data, dict):
-                gates[gate_name] = GateConfig.from_dict(gate_data)
+                gates[gate_name] = GateConfig.from_dict(cast(Dict[str, Any], gate_data))
+
+        include_dirs: List[str] = cast(List[str], data.get("include_dirs", []))
+        exclude_dirs: List[str] = cast(List[str], data.get("exclude_dirs", []))
 
         return cls(
             enabled=data.get("enabled", False),
-            include_dirs=data.get("include_dirs", []),
-            exclude_dirs=data.get("exclude_dirs", []),
+            include_dirs=include_dirs,
+            exclude_dirs=exclude_dirs,
             gates=gates,
         )
 
@@ -206,7 +212,9 @@ class SlopmopConfig:
     python: LanguageConfig = field(default_factory=LanguageConfig)
     javascript: LanguageConfig = field(default_factory=LanguageConfig)
     general: LanguageConfig = field(default_factory=LanguageConfig)
-    profiles: Dict[str, List[str]] = field(default_factory=dict)
+    profiles: Dict[str, List[str]] = field(
+        default_factory=lambda: cast(Dict[str, List[str]], {})
+    )
 
     @classmethod
     def load(cls, project_root: str) -> "SlopmopConfig":
@@ -239,11 +247,13 @@ class SlopmopConfig:
         general = LanguageConfig()
 
         if "python" in data and isinstance(data["python"], dict):
-            python = LanguageConfig.from_dict(data["python"])
+            python = LanguageConfig.from_dict(cast(Dict[str, Any], data["python"]))
         if "javascript" in data and isinstance(data["javascript"], dict):
-            javascript = LanguageConfig.from_dict(data["javascript"])
+            javascript = LanguageConfig.from_dict(
+                cast(Dict[str, Any], data["javascript"])
+            )
         if "general" in data and isinstance(data["general"], dict):
-            general = LanguageConfig.from_dict(data["general"])
+            general = LanguageConfig.from_dict(cast(Dict[str, Any], data["general"]))
 
         return cls(
             version=data.get("version", "1.0"),
@@ -338,7 +348,7 @@ def validate_include_dirs(
             ),
         )
 
-    valid_dirs = []
+    valid_dirs: List[str] = []
     for dir_path in include_dirs:
         full_path = Path(project_root) / dir_path
         if full_path.is_dir():

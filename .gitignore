@@ -43,6 +43,9 @@ cursor-rules/
 .sb_config.json
 .sb_config.json.backup.*
 
+# Generated status reports (from sm status --verbose)
+sm_status_*.json
+
 # Generated Copilot instructions (from cursor-rules)
 .github/instructions/*.instructions.md
 

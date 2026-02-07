@@ -22,9 +22,35 @@ MIN_LINES = 5
 
 
 class SourceDuplicationCheck(BaseCheck):
-    """Cross-language code duplication detection via jscpd."""
+    """Cross-language code duplication detection.
 
-    def __init__(self, config: Dict, threshold: float = DEFAULT_THRESHOLD):
+    Wraps jscpd to detect copy-paste code across Python, JavaScript,
+    TypeScript, and other languages. Reports specific file pairs and
+    line ranges so you know exactly what to deduplicate.
+
+    Profiles: commit, pr
+
+    Configuration:
+      threshold: 5 — maximum allowed duplication percentage. 5% is
+          generous; tighten to 2-3% for mature codebases.
+      include_dirs: ["."] — directories to scan.
+      min_tokens: 50 — minimum token count to consider a block as
+          duplicate. Filters trivial matches (imports, boilerplate).
+      min_lines: 5 — minimum line count for a duplicate block.
+      exclude_dirs: [] — extra dirs to skip (node_modules, venv,
+          etc. are always excluded).
+
+    Common failures:
+      Duplication exceeds threshold: Extract the duplicated code
+          into a shared function or module. The output shows the
+          specific file pairs and line ranges.
+      jscpd not available: npm install -g jscpd
+
+    Re-validate:
+      sm validate quality:source-duplication --verbose
+    """
+
+    def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)
         self.threshold = config.get("threshold", threshold)
 
@@ -128,8 +154,12 @@ class SourceDuplicationCheck(BaseCheck):
         return None
 
     def _build_jscpd_command(
-        self, report_output: str, include_dirs: list, min_tokens: int, min_lines: int
-    ) -> list:
+        self,
+        report_output: str,
+        include_dirs: list[str],
+        min_tokens: int,
+        min_lines: int,
+    ) -> list[str]:
         """Build the jscpd command with all arguments."""
         config_excludes = self.config.get("exclude_dirs", [])
         all_ignores = list(dict.fromkeys(self._DEFAULT_IGNORES + config_excludes))
@@ -152,7 +182,7 @@ class SourceDuplicationCheck(BaseCheck):
             ignore_str + ",cursor-rules,**/__tests__/**,**/*.test.*,**/*.spec.*",
         ] + include_dirs
 
-    def _parse_report(self, report_path: str) -> Optional[dict]:
+    def _parse_report(self, report_path: str) -> Optional[dict[str, Any]]:
         """Parse jscpd JSON report. Returns None on error."""
         try:
             with open(report_path) as f:
@@ -160,7 +190,7 @@ class SourceDuplicationCheck(BaseCheck):
         except (json.JSONDecodeError, IOError):
             return None
 
-    def _format_result(self, report: dict, duration: float) -> CheckResult:
+    def _format_result(self, report: dict[str, Any], duration: float) -> CheckResult:
         """Format the check result from parsed report."""
         duplicates = report.get("duplicates", [])
         stats = report.get("statistics", {})
@@ -201,7 +231,7 @@ class SourceDuplicationCheck(BaseCheck):
         error = self._check_jscpd_availability(project_root)
         if error:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 error=error,
                 fix_suggestion="Install jscpd: npm install -g jscpd",
@@ -234,7 +264,7 @@ class SourceDuplicationCheck(BaseCheck):
                 return self._create_result(
                     status=CheckStatus.ERROR,
                     duration=duration,
-                    error=result.error or "jscpd failed to produce report",
+                    error=result.stderr or "jscpd failed to produce report",
                 )
 
             report = self._parse_report(report_path)
@@ -249,7 +279,7 @@ class SourceDuplicationCheck(BaseCheck):
 
     def _format_duplicates(self, duplicates: List[Dict[str, Any]]) -> List[str]:
         """Format duplicate entries for display."""
-        violations = []
+        violations: List[str] = []
         for dup in duplicates:
             first = dup.get("firstFile", {})
             second = dup.get("secondFile", {})

@@ -228,7 +228,7 @@ class _TestAnalyzer(ast.NodeVisitor):
         if isinstance(node.func, ast.Name):
             return node.func.id
         if isinstance(node.func, ast.Attribute):
-            parts = []
+            parts: list[str] = []
             current: ast.expr = node.func
             while isinstance(current, ast.Attribute):
                 parts.append(current.attr)
@@ -240,12 +240,32 @@ class _TestAnalyzer(ast.NodeVisitor):
 
 
 class BogusTestsCheck(BaseCheck):
-    """Detect test functions that exist structurally but test nothing.
+    """Bogus test detection via AST analysis.
 
-    Uses AST analysis to find empty tests, tautological assertions,
-    and assertion-free test functions. These are a common reward-hacking
+    Pure Python check (no external tool). Parses test files to find
+    test functions that exist structurally but don't test anything:
+    empty bodies, tautological assertions (assert True), or functions
+    with no assertions at all. These are a common reward-hacking
     pattern where an agent creates tests to satisfy coverage gates
     without exercising real behavior.
+
+    Profiles: commit, pr
+
+    Configuration:
+      test_dirs: ["tests"] — directories to scan for test files.
+      exclude_patterns: ["conftest.py"] — conftest files contain
+          fixtures, not tests, so they're excluded by default.
+
+    Common failures:
+      Empty test body: Replace `pass` or `...` with actual
+          assertions that exercise behavior.
+      Tautological assertion: Replace `assert True` or
+          `assert 1 == 1` with assertions on real return values.
+      No assertions: Add assert statements or use pytest.raises,
+          mock.assert_called, etc.
+
+    Re-validate:
+      sm validate quality:bogus-tests --verbose
     """
 
     @property

@@ -7,7 +7,7 @@ name = "slopmop"
 version = "1.0.0"
 description = "AI-Focused Quality Gate Framework"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Slop-Mop Attribution License v1.0"}
 requires-python = ">=3.9"
 authors = [
     {name = "ScienceIsNeato"}
@@ -16,7 +16,7 @@ keywords = ["quality-gate", "linting", "testing", "ci-cd", "code-quality"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -32,15 +32,19 @@ classifiers = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "diff-cover>=7.0.0",
     "black>=23.0.0",
     "isort>=5.12.0",
     "autoflake>=2.0.0",
     "mypy>=1.0.0",
+    "pyright>=1.1.0",
     "flake8>=6.0.0",
     "bandit>=1.7.0",
     "detect-secrets>=1.4.0",
     "semgrep>=1.0.0",
+    "pip-audit>=2.0.0",
     "jinja2>=3.0.0",
+    "vulture>=2.14",
 ]
 
 [project.scripts]
@@ -83,3 +87,6 @@ omit = ["tests/*", "setup.py"]
 [tool.coverage.report]
 # fail_under handled by slopmop coverage check
 show_missing = true
+
+[tool.pyright]
+exclude = ["tests/**", "venv/**", "build/**", "dist/**"]

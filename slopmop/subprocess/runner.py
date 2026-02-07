@@ -42,7 +42,7 @@ class SubprocessResult:
     @property
     def output(self) -> str:
         """Return combined stdout and stderr."""
-        parts = []
+        parts: List[str] = []
         if self.stdout:
             parts.append(self.stdout)
         if self.stderr:
@@ -77,7 +77,7 @@ class SubprocessRunner:
         self._validator = validator or get_validator()
         self._default_timeout = min(default_timeout, self.MAX_TIMEOUT)
         self._process_lock = threading.Lock()
-        self._running_processes: Dict[int, subprocess.Popen] = {}
+        self._running_processes: Dict[int, subprocess.Popen[str]] = {}
 
     def run(
         self,
@@ -222,7 +222,7 @@ class SubprocessRunner:
         command: List[str],
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
-    ) -> Tuple[subprocess.Popen, int]:
+    ) -> Tuple[subprocess.Popen[str], int]:
         """Start a process in the background.
 
         Args:

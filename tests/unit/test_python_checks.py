@@ -1,6 +1,6 @@
 """Tests for Python check implementations."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from slopmop.checks.python.coverage import PythonCoverageCheck
 from slopmop.checks.python.lint_format import PythonLintFormatCheck
@@ -303,15 +303,37 @@ class TestPythonStaticAnalysisCheck:
         check = PythonStaticAnalysisCheck({})
         assert check.name == "static-analysis"
 
-    def test_display_name(self):
-        """Test check display name."""
+    def test_display_name_strict(self):
+        """Test display name shows strict when enabled (default)."""
         check = PythonStaticAnalysisCheck({})
-        assert "mypy" in check.display_name.lower() or "Static" in check.display_name
+        assert "strict" in check.display_name
+        assert "mypy" in check.display_name
+
+    def test_display_name_basic(self):
+        """Test display name shows basic when strict disabled."""
+        check = PythonStaticAnalysisCheck({"strict_typing": False})
+        assert "basic" in check.display_name
+        assert "mypy" in check.display_name
+
+    def test_config_schema_has_strict_typing(self):
+        """Test config schema includes strict_typing field."""
+        check = PythonStaticAnalysisCheck({})
+        field_names = [f.name for f in check.config_schema]
+        assert "strict_typing" in field_names
+
+    def test_strict_typing_default_on(self):
+        """Test strict_typing defaults to True."""
+        check = PythonStaticAnalysisCheck({})
+        assert check._is_strict() is True
+
+    def test_strict_typing_configurable(self):
+        """Test strict_typing can be disabled."""
+        check = PythonStaticAnalysisCheck({"strict_typing": False})
+        assert check._is_strict() is False
 
     def test_depends_on(self):
         """Test check dependencies."""
         check = PythonStaticAnalysisCheck({})
-        # Static analysis depends on lint-format being run first
         assert "python:lint-format" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
@@ -319,6 +341,103 @@ class TestPythonStaticAnalysisCheck:
         (tmp_path / "main.py").touch()
         check = PythonStaticAnalysisCheck({})
         assert check.is_applicable(str(tmp_path)) is True
+
+    # --- Command building ---
+
+    def test_build_command_strict(self, tmp_path):
+        """Test command includes strict flags by default."""
+        check = PythonStaticAnalysisCheck({})
+        cmd = check._build_command(["src"])
+        assert "--disallow-untyped-defs" in cmd
+        assert "--disallow-any-generics" in cmd
+        assert "--ignore-missing-imports" in cmd
+
+    def test_build_command_basic(self, tmp_path):
+        """Test command excludes strict flags when disabled."""
+        check = PythonStaticAnalysisCheck({"strict_typing": False})
+        cmd = check._build_command(["src"])
+        assert "--disallow-untyped-defs" not in cmd
+        assert "--disallow-any-generics" not in cmd
+        assert "--ignore-missing-imports" in cmd
+
+    # --- Source directory detection ---
+
+    def test_detect_source_dirs_standard(self, tmp_path):
+        """Test detecting standard source directories."""
+        (tmp_path / "src").mkdir()
+        check = PythonStaticAnalysisCheck({})
+        dirs = check._detect_source_dirs(str(tmp_path))
+        assert "src" in dirs
+
+    def test_detect_source_dirs_fallback(self, tmp_path):
+        """Test fallback to '.' when no source dirs found."""
+        check = PythonStaticAnalysisCheck({})
+        dirs = check._detect_source_dirs(str(tmp_path))
+        assert dirs == ["."]
+
+    def test_detect_source_dirs_python_package(self, tmp_path):
+        """Test detecting Python packages."""
+        (tmp_path / "mypackage").mkdir()
+        (tmp_path / "mypackage" / "__init__.py").touch()
+        check = PythonStaticAnalysisCheck({})
+        dirs = check._detect_source_dirs(str(tmp_path))
+        assert "mypackage" in dirs
+
+    # --- Output dedup ---
+
+    def test_dedup_output_strips_notes(self):
+        """Test dedup removes note lines."""
+        raw = (
+            "foo.py:10: error: Missing return  [no-untyped-def]\n"
+            "foo.py:10: note: Use -> None if function does not return\n"
+            "Found 1 error in 1 file (checked 5 source files)\n"
+        )
+        errors, codes = PythonStaticAnalysisCheck._dedup_output(raw)
+        assert len(errors) == 1
+        assert "note:" not in errors[0]
+        assert codes == {"no-untyped-def": 1}
+
+    def test_dedup_output_counts_by_code(self):
+        """Test dedup groups errors by code."""
+        raw = (
+            "a.py:1: error: Missing type  [type-arg]\n"
+            "b.py:2: error: Missing type  [type-arg]\n"
+            "c.py:3: error: Missing return  [no-untyped-def]\n"
+        )
+        errors, codes = PythonStaticAnalysisCheck._dedup_output(raw)
+        assert len(errors) == 3
+        assert codes == {"type-arg": 2, "no-untyped-def": 1}
+
+    def test_dedup_output_skips_summary_line(self):
+        """Test dedup strips mypy's own summary line."""
+        raw = (
+            "a.py:1: error: Bad  [type-arg]\n"
+            "Found 1 error in 1 file (checked 5 source files)\n"
+        )
+        errors, _ = PythonStaticAnalysisCheck._dedup_output(raw)
+        assert len(errors) == 1
+        assert not any("Found " in e for e in errors)
+
+    # --- Output formatting ---
+
+    def test_format_summary_capped(self):
+        """Test format_summary caps output at 20 errors."""
+        errors = [f"f{i}.py:{i}: error: Bad  [type-arg]" for i in range(25)]
+        codes = {"type-arg": 25}
+        output = PythonStaticAnalysisCheck._format_summary(errors, codes)
+        assert "... and 5 more" in output
+        assert "25 type error(s)" in output
+
+    def test_format_summary_breakdown(self):
+        """Test format_summary includes code breakdown."""
+        errors = ["a.py:1: error: Bad  [type-arg]"]
+        codes = {"type-arg": 2, "no-untyped-def": 1}
+        output = PythonStaticAnalysisCheck._format_summary(errors, codes)
+        assert "3 type error(s)" in output
+        assert "[no-untyped-def]" in output
+        assert "[type-arg]" in output
+
+    # --- Run integration ---
 
     def test_run_success(self, tmp_path):
         """Test run with no type errors."""
@@ -343,7 +462,10 @@ class TestPythonStaticAnalysisCheck:
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
             returncode=1,
-            stdout="src/main.py:10: error: Incompatible types",
+            stdout=(
+                "src/main.py:10: error: Incompatible types  [assignment]\n"
+                "Found 1 error in 1 file (checked 5 source files)\n"
+            ),
             stderr="",
             duration=1.0,
         )
@@ -352,12 +474,32 @@ class TestPythonStaticAnalysisCheck:
         result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+        assert "1 type error(s)" in result.error
 
-    def test_run_finds_python_packages(self, tmp_path):
-        """Test run finds Python packages when no standard dirs exist."""
-        # Create a custom package (not src, lib, etc.)
-        (tmp_path / "mypackage").mkdir()
-        (tmp_path / "mypackage" / "__init__.py").touch()
+    def test_run_type_arg_errors_include_fix_suggestion(self, tmp_path):
+        """Test fix_suggestion mentions type-arg when present."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout='src/main.py:5: error: Missing type params for generic "Dict"  [type-arg]\n',
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonStaticAnalysisCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "type-arg" in result.fix_suggestion
+        assert "Dict[str, Any]" in result.fix_suggestion
+
+    def test_run_strict_includes_flags_in_command(self, tmp_path):
+        """Test that strict mode passes the right flags to mypy."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
 
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
@@ -365,28 +507,28 @@ class TestPythonStaticAnalysisCheck:
         )
 
         check = PythonStaticAnalysisCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.PASSED
-        # Verify mypackage was included in the command
-        call_args = mock_runner.run.call_args
-        assert "mypackage" in call_args[0][0]
+        call_args = mock_runner.run.call_args[0][0]
+        assert "--disallow-untyped-defs" in call_args
+        assert "--disallow-any-generics" in call_args
 
-    def test_run_falls_back_to_current_dir(self, tmp_path):
-        """Test run uses '.' when no source dirs or packages found."""
-        # Empty directory - no Python packages
+    def test_run_basic_omits_strict_flags(self, tmp_path):
+        """Test that basic mode omits strict flags."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
             returncode=0, stdout="Success: no issues found", stderr="", duration=1.0
         )
 
-        check = PythonStaticAnalysisCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        check = PythonStaticAnalysisCheck({"strict_typing": False}, runner=mock_runner)
+        check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.PASSED
-        # Verify '.' was used as fallback
-        call_args = mock_runner.run.call_args
-        assert "." in call_args[0][0]
+        call_args = mock_runner.run.call_args[0][0]
+        assert "--disallow-untyped-defs" not in call_args
+        assert "--disallow-any-generics" not in call_args
 
     def test_run_timeout(self, tmp_path):
         """Test run handles timeout."""
@@ -407,3 +549,226 @@ class TestPythonStaticAnalysisCheck:
 
         assert result.status == CheckStatus.FAILED
         assert "timed out" in result.error.lower()
+
+
+class TestPythonTypeCheckingCheck:
+    """Tests for PythonTypeCheckingCheck (pyright type-completeness)."""
+
+    def test_name(self):
+        """Test check name."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        check = PythonTypeCheckingCheck({})
+        assert check.name == "type-checking"
+
+    def test_display_name(self):
+        """Test check display name."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        check = PythonTypeCheckingCheck({})
+        assert "Type" in check.display_name
+        assert "pyright" in check.display_name
+
+    def test_is_applicable_python_project(self, tmp_path):
+        """Test is_applicable returns True for Python project."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "setup.py").touch()
+        check = PythonTypeCheckingCheck({})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_is_applicable_non_python(self, tmp_path):
+        """Test is_applicable returns False for non-Python project."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "package.json").touch()
+        check = PythonTypeCheckingCheck({})
+        assert check.is_applicable(str(tmp_path)) is False
+
+    def test_skip_reason_delegates_to_mixin(self, tmp_path):
+        """Test skip_reason returns PythonCheckMixin's skip reason."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        # No Python files or markers
+        check = PythonTypeCheckingCheck({})
+        reason = check.skip_reason(str(tmp_path))
+        assert "Python" in reason or "python" in reason.lower()
+
+    @patch(
+        "slopmop.checks.python.type_checking._find_pyright",
+        return_value=None,
+    )
+    def test_run_pyright_not_installed(self, mock_find, tmp_path):
+        """Test run handles missing pyright."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        check = PythonTypeCheckingCheck({})
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert "pyright" in result.error.lower()
+
+    @patch(
+        "slopmop.checks.python.type_checking._find_pyright",
+        return_value="/usr/bin/pyright",
+    )
+    def test_run_success(self, mock_find, tmp_path):
+        """Test run with clean pyright output."""
+        import json
+
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        success_output = json.dumps(
+            {
+                "generalDiagnostics": [],
+                "summary": {"errorCount": 0, "filesAnalyzed": 5},
+            }
+        )
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout=success_output, stderr="", duration=1.0
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert "5 files" in result.output
+
+    @patch(
+        "slopmop.checks.python.type_checking._find_pyright",
+        return_value="/usr/bin/pyright",
+    )
+    def test_run_with_errors(self, mock_find, tmp_path):
+        """Test run with pyright type errors."""
+        import json
+
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        error_output = json.dumps(
+            {
+                "generalDiagnostics": [
+                    {
+                        "file": "src/app.py",
+                        "severity": 1,
+                        "message": 'Type of "x" is "Unknown"',
+                        "rule": "reportUnknownVariableType",
+                        "range": {"start": {"line": 10, "character": 0}},
+                    }
+                ],
+                "summary": {"errorCount": 1, "filesAnalyzed": 3},
+            }
+        )
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1, stdout=error_output, stderr="", duration=1.0
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "1 type-completeness error" in result.error
+        assert result.fix_suggestion is not None
+
+    @patch(
+        "slopmop.checks.python.type_checking._find_pyright",
+        return_value="/usr/bin/pyright",
+    )
+    def test_run_timeout(self, mock_find, tmp_path):
+        """Test run handles timeout."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=-1,
+            stdout="",
+            stderr="",
+            duration=120.0,
+            timed_out=True,
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "timed out" in result.error.lower()
+
+    def test_build_pyright_config(self, tmp_path):
+        """Test _build_pyright_config generates correct config."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        check = PythonTypeCheckingCheck({})
+        config = check._build_pyright_config(str(tmp_path))
+
+        assert "include" in config
+        assert "pythonVersion" in config
+        assert config["typeCheckingMode"] == "standard"
+
+    def test_build_pyright_config_strict_mode(self, tmp_path):
+        """Test _build_pyright_config includes type-completeness rules in strict mode."""
+        from slopmop.checks.python.type_checking import (
+            TYPE_COMPLETENESS_RULES,
+            PythonTypeCheckingCheck,
+        )
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        check = PythonTypeCheckingCheck({"strict": True})
+        config = check._build_pyright_config(str(tmp_path))
+
+        # Should include type-completeness rules
+        for rule in TYPE_COMPLETENESS_RULES:
+            assert rule in config
+
+    def test_preserves_existing_pyrightconfig(self, tmp_path):
+        """Test run backs up and restores existing pyrightconfig.json."""
+        import json
+
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        # Create existing config
+        existing_config = {"typeCheckingMode": "basic", "custom": True}
+        config_path = tmp_path / "pyrightconfig.json"
+        config_path.write_text(json.dumps(existing_config))
+
+        success_output = json.dumps(
+            {
+                "generalDiagnostics": [],
+                "summary": {"errorCount": 0, "filesAnalyzed": 1},
+            }
+        )
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout=success_output, stderr="", duration=1.0
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        check.run(str(tmp_path))
+
+        # Original config should be restored
+        assert config_path.exists()
+        restored = json.loads(config_path.read_text())
+        assert restored == existing_config

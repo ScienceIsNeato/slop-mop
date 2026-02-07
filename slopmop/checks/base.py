@@ -6,6 +6,7 @@ existing code.
 """
 
 import logging
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -14,9 +15,37 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from slopmop.core.result import CheckResult, CheckStatus
-from slopmop.subprocess.runner import SubprocessRunner, get_runner
+from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
+
+
+def find_tool(name: str, project_root: str) -> Optional[str]:
+    """Find a tool executable, checking the project venv first.
+
+    VS Code git hooks and other non-interactive contexts don't activate
+    the venv, so tools installed there (vulture, pyright, etc.) aren't
+    on $PATH. This checks venv/bin/<name> before falling back to
+    shutil.which().
+
+    Args:
+        name: Executable name (e.g. "vulture", "pyright").
+        project_root: Project root directory.
+
+    Returns:
+        Absolute path to the executable, or None if not found.
+    """
+    root = Path(project_root)
+    for venv_dir in ["venv", ".venv"]:
+        candidate = root / venv_dir / "bin" / name
+        if candidate.exists():
+            return str(candidate)
+        # Windows
+        candidate = root / venv_dir / "Scripts" / f"{name}.exe"
+        if candidate.exists():
+            return str(candidate)
+
+    return shutil.which(name)
 
 
 class GateCategory(Enum):
@@ -38,6 +67,11 @@ class GateCategory(Enum):
     @property
     def display(self) -> str:
         return f"{self.emoji} {self._display_name}"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable category name."""
+        return self._display_name
 
 
 @dataclass
@@ -95,7 +129,9 @@ class BaseCheck(ABC):
     - auto_fix(): Attempt to fix issues automatically
     """
 
-    def __init__(self, config: Dict, runner: Optional[SubprocessRunner] = None):
+    def __init__(
+        self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
+    ):
         """Initialize the check.
 
         Args:
@@ -196,7 +232,7 @@ class BaseCheck(ABC):
             Human-readable skip reason
         """
         # Default implementation tries to provide helpful context
-        category = self.category._display_name if self.category else "Unknown"
+        category = self.category.display_name if self.category else "Unknown"
         return f"No {category} code detected in project"
 
     @abstractmethod
@@ -265,7 +301,7 @@ class BaseCheck(ABC):
         command: List[str],
         cwd: Optional[str] = None,
         timeout: Optional[int] = None,
-    ):
+    ) -> SubprocessResult:
         """Run a command using the subprocess runner.
 
         Args:
@@ -283,9 +319,9 @@ class PythonCheckMixin:
     """Mixin for Python-specific check utilities."""
 
     # Class-level cache for venv warning (only warn once per project_root)
-    _venv_warning_shown: set = set()
+    _venv_warning_shown: set[str] = set()
     # Cache resolved Python path per project_root
-    _python_cache: dict = {}
+    _python_cache: dict[str, str] = {}
 
     def _find_python_in_venv(self, venv_path: Path) -> Optional[str]:
         """Find Python executable in a venv directory (Unix or Windows)."""

@@ -26,10 +26,31 @@ MAX_COMPLEXITY = 20
 
 
 class ComplexityCheck(BaseCheck, PythonCheckMixin):
-    """Radon cyclomatic complexity enforcement.
+    """Cyclomatic complexity enforcement.
 
-    Uses 'src_dirs' from config, or defaults to scanning Python files
-    in project root.
+    Wraps radon to flag functions with complexity rank D or higher.
+    Complexity rank C (score ≤20) is the threshold — anything above
+    indicates a function that is too branchy for humans or LLMs to
+    reason about reliably.
+
+    Profiles: commit, pr
+
+    Configuration:
+      max_rank: "C" — ranks A-C are acceptable. D+ means the function
+          has > 20 independent paths and should be decomposed.
+      max_complexity: 15 — numeric score threshold. Functions above
+          this score appear in the violation list.
+      src_dirs: [] — empty means scan project root. Set to specific
+          directories to limit scope.
+
+    Common failures:
+      High complexity function: Break it into smaller helpers that
+          each handle one concept. Focus on logical separation, not
+          arbitrary line reduction.
+      radon not available: pip install radon
+
+    Re-validate:
+      sm validate quality:complexity --verbose
     """
 
     @property
@@ -113,7 +134,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
 
         if result.returncode == 127:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=duration,
                 error="Radon not available",
                 fix_suggestion="Install radon: pip install radon",
@@ -139,7 +160,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         )
 
     def _parse_violations(self, output: str) -> List[str]:
-        violations = []
+        violations: List[str] = []
         for line in output.splitlines():
             if re.search(r"\b[DEF]\b", line) and "(" in line:
                 violations.append(line.strip())

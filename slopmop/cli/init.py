@@ -6,7 +6,7 @@ Handles interactive and non-interactive project setup.
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 from slopmop.cli.detection import detect_project_type
 
@@ -34,7 +34,7 @@ def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
     """Deep merge updates into base dict, modifying base in place."""
     for key, value in updates.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _deep_merge(base[key], value)
+            _deep_merge(cast(Dict[str, Any], base[key]), cast(Dict[str, Any], value))
         else:
             base[key] = value
 
@@ -62,7 +62,7 @@ def _build_non_interactive_config(
     detected: Dict[str, Any], preconfig: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Build config using detected defaults and preconfig."""
-    config = {
+    config: Dict[str, Any] = {
         "project_type": (
             "python"
             if detected["has_python"]
@@ -131,7 +131,9 @@ def _build_interactive_config(
     return config
 
 
-def _apply_detected_settings(base_config: Dict, detected: Dict[str, Any]) -> None:
+def _apply_detected_settings(
+    base_config: Dict[str, Any], detected: Dict[str, Any]
+) -> None:
     """Apply detected project settings to the base config."""
     if detected["has_python"]:
         base_config["python"]["enabled"] = True
@@ -140,7 +142,13 @@ def _apply_detected_settings(base_config: Dict, detected: Dict[str, Any]) -> Non
                 base_config["python"]["gates"]["tests"]["test_dirs"] = detected[
                     "test_dirs"
                 ]
-        for gate in ["lint-format", "tests", "coverage", "static-analysis"]:
+        for gate in [
+            "lint-format",
+            "tests",
+            "coverage",
+            "static-analysis",
+            "type-checking",
+        ]:
             if gate in base_config["python"]["gates"]:
                 base_config["python"]["gates"][gate]["enabled"] = True
 
@@ -151,7 +159,7 @@ def _apply_detected_settings(base_config: Dict, detected: Dict[str, Any]) -> Non
                 base_config["javascript"]["gates"][gate]["enabled"] = True
 
 
-def _apply_user_config(base_config: Dict, config: Dict[str, Any]) -> None:
+def _apply_user_config(base_config: Dict[str, Any], config: Dict[str, Any]) -> None:
     """Apply user config overrides to base config."""
     base_config["default_profile"] = config.get("default_profile", "commit")
 

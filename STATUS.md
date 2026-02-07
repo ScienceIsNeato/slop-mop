@@ -1,63 +1,14 @@
 # Session Status
 
-## Current Work: feat/branding branch
+## Current Work: feat/dead-code-gate branch — PR #17
 
-### Just Completed: Skip Reason Display Feature ✅
+### Latest: Resolved duplicate BugBot threads + README update (7d35baa)
 
-**Committed**: e2b6fbf - All 7 checks passing, 501 tests, 80% coverage
+BugBot re-reviewed old commit SHAs and posted 4 duplicate threads for issues already fixed in 5737303.
+All 4 triaged as ALREADY FIXED, resolved via GraphQL. Added PR thread resolution workflow note to README.
 
-**New Feature**: slop-mop now always shows skipped checks with human-readable reasons explaining WHY they were skipped.
+**Commits ready to push:**
+- 5737303: fix: trim README to 280 lines, fix 4 BugBot issues (glob, pyrightconfig, recommendations, timeout)
+- 7d35baa: docs: add PR thread resolution workflow to README
 
-**Changes**:
-
-- Added `skip_reason(project_root: str) -> str` method to `BaseCheck`
-- Added skip_reason methods to `PythonCheckMixin` and `JavaScriptCheckMixin`
-- Added specific skip_reason to `quality:duplication`, `quality:loc-lock`, `pr:comments`
-- Updated `ConsoleReporter` to always show skipped section with reasons
-- Updated `Executor` to use `check.skip_reason()` when creating skipped results
-- Fixed duplication check to exclude `.mypy_cache`, `.pytest_cache`, etc.
-- Added tests for skip_reason methods
-
-**Example Output**:
-
-```
-⏭️  SKIPPED:
-   • javascript:lint-format
-     └─ No package.json found (not a JavaScript/TypeScript project)
-   • pr:comments
-     └─ No PR context detected (not on a PR branch)
-```
-
----
-
-### Previously Completed: LOC Lock Check
-
-**New Feature**: Added `quality:loc-lock` check that enforces:
-
-- Maximum file length (default: 1000 lines)
-- Maximum function/method length (default: 100 lines)
-
-**Note**: Temporarily disabled in commit profile pending refactoring of sm.py
-
----
-
-### TODO: sm.py Refactoring
-
-The following violations need to be addressed in a future PR:
-
-- `slopmop/sm.py: 1461 lines` (over 1000 line limit)
-- `cmd_init(): 223 lines`, `cmd_ci(): 168 lines`, etc. (over 100 line limit)
-
-Once fixed, re-enable `quality:loc-lock` in commit profile.
-
-- `slopmop/checks/general/jinja2_templates.py`
-- `slopmop/checks/python/*.py`
-- `slopmop/checks/security/__init__.py`
-- `tests/unit/test_base_check.py`
-- `README.md`
-
-### Next Steps:
-
-1. Commit all changes
-2. Push to PR #8
-3. Address LOC violations in future PR (optional - not blocking)
+### All PR threads resolved. All 12 quality gates pass. 654 tests pass.

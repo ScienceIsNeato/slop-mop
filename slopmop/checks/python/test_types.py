@@ -24,7 +24,25 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class SmokeTestCheck(BaseCheck, PythonCheckMixin):
-    """Smoke tests — critical-path browser validation against a live server."""
+    """Smoke tests — critical-path browser validation.
+
+    Wraps pytest targeting tests/smoke/ with Selenium. Requires a
+    running server (detected via TEST_PORT or PORT env var). Skips
+    gracefully if no server port is configured.
+
+    Profiles: e2e
+
+    Configuration:
+      test_dir: "tests/smoke" — standard location for smoke tests.
+
+    Common failures:
+      No server port: Set TEST_PORT or PORT env var before running.
+      Selenium not installed: pip install selenium.
+      Tests fail: Verify the server is healthy on the configured port.
+
+    Re-validate:
+      sm validate integration:smoke-tests --verbose
+    """
 
     @property
     def name(self) -> str:
@@ -52,6 +70,10 @@ class SmokeTestCheck(BaseCheck, PythonCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         smoke_dir = os.path.join(project_root, "tests", "smoke")
         return os.path.isdir(smoke_dir)
+
+    def skip_reason(self, project_root: str) -> str:
+        """Explain why smoke tests are not applicable."""
+        return "No tests/smoke/ directory found"
 
     def _detect_server_port(self) -> Optional[str]:
         return os.environ.get("TEST_PORT") or os.environ.get("PORT")
@@ -121,7 +143,25 @@ class SmokeTestCheck(BaseCheck, PythonCheckMixin):
 
 
 class IntegrationTestCheck(BaseCheck, PythonCheckMixin):
-    """Integration tests targeting tests/integration/ with database."""
+    """Database-backed integration tests.
+
+    Wraps pytest targeting tests/integration/. Requires DATABASE_URL
+    env var pointing to a seeded database. Skips gracefully if no
+    database URL is configured.
+
+    Profiles: e2e
+
+    Configuration:
+      test_dir: "tests/integration" — standard location.
+
+    Common failures:
+      DATABASE_URL not set: Export it before running.
+      Database not seeded: Run your seed script first.
+      Tests fail: Check database state and test isolation.
+
+    Re-validate:
+      sm validate integration:integration-tests --verbose
+    """
 
     @property
     def name(self) -> str:
@@ -153,6 +193,10 @@ class IntegrationTestCheck(BaseCheck, PythonCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         integration_dir = os.path.join(project_root, "tests", "integration")
         return os.path.isdir(integration_dir)
+
+    def skip_reason(self, project_root: str) -> str:
+        """Explain why integration tests are not applicable."""
+        return "No tests/integration/ directory found"
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
@@ -217,7 +261,28 @@ class IntegrationTestCheck(BaseCheck, PythonCheckMixin):
 
 
 class E2ETestCheck(BaseCheck, PythonCheckMixin):
-    """End-to-end Playwright browser tests."""
+    """End-to-end browser tests with Playwright.
+
+    Wraps pytest targeting tests/e2e/ with Playwright. Requires a
+    running server (detected via E2E_PORT, TEST_PORT, or PORT env
+    var) and Playwright browsers installed.
+
+    Profiles: e2e
+
+    Configuration:
+      test_dir: "tests/e2e" — standard location for E2E tests.
+      test_command: None — optional custom command override.
+
+    Common failures:
+      No server port: Set E2E_PORT or TEST_PORT env var.
+      Playwright not installed: pip install playwright &&
+          python -m playwright install --with-deps chromium
+      Tests fail: Check server health, review screenshots if
+          generated, verify selectors haven't changed.
+
+    Re-validate:
+      sm validate integration:e2e-tests --verbose
+    """
 
     @property
     def name(self) -> str:
@@ -256,6 +321,10 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
         e2e_dir = os.path.join(project_root, "tests", "e2e")
         return os.path.isdir(e2e_dir)
 
+    def skip_reason(self, project_root: str) -> str:
+        """Explain why E2E tests are not applicable."""
+        return "No tests/e2e/ directory found"
+
     def _detect_server_port(self) -> Optional[str]:
         return (
             os.environ.get("E2E_PORT")
@@ -291,7 +360,7 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
         )
         if not probe.success:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 error="Playwright is not installed",
                 fix_suggestion="Install: pip install playwright && "

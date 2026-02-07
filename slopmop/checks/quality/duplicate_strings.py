@@ -4,18 +4,42 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, cast
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 class StringDuplicationCheck(BaseCheck):
-    """Check for duplicate string literals across source files.
+    """Duplicate string literal detection.
 
-    This check wraps the vendored find-duplicate-strings tool to detect
-    string literals that appear multiple times across files, suggesting
-    they should be extracted to a constants module.
+    Wraps the vendored find-duplicate-strings tool to detect string
+    literals repeated across multiple files. These are candidates
+    for extraction to a constants module.
+
+    Profiles: commit, pr
+
+    Configuration:
+      threshold: 2 — minimum occurrences to flag a string.
+      min_file_count: 1 — minimum files the string must appear in.
+      min_length: 8 — strings shorter than this are filtered out
+          (short tokens like "id" or "name" repeat naturally).
+      min_words: 3 — primary noise filter. Single-word strings
+          like "store_true" or "description" are identifiers, not
+          human-authored messages worth extracting.
+      include_patterns: ["**/*.py"] — file globs to scan.
+      ignore_patterns: test files, venv, build dirs — test
+          strings naturally repeat without being a problem.
+
+    Common failures:
+      Duplicate strings found: Extract repeated strings to a
+          constants.py module. The output shows each string,
+          its count, and which files contain it.
+      Tool not found: Requires Node.js. The tool is vendored
+          in tools/find-duplicate-strings/.
+
+    Re-validate:
+      sm validate quality:string-duplication --verbose
     """
 
     @property
@@ -116,7 +140,7 @@ class StringDuplicationCheck(BaseCheck):
 
     def _get_effective_config(self) -> dict[str, Any]:
         """Get effective configuration with defaults."""
-        defaults = {
+        defaults: dict[str, Any] = {
             "threshold": 2,
             "min_file_count": 1,
             "min_length": 8,
@@ -149,7 +173,7 @@ class StringDuplicationCheck(BaseCheck):
             glob_pattern = include_patterns[0]
         else:
             # Create brace expansion: **/*.{py,js,ts}
-            extensions = []
+            extensions: list[str] = []
             for pattern in include_patterns:
                 if pattern.startswith("**/*."):
                     extensions.append(pattern[5:])  # Extract extension
@@ -160,7 +184,7 @@ class StringDuplicationCheck(BaseCheck):
             else:
                 glob_pattern = include_patterns[0]
 
-        cmd = [
+        cmd: list[str] = [
             "node",
             str(tool_path),
             glob_pattern,
@@ -178,11 +202,11 @@ class StringDuplicationCheck(BaseCheck):
         self, findings: list[dict[str, Any]], config: dict[str, Any]
     ) -> list[dict[str, Any]]:
         """Filter findings based on configuration."""
-        min_file_count = config.get("min_file_count", 2)
-        min_length = config.get("min_length", 4)
-        min_words = config.get("min_words", 3)
+        min_file_count = cast(int, config.get("min_file_count", 2))
+        min_length = cast(int, config.get("min_length", 4))
+        min_words = cast(int, config.get("min_words", 3))
 
-        filtered = []
+        filtered: list[dict[str, Any]] = []
         for finding in findings:
             key = finding.get("key", "")
             file_count = finding.get("fileCount", 0)
@@ -255,7 +279,7 @@ class StringDuplicationCheck(BaseCheck):
             key = finding.get("key", "")
             count = finding.get("count", 0)
             file_count = finding.get("fileCount", 0)
-            files = finding.get("files", [])
+            files: list[str] = cast(list[str], finding.get("files", []))
 
             # Truncate long strings
             display_key = key if len(key) <= 50 else key[:47] + "..."
@@ -293,7 +317,7 @@ class StringDuplicationCheck(BaseCheck):
         tool_path = self._get_tool_path()
         if not tool_path.exists():
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 output="",
                 error=(

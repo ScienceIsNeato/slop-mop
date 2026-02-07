@@ -8,7 +8,7 @@ import json
 import os
 import re
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -30,9 +30,29 @@ MAX_FILES_TO_SHOW = 5
 
 
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
-    """Jest coverage threshold enforcement."""
+    """Jest coverage threshold enforcement.
 
-    def __init__(self, config: Dict, threshold: int = DEFAULT_THRESHOLD):
+    Wraps Jest with --coverageReporters=json-summary to parse
+    line coverage. Falls back to parsing console output if the
+    JSON summary isn't available.
+
+    Profiles: commit, pr
+
+    Configuration:
+      threshold: 80 — minimum line coverage percentage. Start
+          lower on legacy codebases and ramp up over time.
+
+    Common failures:
+      Below threshold: The output lists files with lowest
+          coverage. Write tests for those files.
+      Coverage data unavailable: Ensure Jest is configured to
+          produce coverage reports.
+
+    Re-validate:
+      sm validate javascript:coverage --verbose
+    """
+
+    def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)
         self.threshold = config.get("threshold", threshold)
 
@@ -139,7 +159,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             error="Jest tests failed",
         )
 
-    def _parse_coverage_json(self, project_root: str) -> Optional[Dict]:
+    def _parse_coverage_json(self, project_root: str) -> Optional[Dict[str, Any]]:
         """Parse coverage-summary.json if available."""
         summary_path = os.path.join(project_root, "coverage", "coverage-summary.json")
         if not os.path.exists(summary_path):
@@ -151,7 +171,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             return None
 
     def _evaluate_coverage(
-        self, data: Dict, output: str, duration: float
+        self, data: Dict[str, Any], output: str, duration: float
     ) -> CheckResult:
         """Evaluate coverage from parsed JSON data."""
         total = data.get("total", {})
@@ -166,7 +186,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             )
 
         # Find lowest coverage files
-        low_files = []
+        low_files: List[tuple[str, float]] = []
         for path, stats in data.items():
             if path == "total":
                 continue

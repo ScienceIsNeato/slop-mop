@@ -1,10 +1,29 @@
 """Help command for slop-mop CLI."""
 
 import argparse
+import textwrap
 from typing import List
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.core.registry import get_registry
+
+
+def _format_docstring(doc: str) -> str:
+    """Clean and format a class docstring for terminal display.
+
+    Strips leading/trailing whitespace, dedents, and adds consistent
+    indentation so the help output looks clean regardless of how the
+    docstring was indented in source.
+    """
+    cleaned = textwrap.dedent(doc).strip()
+    lines = cleaned.splitlines()
+    formatted: List[str] = []
+    for line in lines:
+        if line.strip():
+            formatted.append(f"  {line}")
+        else:
+            formatted.append("")
+    return "\n".join(formatted)
 
 
 def _show_gate_help(gate_name: str) -> int:
@@ -32,16 +51,14 @@ def _show_gate_help(gate_name: str) -> int:
 
     print(f"\n🔍 Quality Gate: {definition.name}")
     print("=" * 60)
-    print(f"Flag: --quality-gates {definition.flag}")
-    print(f"Auto-fix: {'Yes' if definition.auto_fix else 'No'}")
+    print(f"  Flag:     {definition.flag}")
+    print(f"  Auto-fix: {'Yes' if definition.auto_fix else 'No'}")
     if definition.depends_on:
-        print(f"Depends on: {', '.join(definition.depends_on)}")
+        print(f"  Depends:  {', '.join(definition.depends_on)}")
     print()
-    print("Description:")
-    print(f"  {check.__doc__ or 'No description available.'}")
-    print()
-    print("When to use:")
-    print("  Run as part of 'commit' or 'pr' profiles, or individually")
+
+    doc = check.__doc__ or "No description available."
+    print(_format_docstring(doc))
     print()
     return 0
 
@@ -71,9 +88,9 @@ def _show_all_gates() -> int:
     print()
 
     # Group by category
-    python_gates = []
-    js_gates = []
-    general_gates = []
+    python_gates: List[str] = []
+    js_gates: List[str] = []
+    general_gates: List[str] = []
 
     for name in sorted(registry.list_checks()):
         if name.startswith("python-"):
