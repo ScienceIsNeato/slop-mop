@@ -617,8 +617,9 @@ class TestPythonTypeCheckingCheck:
 
     def test_run_success(self, tmp_path):
         """Test run with clean pyright output."""
-        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
         import json
+
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "__init__.py").touch()
@@ -643,8 +644,9 @@ class TestPythonTypeCheckingCheck:
 
     def test_run_with_errors(self, tmp_path):
         """Test run with pyright type errors."""
-        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
         import json
+
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "__init__.py").touch()
@@ -715,8 +717,8 @@ class TestPythonTypeCheckingCheck:
     def test_build_pyright_config_strict_mode(self, tmp_path):
         """Test _build_pyright_config includes type-completeness rules in strict mode."""
         from slopmop.checks.python.type_checking import (
-            PythonTypeCheckingCheck,
             TYPE_COMPLETENESS_RULES,
+            PythonTypeCheckingCheck,
         )
 
         (tmp_path / "src").mkdir()
@@ -731,8 +733,9 @@ class TestPythonTypeCheckingCheck:
 
     def test_preserves_existing_pyrightconfig(self, tmp_path):
         """Test run backs up and restores existing pyrightconfig.json."""
-        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
         import json
+
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "__init__.py").touch()

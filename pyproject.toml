@@ -7,7 +7,7 @@ name = "slopmop"
 version = "1.0.0"
 description = "AI-Focused Quality Gate Framework"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Slop-Mop Attribution License v1.0"}
 requires-python = ">=3.9"
 authors = [
     {name = "ScienceIsNeato"}
@@ -16,7 +16,7 @@ keywords = ["quality-gate", "linting", "testing", "ci-cd", "code-quality"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
