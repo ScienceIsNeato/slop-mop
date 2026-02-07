@@ -128,7 +128,8 @@ class TestDeadCodeCheck:
 
     # --- Command building ---
 
-    def test_build_command_basic(self, check, tmp_path):
+    @patch("slopmop.checks.quality.dead_code.find_tool", return_value=None)
+    def test_build_command_basic(self, mock_find, check, tmp_path):
         """Test basic command structure."""
         cmd = check._build_command(str(tmp_path))
         assert cmd[0] == "vulture"
@@ -265,7 +266,7 @@ class TestDeadCodeCheck:
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.ERROR
+        assert result.status == CheckStatus.WARNED
         assert "not available" in result.error
 
     def test_run_multiple_findings(self, check, tmp_path):

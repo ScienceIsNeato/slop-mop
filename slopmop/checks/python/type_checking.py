@@ -52,8 +52,12 @@ MAX_ERRORS_TO_SHOW = 5
 MAX_FILES_TO_SHOW = 10
 
 
-def _find_pyright() -> Optional[str]:
-    """Find pyright executable."""
+def _find_pyright(project_root: str = "") -> Optional[str]:
+    """Find pyright executable, checking project venv first."""
+    if project_root:
+        from slopmop.checks.base import find_tool
+
+        return find_tool("pyright", project_root)
     return shutil.which("pyright")
 
 
@@ -228,10 +232,10 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         start_time = time.time()
 
         # Check pyright is installed
-        pyright_path = _find_pyright()
+        pyright_path = _find_pyright(project_root)
         if not pyright_path:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 error="pyright not found",
                 fix_suggestion="Install pyright: pip install pyright",

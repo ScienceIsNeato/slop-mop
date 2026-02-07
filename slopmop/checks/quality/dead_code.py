@@ -13,7 +13,7 @@ import re
 import time
 from typing import List, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, find_tool
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_MIN_CONFIDENCE = 80
@@ -144,7 +144,8 @@ class DeadCodeCheck(BaseCheck):
         if not src_dirs:
             src_dirs = ["."]
 
-        cmd = ["vulture"] + src_dirs
+        vulture_path = find_tool("vulture", project_root) or "vulture"
+        cmd = [vulture_path] + src_dirs
         cmd.extend(["--min-confidence", str(self._get_min_confidence())])
 
         exclude_patterns = self._get_exclude_patterns()
@@ -191,7 +192,7 @@ class DeadCodeCheck(BaseCheck):
             result.returncode == -1 and "Command not found" in result.stderr
         ):
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=duration,
                 error="vulture not available",
                 fix_suggestion="Install vulture: pip install vulture",

@@ -11,7 +11,6 @@ def _register_python_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.python.coverage import (
         PythonCoverageCheck,
         PythonDiffCoverageCheck,
-        PythonNewCodeCoverageCheck,
     )
     from slopmop.checks.python.lint_format import PythonLintFormatCheck
     from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
@@ -27,7 +26,6 @@ def _register_python_checks(registry: CheckRegistry) -> None:
     registry.register(PythonTestsCheck)
     registry.register(PythonCoverageCheck)
     registry.register(PythonDiffCoverageCheck)
-    registry.register(PythonNewCodeCoverageCheck)
     registry.register(PythonStaticAnalysisCheck)
     registry.register(PythonTypeCheckingCheck)
     registry.register(SmokeTestCheck)
@@ -109,7 +107,6 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:tests",
             "python:coverage",
             "python:diff-coverage",
-            "python:new-code-coverage",
             "quality:complexity",
             "quality:dead-code",
             "quality:source-duplication",

@@ -615,7 +615,10 @@ class TestPythonTypeCheckingCheck:
         assert result.status == CheckStatus.ERROR
         assert "pyright" in result.error.lower()
 
-    @patch("slopmop.checks.python.type_checking._find_pyright", return_value="/usr/bin/pyright")
+    @patch(
+        "slopmop.checks.python.type_checking._find_pyright",
+        return_value="/usr/bin/pyright",
+    )
     def test_run_success(self, mock_find, tmp_path):
         """Test run with clean pyright output."""
         import json
@@ -643,7 +646,10 @@ class TestPythonTypeCheckingCheck:
         assert result.status == CheckStatus.PASSED
         assert "5 files" in result.output
 
-    @patch("slopmop.checks.python.type_checking._find_pyright", return_value="/usr/bin/pyright")
+    @patch(
+        "slopmop.checks.python.type_checking._find_pyright",
+        return_value="/usr/bin/pyright",
+    )
     def test_run_with_errors(self, mock_find, tmp_path):
         """Test run with pyright type errors."""
         import json
@@ -680,7 +686,10 @@ class TestPythonTypeCheckingCheck:
         assert "1 type-completeness error" in result.error
         assert result.fix_suggestion is not None
 
-    @patch("slopmop.checks.python.type_checking._find_pyright", return_value="/usr/bin/pyright")
+    @patch(
+        "slopmop.checks.python.type_checking._find_pyright",
+        return_value="/usr/bin/pyright",
+    )
     def test_run_timeout(self, mock_find, tmp_path):
         """Test run handles timeout."""
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck

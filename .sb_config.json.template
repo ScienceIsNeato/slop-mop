@@ -32,11 +32,6 @@
         "auto_fix": false,
         "config_file_path": null
       },
-      "new-code-coverage": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null
-      },
       "static-analysis": {
         "enabled": false,
         "auto_fix": false,

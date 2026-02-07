@@ -67,7 +67,6 @@ Iterate until all gates pass, then commit. Use `sm status` for a full report car
 | `python:tests`             | 🧪 Test execution (pytest)                     |
 | `python:coverage`          | 📊 Whole repo coverage analysis (80% threshold default)           |
 | `python:diff-coverage`     | 📊 Coverage on changed lines only (diff-cover) |
-| `python:new-code-coverage` | 📊 Alias for diff-coverage (CI compat)         |
 
 ### JavaScript
 
@@ -102,7 +101,7 @@ Iterate until all gates pass, then commit. Use `sm status` for a full report car
 | Profile  | Description           | Gates Included                                                                                                           |
 | -------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `commit` | Commit validation     | lint, static-analysis, tests, coverage, complexity, dead-code, loc-lock, duplication (source + string), bogus-tests, security-local, JS gates |
-| `pr`     | Full PR validation    | All commit gates + PR comments, diff-coverage, new-code-coverage, security-full                                                               |
+| `pr`     | Full PR validation    | All commit gates + PR comments, diff-coverage, security-full                                                                                  |
 | `quick`  | Ultra-fast lint check | lint, security-local                                                                                                                          |
 
 JS gates auto-skip when no JavaScript is detected.

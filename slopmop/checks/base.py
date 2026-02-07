@@ -6,6 +6,7 @@ existing code.
 """
 
 import logging
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -17,6 +18,34 @@ from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
+
+
+def find_tool(name: str, project_root: str) -> Optional[str]:
+    """Find a tool executable, checking the project venv first.
+
+    VS Code git hooks and other non-interactive contexts don't activate
+    the venv, so tools installed there (vulture, pyright, etc.) aren't
+    on $PATH. This checks venv/bin/<name> before falling back to
+    shutil.which().
+
+    Args:
+        name: Executable name (e.g. "vulture", "pyright").
+        project_root: Project root directory.
+
+    Returns:
+        Absolute path to the executable, or None if not found.
+    """
+    root = Path(project_root)
+    for venv_dir in ["venv", ".venv"]:
+        candidate = root / venv_dir / "bin" / name
+        if candidate.exists():
+            return str(candidate)
+        # Windows
+        candidate = root / venv_dir / "Scripts" / f"{name}.exe"
+        if candidate.exists():
+            return str(candidate)
+
+    return shutil.which(name)
 
 
 class GateCategory(Enum):

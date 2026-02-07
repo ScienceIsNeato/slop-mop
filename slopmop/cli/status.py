@@ -226,9 +226,7 @@ def _print_recommendations(
         print(f"   sm validate {gate:<30}  # try it out")
 
     print()
-    print(
-        "Run individually to see results, then add to your profile incrementally."
-    )
+    print("Run individually to see results, then add to your profile incrementally.")
     print()
 
 
