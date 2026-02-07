@@ -317,7 +317,7 @@ class StringDuplicationCheck(BaseCheck):
         tool_path = self._get_tool_path()
         if not tool_path.exists():
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 output="",
                 error=(

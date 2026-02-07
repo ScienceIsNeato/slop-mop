@@ -594,25 +594,21 @@ class TestPythonTypeCheckingCheck:
         reason = check.skip_reason(str(tmp_path))
         assert "Python" in reason or "python" in reason.lower()
 
-    def test_run_pyright_not_installed(self, tmp_path):
+    @patch(
+        "slopmop.checks.python.type_checking._find_pyright",
+        return_value=None,
+    )
+    def test_run_pyright_not_installed(self, mock_find, tmp_path):
         """Test run handles missing pyright."""
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "__init__.py").touch()
 
-        mock_runner = MagicMock()
-        mock_runner.run.return_value = SubprocessResult(
-            returncode=-1,
-            stdout="",
-            stderr="Command not found: pyright",
-            duration=0.1,
-        )
-
-        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        check = PythonTypeCheckingCheck({})
         result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.ERROR
+        assert result.status == CheckStatus.WARNED
         assert "pyright" in result.error.lower()
 
     @patch(

@@ -106,7 +106,7 @@ class TestComplexityCheck:
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.ERROR
+        assert result.status == CheckStatus.WARNED
         assert "Radon not available" in result.error
 
 
@@ -167,7 +167,7 @@ class TestSourceDuplicationCheck:
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.ERROR
+        assert result.status == CheckStatus.WARNED
         assert "jscpd not available" in result.error
 
     def test_run_no_duplication(self, tmp_path):

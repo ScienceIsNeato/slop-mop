@@ -231,7 +231,7 @@ class SourceDuplicationCheck(BaseCheck):
         error = self._check_jscpd_availability(project_root)
         if error:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 error=error,
                 fix_suggestion="Install jscpd: npm install -g jscpd",

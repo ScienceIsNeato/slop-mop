@@ -14,6 +14,7 @@ class CheckStatus(Enum):
 
     PASSED = "passed"
     FAILED = "failed"
+    WARNED = "warned"
     SKIPPED = "skipped"
     NOT_APPLICABLE = "not_applicable"
     ERROR = "error"
@@ -58,6 +59,7 @@ class CheckResult:
         emoji = {
             CheckStatus.PASSED: "✅",
             CheckStatus.FAILED: "❌",
+            CheckStatus.WARNED: "⚠️",
             CheckStatus.SKIPPED: "⏭️",
             CheckStatus.NOT_APPLICABLE: "⊘",
             CheckStatus.ERROR: "💥",
@@ -109,6 +111,7 @@ class ExecutionSummary:
     total_checks: int
     passed: int
     failed: int
+    warned: int
     skipped: int
     not_applicable: int
     errors: int
@@ -131,6 +134,7 @@ class ExecutionSummary:
             total_checks=len(results),
             passed=sum(1 for r in results if r.status == CheckStatus.PASSED),
             failed=sum(1 for r in results if r.status == CheckStatus.FAILED),
+            warned=sum(1 for r in results if r.status == CheckStatus.WARNED),
             skipped=sum(1 for r in results if r.status == CheckStatus.SKIPPED),
             not_applicable=sum(
                 1 for r in results if r.status == CheckStatus.NOT_APPLICABLE

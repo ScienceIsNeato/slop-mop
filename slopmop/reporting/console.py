@@ -24,6 +24,7 @@ class ConsoleReporter:
     STATUS_EMOJI = {
         CheckStatus.PASSED: "✅",
         CheckStatus.FAILED: "❌",
+        CheckStatus.WARNED: "⚠️",
         CheckStatus.SKIPPED: "⏭️",
         CheckStatus.NOT_APPLICABLE: "⊘",
         CheckStatus.ERROR: "💥",
@@ -61,6 +62,8 @@ class ConsoleReporter:
         # Show output for failures or in verbose mode
         if result.failed or result.status == CheckStatus.ERROR:
             self._print_failure_details(result)
+        elif result.status == CheckStatus.WARNED:
+            self._print_warning_details(result)
         elif self.verbose and result.output:
             print(f"   Output: {result.output[:200]}...")
 
@@ -96,6 +99,24 @@ class ConsoleReporter:
             print(f"   💡 Fix: {result.fix_suggestion}")
 
         print("   " + "=" * 56)
+        print()
+
+    def _print_warning_details(self, result: CheckResult) -> None:
+        """Print warning details (tool not installed, etc.).
+
+        Args:
+            result: Warned check result
+        """
+        print()
+        print("   " + "-" * 56)
+
+        if result.error:
+            print(f"   ⚠️  {result.error}")
+
+        if result.fix_suggestion:
+            print(f"   💡 {result.fix_suggestion}")
+
+        print("   " + "-" * 56)
         print()
 
     @staticmethod
@@ -143,6 +164,18 @@ class ConsoleReporter:
                 print(f"     └─ {r.error}")
             print()
 
+    @staticmethod
+    def _print_warning_sections(warned: list[CheckResult]) -> None:
+        """Print warning section for missing tools / env issues."""
+        print()
+        print("⚠️  WARNINGS (non-blocking):")
+        for r in warned:
+            print(f"   • {r.name}")
+            if r.error:
+                print(f"     └─ {r.error}")
+            if r.fix_suggestion:
+                print(f"     💡 {r.fix_suggestion}")
+
     def print_summary(self, summary: ExecutionSummary) -> None:
         """Print execution summary.
 
@@ -155,18 +188,26 @@ class ConsoleReporter:
         # Categorize results
         passed = [r for r in summary.results if r.status == CheckStatus.PASSED]
         failed = [r for r in summary.results if r.status == CheckStatus.FAILED]
+        warned = [r for r in summary.results if r.status == CheckStatus.WARNED]
         skipped = [r for r in summary.results if r.status == CheckStatus.SKIPPED]
         na = [r for r in summary.results if r.status == CheckStatus.NOT_APPLICABLE]
         errors = [r for r in summary.results if r.status == CheckStatus.ERROR]
 
         if summary.all_passed:
+            passed_label = f"{summary.passed} checks passed"
+            if warned:
+                passed_label += f", {len(warned)} warned"
             print(
-                f"✨ NO SLOP DETECTED · {summary.passed} checks passed in {summary.total_duration:.1f}s"
+                f"✨ NO SLOP DETECTED · {passed_label} in {summary.total_duration:.1f}s"
             )
             print("=" * 60)
             if not self.quiet:
                 for r in passed:
                     print(f"   ✅ {r.name} ({r.duration:.2f}s)")
+                for r in warned:
+                    print(f"   ⚠️  {r.name} ({r.duration:.2f}s)")
+            if warned:
+                self._print_warning_sections(warned)
             self._print_skip_sections(skipped, na)
             print()
             return
@@ -179,6 +220,8 @@ class ConsoleReporter:
         counts: list[str] = []
         if passed:
             counts.append(f"✅ {len(passed)} passed")
+        if warned:
+            counts.append(f"⚠️  {len(warned)} warned")
         if failed:
             counts.append(f"❌ {len(failed)} failed")
         if errors:
@@ -192,6 +235,8 @@ class ConsoleReporter:
         print()
 
         self._print_failure_sections(failed, errors)
+        if warned:
+            self._print_warning_sections(warned)
         self._print_skip_sections(skipped, na)
         print()
 

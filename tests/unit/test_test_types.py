@@ -340,6 +340,23 @@ class TestE2ETestCheck:
         assert result.status == CheckStatus.PASSED
         assert "5 passed" in result.output
 
+    def test_run_playwright_not_installed(self, tmp_path):
+        """Test run returns WARNED when Playwright probe fails."""
+        e2e_dir = tmp_path / "tests" / "e2e"
+        e2e_dir.mkdir(parents=True)
+
+        check = E2ETestCheck({})
+
+        # Probe fails — Playwright not installed (returncode != 0 means success=False)
+        probe_result = _make_result(output="", returncode=1)
+
+        with patch.dict(os.environ, {"TEST_PORT": "8000"}):
+            with patch.object(check, "_run_command", return_value=probe_result):
+                result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert "not installed" in result.error.lower()
+
     def test_run_tests_fail(self, tmp_path):
         """Test run fails when e2e tests fail."""
         e2e_dir = tmp_path / "tests" / "e2e"

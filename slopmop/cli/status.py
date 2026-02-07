@@ -104,6 +104,7 @@ def _format_profile_gate(gate_name: str, result: Optional[CheckResult]) -> str:
         CheckStatus.PASSED: ("✅", "passing"),
         CheckStatus.FAILED: ("❌", "FAILING"),
         CheckStatus.ERROR: ("💥", "ERROR"),
+        CheckStatus.WARNED: ("⚠️", "WARNED"),
     }
 
     if result is None:
@@ -150,22 +151,37 @@ def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
         for r in results_map.values()
         if r.status in (CheckStatus.FAILED, CheckStatus.ERROR)
     ]
-    if not failing:
+    warned = [r for r in results_map.values() if r.status == CheckStatus.WARNED]
+    if not failing and not warned:
         return
 
-    print()
-    print("🧹 REMEDIATION NEEDED")
-    print("─" * 60)
-
-    for r in failing:
-        emoji = "❌" if r.status == CheckStatus.FAILED else "💥"
+    if failing:
         print()
-        print(f"{emoji} {r.name}")
-        if r.error:
-            print(f"   {r.error}")
-        if r.fix_suggestion:
-            print(f"   Fix: {r.fix_suggestion}")
-        print(f"   Verify: sm validate {r.name}")
+        print("🧹 REMEDIATION NEEDED")
+        print("─" * 60)
+
+        for r in failing:
+            emoji = "❌" if r.status == CheckStatus.FAILED else "💥"
+            print()
+            print(f"{emoji} {r.name}")
+            if r.error:
+                print(f"   {r.error}")
+            if r.fix_suggestion:
+                print(f"   Fix: {r.fix_suggestion}")
+            print(f"   Verify: sm validate {r.name}")
+
+    if warned:
+        print()
+        print("⚠️  WARNINGS (non-blocking)")
+        print("─" * 60)
+
+        for r in warned:
+            print()
+            print(f"⚠️  {r.name}")
+            if r.error:
+                print(f"   {r.error}")
+            if r.fix_suggestion:
+                print(f"   Fix: {r.fix_suggestion}")
 
 
 def _print_verdict(summary: ExecutionSummary) -> None:
@@ -179,18 +195,24 @@ def _print_verdict(summary: ExecutionSummary) -> None:
         if r.status not in (CheckStatus.SKIPPED, CheckStatus.NOT_APPLICABLE)
     ]
     failing = [r for r in ran if r.status in (CheckStatus.FAILED, CheckStatus.ERROR)]
+    warned = [r for r in ran if r.status == CheckStatus.WARNED]
+
+    warn_suffix = f", {len(warned)} warned" if warned else ""
 
     if not failing:
         print(
             "✨ All applicable gates pass — "
-            f"no AI slop detected in repo · ⏱️  {summary.total_duration:.1f}s"
+            f"no AI slop detected in repo"
+            f"{warn_suffix}"
+            f" · ⏱️  {summary.total_duration:.1f}s"
         )
     else:
         passed_count = len([r for r in ran if r.status == CheckStatus.PASSED])
         print(
             f"🧹 {passed_count}/{len(ran)} gates passing, "
-            f"{len(failing)} failing "
-            f"· ⏱️  {summary.total_duration:.1f}s"
+            f"{len(failing)} failing"
+            f"{warn_suffix}"
+            f" · ⏱️  {summary.total_duration:.1f}s"
         )
     print("═" * 60)
 

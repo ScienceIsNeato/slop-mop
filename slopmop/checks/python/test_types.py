@@ -360,7 +360,7 @@ class E2ETestCheck(BaseCheck, PythonCheckMixin):
         )
         if not probe.success:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 error="Playwright is not installed",
                 fix_suggestion="Install: pip install playwright && "

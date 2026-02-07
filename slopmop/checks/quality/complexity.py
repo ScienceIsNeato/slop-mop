@@ -134,7 +134,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
 
         if result.returncode == 127:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=duration,
                 error="Radon not available",
                 fix_suggestion="Install radon: pip install radon",
