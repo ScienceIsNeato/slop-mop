@@ -1,6 +1,6 @@
 # Contributing to Slop-Mop
 
-Contributions are welcome. Open a PR — I'll either merge it or leave a review, and I'll appreciate your effort either way.
+Honestly, I'm not really sure what my plans are for this project long term. For now, I encourage contributions in the form of Pull Requests and also issue reports - glad 
 
 ## Guidelines
 

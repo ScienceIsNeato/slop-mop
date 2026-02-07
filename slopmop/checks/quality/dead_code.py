@@ -184,12 +184,34 @@ class DeadCodeCheck(BaseCheck):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
         duration = time.time() - start_time
 
-        if result.returncode == 127:
+        # Handle tool not installed (shell returns 127, SubprocessRunner returns -1)
+        if result.returncode == 127 or (
+            result.returncode == -1 and "Command not found" in result.stderr
+        ):
             return self._create_result(
                 status=CheckStatus.ERROR,
                 duration=duration,
                 error="vulture not available",
                 fix_suggestion="Install vulture: pip install vulture",
+            )
+
+        # Handle timeout
+        if result.returncode == -1 and "timed out" in result.stderr.lower():
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=duration,
+                error="vulture timed out",
+                fix_suggestion="Try running on a smaller scope or increase timeout.",
+            )
+
+        # Handle unexpected errors (non-zero return that isn't dead code findings)
+        if result.returncode not in (0, 1, 3):  # vulture uses 1/3 for findings
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=duration,
+                error=f"vulture failed with exit code {result.returncode}",
+                fix_suggestion="Check vulture output for errors.",
+                output=result.stderr or result.output,
             )
 
         findings = self._parse_findings(result.output)

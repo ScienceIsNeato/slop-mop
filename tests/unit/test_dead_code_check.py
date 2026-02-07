@@ -255,8 +255,9 @@ class TestDeadCodeCheck:
         (tmp_path / "app.py").write_text("pass")
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.returncode = 127
+        mock_result.returncode = -1
         mock_result.output = ""
+        mock_result.stderr = "Command not found: vulture"
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))

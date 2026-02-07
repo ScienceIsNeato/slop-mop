@@ -549,3 +549,215 @@ class TestPythonStaticAnalysisCheck:
 
         assert result.status == CheckStatus.FAILED
         assert "timed out" in result.error.lower()
+
+
+class TestPythonTypeCheckingCheck:
+    """Tests for PythonTypeCheckingCheck (pyright type-completeness)."""
+
+    def test_name(self):
+        """Test check name."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        check = PythonTypeCheckingCheck({})
+        assert check.name == "type-checking"
+
+    def test_display_name(self):
+        """Test check display name."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        check = PythonTypeCheckingCheck({})
+        assert "Type" in check.display_name
+        assert "pyright" in check.display_name
+
+    def test_is_applicable_python_project(self, tmp_path):
+        """Test is_applicable returns True for Python project."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "setup.py").touch()
+        check = PythonTypeCheckingCheck({})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_is_applicable_non_python(self, tmp_path):
+        """Test is_applicable returns False for non-Python project."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "package.json").touch()
+        check = PythonTypeCheckingCheck({})
+        assert check.is_applicable(str(tmp_path)) is False
+
+    def test_skip_reason_delegates_to_mixin(self, tmp_path):
+        """Test skip_reason returns PythonCheckMixin's skip reason."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        # No Python files or markers
+        check = PythonTypeCheckingCheck({})
+        reason = check.skip_reason(str(tmp_path))
+        assert "Python" in reason or "python" in reason.lower()
+
+    def test_run_pyright_not_installed(self, tmp_path):
+        """Test run handles missing pyright."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=-1,
+            stdout="",
+            stderr="Command not found: pyright",
+            duration=0.1,
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.ERROR
+        assert "pyright" in result.error.lower()
+
+    def test_run_success(self, tmp_path):
+        """Test run with clean pyright output."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+        import json
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        success_output = json.dumps(
+            {
+                "generalDiagnostics": [],
+                "summary": {"errorCount": 0, "filesAnalyzed": 5},
+            }
+        )
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout=success_output, stderr="", duration=1.0
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert "5 files" in result.output
+
+    def test_run_with_errors(self, tmp_path):
+        """Test run with pyright type errors."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+        import json
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        error_output = json.dumps(
+            {
+                "generalDiagnostics": [
+                    {
+                        "file": "src/app.py",
+                        "severity": 1,
+                        "message": 'Type of "x" is "Unknown"',
+                        "rule": "reportUnknownVariableType",
+                        "range": {"start": {"line": 10, "character": 0}},
+                    }
+                ],
+                "summary": {"errorCount": 1, "filesAnalyzed": 3},
+            }
+        )
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1, stdout=error_output, stderr="", duration=1.0
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "1 type-completeness error" in result.error
+        assert result.fix_suggestion is not None
+
+    def test_run_timeout(self, tmp_path):
+        """Test run handles timeout."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=-1,
+            stdout="",
+            stderr="",
+            duration=120.0,
+            timed_out=True,
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "timed out" in result.error.lower()
+
+    def test_build_pyright_config(self, tmp_path):
+        """Test _build_pyright_config generates correct config."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        check = PythonTypeCheckingCheck({})
+        config = check._build_pyright_config(str(tmp_path))
+
+        assert "include" in config
+        assert "pythonVersion" in config
+        assert config["typeCheckingMode"] == "standard"
+
+    def test_build_pyright_config_strict_mode(self, tmp_path):
+        """Test _build_pyright_config includes type-completeness rules in strict mode."""
+        from slopmop.checks.python.type_checking import (
+            PythonTypeCheckingCheck,
+            TYPE_COMPLETENESS_RULES,
+        )
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        check = PythonTypeCheckingCheck({"strict": True})
+        config = check._build_pyright_config(str(tmp_path))
+
+        # Should include type-completeness rules
+        for rule in TYPE_COMPLETENESS_RULES:
+            assert rule in config
+
+    def test_preserves_existing_pyrightconfig(self, tmp_path):
+        """Test run backs up and restores existing pyrightconfig.json."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+        import json
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        # Create existing config
+        existing_config = {"typeCheckingMode": "basic", "custom": True}
+        config_path = tmp_path / "pyrightconfig.json"
+        config_path.write_text(json.dumps(existing_config))
+
+        success_output = json.dumps(
+            {
+                "generalDiagnostics": [],
+                "summary": {"errorCount": 0, "filesAnalyzed": 1},
+            }
+        )
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout=success_output, stderr="", duration=1.0
+        )
+
+        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        check.run(str(tmp_path))
+
+        # Original config should be restored
+        assert config_path.exists()
+        restored = json.loads(config_path.read_text())
+        assert restored == existing_config

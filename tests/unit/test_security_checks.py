@@ -46,8 +46,8 @@ class TestSecurityLocalCheck:
     def test_display_name(self):
         """Test display name."""
         check = SecurityLocalCheck({})
-        assert "Security Local" in check.display_name
-        assert "bandit" in check.display_name
+        assert "Security Scan" in check.display_name
+        assert "code analysis" in check.display_name
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
@@ -468,10 +468,10 @@ class TestSecurityCheck:
         assert check.full_name == "security:full"
 
     def test_display_name(self):
-        """Test display name includes pip-audit."""
+        """Test display name includes dependency scanning."""
         check = SecurityCheck({})
-        assert "Security Full" in check.display_name
-        assert "pip-audit" in check.display_name
+        assert "Security Audit" in check.display_name
+        assert "dependencies" in check.display_name
 
     def test_run_all_checks_passed(self, tmp_path):
         """Test run() when all checks including pip-audit pass."""

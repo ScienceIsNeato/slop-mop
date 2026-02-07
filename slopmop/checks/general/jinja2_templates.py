@@ -76,8 +76,6 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
         configured = self.config.get("templates_dir")
         if not configured:
             return "No templates_dir configured in .sb_config.json"
-        import os
-
         templates_path = os.path.join(project_root, configured)
         if not os.path.isdir(templates_path):
             return f"Configured templates_dir '{configured}' does not exist"

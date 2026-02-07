@@ -1,44 +1,64 @@
 # Session Status
 
-## Current Work: feat/dead-code-gate branch
+## Current Work: feat/dead-code-gate branch — PR #17 Review Fixes
 
-### In Progress: UX Improvements — status recommendations + less noise
+### Completed: All 12 PR Review Comments Addressed
 
 **Changes ready to commit**:
 
-1. **Removed "Running" noise from validate output**
-   - Changed logger.info to logger.debug for "Running", "Auto-fixed", and "Fail-fast triggered" messages
-   - Files: executor.py
+1. **Renamed security gates for clarity** [User request]
+   - `security:local` → "Security Scan (code analysis)"
+   - `security:full` → "Security Audit (code + dependencies)"
+   - Files: security/__init__.py, test_security_checks.py
 
-2. **Updated README quick-start**
-   - Added `sm status` step after `sm init`
-   - Users now see recommendations immediately after setup
+2. **Improved README "The Loop" section** [User request]
+   - Added iteration discipline guidance
+   - Emphasizes fixing first failure before validating next
+   - Files: README.md
 
-3. **Added recommendations section to `sm status`**
-   - Shows applicable gates NOT in current profile
-   - Displays exact `sm config --enable <gate>` commands
-   - Encourages incremental adoption ("one gate at a time")
+3. **Fixed unused results_map parameter** [PR comments #5, #12]
+   - Removed from `_print_recommendations()` signature and call site
+   - Files: status.py
 
-4. **Implemented `--verbose` JSON output for `sm status`**
-   - Writes `sm_status_<timestamp>.json` with full gate details
-   - Contains: summary stats, per-gate output, applicability info
-   - Useful for AI agents and external tooling
+4. **Fixed redundant import** [PR comment #8]
+   - Removed duplicate `import os` inside jinja2_templates skip_reason()
+   - Files: jinja2_templates.py
 
-5. **Added "Status and Reports" section to README**
-   - Documents `sm status` workflow and outputs
-   - Explains recommendations section
-   - Documents `--verbose` for machine-readable reports
+5. **Added comment to empty except clause** [PR comment #11 + type_checking.py]
+   - Explains intentional error suppression for pyproject.toml parsing
+   - Files: type_checking.py (improved existing comment)
 
-6. **Fixed confusing skip_reason messages**
-   - `general:templates` now says "No templates_dir configured in .sb_config.json"
-     instead of "No General code detected in project"
-   - Integration checks now say "No tests/<type>/ directory found"
-     instead of "No Integration code detected in project"
+6. **Fixed dead-code returncode handling** [PR comment #7]
+   - Now handles: returncode -1 (SubprocessRunner not-found), returncode 127 (shell not-found)
+   - Also handles timeout detection and unexpected non-zero returns
+   - Files: dead_code.py
 
-### Previously Committed: --verbose in NEXT STEPS + pyright type-checking fixes
+7. **Fixed test returncode mock** [PR comment #1]
+   - Updated test to mock -1 with "Command not found" stderr (matches SubprocessRunner)
+   - Files: test_dead_code_check.py
 
-**Committed**: cbed230 — 12/12 gates passing
+8. **Fixed skip_reason MRO conflicts** [PR comments #9, #10]
+   - Added explicit skip_reason() to static_analysis.py and type_checking.py
+   - Delegates to PythonCheckMixin to resolve base class conflict
+   - Files: static_analysis.py, type_checking.py
 
-### Previously Committed: Strict Typing + CONTRIBUTING Guide + README Refresh
+9. **Fixed include/exclude propagation** [PR comments #2, #3]
+   - CheckRegistry now merges category-level include_dirs/exclude_dirs into gate config
+   - Gate-level overrides still take precedence
+   - Files: registry.py, test_registry.py
 
-**Committed**: 762c968 — 11/11 gates passing, 641 tests
+10. **Fixed guidance box dynamic width** [PR comment #4]
+    - Box now expands for long gate names (e.g., python:new-code-coverage)
+    - Computes width dynamically based on content
+    - Files: console.py
+
+11. **Added PythonTypeCheckingCheck tests** [PR comment #6]
+    - 12 new tests covering: pyright config generation, subprocess invocation,
+      JSON parsing, backup/restore of pyrightconfig.json, timeout handling
+    - Files: test_python_checks.py
+
+### Test Results: 654 passed, 0 errors, 0 warnings (pyright clean)
+
+---
+
+### Previously Committed

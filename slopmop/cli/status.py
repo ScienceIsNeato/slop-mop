@@ -199,7 +199,6 @@ def _print_recommendations(
     all_gates: List[str],
     profile_gates: Set[str],
     applicability: Dict[str, Tuple[bool, str]],
-    results_map: Dict[str, CheckResult],
 ) -> None:
     """Print recommendations for expanding gate coverage.
 
@@ -414,7 +413,6 @@ def run_status(
         all_gates=all_gates,
         profile_gates=profile_gates,
         applicability=applicability,
-        results_map=results_map,
     )
 
     # Write verbose JSON report

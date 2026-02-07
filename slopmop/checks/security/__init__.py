@@ -82,7 +82,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🔐 Security Local (bandit + semgrep + detect-secrets)"
+        return "🔐 Security Scan (code analysis)"
 
     @property
     def category(self) -> GateCategory:
@@ -319,7 +319,7 @@ class SecurityCheck(SecurityLocalCheck):
 
     @property
     def display_name(self) -> str:
-        return "🔒 Security Full (bandit + semgrep + detect-secrets + pip-audit)"
+        return "🔒 Security Audit (code + dependencies)"
 
     def run(self, project_root: str) -> CheckResult:
         """Run all security checks including dependency scanning."""

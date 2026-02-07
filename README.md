@@ -106,8 +106,10 @@ sm validate commit
 1. `sm validate commit` — see what fails
 2. Fix the first failure
 3. `sm validate <failed-gate>` — verify just that fix
-4. `sm validate commit` — check for remaining issues
-5. Repeat until clean
+4. Repeat steps 2-3 until `sm validate commit` passes
+5. Commit only when all gates are green
+
+**The key discipline:** Don't move on until the gates pass. Each iteration should end with `sm validate commit` returning success. If you're tempted to skip a gate or push broken code "just this once," that's the slop creeping back in.
 
 If you want to see everything at once instead of fail-fast, `sm status` runs the same gates but doesn't stop at the first failure. It prints a report card at the end.
 
@@ -179,8 +181,8 @@ The reason is consistency. The same gates run the same way every time, regardles
 
 | Gate             | Description                                                               |
 | ---------------- | ------------------------------------------------------------------------- |
-| `security:local` | 🔐 Fast local scan (bandit + semgrep + detect-secrets)                    |
-| `security:full`  | 🔒 Full audit (local scan + dependency vulnerability checking via pip-audit) |
+| `security:local` | 🔐 Code security scan (bandit + semgrep + detect-secrets)                  |
+| `security:full`  | 🔒 Security audit (code scan + dependency vulnerabilities via pip-audit)   |
 
 ### Profiles (Gate Groups)
 
@@ -467,7 +469,7 @@ The PR profile runs everything in the commit profile _plus_ checks that only mak
 
 - **`pr:comments`** — Are all PR review comments addressed? This gate checks GitHub for unresolved review threads and blocks until they're handled.
 - **`python:diff-coverage`** / **`python:new-code-coverage`** — Does the code you changed in this PR specifically have test coverage? `python:coverage` measures the whole project; this measures only the lines the PR touches, using `diff-cover` against the target branch.
-- **`security:full`** — The full security scan replaces `security:local` at PR level, adding dependency vulnerability checking via `pip-audit` (requires network access).
+- **`security:full`** — The security audit replaces `security:local` at PR level, adding dependency vulnerability checking via `pip-audit` (requires network access).
 
 Commit-level gates catch problems while the agent is still working and the context is fresh. PR-level gates check whether the deliverable as a whole is ready to merge — CI is green, reviewers are satisfied, and the new code specifically (not just the project overall) is tested.
 

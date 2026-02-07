@@ -85,6 +85,10 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping (delegates to PythonCheckMixin)."""
+        return PythonCheckMixin.skip_reason(self, project_root)
+
     def _is_strict(self) -> bool:
         """Whether strict typing mode is enabled."""
         return self.config.get("strict_typing", True)

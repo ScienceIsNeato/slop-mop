@@ -221,18 +221,43 @@ class ConsoleReporter:
         profile = self.profile or "commit"
         gate_name = first_failure.name
 
-        print("┌" + "─" * 58 + "┐")
-        print("│ 🤖 AI AGENT ITERATION GUIDANCE" + " " * 27 + "│")
-        print("├" + "─" * 58 + "┤")
-        print(f"│ Profile: {profile:<48} │")
-        print(f"│ Failed Gate: {gate_name:<44} │")
-        print("├" + "─" * 58 + "┤")
-        print("│ NEXT STEPS:                                              │")
-        print("│                                                          │")
-        print("│ 1. Fix the issue described above                         │")
+        # Build content lines to compute dynamic width
+        title = "🤖 AI AGENT ITERATION GUIDANCE"
         validate_cmd = f"sm validate {gate_name} --verbose"
-        print(f"│ 2. Validate: {validate_cmd:<44} │")
-        print(f"│ 3. Resume:   sm validate {profile:<32} │")
-        print("│                                                          │")
-        print("│ Keep iterating until all the slop is mopped.                │")
-        print("└" + "─" * 58 + "┘")
+        resume_cmd = f"sm validate {profile}"
+
+        lines = [
+            title,
+            f"Profile: {profile}",
+            f"Failed Gate: {gate_name}",
+            "NEXT STEPS:",
+            "",
+            "1. Fix the issue described above",
+            f"2. Validate: {validate_cmd}",
+            f"3. Resume:   {resume_cmd}",
+            "",
+            "Keep iterating until all the slop is mopped.",
+        ]
+
+        # Compute box width (minimum 58 for aesthetics, expand if needed)
+        content_width = max(len(line) for line in lines)
+        box_width = max(58, content_width + 2)  # +2 for padding
+
+        def box_line(text: str) -> str:
+            """Format a line to fit in the box with padding."""
+            return f"│ {text:<{box_width - 2}} │"
+
+        print("┌" + "─" * box_width + "┐")
+        print(box_line(title))
+        print("├" + "─" * box_width + "┤")
+        print(box_line(f"Profile: {profile}"))
+        print(box_line(f"Failed Gate: {gate_name}"))
+        print("├" + "─" * box_width + "┤")
+        print(box_line("NEXT STEPS:"))
+        print(box_line(""))
+        print(box_line("1. Fix the issue described above"))
+        print(box_line(f"2. Validate: {validate_cmd}"))
+        print(box_line(f"3. Resume:   {resume_cmd}"))
+        print(box_line(""))
+        print(box_line("Keep iterating until all the slop is mopped."))
+        print("└" + "─" * box_width + "┘")

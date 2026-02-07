@@ -73,6 +73,8 @@ def _detect_python_version(project_root: str) -> str:
                     if match:
                         return match.group(1)
         except Exception:
+            # Intentionally ignore all errors when reading/parsing pyproject.toml;
+            # if anything goes wrong, we fall back to the default version below.
             pass
     return "3.11"
 
@@ -193,6 +195,10 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping (delegates to PythonCheckMixin)."""
+        return PythonCheckMixin.skip_reason(self, project_root)
 
     def _build_pyright_config(self, project_root: str) -> Dict[str, Any]:
         """Build pyrightconfig.json content for this run."""
