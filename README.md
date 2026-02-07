@@ -45,7 +45,7 @@ When a gate fails, the output includes exact next steps:
 │ NEXT STEPS:                                              │
 │                                                          │
 │ 1. Fix the issue described above                         │
-│ 2. Validate: sm validate python-coverage                 │
+│ 2. Validate: sm validate python-coverage --verbose       │
 │ 3. Resume:   sm validate commit                          │
 │                                                          │
 │ Keep iterating until all checks pass.                    │
@@ -65,7 +65,7 @@ Iterate until all gates pass, then commit. Use `sm status` for a full report car
 | `python:lint-format`       | 🎨 Code formatting (black, isort, flake8)      |
 | `python:static-analysis`   | 🔍 Type checking with strict typing (mypy)     |
 | `python:tests`             | 🧪 Test execution (pytest)                     |
-| `python:coverage`          | 📊 Coverage analysis (80% threshold)           |
+| `python:coverage`          | 📊 Whole repo coverage analysis (80% threshold default)           |
 | `python:diff-coverage`     | 📊 Coverage on changed lines only (diff-cover) |
 | `python:new-code-coverage` | 📊 Alias for diff-coverage (CI compat)         |
 
@@ -219,6 +219,8 @@ sm ci               # Current PR
 sm ci 42             # Specific PR
 sm ci --watch        # Poll until CI completes
 ```
+
+The `pr:comments` gate checks for unresolved PR review threads. Use `sm validate pr` locally to see what's outstanding, fix or resolve each thread, then re-run until clear. The gate generates a resolution report with copy-paste-ready commands for resolving each thread.
 
 ---
 
