@@ -157,6 +157,7 @@ If your check calls an external executable via `_run_command()`:
 1. Add to `ALLOWED_EXECUTABLES` in `slopmop/subprocess/validator.py`
 2. Add to `requirements.txt`
 3. Add to `install_requires` or `extras_require` in `setup.py`
+4. Add to `[project.optional-dependencies] dev` in `pyproject.toml` — **this is what CI uses** (`pip install -e ".[dev]"`), so missing entries here will cause CI failures even if `setup.py` and `requirements.txt` are correct
 
 ### 2.5 Run Tests, Iterate
 

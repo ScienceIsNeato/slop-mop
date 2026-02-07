@@ -1,6 +1,6 @@
 """Tests for Python check implementations."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from slopmop.checks.python.coverage import PythonCoverageCheck
 from slopmop.checks.python.lint_format import PythonLintFormatCheck
@@ -615,7 +615,8 @@ class TestPythonTypeCheckingCheck:
         assert result.status == CheckStatus.ERROR
         assert "pyright" in result.error.lower()
 
-    def test_run_success(self, tmp_path):
+    @patch("slopmop.checks.python.type_checking._find_pyright", return_value="/usr/bin/pyright")
+    def test_run_success(self, mock_find, tmp_path):
         """Test run with clean pyright output."""
         import json
 
@@ -642,7 +643,8 @@ class TestPythonTypeCheckingCheck:
         assert result.status == CheckStatus.PASSED
         assert "5 files" in result.output
 
-    def test_run_with_errors(self, tmp_path):
+    @patch("slopmop.checks.python.type_checking._find_pyright", return_value="/usr/bin/pyright")
+    def test_run_with_errors(self, mock_find, tmp_path):
         """Test run with pyright type errors."""
         import json
 
@@ -678,7 +680,8 @@ class TestPythonTypeCheckingCheck:
         assert "1 type-completeness error" in result.error
         assert result.fix_suggestion is not None
 
-    def test_run_timeout(self, tmp_path):
+    @patch("slopmop.checks.python.type_checking._find_pyright", return_value="/usr/bin/pyright")
+    def test_run_timeout(self, mock_find, tmp_path):
         """Test run handles timeout."""
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
