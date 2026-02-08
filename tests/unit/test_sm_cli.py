@@ -9,7 +9,6 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from slopmop.sm import (
     _generate_hook_script,
     _get_git_hooks_dir,

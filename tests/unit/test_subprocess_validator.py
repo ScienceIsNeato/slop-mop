@@ -1,7 +1,6 @@
 """Tests for subprocess command validator."""
 
 import pytest
-
 from slopmop.subprocess.validator import CommandValidator, SecurityError
 
 

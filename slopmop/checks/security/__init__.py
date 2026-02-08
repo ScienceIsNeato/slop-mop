@@ -34,8 +34,6 @@ EXCLUDED_DIRS = [
     "archives",
     "logs",
     "tests",  # Test files often have intentional security "violations"
-    "*/.venv",  # Nested venvs
-    "*/venv",  # Nested venvs
 ]
 
 
@@ -143,8 +141,15 @@ class SecurityLocalCheck(BaseCheck):
 
     def _run_bandit(self, project_root: str) -> SecuritySubResult:
         """Run bandit static analysis."""
-        # Check for config file
-        config_file = self.config.get("config_file_path")
+        # Look for .bandit config file first (bandit-specific)
+        bandit_file = os.path.join(project_root, ".bandit")
+        if os.path.exists(bandit_file):
+            # Use .bandit with relative path (bandit resolves relative to CWD)
+            config_file = "./.bandit"
+        else:
+            # Fall back to bandit_config_file if specified in config
+            # (Don't use generic config_file_path - that's for detect-secrets)
+            config_file = self.config.get("bandit_config_file")
 
         cmd = [
             sys.executable,
@@ -162,9 +167,12 @@ class SecurityLocalCheck(BaseCheck):
             cmd.extend(["--configfile", config_file])
         else:
             cmd.extend(["--skip", "B101,B110"])
-            # Bandit wants comma-separated exclude paths
-            exclude_paths = ",".join(f"./{d}" for d in self._get_exclude_dirs())
-            cmd.extend(["--exclude", exclude_paths])
+            # Bandit supports multiple -x flags for exclusion
+            # Use paths relative to the scan root (".") since we run with -r .
+            # Bandit requires these to be relative to the CWD (project_root)
+            for d in self._get_exclude_dirs():
+                # Just use the directory names directly - bandit will match them
+                cmd.extend(["-x", f"./{d}"])
 
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 

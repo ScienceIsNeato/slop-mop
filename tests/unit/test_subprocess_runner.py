@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from slopmop.subprocess.runner import (
     SubprocessResult,
     SubprocessRunner,
