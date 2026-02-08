@@ -58,10 +58,11 @@ class TestPRCommentsCheck:
             patch("subprocess.run") as mock_run,
             patch.dict("os.environ", env_overrides, clear=False),
         ):
-            # gh --version succeeds
+            # gh --version succeeds, then git branch + gh pr list return no PR
             mock_run.side_effect = [
                 MagicMock(returncode=0),  # gh --version
-                MagicMock(returncode=1),  # gh pr view fails
+                MagicMock(returncode=0, stdout="feature/no-pr\n"),  # git branch --show-current
+                MagicMock(returncode=0, stdout="[]"),  # gh pr list --head (empty)
             ]
             check = PRCommentsCheck({})
             assert check.is_applicable(str(tmp_path)) is False
@@ -73,7 +74,8 @@ class TestPRCommentsCheck:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0),  # gh --version
-                MagicMock(returncode=0, stdout='{"number": 123}'),  # gh pr view
+                MagicMock(returncode=0, stdout="feature/my-branch\n"),  # git branch --show-current
+                MagicMock(returncode=0, stdout='[{"number": 123}]'),  # gh pr list --head
             ]
             check = PRCommentsCheck({})
             assert check.is_applicable(str(tmp_path)) is True
@@ -103,10 +105,10 @@ class TestPRCommentsCheck:
             assert pr_num == 123
 
     def test_detect_pr_number_from_branch(self, tmp_path):
-        """Test PR number detection from current branch."""
+        """Test PR number detection from current branch via gh pr list --head."""
         check = PRCommentsCheck({})
 
-        # Clear all PR-related environment variables to ensure gh pr view is used
+        # Clear all PR-related environment variables to ensure gh pr list is used
         env_overrides = {
             "GITHUB_PR_NUMBER": "",
             "PR_NUMBER": "",
@@ -115,11 +117,19 @@ class TestPRCommentsCheck:
             "GITHUB_EVENT_PATH": "",
         }
 
+        # Two subprocess calls: git branch --show-current, then gh pr list --head
+        git_branch_result = MagicMock(
+            returncode=0, stdout="feature/my-branch\n"
+        )
+        gh_pr_list_result = MagicMock(
+            returncode=0, stdout='[{"number": 99}]'
+        )
+
         with (
             patch("subprocess.run") as mock_run,
             patch.dict("os.environ", env_overrides, clear=False),
         ):
-            mock_run.return_value = MagicMock(returncode=0, stdout='{"number": 99}')
+            mock_run.side_effect = [git_branch_result, gh_pr_list_result]
             pr_num = check._detect_pr_number(str(tmp_path))
             assert pr_num == 99
 
