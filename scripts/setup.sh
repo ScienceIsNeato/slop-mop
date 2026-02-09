@@ -142,51 +142,7 @@ else
     echo "⚠️  $ROOT_SM already exists — skipping (delete it to regenerate)"
 fi
 
-# ─── Step 5: Verify tools ────────────────────────────────────────
-echo ""
-echo "🔍 Verifying tool availability..."
-
-TOOLS=(
-    "black:black --version"
-    "isort:isort --version"
-    "flake8:flake8 --version"
-    "mypy:mypy --version"
-    "pyright:pyright --version"
-    "pytest:pytest --version"
-    "vulture:vulture --version"
-    "bandit:bandit --version"
-    "detect-secrets:detect-secrets --version"
-    "semgrep:semgrep --version"
-    "pip-audit:pip-audit --version"
-    "autoflake:autoflake --version"
-    "diff-cover:diff-cover --version"
-)
-
-PASS=0
-FAIL=0
-MISSING=()
-
-for entry in "${TOOLS[@]}"; do
-    IFS=: read -r name cmd <<< "$entry"
-    if $cmd &>/dev/null; then
-        ((PASS++))
-    else
-        ((FAIL++))
-        MISSING+=("$name")
-    fi
-done
-
-echo ""
-echo "   ✅ $PASS tools available"
-if [ $FAIL -gt 0 ]; then
-    echo "   ⚠️  $FAIL tools not found:"
-    for tool in "${MISSING[@]}"; do
-        echo "      • $tool"
-    done
-    echo "   Some quality gates may be disabled until these are installed."
-fi
-
-# ─── Step 6: Done ─────────────────────────────────────────────────
+# ─── Step 5: Done ─────────────────────────────────────────────────
 echo ""
 echo "============================================================"
 echo "🚀 Setup Complete!"
