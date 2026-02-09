@@ -7,13 +7,14 @@ from typing import Any, Dict, List, Tuple
 from slopmop.checks.base import find_tool
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
+# Install commands assume the project venv is active.
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
-    ("vulture", "quality:dead-code", "pip install vulture"),
-    ("pyright", "python:type-checking", "pip install pyright"),
-    ("bandit", "security:local", "pip install bandit"),
-    ("semgrep", "security:local", "pip install semgrep"),
-    ("detect-secrets", "security:local", "pip install detect-secrets"),
-    ("pip-audit", "security:full", "pip install pip-audit"),
+    ("vulture", "quality:dead-code", "pip install vulture  # in your venv"),
+    ("pyright", "python:type-checking", "pip install pyright  # in your venv"),
+    ("bandit", "security:local", "pip install bandit  # in your venv"),
+    ("semgrep", "security:local", "pip install semgrep  # in your venv"),
+    ("detect-secrets", "security:local", "pip install detect-secrets  # in your venv"),
+    ("pip-audit", "security:full", "pip install pip-audit  # in your venv"),
 ]
 
 

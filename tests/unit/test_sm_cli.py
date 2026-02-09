@@ -421,10 +421,10 @@ class TestGitHooksFunctions:
     def test_generate_hook_script(self):
         """Generates valid hook script."""
         script = _generate_hook_script("commit")
-        assert "sm validate commit" in script
+        assert "slopmop.sm validate commit" in script
         assert "MANAGED BY SLOP-MOP" in script
-        # Should detect venv for deterministic execution
-        assert "./venv/bin/sm" in script or "./venv/bin/python" in script
+        # Should use python -m slopmop.sm for direct submodule execution
+        assert "python" in script and "slopmop.sm" in script
 
     def test_parse_hook_info_managed(self):
         """Parses managed hook info."""

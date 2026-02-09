@@ -17,9 +17,12 @@ LLMs optimize for task completion, not codebase health. Left unchecked, they car
 
 ```bash
 git submodule add https://github.com/ScienceIsNeato/slop-mop.git
-cd slop-mop && pip install -e . && sm init
-sm validate commit
+./slop-mop/scripts/setup.sh   # Creates venv, installs all tools
+scripts/sm init               # Auto-detects project, writes config
+scripts/sm validate commit     # Run quality gates
 ```
+
+> **Why no `pip install`?** Each project gets its own slop-mop copy via git submodule. No global state, no cross-project contamination, no mystery version mismatches. See [Architecture](#architecture) for details.
 
 Auto-detects your project type and enables relevant gates. See [`sm init`](#setup-sm-init) for details and [`sm config`](#configuration-sm-config) for customization.
 
@@ -200,15 +203,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -e ".[dev]"
-      - run: sm validate commit
+      - run: pip install -r slop-mop/requirements.txt
+      - run: python -m slopmop.sm validate commit
+        env:
+          PYTHONPATH: slop-mop
       - if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: sm validate pr:comments
+          PYTHONPATH: slop-mop
+        run: python -m slopmop.sm validate pr:comments
 ```
 
 Check CI status locally:
@@ -227,41 +234,51 @@ The `pr:comments` gate checks for unresolved PR review threads. Use `sm validate
 
 ```bash
 # Profiles (preferred)
-sm validate commit                    # Commit validation
-sm validate pr                        # Full PR validation
-sm validate quick                     # Lint only
+scripts/sm validate commit                    # Commit validation
+scripts/sm validate pr                        # Full PR validation
+scripts/sm validate quick                     # Lint only
 
 # Individual gates
-sm validate python:coverage           # Single gate
-sm validate --self                    # Self-validation
+scripts/sm validate python:coverage           # Single gate
+scripts/sm validate --self                    # Self-validation
 
 # Setup
-sm init                               # Interactive setup
-sm config --show                      # Show config
+scripts/sm init                               # Interactive setup
+scripts/sm config --show                      # Show config
 
 # Hooks
-sm commit-hooks install commit        # Install pre-commit hook
+scripts/sm commit-hooks install commit        # Install pre-commit hook
 
 # CI
-sm ci --watch                         # Poll CI until done
+scripts/sm ci --watch                         # Poll CI until done
 
 # Reports
-sm status                             # Full report card
-sm status --verbose                   # JSON report
+scripts/sm status                             # Full report card
+scripts/sm status --verbose                   # JSON report
 
 # Help
-sm help                               # List all gates
-sm help python:coverage               # Gate documentation
+scripts/sm help                               # List all gates
+scripts/sm help python:coverage               # Gate documentation
 ```
 
 ---
 
+## Architecture
+
+Slop-mop runs directly from the git submodule — **not** via `pip install`. This is intentional:
+
+- **No global state**: Each project gets its own copy. Changes in one project don’t affect others.
+- **No version drift**: The version is pinned by the submodule ref, not by pip metadata.
+- **No entry point conflicts**: No `sm` command in PATH competing across projects.
+- **Deterministic**: `python -m slopmop.sm` from the submodule always runs *this* project’s version.
+
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+# Working on slop-mop itself
+pip install -r requirements.txt
+python -m slopmop.sm validate --self
 pytest
-sm validate --self
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for adding new gates.

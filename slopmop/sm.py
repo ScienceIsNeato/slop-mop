@@ -362,10 +362,10 @@ Verbs:
   help        Show detailed help for quality gates
 
 Quick Start:
-  1. Clone slopmop into your project as a subfolder
-  2. Run: python setup.py (auto-configures for your project)
-  3. Run: sm validate (runs full suite)
-  4. Optional: sm config --show (see enabled gates)
+  1. Add slop-mop as a git submodule
+  2. Run: ./slop-mop/scripts/setup.sh (creates venv, installs tools)
+  3. Run: scripts/sm validate (runs full suite)
+  4. Optional: scripts/sm config --show (see enabled gates)
 
 Examples:
   sm validate                           Run full validation suite

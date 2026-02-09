@@ -29,7 +29,12 @@ def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
 
 
 def _generate_hook_script(profile: str) -> str:
-    """Generate the pre-commit hook script content."""
+    """Generate the pre-commit hook script content.
+
+    The hook runs slop-mop directly from the submodule via
+    `python -m slopmop.sm` — no pip install required. Each project
+    uses its own slop-mop copy via git submodule.
+    """
     return f"""{SB_HOOK_MARKER}
 #!/bin/sh
 #
@@ -38,24 +43,33 @@ def _generate_hook_script(profile: str) -> str:
 # To remove: sm commit-hooks uninstall
 #
 
-# Find the project's venv and use it for deterministic execution
-if [ -f "./venv/bin/sm" ]; then
-    SM_CMD="./venv/bin/sm"
-elif [ -f "./.venv/bin/sm" ]; then
-    SM_CMD="./.venv/bin/sm"
-elif [ -f "./venv/bin/python" ]; then
-    SM_CMD="./venv/bin/python -m slopmop.sm"
-elif [ -f "./.venv/bin/python" ]; then
-    SM_CMD="./.venv/bin/python -m slopmop.sm"
-else
-    # Fallback to system sm (not recommended)
-    echo "⚠️  Warning: No venv found. Using system 'sm' command."
-    echo "   For reliable results, activate your venv or install slop-mop in ./venv"
-    SM_CMD="sm"
+# Find slop-mop submodule directory
+SM_DIR=""
+for candidate in slop-mop vendor/slop-mop; do
+    if [ -d "$candidate/slopmop" ]; then
+        SM_DIR="$candidate"
+        break
+    fi
+done
+
+if [ -z "$SM_DIR" ]; then
+    echo "❌ Error: slop-mop submodule not found"
+    echo "   Run: git submodule update --init"
+    exit 1
 fi
 
-# Run slop-mop validation
-$SM_CMD validate {profile}
+# Find Python venv
+if [ -f "./venv/bin/python" ]; then
+    PYTHON="./venv/bin/python"
+elif [ -f "./.venv/bin/python" ]; then
+    PYTHON="./.venv/bin/python"
+else
+    echo "⚠️  Warning: No venv found. Using system python3."
+    PYTHON="python3"
+fi
+
+# Run slop-mop directly from the submodule (no pip install needed)
+PYTHONPATH="$SM_DIR:${{PYTHONPATH:-}}" $PYTHON -m slopmop.sm validate {profile}
 
 # Capture exit code
 result=$?

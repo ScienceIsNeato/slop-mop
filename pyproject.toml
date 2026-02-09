@@ -53,8 +53,9 @@ dependencies = [
     "jinja2>=3.0.0",
 ]
 
-[project.scripts]
-sm = "slopmop.sm:main"
+# NOTE: No [project.scripts] section. slop-mop is designed to run directly
+# from the submodule via `python -m slopmop.sm`, NOT installed as a global
+# pip package. Each project uses its own copy via git submodule. See README.
 
 [project.urls]
 Homepage = "https://github.com/ScienceIsNeato/slop-mop"
@@ -88,7 +89,7 @@ addopts = "-v --tb=short"
 
 [tool.coverage.run]
 source = ["slopmop"]
-omit = ["tests/*", "setup.py"]
+omit = ["tests/*"]
 
 [tool.coverage.report]
 # fail_under handled by slopmop coverage check

@@ -1,0 +1,41 @@
+#!/bin/bash
+# Slop-Mop CLI wrapper — runs directly from the submodule.
+#
+# This script is the entry point for `sm` commands. It finds the
+# slop-mop submodule directory and runs the CLI module directly,
+# ensuring each project uses its own isolated copy.
+#
+# Usage:
+#   ./slop-mop/scripts/sm validate commit
+#   ./slop-mop/scripts/sm init
+#   ./slop-mop/scripts/sm config --show
+
+set -euo pipefail
+
+# Resolve the slop-mop directory (parent of scripts/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SLOP_MOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SLOP_MOP_DIR/.." && pwd)"
+
+if [ ! -d "$SLOP_MOP_DIR/slopmop" ]; then
+    echo "❌ Error: slopmop module not found at $SLOP_MOP_DIR/slopmop"
+    echo "   Run: git submodule update --init"
+    exit 1
+fi
+
+# Find the project's Python — prefer venv, fall back to system
+if [ -f "$PROJECT_ROOT/venv/bin/python" ]; then
+    PYTHON="$PROJECT_ROOT/venv/bin/python"
+elif [ -f "$PROJECT_ROOT/.venv/bin/python" ]; then
+    PYTHON="$PROJECT_ROOT/.venv/bin/python"
+elif [ -f "$SLOP_MOP_DIR/venv/bin/python" ]; then
+    PYTHON="$SLOP_MOP_DIR/venv/bin/python"
+elif command -v python3 &>/dev/null; then
+    PYTHON="python3"
+else
+    echo "❌ Error: No Python found. Install Python 3.9+ or create a venv."
+    exit 1
+fi
+
+# Run the module directly from the submodule
+exec "$PYTHON" -m slopmop.sm "$@"
