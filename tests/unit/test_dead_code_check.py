@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from slopmop.checks.quality.dead_code import DeadCodeCheck
 from slopmop.core.result import CheckStatus
 
@@ -254,7 +253,7 @@ class TestDeadCodeCheck:
         assert "1 dead code finding(s)" in result.error
 
     def test_run_vulture_not_installed(self, check, tmp_path):
-        """Test graceful handling when vulture is not installed."""
+        """Test error handling when vulture is not installed (slop-mop installation issue)."""
         (tmp_path / "app.py").write_text("pass")
         mock_result = MagicMock()
         mock_result.success = False
@@ -266,8 +265,29 @@ class TestDeadCodeCheck:
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.WARNED
-        assert "not available" in result.error
+        # Should be ERROR (not WARNED) since vulture is a slop-mop dependency
+        assert result.status == CheckStatus.ERROR
+        # Error message should indicate installation issue, not ask user to install
+        assert "vulture not found" in result.error.lower()
+        assert "installation issue" in result.error.lower()
+        # Fix suggestion should say to reinstall slop-mop
+        assert "reinstall" in result.fix_suggestion.lower()
+
+    def test_run_vulture_not_installed_exit_127(self, check, tmp_path):
+        """Test error handling when shell returns 127 (command not found)."""
+        (tmp_path / "app.py").write_text("pass")
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.returncode = 127
+        mock_result.output = ""
+        mock_result.stderr = ""
+        mock_result.timed_out = False
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.ERROR
+        assert "installation issue" in result.error.lower()
 
     def test_run_multiple_findings(self, check, tmp_path):
         """Test run() with multiple findings produces correct count."""

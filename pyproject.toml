@@ -28,29 +28,29 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 
-# Core dependencies - tools that slop-mop checks rely on
+# All dependencies - both runtime tools and development/testing
 dependencies = [
-    "vulture>=2.14",  # dead-code detection
-    "ruff>=0.1.0",    # Python linting and formatting
-]
-
-[project.optional-dependencies]
-dev = [
+    # Tools slop-mop checks rely on
+    "vulture>=2.14",
+    "ruff>=0.1.0",
+    # Testing
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "diff-cover>=7.0.0",
+    # Code quality
     "black>=23.0.0",
     "isort>=5.12.0",
     "autoflake>=2.0.0",
     "mypy>=1.0.0",
     "pyright>=1.1.0",
     "flake8>=6.0.0",
+    # Security
     "bandit>=1.7.0",
     "detect-secrets>=1.4.0",
     "semgrep>=1.0.0",
     "pip-audit>=2.0.0",
+    # Templating
     "jinja2>=3.0.0",
-    "vulture>=2.14",
 ]
 
 [project.scripts]
