@@ -87,10 +87,16 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         """Applicable only if there are Python source directories to type-check."""
         if not self.is_python_project(project_root):
             return False
-        # Only run if we can find actual source directories (not just scattered scripts)
-        # This avoids running mypy on "." which causes issues with submodules
+
+        # If user explicitly configured include_dirs, always run — they know
+        # what they want, even if the value is ["."].
+        cfg_dirs = self.config.get("include_dirs", [])
+        if isinstance(cfg_dirs, list) and cfg_dirs:
+            return True
+
+        # Heuristic path: skip when fallback lands on ["."] (no proper source
+        # dirs found — avoids running mypy on "." which causes submodule issues)
         source_dirs = self._detect_source_dirs(project_root)
-        # Falls back to ["."] when no proper source dirs found - skip in that case
         return source_dirs != ["."]
 
     def skip_reason(self, project_root: str) -> str:

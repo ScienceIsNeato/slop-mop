@@ -410,6 +410,17 @@ class TestPythonStaticAnalysisCheck:
         dirs = check._detect_source_dirs(str(tmp_path))
         assert dirs == ["scripts"]
 
+    def test_is_applicable_with_config_dot_include_dir(self, tmp_path):
+        """include_dirs: ['.'] from config should NOT silently skip the check.
+
+        Regression: is_applicable() used `source_dirs != ['.']` to detect
+        heuristic fallback, but this also matched when the user explicitly
+        configured `include_dirs: ['.']`, causing a silent skip.
+        """
+        (tmp_path / "setup.py").write_text("x = 1")
+        check = PythonStaticAnalysisCheck({"include_dirs": ["."]})
+        assert check.is_applicable(str(tmp_path)) is True
+
     def test_detect_source_dirs_ignores_non_list_include_dirs(self, tmp_path):
         """Test that a string include_dirs value doesn't unpack into characters."""
         (tmp_path / "src").mkdir()
