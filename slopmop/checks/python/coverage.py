@@ -18,7 +18,11 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
-from slopmop.checks.constants import SKIP_NOT_PYTHON_PROJECT, skip_reason_no_test_files
+from slopmop.checks.constants import (
+    SKIP_NOT_PYTHON_PROJECT,
+    has_python_test_files,
+    skip_reason_no_test_files,
+)
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
     COVERAGE_GUIDANCE_FOOTER,
@@ -120,14 +124,8 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         """Applicable only if there are Python test files (coverage needs tests)."""
         if not self.is_python_project(project_root):
             return False
-        # Coverage requires test files to exist — use configurable test_dirs
-        root = Path(project_root)
         test_dirs = self.config.get("test_dirs", ["tests"])
-        for test_dir in test_dirs:
-            d = root / test_dir
-            if d.exists() and any(d.rglob("test_*.py")):
-                return True
-        return False
+        return has_python_test_files(project_root, test_dirs)
 
     def skip_reason(self, project_root: str) -> str:
         """Return skip reason when coverage prerequisites are missing."""
@@ -322,13 +320,8 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
         """Applicable only if there are Python test files (coverage needs tests)."""
         if not self.is_python_project(project_root):
             return False
-        root = Path(project_root)
         test_dirs = self.config.get("test_dirs", ["tests"])
-        for test_dir in test_dirs:
-            d = root / test_dir
-            if d.exists() and any(d.rglob("test_*.py")):
-                return True
-        return False
+        return has_python_test_files(project_root, test_dirs)
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping - no Python test files."""

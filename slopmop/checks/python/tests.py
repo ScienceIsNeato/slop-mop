@@ -1,7 +1,6 @@
 """Python test execution check using pytest."""
 
 import time
-from pathlib import Path
 from typing import List
 
 from slopmop.checks.base import (
@@ -10,7 +9,11 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
-from slopmop.checks.constants import SKIP_NOT_PYTHON_PROJECT, skip_reason_no_test_files
+from slopmop.checks.constants import (
+    SKIP_NOT_PYTHON_PROJECT,
+    has_python_test_files,
+    skip_reason_no_test_files,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -77,14 +80,8 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         """Applicable only if there are Python test files to run."""
         if not self.is_python_project(project_root):
             return False
-        # Check for actual test files
         test_dirs = self.config.get("test_dirs", ["tests"])
-        root = Path(project_root)
-        for test_dir in test_dirs:
-            d = root / test_dir
-            if d.exists() and any(d.rglob("test_*.py")):
-                return True
-        return False
+        return has_python_test_files(project_root, test_dirs)
 
     def skip_reason(self, project_root: str) -> str:
         """Return skip reason when test prerequisites are missing."""

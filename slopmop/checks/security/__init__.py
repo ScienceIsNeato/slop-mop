@@ -104,6 +104,17 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 default=EXCLUDED_DIRS.copy(),
                 description="Directories to exclude from scanning",
             ),
+            ConfigField(
+                name="bandit_config_file",
+                field_type="string",
+                default=None,
+                description=(
+                    "Path to bandit config file (e.g. .bandit, pyproject.toml). "
+                    "Separate from the standard config_file_path which is used "
+                    "by detect-secrets (.secrets.baseline)"
+                ),
+                required=False,
+            ),
         ]
 
     def is_applicable(self, project_root: str) -> bool:
