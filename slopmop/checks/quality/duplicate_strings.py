@@ -42,7 +42,7 @@ class StringDuplicationCheck(BaseCheck):
           in tools/find-duplicate-strings/.
 
     Re-validate:
-      sm validate quality:string-duplication --verbose
+      ./sm validate quality:string-duplication --verbose
     """
 
     @property

@@ -17,26 +17,26 @@ LLMs optimize for task completion, not codebase health. Left unchecked, they car
 
 ```bash
 git submodule add https://github.com/ScienceIsNeato/slop-mop.git
-./slop-mop/scripts/setup.sh   # Creates venv, installs all tools
-scripts/sm init               # Auto-detects project, writes config
-scripts/sm validate commit     # Run quality gates
+./slop-mop/scripts/setup.sh   # Creates venv, installs tools, adds ./sm
+./sm init                     # Auto-detects project, writes config
+./sm validate commit          # Run quality gates
 ```
 
 > **Why no `pip install`?** Each project gets its own slop-mop copy via git submodule. No global state, no cross-project contamination, no mystery version mismatches. See [Architecture](#architecture) for details.
 
-Auto-detects your project type and enables relevant gates. See [`sm init`](#setup-sm-init) for details and [`sm config`](#configuration-sm-config) for customization.
+Auto-detects your project type and enables relevant gates. See [`./sm init`](#setup-sm-init) for details and [`./sm config`](#configuration-sm-config) for customization.
 
 ---
 
 ## How It Works
 
-Run a profile, fix what fails, repeat.
+Run a profile, fix what fails, repeat:
 
 ```bash
-sm validate commit
+./sm validate commit
 ```
 
-When a gate fails, the output includes exact next steps:
+When a gate fails, the output tells you exactly what to do next:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -48,14 +48,14 @@ When a gate fails, the output includes exact next steps:
 │ NEXT STEPS:                                              │
 │                                                          │
 │ 1. Fix the issue described above                         │
-│ 2. Validate: sm validate python-coverage --verbose       │
-│ 3. Resume:   sm validate commit                          │
+│ 2. Validate: ./sm validate python-coverage --verbose     │
+│ 3. Resume:   ./sm validate commit                        │
 │                                                          │
-│ Keep iterating until all checks pass.                    │
+│ Keep iterating until all the slop is mopped.             │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Iterate until all gates pass, then commit. Use `sm status` for a full report card (no fail-fast).
+Iterate until all gates pass, then commit. Use `./sm status` for a full report card.
 
 ---
 
@@ -111,46 +111,43 @@ JS gates auto-skip when no JavaScript is detected.
 
 ---
 
-## Setup: `sm init`
+## Setup: `./sm init`
 
 ```bash
-sm init                    # Interactive setup
-sm init --non-interactive  # Auto-detect, use defaults
+./sm init                    # Interactive setup
+./sm init --non-interactive  # Auto-detect, use defaults
 ```
 
 Scans your repo, detects languages and test frameworks, writes `.sb_config.json`. Re-run to start fresh (backs up existing config first).
 
-You don't have to enable everything at once. Start with what passes, disable the rest, and ramp up thresholds over time:
+Start with what passes, disable the rest, ramp up over time:
 
 ```bash
-sm config --disable python:coverage   # Not ready yet
-sm validate commit                    # Get everything else green first
-sm config --enable python:coverage    # Enable later, start at a low threshold
+./sm config --disable python:coverage   # Not ready yet
+./sm validate commit                    # Get everything else green first
+./sm config --enable python:coverage    # Enable later
 ```
 
 ---
 
-## Configuration: `sm config`
+## Configuration: `./sm config`
 
 ```bash
-sm config --show              # Show all gates and their status
-sm config --enable <gate>     # Enable a disabled gate
-sm config --disable <gate>    # Disable a gate
-sm config --json <file>       # Update config from a JSON file
+./sm config --show              # Show all gates and their status
+./sm config --enable <gate>     # Enable a disabled gate
+./sm config --disable <gate>    # Disable a gate
+./sm config --json <file>       # Update config from a JSON file
 ```
 
 ### Include / Exclude Directories
 
-Scope what gets checked to reduce false positives:
-
 ```bash
-sm config --exclude-dir quality:generated    # Skip generated code
-sm config --exclude-dir security:fixtures    # Skip test fixtures
-sm config --include-dir python:src           # Only check src/
+./sm config --exclude-dir quality:generated    # Skip generated code
+./sm config --include-dir python:src           # Only check src/
 ```
 
 - `include_dirs`: whitelist — only these dirs are scanned
-- `exclude_dirs`: blacklist — always skipped, takes precedence over includes
+- `exclude_dirs`: blacklist — always skipped, takes precedence
 
 Edit `.sb_config.json` directly for per-gate configuration:
 
@@ -172,19 +169,19 @@ Edit `.sb_config.json` directly for per-gate configuration:
 
 ---
 
-## Git Hooks: `sm commit-hooks`
+## Git Hooks: `./sm commit-hooks`
 
 ```bash
-sm commit-hooks install commit    # Install pre-commit hook
-sm commit-hooks status            # Show installed hooks
-sm commit-hooks uninstall         # Remove slop-mop hooks
+./sm commit-hooks install commit    # Install pre-commit hook
+./sm commit-hooks status            # Show installed hooks
+./sm commit-hooks uninstall         # Remove slop-mop hooks
 ```
 
 Once installed, gates run automatically before every `git commit`. Failed gates block the commit.
 
 ---
 
-## CI Integration: `sm ci`
+## CI Integration: `./sm ci`
 
 Example GitHub Actions workflow:
 
@@ -221,45 +218,12 @@ jobs:
 Check CI status locally:
 
 ```bash
-sm ci               # Current PR
-sm ci 42             # Specific PR
-sm ci --watch        # Poll until CI completes
+./sm ci               # Current PR
+./sm ci 42             # Specific PR
+./sm ci --watch        # Poll until CI completes
 ```
 
-The `pr:comments` gate checks for unresolved PR review threads. Use `sm validate pr` locally to see what's outstanding, fix or resolve each thread, then re-run until clear. The gate generates a resolution report with copy-paste-ready commands for resolving each thread.
-
----
-
-## Usage
-
-```bash
-# Profiles (preferred)
-scripts/sm validate commit                    # Commit validation
-scripts/sm validate pr                        # Full PR validation
-scripts/sm validate quick                     # Lint only
-
-# Individual gates
-scripts/sm validate python:coverage           # Single gate
-scripts/sm validate --self                    # Self-validation
-
-# Setup
-scripts/sm init                               # Interactive setup
-scripts/sm config --show                      # Show config
-
-# Hooks
-scripts/sm commit-hooks install commit        # Install pre-commit hook
-
-# CI
-scripts/sm ci --watch                         # Poll CI until done
-
-# Reports
-scripts/sm status                             # Full report card
-scripts/sm status --verbose                   # JSON report
-
-# Help
-scripts/sm help                               # List all gates
-scripts/sm help python:coverage               # Gate documentation
-```
+The `pr:comments` gate checks for unresolved PR review threads. Use `./sm validate pr` locally to see what's outstanding, fix or resolve each thread, then re-run until clear.
 
 ---
 

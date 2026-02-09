@@ -266,7 +266,7 @@ class BogusTestsCheck(BaseCheck):
           mock.assert_called, etc.
 
     Re-validate:
-      sm validate quality:bogus-tests --verbose
+      ./sm validate quality:bogus-tests --verbose
     """
 
     @property

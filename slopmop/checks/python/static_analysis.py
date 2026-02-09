@@ -45,7 +45,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
           inferred type. Check your class hierarchy.
 
     Re-validate:
-      sm validate python:static-analysis --verbose
+      ./sm validate python:static-analysis --verbose
     """
 
     @property

@@ -59,7 +59,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: TypeScript must be in devDependencies.
 
     Re-validate:
-      sm validate javascript:types --verbose
+      ./sm validate javascript:types --verbose
     """
 
     @property

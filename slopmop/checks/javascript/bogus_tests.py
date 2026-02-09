@@ -343,7 +343,7 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
           expect() calls to verify behavior.
 
     Re-validate:
-      sm validate javascript:bogus-tests --verbose
+      ./sm validate javascript:bogus-tests --verbose
     """
 
     @property

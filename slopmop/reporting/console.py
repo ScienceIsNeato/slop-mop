@@ -268,8 +268,8 @@ class ConsoleReporter:
 
         # Build content lines to compute dynamic width
         title = "🤖 AI AGENT ITERATION GUIDANCE"
-        validate_cmd = f"sm validate {gate_name} --verbose"
-        resume_cmd = f"sm validate {profile}"
+        validate_cmd = f"./sm validate {gate_name} --verbose"
+        resume_cmd = f"./sm validate {profile}"
 
         lines = [
             title,

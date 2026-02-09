@@ -40,7 +40,7 @@ def _generate_hook_script(profile: str) -> str:
 #
 # Pre-commit hook managed by slop-mop
 # Profile: {profile}
-# To remove: sm commit-hooks uninstall
+# To remove: ./sm commit-hooks uninstall
 #
 
 # Find slop-mop submodule directory
@@ -77,7 +77,7 @@ result=$?
 if [ $result -ne 0 ]; then
     echo ""
     echo "❌ Commit blocked by slop-mop quality gates"
-    echo "   Run 'sm validate {profile}' to see details"
+    echo "   Run './sm validate {profile}' to see details"
     echo ""
     exit 1
 fi
@@ -111,7 +111,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
 
     if not hooks_dir.exists():
         print("ℹ️  No hooks directory found")
-        print("   Install a hook: sm commit-hooks install <profile>")
+        print("   Install a hook: ./sm commit-hooks install <profile>")
         return 0
 
     hook_types = ["pre-commit", "pre-push", "commit-msg"]
@@ -145,8 +145,8 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
         print()
 
     print("Commands:")
-    print("   sm commit-hooks install <profile>  # Install pre-commit hook")
-    print("   sm commit-hooks uninstall          # Remove sm hooks")
+    print("   ./sm commit-hooks install <profile>  # Install pre-commit hook")
+    print("   ./sm commit-hooks uninstall          # Remove sm hooks")
     print()
     return 0
 
@@ -166,7 +166,7 @@ def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
             print()
             print("Options:")
             print("   1. Back up your existing hook and run install again")
-            print("   2. Manually add 'sm validate' to your existing hook")
+            print("   2. Manually add './sm validate' to your existing hook")
             print()
             return 1
 
@@ -185,10 +185,10 @@ def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
     print(f"📄 Hook: {hook_file}")
     print(f"🎯 Profile: {profile}")
     print()
-    print(f"The hook will run 'sm validate {profile}' before each commit.")
+    print(f"The hook will run './sm validate {profile}' before each commit.")
     print("Commits will be blocked if quality gates fail.")
     print()
-    print("To remove: sm commit-hooks uninstall")
+    print("To remove: ./sm commit-hooks uninstall")
     print()
     return 0
 

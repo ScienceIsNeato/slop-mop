@@ -348,7 +348,7 @@ def _add_status_parser(
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser for sm CLI."""
     parser = argparse.ArgumentParser(
-        prog="sm",
+        prog="./sm",
         description="""
 🧹 sm - Slop-Mop Quality Gate Framework
 
@@ -363,19 +363,19 @@ Verbs:
 
 Quick Start:
   1. Add slop-mop as a git submodule
-  2. Run: ./slop-mop/scripts/setup.sh (creates venv, installs tools)
-  3. Run: scripts/sm validate (runs full suite)
-  4. Optional: scripts/sm config --show (see enabled gates)
+  2. Run: ./slop-mop/scripts/setup.sh (creates venv, installs tools, adds ./sm)
+  3. Run: ./sm init (auto-detect project, write config)
+  4. Run: ./sm validate commit (run quality gates)
 
 Examples:
-  sm validate                           Run full validation suite
-  sm validate commit                    Run commit profile (fast)
-  sm validate pr --verbose              Run PR profile with details
-  sm validate --quality-gates python-tests,python-coverage
-  sm validate --self                    Validate slopmop itself
-  sm config --show                      Show current configuration
-  sm config --enable python-security    Enable a quality gate
-  sm help python-lint-format            Show help for specific gate
+  ./sm validate                           Run full validation suite
+  ./sm validate commit                    Run commit profile (fast)
+  ./sm validate pr --verbose              Run PR profile with details
+  ./sm validate --quality-gates python-tests,python-coverage
+  ./sm validate --self                    Validate slopmop itself
+  ./sm config --show                      Show current configuration
+  ./sm config --enable python-security    Enable a quality gate
+  ./sm help python-lint-format            Show help for specific gate
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

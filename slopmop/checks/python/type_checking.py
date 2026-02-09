@@ -159,7 +159,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
           value to a function. Annotate the source variable.
 
     Re-validate:
-      sm validate python:type-checking --verbose
+      ./sm validate python:type-checking --verbose
     """
 
     @property

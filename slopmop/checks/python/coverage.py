@@ -82,7 +82,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
           to generate coverage data.
 
     Re-validate:
-      sm validate python:coverage --verbose
+      ./sm validate python:coverage --verbose
     """
 
     DEFAULT_THRESHOLD = 80
@@ -299,7 +299,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
           check. Gate passes automatically.
 
     Re-validate:
-      sm validate python:diff-coverage --verbose
+      ./sm validate python:diff-coverage --verbose
     """
 
     @property

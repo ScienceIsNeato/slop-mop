@@ -40,7 +40,7 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
           for syntax errors.
 
     Re-validate:
-      sm validate javascript:frontend --verbose
+      ./sm validate javascript:frontend --verbose
     """
 
     @property

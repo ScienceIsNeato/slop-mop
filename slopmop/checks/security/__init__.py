@@ -74,7 +74,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-validate:
-      sm validate security:local --verbose
+      ./sm validate security:local --verbose
     """
 
     @property
@@ -319,7 +319,7 @@ class SecurityCheck(SecurityLocalCheck):
       pip-audit not available: pip install pip-audit
 
     Re-validate:
-      sm validate security:full --verbose
+      ./sm validate security:full --verbose
     """
 
     @property

@@ -48,7 +48,7 @@ class DeadCodeCheck(BaseCheck):
           side effects.
 
     Re-validate:
-      sm validate quality:dead-code --verbose
+      ./sm validate quality:dead-code --verbose
     """
 
     @property
