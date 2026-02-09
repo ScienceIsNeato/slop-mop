@@ -38,4 +38,5 @@ else
 fi
 
 # Run the module directly from the submodule
+export PYTHONPATH="$SLOP_MOP_DIR:${PYTHONPATH:-}"
 exec "$PYTHON" -m slopmop.sm "$@"

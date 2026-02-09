@@ -116,6 +116,7 @@ if [ ! -d "\$SLOP_MOP_DIR/slopmop" ]; then
 fi
 
 # Run the module directly from the submodule
+export PYTHONPATH="\$SLOP_MOP_DIR:\${PYTHONPATH:-}"
 exec "\$PROJECT_ROOT/venv/bin/python" -m slopmop.sm "\$@"
 WRAPPER_EOF
 

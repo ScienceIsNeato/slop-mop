@@ -1,5 +1,7 @@
 """Tests for string duplication check (wrapper for find-duplicate-strings)."""
 
+import shutil
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -383,3 +385,109 @@ class TestStringDuplicationCheck:
 
             assert result.status == CheckStatus.ERROR
             assert "failed" in result.error.lower()
+
+    def test_load_strip_function_success(self, check):
+        """Test loading the strip_docstrings function from vendored tool."""
+        fn = check._load_strip_function()
+        # The function should be loadable if the tool is vendored
+        strip_path = check._get_strip_docstrings_path()
+        if strip_path.exists():
+            assert fn is not None
+            assert callable(fn)
+            # Verify it strips docstrings
+            result = fn('def foo():\n    """docstring"""\n    pass\n')
+            assert '"""docstring"""' not in result
+            assert "pass" in result
+        else:
+            assert fn is None
+
+    def test_load_strip_function_missing_script(self, check):
+        """Test loading returns None when script doesn't exist."""
+        with patch.object(check, "_get_strip_docstrings_path") as mock_path:
+            mock_path.return_value = Path("/nonexistent/strip_docstrings.py")
+            assert check._load_strip_function() is None
+
+    def test_preprocess_preserves_line_numbers(self, check, tmp_path):
+        """Test that preprocessing preserves line count in stripped files."""
+        src = tmp_path / "src"
+        src.mkdir()
+        # Write a file with a multi-line docstring
+        code = (
+            "def foo():\n"
+            '    """This is\n'
+            "    a multi-line\n"
+            '    docstring."""\n'
+            '    x = "real string"\n'
+            "    return x\n"
+        )
+        (src / "example.py").write_text(code)
+
+        config = {
+            "include_patterns": ["**/*.py"],
+            "ignore_patterns": [],
+        }
+        tmp_dir = check._preprocess_python_files(str(src), config)
+
+        if tmp_dir is not None:
+            try:
+                stripped_file = Path(tmp_dir) / "example.py"
+                assert stripped_file.exists()
+                stripped = stripped_file.read_text()
+                # Line count should be preserved
+                assert stripped.count("\n") == code.count("\n")
+                # Real string should still be present
+                assert '"real string"' in stripped
+                # Docstring content should be gone
+                assert "multi-line" not in stripped
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_preprocess_no_python_patterns(self, check, tmp_path):
+        """Test preprocessing returns None for non-Python patterns."""
+        config = {
+            "include_patterns": ["**/*.js"],
+            "ignore_patterns": [],
+        }
+        result = check._preprocess_python_files(str(tmp_path), config)
+        assert result is None
+
+    def test_preprocess_no_matching_files(self, check, tmp_path):
+        """Test preprocessing returns None when no .py files match."""
+        config = {
+            "include_patterns": ["**/*.py"],
+            "ignore_patterns": [],
+        }
+        # tmp_path has no .py files
+        result = check._preprocess_python_files(str(tmp_path), config)
+        assert result is None
+
+    def test_preprocess_respects_ignore_patterns(self, check, tmp_path):
+        """Test preprocessing skips files matching ignore patterns."""
+        (tmp_path / "good.py").write_text("x = 1\n")
+        (tmp_path / "test_bad.py").write_text("x = 1\n")
+
+        config = {
+            "include_patterns": ["**/*.py"],
+            "ignore_patterns": ["test_*"],
+        }
+        tmp_dir = check._preprocess_python_files(str(tmp_path), config)
+
+        if tmp_dir is not None:
+            try:
+                # good.py should be present, test_bad.py should not
+                assert (Path(tmp_dir) / "good.py").exists()
+                assert not (Path(tmp_dir) / "test_bad.py").exists()
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_preprocess_strip_function_unavailable(self, check, tmp_path):
+        """Test preprocessing returns None when strip function unavailable."""
+        (tmp_path / "code.py").write_text("x = 1\n")
+
+        config = {
+            "include_patterns": ["**/*.py"],
+            "ignore_patterns": [],
+        }
+        with patch.object(check, "_load_strip_function", return_value=None):
+            result = check._preprocess_python_files(str(tmp_path), config)
+            assert result is None

@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
@@ -321,36 +321,67 @@ class StringDuplicationCheck(BaseCheck):
         project_root = current_file.parent.parent.parent.parent
         return project_root / "tools" / "find-duplicate-strings" / "strip_docstrings.py"
 
+    def _load_strip_function(self) -> Optional[Callable[[str], str]]:
+        """Dynamically load the strip_docstrings function.
+
+        Returns the function, or None if the module can't be loaded.
+        The script lives outside the slopmop package tree, so we
+        use importlib to load it by file path.
+        """
+        import importlib.util
+
+        script_path = self._get_strip_docstrings_path()
+        if not script_path.exists():
+            return None
+
+        spec = importlib.util.spec_from_file_location(
+            "strip_docstrings", str(script_path)
+        )
+        if not (spec and spec.loader):
+            return None
+
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.strip_docstrings  # type: ignore[no-any-return]
+
     def _preprocess_python_files(
         self, project_root: str, config: Dict[str, Any]
     ) -> Optional[str]:
-        """Pre-process Python files by stripping docstrings into a temp dir.
+        """Strip docstrings from Python files into a temp directory.
 
-        Uses Python's tokenize module (via strip_docstrings.py) which
-        correctly handles all edge cases that regex-based approaches
-        cannot: internal quotes, escaped characters, nested patterns.
+        Creates lightweight copies with docstrings blanked so the Node
+        tool scans clean source.  Line numbers are preserved (multi-line
+        docstrings become ``pass`` + blank lines matching the original
+        span), so reported positions stay correct.
+
+        We use a temp directory rather than modifying files in-place
+        because quality checks run in parallel — an in-place approach
+        would race with the lint-format check that also reads source.
 
         Returns the temp directory path, or None if no .py files found.
-        The caller is responsible for cleaning up the temp dir.
+        The caller must clean up the temp dir (shutil.rmtree).
         """
         include_patterns = config.get("include_patterns", ["**/*.py"])
         ignore_patterns = config.get("ignore_patterns", [])
 
-        # Only pre-process if we're scanning Python files
-        has_python_patterns = any(
+        # Only process Python files
+        has_python = any(
             p.endswith(".py") or p.endswith(".py}") for p in include_patterns
         )
-        if not has_python_patterns:
+        if not has_python:
             return None
 
-        # Find all .py files that match include patterns
+        strip_fn = self._load_strip_function()
+        if strip_fn is None:
+            return None
+
+        # Find all matching .py files
         py_files: list[str] = []
         for pattern in include_patterns:
             if not pattern.endswith(".py"):
                 continue
             matched = globmod.glob(os.path.join(project_root, pattern), recursive=True)
             for f in matched:
-                # Apply ignore patterns
                 rel = os.path.relpath(f, project_root)
                 skip = False
                 for ign in ignore_patterns:
@@ -363,20 +394,26 @@ class StringDuplicationCheck(BaseCheck):
         if not py_files:
             return None
 
-        # Create temp dir and strip docstrings into it
+        # Write stripped copies into temp dir, preserving relative paths
         tmp_dir = tempfile.mkdtemp(prefix="sm-string-dup-")
-        strip_script = self._get_strip_docstrings_path()
+        src_root = Path(project_root).resolve()
 
-        # Use the strip_docstrings module directly (same Python process)
-        import importlib.util
+        for filepath in py_files:
+            try:
+                with open(filepath, encoding="utf-8", errors="replace") as fh:
+                    source = fh.read()
+                stripped = strip_fn(source)
+            except Exception:
+                continue  # can't read or tokenize — skip this file
 
-        spec = importlib.util.spec_from_file_location(
-            "strip_docstrings", str(strip_script)
-        )
-        if spec and spec.loader:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            mod.batch_strip(py_files, project_root, tmp_dir)
+            try:
+                rel_path = Path(filepath).resolve().relative_to(src_root)
+            except ValueError:
+                rel_path = Path(Path(filepath).name)
+
+            out_path = Path(tmp_dir) / rel_path
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(stripped, encoding="utf-8")
 
         return tmp_dir
 
@@ -399,13 +436,14 @@ class StringDuplicationCheck(BaseCheck):
                 ),
             )
 
-        # Pre-process Python files: strip docstrings into temp dir
-        # so the Node tool scans clean source without triple-quoted noise
+        # Strip docstrings into a temp directory so the Node tool scans
+        # clean source.  Line numbers are preserved (multi-line docstrings
+        # become pass + \n).  We can't modify files in-place because
+        # quality checks run in parallel and lint would see modified files.
         tmp_dir = self._preprocess_python_files(project_root, effective_config)
         scan_root = tmp_dir if tmp_dir else project_root
 
         try:
-            # Build and run command against (possibly pre-processed) source
             cmd = self._build_command(effective_config)
             result = self._run_command(cmd, cwd=scan_root)
         except Exception as e:
@@ -416,7 +454,6 @@ class StringDuplicationCheck(BaseCheck):
                 error=f"Failed to run find-duplicate-strings: {e}",
             )
         finally:
-            # Always clean up temp dir
             if tmp_dir:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -424,7 +461,6 @@ class StringDuplicationCheck(BaseCheck):
         stdout = result.stdout.strip() if result.stdout else ""
         stderr = result.stderr.strip() if result.stderr else ""
 
-        # If we used a temp dir, remap paths in the output back to project_root
         if tmp_dir and stdout:
             stdout = stdout.replace(tmp_dir, project_root)
 
