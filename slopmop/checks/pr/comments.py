@@ -79,6 +79,7 @@ class PRCommentsCheck(BaseCheck):
                 capture_output=True,
                 text=True,
                 timeout=5,
+                cwd=project_root,
             )
             if result.returncode != 0:
                 return False
@@ -101,6 +102,7 @@ class PRCommentsCheck(BaseCheck):
                 capture_output=True,
                 text=True,
                 timeout=5,
+                cwd=project_root,
             )
             if result.returncode != 0:
                 return "GitHub CLI (gh) not available"
@@ -122,7 +124,7 @@ class PRCommentsCheck(BaseCheck):
         1. Environment variable (CI context)
         2. GitHub Actions GITHUB_REF (refs/pull/N/merge format)
         3. GitHub event payload file (GITHUB_EVENT_PATH)
-        4. Current branch has an open PR (via gh pr view)
+        4. Current branch has an open PR (via gh pr list --head <branch>)
         """
         # Check explicit CI environment variables first
         for env_var in [
@@ -167,8 +169,33 @@ class PRCommentsCheck(BaseCheck):
 
         # Try to detect from current branch using gh CLI
         try:
+            # First, get the current branch name
+            branch_result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=project_root,
+            )
+            if branch_result.returncode != 0 or not branch_result.stdout.strip():
+                return None
+
+            current_branch = branch_result.stdout.strip()
+
+            # Use gh pr list --head to find the PR for THIS specific branch
+            # (gh pr view can return PRs from other branches)
             result = subprocess.run(
-                ["gh", "pr", "view", "--json", "number"],
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--head",
+                    current_branch,
+                    "--json",
+                    "number",
+                    "--limit",
+                    "1",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -176,7 +203,8 @@ class PRCommentsCheck(BaseCheck):
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
-                return data.get("number")
+                if data and len(data) > 0:
+                    return data[0].get("number")
         except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
             pass
 
