@@ -119,16 +119,21 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         """Applicable only if there are Python test files (coverage needs tests)."""
         if not self.is_python_project(project_root):
             return False
-        # Coverage requires test files to exist
+        # Coverage requires test files to exist — use configurable test_dirs
         root = Path(project_root)
-        tests_dir = root / "tests"
-        return tests_dir.exists() and any(tests_dir.rglob("test_*.py"))
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        for test_dir in test_dirs:
+            d = root / test_dir
+            if d.exists() and any(d.rglob("test_*.py")):
+                return True
+        return False
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping - no Python test files."""
         if not self.is_python_project(project_root):
             return "Not a Python project"
-        return "No Python test files (test_*.py) found in tests/"
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return f"No Python test files (test_*.py) found in {test_dirs}"
 
     def run(self, project_root: str) -> CheckResult:
         """Analyze coverage data and provide prescriptive output.
@@ -317,14 +322,19 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
         if not self.is_python_project(project_root):
             return False
         root = Path(project_root)
-        tests_dir = root / "tests"
-        return tests_dir.exists() and any(tests_dir.rglob("test_*.py"))
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        for test_dir in test_dirs:
+            d = root / test_dir
+            if d.exists() and any(d.rglob("test_*.py")):
+                return True
+        return False
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping - no Python test files."""
         if not self.is_python_project(project_root):
             return "Not a Python project"
-        return "No Python test files (test_*.py) found in tests/"
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return f"No Python test files (test_*.py) found in {test_dirs}"
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
