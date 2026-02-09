@@ -9,17 +9,42 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 def _detect_pr_number(project_root: Path) -> Optional[int]:
-    """Auto-detect PR number from current branch."""
+    """Auto-detect PR number from current branch.
+
+    Uses ``gh pr list --head <branch>`` instead of ``gh pr view``
+    because the latter can return a PR from a *different* branch.
+    """
     try:
-        result = subprocess.run(
-            ["gh", "pr", "view", "--json", "number"],
+        # Get current branch name
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
             cwd=project_root,
             capture_output=True,
             text=True,
+            timeout=5,
+        )
+        if branch_result.returncode != 0 or not branch_result.stdout.strip():
+            return None
+
+        current_branch = branch_result.stdout.strip()
+
+        # Find PR for THIS branch specifically
+        result = subprocess.run(
+            [
+                "gh", "pr", "list",
+                "--head", current_branch,
+                "--json", "number",
+                "--limit", "1",
+            ],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            return data.get("number")
+            if data:
+                return data[0].get("number")
     except (subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError):
         pass
     return None

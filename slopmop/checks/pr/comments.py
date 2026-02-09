@@ -79,6 +79,7 @@ class PRCommentsCheck(BaseCheck):
                 capture_output=True,
                 text=True,
                 timeout=5,
+                cwd=project_root,
             )
             if result.returncode != 0:
                 return False
@@ -101,6 +102,7 @@ class PRCommentsCheck(BaseCheck):
                 capture_output=True,
                 text=True,
                 timeout=5,
+                cwd=project_root,
             )
             if result.returncode != 0:
                 return "GitHub CLI (gh) not available"

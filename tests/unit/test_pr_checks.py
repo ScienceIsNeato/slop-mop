@@ -71,7 +71,16 @@ class TestPRCommentsCheck:
         """Test is_applicable returns True with valid PR context."""
         (tmp_path / ".git").mkdir()
 
-        with patch("subprocess.run") as mock_run:
+        # Clear PR-related env vars so the test exercises the branch/gh path
+        env_overrides = {
+            "GITHUB_PR_NUMBER": "",
+            "PR_NUMBER": "",
+            "PULL_REQUEST_NUMBER": "",
+            "GITHUB_REF": "",
+            "GITHUB_EVENT_PATH": "",
+        }
+
+        with patch.dict("os.environ", env_overrides, clear=False), patch("subprocess.run") as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0),  # gh --version
                 MagicMock(returncode=0, stdout="feature/my-branch\n"),  # git branch --show-current
