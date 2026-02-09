@@ -1,8 +1,51 @@
 """Project type detection for slop-mop CLI."""
 
 import json
+import shutil
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
+
+# Tools required by specific checks: (tool_name, check_name, install_command)
+REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
+    ("vulture", "quality:dead-code", "pip install vulture"),
+    ("pyright", "python:type-checking", "pip install pyright"),
+    ("bandit", "security:full", "pip install bandit"),
+    ("semgrep", "security:full", "pip install semgrep"),
+]
+
+
+def _find_tool_in_venv(name: str, project_root: Path) -> str | None:
+    """Check for tool in project venv."""
+    for venv_dir in ["venv", ".venv"]:
+        candidate = project_root / venv_dir / "bin" / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _detect_tools(project_root: Path) -> Dict[str, Any]:
+    """Detect which required tools are available.
+    
+    Returns:
+        Dict with:
+        - available_tools: list of tool names that are installed
+        - missing_tools: list of (tool_name, check_name, install_command) for missing tools
+    """
+    available: List[str] = []
+    missing: List[Tuple[str, str, str]] = []
+    
+    for tool_name, check_name, install_cmd in REQUIRED_TOOLS:
+        # Check venv first, then system PATH
+        found = _find_tool_in_venv(tool_name, project_root) or shutil.which(tool_name)
+        if found:
+            available.append(tool_name)
+        else:
+            missing.append((tool_name, check_name, install_cmd))
+    
+    return {
+        "available_tools": available,
+        "missing_tools": missing,
+    }
 
 
 def _detect_python(project_root: Path) -> bool:
@@ -121,6 +164,8 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - test_dirs: list of test directory paths
     - recommended_profile: str
     - recommended_gates: list of str
+    - available_tools: list of str
+    - missing_tools: list of (tool_name, check_name, install_command)
     """
     detected: Dict[str, Any] = {
         "has_python": _detect_python(project_root),
@@ -134,5 +179,10 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     detected["has_tests_dir"] = bool(detected["test_dirs"])
     detected["recommended_gates"] = _recommend_gates(detected)
     detected["recommended_profile"] = _recommend_profile(detected)
+    
+    # Detect tool availability
+    tool_info = _detect_tools(project_root)
+    detected["available_tools"] = tool_info["available_tools"]
+    detected["missing_tools"] = tool_info["missing_tools"]
 
     return detected

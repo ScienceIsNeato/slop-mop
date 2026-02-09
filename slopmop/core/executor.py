@@ -8,13 +8,52 @@ import concurrent.futures
 import logging
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
 
 logger = logging.getLogger(__name__)
+
+
+def _is_gate_enabled_in_config(
+    check: BaseCheck, config: Dict[str, Any]
+) -> Tuple[bool, str]:
+    """Check if a gate is enabled in the config.
+    
+    Args:
+        check: The check instance
+        config: Configuration dictionary from .sb_config.json
+        
+    Returns:
+        Tuple of (is_enabled, reason_if_disabled)
+    """
+    # Check the disabled_gates list first (sm config --disable uses this)
+    disabled_gates = config.get("disabled_gates", [])
+    if check.full_name in disabled_gates:
+        return False, f"{check.full_name} is in disabled_gates list"
+    
+    category_key = check.category.key  # e.g., "python", "javascript", "quality"
+    gate_name = check.name  # e.g., "lint-format", "dead-code"
+    
+    # Check if language/category is enabled
+    if category_key in config:
+        category_config = config[category_key]
+        
+        # If category itself is disabled, all its gates are disabled
+        if isinstance(category_config, dict):
+            if category_config.get("enabled") is False:
+                return False, f"{category_key} language is disabled in config"
+            
+            # Check if specific gate is disabled
+            gates = category_config.get("gates", {})
+            if gate_name in gates:
+                gate_config = gates[gate_name]
+                if isinstance(gate_config, dict) and gate_config.get("enabled") is False:
+                    return False, f"{check.full_name} is disabled in config"
+    
+    return True, ""
 
 
 class CheckExecutor:
@@ -93,9 +132,25 @@ class CheckExecutor:
         # Auto-include dependencies that weren't explicitly requested
         checks = self._expand_dependencies(checks, config)
 
+        # Filter out disabled checks (by config)
+        enabled_checks: List[BaseCheck] = []
+        for check in checks:
+            is_enabled, reason = _is_gate_enabled_in_config(check, config)
+            if is_enabled:
+                enabled_checks.append(check)
+            else:
+                logger.info(f"Disabled — {check.full_name}: {reason}")
+                # Don't add to results - just skip silently
+                # (user explicitly disabled, not a "not applicable" case)
+        
+        if not enabled_checks:
+            logger.warning("All checks are disabled")
+            duration = time.time() - start_time
+            return ExecutionSummary.from_results(list(self._results.values()), duration)
+
         # Filter to applicable checks
-        applicable = [c for c in checks if c.is_applicable(project_root)]
-        skipped = [c for c in checks if c not in applicable]
+        applicable = [c for c in enabled_checks if c.is_applicable(project_root)]
+        skipped = [c for c in enabled_checks if c not in applicable]
 
         # Log non-applicable checks with reason
         for check in skipped:

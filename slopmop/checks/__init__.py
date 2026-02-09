@@ -35,6 +35,7 @@ def _register_python_checks(registry: CheckRegistry) -> None:
 
 def _register_javascript_checks(registry: CheckRegistry) -> None:
     """Register all JavaScript-related checks."""
+    from slopmop.checks.javascript.bogus_tests import JavaScriptBogusTestsCheck
     from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
     from slopmop.checks.javascript.eslint_quick import FrontendCheck
     from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
@@ -46,6 +47,7 @@ def _register_javascript_checks(registry: CheckRegistry) -> None:
     registry.register(JavaScriptCoverageCheck)
     registry.register(FrontendCheck)
     registry.register(JavaScriptTypesCheck)
+    registry.register(JavaScriptBogusTestsCheck)
 
 
 def _register_crosscutting_checks(registry: CheckRegistry) -> None:
@@ -94,6 +96,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "javascript:lint-format",
             "javascript:tests",
             "javascript:coverage",
+            "javascript:bogus-tests",
         ],
     )
 
@@ -117,6 +120,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "javascript:lint-format",
             "javascript:tests",
             "javascript:coverage",
+            "javascript:bogus-tests",
         ],
     )
 

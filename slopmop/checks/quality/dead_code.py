@@ -192,10 +192,10 @@ class DeadCodeCheck(BaseCheck):
             result.returncode == -1 and "Command not found" in result.stderr
         ):
             return self._create_result(
-                status=CheckStatus.WARNED,
+                status=CheckStatus.ERROR,
                 duration=duration,
                 error="vulture not available",
-                fix_suggestion="Install vulture: pip install vulture",
+                fix_suggestion="Install vulture: pip install vulture\nOr disable this check: sm config --disable quality:dead-code",
             )
 
         # Handle timeout
