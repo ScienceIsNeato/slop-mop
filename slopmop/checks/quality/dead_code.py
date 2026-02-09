@@ -46,7 +46,6 @@ class DeadCodeCheck(BaseCheck):
           if it's used dynamically (e.g., via getattr, entrypoints).
       Unused import: Remove it or mark with # noqa if needed for
           side effects.
-      vulture not available: pip install vulture
 
     Re-validate:
       sm validate quality:dead-code --verbose
@@ -187,15 +186,16 @@ class DeadCodeCheck(BaseCheck):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
         duration = time.time() - start_time
 
-        # Handle tool not installed (shell returns 127, SubprocessRunner returns -1)
+        # Handle tool not installed - this indicates a broken slop-mop installation
+        # since vulture is a core dependency of slop-mop
         if result.returncode == 127 or (
             result.returncode == -1 and "Command not found" in result.stderr
         ):
             return self._create_result(
                 status=CheckStatus.ERROR,
                 duration=duration,
-                error="vulture not available",
-                fix_suggestion="Install vulture: pip install vulture\nOr disable this check: sm config --disable quality:dead-code",
+                error="vulture not found (slop-mop installation issue)",
+                fix_suggestion="Reinstall slop-mop: pip install -e /path/to/slop-mop\nvulture should be installed as a slop-mop dependency.",
             )
 
         # Handle timeout

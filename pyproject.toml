@@ -28,6 +28,12 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 
+# Core dependencies - tools that slop-mop checks rely on
+dependencies = [
+    "vulture>=2.14",  # dead-code detection
+    "ruff>=0.1.0",    # Python linting and formatting
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
