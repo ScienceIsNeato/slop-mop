@@ -4,8 +4,8 @@
 # Sets up slop-mop for a project:
 #   1. Creates/finds a Python venv
 #   2. Installs all required dependencies
-#   3. Creates a convenience `sm` wrapper in the parent project
-#   4. Verifies all tools are working
+#   3. Creates convenience `sm` wrappers in the parent project
+#   4. Verifies all packages installed correctly
 #
 # Usage (from parent project root):
 #   ./slop-mop/scripts/setup.sh
@@ -142,7 +142,41 @@ else
     echo "⚠️  $ROOT_SM already exists — skipping (delete it to regenerate)"
 fi
 
-# ─── Step 5: Done ─────────────────────────────────────────────────
+# ─── Step 5: Verify installations ─────────────────────────────────
+# Derive the tool list from requirements.txt (single source of truth)
+# rather than maintaining a separate hardcoded list.
+echo ""
+echo "🔍 Verifying installed packages..."
+
+PASS=0
+FAIL=0
+MISSING=()
+
+while IFS= read -r line; do
+    # Skip comments and blank lines
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    # Strip version specifiers: "black>=23.0.0" -> "black"
+    pkg=$(echo "$line" | sed 's/[><=!;].*//' | xargs)
+    [ -z "$pkg" ] && continue
+    if "$PIP" show "$pkg" &>/dev/null; then
+        ((PASS++))
+    else
+        ((FAIL++))
+        MISSING+=("$pkg")
+    fi
+done < "$REQUIREMENTS"
+
+echo "   ✅ $PASS/$((PASS + FAIL)) packages verified"
+if [ $FAIL -gt 0 ]; then
+    echo "   ⚠️  $FAIL packages not found after install:"
+    for pkg in "${MISSING[@]}"; do
+        echo "      • $pkg"
+    done
+    echo "   Some quality gates may not work. Try: pip install <package>"
+fi
+
+# ─── Step 6: Done ─────────────────────────────────────────────────
 echo ""
 echo "============================================================"
 echo "🚀 Setup Complete!"
