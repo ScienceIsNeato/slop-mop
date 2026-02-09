@@ -100,3 +100,16 @@ class TestCommandValidator:
         with pytest.raises(SecurityError) as exc_info:
             validator.validate("python -m pytest")  # type: ignore
         assert "must be a list" in str(exc_info.value)
+
+    def test_allows_versioned_python_via_pattern(self):
+        """Any python3.X version should be accepted via pattern, not a hardcoded list."""
+        validator = CommandValidator()
+        for version in ["python3.9", "python3.13", "python3.14", "python3.20"]:
+            assert validator.validate([version, "--version"]) is True
+            assert validator.is_allowed(version) is True
+
+    def test_rejects_python_lookalikes_via_pattern(self):
+        """Executable names that look like python but aren't should be rejected."""
+        validator = CommandValidator()
+        for bad in ["python3.", "python3.x", "python4.0", "python3.13.1"]:
+            assert validator.is_allowed(bad) is False

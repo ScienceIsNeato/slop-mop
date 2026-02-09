@@ -31,6 +31,13 @@ class CommandValidator:
         ALLOWED_EXECUTABLES: Set of executable names that can be run
     """
 
+    # Patterns for executables that follow a predictable naming scheme
+    # (e.g. python3.14, python3.15) so we don't need to update a list
+    # every time a new point release ships.
+    ALLOWED_EXECUTABLE_PATTERNS: List[re.Pattern[str]] = [
+        re.compile(r"^python3\.\d+$"),
+    ]
+
     # Whitelist of allowed executables
     # These are common development tools that are safe to run
     ALLOWED_EXECUTABLES: FrozenSet[str] = frozenset(
@@ -38,11 +45,6 @@ class CommandValidator:
             # Python ecosystem
             "python",
             "python3",
-            "python3.9",
-            "python3.10",
-            "python3.11",
-            "python3.12",
-            "python3.13",
             "pip",
             "pip3",
             "black",
@@ -165,8 +167,8 @@ class CommandValidator:
         # Extract executable name (handle full paths)
         executable = Path(command[0]).name
 
-        # Check if executable is in whitelist
-        if executable not in self._allowed:
+        # Check if executable is in whitelist or matches an allowed pattern
+        if not self._is_executable_allowed(executable):
             raise SecurityError(
                 f"Executable not in whitelist: {executable}\n"
                 f"Allowed executables: {', '.join(sorted(self._allowed))}"
@@ -206,6 +208,12 @@ class CommandValidator:
                     f"Full argument: {arg}"
                 )
 
+    def _is_executable_allowed(self, executable: str) -> bool:
+        """Check executable against the static set and pattern list."""
+        if executable in self._allowed:
+            return True
+        return any(p.match(executable) for p in self.ALLOWED_EXECUTABLE_PATTERNS)
+
     def add_allowed(self, executable: str) -> None:
         """Add an executable to the whitelist.
 
@@ -223,7 +231,7 @@ class CommandValidator:
         Returns:
             True if executable is allowed
         """
-        return Path(executable).name in self._allowed
+        return self._is_executable_allowed(Path(executable).name)
 
 
 # Module-level singleton for convenience
