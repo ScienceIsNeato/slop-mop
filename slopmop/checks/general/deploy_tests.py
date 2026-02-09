@@ -67,7 +67,7 @@ class DeployScriptTestsCheck(BaseCheck):
             "test_script", "scripts/__tests__/deploy_app.test.sh"
         )
         if not os.path.exists(deploy_script):
-            return f"No deploy script found at scripts/deploy_app.sh"
+            return "No deploy script found at scripts/deploy_app.sh"
         return f"No deploy test script found at {test_script}"
 
     def run(self, project_root: str) -> CheckResult:
@@ -95,7 +95,9 @@ class DeployScriptTestsCheck(BaseCheck):
             # Extract test summary from output
             lines = result.stdout.strip().split("\n")
             summary_lines = [
-                l for l in lines if "Passed:" in l or "Failed:" in l or "Total:" in l
+                line
+                for line in lines
+                if "Passed:" in line or "Failed:" in line or "Total:" in line
             ]
             summary = "\n".join(summary_lines) if summary_lines else "All tests passed"
 

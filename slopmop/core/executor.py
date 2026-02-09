@@ -30,31 +30,26 @@ def _is_gate_enabled_in_config(
         Tuple of (is_enabled, reason_if_disabled)
     """
     # Check the disabled_gates list first (sm config --disable uses this)
-    disabled_gates = config.get("disabled_gates", [])
-    if check.full_name in disabled_gates:
+    disabled_gates_val: object = config.get("disabled_gates", [])
+    if isinstance(disabled_gates_val, list) and check.full_name in disabled_gates_val:
         return False, f"{check.full_name} is in disabled_gates list"
 
     category_key = check.category.key  # e.g., "python", "javascript", "quality"
     gate_name = check.name  # e.g., "lint-format", "dead-code"
 
     # Check if language/category is enabled
-    if category_key in config:
-        category_config = config[category_key]
+    category_val: object = config.get(category_key)
+    if isinstance(category_val, dict):
+        enabled_val = category_val.get("enabled")  # type: ignore[reportUnknownMemberType]
+        if enabled_val is False:
+            return False, f"{category_key} language is disabled in config"
 
-        # If category itself is disabled, all its gates are disabled
-        if isinstance(category_config, dict):
-            if category_config.get("enabled") is False:
-                return False, f"{category_key} language is disabled in config"
-
-            # Check if specific gate is disabled
-            gates = category_config.get("gates", {})
-            if gate_name in gates:
-                gate_config = gates[gate_name]
-                if (
-                    isinstance(gate_config, dict)
-                    and gate_config.get("enabled") is False
-                ):
-                    return False, f"{check.full_name} is disabled in config"
+        # Check if specific gate is disabled
+        gates_val = category_val.get("gates")  # type: ignore[reportUnknownMemberType]
+        if isinstance(gates_val, dict) and gate_name in gates_val:
+            gate_cfg = gates_val.get(gate_name)  # type: ignore[reportUnknownMemberType]
+            if isinstance(gate_cfg, dict) and gate_cfg.get("enabled") is False:  # type: ignore[reportUnknownMemberType]
+                return False, f"{check.full_name} is disabled in config"
 
     return True, ""
 
@@ -135,16 +130,33 @@ class CheckExecutor:
         # Auto-include dependencies that weren't explicitly requested
         checks = self._expand_dependencies(checks, config)
 
-        # Filter out disabled checks (by config)
-        enabled_checks: List[BaseCheck] = []
+        # Filter out disabled checks (by config), including dependents
+        disabled_gates: Set[str] = set()
         for check in checks:
             is_enabled, reason = _is_gate_enabled_in_config(check, config)
-            if is_enabled:
-                enabled_checks.append(check)
-            else:
+            if not is_enabled:
+                disabled_gates.add(check.full_name)
                 logger.info(f"Disabled — {check.full_name}: {reason}")
-                # Don't add to results - just skip silently
-                # (user explicitly disabled, not a "not applicable" case)
+
+        # Propagate: if a dependency is disabled, disable its dependents too
+        changed = True
+        while changed:
+            changed = False
+            for check in checks:
+                if check.full_name not in disabled_gates:
+                    for dep in check.depends_on:
+                        if dep in disabled_gates:
+                            disabled_gates.add(check.full_name)
+                            logger.info(
+                                f"Disabled — {check.full_name}: "
+                                f"dependency {dep} is disabled"
+                            )
+                            changed = True
+                            break
+
+        enabled_checks: List[BaseCheck] = [
+            c for c in checks if c.full_name not in disabled_gates
+        ]
 
         if not enabled_checks:
             logger.warning("All checks are disabled")

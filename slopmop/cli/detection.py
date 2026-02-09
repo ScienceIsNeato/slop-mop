@@ -1,30 +1,27 @@
 """Project type detection for slop-mop CLI."""
 
 import json
-import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+
+from slopmop.checks.base import find_tool
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     ("vulture", "quality:dead-code", "pip install vulture"),
     ("pyright", "python:type-checking", "pip install pyright"),
-    ("bandit", "security:full", "pip install bandit"),
-    ("semgrep", "security:full", "pip install semgrep"),
+    ("bandit", "security:local", "pip install bandit"),
+    ("semgrep", "security:local", "pip install semgrep"),
+    ("detect-secrets", "security:local", "pip install detect-secrets"),
+    ("pip-audit", "security:full", "pip install pip-audit"),
 ]
-
-
-def _find_tool_in_venv(name: str, project_root: Path) -> str | None:
-    """Check for tool in project venv."""
-    for venv_dir in ["venv", ".venv"]:
-        candidate = project_root / venv_dir / "bin" / name
-        if candidate.is_file():
-            return str(candidate)
-    return None
 
 
 def _detect_tools(project_root: Path) -> Dict[str, Any]:
     """Detect which required tools are available.
+
+    Uses find_tool() from base.py which handles venv/bin, .venv/bin,
+    Windows Scripts paths, and falls back to shutil.which().
 
     Returns:
         Dict with:
@@ -35,8 +32,7 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
     missing: List[Tuple[str, str, str]] = []
 
     for tool_name, check_name, install_cmd in REQUIRED_TOOLS:
-        # Check venv first, then system PATH
-        found = _find_tool_in_venv(tool_name, project_root) or shutil.which(tool_name)
+        found = find_tool(tool_name, str(project_root))
         if found:
             available.append(tool_name)
         else:

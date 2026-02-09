@@ -175,7 +175,9 @@ class TestSecurityLocalCheck:
 
     def test_run_bandit_with_config_file(self, tmp_path):
         """Test _run_bandit uses config file if specified."""
-        check = SecurityLocalCheck({"config_file_path": "/path/to/config.yaml"})
+        config_file = tmp_path / "bandit.yaml"
+        config_file.write_text("# bandit config")
+        check = SecurityLocalCheck({"bandit_config_file": str(config_file)})
         mock_result = MagicMock()
         mock_result.stdout = json.dumps({"results": []})
         mock_result.stderr = ""
@@ -186,7 +188,7 @@ class TestSecurityLocalCheck:
         # Check that config file was used
         call_args = mock_run.call_args[0][0]
         assert "--configfile" in call_args
-        assert "/path/to/config.yaml" in call_args
+        assert str(config_file) in call_args
 
     def test_run_all_checks_passed(self, tmp_path):
         """Test run() when all checks pass."""

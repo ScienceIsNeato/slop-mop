@@ -190,16 +190,15 @@ class DeadCodeCheck(BaseCheck):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
         duration = time.time() - start_time
 
-        # Handle tool not installed - this indicates a broken slop-mop installation
-        # since vulture is a core dependency of slop-mop
+        # Handle tool not installed — warn but don't block
         if result.returncode == 127 or (
             result.returncode == -1 and "Command not found" in result.stderr
         ):
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=duration,
-                error="vulture not found (slop-mop installation issue)",
-                fix_suggestion="Reinstall slop-mop: pip install -e /path/to/slop-mop\nvulture should be installed as a slop-mop dependency.",
+                error="vulture not available",
+                fix_suggestion="Install vulture: pip install vulture",
             )
 
         # Handle timeout

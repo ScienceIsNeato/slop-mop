@@ -10,11 +10,12 @@ the agent creates tests to satisfy coverage requirements without
 actually exercising any behavior.
 """
 
+import os
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List, Pattern, Tuple
+from typing import Iterator, List, Optional, Pattern, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -56,19 +57,19 @@ class BogusTestFinding:
 # Regex patterns for test detection
 # Matches: test('name', () => { ... }) or it('name', () => { ... })
 # Also matches: test('name', async () => { ... })
-TEST_DEFINITION_PATTERN: Pattern = re.compile(
-    r"(?:test|it)\s*\(\s*['\"`]([^'\"]+)['\"`]\s*,\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{",
+TEST_DEFINITION_PATTERN: Pattern[str] = re.compile(
+    r"(?:test|it)\s*\(\s*['\"`]([^'\"`]+)['\"`]\s*,\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{",
     re.MULTILINE,
 )
 
 # Alternative pattern for function() syntax
-TEST_FUNCTION_PATTERN: Pattern = re.compile(
-    r"(?:test|it)\s*\(\s*['\"`]([^'\"]+)['\"`]\s*,\s*(?:async\s*)?function\s*\([^)]*\)\s*\{",
+TEST_FUNCTION_PATTERN: Pattern[str] = re.compile(
+    r"(?:test|it)\s*\(\s*['\"`]([^'\"`]+)['\"`]\s*,\s*(?:async\s*)?function\s*\([^)]*\)\s*\{",
     re.MULTILINE,
 )
 
 # Tautological assertion patterns
-TAUTOLOGY_PATTERNS: List[Tuple[Pattern, str]] = [
+TAUTOLOGY_PATTERNS: List[Tuple[Pattern[str], str]] = [
     # expect(true).toBe(true)
     (
         re.compile(r"expect\s*\(\s*true\s*\)\s*\.toBe\s*\(\s*true\s*\)"),
@@ -116,10 +117,10 @@ TAUTOLOGY_PATTERNS: List[Tuple[Pattern, str]] = [
 ]
 
 # Pattern to detect any expect() call
-EXPECT_PATTERN: Pattern = re.compile(r"expect\s*\(", re.MULTILINE)
+EXPECT_PATTERN: Pattern[str] = re.compile(r"expect\s*\(", re.MULTILINE)
 
 # Pattern to detect assertion methods that don't use expect (rare but valid)
-ALTERNATIVE_ASSERTIONS: List[Pattern] = [
+ALTERNATIVE_ASSERTIONS: List[Pattern[str]] = [
     re.compile(r"\.toHaveBeenCalled"),
     re.compile(r"\.toThrow"),
     re.compile(r"assert[\.\(]"),
@@ -151,29 +152,73 @@ ALTERNATIVE_ASSERTIONS: List[Pattern] = [
 
 
 def _find_test_files(project_root: str, exclude_dirs: List[str]) -> Iterator[Path]:
-    """Find all test files in the project."""
+    """Find all test files in the project with a single directory walk."""
     root = Path(project_root)
     skip = SKIP_DIRS | set(exclude_dirs)
 
-    for pattern in TEST_FILE_PATTERNS:
-        for filepath in root.rglob(pattern):
-            # Skip files in excluded directories
-            if any(part in skip for part in filepath.parts):
-                continue
-            yield filepath
+    # Build suffix set from patterns (e.g. '.test.ts', '.spec.jsx')
+    test_suffixes = {p.lstrip("*") for p in TEST_FILE_PATTERNS}
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune excluded directories in-place
+        dirnames[:] = [d for d in dirnames if d not in skip]
+
+        for filename in filenames:
+            if any(filename.endswith(suffix) for suffix in test_suffixes):
+                yield Path(dirpath) / filename
+
+
+def _strip_comments(body: str) -> str:
+    """Remove single-line and multi-line comments from body."""
+    body = re.sub(r"//.*$", "", body, flags=re.MULTILINE)
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
+    return body
 
 
 def _extract_test_body(content: str, start_pos: int) -> Tuple[str, int]:
     """Extract the body of a test function from content starting at brace position.
 
+    Handles braces inside string literals and comments correctly.
     Returns (body_content, end_position).
     """
-    # Find the matching closing brace
     brace_count = 1
     pos = start_pos + 1  # Start after opening brace
+    length = len(content)
 
-    while pos < len(content) and brace_count > 0:
+    while pos < length and brace_count > 0:
         char = content[pos]
+
+        # Skip string literals (single/double/backtick quoted)
+        if char in ("'", '"', "`"):
+            quote = char
+            pos += 1
+            while pos < length:
+                if content[pos] == "\\" and pos + 1 < length:
+                    pos += 2  # Skip escaped character
+                    continue
+                if content[pos] == quote:
+                    pos += 1
+                    break
+                pos += 1
+            continue
+
+        # Skip single-line comments
+        if char == "/" and pos + 1 < length and content[pos + 1] == "/":
+            pos += 2
+            while pos < length and content[pos] != "\n":
+                pos += 1
+            continue
+
+        # Skip multi-line comments
+        if char == "/" and pos + 1 < length and content[pos + 1] == "*":
+            pos += 2
+            while pos + 1 < length:
+                if content[pos] == "*" and content[pos + 1] == "/":
+                    pos += 2
+                    break
+                pos += 1
+            continue
+
         if char == "{":
             brace_count += 1
         elif char == "}":
@@ -186,28 +231,26 @@ def _extract_test_body(content: str, start_pos: int) -> Tuple[str, int]:
 
 def _is_empty_body(body: str) -> bool:
     """Check if test body is effectively empty."""
-    # Remove comments
-    body = re.sub(r"//.*$", "", body, flags=re.MULTILINE)
-    body = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
-    # Remove whitespace
-    body = body.strip()
-    return len(body) == 0
+    stripped = _strip_comments(body).strip()
+    return len(stripped) == 0
 
 
-def _check_tautology(body: str) -> str | None:
+def _check_tautology(body: str) -> Optional[str]:
     """Check if body contains tautological assertions. Returns reason if found."""
+    stripped = _strip_comments(body)
     for pattern, reason in TAUTOLOGY_PATTERNS:
-        if pattern.search(body):
+        if pattern.search(stripped):
             return reason
     return None
 
 
 def _has_assertions(body: str) -> bool:
     """Check if body has any assertion calls."""
-    if EXPECT_PATTERN.search(body):
+    stripped = _strip_comments(body)
+    if EXPECT_PATTERN.search(stripped):
         return True
     for pattern in ALTERNATIVE_ASSERTIONS:
-        if pattern.search(body):
+        if pattern.search(stripped):
             return True
     return False
 
@@ -324,17 +367,21 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
         return [
             ConfigField(
                 name="max_allowed",
-                field_type="int",
+                field_type="integer",
                 default=0,
                 description="Maximum bogus tests allowed (0 = none)",
             ),
             ConfigField(
                 name="exclude_dirs",
-                field_type="list",
+                field_type="string[]",
                 default=[],
                 description="Additional directories to exclude from scanning",
             ),
         ]
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping — delegate to JavaScriptCheckMixin."""
+        return JavaScriptCheckMixin.skip_reason(self, project_root)
 
     def is_applicable(self, project_root: str) -> bool:
         """Check if this is a JavaScript project with test files."""

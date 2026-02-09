@@ -103,7 +103,7 @@ class TestGenerateLanguageConfig:
         assert "include_dirs" in config
         assert config["include_dirs"] == []
         assert "exclude_dirs" in config
-        assert config["exclude_dirs"] == []
+        assert config["exclude_dirs"] == ["slop-mop"]
         assert "gates" in config
         assert "mock-check" in config["gates"]
 
