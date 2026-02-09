@@ -11,7 +11,7 @@ import json
 import os
 import tempfile
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
@@ -21,20 +21,46 @@ MIN_TOKENS = 50
 MIN_LINES = 5
 
 
-class DuplicationCheck(BaseCheck):
-    """Cross-language code duplication detection via jscpd."""
+class SourceDuplicationCheck(BaseCheck):
+    """Cross-language code duplication detection.
 
-    def __init__(self, config: Dict, threshold: float = DEFAULT_THRESHOLD):
+    Wraps jscpd to detect copy-paste code across Python, JavaScript,
+    TypeScript, and other languages. Reports specific file pairs and
+    line ranges so you know exactly what to deduplicate.
+
+    Profiles: commit, pr
+
+    Configuration:
+      threshold: 5 — maximum allowed duplication percentage. 5% is
+          generous; tighten to 2-3% for mature codebases.
+      include_dirs: ["."] — directories to scan.
+      min_tokens: 50 — minimum token count to consider a block as
+          duplicate. Filters trivial matches (imports, boilerplate).
+      min_lines: 5 — minimum line count for a duplicate block.
+      exclude_dirs: [] — extra dirs to skip (node_modules, venv,
+          etc. are always excluded).
+
+    Common failures:
+      Duplication exceeds threshold: Extract the duplicated code
+          into a shared function or module. The output shows the
+          specific file pairs and line ranges.
+      jscpd not available: npm install -g jscpd
+
+    Re-validate:
+      ./sm validate quality:source-duplication --verbose
+    """
+
+    def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)
         self.threshold = config.get("threshold", threshold)
 
     @property
     def name(self) -> str:
-        return "duplication"
+        return "source-duplication"
 
     @property
     def display_name(self) -> str:
-        return "📋 Code Duplication"
+        return "📋 Source Duplication"
 
     @property
     def category(self) -> GateCategory:
@@ -85,70 +111,148 @@ class DuplicationCheck(BaseCheck):
                     return True
         return False
 
-    def run(self, project_root: str) -> CheckResult:
-        start_time = time.time()
+    def skip_reason(self, project_root: str) -> str:
+        """Return skip reason when no source code is detected."""
+        # Check for source files first
+        has_code = False
+        for ext in [".py", ".js", ".ts", ".jsx", ".tsx"]:
+            for root, _, files in os.walk(project_root):
+                if any(f.endswith(ext) for f in files):
+                    has_code = True
+                    break
+            if has_code:
+                break
+        if not has_code:
+            return "No Python or JavaScript/TypeScript source files found"
+        return "Duplication check not applicable"
 
-        # Check jscpd availability
+    # Default directories to ignore
+    _DEFAULT_IGNORES = [
+        "node_modules",
+        "dist",
+        "build",
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "coverage",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".tox",
+        "htmlcov",
+        "*.egg-info",
+        "tools",  # vendored third-party tools
+    ]
+
+    def _check_jscpd_availability(self, project_root: str) -> Optional[str]:
+        """Check if jscpd is available. Returns error message or None."""
         result = self._run_command(
             ["npx", "jscpd", "--version"], cwd=project_root, timeout=30
         )
         if result.returncode != 0:
+            return "jscpd not available"
+        return None
+
+    def _build_jscpd_command(
+        self,
+        report_output: str,
+        include_dirs: list[str],
+        min_tokens: int,
+        min_lines: int,
+    ) -> list[str]:
+        """Build the jscpd command with all arguments."""
+        config_excludes = self.config.get("exclude_dirs", [])
+        all_ignores = list(dict.fromkeys(self._DEFAULT_IGNORES + config_excludes))
+        ignore_str = ",".join(all_ignores)
+
+        return [
+            "npx",
+            "jscpd",
+            "--min-tokens",
+            str(min_tokens),
+            "--min-lines",
+            str(min_lines),
+            "--threshold",
+            str(self.threshold),
+            "--reporters",
+            "json",
+            "--output",
+            report_output,
+            "--ignore",
+            ignore_str + ",cursor-rules,**/__tests__/**,**/*.test.*,**/*.spec.*",
+        ] + include_dirs
+
+    def _parse_report(self, report_path: str) -> Optional[dict[str, Any]]:
+        """Parse jscpd JSON report. Returns None on error."""
+        try:
+            with open(report_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    def _format_result(self, report: dict[str, Any], duration: float) -> CheckResult:
+        """Format the check result from parsed report."""
+        duplicates = report.get("duplicates", [])
+        stats = report.get("statistics", {})
+        total_percentage = stats.get("total", {}).get("percentage", 0)
+
+        if total_percentage <= self.threshold:
+            if len(duplicates) == 0:
+                output_msg = "No duplication detected"
+            else:
+                output_msg = (
+                    f"Duplication at {total_percentage:.1f}% "
+                    f"(threshold: {self.threshold}%). "
+                    f"{len(duplicates)} clone(s) found but within limits."
+                )
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.PASSED, duration=duration, output=output_msg
+            )
+
+        # Format violation details
+        violations = self._format_duplicates(duplicates)
+        detail = "Code duplication exceeds acceptable levels.\n\n"
+        detail += "Duplicate blocks:\n" + "\n".join(violations[:10])
+        if len(violations) > 10:
+            detail += f"\n... and {len(violations) - 10} more"
+
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output=detail,
+            error="Excessive code duplication detected",
+            fix_suggestion="Extract duplicated code into shared functions or modules.",
+        )
+
+    def run(self, project_root: str) -> CheckResult:
+        start_time = time.time()
+
+        # Check jscpd availability
+        error = self._check_jscpd_availability(project_root)
+        if error:
+            return self._create_result(
+                status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
-                error="jscpd not available",
+                error=error,
                 fix_suggestion="Install jscpd: npm install -g jscpd",
             )
 
         # Get config values
         min_tokens = self.config.get("min_tokens", MIN_TOKENS)
         min_lines = self.config.get("min_lines", MIN_LINES)
-        # Get directories to scan from config
         include_dirs = self.config.get("include_dirs", ["."])
         if not include_dirs:
             include_dirs = ["."]
 
-        # Use a proper temp directory for the report
         with tempfile.TemporaryDirectory(prefix="jscpd-") as temp_dir:
             report_output = os.path.join(temp_dir, "jscpd-report")
-
-            # Build ignore list from config exclude_dirs + hardcoded defaults
-            default_ignores = [
-                "node_modules",
-                "dist",
-                "build",
-                ".git",
-                "__pycache__",
-                ".venv",
-                "venv",
-                "coverage",
-            ]
-            config_excludes = self.config.get("exclude_dirs", [])
-            all_ignores = list(dict.fromkeys(default_ignores + config_excludes))
-            ignore_str = ",".join(all_ignores)
-
-            # Run jscpd
-            cmd = [
-                "npx",
-                "jscpd",
-                "--min-tokens",
-                str(min_tokens),
-                "--min-lines",
-                str(min_lines),
-                "--threshold",
-                str(self.threshold),
-                "--reporters",
-                "json",
-                "--output",
-                report_output,
-                "--ignore",
-                ignore_str + ",cursor-rules,**/__tests__/**,**/*.test.*,**/*.spec.*",
-            ] + include_dirs
+            cmd = self._build_jscpd_command(
+                report_output, include_dirs, min_tokens, min_lines
+            )
 
             result = self._run_command(cmd, cwd=project_root, timeout=300)
             duration = time.time() - start_time
 
-            # Parse results
             report_path = os.path.join(report_output, "jscpd-report.json")
             if not os.path.exists(report_path):
                 if result.returncode == 0:
@@ -160,52 +264,22 @@ class DuplicationCheck(BaseCheck):
                 return self._create_result(
                     status=CheckStatus.ERROR,
                     duration=duration,
-                    error=result.error or "jscpd failed to produce report",
+                    error=result.stderr or "jscpd failed to produce report",
                 )
 
-            try:
-                with open(report_path) as f:
-                    report = json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
+            report = self._parse_report(report_path)
+            if report is None:
                 return self._create_result(
                     status=CheckStatus.ERROR,
                     duration=duration,
-                    error=f"Failed to parse jscpd report: {e}",
+                    error="Failed to parse jscpd report",
                 )
 
-            duplicates = report.get("duplicates", [])
-            stats = report.get("statistics", {})
-            total_percentage = stats.get("total", {}).get("percentage", 0)
-
-            if total_percentage <= self.threshold:
-                if len(duplicates) == 0:
-                    output_msg = "No duplication detected"
-                else:
-                    output_msg = f"Duplication at {total_percentage:.1f}% (threshold: {self.threshold}%). {len(duplicates)} clone(s) found but within limits."
-                return self._create_result(
-                    status=CheckStatus.PASSED,
-                    duration=duration,
-                    output=output_msg,
-                )
-
-            # Format violation details
-            violations = self._format_duplicates(duplicates)
-            detail = "Code duplication exceeds acceptable levels.\n\n"
-            detail += "Duplicate blocks:\n" + "\n".join(violations[:10])
-            if len(violations) > 10:
-                detail += f"\n... and {len(violations) - 10} more"
-
-            return self._create_result(
-                status=CheckStatus.FAILED,
-                duration=duration,
-                output=detail,
-                error="Excessive code duplication detected",
-                fix_suggestion="Extract duplicated code into shared functions or modules.",
-            )
+            return self._format_result(report, duration)
 
     def _format_duplicates(self, duplicates: List[Dict[str, Any]]) -> List[str]:
         """Format duplicate entries for display."""
-        violations = []
+        violations: List[str] = []
         for dup in duplicates:
             first = dup.get("firstFile", {})
             second = dup.get("secondFile", {})

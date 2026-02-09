@@ -1,9 +1,9 @@
 """Tests for config generation utility."""
 
 import json
+import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.registry import CheckRegistry
@@ -103,9 +103,19 @@ class TestGenerateLanguageConfig:
         assert "include_dirs" in config
         assert config["include_dirs"] == []
         assert "exclude_dirs" in config
-        assert config["exclude_dirs"] == []
+        assert config["exclude_dirs"] == ["slop-mop"]
         assert "gates" in config
         assert "mock-check" in config["gates"]
+
+    def test_language_config_all_enabled(self):
+        """Test that all_enabled=True sets category and gates to enabled."""
+        check = MockCheck({})
+        config = generate_language_config(
+            [check], GateCategory.PYTHON, all_enabled=True
+        )
+
+        assert config["enabled"] is True
+        assert config["gates"]["mock-check"]["enabled"] is True
 
     def test_gates_contain_check_configs(self):
         """Test that gates dictionary contains check configurations."""
@@ -133,6 +143,26 @@ class TestGenerateBaseConfig:
         assert "default_profile" in config
         assert config["default_profile"] == "commit"
         assert "python" in config
+
+    def test_base_config_all_disabled_by_default(self):
+        """Test that base config has everything disabled by default."""
+        registry = CheckRegistry()
+        registry.register(MockCheck)
+
+        config = generate_base_config(registry)
+
+        assert config["python"]["enabled"] is False
+        assert config["python"]["gates"]["mock-check"]["enabled"] is False
+
+    def test_base_config_all_enabled_when_requested(self):
+        """Test that all_enabled=True enables everything."""
+        registry = CheckRegistry()
+        registry.register(MockCheck)
+
+        config = generate_base_config(registry, all_enabled=True)
+
+        assert config["python"]["enabled"] is True
+        assert config["python"]["gates"]["mock-check"]["enabled"] is True
 
     def test_categories_are_included(self):
         """Test that all categories with checks are included."""
@@ -248,19 +278,17 @@ class TestMain:
             assert "version" in config
 
     def test_main_defaults_to_cwd(self):
-        """Test that main defaults to current directory."""
+        """Test that main defaults to current directory when no path given."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("slopmop.utils.generate_base_config.Path") as mock_path:
-                mock_cwd = MagicMock()
-                mock_cwd.__truediv__ = MagicMock(
-                    return_value=Path(tmpdir) / ".sb_config.json"
-                )
-                mock_path.cwd.return_value = mock_cwd
-                mock_path.return_value = Path(tmpdir) / ".sb_config.json"
-
-                # This test is a bit complex due to Path mocking
-                # Just verify the function is callable with no args
-                # The actual default behavior is tested via integration
+            real_tmpdir = os.path.realpath(tmpdir)
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(real_tmpdir)
+                result = main(backup=False)
+                assert result == Path(real_tmpdir) / ".sb_config.json"
+                assert result.exists()
+            finally:
+                os.chdir(original_cwd)
 
 
 class TestTemplateConfig:
@@ -277,11 +305,11 @@ class TestTemplateConfig:
         assert "general" in config
         assert "integration" in config
 
-    def test_generate_template_config_all_gates_disabled(self):
-        """Test that template config has all gates disabled."""
+    def test_generate_template_config_all_gates_enabled(self):
+        """Test that template config has all gates enabled."""
         config = generate_template_config()
 
-        # Check all category-level enabled flags are False
+        # Check all category-level enabled flags are True
         for category in [
             "python",
             "javascript",
@@ -292,14 +320,14 @@ class TestTemplateConfig:
         ]:
             if category in config:
                 assert (
-                    config[category]["enabled"] is False
-                ), f"{category} should be disabled"
+                    config[category]["enabled"] is True
+                ), f"{category} should be enabled"
 
-                # Check all gates are also disabled
+                # Check all gates are also enabled
                 for gate_name, gate_config in config[category].get("gates", {}).items():
                     assert (
-                        gate_config["enabled"] is False
-                    ), f"{category}:{gate_name} should be disabled"
+                        gate_config["enabled"] is True
+                    ), f"{category}:{gate_name} should be enabled"
 
     def test_write_template_config_creates_file(self):
         """Test that write_template_config creates the template file."""

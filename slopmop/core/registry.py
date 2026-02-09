@@ -5,7 +5,7 @@ enabling dynamic check discovery and configuration-based selection.
 """
 
 import logging
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.result import CheckDefinition
@@ -23,7 +23,7 @@ class CheckRegistry:
     - Configuration-based filtering
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize an empty registry."""
         self._check_classes: Dict[str, Type[BaseCheck]] = {}
         self._aliases: Dict[str, List[str]] = {}
@@ -45,9 +45,7 @@ class CheckRegistry:
         # Use full_name (category:name) for unique registration
         name = temp_instance.full_name
 
-        if name in self._check_classes:
-            logger.warning(f"Overwriting existing check: {name}")
-
+        # Re-registration is expected (idempotent), no warning needed
         self._check_classes[name] = check_class
 
         # Create definition if not provided
@@ -72,7 +70,7 @@ class CheckRegistry:
         self._aliases[alias] = check_names
         logger.debug(f"Registered alias '{alias}': {check_names}")
 
-    def get_check(self, name: str, config: Dict) -> Optional[BaseCheck]:
+    def get_check(self, name: str, config: Dict[str, Any]) -> Optional[BaseCheck]:
         """Get a single check instance by name.
 
         Args:
@@ -91,8 +89,13 @@ class CheckRegistry:
         gate_config = self._extract_gate_config(name, config)
         return check_class(gate_config)
 
-    def _extract_gate_config(self, name: str, full_config: Dict) -> Dict:
+    def _extract_gate_config(
+        self, name: str, full_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Extract gate-specific config from full config.
+
+        Merges category-level include_dirs/exclude_dirs into the gate config
+        if not already specified at the gate level.
 
         Args:
             name: Check name in format 'category:check-name'
@@ -113,9 +116,16 @@ class CheckRegistry:
         gates = cat_config.get("gates", {})
 
         # Get specific gate config
-        return gates.get(gate_name, {})
+        gate_config = gates.get(gate_name, {}).copy()
 
-    def get_checks(self, names: List[str], config: Dict) -> List[BaseCheck]:
+        # Merge category-level include_dirs/exclude_dirs if not specified at gate level
+        for key in ("include_dirs", "exclude_dirs"):
+            if key not in gate_config and key in cat_config:
+                gate_config[key] = cat_config[key]
+
+        return gate_config
+
+    def get_checks(self, names: List[str], config: Dict[str, Any]) -> List[BaseCheck]:
         """Get check instances by name, expanding aliases.
 
         Args:
@@ -134,15 +144,15 @@ class CheckRegistry:
                 expanded_names.append(name)
 
         # Remove duplicates while preserving order
-        seen = set()
-        unique_names = []
+        seen: set[str] = set()
+        unique_names: List[str] = []
         for name in expanded_names:
             if name not in seen:
                 seen.add(name)
                 unique_names.append(name)
 
         # Create check instances
-        checks = []
+        checks: List[BaseCheck] = []
         for name in unique_names:
             check = self.get_check(name, config)
             if check is not None:
@@ -186,7 +196,9 @@ class CheckRegistry:
         """List all registered aliases and their checks."""
         return dict(self._aliases)
 
-    def get_applicable_checks(self, project_root: str, config: Dict) -> List[BaseCheck]:
+    def get_applicable_checks(
+        self, project_root: str, config: Dict[str, Any]
+    ) -> List[BaseCheck]:
         """Get all checks that are applicable to a project.
 
         Args:
@@ -196,7 +208,7 @@ class CheckRegistry:
         Returns:
             List of applicable check instances
         """
-        applicable = []
+        applicable: List[BaseCheck] = []
         for name, check_class in self._check_classes.items():
             check = check_class(config)
             if check.is_applicable(project_root):

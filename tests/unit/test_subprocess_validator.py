@@ -12,6 +12,12 @@ class TestCommandValidator:
         validator = CommandValidator()
         assert validator.validate(["python", "-m", "pytest"]) is True
 
+    def test_allows_versioned_python_executables(self):
+        """Test that versioned Python executables (python3.14, etc.) are accepted."""
+        validator = CommandValidator()
+        assert validator.validate(["python3.14", "-m", "pytest"]) is True
+        assert validator.validate(["python3.13", "-m", "mypy"]) is True
+
     def test_allows_whitelisted_black(self):
         """Test that black is allowed."""
         validator = CommandValidator()

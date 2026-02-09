@@ -8,7 +8,7 @@ import json
 import os
 import re
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -16,15 +16,43 @@ from slopmop.checks.base import (
     GateCategory,
     JavaScriptCheckMixin,
 )
+from slopmop.constants import (
+    COVERAGE_BELOW_THRESHOLD,
+    COVERAGE_GUIDANCE_FOOTER,
+    COVERAGE_MEETS_THRESHOLD,
+    COVERAGE_STANDARDS_PREFIX,
+    NPM_INSTALL_FAILED,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 80
+MAX_FILES_TO_SHOW = 5
 
 
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
-    """Jest coverage threshold enforcement."""
+    """Jest coverage threshold enforcement.
 
-    def __init__(self, config: Dict, threshold: int = DEFAULT_THRESHOLD):
+    Wraps Jest with --coverageReporters=json-summary to parse
+    line coverage. Falls back to parsing console output if the
+    JSON summary isn't available.
+
+    Profiles: commit, pr
+
+    Configuration:
+      threshold: 80 — minimum line coverage percentage. Start
+          lower on legacy codebases and ramp up over time.
+
+    Common failures:
+      Below threshold: The output lists files with lowest
+          coverage. Write tests for those files.
+      Coverage data unavailable: Ensure Jest is configured to
+          produce coverage reports.
+
+    Re-validate:
+      ./sm validate javascript:coverage --verbose
+    """
+
+    def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)
         self.threshold = config.get("threshold", threshold)
 
@@ -72,7 +100,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 return self._create_result(
                     status=CheckStatus.ERROR,
                     duration=time.time() - start_time,
-                    error="npm install failed",
+                    error=NPM_INSTALL_FAILED,
                     output=npm_result.output,
                 )
 
@@ -102,18 +130,17 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 return self._create_result(
                     status=CheckStatus.PASSED,
                     duration=duration,
-                    output="Coverage meets required threshold.",
+                    output=COVERAGE_MEETS_THRESHOLD,
                 )
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=(
-                    "This commit doesn't meet code coverage standards. "
-                    "Add high-quality test coverage to the codebase.\n\n"
-                    "When adding coverage, extend existing tests when possible. "
-                    "Focus on meaningful assertions, not just line coverage."
+                    COVERAGE_STANDARDS_PREFIX
+                    + "Add high-quality test coverage to the codebase.\n\n"
+                    + COVERAGE_GUIDANCE_FOOTER
                 ),
-                error="Coverage below threshold",
+                error=COVERAGE_BELOW_THRESHOLD,
                 fix_suggestion="Add tests to increase coverage.",
             )
 
@@ -132,7 +159,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             error="Jest tests failed",
         )
 
-    def _parse_coverage_json(self, project_root: str) -> Optional[Dict]:
+    def _parse_coverage_json(self, project_root: str) -> Optional[Dict[str, Any]]:
         """Parse coverage-summary.json if available."""
         summary_path = os.path.join(project_root, "coverage", "coverage-summary.json")
         if not os.path.exists(summary_path):
@@ -144,7 +171,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             return None
 
     def _evaluate_coverage(
-        self, data: Dict, output: str, duration: float
+        self, data: Dict[str, Any], output: str, duration: float
     ) -> CheckResult:
         """Evaluate coverage from parsed JSON data."""
         total = data.get("total", {})
@@ -155,11 +182,11 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
-                output="Coverage meets required threshold.",
+                output=COVERAGE_MEETS_THRESHOLD,
             )
 
         # Find lowest coverage files
-        low_files = []
+        low_files: List[tuple[str, float]] = []
         for path, stats in data.items():
             if path == "total":
                 continue
@@ -170,23 +197,20 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         low_files.sort(key=lambda x: x[1])
 
         lines = [
-            "This commit doesn't meet code coverage standards. "
-            "Add high-quality test coverage to the following areas:",
+            COVERAGE_STANDARDS_PREFIX
+            + "Add high-quality test coverage to the following areas:",
             "",
         ]
-        for path, file_pct in low_files[:5]:
+        for path, file_pct in low_files[:MAX_FILES_TO_SHOW]:
             lines.append(f"  {path}")
         lines.append("")
-        lines.append(
-            "When adding coverage, extend existing tests when possible. "
-            "Focus on meaningful assertions, not just line coverage."
-        )
+        lines.append(COVERAGE_GUIDANCE_FOOTER)
 
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output="\n".join(lines),
-            error="Coverage below threshold",
+            error=COVERAGE_BELOW_THRESHOLD,
             fix_suggestion="Add tests to increase coverage.",
         )
 

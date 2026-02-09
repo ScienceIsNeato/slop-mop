@@ -8,17 +8,32 @@ from slopmop.checks.base import (
     GateCategory,
     JavaScriptCheckMixin,
 )
+from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
-    """JavaScript lint and format check.
+    """JavaScript/TypeScript lint and format enforcement.
 
-    Runs:
-    - ESLint: Linting
-    - Prettier: Formatting
+    Wraps ESLint and Prettier. Auto-fix runs ESLint --fix and
+    Prettier --write before checking. Installs npm dependencies
+    automatically if node_modules/ is missing.
 
-    Auto-fix is enabled by default.
+    Profiles: commit, pr
+
+    Configuration:
+      Uses project's .eslintrc and .prettierrc. No additional
+      sm-specific config — respects your existing tool configs.
+
+    Common failures:
+      ESLint errors: Run `npx eslint . --fix` to auto-fix.
+          Remaining errors need manual code changes.
+      Prettier drift: Run `npx prettier --write .` to reformat.
+      npm install failed: Check package.json for syntax errors
+          or missing registry access.
+
+    Re-validate:
+      ./sm validate javascript:lint-format --verbose
     """
 
     @property
@@ -35,6 +50,9 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_javascript_project(project_root)
+
+    def skip_reason(self, project_root: str) -> str:
+        return "No package.json found (not a JavaScript/TypeScript project)"
 
     def can_auto_fix(self) -> bool:
         return True
@@ -82,7 +100,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 return self._create_result(
                     status=CheckStatus.ERROR,
                     duration=time.time() - start_time,
-                    error="npm install failed",
+                    error=NPM_INSTALL_FAILED,
                     output=npm_result.output,
                 )
 

@@ -3,21 +3,14 @@
 This module provides registration for all available checks and aliases.
 """
 
-from slopmop.core.registry import get_registry
+from slopmop.core.registry import CheckRegistry, get_registry
 
 
-def register_all_checks() -> None:
-    """Register all available checks and aliases with the registry.
-
-    Call this function before running checks to ensure all checks are available.
-    """
-    registry = get_registry()
-
-    # Import and register Python checks
+def _register_python_checks(registry: CheckRegistry) -> None:
+    """Register all Python-related checks."""
     from slopmop.checks.python.coverage import (
         PythonCoverageCheck,
         PythonDiffCoverageCheck,
-        PythonNewCodeCoverageCheck,
     )
     from slopmop.checks.python.lint_format import PythonLintFormatCheck
     from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
@@ -27,18 +20,22 @@ def register_all_checks() -> None:
         SmokeTestCheck,
     )
     from slopmop.checks.python.tests import PythonTestsCheck
+    from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
     registry.register(PythonLintFormatCheck)
     registry.register(PythonTestsCheck)
     registry.register(PythonCoverageCheck)
     registry.register(PythonDiffCoverageCheck)
-    registry.register(PythonNewCodeCoverageCheck)
     registry.register(PythonStaticAnalysisCheck)
+    registry.register(PythonTypeCheckingCheck)
     registry.register(SmokeTestCheck)
     registry.register(IntegrationTestCheck)
     registry.register(E2ETestCheck)
 
-    # Import and register JavaScript checks
+
+def _register_javascript_checks(registry: CheckRegistry) -> None:
+    """Register all JavaScript-related checks."""
+    from slopmop.checks.javascript.bogus_tests import JavaScriptBogusTestsCheck
     from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
     from slopmop.checks.javascript.eslint_quick import FrontendCheck
     from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
@@ -50,39 +47,58 @@ def register_all_checks() -> None:
     registry.register(JavaScriptCoverageCheck)
     registry.register(FrontendCheck)
     registry.register(JavaScriptTypesCheck)
+    registry.register(JavaScriptBogusTestsCheck)
 
-    # Import and register security checks (cross-cutting)
+
+def _register_crosscutting_checks(registry: CheckRegistry) -> None:
+    """Register security, quality, and general checks."""
+    from slopmop.checks.general.deploy_tests import DeployScriptTestsCheck
+    from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
+    from slopmop.checks.pr.comments import PRCommentsCheck
+    from slopmop.checks.quality import (
+        BogusTestsCheck,
+        ComplexityCheck,
+        DeadCodeCheck,
+        LocLockCheck,
+        SourceDuplicationCheck,
+        StringDuplicationCheck,
+    )
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
 
     registry.register(SecurityCheck)
     registry.register(SecurityLocalCheck)
-
-    # Import and register quality checks (cross-cutting)
-    from slopmop.checks.quality import ComplexityCheck, DuplicationCheck
-
+    registry.register(BogusTestsCheck)
     registry.register(ComplexityCheck)
-    registry.register(DuplicationCheck)
-
-    # Import and register general checks
-    from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
-
+    registry.register(DeadCodeCheck)
+    registry.register(SourceDuplicationCheck)
+    registry.register(StringDuplicationCheck)
+    registry.register(LocLockCheck)
     registry.register(TemplateValidationCheck)
-
-    # Import and register PR checks
-    from slopmop.checks.pr.comments import PRCommentsCheck
-
+    registry.register(DeployScriptTestsCheck)
     registry.register(PRCommentsCheck)
 
-    # Register aliases
+
+def _register_aliases(registry: CheckRegistry) -> None:
+    """Register all profile aliases."""
     registry.register_alias(
         "commit",
         [
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
             "quality:complexity",
+            "quality:dead-code",
+            "quality:source-duplication",
+            "quality:string-duplication",
+            "quality:bogus-tests",
+            "quality:loc-lock",
             "security:local",
+            "javascript:lint-format",
+            "javascript:tests",
+            "javascript:coverage",
+            "javascript:bogus-tests",
         ],
     )
 
@@ -92,32 +108,32 @@ def register_all_checks() -> None:
             "pr:comments",
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
             "python:diff-coverage",
-            "python:new-code-coverage",
             "quality:complexity",
+            "quality:dead-code",
+            "quality:source-duplication",
+            "quality:string-duplication",
+            "quality:bogus-tests",
+            "quality:loc-lock",
             "security:full",
-            "quality:duplication",
             "javascript:lint-format",
             "javascript:tests",
             "javascript:coverage",
+            "javascript:bogus-tests",
         ],
     )
 
-    registry.register_alias(
-        "quick",
-        [
-            "python:lint-format",
-            "security:local",
-        ],
-    )
+    registry.register_alias("quick", ["python:lint-format", "security:local"])
 
     registry.register_alias(
         "python",
         [
             "python:lint-format",
             "python:static-analysis",
+            "python:type-checking",
             "python:tests",
             "python:coverage",
         ],
@@ -134,25 +150,17 @@ def register_all_checks() -> None:
         ],
     )
 
-    registry.register_alias(
-        "security",
-        [
-            "security:full",
-        ],
-    )
-
-    registry.register_alias(
-        "security-local",
-        [
-            "security:local",
-        ],
-    )
+    registry.register_alias("security", ["security:full"])
+    registry.register_alias("security-local", ["security:local"])
 
     registry.register_alias(
         "quality",
         [
             "quality:complexity",
-            "quality:duplication",
+            "quality:source-duplication",
+            "quality:string-duplication",
+            "quality:bogus-tests",
+            "quality:loc-lock",
         ],
     )
 
@@ -164,3 +172,34 @@ def register_all_checks() -> None:
             "integration:e2e-tests",
         ],
     )
+
+
+def register_all_checks() -> None:
+    """Register all available checks and aliases with the registry.
+
+    Call this function before running checks to ensure all checks are available.
+    """
+    registry = get_registry()
+    _register_python_checks(registry)
+    _register_javascript_checks(registry)
+    _register_crosscutting_checks(registry)
+    _register_aliases(registry)
+
+
+_checks_registered = False
+
+
+def ensure_checks_registered() -> None:
+    """Ensure all checks are registered (idempotent).
+
+    This is safe to call multiple times - checks will only be registered once.
+    Checks the registry state, not just a flag, to handle test scenarios where
+    the registry might have been reset.
+    """
+    global _checks_registered
+    registry = get_registry()
+    # Also check if registry is actually populated, not just the flag
+    # This handles test scenarios where registry was reset
+    if not _checks_registered or len(registry._check_classes) == 0:
+        register_all_checks()
+        _checks_registered = True

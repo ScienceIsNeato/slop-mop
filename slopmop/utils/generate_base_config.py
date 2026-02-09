@@ -15,14 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Import all checks to ensure they're registered
+# noqa: E402 - must come after registry import
+from slopmop.checks import ensure_checks_registered  # noqa: E402
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.config import CONFIG_FILE
 from slopmop.core.registry import CheckRegistry, get_registry
 
 logger = logging.getLogger(__name__)
-
-# Import all checks to ensure they're registered
-from slopmop.checks import register_all_checks
 
 
 def _config_field_to_default(field: ConfigField) -> Any:
@@ -67,45 +67,60 @@ def generate_gate_config(check: BaseCheck) -> Dict[str, Any]:
     return config
 
 
+# Always exclude slop-mop from its own checks when used as a submodule
+DEFAULT_EXCLUDE_DIRS = ["slop-mop"]
+
+
 def generate_language_config(
     checks: List[BaseCheck],
     category: GateCategory,
+    all_enabled: bool = False,
 ) -> Dict[str, Any]:
     """Generate configuration section for a language/category.
 
     Args:
         checks: List of checks belonging to this category
         category: The GateCategory
+        all_enabled: If True, set category and all gates to enabled
 
     Returns:
         Dict with language-level and gate-level config
     """
     language_config: Dict[str, Any] = {
-        "enabled": False,  # Disabled by default
+        "enabled": all_enabled,
         "include_dirs": [],
-        "exclude_dirs": [],
+        "exclude_dirs": DEFAULT_EXCLUDE_DIRS.copy(),
         "gates": {},
     }
 
     for check in checks:
         gate_name = check.name
-        language_config["gates"][gate_name] = generate_gate_config(check)
+        gate_config = generate_gate_config(check)
+        if all_enabled:
+            gate_config["enabled"] = True
+        language_config["gates"][gate_name] = gate_config
 
     return language_config
 
 
-def generate_base_config(registry: Optional[CheckRegistry] = None) -> Dict[str, Any]:
+def generate_base_config(
+    registry: Optional[CheckRegistry] = None,
+    all_enabled: bool = False,
+) -> Dict[str, Any]:
     """Generate complete base configuration from registry introspection.
 
     Args:
         registry: Optional registry to use (defaults to global registry)
+        all_enabled: If True, all categories and gates are enabled by default.
+                     Used by generate_template_config() to produce an
+                     everything-enabled starting point for init.
 
     Returns:
         Complete configuration dictionary
     """
     if registry is None:
-        # Ensure all checks are registered
-        register_all_checks()
+        # Ensure all checks are registered (idempotent)
+        ensure_checks_registered()
         registry = get_registry()
 
     config: Dict[str, Any] = {
@@ -130,7 +145,9 @@ def generate_base_config(registry: Optional[CheckRegistry] = None) -> Dict[str, 
     for category in GateCategory:
         checks = checks_by_category[category]
         if checks:
-            config[category.key] = generate_language_config(checks, category)
+            config[category.key] = generate_language_config(
+                checks, category, all_enabled=all_enabled
+            )
 
     return config
 
@@ -147,7 +164,7 @@ def generate_config_schema(registry: Optional[CheckRegistry] = None) -> Dict[str
         JSON schema dictionary
     """
     if registry is None:
-        register_all_checks()
+        ensure_checks_registered()
         registry = get_registry()
 
     # Build schema structure
@@ -196,19 +213,27 @@ def backup_config(config_path: Path) -> Optional[Path]:
 def generate_template_config(
     registry: Optional[CheckRegistry] = None,
 ) -> Dict[str, Any]:
-    """Generate template configuration with all gates disabled.
+    """Generate template configuration with ALL gates enabled.
 
-    This creates a .sb_config.json.template file that shows all available
-    configuration options. This file should be committed to git.
+    This is the canonical starting point for init. Everything is enabled
+    by default, and the init process selectively disables gates based on
+    project detection (no JS? disable JS. Missing vulture? disable dead-code).
+
+    This ensures:
+    - New checks are automatically picked up on re-init
+    - Projects dogfood every applicable check
+    - The config stays up-to-date with the check registry
+
+    The .sb_config.json.template file should be committed to git so
+    teams can see the full set of available gates.
 
     Args:
         registry: Optional registry to use (defaults to global registry)
 
     Returns:
-        Complete configuration dictionary with all gates disabled
+        Complete configuration dictionary with all gates enabled
     """
-    # Just use the base config - it already has everything disabled by default
-    return generate_base_config(registry)
+    return generate_base_config(registry, all_enabled=True)
 
 
 def write_template_config(

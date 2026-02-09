@@ -17,15 +17,29 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class PRCommentsCheck(BaseCheck):
-    """Check for unresolved PR comments.
+    """PR comment resolution enforcement.
 
-    This check:
-    1. Detects if we're in a PR context (via branch or environment)
-    2. Fetches unresolved comment threads from GitHub
-    3. Fails with actionable guidance if comments exist
+    Wraps the GitHub CLI (gh) to detect unresolved PR review
+    threads. Fails if any threads are still open, ensuring all
+    reviewer feedback is addressed before merge.
 
-    The guidance is specifically designed for AI agents following
-    the PR closing protocol.
+    Profiles: pr
+
+    Configuration:
+      fail_on_unresolved: True — fail the gate if unresolved
+          comments exist. Set to False to make advisory-only.
+
+    Common failures:
+      Unresolved comments: Address each comment thread, then
+          resolve it via the GitHub UI or gh CLI. Follow the
+          PR closing protocol for systematic resolution.
+      No PR context: This gate only runs on PR branches. If
+          you're on main or a non-PR branch, it skips.
+      gh CLI not available: Install GitHub CLI:
+          https://cli.github.com/
+
+    Re-validate:
+      ./sm validate pr:comments --verbose
     """
 
     @property
@@ -75,14 +89,42 @@ class PRCommentsCheck(BaseCheck):
         pr_number = self._detect_pr_number(project_root)
         return pr_number is not None
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return skip reason when git or PR context is unavailable."""
+        git_dir = os.path.join(project_root, ".git")
+        if not os.path.isdir(git_dir):
+            return "Not a git repository"
+
+        try:
+            result = subprocess.run(
+                ["gh", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                return "GitHub CLI (gh) not available"
+        except FileNotFoundError:
+            return "GitHub CLI (gh) not installed"
+        except subprocess.TimeoutExpired:
+            return "GitHub CLI check timed out"
+
+        pr_number = self._detect_pr_number(project_root)
+        if pr_number is None:
+            return "No PR context detected (not on a PR branch)"
+
+        return "PR comments check not applicable"
+
     def _detect_pr_number(self, project_root: str) -> Optional[int]:
         """Detect PR number from current context.
 
         Checks:
         1. Environment variable (CI context)
-        2. Current branch has an open PR
+        2. GitHub Actions GITHUB_REF (refs/pull/N/merge format)
+        3. GitHub event payload file (GITHUB_EVENT_PATH)
+        4. Current branch has an open PR (via gh pr view)
         """
-        # Check CI environment variables
+        # Check explicit CI environment variables first
         for env_var in [
             "GITHUB_PR_NUMBER",
             "PR_NUMBER",
@@ -95,7 +137,35 @@ class PRCommentsCheck(BaseCheck):
                 except ValueError:
                     pass
 
-        # Try to detect from current branch
+        # Check GitHub Actions GITHUB_REF (format: refs/pull/N/merge)
+        github_ref = os.environ.get("GITHUB_REF", "")
+        if github_ref.startswith("refs/pull/"):
+            try:
+                # Extract number from refs/pull/N/merge
+                parts = github_ref.split("/")
+                if len(parts) >= 3:
+                    return int(parts[2])
+            except (ValueError, IndexError):
+                pass
+
+        # Check GitHub Actions event payload
+        event_path = os.environ.get("GITHUB_EVENT_PATH")
+        if event_path and os.path.exists(event_path):
+            try:
+                with open(event_path) as f:
+                    event_data = json.load(f)
+                    # pull_request event
+                    if "pull_request" in event_data:
+                        return event_data["pull_request"].get("number")
+                    # issue_comment on a PR
+                    if "issue" in event_data and event_data.get("issue", {}).get(
+                        "pull_request"
+                    ):
+                        return event_data["issue"].get("number")
+            except (json.JSONDecodeError, IOError, KeyError):
+                pass
+
+        # Try to detect from current branch using gh CLI
         try:
             result = subprocess.run(
                 ["gh", "pr", "view", "--json", "number"],
@@ -194,7 +264,7 @@ class PRCommentsCheck(BaseCheck):
             )
 
             # Filter to unresolved threads
-            unresolved = []
+            unresolved: List[Dict[str, Any]] = []
             for thread in threads:
                 if not thread.get("isResolved", True):
                     comments = thread.get("comments", {}).get("nodes", [])
@@ -219,14 +289,11 @@ class PRCommentsCheck(BaseCheck):
         except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
             return []
 
-    def _categorize_comment(self, body: str) -> str:
-        """Categorize a comment by its likely type."""
-        body_lower = body.lower()
-
-        # Security-related keywords
-        if any(
-            kw in body_lower
-            for kw in [
+    # Category keyword mappings for comment classification
+    _COMMENT_CATEGORIES = [
+        (
+            "🔐 Security",
+            [
                 "security",
                 "vulnerability",
                 "injection",
@@ -239,14 +306,11 @@ class PRCommentsCheck(BaseCheck):
                 "sanitize",
                 "escape",
                 "unsafe",
-            ]
-        ):
-            return "🔐 Security"
-
-        # Logic/correctness
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🐛 Logic/Correctness",
+            [
                 "bug",
                 "incorrect",
                 "wrong",
@@ -260,14 +324,11 @@ class PRCommentsCheck(BaseCheck):
                 "undefined",
                 "race condition",
                 "deadlock",
-            ]
-        ):
-            return "🐛 Logic/Correctness"
-
-        # Architecture/design
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🏗️ Architecture",
+            [
                 "architecture",
                 "design",
                 "pattern",
@@ -278,57 +339,23 @@ class PRCommentsCheck(BaseCheck):
                 "dependency",
                 "solid",
                 "separation",
-            ]
-        ):
-            return "🏗️ Architecture"
-
-        # Testing
-        if any(
-            kw in body_lower
-            for kw in [
-                "test",
-                "coverage",
-                "mock",
-                "assert",
-                "spec",
-                "edge case",
-            ]
-        ):
-            return "🧪 Testing"
-
-        # Documentation
-        if any(
-            kw in body_lower
-            for kw in [
-                "document",
-                "comment",
-                "docstring",
-                "readme",
-                "explain",
-                "clarify",
-            ]
-        ):
-            return "📚 Documentation"
-
-        # Style/formatting
-        if any(
-            kw in body_lower
-            for kw in [
-                "style",
-                "format",
-                "naming",
-                "convention",
-                "lint",
-                "whitespace",
-                "indent",
-            ]
-        ):
-            return "🎨 Style"
-
-        # Performance
-        if any(
-            kw in body_lower
-            for kw in [
+            ],
+        ),
+        (
+            "🧪 Testing",
+            ["test", "coverage", "mock", "assert", "spec", "edge case"],
+        ),
+        (
+            "📚 Documentation",
+            ["document", "comment", "docstring", "readme", "explain", "clarify"],
+        ),
+        (
+            "🎨 Style",
+            ["style", "format", "naming", "convention", "lint", "whitespace", "indent"],
+        ),
+        (
+            "⚡ Performance",
+            [
                 "performance",
                 "slow",
                 "optimize",
@@ -337,14 +364,22 @@ class PRCommentsCheck(BaseCheck):
                 "efficient",
                 "complexity",
                 "o(n)",
-            ]
-        ):
-            return "⚡ Performance"
+            ],
+        ),
+    ]
+
+    def _categorize_comment(self, body: str) -> str:
+        """Categorize a comment by its likely type."""
+        body_lower = body.lower()
+
+        # Check against keyword categories
+        for category, keywords in self._COMMENT_CATEGORIES:
+            if any(kw in body_lower for kw in keywords):
+                return category
 
         # Questions/clarifications
-        if "?" in body or any(
-            kw in body_lower for kw in ["why", "what", "how", "could you", "can you"]
-        ):
+        question_keywords = ["why", "what", "how", "could you", "can you"]
+        if "?" in body or any(kw in body_lower for kw in question_keywords):
             return "❓ Question"
 
         return "💭 General"
@@ -357,7 +392,7 @@ class PRCommentsCheck(BaseCheck):
         repo: str,
     ) -> str:
         """Format actionable guidance for resolving PR comments."""
-        lines = []
+        lines: List[str] = []
         lines.append("=" * 80)
         lines.append("🔀 PR COMMENT RESOLUTION PROTOCOL")
         lines.append("=" * 80)
@@ -498,7 +533,7 @@ class PRCommentsCheck(BaseCheck):
         )
         lines.append("")
         lines.append("# Re-run this check:")
-        lines.append("sm validate pr:comments")
+        lines.append("./sm validate pr:comments")
         lines.append("")
         lines.append("━" * 80)
         lines.append(
@@ -604,7 +639,7 @@ class PRCommentsCheck(BaseCheck):
         # Group by category
         grouped = self._group_threads_by_category(threads)
 
-        lines = []
+        lines: List[str] = []
         lines.append(f"PR #{pr_number}: {len(threads)} unresolved comment(s)")
         lines.append("")
         lines.append("By category:")
@@ -619,7 +654,7 @@ class PRCommentsCheck(BaseCheck):
         lines.append("  1. Read the full report above")
         lines.append("  2. Address comments by category (most complex first)")
         lines.append("  3. Use provided commands to resolve each thread")
-        lines.append("  4. Re-run: sm validate pr:comments")
+        lines.append("  4. Re-run: ./sm validate pr:comments")
 
         return "\n".join(lines)
 

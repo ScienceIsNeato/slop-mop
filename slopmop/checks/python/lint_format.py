@@ -21,14 +21,29 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
-    """Python lint and format check.
+    """Python code formatting and lint enforcement.
 
-    Runs:
-    - black: Code formatting
-    - isort: Import sorting
-    - flake8: Critical lint errors (E9, F63, F7, F82, F401)
+    Wraps autoflake, black, isort, and flake8 to enforce consistent
+    style and catch critical errors. Auto-fix runs autoflake (remove
+    unused imports), black (formatting), and isort (import order)
+    before checking with flake8.
 
-    Auto-fix is enabled by default for black and isort.
+    Profiles: commit, pr, quick
+
+    Configuration:
+      line_length: 88 — black's default; wide enough for modern
+          screens, narrow enough to diff side-by-side.
+
+    Common failures:
+      Formatting drift: Run `sm validate python:lint-format` with
+          auto-fix enabled. Black and isort will fix in place.
+      Unused imports: autoflake removes them automatically during
+          auto-fix. If you need to keep one, add `# noqa: F401`.
+      Flake8 E9/F63/F7/F82: These are critical errors (syntax,
+          assertion on tuples, undefined names). Fix the code.
+
+    Re-validate:
+      ./sm validate python:lint-format --verbose
     """
 
     @property
@@ -117,7 +132,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
     def _get_python_targets(self, project_root: str) -> List[str]:
         """Get Python directories to lint/format."""
-        targets = []
+        targets: List[str] = []
         exclude_dirs = {"venv", ".venv", "build", "dist", "node_modules", ".git"}
 
         for entry in os.listdir(project_root):
@@ -189,7 +204,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             return None  # No Python targets found
 
         # Check each target
-        all_passed = True
+        result = None
         for target in targets:
             result = self._run_command(
                 ["black", "--check", "--line-length", "88", target],
@@ -197,13 +212,13 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 timeout=60,
             )
             if not result.success:
-                all_passed = False
                 break
 
-        if not result.success:
+        if result is None or not result.success:
             # Extract files that need formatting
-            lines = result.output.split("\n")
-            files = [l for l in lines if l.startswith("would reformat")]
+            output = result.output if result else ""
+            lines = output.split("\n")
+            files = [line for line in lines if line.startswith("would reformat")]
             if files:
                 return f"{len(files)} file(s) need formatting"
             return "Formatting check failed"

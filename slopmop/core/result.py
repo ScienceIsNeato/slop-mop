@@ -6,7 +6,7 @@ to represent check definitions, statuses, and results.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, cast
 
 
 class CheckStatus(Enum):
@@ -14,7 +14,9 @@ class CheckStatus(Enum):
 
     PASSED = "passed"
     FAILED = "failed"
+    WARNED = "warned"
     SKIPPED = "skipped"
+    NOT_APPLICABLE = "not_applicable"
     ERROR = "error"
 
     def __str__(self) -> str:
@@ -57,7 +59,9 @@ class CheckResult:
         emoji = {
             CheckStatus.PASSED: "✅",
             CheckStatus.FAILED: "❌",
+            CheckStatus.WARNED: "⚠️",
             CheckStatus.SKIPPED: "⏭️",
+            CheckStatus.NOT_APPLICABLE: "⊘",
             CheckStatus.ERROR: "💥",
         }.get(self.status, "❓")
         return f"{emoji} {self.name}: {self.status.value} ({self.duration:.2f}s)"
@@ -78,7 +82,7 @@ class CheckDefinition:
     flag: str
     name: str
     runner: Optional[Callable[[], CheckResult]] = None
-    depends_on: List[str] = field(default_factory=list)
+    depends_on: List[str] = field(default_factory=lambda: cast(List[str], []))
     auto_fix: bool = False
 
     def __hash__(self) -> int:
@@ -107,10 +111,14 @@ class ExecutionSummary:
     total_checks: int
     passed: int
     failed: int
+    warned: int
     skipped: int
+    not_applicable: int
     errors: int
     total_duration: float
-    results: List[CheckResult] = field(default_factory=list)
+    results: List[CheckResult] = field(
+        default_factory=lambda: cast(List[CheckResult], [])
+    )
 
     @property
     def all_passed(self) -> bool:
@@ -126,7 +134,11 @@ class ExecutionSummary:
             total_checks=len(results),
             passed=sum(1 for r in results if r.status == CheckStatus.PASSED),
             failed=sum(1 for r in results if r.status == CheckStatus.FAILED),
+            warned=sum(1 for r in results if r.status == CheckStatus.WARNED),
             skipped=sum(1 for r in results if r.status == CheckStatus.SKIPPED),
+            not_applicable=sum(
+                1 for r in results if r.status == CheckStatus.NOT_APPLICABLE
+            ),
             errors=sum(1 for r in results if r.status == CheckStatus.ERROR),
             total_duration=duration,
             results=results,

@@ -2,7 +2,7 @@
 
 Two variants:
 - SecurityLocalCheck: Local-only checks (bandit + semgrep + detect-secrets)
-- SecurityCheck: Full audit including dependency scanning via safety
+- SecurityCheck: Full audit including dependency scanning via pip-audit
 
 Runs sub-checks concurrently for speed. Reports only HIGH/MEDIUM findings
 to reduce noise while catching real security issues.
@@ -12,18 +12,19 @@ with code files, not just Python projects.
 """
 
 import json
-import os
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, List
 
 from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
     GateCategory,
+    PythonCheckMixin,
 )
+from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus
 
 EXCLUDED_DIRS = [
@@ -48,11 +49,32 @@ class SecuritySubResult:
     findings: str
 
 
-class SecurityLocalCheck(BaseCheck):
-    """Local security checks (no network required).
+class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
+    """Local security scanning (no network required).
 
-    Runs bandit, semgrep, and detect-secrets in parallel.
-    Cross-cutting check that applies to any project with source files.
+    Wraps bandit, semgrep, and detect-secrets in parallel.
+    Reports only HIGH/MEDIUM severity findings to reduce noise
+    while catching real security issues.
+
+    Profiles: commit, pr, quick
+
+    Configuration:
+      scanners: ["bandit", "semgrep", "detect-secrets"] — all three
+          run in parallel for speed. Each covers different classes
+          of vulnerability.
+      exclude_dirs: venv, node_modules, tests, etc. — test files
+          often have intentional security "violations" (hardcoded
+          test credentials, etc.).
+
+    Common failures:
+      bandit HIGH/MEDIUM: Fix the flagged code pattern. Common
+          issues: hardcoded passwords, SQL injection, unsafe eval.
+      semgrep findings: Follow the rule description in the output.
+      detect-secrets: Rotate the leaked secret, then add to
+          .secrets.baseline if it's a false positive.
+
+    Re-validate:
+      ./sm validate security:local --verbose
     """
 
     @property
@@ -61,7 +83,7 @@ class SecurityLocalCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "🔐 Security Local (bandit + semgrep + detect-secrets)"
+        return "🔐 Security Scan (code analysis)"
 
     @property
     def category(self) -> GateCategory:
@@ -82,6 +104,17 @@ class SecurityLocalCheck(BaseCheck):
                 default=EXCLUDED_DIRS.copy(),
                 description="Directories to exclude from scanning",
             ),
+            ConfigField(
+                name="bandit_config_file",
+                field_type="string",
+                default=None,
+                description=(
+                    "Path to bandit config file (e.g. .bandit, pyproject.toml). "
+                    "Separate from the standard config_file_path which is used "
+                    "by detect-secrets (.secrets.baseline)"
+                ),
+                required=False,
+            ),
         ]
 
     def is_applicable(self, project_root: str) -> bool:
@@ -93,6 +126,10 @@ class SecurityLocalCheck(BaseCheck):
         has_py = any(root.rglob("*.py"))
         has_js = any(root.rglob("*.js")) or any(root.rglob("*.ts"))
         return has_py or has_js
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no source files to scan."""
+        return "No Python, JavaScript, or TypeScript files found to scan for security issues"
 
     def run(self, project_root: str) -> CheckResult:
         """Run all local security checks in parallel."""
@@ -143,11 +180,13 @@ class SecurityLocalCheck(BaseCheck):
 
     def _run_bandit(self, project_root: str) -> SecuritySubResult:
         """Run bandit static analysis."""
-        # Check for config file
-        config_file = self.config.get("config_file_path")
+        # Check for bandit-specific config file (e.g., .bandit, pyproject.toml with [tool.bandit])
+        # Note: config_file_path in user config may be for detect-secrets (.secrets.baseline),
+        # not bandit. Only use it for bandit if it's a known bandit config format.
+        config_file = self.config.get("bandit_config_file")
 
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "bandit",
             "-r",
@@ -157,14 +196,16 @@ class SecurityLocalCheck(BaseCheck):
             "--quiet",
         ]
 
-        # Use config file if specified, otherwise use defaults
-        if config_file:
+        # Always apply exclude paths
+        exclude_paths = ",".join(f"./{d}" for d in self._get_exclude_dirs())
+        cmd.extend(["--exclude", exclude_paths])
+
+        # Use config file if specified for bandit, otherwise use skip defaults
+        if config_file and Path(project_root, config_file).exists():
             cmd.extend(["--configfile", config_file])
         else:
+            # B101 = assert usage, B110 = try-except-pass (common patterns)
             cmd.extend(["--skip", "B101,B110"])
-            # Bandit wants comma-separated exclude paths
-            exclude_paths = ",".join(f"./{d}" for d in self._get_exclude_dirs())
-            cmd.extend(["--exclude", exclude_paths])
 
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 
@@ -191,7 +232,7 @@ class SecurityLocalCheck(BaseCheck):
             if result.stderr and "error" in result.stderr.lower():
                 return SecuritySubResult("bandit", False, result.stderr[-500:])
             # Otherwise bandit ran but produced no JSON (likely no issues)
-            return SecuritySubResult("bandit", True, "No issues found")
+            return SecuritySubResult("bandit", True, NO_ISSUES_FOUND)
 
     def _run_semgrep(self, project_root: str) -> SecuritySubResult:
         """Run semgrep static analysis."""
@@ -202,13 +243,13 @@ class SecurityLocalCheck(BaseCheck):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 
         if result.success:
-            return SecuritySubResult("semgrep", True, "No issues found")
+            return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
 
         try:
             report = json.loads(result.stdout)
             findings = report.get("results", [])
             if not findings:
-                return SecuritySubResult("semgrep", True, "No issues found")
+                return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
 
             critical = [
                 f
@@ -235,7 +276,7 @@ class SecurityLocalCheck(BaseCheck):
         # Check for baseline file
         config_file = self.config.get("config_file_path")
 
-        cmd = [sys.executable, "-m", "detect_secrets", "scan"]
+        cmd = [self.get_project_python(project_root), "-m", "detect_secrets", "scan"]
         if config_file:
             cmd.extend(["--baseline", config_file])
 
@@ -270,10 +311,26 @@ class SecurityLocalCheck(BaseCheck):
 
 
 class SecurityCheck(SecurityLocalCheck):
-    """Full security checks including dependency vulnerability scanning.
+    """Full security audit including dependency scanning.
 
-    Extends SecurityLocalCheck with safety for dependency audit.
-    Requires network access.
+    Extends security:local with pip-audit for dependency
+    vulnerability checking. Requires network access to query
+    the OSV vulnerability database.
+
+    Profiles: pr
+
+    Configuration:
+      Same as security:local, plus pip-audit runs automatically.
+      pip-audit is fast (~1s) and uses the OSV database.
+
+    Common failures:
+      Vulnerable dependency: Update the package to a fixed version
+          shown in the output. If no fix exists, evaluate risk and
+          consider alternatives.
+      pip-audit not available: pip install pip-audit
+
+    Re-validate:
+      ./sm validate security:full --verbose
     """
 
     @property
@@ -282,7 +339,7 @@ class SecurityCheck(SecurityLocalCheck):
 
     @property
     def display_name(self) -> str:
-        return "🔒 Security Full (bandit + semgrep + detect-secrets + safety)"
+        return "🔒 Security Audit (code + dependencies)"
 
     def run(self, project_root: str) -> CheckResult:
         """Run all security checks including dependency scanning."""
@@ -292,7 +349,7 @@ class SecurityCheck(SecurityLocalCheck):
             self._run_bandit,
             self._run_semgrep,
             self._run_detect_secrets,
-            self._run_safety,
+            self._run_pip_audit,
         ]
 
         results: List[SecuritySubResult] = []
@@ -328,39 +385,45 @@ class SecurityCheck(SecurityLocalCheck):
             fix_suggestion="Address HIGH severity issues first. They block merge.",
         )
 
-    def _run_safety(self, project_root: str) -> SecuritySubResult:
-        """Run safety dependency vulnerability scan."""
-        api_key = os.environ.get("SAFETY_API_KEY", "")
+    def _run_pip_audit(self, project_root: str) -> SecuritySubResult:
+        """Run pip-audit dependency vulnerability scan.
 
-        # Check for safety config file
-        safety_config = self.config.get("safety_config_file")
+        pip-audit is fast (~1s), offline-capable, and uses the OSV database.
+        Replaces safety which hangs on `safety scan` with no API key.
+        """
+        cmd = [
+            self.get_project_python(project_root),
+            "-m",
+            "pip_audit",
+            "--format",
+            "json",
+        ]
 
-        cmd = [sys.executable, "-m", "safety", "scan", "--output", "json"]
-        if api_key:
-            cmd.extend(["--key", api_key])
-        if safety_config:
-            cmd.extend(["--policy-file", safety_config])
-
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
-
-        if result.success:
-            return SecuritySubResult("safety", True, "No vulnerable dependencies")
+        result = self._run_command(cmd, cwd=project_root, timeout=30)
 
         try:
-            report = json.loads(result.output)
-            vulns = report.get("vulnerabilities", [])
-            if not vulns:
-                return SecuritySubResult("safety", True, "No vulnerabilities found")
+            report = json.loads(result.stdout)
+            deps = report.get("dependencies", [])
+            vulnerable = [d for d in deps if d.get("vulns")]
+            if not vulnerable:
+                return SecuritySubResult(
+                    "pip-audit", True, "No vulnerable dependencies"
+                )
 
             detail = "\n".join(
-                f"  [{v.get('severity', '?')}] {v.get('package_name', '')} "
-                f"{v.get('installed_version', '')} - {v.get('vulnerability_id', '')}"
-                for v in vulns[:10]
+                f"  {d['name']} {d.get('version', '?')}: "
+                + ", ".join(
+                    f"{v.get('id', '?')} ({', '.join(map(str, v.get('fix_versions', ['no fix'])))})"
+                    for v in d.get("vulns", [])[:3]
+                )
+                for d in vulnerable[:10]
             )
-            return SecuritySubResult("safety", False, detail)
+            return SecuritySubResult("pip-audit", False, detail)
         except json.JSONDecodeError:
+            if result.success:
+                return SecuritySubResult("pip-audit", True, "No vulnerabilities found")
             return SecuritySubResult(
-                "safety",
+                "pip-audit",
                 False,
-                result.output[-300:] if result.output else "Safety scan failed",
+                result.output[-300:] if result.output else "pip-audit scan failed",
             )

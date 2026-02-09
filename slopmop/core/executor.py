@@ -8,13 +8,50 @@ import concurrent.futures
 import logging
 import threading
 import time
-from typing import Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
 
 logger = logging.getLogger(__name__)
+
+
+def _is_gate_enabled_in_config(
+    check: BaseCheck, config: Dict[str, Any]
+) -> Tuple[bool, str]:
+    """Check if a gate is enabled in the config.
+
+    Args:
+        check: The check instance
+        config: Configuration dictionary from .sb_config.json
+
+    Returns:
+        Tuple of (is_enabled, reason_if_disabled)
+    """
+    # Check the disabled_gates list first (sm config --disable uses this)
+    disabled_gates_val: object = config.get("disabled_gates", [])
+    if isinstance(disabled_gates_val, list) and check.full_name in disabled_gates_val:
+        return False, f"{check.full_name} is in disabled_gates list"
+
+    category_key = check.category.key  # e.g., "python", "javascript", "quality"
+    gate_name = check.name  # e.g., "lint-format", "dead-code"
+
+    # Check if language/category is enabled
+    category_val: object = config.get(category_key)
+    if isinstance(category_val, dict):
+        enabled_val = category_val.get("enabled")  # type: ignore[reportUnknownMemberType]
+        if enabled_val is False:
+            return False, f"{category_key} language is disabled in config"
+
+        # Check if specific gate is disabled
+        gates_val = category_val.get("gates")  # type: ignore[reportUnknownMemberType]
+        if isinstance(gates_val, dict) and gate_name in gates_val:
+            gate_cfg = gates_val.get(gate_name)  # type: ignore[reportUnknownMemberType]
+            if isinstance(gate_cfg, dict) and gate_cfg.get("enabled") is False:  # type: ignore[reportUnknownMemberType]
+                return False, f"{check.full_name} is disabled in config"
+
+    return True, ""
 
 
 class CheckExecutor:
@@ -63,7 +100,7 @@ class CheckExecutor:
         self,
         project_root: str,
         check_names: List[str],
-        config: Optional[Dict] = None,
+        config: Optional[Dict[str, Any]] = None,
         auto_fix: bool = True,
     ) -> ExecutionSummary:
         """Run specified checks against a project.
@@ -93,18 +130,52 @@ class CheckExecutor:
         # Auto-include dependencies that weren't explicitly requested
         checks = self._expand_dependencies(checks, config)
 
-        # Filter to applicable checks
-        applicable = [c for c in checks if c.is_applicable(project_root)]
-        skipped = [c for c in checks if c not in applicable]
+        # Filter out disabled checks (by config), including dependents
+        disabled_gates: Set[str] = set()
+        for check in checks:
+            is_enabled, reason = _is_gate_enabled_in_config(check, config)
+            if not is_enabled:
+                disabled_gates.add(check.full_name)
+                logger.info(f"Disabled — {check.full_name}: {reason}")
 
-        # Log skipped checks
+        # Propagate: if a dependency is disabled, disable its dependents too
+        changed = True
+        while changed:
+            changed = False
+            for check in checks:
+                if check.full_name not in disabled_gates:
+                    for dep in check.depends_on:
+                        if dep in disabled_gates:
+                            disabled_gates.add(check.full_name)
+                            logger.info(
+                                f"Disabled — {check.full_name}: "
+                                f"dependency {dep} is disabled"
+                            )
+                            changed = True
+                            break
+
+        enabled_checks: List[BaseCheck] = [
+            c for c in checks if c.full_name not in disabled_gates
+        ]
+
+        if not enabled_checks:
+            logger.warning("All checks are disabled")
+            duration = time.time() - start_time
+            return ExecutionSummary.from_results(list(self._results.values()), duration)
+
+        # Filter to applicable checks
+        applicable = [c for c in enabled_checks if c.is_applicable(project_root)]
+        skipped = [c for c in enabled_checks if c not in applicable]
+
+        # Log non-applicable checks with reason
         for check in skipped:
-            logger.info(f"Skipping {check.full_name}: not applicable to this project")
+            reason = check.skip_reason(project_root)
+            logger.info(f"Not applicable — {check.full_name}: {reason}")
             self._results[check.full_name] = CheckResult(
                 name=check.full_name,
-                status=CheckStatus.SKIPPED,
+                status=CheckStatus.NOT_APPLICABLE,
                 duration=0,
-                output="Check not applicable to this project",
+                output=reason,
             )
 
         if not applicable:
@@ -121,7 +192,7 @@ class CheckExecutor:
         return ExecutionSummary.from_results(list(self._results.values()), duration)
 
     def _expand_dependencies(
-        self, checks: List[BaseCheck], config: Dict
+        self, checks: List[BaseCheck], config: Dict[str, Any]
     ) -> List[BaseCheck]:
         """Expand check list to include all dependencies.
 
@@ -204,12 +275,12 @@ class CheckExecutor:
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self._max_workers
         ) as executor:
-            futures: Dict[concurrent.futures.Future, str] = {}
+            futures: Dict[concurrent.futures.Future[CheckResult], str] = {}
 
             while (pending or futures) and not self._stop_event.is_set():
                 # Find checks whose dependencies are all completed
-                ready = []
-                skipped_due_to_deps = []
+                ready: List[str] = []
+                skipped_due_to_deps: List[str] = []
                 for name in list(pending):  # Iterate over a copy
                     deps = dep_graph.get(name, set())
                     if deps <= completed:
@@ -271,7 +342,7 @@ class CheckExecutor:
 
                             # Fail fast
                             if self._fail_fast and result.failed:
-                                logger.info(f"Fail-fast triggered by {name}")
+                                logger.debug(f"Fail-fast triggered by {name}")
                                 self._stop_event.set()
 
                         except Exception as e:
@@ -315,14 +386,14 @@ class CheckExecutor:
         Returns:
             CheckResult
         """
-        logger.info(f"Running {check.display_name}")
+        logger.debug(f"Running {check.display_name}")
 
         # Try auto-fix first if enabled
         if auto_fix and check.can_auto_fix():
             try:
                 fixed = check.auto_fix(project_root)
                 if fixed:
-                    logger.info(f"Auto-fixed issues for {check.name}")
+                    logger.debug(f"Auto-fixed issues for {check.name}")
             except Exception as e:
                 logger.warning(f"Auto-fix failed for {check.name}: {e}")
 
@@ -344,7 +415,7 @@ class CheckExecutor:
 def run_quality_checks(
     project_root: str,
     checks: List[str],
-    config: Optional[Dict] = None,
+    config: Optional[Dict[str, Any]] = None,
     fail_fast: bool = True,
     auto_fix: bool = True,
 ) -> ExecutionSummary:

@@ -143,7 +143,7 @@ class TestCheckExecutor:
         assert check_class2.run_count == 1
 
     def test_skips_inapplicable_checks(self, tmp_path):
-        """Test that inapplicable checks are skipped."""
+        """Test that inapplicable checks are marked not applicable."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", applicable=True)
         check_class2 = make_mock_check_class("check2", applicable=False)
@@ -154,7 +154,7 @@ class TestCheckExecutor:
         summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
         assert summary.passed == 1
-        assert summary.skipped == 1
+        assert summary.not_applicable == 1
         assert check_class1.run_count == 1
         assert check_class2.run_count == 0
 
@@ -337,7 +337,7 @@ class TestCheckExecutor:
         assert ConfigCheck.received_config == {"key": "value"}
 
     def test_all_checks_inapplicable_returns_early(self, tmp_path):
-        """Test that when all checks are inapplicable, we return early with skipped."""
+        """Test that when all checks are inapplicable, we return early with not_applicable."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", applicable=False)
         check_class2 = make_mock_check_class("check2", applicable=False)
@@ -347,9 +347,9 @@ class TestCheckExecutor:
         executor = CheckExecutor(registry=registry)
         summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
 
-        # All checks should be skipped
+        # All checks should be not applicable
         assert summary.total_checks == 2
-        assert summary.skipped == 2
+        assert summary.not_applicable == 2
         assert summary.passed == 0
         assert check_class1.run_count == 0
         assert check_class2.run_count == 0
@@ -415,6 +415,82 @@ class TestCheckExecutor:
         # Check should still run and pass
         assert summary.passed == 1
 
+    def test_config_disables_gate_via_disabled_gates(self, tmp_path):
+        """Test that gates listed in disabled_gates are not executed."""
+        registry = CheckRegistry()
+        check_class = make_mock_check_class("disabled-check")
+        registry.register(check_class)
+
+        config = {"disabled_gates": ["python:disabled-check"]}
+        executor = CheckExecutor(registry=registry)
+        summary = executor.run_checks(
+            str(tmp_path), ["python:disabled-check"], config=config
+        )
+
+        # Disabled gate should not appear in results at all
+        assert check_class.run_count == 0
+        assert summary.total_checks == 0
+
+    def test_config_disables_gate_via_category_enabled_false(self, tmp_path):
+        """Test that gates are skipped when their category is disabled."""
+        registry = CheckRegistry()
+        check_class = make_mock_check_class("lint")
+        registry.register(check_class)
+
+        config = {"python": {"enabled": False}}
+        executor = CheckExecutor(registry=registry)
+        summary = executor.run_checks(str(tmp_path), ["python:lint"], config=config)
+
+        assert check_class.run_count == 0
+        assert summary.total_checks == 0
+
+    def test_config_disables_gate_via_gate_enabled_false(self, tmp_path):
+        """Test that individual gates can be disabled via gates config."""
+        registry = CheckRegistry()
+        check_class1 = make_mock_check_class("enabled-gate")
+        check_class2 = make_mock_check_class("disabled-gate")
+        registry.register(check_class1)
+        registry.register(check_class2)
+
+        config = {
+            "python": {
+                "gates": {
+                    "disabled-gate": {"enabled": False},
+                }
+            }
+        }
+        executor = CheckExecutor(registry=registry)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["python:enabled-gate", "python:disabled-gate"],
+            config=config,
+        )
+
+        assert check_class1.run_count == 1
+        assert check_class2.run_count == 0
+        assert summary.passed == 1
+
+    def test_disabled_gate_propagates_to_dependents(self, tmp_path):
+        """Test that disabling a gate also disables checks that depend on it."""
+        registry = CheckRegistry()
+        dep_class = make_mock_check_class("tests")
+        dependent_class = make_mock_check_class("coverage", depends_on=["python:tests"])
+        registry.register(dep_class)
+        registry.register(dependent_class)
+
+        config = {"disabled_gates": ["python:tests"]}
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["python:tests", "python:coverage"],
+            config=config,
+        )
+
+        # Both should be disabled — tests explicitly, coverage by propagation
+        assert dep_class.run_count == 0
+        assert dependent_class.run_count == 0
+        assert summary.total_checks == 0
+
 
 class TestRunQualityChecks:
     """Tests for the run_quality_checks convenience function."""
@@ -422,44 +498,54 @@ class TestRunQualityChecks:
     def test_run_quality_checks_convenience_function(self, tmp_path):
         """Test run_quality_checks is a convenience wrapper."""
         # Reset the global registry to avoid interference from other tests
+        import slopmop.checks as checks_module
         import slopmop.core.registry as registry_module
 
-        registry_module._default_registry = None
+        old_registry = registry_module._default_registry
+        old_checks_registered = checks_module._checks_registered
 
-        # Register a test check
-        from slopmop.core.registry import register_check
+        try:
+            registry_module._default_registry = None
+            checks_module._checks_registered = False
 
-        @register_check
-        class ConvenienceTestCheck(BaseCheck):
-            @property
-            def name(self) -> str:
-                return "convenience-test"
+            # Register a test check
+            from slopmop.core.registry import register_check
 
-            @property
-            def display_name(self) -> str:
-                return "Convenience Test"
+            @register_check
+            class ConvenienceTestCheck(BaseCheck):
+                @property
+                def name(self) -> str:
+                    return "convenience-test"
 
-            @property
-            def category(self) -> GateCategory:
-                return GateCategory.PYTHON
+                @property
+                def display_name(self) -> str:
+                    return "Convenience Test"
 
-            def is_applicable(self, project_root: str) -> bool:
-                return True
+                @property
+                def category(self) -> GateCategory:
+                    return GateCategory.PYTHON
 
-            def run(self, project_root: str) -> CheckResult:
-                return CheckResult(
-                    name=self.name,
-                    status=CheckStatus.PASSED,
-                    duration=0.01,
-                    output="Pass",
-                )
+                def is_applicable(self, project_root: str) -> bool:
+                    return True
 
-        summary = run_quality_checks(
-            str(tmp_path),
-            ["python:convenience-test"],
-            config=None,
-            fail_fast=True,
-            auto_fix=False,
-        )
+                def run(self, project_root: str) -> CheckResult:
+                    return CheckResult(
+                        name=self.name,
+                        status=CheckStatus.PASSED,
+                        duration=0.01,
+                        output="Pass",
+                    )
 
-        assert summary.passed >= 1
+            summary = run_quality_checks(
+                str(tmp_path),
+                ["python:convenience-test"],
+                config=None,
+                fail_fast=True,
+                auto_fix=False,
+            )
+
+            assert summary.passed >= 1
+        finally:
+            # Restore registry state for subsequent tests
+            registry_module._default_registry = old_registry
+            checks_module._checks_registered = old_checks_registered

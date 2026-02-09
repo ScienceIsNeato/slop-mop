@@ -5,6 +5,9 @@ This enables the Open/Closed principle - add new checks without modifying
 existing code.
 """
 
+import logging
+import shutil
+import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -12,7 +15,37 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from slopmop.core.result import CheckResult, CheckStatus
-from slopmop.subprocess.runner import SubprocessRunner, get_runner
+from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
+
+logger = logging.getLogger(__name__)
+
+
+def find_tool(name: str, project_root: str) -> Optional[str]:
+    """Find a tool executable, checking the project venv first.
+
+    VS Code git hooks and other non-interactive contexts don't activate
+    the venv, so tools installed there (vulture, pyright, etc.) aren't
+    on $PATH. This checks venv/bin/<name> before falling back to
+    shutil.which().
+
+    Args:
+        name: Executable name (e.g. "vulture", "pyright").
+        project_root: Project root directory.
+
+    Returns:
+        Absolute path to the executable, or None if not found.
+    """
+    root = Path(project_root)
+    for venv_dir in ["venv", ".venv"]:
+        candidate = root / venv_dir / "bin" / name
+        if candidate.exists():
+            return str(candidate)
+        # Windows
+        candidate = root / venv_dir / "Scripts" / f"{name}.exe"
+        if candidate.exists():
+            return str(candidate)
+
+    return shutil.which(name)
 
 
 class GateCategory(Enum):
@@ -34,6 +67,11 @@ class GateCategory(Enum):
     @property
     def display(self) -> str:
         return f"{self.emoji} {self._display_name}"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable category name."""
+        return self._display_name
 
 
 @dataclass
@@ -91,7 +129,9 @@ class BaseCheck(ABC):
     - auto_fix(): Attempt to fix issues automatically
     """
 
-    def __init__(self, config: Dict, runner: Optional[SubprocessRunner] = None):
+    def __init__(
+        self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
+    ):
         """Initialize the check.
 
         Args:
@@ -176,6 +216,25 @@ class BaseCheck(ABC):
             True if check should run, False to skip
         """
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason why this check is not applicable.
+
+        Called when is_applicable returns False to provide a human-readable
+        explanation for why the check was skipped.
+
+        Default implementation provides a generic message based on check type.
+        Override for more specific skip reasons.
+
+        Args:
+            project_root: Path to project root directory
+
+        Returns:
+            Human-readable skip reason
+        """
+        # Default implementation tries to provide helpful context
+        category = self.category.display_name if self.category else "Unknown"
+        return f"No {category} code detected in project"
+
     @abstractmethod
     def run(self, project_root: str) -> CheckResult:
         """Execute the check and return result.
@@ -242,7 +301,7 @@ class BaseCheck(ABC):
         command: List[str],
         cwd: Optional[str] = None,
         timeout: Optional[int] = None,
-    ):
+    ) -> SubprocessResult:
         """Run a command using the subprocess runner.
 
         Args:
@@ -258,6 +317,113 @@ class BaseCheck(ABC):
 
 class PythonCheckMixin:
     """Mixin for Python-specific check utilities."""
+
+    # Class-level cache for venv warning (only warn once per project_root)
+    _venv_warning_shown: set[str] = set()
+    # Cache resolved Python path per project_root
+    _python_cache: dict[str, str] = {}
+
+    def _find_python_in_venv(self, venv_path: Path) -> Optional[str]:
+        """Find Python executable in a venv directory (Unix or Windows)."""
+        for subpath in ["bin/python", "Scripts/python.exe"]:
+            python_path = venv_path / subpath
+            if python_path.exists():
+                return str(python_path)
+        return None
+
+    def _cache_and_return(self, project_root: str, python_path: str) -> str:
+        """Cache and return the Python path."""
+        PythonCheckMixin._python_cache[project_root] = python_path
+        return python_path
+
+    def _get_python_version(self, python_path: str) -> str:
+        """Get Python version string, or 'unknown version' on error."""
+        try:
+            result = subprocess.run(
+                [python_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.stdout.strip()
+        except Exception:
+            return "unknown version"
+
+    def get_project_python(self, project_root: str) -> str:
+        """Get the Python executable for the project.
+
+        Uses stepped fallback with warnings:
+        1. VIRTUAL_ENV environment variable (if set and valid)
+        2. ./venv/bin/python or ./.venv/bin/python
+        3. python3/python in PATH (system Python)
+        4. sys.executable (slop-mop's Python - last resort)
+
+        Warnings are logged once per project when falling back to non-venv Python.
+        """
+        if project_root in PythonCheckMixin._python_cache:
+            return PythonCheckMixin._python_cache[project_root]
+
+        import os
+        import shutil
+        import sys
+
+        root = Path(project_root)
+        should_warn = project_root not in PythonCheckMixin._venv_warning_shown
+
+        # Check VIRTUAL_ENV environment variable first
+        virtual_env = os.environ.get("VIRTUAL_ENV")
+        if virtual_env:
+            python_path = self._find_python_in_venv(Path(virtual_env))
+            if python_path:
+                return self._cache_and_return(project_root, python_path)
+            if should_warn:
+                logger.warning(
+                    f"VIRTUAL_ENV={virtual_env} set but no Python found there. "
+                    "Continuing with fallback detection."
+                )
+
+        # Check common venv locations in project
+        for venv_dir in ["venv", ".venv"]:
+            python_path = self._find_python_in_venv(root / venv_dir)
+            if python_path:
+                return self._cache_and_return(project_root, python_path)
+
+        # No venv found - mark as warned and try system Python
+        if should_warn:
+            PythonCheckMixin._venv_warning_shown.add(project_root)
+
+        # Try to find python3 or python in PATH
+        for python_name in ["python3", "python"]:
+            system_python = shutil.which(python_name)
+            if system_python:
+                if should_warn:
+                    version = self._get_python_version(system_python)
+                    logger.warning(
+                        f"⚠️  No virtual environment found in {project_root}. "
+                        f"Using system Python: {system_python} ({version}). "
+                        "Consider creating a venv with project dependencies."
+                    )
+                return self._cache_and_return(project_root, system_python)
+
+        # Ultimate fallback: slop-mop's own Python
+        if should_warn:
+            logger.warning(
+                f"⚠️  No Python found in PATH. Using slop-mop's Python: {sys.executable}. "
+                "This will likely fail if the project has dependencies not installed "
+                "in slop-mop's environment. Create a venv in your project!"
+            )
+        return self._cache_and_return(project_root, sys.executable)
+
+    def _python_execution_failed_hint(self) -> str:
+        """Return helpful hint text for Python execution failures.
+
+        Use this in fix_suggestion when a Python tool fails to run.
+        """
+        return (
+            "If this is a 'python not found' or 'module not found' error, "
+            "ensure your project has a venv/ or .venv/ directory with dependencies "
+            "installed. slop-mop will auto-detect and use it."
+        )
 
     def has_python_files(self, project_root: str) -> bool:
         """Check if project has Python files."""
@@ -285,6 +451,18 @@ class PythonCheckMixin:
             or self.has_requirements_txt(project_root)
         )
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping Python checks."""
+        if not self.has_python_files(project_root):
+            return "No Python files found"
+        if not (
+            self.has_setup_py(project_root)
+            or self.has_pyproject_toml(project_root)
+            or self.has_requirements_txt(project_root)
+        ):
+            return "No Python project markers (setup.py, pyproject.toml, or requirements.txt)"
+        return "Python check not applicable"
+
 
 class JavaScriptCheckMixin:
     """Mixin for JavaScript-specific check utilities."""
@@ -299,9 +477,21 @@ class JavaScriptCheckMixin:
         return any(root.rglob("*.js")) or any(root.rglob("*.ts"))
 
     def is_javascript_project(self, project_root: str) -> bool:
-        """Check if this is a JavaScript project."""
-        return self.has_package_json(project_root) or self.has_js_files(project_root)
+        """Check if this is a JavaScript project.
+
+        Requires package.json at project root — scattered .js files
+        (e.g., vendored tools) don't constitute a JS project we can lint.
+        """
+        return self.has_package_json(project_root)
 
     def has_node_modules(self, project_root: str) -> bool:
         """Check if node_modules exists."""
         return (Path(project_root) / "node_modules").is_dir()
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping JavaScript checks."""
+        if not self.has_package_json(project_root):
+            return "No package.json found (not a JavaScript/TypeScript project)"
+        if not self.has_js_files(project_root):
+            return "No JavaScript/TypeScript files found"
+        return "JavaScript check not applicable"

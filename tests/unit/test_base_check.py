@@ -191,6 +191,143 @@ class TestPythonCheckMixin:
         (tmp_path / "index.js").touch()
         assert self.mixin.is_python_project(str(tmp_path)) is False
 
+    def test_skip_reason_no_python_files(self, tmp_path):
+        """Test skip_reason returns correct message when no Python files."""
+        (tmp_path / "index.js").touch()
+        reason = self.mixin.skip_reason(str(tmp_path))
+        assert "No Python files" in reason
+
+    def test_skip_reason_with_python_files(self, tmp_path):
+        """Test skip_reason returns generic message when Python files exist."""
+        (tmp_path / "main.py").touch()
+        (tmp_path / "pyproject.toml").touch()
+        reason = self.mixin.skip_reason(str(tmp_path))
+        assert "not applicable" in reason.lower()
+
+    def test_get_project_python_uses_venv(self, tmp_path, monkeypatch):
+        """Test get_project_python prefers ./venv/bin/python."""
+        venv_dir = tmp_path / "venv" / "bin"
+        venv_dir.mkdir(parents=True)
+        python_path = venv_dir / "python"
+        python_path.touch()
+        python_path.chmod(0o755)
+
+        # Clear VIRTUAL_ENV to ensure it doesn't interfere
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        result = self.mixin.get_project_python(str(tmp_path))
+        assert result == str(python_path)
+
+    def test_get_project_python_uses_dot_venv(self, tmp_path, monkeypatch):
+        """Test get_project_python prefers ./.venv/bin/python when ./venv doesn't exist."""
+        venv_dir = tmp_path / ".venv" / "bin"
+        venv_dir.mkdir(parents=True)
+        python_path = venv_dir / "python"
+        python_path.touch()
+        python_path.chmod(0o755)
+
+        # Clear VIRTUAL_ENV to ensure it doesn't interfere
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        result = self.mixin.get_project_python(str(tmp_path))
+        assert result == str(python_path)
+
+    def test_get_project_python_prefers_virtual_env_var(self, tmp_path, monkeypatch):
+        """Test get_project_python prefers VIRTUAL_ENV environment variable."""
+        # Create venv from env var
+        env_venv = tmp_path / "env_venv" / "bin"
+        env_venv.mkdir(parents=True)
+        env_python = env_venv / "python"
+        env_python.touch()
+        env_python.chmod(0o755)
+
+        # Also create project venv (should be ignored)
+        project_venv = tmp_path / "venv" / "bin"
+        project_venv.mkdir(parents=True)
+        (project_venv / "python").touch()
+
+        monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "env_venv"))
+
+        result = self.mixin.get_project_python(str(tmp_path))
+        assert result == str(env_python)
+
+    def test_get_project_python_falls_back_to_system_python(
+        self, tmp_path, monkeypatch
+    ):
+        """Test get_project_python falls back to system Python when no venv."""
+        import shutil
+
+        # Clear VIRTUAL_ENV
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        result = self.mixin.get_project_python(str(tmp_path))
+
+        # Should find python3 or python in PATH (system Python)
+        expected = shutil.which("python3") or shutil.which("python")
+        if expected:
+            assert result == expected
+        else:
+            # If no system Python, falls back to sys.executable
+            import sys
+
+            assert result == sys.executable
+
+    def test_get_project_python_falls_back_to_sys_executable_no_path(
+        self, tmp_path, monkeypatch
+    ):
+        """Test get_project_python falls back to sys.executable if no Python in PATH."""
+        import sys
+
+        # Clear VIRTUAL_ENV
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        # Mock shutil.which to return None (no Python in PATH)
+        monkeypatch.setattr("shutil.which", lambda x: None)
+
+        result = self.mixin.get_project_python(str(tmp_path))
+        assert result == sys.executable
+
+    def test_get_project_python_logs_warning_no_venv(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Test get_project_python logs warning when no venv found."""
+        import logging
+
+        # Clear VIRTUAL_ENV
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        with caplog.at_level(logging.WARNING):
+            self.mixin.get_project_python(str(tmp_path))
+
+        # Should have logged a warning about no venv
+        assert any("No virtual environment found" in msg for msg in caplog.messages)
+
+    def test_python_execution_failed_hint(self):
+        """Test _python_execution_failed_hint returns helpful text."""
+        hint = self.mixin._python_execution_failed_hint()
+        assert "venv" in hint
+        assert "module not found" in hint
+
+    def test_get_project_python_venv_takes_priority_over_dot_venv(
+        self, tmp_path, monkeypatch
+    ):
+        """Test get_project_python prefers ./venv over ./.venv."""
+        # Create both venvs
+        venv_dir = tmp_path / "venv" / "bin"
+        venv_dir.mkdir(parents=True)
+        venv_python = venv_dir / "python"
+        venv_python.touch()
+        venv_python.chmod(0o755)
+
+        dot_venv_dir = tmp_path / ".venv" / "bin"
+        dot_venv_dir.mkdir(parents=True)
+        (dot_venv_dir / "python").touch()
+
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        result = self.mixin.get_project_python(str(tmp_path))
+        assert result == str(venv_python)
+
 
 class TestJavaScriptCheckMixin:
     """Tests for JavaScriptCheckMixin."""
@@ -233,9 +370,9 @@ class TestJavaScriptCheckMixin:
         assert self.mixin.is_javascript_project(str(tmp_path)) is True
 
     def test_is_javascript_project_with_js_files(self, tmp_path):
-        """Test is_javascript_project returns True with JS files."""
+        """Test is_javascript_project returns False with only JS files (no package.json)."""
         (tmp_path / "index.js").touch()
-        assert self.mixin.is_javascript_project(str(tmp_path)) is True
+        assert self.mixin.is_javascript_project(str(tmp_path)) is False
 
     def test_is_javascript_project_false(self, tmp_path):
         """Test is_javascript_project returns False for non-JS project."""
@@ -250,3 +387,19 @@ class TestJavaScriptCheckMixin:
     def test_has_node_modules_false(self, tmp_path):
         """Test has_node_modules returns False when node_modules doesn't exist."""
         assert self.mixin.has_node_modules(str(tmp_path)) is False
+
+    def test_skip_reason_no_package_json(self, tmp_path):
+        """Test skip_reason returns correct message when no package.json."""
+        (tmp_path / "app.py").touch()
+        reason = self.mixin.skip_reason(str(tmp_path))
+        assert "No package.json" in reason
+
+    def test_skip_reason_with_package_json_no_js_files(self, tmp_path):
+        """Test skip_reason when package.json exists but no JS files."""
+        (tmp_path / "package.json").touch()
+        # When package.json exists, is_javascript_project returns True
+        # So skip_reason should give a generic message
+        # But our implementation checks for JS files absence
+        reason = self.mixin.skip_reason(str(tmp_path))
+        # With package.json but no JS files, it returns the JS files message
+        assert "JavaScript" in reason or "not applicable" in reason.lower()

@@ -9,20 +9,22 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-from slopmop.sm import (
+
+from slopmop.cli.ci import cmd_ci
+from slopmop.cli.config import cmd_config
+from slopmop.cli.detection import detect_project_type
+from slopmop.cli.help import cmd_help
+from slopmop.cli.hooks import (
     _generate_hook_script,
     _get_git_hooks_dir,
     _parse_hook_info,
-    cmd_ci,
     cmd_commit_hooks,
-    cmd_config,
-    cmd_help,
+)
+from slopmop.cli.init import prompt_user, prompt_yes_no
+from slopmop.sm import (
     create_parser,
-    detect_project_type,
     load_config,
     main,
-    prompt_user,
-    prompt_yes_no,
     setup_logging,
 )
 
@@ -94,7 +96,7 @@ class TestCreateParser:
         """Parser is created successfully."""
         parser = create_parser()
         assert parser is not None
-        assert parser.prog == "sb"
+        assert parser.prog == "./sm"
 
     def test_validate_subcommand(self):
         """Validate subcommand parses correctly."""
@@ -292,11 +294,13 @@ class TestCmdConfig:
             show=True,
             enable=None,
             disable=None,
+            include_dir=None,
+            exclude_dir=None,
             json=None,
         )
 
-        with patch("slopmop.sm.ensure_checks_registered"):
-            with patch("slopmop.sm.get_registry") as mock_registry:
+        with patch("slopmop.checks.ensure_checks_registered"):
+            with patch("slopmop.cli.config.get_registry") as mock_registry:
                 mock_reg = MagicMock()
                 mock_reg.list_checks.return_value = ["python:tests"]
                 mock_reg.get_definition.return_value = MagicMock(name="Python Tests")
@@ -320,10 +324,12 @@ class TestCmdConfig:
             show=False,
             enable="python-security",
             disable=None,
+            include_dir=None,
+            exclude_dir=None,
             json=None,
         )
 
-        with patch("slopmop.sm.ensure_checks_registered"):
+        with patch("slopmop.checks.ensure_checks_registered"):
             result = cmd_config(args)
 
         assert result == 0
@@ -338,8 +344,8 @@ class TestCmdHelp:
         """Help without gate shows all gates."""
         args = argparse.Namespace(gate=None)
 
-        with patch("slopmop.sm.ensure_checks_registered"):
-            with patch("slopmop.sm.get_registry") as mock_registry:
+        with patch("slopmop.checks.ensure_checks_registered"):
+            with patch("slopmop.cli.config.get_registry") as mock_registry:
                 mock_reg = MagicMock()
                 mock_reg.list_checks.return_value = ["python:tests", "python:coverage"]
                 mock_reg.get_definition.return_value = MagicMock(
@@ -361,8 +367,8 @@ class TestCmdHelp:
         mock_check = MagicMock()
         mock_check.__doc__ = "Test documentation"
 
-        with patch("slopmop.sm.ensure_checks_registered"):
-            with patch("slopmop.sm.get_registry") as mock_registry:
+        with patch("slopmop.checks.ensure_checks_registered"):
+            with patch("slopmop.cli.help.get_registry") as mock_registry:
                 mock_reg = MagicMock()
                 mock_reg.get_definition.return_value = MagicMock(
                     name="Python Tests",
@@ -383,8 +389,8 @@ class TestCmdHelp:
         """Help for alias shows expanded gates."""
         args = argparse.Namespace(gate="commit")
 
-        with patch("slopmop.sm.ensure_checks_registered"):
-            with patch("slopmop.sm.get_registry") as mock_registry:
+        with patch("slopmop.checks.ensure_checks_registered"):
+            with patch("slopmop.cli.help.get_registry") as mock_registry:
                 mock_reg = MagicMock()
                 mock_reg.get_definition.return_value = None
                 mock_reg.is_alias.return_value = True
@@ -415,12 +421,14 @@ class TestGitHooksFunctions:
     def test_generate_hook_script(self):
         """Generates valid hook script."""
         script = _generate_hook_script("commit")
-        assert "sm validate commit" in script
-        assert "MANAGED BY SLOPBUCKET" in script
+        assert "slopmop.sm validate commit" in script
+        assert "MANAGED BY SLOP-MOP" in script
+        # Should use python -m slopmop.sm for direct submodule execution
+        assert "python" in script and "slopmop.sm" in script
 
     def test_parse_hook_info_managed(self):
         """Parses managed hook info."""
-        content = """# MANAGED BY SLOPBUCKET - DO NOT EDIT
+        content = """# MANAGED BY SLOP-MOP - DO NOT EDIT
 #!/bin/sh
 # Profile: commit
 sm validate commit
@@ -489,7 +497,7 @@ class TestCmdCommitHooks:
         """Uninstall removes managed hooks."""
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
         hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
-        hook_file.write_text("# MANAGED BY SLOPBUCKET - DO NOT EDIT\nsm validate")
+        hook_file.write_text("# MANAGED BY SLOP-MOP - DO NOT EDIT\nsm validate")
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
@@ -518,7 +526,7 @@ class TestMain:
 
     def test_main_validate_calls_cmd_validate(self):
         """Main routes validate to cmd_validate."""
-        with patch("slopmop.sm.cmd_validate") as mock_cmd:
+        with patch("slopmop.cli.cmd_validate") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["validate", "commit"])
             mock_cmd.assert_called_once()
@@ -526,7 +534,7 @@ class TestMain:
 
     def test_main_config_calls_cmd_config(self):
         """Main routes config to cmd_config."""
-        with patch("slopmop.sm.cmd_config") as mock_cmd:
+        with patch("slopmop.cli.cmd_config") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["config", "--show"])
             mock_cmd.assert_called_once()
@@ -534,7 +542,7 @@ class TestMain:
 
     def test_main_help_calls_cmd_help(self):
         """Main routes help to cmd_help."""
-        with patch("slopmop.sm.cmd_help") as mock_cmd:
+        with patch("slopmop.cli.cmd_help") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["help"])
             mock_cmd.assert_called_once()
@@ -542,7 +550,7 @@ class TestMain:
 
     def test_main_commit_hooks_calls_cmd_commit_hooks(self):
         """Main routes commit-hooks to cmd_commit_hooks."""
-        with patch("slopmop.sm.cmd_commit_hooks") as mock_cmd:
+        with patch("slopmop.cli.cmd_commit_hooks") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["commit-hooks", "status"])
             mock_cmd.assert_called_once()
@@ -550,7 +558,7 @@ class TestMain:
 
     def test_main_ci_calls_cmd_ci(self):
         """Main routes ci to cmd_ci."""
-        with patch("slopmop.sm.cmd_ci") as mock_cmd:
+        with patch("slopmop.cli.cmd_ci") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["ci"])
             mock_cmd.assert_called_once()

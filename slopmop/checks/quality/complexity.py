@@ -10,7 +10,6 @@ Note: This is a cross-cutting quality check. While it uses radon
 
 import os
 import re
-import sys
 import time
 from typing import List
 
@@ -18,6 +17,7 @@ from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
     GateCategory,
+    PythonCheckMixin,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -25,11 +25,32 @@ MAX_RANK = "C"
 MAX_COMPLEXITY = 20
 
 
-class ComplexityCheck(BaseCheck):
-    """Radon cyclomatic complexity enforcement.
+class ComplexityCheck(BaseCheck, PythonCheckMixin):
+    """Cyclomatic complexity enforcement.
 
-    Uses 'src_dirs' from config, or defaults to scanning Python files
-    in project root.
+    Wraps radon to flag functions with complexity rank D or higher.
+    Complexity rank C (score ≤20) is the threshold — anything above
+    indicates a function that is too branchy for humans or LLMs to
+    reason about reliably.
+
+    Profiles: commit, pr
+
+    Configuration:
+      max_rank: "C" — ranks A-C are acceptable. D+ means the function
+          has > 20 independent paths and should be decomposed.
+      max_complexity: 15 — numeric score threshold. Functions above
+          this score appear in the violation list.
+      src_dirs: [] — empty means scan project root. Set to specific
+          directories to limit scope.
+
+    Common failures:
+      High complexity function: Break it into smaller helpers that
+          each handle one concept. Focus on logical separation, not
+          arbitrary line reduction.
+      radon not available: pip install radon
+
+    Re-validate:
+      ./sm validate quality:complexity --verbose
     """
 
     @property
@@ -98,7 +119,7 @@ class ComplexityCheck(BaseCheck):
             )
 
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "radon",
             "cc",
@@ -113,7 +134,7 @@ class ComplexityCheck(BaseCheck):
 
         if result.returncode == 127:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=duration,
                 error="Radon not available",
                 fix_suggestion="Install radon: pip install radon",
@@ -139,7 +160,7 @@ class ComplexityCheck(BaseCheck):
         )
 
     def _parse_violations(self, output: str) -> List[str]:
-        violations = []
+        violations: List[str] = []
         for line in output.splitlines():
             if re.search(r"\b[DEF]\b", line) and "(" in line:
                 violations.append(line.strip())
