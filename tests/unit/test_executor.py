@@ -415,6 +415,82 @@ class TestCheckExecutor:
         # Check should still run and pass
         assert summary.passed == 1
 
+    def test_config_disables_gate_via_disabled_gates(self, tmp_path):
+        """Test that gates listed in disabled_gates are not executed."""
+        registry = CheckRegistry()
+        check_class = make_mock_check_class("disabled-check")
+        registry.register(check_class)
+
+        config = {"disabled_gates": ["python:disabled-check"]}
+        executor = CheckExecutor(registry=registry)
+        summary = executor.run_checks(
+            str(tmp_path), ["python:disabled-check"], config=config
+        )
+
+        # Disabled gate should not appear in results at all
+        assert check_class.run_count == 0
+        assert summary.total_checks == 0
+
+    def test_config_disables_gate_via_category_enabled_false(self, tmp_path):
+        """Test that gates are skipped when their category is disabled."""
+        registry = CheckRegistry()
+        check_class = make_mock_check_class("lint")
+        registry.register(check_class)
+
+        config = {"python": {"enabled": False}}
+        executor = CheckExecutor(registry=registry)
+        summary = executor.run_checks(str(tmp_path), ["python:lint"], config=config)
+
+        assert check_class.run_count == 0
+        assert summary.total_checks == 0
+
+    def test_config_disables_gate_via_gate_enabled_false(self, tmp_path):
+        """Test that individual gates can be disabled via gates config."""
+        registry = CheckRegistry()
+        check_class1 = make_mock_check_class("enabled-gate")
+        check_class2 = make_mock_check_class("disabled-gate")
+        registry.register(check_class1)
+        registry.register(check_class2)
+
+        config = {
+            "python": {
+                "gates": {
+                    "disabled-gate": {"enabled": False},
+                }
+            }
+        }
+        executor = CheckExecutor(registry=registry)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["python:enabled-gate", "python:disabled-gate"],
+            config=config,
+        )
+
+        assert check_class1.run_count == 1
+        assert check_class2.run_count == 0
+        assert summary.passed == 1
+
+    def test_disabled_gate_propagates_to_dependents(self, tmp_path):
+        """Test that disabling a gate also disables checks that depend on it."""
+        registry = CheckRegistry()
+        dep_class = make_mock_check_class("tests")
+        dependent_class = make_mock_check_class("coverage", depends_on=["python:tests"])
+        registry.register(dep_class)
+        registry.register(dependent_class)
+
+        config = {"disabled_gates": ["python:tests"]}
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["python:tests", "python:coverage"],
+            config=config,
+        )
+
+        # Both should be disabled — tests explicitly, coverage by propagation
+        assert dep_class.run_count == 0
+        assert dependent_class.run_count == 0
+        assert summary.total_checks == 0
+
 
 class TestRunQualityChecks:
     """Tests for the run_quality_checks convenience function."""

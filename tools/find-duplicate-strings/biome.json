@@ -7,13 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": [
-      "coverage",
-      "lib",
-      "node_modules",
-      "src/processFile/mocks",
-      "src/output/mocks"
-    ]
+    "ignore": ["coverage", "lib", "node_modules", "src/processFile/mocks", "src/output/mocks"]
   },
   "formatter": {
     "enabled": true,

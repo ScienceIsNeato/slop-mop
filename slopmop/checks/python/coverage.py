@@ -18,6 +18,11 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
+from slopmop.checks.constants import (
+    SKIP_NOT_PYTHON_PROJECT,
+    has_python_test_files,
+    skip_reason_no_test_files,
+)
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
     COVERAGE_GUIDANCE_FOOTER,
@@ -81,7 +86,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
           to generate coverage data.
 
     Re-validate:
-      sm validate python:coverage --verbose
+      ./sm validate python:coverage --verbose
     """
 
     DEFAULT_THRESHOLD = 80
@@ -116,7 +121,18 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_python_project(project_root)
+        """Applicable only if there are Python test files (coverage needs tests)."""
+        if not self.is_python_project(project_root):
+            return False
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return has_python_test_files(project_root, test_dirs)
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return skip reason when coverage prerequisites are missing."""
+        if not self.is_python_project(project_root):
+            return SKIP_NOT_PYTHON_PROJECT
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return skip_reason_no_test_files(test_dirs)
 
     def run(self, project_root: str) -> CheckResult:
         """Analyze coverage data and provide prescriptive output.
@@ -281,7 +297,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
           check. Gate passes automatically.
 
     Re-validate:
-      sm validate python:diff-coverage --verbose
+      ./sm validate python:diff-coverage --verbose
     """
 
     @property
@@ -301,7 +317,18 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
         return ["python:tests"]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_python_project(project_root)
+        """Applicable only if there are Python test files (coverage needs tests)."""
+        if not self.is_python_project(project_root):
+            return False
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return has_python_test_files(project_root, test_dirs)
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no Python test files."""
+        if not self.is_python_project(project_root):
+            return SKIP_NOT_PYTHON_PROJECT
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return skip_reason_no_test_files(test_dirs)
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()

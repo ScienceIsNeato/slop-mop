@@ -1,0 +1,18 @@
+{
+  "typeCheckingMode": "standard",
+  "include": [
+    "slopmop"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules"
+  ],
+  "pythonVersion": "3.9",
+  "venvPath": "/Users/pacey/Documents/SourceCode/slop-mop",
+  "venv": "venv",
+  "reportUnknownMemberType": "error",
+  "reportUnknownVariableType": "error",
+  "reportUnknownArgumentType": "error",
+  "reportUnknownParameterType": "error",
+  "reportUnknownLambdaType": "error"
+}

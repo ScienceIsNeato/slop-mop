@@ -23,20 +23,20 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: '3.11'
+          cache: 'pip'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
           cache-dependency-path: tools/find-duplicate-strings/package-lock.json
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -r requirements.txt
 
       - name: Build string-duplication tool
         run: |
@@ -45,10 +45,10 @@ jobs:
           npx tsc
 
       - name: Run slop-mop on itself
-        run: sm validate --self
+        run: python -m slopmop.sm validate --self
 
       - name: Check PR comments (PRs only)
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: sm validate pr:comments
+        run: python -m slopmop.sm validate pr:comments

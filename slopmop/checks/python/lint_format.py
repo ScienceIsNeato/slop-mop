@@ -43,7 +43,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
           assertion on tuples, undefined names). Fix the code.
 
     Re-validate:
-      sm validate python:lint-format --verbose
+      ./sm validate python:lint-format --verbose
     """
 
     @property

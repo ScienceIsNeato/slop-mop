@@ -47,7 +47,7 @@ class SourceDuplicationCheck(BaseCheck):
       jscpd not available: npm install -g jscpd
 
     Re-validate:
-      sm validate quality:source-duplication --verbose
+      ./sm validate quality:source-duplication --verbose
     """
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):

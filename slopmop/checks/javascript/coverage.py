@@ -49,7 +49,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
           produce coverage reports.
 
     Re-validate:
-      sm validate javascript:coverage --verbose
+      ./sm validate javascript:coverage --verbose
     """
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):

@@ -76,7 +76,7 @@ def _print_header(
     project_root: Path, gates: List[str], args: argparse.Namespace
 ) -> None:
     """Print validation header."""
-    print("\n🧹 sm validate - Quality Gate Validation")
+    print("\n🧹 ./sm validate - Quality Gate Validation")
     print("=" * 60)
     from slopmop.reporting import print_project_header
 

@@ -33,7 +33,7 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: Check package.json syntax.
 
     Re-validate:
-      sm validate javascript:tests --verbose
+      ./sm validate javascript:tests --verbose
     """
 
     @property

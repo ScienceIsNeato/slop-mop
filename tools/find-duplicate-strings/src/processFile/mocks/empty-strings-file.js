@@ -1,3 +1,3 @@
 /* eslint-disable no-undef */
-console.log("");
-console.log("");
+console.log('');
+console.log('');

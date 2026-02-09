@@ -40,7 +40,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
       Jinja2 not installed: pip install jinja2
 
     Re-validate:
-      sm validate general:templates --verbose
+      ./sm validate general:templates --verbose
     """
 
     @property

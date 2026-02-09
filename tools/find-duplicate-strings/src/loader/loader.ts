@@ -3,10 +3,10 @@ export class Loader {
   private count = 0;
 
   constructor(loaderInterval: number) {
-    process.on("SIGTERM", () => {
+    process.on('SIGTERM', () => {
       this.destroy();
     });
-    process.on("SIGINT", () => {
+    process.on('SIGINT', () => {
       this.destroy();
     });
 
@@ -20,15 +20,15 @@ export class Loader {
 
       // Only write progress dots in TTY mode
       if (process.stdout.isTTY) {
-        process.stdout.write(".");
+        process.stdout.write('.');
       }
     }, loaderInterval);
   }
 
   destroy = () => {
     clearInterval(this.loaderTimer);
-    process.removeAllListeners("SIGTERM");
-    process.removeAllListeners("SIGINT");
+    process.removeAllListeners('SIGTERM');
+    process.removeAllListeners('SIGINT');
     this.clearLine();
   };
 

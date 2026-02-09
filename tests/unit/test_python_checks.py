@@ -173,8 +173,10 @@ class TestPythonTestsCheck:
         assert "Tests" in check.display_name or "test" in check.display_name.lower()
 
     def test_is_applicable_python_project(self, tmp_path):
-        """Test is_applicable returns True for Python project."""
+        """Test is_applicable returns True for Python project with test files."""
         (tmp_path / "pyproject.toml").touch()
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text("def test_one(): pass")
         check = PythonTestsCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
@@ -247,8 +249,10 @@ class TestPythonCoverageCheck:
         assert "python:tests" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
-        """Test is_applicable returns True for Python project."""
+        """Test is_applicable returns True for Python project with tests."""
         (tmp_path / "requirements.txt").touch()
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text("def test_one(): pass")
         check = PythonCoverageCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
@@ -337,8 +341,12 @@ class TestPythonStaticAnalysisCheck:
         assert "python:lint-format" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
-        """Test is_applicable returns True for Python project."""
+        """Test is_applicable returns True for Python project with source dirs."""
         (tmp_path / "main.py").touch()
+        pkg = tmp_path / "mypackage"
+        pkg.mkdir()
+        (pkg / "__init__.py").touch()
+        (pkg / "core.py").write_text("x = 1")
         check = PythonStaticAnalysisCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
@@ -365,6 +373,7 @@ class TestPythonStaticAnalysisCheck:
     def test_detect_source_dirs_standard(self, tmp_path):
         """Test detecting standard source directories."""
         (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("x = 1")
         check = PythonStaticAnalysisCheck({})
         dirs = check._detect_source_dirs(str(tmp_path))
         assert "src" in dirs

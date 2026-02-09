@@ -1,13 +1,13 @@
-import { getIgnoreAnswer } from "../cli/questions/getIgnoreAnswer.js";
-import { getThresholdAnswer } from "../cli/questions/getThresholdAnswer.js";
-import { getFiles } from "../getFiles/getFiles.js";
-import { getPathsToIgnore } from "../getPathsToIgnore/getPathsToIgnore.js";
-import { Loader } from "../loader/loader.js";
-import { Output } from "../output/output.js";
-import { processFile } from "../processFile/processFile.js";
-import { store } from "../store/store.js";
+import { getIgnoreAnswer } from '../cli/questions/getIgnoreAnswer.js';
+import { getThresholdAnswer } from '../cli/questions/getThresholdAnswer.js';
+import { getFiles } from '../getFiles/getFiles.js';
+import { getPathsToIgnore } from '../getPathsToIgnore/getPathsToIgnore.js';
+import { Loader } from '../loader/loader.js';
+import { Output } from '../output/output.js';
+import { processFile } from '../processFile/processFile.js';
+import { store } from '../store/store.js';
 
-import type { Finding } from "../typings/finding.js";
+import type { Finding } from '../typings/finding.js';
 
 interface Options {
   ignore?: string;
@@ -28,14 +28,12 @@ export class Scanner {
 
   public constructor(
     private options: Options,
-    private loaderInterval = 1000,
+    private loaderInterval = 1000
   ) {
     this.ignore = getPathsToIgnore(options.ignore);
     this.threshold =
-      typeof options.threshold === "string"
-        ? Number.parseInt(options.threshold, 10)
-        : 1;
-    this.output = options.output ?? "fds-output";
+      typeof options.threshold === 'string' ? Number.parseInt(options.threshold, 10) : 1;
+    this.output = options.output ?? 'fds-output';
     this.interactive = options.interactive ?? false;
     this.json = options.json ?? false;
     this.path = options.path;
@@ -60,7 +58,7 @@ export class Scanner {
       if (this.json) {
         console.log(JSON.stringify([]));
       } else {
-        console.log("No duplicates where found.");
+        console.log('No duplicates where found.');
       }
       return;
     }
