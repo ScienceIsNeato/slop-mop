@@ -1,7 +1,6 @@
 """Tests for subprocess command validator."""
 
 import pytest
-
 from slopmop.subprocess.validator import CommandValidator, SecurityError
 
 
@@ -12,6 +11,12 @@ class TestCommandValidator:
         """Test that python executable is allowed."""
         validator = CommandValidator()
         assert validator.validate(["python", "-m", "pytest"]) is True
+
+    def test_allows_versioned_python_executables(self):
+        """Test that versioned Python executables (python3.14, etc.) are accepted."""
+        validator = CommandValidator()
+        assert validator.validate(["python3.14", "-m", "pytest"]) is True
+        assert validator.validate(["python3.13", "-m", "mypy"]) is True
 
     def test_allows_whitelisted_black(self):
         """Test that black is allowed."""

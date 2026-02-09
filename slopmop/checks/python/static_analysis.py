@@ -87,10 +87,16 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         """Applicable only if there are Python source directories to type-check."""
         if not self.is_python_project(project_root):
             return False
-        # Only run if we can find actual source directories (not just scattered scripts)
-        # This avoids running mypy on "." which causes issues with submodules
+
+        # If user explicitly configured include_dirs, always run — they know
+        # what they want, even if the value is ["."].
+        cfg_dirs = self.config.get("include_dirs", [])
+        if isinstance(cfg_dirs, list) and cfg_dirs:
+            return True
+
+        # Heuristic path: skip when fallback lands on ["."] (no proper source
+        # dirs found — avoids running mypy on "." which causes submodule issues)
         source_dirs = self._detect_source_dirs(project_root)
-        # Falls back to ["."] when no proper source dirs found - skip in that case
         return source_dirs != ["."]
 
     def skip_reason(self, project_root: str) -> str:
@@ -104,7 +110,20 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         return self.config.get("strict_typing", True)
 
     def _detect_source_dirs(self, project_root: str) -> List[str]:
-        """Detect source directories to type-check."""
+        """Detect source directories to type-check.
+
+        Priority:
+        1. Gate-level ``include_dirs`` from config (``self.config``)
+        2. Heuristic: scan well-known directory names for ``.py`` files
+        """
+        # Honour explicit config — gate-level or language-level include_dirs
+        # are already plumbed through self.config by SlopmopConfig, so we
+        # don't re-read .sb_config.json here (avoids SB_CONFIG_FILE bypass,
+        # malformed-JSON crashes, and string-vs-list issues).
+        cfg_dirs: List[str] = self.config.get("include_dirs", [])
+        if isinstance(cfg_dirs, list) and cfg_dirs:
+            return cfg_dirs
+
         source_dirs: List[str] = []
 
         for name in ["src", "slopmop", "lib"]:

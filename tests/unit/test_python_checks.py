@@ -392,6 +392,47 @@ class TestPythonStaticAnalysisCheck:
         dirs = check._detect_source_dirs(str(tmp_path))
         assert "mypackage" in dirs
 
+    def test_detect_source_dirs_skips_dir_without_python_files(self, tmp_path):
+        """Test that src/ is skipped when it contains no .py files (mixed-lang project)."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "App.tsx").write_text("export default function App() {}")
+        (src / "index.ts").write_text("import App from './App'")
+        check = PythonStaticAnalysisCheck({})
+        dirs = check._detect_source_dirs(str(tmp_path))
+        assert "src" not in dirs
+
+    def test_detect_source_dirs_uses_config_include_dirs(self, tmp_path):
+        """Test that include_dirs from config takes priority over heuristic."""
+        (tmp_path / "scripts").mkdir()
+        (tmp_path / "scripts" / "deploy.py").write_text("x = 1")
+        check = PythonStaticAnalysisCheck({"include_dirs": ["scripts"]})
+        dirs = check._detect_source_dirs(str(tmp_path))
+        assert dirs == ["scripts"]
+
+    def test_is_applicable_with_config_dot_include_dir(self, tmp_path):
+        """include_dirs: ['.'] from config should NOT silently skip the check.
+
+        Regression: is_applicable() used `source_dirs != ['.']` to detect
+        heuristic fallback, but this also matched when the user explicitly
+        configured `include_dirs: ['.']`, causing a silent skip.
+        """
+        (tmp_path / "setup.py").write_text("x = 1")
+        check = PythonStaticAnalysisCheck({"include_dirs": ["."]})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_detect_source_dirs_ignores_non_list_include_dirs(self, tmp_path):
+        """Test that a string include_dirs value doesn't unpack into characters."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("x = 1")
+        # String value should be ignored, falling back to heuristic
+        check = PythonStaticAnalysisCheck({"include_dirs": "src"})
+        dirs = check._detect_source_dirs(str(tmp_path))
+        # Should find src via heuristic, not via the string config
+        assert dirs == ["src"]
+        # Crucially, should NOT be ["s", "r", "c"]
+        assert len(dirs) == 1
+
     # --- Output dedup ---
 
     def test_dedup_output_strips_notes(self):
