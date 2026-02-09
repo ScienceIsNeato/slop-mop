@@ -142,32 +142,32 @@ def _build_interactive_config(
     return config
 
 
-def _apply_detected_settings(
+def _disable_non_applicable(
     base_config: Dict[str, Any], detected: Dict[str, Any]
 ) -> None:
-    """Apply detected project settings to the base config."""
-    if detected["has_python"]:
-        base_config["python"]["enabled"] = True
-        if detected["test_dirs"]:
-            if "tests" in base_config["python"]["gates"]:
-                base_config["python"]["gates"]["tests"]["test_dirs"] = detected[
-                    "test_dirs"
-                ]
-        for gate in [
-            "lint-format",
-            "tests",
-            "coverage",
-            "static-analysis",
-            "type-checking",
-        ]:
-            if gate in base_config["python"]["gates"]:
-                base_config["python"]["gates"][gate]["enabled"] = True
+    """Disable categories and gates that don't apply to this project.
 
-    if detected["has_javascript"]:
-        base_config["javascript"]["enabled"] = True
-        for gate in ["lint-format", "tests"]:
-            if gate in base_config["javascript"]["gates"]:
-                base_config["javascript"]["gates"][gate]["enabled"] = True
+    Starts from an all-enabled template and turns OFF things that
+    aren't relevant. This is the inverse of the old approach which
+    started disabled and turned things ON.
+    """
+    # Disable entire categories that don't apply
+    if not detected["has_python"]:
+        if "python" in base_config:
+            base_config["python"]["enabled"] = False
+            for gate in base_config["python"].get("gates", {}).values():
+                gate["enabled"] = False
+
+    if not detected["has_javascript"]:
+        if "javascript" in base_config:
+            base_config["javascript"]["enabled"] = False
+            for gate in base_config["javascript"].get("gates", {}).values():
+                gate["enabled"] = False
+
+    # Apply detected test dirs
+    if detected["has_python"] and detected["test_dirs"]:
+        if "tests" in base_config.get("python", {}).get("gates", {}):
+            base_config["python"]["gates"]["tests"]["test_dirs"] = detected["test_dirs"]
 
 
 def _apply_user_config(base_config: Dict[str, Any], config: Dict[str, Any]) -> None:
@@ -284,15 +284,16 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     from slopmop.utils.generate_base_config import (
         backup_config,
-        generate_base_config,
+        generate_template_config,
         write_template_config,
     )
 
     template_path = write_template_config(project_root)
     print(f"📄 Template saved to: {template_path}")
 
-    base_config = generate_base_config()
-    _apply_detected_settings(base_config, detected)
+    # Start from all-enabled template, then selectively disable
+    base_config = generate_template_config()
+    _disable_non_applicable(base_config, detected)
     _apply_user_config(base_config, config)
     _disable_checks_with_missing_tools(base_config, detected)
 

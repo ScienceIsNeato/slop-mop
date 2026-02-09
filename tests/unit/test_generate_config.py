@@ -107,6 +107,16 @@ class TestGenerateLanguageConfig:
         assert "gates" in config
         assert "mock-check" in config["gates"]
 
+    def test_language_config_all_enabled(self):
+        """Test that all_enabled=True sets category and gates to enabled."""
+        check = MockCheck({})
+        config = generate_language_config(
+            [check], GateCategory.PYTHON, all_enabled=True
+        )
+
+        assert config["enabled"] is True
+        assert config["gates"]["mock-check"]["enabled"] is True
+
     def test_gates_contain_check_configs(self):
         """Test that gates dictionary contains check configurations."""
         check = MockCheck({})
@@ -133,6 +143,26 @@ class TestGenerateBaseConfig:
         assert "default_profile" in config
         assert config["default_profile"] == "commit"
         assert "python" in config
+
+    def test_base_config_all_disabled_by_default(self):
+        """Test that base config has everything disabled by default."""
+        registry = CheckRegistry()
+        registry.register(MockCheck)
+
+        config = generate_base_config(registry)
+
+        assert config["python"]["enabled"] is False
+        assert config["python"]["gates"]["mock-check"]["enabled"] is False
+
+    def test_base_config_all_enabled_when_requested(self):
+        """Test that all_enabled=True enables everything."""
+        registry = CheckRegistry()
+        registry.register(MockCheck)
+
+        config = generate_base_config(registry, all_enabled=True)
+
+        assert config["python"]["enabled"] is True
+        assert config["python"]["gates"]["mock-check"]["enabled"] is True
 
     def test_categories_are_included(self):
         """Test that all categories with checks are included."""
@@ -275,11 +305,11 @@ class TestTemplateConfig:
         assert "general" in config
         assert "integration" in config
 
-    def test_generate_template_config_all_gates_disabled(self):
-        """Test that template config has all gates disabled."""
+    def test_generate_template_config_all_gates_enabled(self):
+        """Test that template config has all gates enabled."""
         config = generate_template_config()
 
-        # Check all category-level enabled flags are False
+        # Check all category-level enabled flags are True
         for category in [
             "python",
             "javascript",
@@ -290,14 +320,14 @@ class TestTemplateConfig:
         ]:
             if category in config:
                 assert (
-                    config[category]["enabled"] is False
-                ), f"{category} should be disabled"
+                    config[category]["enabled"] is True
+                ), f"{category} should be enabled"
 
-                # Check all gates are also disabled
+                # Check all gates are also enabled
                 for gate_name, gate_config in config[category].get("gates", {}).items():
                     assert (
-                        gate_config["enabled"] is False
-                    ), f"{category}:{gate_name} should be disabled"
+                        gate_config["enabled"] is True
+                    ), f"{category}:{gate_name} should be enabled"
 
     def test_write_template_config_creates_file(self):
         """Test that write_template_config creates the template file."""

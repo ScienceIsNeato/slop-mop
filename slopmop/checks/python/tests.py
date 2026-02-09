@@ -10,6 +10,7 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
+from slopmop.checks.constants import SKIP_NOT_PYTHON_PROJECT, skip_reason_no_test_files
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -86,11 +87,11 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         return False
 
     def skip_reason(self, project_root: str) -> str:
-        """Return reason for skipping - no Python test files."""
+        """Return skip reason when test prerequisites are missing."""
         if not self.is_python_project(project_root):
-            return "Not a Python project"
+            return SKIP_NOT_PYTHON_PROJECT
         test_dirs = self.config.get("test_dirs", ["tests"])
-        return f"No Python test files (test_*.py) found in {test_dirs}"
+        return skip_reason_no_test_files(test_dirs)
 
     def run(self, project_root: str) -> CheckResult:
         """Run pytest."""

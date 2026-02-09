@@ -18,6 +18,7 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
+from slopmop.checks.constants import SKIP_NOT_PYTHON_PROJECT, skip_reason_no_test_files
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
     COVERAGE_GUIDANCE_FOOTER,
@@ -129,11 +130,11 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         return False
 
     def skip_reason(self, project_root: str) -> str:
-        """Return reason for skipping - no Python test files."""
+        """Return skip reason when coverage prerequisites are missing."""
         if not self.is_python_project(project_root):
-            return "Not a Python project"
+            return SKIP_NOT_PYTHON_PROJECT
         test_dirs = self.config.get("test_dirs", ["tests"])
-        return f"No Python test files (test_*.py) found in {test_dirs}"
+        return skip_reason_no_test_files(test_dirs)
 
     def run(self, project_root: str) -> CheckResult:
         """Analyze coverage data and provide prescriptive output.
@@ -332,9 +333,9 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping - no Python test files."""
         if not self.is_python_project(project_root):
-            return "Not a Python project"
+            return SKIP_NOT_PYTHON_PROJECT
         test_dirs = self.config.get("test_dirs", ["tests"])
-        return f"No Python test files (test_*.py) found in {test_dirs}"
+        return skip_reason_no_test_files(test_dirs)
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
