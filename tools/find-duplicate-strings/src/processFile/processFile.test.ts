@@ -116,7 +116,10 @@ suite('processFile', () => {
     deepEqual(store.getAll(), []);
   });
 
-  test('should skip Python docstrings but capture regular strings', async () => {
+  test('should capture all quoted strings from Python files (language-agnostic)', async () => {
+    // processFile is language-agnostic — it captures ALL quoted strings.
+    // Docstring stripping is handled by Python pre-processing (strip_docstrings.py)
+    // BEFORE the Node tool ever sees the file.
     const path = resolve(dirname(fileURLToPath(import.meta.url)), './mocks/python-docstrings.py');
 
     await processFile(path);
@@ -124,33 +127,27 @@ suite('processFile', () => {
     const all = store.getAll();
     const keys = all.map((item: { key: string }) => item.key);
 
-    // Docstrings should NOT be captured
-    deepEqual(
-      keys.includes('Return reason for skipping - a common docstring.'),
-      false,
-      'Docstrings should be excluded from Python files'
-    );
-    deepEqual(
-      keys.includes('Module docstring that should be ignored.'),
-      false,
-      'Module-level docstrings should be excluded'
-    );
-    deepEqual(
-      keys.includes('Another docstring with the same text.'),
-      false,
-      'Class docstrings should be excluded'
-    );
-
-    // Regular strings SHOULD be captured
+    // All quoted strings should be captured — processFile doesn't
+    // distinguish docstrings from regular strings
     deepEqual(
       keys.includes('actual string constant'),
       true,
-      'Regular string literals should still be captured'
+      'Regular string literals should be captured'
     );
     deepEqual(
       keys.includes('this is a regular string'),
       true,
-      'Non-docstring strings should still be captured'
+      'Regular strings should be captured'
+    );
+    deepEqual(
+      keys.includes('Return reason for skipping - a common docstring.'),
+      true,
+      'Docstring content is captured (pre-processing strips before scanning)'
+    );
+    deepEqual(
+      keys.includes('Module docstring that should be ignored.'),
+      true,
+      'Module docstrings are captured (pre-processing strips before scanning)'
     );
   });
 });

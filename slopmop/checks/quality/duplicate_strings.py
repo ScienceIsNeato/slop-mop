@@ -1,10 +1,13 @@
 """String duplication check using vendored find-duplicate-strings tool."""
 
+import glob as globmod
 import json
 import os
+import shutil
+import tempfile
 import time
 from pathlib import Path
-from typing import Any, List, cast
+from typing import Any, Dict, List, Optional, cast
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
@@ -312,6 +315,71 @@ class StringDuplicationCheck(BaseCheck):
 
         return "\n".join(lines)
 
+    def _get_strip_docstrings_path(self) -> Path:
+        """Get path to the strip_docstrings.py helper script."""
+        current_file = Path(__file__)
+        project_root = current_file.parent.parent.parent.parent
+        return project_root / "tools" / "find-duplicate-strings" / "strip_docstrings.py"
+
+    def _preprocess_python_files(
+        self, project_root: str, config: Dict[str, Any]
+    ) -> Optional[str]:
+        """Pre-process Python files by stripping docstrings into a temp dir.
+
+        Uses Python's tokenize module (via strip_docstrings.py) which
+        correctly handles all edge cases that regex-based approaches
+        cannot: internal quotes, escaped characters, nested patterns.
+
+        Returns the temp directory path, or None if no .py files found.
+        The caller is responsible for cleaning up the temp dir.
+        """
+        include_patterns = config.get("include_patterns", ["**/*.py"])
+        ignore_patterns = config.get("ignore_patterns", [])
+
+        # Only pre-process if we're scanning Python files
+        has_python_patterns = any(
+            p.endswith(".py") or p.endswith(".py}") for p in include_patterns
+        )
+        if not has_python_patterns:
+            return None
+
+        # Find all .py files that match include patterns
+        py_files: list[str] = []
+        for pattern in include_patterns:
+            if not pattern.endswith(".py"):
+                continue
+            matched = globmod.glob(os.path.join(project_root, pattern), recursive=True)
+            for f in matched:
+                # Apply ignore patterns
+                rel = os.path.relpath(f, project_root)
+                skip = False
+                for ign in ignore_patterns:
+                    if globmod.fnmatch.fnmatch(rel, ign):  # type: ignore[attr-defined]
+                        skip = True
+                        break
+                if not skip:
+                    py_files.append(f)
+
+        if not py_files:
+            return None
+
+        # Create temp dir and strip docstrings into it
+        tmp_dir = tempfile.mkdtemp(prefix="sm-string-dup-")
+        strip_script = self._get_strip_docstrings_path()
+
+        # Use the strip_docstrings module directly (same Python process)
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "strip_docstrings", str(strip_script)
+        )
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.batch_strip(py_files, project_root, tmp_dir)
+
+        return tmp_dir
+
     def run(self, project_root: str) -> CheckResult:
         """Run the string duplication check."""
         start_time = time.time()
@@ -331,11 +399,15 @@ class StringDuplicationCheck(BaseCheck):
                 ),
             )
 
-        # Build and run command
-        cmd = self._build_command(effective_config)
+        # Pre-process Python files: strip docstrings into temp dir
+        # so the Node tool scans clean source without triple-quoted noise
+        tmp_dir = self._preprocess_python_files(project_root, effective_config)
+        scan_root = tmp_dir if tmp_dir else project_root
 
         try:
-            result = self._run_command(cmd, cwd=project_root)
+            # Build and run command against (possibly pre-processed) source
+            cmd = self._build_command(effective_config)
+            result = self._run_command(cmd, cwd=scan_root)
         except Exception as e:
             return self._create_result(
                 status=CheckStatus.ERROR,
@@ -343,10 +415,18 @@ class StringDuplicationCheck(BaseCheck):
                 output="",
                 error=f"Failed to run find-duplicate-strings: {e}",
             )
+        finally:
+            # Always clean up temp dir
+            if tmp_dir:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
 
-        # Parse JSON output
+        # Parse JSON output — remap temp paths back to originals
         stdout = result.stdout.strip() if result.stdout else ""
         stderr = result.stderr.strip() if result.stderr else ""
+
+        # If we used a temp dir, remap paths in the output back to project_root
+        if tmp_dir and stdout:
+            stdout = stdout.replace(tmp_dir, project_root)
 
         if not stdout:
             return self._create_result(
