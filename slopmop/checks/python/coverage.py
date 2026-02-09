@@ -116,7 +116,19 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_python_project(project_root)
+        """Applicable only if there are Python test files (coverage needs tests)."""
+        if not self.is_python_project(project_root):
+            return False
+        # Coverage requires test files to exist
+        root = Path(project_root)
+        tests_dir = root / "tests"
+        return tests_dir.exists() and any(tests_dir.rglob("test_*.py"))
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no Python test files."""
+        if not self.is_python_project(project_root):
+            return "Not a Python project"
+        return "No Python test files (test_*.py) found in tests/"
 
     def run(self, project_root: str) -> CheckResult:
         """Analyze coverage data and provide prescriptive output.
@@ -301,7 +313,18 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
         return ["python:tests"]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_python_project(project_root)
+        """Applicable only if there are Python test files (coverage needs tests)."""
+        if not self.is_python_project(project_root):
+            return False
+        root = Path(project_root)
+        tests_dir = root / "tests"
+        return tests_dir.exists() and any(tests_dir.rglob("test_*.py"))
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no Python test files."""
+        if not self.is_python_project(project_root):
+            return "Not a Python project"
+        return "No Python test files (test_*.py) found in tests/"
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()

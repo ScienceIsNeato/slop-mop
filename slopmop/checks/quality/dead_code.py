@@ -110,6 +110,10 @@ class DeadCodeCheck(BaseCheck):
         root = Path(project_root)
         return any(root.rglob("*.py"))
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no Python source files."""
+        return "No Python files found to scan for dead code"
+
     def _get_min_confidence(self) -> int:
         """Get configured minimum confidence threshold."""
         return self.config.get("min_confidence", DEFAULT_MIN_CONFIDENCE)

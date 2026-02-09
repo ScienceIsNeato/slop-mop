@@ -311,6 +311,11 @@ class BogusTestsCheck(BaseCheck):
                 return True
         return False
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no Python test files."""
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return f"No Python test files (test_*.py) found in {test_dirs}"
+
     def run(self, project_root: str) -> CheckResult:
         """Scan test files for bogus test patterns."""
         start_time = time.time()

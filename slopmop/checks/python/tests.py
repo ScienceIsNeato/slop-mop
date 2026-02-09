@@ -1,6 +1,7 @@
 """Python test execution check using pytest."""
 
 import time
+from pathlib import Path
 from typing import List
 
 from slopmop.checks.base import (
@@ -72,7 +73,24 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_python_project(project_root)
+        """Applicable only if there are Python test files to run."""
+        if not self.is_python_project(project_root):
+            return False
+        # Check for actual test files
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        root = Path(project_root)
+        for test_dir in test_dirs:
+            d = root / test_dir
+            if d.exists() and any(d.rglob("test_*.py")):
+                return True
+        return False
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no Python test files."""
+        if not self.is_python_project(project_root):
+            return "Not a Python project"
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return f"No Python test files (test_*.py) found in {test_dirs}"
 
     def run(self, project_root: str) -> CheckResult:
         """Run pytest."""

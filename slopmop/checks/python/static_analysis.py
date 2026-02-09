@@ -4,6 +4,7 @@ import os
 import re
 import time
 from collections import Counter
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 from slopmop.checks.base import (
@@ -83,11 +84,20 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         return ["python:lint-format"]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_python_project(project_root)
+        """Applicable only if there are Python source directories to type-check."""
+        if not self.is_python_project(project_root):
+            return False
+        # Only run if we can find actual source directories (not just scattered scripts)
+        # This avoids running mypy on "." which causes issues with submodules
+        source_dirs = self._detect_source_dirs(project_root)
+        # Falls back to ["."] when no proper source dirs found - skip in that case
+        return source_dirs != ["."]
 
     def skip_reason(self, project_root: str) -> str:
-        """Return reason for skipping (delegates to PythonCheckMixin)."""
-        return PythonCheckMixin.skip_reason(self, project_root)
+        """Return reason for skipping."""
+        if not self.is_python_project(project_root):
+            return PythonCheckMixin.skip_reason(self, project_root)
+        return "No Python source directories found (src/, slopmop/, lib/, or packages with __init__.py)"
 
     def _is_strict(self) -> bool:
         """Whether strict typing mode is enabled."""
@@ -98,8 +108,12 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         source_dirs: List[str] = []
 
         for name in ["src", "slopmop", "lib"]:
-            if os.path.isdir(os.path.join(project_root, name)):
-                source_dirs.append(name)
+            dir_path = os.path.join(project_root, name)
+            # Only include if directory exists AND contains Python files
+            if os.path.isdir(dir_path):
+                has_python = any(Path(dir_path).rglob("*.py"))
+                if has_python:
+                    source_dirs.append(name)
 
         if not source_dirs:
             for entry in os.listdir(project_root):

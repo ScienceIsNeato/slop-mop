@@ -124,6 +124,10 @@ class StringDuplicationCheck(BaseCheck):
         # Check for Python files by default
         return any(root.rglob("*.py"))
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no Python source files."""
+        return "No Python files found to scan for duplicate strings"
+
     def _get_tool_path(self) -> Path:
         """Get the path to the vendored find-duplicate-strings tool."""
         # Navigate from this file to tools/find-duplicate-strings

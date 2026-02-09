@@ -115,6 +115,10 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         has_js = any(root.rglob("*.js")) or any(root.rglob("*.ts"))
         return has_py or has_js
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no source files to scan."""
+        return "No Python, JavaScript, or TypeScript files found to scan for security issues"
+
     def run(self, project_root: str) -> CheckResult:
         """Run all local security checks in parallel."""
         start_time = time.time()
