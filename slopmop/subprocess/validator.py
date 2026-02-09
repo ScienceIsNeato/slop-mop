@@ -34,8 +34,10 @@ class CommandValidator:
     # Patterns for executables that follow a predictable naming scheme
     # (e.g. python3.14, python3.15) so we don't need to update a list
     # every time a new point release ships.
+    # NOTE: Uses \Z (not $) because $ matches before a trailing \n,
+    # which would let "python3.13\n" through a security boundary.
     ALLOWED_EXECUTABLE_PATTERNS: List[re.Pattern[str]] = [
-        re.compile(r"^python3\.\d+$"),
+        re.compile(r"^python3\.\d+\Z"),
     ]
 
     # Whitelist of allowed executables

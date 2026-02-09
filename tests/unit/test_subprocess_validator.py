@@ -111,5 +111,11 @@ class TestCommandValidator:
     def test_rejects_python_lookalikes_via_pattern(self):
         """Executable names that look like python but aren't should be rejected."""
         validator = CommandValidator()
-        for bad in ["python3.", "python3.x", "python4.0", "python3.13.1"]:
+        for bad in [
+            "python3.",
+            "python3.x",
+            "python4.0",
+            "python3.13.1",
+            "python3.13\n",
+        ]:
             assert validator.is_allowed(bad) is False
