@@ -115,4 +115,42 @@ suite('processFile', () => {
 
     deepEqual(store.getAll(), []);
   });
+
+  test('should skip Python docstrings but capture regular strings', async () => {
+    const path = resolve(dirname(fileURLToPath(import.meta.url)), './mocks/python-docstrings.py');
+
+    await processFile(path);
+
+    const all = store.getAll();
+    const keys = all.map((item: { key: string }) => item.key);
+
+    // Docstrings should NOT be captured
+    deepEqual(
+      keys.includes('Return reason for skipping - a common docstring.'),
+      false,
+      'Docstrings should be excluded from Python files'
+    );
+    deepEqual(
+      keys.includes('Module docstring that should be ignored.'),
+      false,
+      'Module-level docstrings should be excluded'
+    );
+    deepEqual(
+      keys.includes('Another docstring with the same text.'),
+      false,
+      'Class docstrings should be excluded'
+    );
+
+    // Regular strings SHOULD be captured
+    deepEqual(
+      keys.includes('actual string constant'),
+      true,
+      'Regular string literals should still be captured'
+    );
+    deepEqual(
+      keys.includes('this is a regular string'),
+      true,
+      'Non-docstring strings should still be captured'
+    );
+  });
 });
