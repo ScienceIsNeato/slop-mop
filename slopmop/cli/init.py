@@ -52,7 +52,7 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
     print(f"  Pytest detected:     {'✅' if detected['has_pytest'] else '❌'}")
     print(f"  Jest detected:       {'✅' if detected['has_jest'] else '❌'}")
     print()
-    
+
     # Show tool availability
     if detected.get("missing_tools"):
         print("⚠️  Missing Tools (checks will be disabled):")
@@ -62,7 +62,7 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
         print()
         print("   After installing, re-run: sm init")
         print()
-    
+
     print(f"  Recommended profile: {detected['recommended_profile']}")
     if detected["recommended_gates"]:
         print(f"  Recommended gates:   {', '.join(detected['recommended_gates'])}")
@@ -202,20 +202,20 @@ def _disable_checks_with_missing_tools(
     base_config: Dict[str, Any], detected: Dict[str, Any]
 ) -> None:
     """Disable checks whose required tools are missing.
-    
+
     This prevents ERROR status from missing tools - if the tool isn't
     available, the check is disabled rather than failing.
     """
     missing_tools = detected.get("missing_tools", [])
     if not missing_tools:
         return
-    
+
     for _tool_name, check_name, _install_cmd in missing_tools:
         # Parse check name: "quality:dead-code" -> category="quality", gate="dead-code"
         if ":" not in check_name:
             continue
         category, gate = check_name.split(":", 1)
-        
+
         if category in base_config and "gates" in base_config[category]:
             if gate in base_config[category]["gates"]:
                 base_config[category]["gates"][gate]["enabled"] = False

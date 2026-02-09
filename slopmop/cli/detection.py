@@ -25,7 +25,7 @@ def _find_tool_in_venv(name: str, project_root: Path) -> str | None:
 
 def _detect_tools(project_root: Path) -> Dict[str, Any]:
     """Detect which required tools are available.
-    
+
     Returns:
         Dict with:
         - available_tools: list of tool names that are installed
@@ -33,7 +33,7 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
     """
     available: List[str] = []
     missing: List[Tuple[str, str, str]] = []
-    
+
     for tool_name, check_name, install_cmd in REQUIRED_TOOLS:
         # Check venv first, then system PATH
         found = _find_tool_in_venv(tool_name, project_root) or shutil.which(tool_name)
@@ -41,7 +41,7 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
             available.append(tool_name)
         else:
             missing.append((tool_name, check_name, install_cmd))
-    
+
     return {
         "available_tools": available,
         "missing_tools": missing,
@@ -179,7 +179,7 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     detected["has_tests_dir"] = bool(detected["test_dirs"])
     detected["recommended_gates"] = _recommend_gates(detected)
     detected["recommended_profile"] = _recommend_profile(detected)
-    
+
     # Detect tool availability
     tool_info = _detect_tools(project_root)
     detected["available_tools"] = tool_info["available_tools"]

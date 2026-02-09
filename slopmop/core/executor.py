@@ -21,11 +21,11 @@ def _is_gate_enabled_in_config(
     check: BaseCheck, config: Dict[str, Any]
 ) -> Tuple[bool, str]:
     """Check if a gate is enabled in the config.
-    
+
     Args:
         check: The check instance
         config: Configuration dictionary from .sb_config.json
-        
+
     Returns:
         Tuple of (is_enabled, reason_if_disabled)
     """
@@ -33,26 +33,29 @@ def _is_gate_enabled_in_config(
     disabled_gates = config.get("disabled_gates", [])
     if check.full_name in disabled_gates:
         return False, f"{check.full_name} is in disabled_gates list"
-    
+
     category_key = check.category.key  # e.g., "python", "javascript", "quality"
     gate_name = check.name  # e.g., "lint-format", "dead-code"
-    
+
     # Check if language/category is enabled
     if category_key in config:
         category_config = config[category_key]
-        
+
         # If category itself is disabled, all its gates are disabled
         if isinstance(category_config, dict):
             if category_config.get("enabled") is False:
                 return False, f"{category_key} language is disabled in config"
-            
+
             # Check if specific gate is disabled
             gates = category_config.get("gates", {})
             if gate_name in gates:
                 gate_config = gates[gate_name]
-                if isinstance(gate_config, dict) and gate_config.get("enabled") is False:
+                if (
+                    isinstance(gate_config, dict)
+                    and gate_config.get("enabled") is False
+                ):
                     return False, f"{check.full_name} is disabled in config"
-    
+
     return True, ""
 
 
@@ -142,7 +145,7 @@ class CheckExecutor:
                 logger.info(f"Disabled — {check.full_name}: {reason}")
                 # Don't add to results - just skip silently
                 # (user explicitly disabled, not a "not applicable" case)
-        
+
         if not enabled_checks:
             logger.warning("All checks are disabled")
             duration = time.time() - start_time
