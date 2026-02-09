@@ -15,6 +15,7 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, List
 
 from slopmop.checks.base import (
@@ -73,7 +74,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-validate:
-      sm validate security:local --verbose
+      ./sm validate security:local --verbose
     """
 
     @property
@@ -103,6 +104,17 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 default=EXCLUDED_DIRS.copy(),
                 description="Directories to exclude from scanning",
             ),
+            ConfigField(
+                name="bandit_config_file",
+                field_type="string",
+                default=None,
+                description=(
+                    "Path to bandit config file (e.g. .bandit, pyproject.toml). "
+                    "Separate from the standard config_file_path which is used "
+                    "by detect-secrets (.secrets.baseline)"
+                ),
+                required=False,
+            ),
         ]
 
     def is_applicable(self, project_root: str) -> bool:
@@ -114,6 +126,10 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         has_py = any(root.rglob("*.py"))
         has_js = any(root.rglob("*.js")) or any(root.rglob("*.ts"))
         return has_py or has_js
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no source files to scan."""
+        return "No Python, JavaScript, or TypeScript files found to scan for security issues"
 
     def run(self, project_root: str) -> CheckResult:
         """Run all local security checks in parallel."""
@@ -164,8 +180,10 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     def _run_bandit(self, project_root: str) -> SecuritySubResult:
         """Run bandit static analysis."""
-        # Check for config file
-        config_file = self.config.get("config_file_path")
+        # Check for bandit-specific config file (e.g., .bandit, pyproject.toml with [tool.bandit])
+        # Note: config_file_path in user config may be for detect-secrets (.secrets.baseline),
+        # not bandit. Only use it for bandit if it's a known bandit config format.
+        config_file = self.config.get("bandit_config_file")
 
         cmd = [
             self.get_project_python(project_root),
@@ -178,14 +196,16 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             "--quiet",
         ]
 
-        # Use config file if specified, otherwise use defaults
-        if config_file:
+        # Always apply exclude paths
+        exclude_paths = ",".join(f"./{d}" for d in self._get_exclude_dirs())
+        cmd.extend(["--exclude", exclude_paths])
+
+        # Use config file if specified for bandit, otherwise use skip defaults
+        if config_file and Path(project_root, config_file).exists():
             cmd.extend(["--configfile", config_file])
         else:
+            # B101 = assert usage, B110 = try-except-pass (common patterns)
             cmd.extend(["--skip", "B101,B110"])
-            # Bandit wants comma-separated exclude paths
-            exclude_paths = ",".join(f"./{d}" for d in self._get_exclude_dirs())
-            cmd.extend(["--exclude", exclude_paths])
 
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 
@@ -310,7 +330,7 @@ class SecurityCheck(SecurityLocalCheck):
       pip-audit not available: pip install pip-audit
 
     Re-validate:
-      sm validate security:full --verbose
+      ./sm validate security:full --verbose
     """
 
     @property

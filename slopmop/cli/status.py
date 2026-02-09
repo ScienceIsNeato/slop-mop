@@ -168,7 +168,7 @@ def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
                 print(f"   {r.error}")
             if r.fix_suggestion:
                 print(f"   Fix: {r.fix_suggestion}")
-            print(f"   Verify: sm validate {r.name}")
+            print(f"   Verify: ./sm validate {r.name}")
 
     if warned:
         print()
@@ -245,7 +245,7 @@ def _print_recommendations(
     print()
 
     for gate in sorted(recommended):
-        print(f"   sm validate {gate:<30}  # try it out")
+        print(f"   ./sm validate {gate:<30}  # try it out")
 
     print()
     print("Run individually to see results, then add to your profile incrementally.")

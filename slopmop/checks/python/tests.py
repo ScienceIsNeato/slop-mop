@@ -9,6 +9,11 @@ from slopmop.checks.base import (
     GateCategory,
     PythonCheckMixin,
 )
+from slopmop.checks.constants import (
+    SKIP_NOT_PYTHON_PROJECT,
+    has_python_test_files,
+    skip_reason_no_test_files,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -35,7 +40,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
           Usually a missing dependency or renamed module.
 
     Re-validate:
-      sm validate python:tests --verbose
+      ./sm validate python:tests --verbose
     """
 
     @property
@@ -72,7 +77,18 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_python_project(project_root)
+        """Applicable only if there are Python test files to run."""
+        if not self.is_python_project(project_root):
+            return False
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return has_python_test_files(project_root, test_dirs)
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return skip reason when test prerequisites are missing."""
+        if not self.is_python_project(project_root):
+            return SKIP_NOT_PYTHON_PROJECT
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return skip_reason_no_test_files(test_dirs)
 
     def run(self, project_root: str) -> CheckResult:
         """Run pytest."""

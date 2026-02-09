@@ -28,27 +28,34 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 
-[project.optional-dependencies]
-dev = [
+# All dependencies - both runtime tools and development/testing
+dependencies = [
+    # Tools slop-mop checks rely on
+    "vulture>=2.14",
+    "ruff>=0.1.0",
+    # Testing
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "diff-cover>=7.0.0",
+    # Code quality
     "black>=23.0.0",
     "isort>=5.12.0",
     "autoflake>=2.0.0",
     "mypy>=1.0.0",
     "pyright>=1.1.0",
     "flake8>=6.0.0",
+    # Security
     "bandit>=1.7.0",
     "detect-secrets>=1.4.0",
     "semgrep>=1.0.0",
     "pip-audit>=2.0.0",
+    # Templating
     "jinja2>=3.0.0",
-    "vulture>=2.14",
 ]
 
-[project.scripts]
-sm = "slopmop.sm:main"
+# NOTE: No [project.scripts] section. slop-mop is designed to run directly
+# from the submodule via `python -m slopmop.sm`, NOT installed as a global
+# pip package. Each project uses its own copy via git submodule. See README.
 
 [project.urls]
 Homepage = "https://github.com/ScienceIsNeato/slop-mop"
@@ -82,7 +89,7 @@ addopts = "-v --tb=short"
 
 [tool.coverage.run]
 source = ["slopmop"]
-omit = ["tests/*", "setup.py"]
+omit = ["tests/*"]
 
 [tool.coverage.report]
 # fail_under handled by slopmop coverage check

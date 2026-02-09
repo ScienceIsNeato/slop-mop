@@ -1,4 +1,4 @@
-import { globSync } from "glob";
+import { globSync } from 'glob';
 
 export function getFiles(path: string, ignore: string[]): string[] {
   return globSync(path, {

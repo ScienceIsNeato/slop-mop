@@ -1,6 +1,8 @@
-# Core dependencies (none - slopbucket is a standalone tool)
+# Slop-Mop Dependencies
+# This is the single source of truth for tool dependencies.
+# Install via: pip install -r requirements.txt (in your project venv)
 
-# Development dependencies
+# Testing
 pytest>=7.0.0
 pytest-cov>=4.0.0
 diff-cover>=7.0.0

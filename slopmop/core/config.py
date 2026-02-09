@@ -343,7 +343,7 @@ def validate_include_dirs(
         raise ConfigError(
             f"{gate_name}: No include_dirs configured",
             fix_suggestion=(
-                f'Run "sm init" to configure, or add to .sb_config.json:\n'
+                f'Run "./sm init" to configure, or add to .sb_config.json:\n'
                 f'  "{language}": {{ "include_dirs": ["src"] }}'
             ),
         )

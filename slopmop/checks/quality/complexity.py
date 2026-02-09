@@ -50,7 +50,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
       radon not available: pip install radon
 
     Re-validate:
-      sm validate quality:complexity --verbose
+      ./sm validate quality:complexity --verbose
     """
 
     @property

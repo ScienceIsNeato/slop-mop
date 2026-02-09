@@ -92,7 +92,7 @@ class LocLockCheck(BaseCheck):
           concepts. Three 30-line functions > one 90-line function.
 
     Re-validate:
-      sm validate quality:loc-lock --verbose
+      ./sm validate quality:loc-lock --verbose
     """
 
     @property

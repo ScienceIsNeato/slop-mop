@@ -40,7 +40,7 @@ def _show_gate_help(gate_name: str) -> int:
             print()
             return 0
         print(f"❌ Unknown quality gate: {gate_name}")
-        print("   Run 'sm help' to see all available gates")
+        print("   Run './sm help' to see all available gates")
         return 1
 
     # Get the check class for more details
@@ -111,7 +111,7 @@ def _show_all_gates() -> int:
     print()
     print("Legend: 🔧 = supports auto-fix")
     print()
-    print("For detailed help on a gate: sm help <gate-name>")
+    print("For detailed help on a gate: ./sm help <gate-name>")
     print()
     return 0
 

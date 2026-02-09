@@ -254,7 +254,7 @@ class TestDeadCodeCheck:
         assert "1 dead code finding(s)" in result.error
 
     def test_run_vulture_not_installed(self, check, tmp_path):
-        """Test graceful handling when vulture is not installed."""
+        """Test warning when vulture is not installed."""
         (tmp_path / "app.py").write_text("pass")
         mock_result = MagicMock()
         mock_result.success = False
@@ -266,8 +266,26 @@ class TestDeadCodeCheck:
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check.run(str(tmp_path))
 
+        # Should be WARNED — vulture missing is non-blocking
         assert result.status == CheckStatus.WARNED
-        assert "not available" in result.error
+        assert "vulture not available" in result.error.lower()
+        assert "install vulture" in result.fix_suggestion.lower()
+
+    def test_run_vulture_not_installed_exit_127(self, check, tmp_path):
+        """Test warning when shell returns 127 (command not found)."""
+        (tmp_path / "app.py").write_text("pass")
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.returncode = 127
+        mock_result.output = ""
+        mock_result.stderr = ""
+        mock_result.timed_out = False
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert "vulture not available" in result.error.lower()
 
     def test_run_multiple_findings(self, check, tmp_path):
         """Test run() with multiple findings produces correct count."""

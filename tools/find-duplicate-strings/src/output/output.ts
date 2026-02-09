@@ -1,7 +1,7 @@
-import { createWriteStream, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { createWriteStream, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-import type { Finding } from "../typings/finding.js";
+import type { Finding } from '../typings/finding.js';
 
 export class Output {
   private data: Finding[];
@@ -10,7 +10,7 @@ export class Output {
 
   public constructor(
     input: Finding[],
-    private outputFileName = "fds-output",
+    private outputFileName = 'fds-output'
   ) {
     this.data = input.sort((a, b) => b.count - a.count);
     this.path = resolve(process.cwd(), `${this.outputFileName}.json`);
@@ -20,7 +20,7 @@ export class Output {
     const createFileName = (path: string) => {
       if (existsSync(path)) {
         return createFileName(
-          resolve(process.cwd(), `${this.outputFileName}-${++this.count}.json`),
+          resolve(process.cwd(), `${this.outputFileName}-${++this.count}.json`)
         );
       }
       return path;
@@ -31,15 +31,15 @@ export class Output {
 
   private outputToFile(output: Finding[], filePath: string): void {
     const writeStream = createWriteStream(filePath, {
-      flags: "w",
+      flags: 'w',
     });
-    writeStream.write("[");
+    writeStream.write('[');
     output.forEach((finding, i) => {
       writeStream.write(JSON.stringify(finding, null, 2));
       if (i !== output.length - 1) {
-        writeStream.write(",");
+        writeStream.write(',');
       }
     });
-    writeStream.write("]");
+    writeStream.write(']');
   }
 }

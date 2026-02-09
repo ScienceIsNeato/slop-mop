@@ -1,18 +1,16 @@
-import { createReadStream } from "node:fs";
-import { createInterface } from "node:readline";
+import { createReadStream } from 'node:fs';
+import { createInterface } from 'node:readline';
 
-import { store } from "../store/store.js";
+import { store } from '../store/store.js';
 
 export function processFile(path: string): Promise<void> {
   return new Promise((resolve) => {
     createInterface({
-      input: createReadStream(path, { encoding: "utf-8" }),
+      input: createReadStream(path, { encoding: 'utf-8' }),
       terminal: false,
     })
-      .on("line", (line) => {
-        const matches = line.match(
-          /(?:("[^"\\]*(?:\\.[^"\\]*)*")|('[^'\\]*(?:\\.[^'\\]*)*'))/g,
-        );
+      .on('line', (line) => {
+        const matches = line.match(/(?:("[^"\\]*(?:\\.[^"\\]*)*")|('[^'\\]*(?:\\.[^'\\]*)*'))/g);
 
         if (matches) {
           for (const match of matches) {
@@ -23,7 +21,7 @@ export function processFile(path: string): Promise<void> {
           }
         }
       })
-      .on("close", () => {
+      .on('close', () => {
         resolve();
       });
   });

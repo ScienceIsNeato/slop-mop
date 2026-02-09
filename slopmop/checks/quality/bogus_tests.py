@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.constants import skip_reason_no_test_files
 from slopmop.core.result import CheckResult, CheckStatus
 
 # Pytest assertion helpers that count as "real" assertions
@@ -265,7 +266,7 @@ class BogusTestsCheck(BaseCheck):
           mock.assert_called, etc.
 
     Re-validate:
-      sm validate quality:bogus-tests --verbose
+      ./sm validate quality:bogus-tests --verbose
     """
 
     @property
@@ -310,6 +311,11 @@ class BogusTestsCheck(BaseCheck):
             if d.exists() and any(d.rglob("test_*.py")):
                 return True
         return False
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return skip reason when no test files exist to scan."""
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return skip_reason_no_test_files(test_dirs)
 
     def run(self, project_root: str) -> CheckResult:
         """Scan test files for bogus test patterns."""

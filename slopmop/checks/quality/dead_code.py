@@ -46,10 +46,9 @@ class DeadCodeCheck(BaseCheck):
           if it's used dynamically (e.g., via getattr, entrypoints).
       Unused import: Remove it or mark with # noqa if needed for
           side effects.
-      vulture not available: pip install vulture
 
     Re-validate:
-      sm validate quality:dead-code --verbose
+      ./sm validate quality:dead-code --verbose
     """
 
     @property
@@ -110,6 +109,10 @@ class DeadCodeCheck(BaseCheck):
 
         root = Path(project_root)
         return any(root.rglob("*.py"))
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping - no Python source files."""
+        return "No Python files found to scan for dead code"
 
     def _get_min_confidence(self) -> int:
         """Get configured minimum confidence threshold."""
@@ -187,7 +190,7 @@ class DeadCodeCheck(BaseCheck):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
         duration = time.time() - start_time
 
-        # Handle tool not installed (shell returns 127, SubprocessRunner returns -1)
+        # Handle tool not installed — warn but don't block
         if result.returncode == 127 or (
             result.returncode == -1 and "Command not found" in result.stderr
         ):
