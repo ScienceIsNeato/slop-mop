@@ -60,13 +60,13 @@ Iterate until all gates pass, then commit. Use `sm status` for a full report car
 
 ### Python
 
-| Gate                       | Description                                    |
-| -------------------------- | ---------------------------------------------- |
-| `python:lint-format`       | 🎨 Code formatting (black, isort, flake8)      |
-| `python:static-analysis`   | 🔍 Type checking with strict typing (mypy)     |
-| `python:tests`             | 🧪 Test execution (pytest)                     |
-| `python:coverage`          | 📊 Whole repo coverage analysis (80% threshold default)           |
-| `python:diff-coverage`     | 📊 Coverage on changed lines only (diff-cover) |
+| Gate                     | Description                                             |
+| ------------------------ | ------------------------------------------------------- |
+| `python:lint-format`     | 🎨 Code formatting (black, isort, flake8)               |
+| `python:static-analysis` | 🔍 Type checking with strict typing (mypy)              |
+| `python:tests`           | 🧪 Test execution (pytest)                              |
+| `python:coverage`        | 📊 Whole repo coverage analysis (80% threshold default) |
+| `python:diff-coverage`   | 📊 Coverage on changed lines only (diff-cover)          |
 
 ### JavaScript
 
@@ -91,15 +91,15 @@ Iterate until all gates pass, then commit. Use `sm status` for a full report car
 
 ### Security
 
-| Gate             | Description                                                               |
-| ---------------- | ------------------------------------------------------------------------- |
-| `security:local` | 🔐 Code security scan (bandit + semgrep + detect-secrets)                  |
-| `security:full`  | 🔒 Security audit (code scan + dependency vulnerabilities via pip-audit)   |
+| Gate             | Description                                                              |
+| ---------------- | ------------------------------------------------------------------------ |
+| `security:local` | 🔐 Code security scan (bandit + semgrep + detect-secrets)                |
+| `security:full`  | 🔒 Security audit (code scan + dependency vulnerabilities via pip-audit) |
 
 ### Profiles
 
-| Profile  | Description           | Gates Included                                                                                                           |
-| -------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Profile  | Description           | Gates Included                                                                                                                                |
+| -------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `commit` | Commit validation     | lint, static-analysis, tests, coverage, complexity, dead-code, loc-lock, duplication (source + string), bogus-tests, security-local, JS gates |
 | `pr`     | Full PR validation    | All commit gates + PR comments, diff-coverage, security-full                                                                                  |
 | `quick`  | Ultra-fast lint check | lint, security-local                                                                                                                          |
@@ -202,7 +202,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
       - run: pip install -e ".[dev]"
       - run: sm validate commit
       - if: github.event_name == 'pull_request'

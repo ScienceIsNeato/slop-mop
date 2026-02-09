@@ -1,4 +1,4 @@
-import type { Finding } from "../typings/finding.js";
+import type { Finding } from '../typings/finding.js';
 
 let findings: Map<string, Finding> = new Map();
 

@@ -10,14 +10,14 @@ Before writing any code, answer these questions honestly.
 
 ### Selection Criteria
 
-| Criterion | Must Pass |
-|---|---|
-| **Fast** — adds ≤2s to a typical commit validation run | ✅ |
-| **Canonical** — wraps an established, well-maintained tool (not a custom script) when one exists | ✅ |
-| **Value > Friction** — catches real problems agents actually create, not theoretical ones | ✅ |
-| **Reliable on *nix** — works on macOS and Linux without platform-specific hacks | ✅ |
-| **Deterministic** — same input produces same pass/fail, no flaky results | ✅ |
-| **Actionable output** — failure message tells an LLM exactly what to fix | ✅ |
+| Criterion                                                                                        | Must Pass |
+| ------------------------------------------------------------------------------------------------ | --------- |
+| **Fast** — adds ≤2s to a typical commit validation run                                           | ✅        |
+| **Canonical** — wraps an established, well-maintained tool (not a custom script) when one exists | ✅        |
+| **Value > Friction** — catches real problems agents actually create, not theoretical ones        | ✅        |
+| **Reliable on \*nix** — works on macOS and Linux without platform-specific hacks                 | ✅        |
+| **Deterministic** — same input produces same pass/fail, no flaky results                         | ✅        |
+| **Actionable output** — failure message tells an LLM exactly what to fix                         | ✅        |
 
 If any criterion fails, stop. File an issue to discuss whether the gate belongs here.
 
@@ -50,6 +50,7 @@ Document the reasoning behind each default value in the config field's `descript
 **This is the most important design decision.** The output is what an LLM reads when the gate fails. It must contain everything needed to fix the problem immediately, with no additional research required.
 
 Design the error output to include:
+
 - **What failed** — specific files and line numbers
 - **Why it failed** — the rule and threshold that was violated
 - **How to fix it** — exact command, code change, or approach
@@ -58,6 +59,7 @@ Design the error output to include:
 ### 1.4 Decide on Profiles
 
 Which profiles should include this gate?
+
 - `commit` — most gates go here (runs every commit)
 - `pr` — everything in commit + PR-specific checks
 - `quick` — lint-only, ultra-fast
@@ -76,25 +78,30 @@ tests/unit/test_<name>_check.py
 Write tests before the implementation. At minimum, cover:
 
 **Identity & metadata:**
+
 - `name`, `full_name`, `display_name`, `category` return expected values
 
 **Config:**
+
 - `config_schema` includes expected fields
 - Default values are correct
 - Custom values from config dict are respected
 
 **Applicability:**
+
 - `is_applicable()` returns `True` when relevant files/structure exist
 - `is_applicable()` returns `False` when they don't
 - Use `tmp_path` fixture for filesystem tests
 
 **Run scenarios (mock `_run_command`):**
+
 - Clean run → `CheckStatus.PASSED`
 - Findings found → `CheckStatus.FAILED` with correct output and `fix_suggestion`
 - Tool not installed (returncode 127) → `CheckStatus.ERROR` with install instruction
 - Timeout → appropriate error
 
 **Output quality:**
+
 - Error output includes file/line info
 - `fix_suggestion` is actionable
 - Output is capped/truncated for large results (avoid token bloat)
@@ -109,25 +116,26 @@ Inherit from `BaseCheck` (and optionally `PythonCheckMixin` or `JavaScriptCheckM
 
 **Required members** (5):
 
-| Member | Type | Description |
-|---|---|---|
-| `name` | `@property` | Lowercase hyphenated identifier. **No category prefix.** |
-| `display_name` | `@property` | Human-readable with emoji |
-| `category` | `@property` | `GateCategory` enum value |
-| `is_applicable(project_root)` | method | Returns `bool` |
-| `run(project_root)` | method | Returns `CheckResult` |
+| Member                        | Type        | Description                                              |
+| ----------------------------- | ----------- | -------------------------------------------------------- |
+| `name`                        | `@property` | Lowercase hyphenated identifier. **No category prefix.** |
+| `display_name`                | `@property` | Human-readable with emoji                                |
+| `category`                    | `@property` | `GateCategory` enum value                                |
+| `is_applicable(project_root)` | method      | Returns `bool`                                           |
+| `run(project_root)`           | method      | Returns `CheckResult`                                    |
 
 **Optional overrides:**
 
-| Member | Default | |
-|---|---|---|
-| `depends_on` | `[]` | List of `full_name` strings |
-| `config_schema` | `[]` | List of `ConfigField` |
-| `can_auto_fix()` | `False` | |
-| `auto_fix(project_root)` | `False` | |
-| `skip_reason(project_root)` | Generic message | |
+| Member                      | Default         |                             |
+| --------------------------- | --------------- | --------------------------- |
+| `depends_on`                | `[]`            | List of `full_name` strings |
+| `config_schema`             | `[]`            | List of `ConfigField`       |
+| `can_auto_fix()`            | `False`         |                             |
+| `auto_fix(project_root)`    | `False`         |                             |
+| `skip_reason(project_root)` | Generic message |                             |
 
 **The class docstring IS the help text.** `sm help <gate>` displays it directly. Write it like documentation, not like a code comment. Include:
+
 - What the gate checks and why it matters
 - What tool it wraps
 - What the default configuration is and why
@@ -138,6 +146,7 @@ Inherit from `BaseCheck` (and optionally `PythonCheckMixin` or `JavaScriptCheckM
 **Three places:**
 
 1. **Export from category `__init__.py`:**
+
    ```python
    # slopmop/checks/<category>/__init__.py
    from slopmop.checks.<category>.<module> import MyCheck
@@ -192,6 +201,7 @@ If you added the gate to profiles, update the profiles table and the "Commit vs 
 ### 3.3 Capture Example Output
 
 Run the gate against a project where it would fail. Capture the output. This serves two purposes:
+
 1. Proves the output is LLM-actionable
 2. Provides an example for the user to show what the gate does
 
