@@ -19,8 +19,7 @@ def has_python_test_files(project_root: str, test_dirs: list[str]) -> bool:
 
     root = Path(project_root)
     return any(
-        (root / d).exists() and any((root / d).rglob("test_*.py"))
-        for d in test_dirs
+        (root / d).exists() and any((root / d).rglob("test_*.py")) for d in test_dirs
     )
 
 
