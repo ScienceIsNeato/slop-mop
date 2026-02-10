@@ -18,12 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List
 
-from slopmop.checks.base import (
-    BaseCheck,
-    ConfigField,
-    GateCategory,
-    PythonCheckMixin,
-)
+from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
 from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus
 

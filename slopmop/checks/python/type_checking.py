@@ -30,12 +30,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from slopmop.checks.base import (
-    BaseCheck,
-    ConfigField,
-    GateCategory,
-    PythonCheckMixin,
-)
+from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus
 
 # pyright rules we enforce for type completeness

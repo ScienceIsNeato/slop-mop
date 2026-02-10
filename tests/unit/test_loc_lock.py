@@ -1,8 +1,6 @@
 """Tests for LocLockCheck."""
 
-from slopmop.checks.quality.loc_lock import (
-    LocLockCheck,
-)
+from slopmop.checks.quality.loc_lock import LocLockCheck
 from slopmop.core.result import CheckStatus
 
 
