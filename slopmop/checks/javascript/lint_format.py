@@ -90,8 +90,16 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         if npmrc_path.exists():
             try:
                 content = npmrc_path.read_text()
-                if "legacy-peer-deps=true" in content and "--legacy-peer-deps" not in cmd:
-                    cmd.append("--legacy-peer-deps")
+                # Parse line by line, ignoring comments (# and ;)
+                for line in content.splitlines():
+                    line = line.strip()
+                    # Skip comment lines
+                    if line.startswith("#") or line.startswith(";"):
+                        continue
+                    # Check for active legacy-peer-deps setting
+                    if "legacy-peer-deps=true" in line and "--legacy-peer-deps" not in cmd:
+                        cmd.append("--legacy-peer-deps")
+                        break
             except Exception:
                 pass  # Ignore .npmrc read errors
 

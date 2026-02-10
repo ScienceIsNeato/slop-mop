@@ -352,13 +352,15 @@ class PythonCheckMixin:
     def get_project_python(self, project_root: str) -> str:
         """Get the Python executable for the project.
 
-        Uses stepped fallback with warnings (FIXED: prioritizes project-local venvs):
+        Uses stepped fallback (project-local venvs prioritized):
         1. ./venv/bin/python or ./.venv/bin/python (project-local - highest priority)
-        2. VIRTUAL_ENV environment variable (with warning if different from project)
-        3. python3/python in PATH (system Python - with warning)
+        2. VIRTUAL_ENV environment variable (if no project venv exists)
+        3. python3/python in PATH (system Python)
         4. sys.executable (slop-mop's Python - last resort)
 
-        Warnings are logged once per project when falling back to non-venv Python.
+        Warnings are logged once per project when:
+        - Using project venv while VIRTUAL_ENV points to a different venv
+        - Falling back to system Python or sys.executable (non-venv)
         """
         if project_root in PythonCheckMixin._python_cache:
             return PythonCheckMixin._python_cache[project_root]
@@ -377,11 +379,12 @@ class PythonCheckMixin:
                 # Warn if VIRTUAL_ENV is set to a different location
                 virtual_env = os.environ.get("VIRTUAL_ENV")
                 if virtual_env and should_warn:
-                    venv_path_str = str(root / venv_dir)
-                    if not virtual_env.startswith(venv_path_str):
+                    project_venv_path = (root / venv_dir).resolve()
+                    virtual_env_path = Path(virtual_env).resolve()
+                    if project_venv_path != virtual_env_path:
                         logger.warning(
-                            f"⚠️  Using project venv: {venv_path_str}\n"
-                            f"   VIRTUAL_ENV is set to: {virtual_env}\n"
+                            f"⚠️  Using project venv: {project_venv_path}\n"
+                            f"   VIRTUAL_ENV is set to: {virtual_env_path}\n"
                             "   This is intentional - project venvs take priority."
                         )
                         PythonCheckMixin._venv_warning_shown.add(project_root)

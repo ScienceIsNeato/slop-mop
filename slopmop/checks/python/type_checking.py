@@ -82,19 +82,20 @@ def _detect_venv_path(project_root: str) -> Tuple[Optional[str], Optional[str]]:
     """Detect venv path and name for pyright config.
 
     Returns (venvPath, venv) tuple for pyrightconfig.json.
+    Priority: project-local venvs first, then VIRTUAL_ENV.
     """
-    # Check VIRTUAL_ENV env var first
+    # Check project-local venvs first (highest priority)
+    for venv_name in ["venv", ".venv"]:
+        venv_path = Path(project_root) / venv_name
+        if venv_path.exists():
+            return project_root, venv_name
+
+    # Fall back to VIRTUAL_ENV if no project venv exists
     virtual_env = os.environ.get("VIRTUAL_ENV")
     if virtual_env and Path(virtual_env).exists():
         venv_parent = str(Path(virtual_env).parent)
         venv_name = Path(virtual_env).name
         return venv_parent, venv_name
-
-    # Check common locations
-    for venv_name in ["venv", ".venv"]:
-        venv_path = Path(project_root) / venv_name
-        if venv_path.exists():
-            return project_root, venv_name
 
     return None, None
 
