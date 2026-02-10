@@ -352,10 +352,10 @@ class PythonCheckMixin:
     def get_project_python(self, project_root: str) -> str:
         """Get the Python executable for the project.
 
-        Uses stepped fallback with warnings:
-        1. VIRTUAL_ENV environment variable (if set and valid)
-        2. ./venv/bin/python or ./.venv/bin/python
-        3. python3/python in PATH (system Python)
+        Uses stepped fallback with warnings (FIXED: prioritizes project-local venvs):
+        1. ./venv/bin/python or ./.venv/bin/python (project-local - highest priority)
+        2. VIRTUAL_ENV environment variable (with warning if different from project)
+        3. python3/python in PATH (system Python - with warning)
         4. sys.executable (slop-mop's Python - last resort)
 
         Warnings are logged once per project when falling back to non-venv Python.
@@ -370,23 +370,40 @@ class PythonCheckMixin:
         root = Path(project_root)
         should_warn = project_root not in PythonCheckMixin._venv_warning_shown
 
-        # Check VIRTUAL_ENV environment variable first
+        # PRIORITY 1: Check common venv locations in project FIRST
+        for venv_dir in ["venv", ".venv"]:
+            python_path = self._find_python_in_venv(root / venv_dir)
+            if python_path:
+                # Warn if VIRTUAL_ENV is set to a different location
+                virtual_env = os.environ.get("VIRTUAL_ENV")
+                if virtual_env and should_warn:
+                    venv_path_str = str(root / venv_dir)
+                    if not virtual_env.startswith(venv_path_str):
+                        logger.warning(
+                            f"⚠️  Using project venv: {venv_path_str}\n"
+                            f"   VIRTUAL_ENV is set to: {virtual_env}\n"
+                            "   This is intentional - project venvs take priority."
+                        )
+                        PythonCheckMixin._venv_warning_shown.add(project_root)
+                return self._cache_and_return(project_root, python_path)
+
+        # PRIORITY 2: Fall back to VIRTUAL_ENV if no project venv exists
         virtual_env = os.environ.get("VIRTUAL_ENV")
         if virtual_env:
             python_path = self._find_python_in_venv(Path(virtual_env))
             if python_path:
+                if should_warn:
+                    logger.warning(
+                        f"⚠️  No project venv found. Using VIRTUAL_ENV: {virtual_env}\n"
+                        "   Consider creating ./venv or ./.venv with project dependencies."
+                    )
+                    PythonCheckMixin._venv_warning_shown.add(project_root)
                 return self._cache_and_return(project_root, python_path)
             if should_warn:
                 logger.warning(
                     f"VIRTUAL_ENV={virtual_env} set but no Python found there. "
                     "Continuing with fallback detection."
                 )
-
-        # Check common venv locations in project
-        for venv_dir in ["venv", ".venv"]:
-            python_path = self._find_python_in_venv(root / venv_dir)
-            if python_path:
-                return self._cache_and_return(project_root, python_path)
 
         # No venv found - mark as warned and try system Python
         if should_warn:
