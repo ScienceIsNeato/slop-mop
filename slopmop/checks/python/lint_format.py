@@ -110,7 +110,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             if result.success:
                 fixed = True
 
-        # Run isort
+        # Run isort — skip hidden directories to match _check_isort behaviour
         result = self._run_command(
             [
                 "isort",
@@ -120,6 +120,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "--skip=.venv",
                 "--skip=build",
                 "--skip=dist",
+                "--skip-glob=.*",
                 ".",
             ],
             cwd=project_root,
@@ -236,6 +237,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "--skip=.venv",
                 "--skip=build",
                 "--skip=dist",
+                # Skip hidden directories (e.g. .claude/, .git/) that contain
+                # tool infrastructure rather than project source code.
+                "--skip-glob=.*",
                 ".",
             ],
             cwd=project_root,
@@ -247,16 +251,48 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         return None
 
     def _check_flake8(self, project_root: str) -> Optional[str]:
-        """Check for critical flake8 errors."""
-        # Only check critical errors: E9 (runtime), F63/F7/F82 (undefined), F401 (unused)
+        """Check for critical flake8 errors.
+
+        Scans only the configured include_dirs or auto-detected Python source
+        directories.  Hidden directories (e.g. .claude/, .git/) are never
+        scanned — they contain tool infrastructure, not project source code.
+        """
+        # Determine targets: configured include_dirs > auto-detected Python dirs
+        include_dirs = self.config.get("include_dirs")
+        if include_dirs:
+            targets: List[str] = (
+                [include_dirs] if isinstance(include_dirs, str) else list(include_dirs)
+            )
+        else:
+            targets = self._get_python_targets(project_root)
+
+        if not targets:
+            return None  # No Python source directories to check
+
+        # Build exclude list: base defaults + any configured exclude_dirs
+        base_excludes = [
+            "venv",
+            ".venv",
+            "build",
+            "dist",
+            "node_modules",
+            ".git",
+            "cursor-rules",
+            "tools",
+        ]
+        config_excludes = self.config.get("exclude_dirs", [])
+        if isinstance(config_excludes, str):
+            config_excludes = [config_excludes]
+        all_excludes = base_excludes + list(config_excludes)
+
         result = self._run_command(
             [
                 "flake8",
                 "--select=E9,F63,F7,F82,F401",
                 "--max-line-length=88",
-                "--exclude=venv,.venv,build,dist,node_modules,.git,cursor-rules,tools",
-                ".",
-            ],
+                f"--exclude={','.join(all_excludes)}",
+            ]
+            + targets,
             cwd=project_root,
             timeout=60,
         )
