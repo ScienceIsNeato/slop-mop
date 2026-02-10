@@ -107,7 +107,9 @@ else
     echo "📦 Building find-duplicate-strings..."
     (
         cd "$FDS_DIR"
-        npm install --silent 2>&1
+        # HUSKY=0 prevents husky from printing ".git can't be found" since
+        # this directory is not a standalone git repo.
+        HUSKY=0 npm install --silent 2>&1
         npx tsc 2>&1
     )
     if [ -f "$FDS_DIR/lib/cli/index.js" ]; then
@@ -193,9 +195,9 @@ while IFS= read -r line; do
     pkg=$(echo "$line" | sed 's/[><=!;].*//' | xargs)
     [ -z "$pkg" ] && continue
     if "$PIP" show "$pkg" &>/dev/null; then
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
         MISSING+=("$pkg")
     fi
 done < "$REQUIREMENTS"
