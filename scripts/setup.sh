@@ -115,9 +115,24 @@ if [ ! -d "\$SLOP_MOP_DIR/slopmop" ]; then
     exit 1
 fi
 
+# Find Python executable (prefer project venv, fall back to system Python)
+PYTHON=""
+if [ -f "\$PROJECT_ROOT/venv/bin/python" ]; then
+    PYTHON="\$PROJECT_ROOT/venv/bin/python"
+elif [ -f "\$PROJECT_ROOT/.venv/bin/python" ]; then
+    PYTHON="\$PROJECT_ROOT/.venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON="python"
+else
+    echo "❌ Error: No Python found. Install Python 3 or create a venv."
+    exit 1
+fi
+
 # Run the module directly from the submodule
 export PYTHONPATH="\$SLOP_MOP_DIR:\${PYTHONPATH:-}"
-exec "\$PROJECT_ROOT/venv/bin/python" -m slopmop.sm "\$@"
+exec "\$PYTHON" -m slopmop.sm "\$@"
 WRAPPER_EOF
 
 chmod +x "$SM_WRAPPER"
