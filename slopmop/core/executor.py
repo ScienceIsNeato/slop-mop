@@ -87,6 +87,8 @@ class CheckExecutor:
         self._stop_event = threading.Event()
         self._results: Dict[str, CheckResult] = {}
         self._on_check_complete: Optional[Callable[[CheckResult], None]] = None
+        self._on_check_start: Optional[Callable[[str], None]] = None
+        self._on_check_disabled: Optional[Callable[[str], None]] = None
 
     def set_progress_callback(self, callback: Callable[[CheckResult], None]) -> None:
         """Set callback for check completion events.
@@ -95,6 +97,22 @@ class CheckExecutor:
             callback: Function called with CheckResult when each check completes
         """
         self._on_check_complete = callback
+
+    def set_start_callback(self, callback: Callable[[str], None]) -> None:
+        """Set callback for check start events.
+
+        Args:
+            callback: Function called with check name when a check starts
+        """
+        self._on_check_start = callback
+
+    def set_disabled_callback(self, callback: Callable[[str], None]) -> None:
+        """Set callback for check disabled events.
+
+        Args:
+            callback: Function called with check name when a check is disabled
+        """
+        self._on_check_disabled = callback
 
     def run_checks(
         self,
@@ -137,6 +155,8 @@ class CheckExecutor:
             if not is_enabled:
                 disabled_gates.add(check.full_name)
                 logger.info(f"Disabled — {check.full_name}: {reason}")
+                if self._on_check_disabled:
+                    self._on_check_disabled(check.full_name)
 
         # Propagate: if a dependency is disabled, disable its dependents too
         changed = True
@@ -312,6 +332,11 @@ class CheckExecutor:
                 for name in ready:
                     if name in pending:
                         check = check_map[name]
+
+                        # Notify start callback before submitting
+                        if self._on_check_start:
+                            self._on_check_start(name)
+
                         future = executor.submit(
                             self._run_single_check,
                             check,

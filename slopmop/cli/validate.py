@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional
@@ -12,6 +13,7 @@ from slopmop.checks import ensure_checks_registered
 from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
 from slopmop.reporting.console import ConsoleReporter
+from slopmop.reporting.dynamic import DynamicDisplay
 
 
 def _setup_self_validation(project_root: Path) -> str:
@@ -126,7 +128,26 @@ def cmd_validate(args: argparse.Namespace) -> int:
         verbose=args.verbose,
         profile=profile_name,
     )
-    executor.set_progress_callback(reporter.on_check_complete)
+
+    # Determine if we should use dynamic display
+    use_dynamic = (
+        sys.stdout.isatty()
+        and not os.environ.get("NO_COLOR")
+        and not args.quiet
+        and not getattr(args, "static", False)
+    )
+
+    # Set up dynamic display if appropriate
+    dynamic_display: Optional[DynamicDisplay] = None
+    if use_dynamic:
+        dynamic_display = DynamicDisplay(quiet=args.quiet)
+        dynamic_display.start()
+        executor.set_start_callback(dynamic_display.on_check_start)
+        executor.set_progress_callback(dynamic_display.on_check_complete)
+        executor.set_disabled_callback(dynamic_display.on_check_disabled)
+    else:
+        # Fall back to traditional reporter
+        executor.set_progress_callback(reporter.on_check_complete)
 
     # Print header
     if not args.quiet:
@@ -144,9 +165,16 @@ def cmd_validate(args: argparse.Namespace) -> int:
             auto_fix=not args.no_auto_fix,
         )
 
+        # Stop dynamic display before printing summary
+        if dynamic_display:
+            dynamic_display.stop()
+
         # Print summary
         reporter.print_summary(summary)
         return 0 if summary.all_passed else 1
     finally:
+        # Ensure display is stopped on any exit
+        if dynamic_display:
+            dynamic_display.stop()
         if temp_config_dir:
             _cleanup_self_validation(temp_config_dir)

@@ -125,6 +125,11 @@ def _add_validate_parser(
         action="store_true",
         help="Minimal output (only show failures)",
     )
+    validate_parser.add_argument(
+        "--static",
+        action="store_true",
+        help="Disable dynamic display (use static line-by-line output)",
+    )
 
 
 def _add_config_parser(
