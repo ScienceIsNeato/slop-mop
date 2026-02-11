@@ -81,8 +81,10 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         """
         cmd = ["npm", "install"]
 
-        # Add flags from config
+        # Add flags from config (handle string or list)
         config_flags = self.config.get("npm_install_flags", [])
+        if isinstance(config_flags, str):
+            config_flags = [config_flags]
         cmd.extend(config_flags)
 
         # Check .npmrc for legacy-peer-deps
@@ -97,7 +99,10 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                     if line.startswith("#") or line.startswith(";"):
                         continue
                     # Check for active legacy-peer-deps setting
-                    if "legacy-peer-deps=true" in line and "--legacy-peer-deps" not in cmd:
+                    if (
+                        "legacy-peer-deps=true" in line
+                        and "--legacy-peer-deps" not in cmd
+                    ):
                         cmd.append("--legacy-peer-deps")
                         break
             except Exception:
@@ -143,9 +148,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         # Install deps if needed
         if not self.has_node_modules(project_root):
             npm_cmd = self._get_npm_install_command(project_root)
-            npm_result = self._run_command(
-                npm_cmd, cwd=project_root, timeout=120
-            )
+            npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
             if not npm_result.success:
                 return self._create_result(
                     status=CheckStatus.ERROR,
