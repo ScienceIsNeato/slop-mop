@@ -101,21 +101,29 @@ if [ ! -d "$FDS_DIR" ] || [ ! -f "$FDS_DIR/package.json" ]; then
 elif ! command -v node &>/dev/null; then
     echo "⚠️  Node.js not found — skipping find-duplicate-strings build"
     echo "   Install Node.js to enable quality:string-duplication checking"
+elif ! command -v npm &>/dev/null || ! command -v npx &>/dev/null; then
+    echo "⚠️  npm or npx not found — skipping find-duplicate-strings build"
+    echo "   Install npm/npx to enable quality:string-duplication checking"
 elif [ -f "$FDS_DIR/lib/cli/index.js" ]; then
     echo "✅ find-duplicate-strings already built — skipping"
 else
     echo "📦 Building find-duplicate-strings..."
+    build_status=0
     (
         cd "$FDS_DIR"
         # HUSKY=0 prevents husky from printing ".git can't be found" since
         # this directory is not a standalone git repo.
         HUSKY=0 npm install --silent 2>&1
         npx tsc 2>&1
-    )
+    ) || build_status=$?
     if [ -f "$FDS_DIR/lib/cli/index.js" ]; then
         echo "✅ find-duplicate-strings built successfully"
     else
-        echo "⚠️  find-duplicate-strings build failed"
+        if [ "$build_status" -ne 0 ]; then
+            echo "⚠️  find-duplicate-strings build failed (exit code: $build_status)"
+        else
+            echo "⚠️  find-duplicate-strings build failed"
+        fi
         echo "   To fix: cd $FDS_DIR && npm install && npx tsc"
         echo "   quality:string-duplication checks will be skipped until built"
     fi

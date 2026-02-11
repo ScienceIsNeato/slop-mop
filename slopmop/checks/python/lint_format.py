@@ -249,8 +249,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         """Check for critical flake8 errors.
 
         Scans only the configured include_dirs or auto-detected Python source
-        directories.  Hidden directories (e.g. .claude/, .git/) are never
-        scanned — they contain tool infrastructure, not project source code.
+        directories.  Hidden directories (e.g. .claude/, .git/) are excluded
+        via --extend-exclude since they contain tool infrastructure, not
+        project source code.  If include_dirs explicitly includes hidden
+        directories, they will still be scanned.
         """
         # Determine targets: configured include_dirs > auto-detected Python dirs
         include_dirs = self.config.get("include_dirs")
@@ -265,6 +267,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             return None  # No Python source directories to check
 
         # Build exclude list: base defaults + any configured exclude_dirs
+        # Use --extend-exclude to preserve flake8's built-in defaults
+        # (__pycache__, .tox, .nox, etc.) while adding our custom excludes.
         base_excludes = [
             "venv",
             ".venv",
@@ -274,6 +278,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             ".git",
             "cursor-rules",
             "tools",
+            "__pycache__",
+            ".*",  # Hidden directories
         ]
         config_excludes = self.config.get("exclude_dirs", [])
         if isinstance(config_excludes, str):
@@ -285,7 +291,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "flake8",
                 "--select=E9,F63,F7,F82,F401",
                 "--max-line-length=88",
-                f"--exclude={','.join(all_excludes)}",
+                f"--extend-exclude={','.join(all_excludes)}",
             ]
             + targets,
             cwd=project_root,
