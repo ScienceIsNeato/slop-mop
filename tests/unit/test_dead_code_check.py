@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from slopmop.checks.quality.dead_code import DeadCodeCheck
 from slopmop.core.result import CheckStatus
 

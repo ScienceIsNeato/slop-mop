@@ -9,7 +9,6 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from slopmop.cli.ci import cmd_ci
 from slopmop.cli.config import cmd_config
 from slopmop.cli.detection import detect_project_type
