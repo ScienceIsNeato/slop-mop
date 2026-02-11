@@ -14,12 +14,7 @@ import os
 import time
 from typing import List, Optional
 
-from slopmop.checks.base import (
-    BaseCheck,
-    ConfigField,
-    GateCategory,
-    PythonCheckMixin,
-)
+from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus
 
 

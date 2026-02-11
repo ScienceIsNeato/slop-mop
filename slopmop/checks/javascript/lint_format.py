@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    ConfigField,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -48,6 +49,21 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def category(self) -> GateCategory:
         return GateCategory.JAVASCRIPT
 
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="npm_install_flags",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Additional flags for npm install (e.g., ['--legacy-peer-deps']). "
+                    "Also checks .npmrc for legacy-peer-deps=true."
+                ),
+                required=False,
+            ),
+        ]
+
     def is_applicable(self, project_root: str) -> bool:
         return self.is_javascript_project(project_root)
 
@@ -63,7 +79,8 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
         # Install deps if needed
         if not self.has_node_modules(project_root):
-            self._run_command(["npm", "install"], cwd=project_root, timeout=120)
+            npm_cmd = self._get_npm_install_command(project_root)
+            self._run_command(npm_cmd, cwd=project_root, timeout=120)
 
         # Run ESLint fix
         result = self._run_command(
@@ -93,9 +110,8 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
         # Install deps if needed
         if not self.has_node_modules(project_root):
-            npm_result = self._run_command(
-                ["npm", "install"], cwd=project_root, timeout=120
-            )
+            npm_cmd = self._get_npm_install_command(project_root)
+            npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
             if not npm_result.success:
                 return self._create_result(
                     status=CheckStatus.ERROR,

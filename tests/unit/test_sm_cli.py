@@ -21,12 +21,7 @@ from slopmop.cli.hooks import (
     cmd_commit_hooks,
 )
 from slopmop.cli.init import prompt_user, prompt_yes_no
-from slopmop.sm import (
-    create_parser,
-    load_config,
-    main,
-    setup_logging,
-)
+from slopmop.sm import create_parser, load_config, main, setup_logging
 
 
 class TestLoadConfig:

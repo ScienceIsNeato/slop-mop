@@ -90,7 +90,46 @@ fi
 
 echo "✅ Dependencies installed"
 
-# ─── Step 4: Create convenience wrapper ───────────────────────────
+# ─── Step 4: Build vendored Node.js tools ─────────────────────────
+echo ""
+echo "🔧 Building vendored Node.js tools..."
+
+FDS_DIR="$SLOP_MOP_DIR/tools/find-duplicate-strings"
+
+if [ ! -d "$FDS_DIR" ] || [ ! -f "$FDS_DIR/package.json" ]; then
+    echo "ℹ️  Vendored Node.js tools not found — skipping"
+elif ! command -v node &>/dev/null; then
+    echo "⚠️  Node.js not found — skipping find-duplicate-strings build"
+    echo "   Install Node.js to enable quality:string-duplication checking"
+elif ! command -v npm &>/dev/null || ! command -v npx &>/dev/null; then
+    echo "⚠️  npm or npx not found — skipping find-duplicate-strings build"
+    echo "   Install npm/npx to enable quality:string-duplication checking"
+elif [ -f "$FDS_DIR/lib/cli/index.js" ]; then
+    echo "✅ find-duplicate-strings already built — skipping"
+else
+    echo "📦 Building find-duplicate-strings..."
+    build_status=0
+    (
+        cd "$FDS_DIR"
+        # HUSKY=0 prevents husky from printing ".git can't be found" since
+        # this directory is not a standalone git repo.
+        HUSKY=0 npm install --silent 2>&1
+        npx tsc 2>&1
+    ) || build_status=$?
+    if [ -f "$FDS_DIR/lib/cli/index.js" ]; then
+        echo "✅ find-duplicate-strings built successfully"
+    else
+        if [ "$build_status" -ne 0 ]; then
+            echo "⚠️  find-duplicate-strings build failed (exit code: $build_status)"
+        else
+            echo "⚠️  find-duplicate-strings build failed"
+        fi
+        echo "   To fix: cd $FDS_DIR && npm install && npx tsc"
+        echo "   quality:string-duplication checks will be skipped until built"
+    fi
+fi
+
+# ─── Step 5: Create convenience wrapper ───────────────────────────
 echo ""
 echo "📄 Creating 'sm' wrapper script..."
 
@@ -115,9 +154,28 @@ if [ ! -d "\$SLOP_MOP_DIR/slopmop" ]; then
     exit 1
 fi
 
-# Run the module directly from the submodule
+# Find Python executable (prefer project venv, fall back to system Python)
+PYTHON=""
+if [ -f "\$PROJECT_ROOT/venv/bin/python" ]; then
+    PYTHON="\$PROJECT_ROOT/venv/bin/python"
+elif [ -f "\$PROJECT_ROOT/.venv/bin/python" ]; then
+    PYTHON="\$PROJECT_ROOT/.venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON="python"
+else
+    echo "❌ Error: No Python found. Install Python 3 or create a venv."
+    exit 1
+fi
+
+# Run the module directly from the submodule.
+# cd to project root first so --project-root defaults to "." work correctly
+# regardless of where the caller's working directory is (e.g. git hooks,
+# CI steps, or running the wrapper via an absolute path from a subdir).
 export PYTHONPATH="\$SLOP_MOP_DIR:\${PYTHONPATH:-}"
-exec "\$PROJECT_ROOT/venv/bin/python" -m slopmop.sm "\$@"
+cd "\$PROJECT_ROOT"
+exec "\$PYTHON" -m slopmop.sm "\$@"
 WRAPPER_EOF
 
 chmod +x "$SM_WRAPPER"
@@ -142,7 +200,7 @@ else
     echo "⚠️  $ROOT_SM already exists — skipping (delete it to regenerate)"
 fi
 
-# ─── Step 5: Verify installations ─────────────────────────────────
+# ─── Step 6: Verify installations ─────────────────────────────────
 # Derive the tool list from requirements.txt (single source of truth)
 # rather than maintaining a separate hardcoded list.
 echo ""
@@ -160,9 +218,9 @@ while IFS= read -r line; do
     pkg=$(echo "$line" | sed 's/[><=!;].*//' | xargs)
     [ -z "$pkg" ] && continue
     if "$PIP" show "$pkg" &>/dev/null; then
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
         MISSING+=("$pkg")
     fi
 done < "$REQUIREMENTS"
@@ -176,7 +234,7 @@ if [ $FAIL -gt 0 ]; then
     echo "   Some quality gates may not work. Try: pip install <package>"
 fi
 
-# ─── Step 6: Done ─────────────────────────────────────────────────
+# ─── Step 7: Done ─────────────────────────────────────────────────
 echo ""
 echo "============================================================"
 echo "🚀 Setup Complete!"

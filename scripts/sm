@@ -37,6 +37,10 @@ else
     exit 1
 fi
 
-# Run the module directly from the submodule
+# Run the module directly from the submodule.
+# cd to project root first so --project-root defaults to "." work correctly
+# regardless of where the caller's working directory is (e.g. git hooks,
+# CI steps, or running the wrapper via an absolute path from a subdir).
 export PYTHONPATH="$SLOP_MOP_DIR:${PYTHONPATH:-}"
+cd "$PROJECT_ROOT"
 exec "$PYTHON" -m slopmop.sm "$@"

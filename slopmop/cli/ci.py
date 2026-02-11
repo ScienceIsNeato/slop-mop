@@ -31,10 +31,15 @@ def _detect_pr_number(project_root: Path) -> Optional[int]:
         # Find PR for THIS branch specifically
         result = subprocess.run(
             [
-                "gh", "pr", "list",
-                "--head", current_branch,
-                "--json", "number",
-                "--limit", "1",
+                "gh",
+                "pr",
+                "list",
+                "--head",
+                current_branch,
+                "--json",
+                "number",
+                "--limit",
+                "1",
             ],
             cwd=project_root,
             capture_output=True,

@@ -93,9 +93,8 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
         # Ensure deps installed
         if not self.has_node_modules(project_root):
-            npm_result = self._run_command(
-                ["npm", "install"], cwd=project_root, timeout=120
-            )
+            npm_cmd = self._get_npm_install_command(project_root)
+            npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
             if not npm_result.success:
                 return self._create_result(
                     status=CheckStatus.ERROR,

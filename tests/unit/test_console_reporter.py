@@ -1,6 +1,7 @@
 """Tests for console reporter."""
 
 import pytest  # noqa: F401  # Required for fixtures
+
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
 from slopmop.reporting.console import ConsoleReporter
 
