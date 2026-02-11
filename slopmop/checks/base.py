@@ -515,3 +515,41 @@ class JavaScriptCheckMixin:
         if not self.has_js_files(project_root):
             return "No JavaScript/TypeScript files found"
         return "JavaScript check not applicable"
+
+    def _get_npm_install_command(self, project_root: str) -> List[str]:
+        """Build npm install command with appropriate flags.
+
+        Checks both config (npm_install_flags) and .npmrc (legacy-peer-deps).
+        Available to all JavaScript checks via the mixin.
+        """
+        cmd = ["npm", "install"]
+
+        # Add flags from config (handle string or list)
+        # Uses self.config from BaseCheck
+        config_flags = getattr(self, "config", {}).get("npm_install_flags", [])
+        if isinstance(config_flags, str):
+            config_flags = [config_flags]
+        cmd.extend(config_flags)
+
+        # Check .npmrc for legacy-peer-deps
+        npmrc_path = Path(project_root) / ".npmrc"
+        if npmrc_path.exists():
+            try:
+                content = npmrc_path.read_text()
+                # Parse line by line, ignoring comments (# and ;)
+                for line in content.splitlines():
+                    line = line.strip()
+                    # Skip comment lines
+                    if line.startswith("#") or line.startswith(";"):
+                        continue
+                    # Check for active legacy-peer-deps setting
+                    if (
+                        "legacy-peer-deps=true" in line
+                        and "--legacy-peer-deps" not in cmd
+                    ):
+                        cmd.append("--legacy-peer-deps")
+                        break
+            except Exception:
+                pass  # Ignore .npmrc read errors
+
+        return cmd

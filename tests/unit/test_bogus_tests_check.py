@@ -70,14 +70,10 @@ class TestEmptyTestBodies:
         """Test detects test with only pass."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_empty.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_empty.py").write_text(textwrap.dedent("""\
             def test_nothing():
                 pass
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -87,14 +83,10 @@ class TestEmptyTestBodies:
         """Test detects test with only ellipsis."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_empty.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_empty.py").write_text(textwrap.dedent("""\
             def test_nothing():
                 ...
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -104,14 +96,10 @@ class TestEmptyTestBodies:
         """Test detects test with only a docstring."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_empty.py").write_text(
-            textwrap.dedent(
-                '''\
+        (test_dir / "test_empty.py").write_text(textwrap.dedent('''\
             def test_nothing():
                 """This test does nothing."""
-            '''
-            )
-        )
+            '''))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -121,15 +109,11 @@ class TestEmptyTestBodies:
         """Test detects test with docstring and pass."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_empty.py").write_text(
-            textwrap.dedent(
-                '''\
+        (test_dir / "test_empty.py").write_text(textwrap.dedent('''\
             def test_nothing():
                 """This test does nothing."""
                 pass
-            '''
-            )
-        )
+            '''))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -143,14 +127,10 @@ class TestTautologicalAssertions:
         """Test detects assert True."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_taut.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_taut.py").write_text(textwrap.dedent("""\
             def test_bogus():
                 assert True
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -160,14 +140,10 @@ class TestTautologicalAssertions:
         """Test detects assert not False."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_taut.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_taut.py").write_text(textwrap.dedent("""\
             def test_bogus():
                 assert not False
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -177,14 +153,10 @@ class TestTautologicalAssertions:
         """Test detects assert 1 == 1."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_taut.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_taut.py").write_text(textwrap.dedent("""\
             def test_bogus():
                 assert 1 == 1
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -194,16 +166,12 @@ class TestTautologicalAssertions:
         """Test does NOT flag assert True if real assertions also present."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_mixed.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_mixed.py").write_text(textwrap.dedent("""\
             def test_real_with_tautology():
                 result = 2 + 2
                 assert result == 4
                 assert True  # belt and suspenders
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
@@ -216,16 +184,12 @@ class TestNoAssertions:
         """Test detects test function with no assert statements."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_noassert.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_noassert.py").write_text(textwrap.dedent("""\
             def test_no_assertions():
                 x = 1 + 1
                 y = x * 2
                 print(y)
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -235,17 +199,13 @@ class TestNoAssertions:
         """Test accepts pytest.raises as a valid assertion."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_raises.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_raises.py").write_text(textwrap.dedent("""\
             import pytest
 
             def test_raises_exception():
                 with pytest.raises(ValueError):
                     int("not_a_number")
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
@@ -254,18 +214,14 @@ class TestNoAssertions:
         """Test accepts mock.assert_called_once_with as a valid assertion."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_mock.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_mock.py").write_text(textwrap.dedent("""\
             from unittest.mock import MagicMock
 
             def test_mock_called():
                 mock = MagicMock()
                 mock("hello")
                 mock.assert_called_once_with("hello")
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
@@ -278,17 +234,13 @@ class TestLegitimateTests:
         """Test that a normal test with assertions passes."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_good.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_good.py").write_text(textwrap.dedent("""\
             def test_addition():
                 assert 2 + 2 == 4
 
             def test_string():
                 assert "hello".upper() == "HELLO"
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
@@ -297,15 +249,11 @@ class TestLegitimateTests:
         """Test that class-based test methods are also checked."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_class.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_class.py").write_text(textwrap.dedent("""\
             class TestMyClass:
                 def test_something(self):
                     assert 1 + 1 == 2
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
@@ -314,18 +262,14 @@ class TestLegitimateTests:
         """Test that helper functions without assertions are not flagged."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_helpers.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_helpers.py").write_text(textwrap.dedent("""\
             def make_fixture():
                 return {"key": "value"}
 
             def test_with_helper():
                 data = make_fixture()
                 assert data["key"] == "value"
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
@@ -349,22 +293,14 @@ class TestExcludePatterns:
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
         # conftest fixtures often don't have assertions
-        (test_dir / "conftest.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "conftest.py").write_text(textwrap.dedent("""\
             def test_like_fixture():
                 x = 1
-            """
-            )
-        )
-        (test_dir / "test_real.py").write_text(
-            textwrap.dedent(
-                """\
+            """))
+        (test_dir / "test_real.py").write_text(textwrap.dedent("""\
             def test_good():
                 assert True is not False
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         # conftest should be skipped, and test_real has a real assertion
@@ -378,9 +314,7 @@ class TestMultipleFindings:
         """Test that all bogus tests in a file are reported."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_multi.py").write_text(
-            textwrap.dedent(
-                """\
+        (test_dir / "test_multi.py").write_text(textwrap.dedent("""\
             def test_empty():
                 pass
 
@@ -392,9 +326,7 @@ class TestMultipleFindings:
 
             def test_real():
                 assert 2 + 2 == 4
-            """
-            )
-        )
+            """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
