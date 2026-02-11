@@ -3,12 +3,7 @@
 import time
 from typing import List
 
-from slopmop.checks.base import (
-    BaseCheck,
-    ConfigField,
-    GateCategory,
-    PythonCheckMixin,
-)
+from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
     has_python_test_files,

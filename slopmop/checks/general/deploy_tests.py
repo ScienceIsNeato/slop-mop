@@ -8,11 +8,7 @@ import os
 import time
 from typing import List
 
-from slopmop.checks.base import (
-    BaseCheck,
-    ConfigField,
-    GateCategory,
-)
+from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
 
 

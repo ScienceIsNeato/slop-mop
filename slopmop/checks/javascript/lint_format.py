@@ -1,10 +1,12 @@
 """JavaScript lint and format check using ESLint and Prettier."""
 
 import time
+from pathlib import Path
 from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    ConfigField,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -48,6 +50,21 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def category(self) -> GateCategory:
         return GateCategory.JAVASCRIPT
 
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="npm_install_flags",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Additional flags for npm install (e.g., ['--legacy-peer-deps']). "
+                    "Also checks .npmrc for legacy-peer-deps=true."
+                ),
+                required=False,
+            ),
+        ]
+
     def is_applicable(self, project_root: str) -> bool:
         return self.is_javascript_project(project_root)
 
@@ -57,13 +74,45 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def can_auto_fix(self) -> bool:
         return True
 
+    def _get_npm_install_command(self, project_root: str) -> List[str]:
+        """Build npm install command with appropriate flags.
+
+        Checks both config (npm_install_flags) and .npmrc (legacy-peer-deps).
+        """
+        cmd = ["npm", "install"]
+
+        # Add flags from config
+        config_flags = self.config.get("npm_install_flags", [])
+        cmd.extend(config_flags)
+
+        # Check .npmrc for legacy-peer-deps
+        npmrc_path = Path(project_root) / ".npmrc"
+        if npmrc_path.exists():
+            try:
+                content = npmrc_path.read_text()
+                # Parse line by line, ignoring comments (# and ;)
+                for line in content.splitlines():
+                    line = line.strip()
+                    # Skip comment lines
+                    if line.startswith("#") or line.startswith(";"):
+                        continue
+                    # Check for active legacy-peer-deps setting
+                    if "legacy-peer-deps=true" in line and "--legacy-peer-deps" not in cmd:
+                        cmd.append("--legacy-peer-deps")
+                        break
+            except Exception:
+                pass  # Ignore .npmrc read errors
+
+        return cmd
+
     def auto_fix(self, project_root: str) -> bool:
         """Auto-fix formatting issues."""
         fixed = False
 
         # Install deps if needed
         if not self.has_node_modules(project_root):
-            self._run_command(["npm", "install"], cwd=project_root, timeout=120)
+            npm_cmd = self._get_npm_install_command(project_root)
+            self._run_command(npm_cmd, cwd=project_root, timeout=120)
 
         # Run ESLint fix
         result = self._run_command(
@@ -93,8 +142,9 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
         # Install deps if needed
         if not self.has_node_modules(project_root):
+            npm_cmd = self._get_npm_install_command(project_root)
             npm_result = self._run_command(
-                ["npm", "install"], cwd=project_root, timeout=120
+                npm_cmd, cwd=project_root, timeout=120
             )
             if not npm_result.success:
                 return self._create_result(

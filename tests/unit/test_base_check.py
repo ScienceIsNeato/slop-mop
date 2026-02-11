@@ -233,7 +233,7 @@ class TestPythonCheckMixin:
         assert result == str(python_path)
 
     def test_get_project_python_prefers_virtual_env_var(self, tmp_path, monkeypatch):
-        """Test get_project_python prefers VIRTUAL_ENV environment variable."""
+        """Test get_project_python prefers project venv over VIRTUAL_ENV."""
         # Create venv from env var
         env_venv = tmp_path / "env_venv" / "bin"
         env_venv.mkdir(parents=True)
@@ -241,15 +241,17 @@ class TestPythonCheckMixin:
         env_python.touch()
         env_python.chmod(0o755)
 
-        # Also create project venv (should be ignored)
+        # Also create project venv (should be preferred)
         project_venv = tmp_path / "venv" / "bin"
         project_venv.mkdir(parents=True)
-        (project_venv / "python").touch()
+        project_python = project_venv / "python"
+        project_python.touch()
+        project_python.chmod(0o755)
 
         monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "env_venv"))
 
         result = self.mixin.get_project_python(str(tmp_path))
-        assert result == str(env_python)
+        assert result == str(project_python)
 
     def test_get_project_python_falls_back_to_system_python(
         self, tmp_path, monkeypatch

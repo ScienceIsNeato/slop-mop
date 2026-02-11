@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
 from slopmop.core.result import CheckStatus
 

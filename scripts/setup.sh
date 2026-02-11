@@ -146,13 +146,28 @@ if [ ! -d "\$SLOP_MOP_DIR/slopmop" ]; then
     exit 1
 fi
 
+# Find Python executable (prefer project venv, fall back to system Python)
+PYTHON=""
+if [ -f "\$PROJECT_ROOT/venv/bin/python" ]; then
+    PYTHON="\$PROJECT_ROOT/venv/bin/python"
+elif [ -f "\$PROJECT_ROOT/.venv/bin/python" ]; then
+    PYTHON="\$PROJECT_ROOT/.venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON="python"
+else
+    echo "❌ Error: No Python found. Install Python 3 or create a venv."
+    exit 1
+fi
+
 # Run the module directly from the submodule.
 # cd to project root first so --project-root defaults to "." work correctly
 # regardless of where the caller's working directory is (e.g. git hooks,
 # CI steps, or running the wrapper via an absolute path from a subdir).
 export PYTHONPATH="\$SLOP_MOP_DIR:\${PYTHONPATH:-}"
 cd "\$PROJECT_ROOT"
-exec "\$PROJECT_ROOT/venv/bin/python" -m slopmop.sm "\$@"
+exec "\$PYTHON" -m slopmop.sm "\$@"
 WRAPPER_EOF
 
 chmod +x "$SM_WRAPPER"
