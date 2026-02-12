@@ -377,3 +377,75 @@ class TestDynamicDisplay:
 
         assert len(errors) == 0
         assert display.completed_count == 10
+
+    def test_set_total_checks(self) -> None:
+        """Test set_total_checks sets expected total."""
+        display = DynamicDisplay(quiet=True)
+
+        display.set_total_checks(15)
+
+        assert display._total_checks_expected == 15
+
+    def test_format_time_seconds(self) -> None:
+        """Test _format_time formats seconds correctly."""
+        display = DynamicDisplay(quiet=True)
+
+        assert display._format_time(5.2) == "5.2s"
+        assert display._format_time(0.0) == "0.0s"
+        assert display._format_time(59.9) == "59.9s"
+
+    def test_format_time_minutes(self) -> None:
+        """Test _format_time formats minutes correctly."""
+        display = DynamicDisplay(quiet=True)
+
+        assert display._format_time(60.0) == "1m 0s"
+        assert display._format_time(90.0) == "1m 30s"
+        assert display._format_time(125.0) == "2m 5s"
+
+    def test_build_progress_line_with_eta(self) -> None:
+        """Test progress line includes ETA when checks in progress."""
+        display = DynamicDisplay(quiet=True)
+        display._overall_start_time = time.time() - 5.0  # 5s elapsed
+
+        # Add completed check with known duration
+        display.on_check_start("test:a")
+        display.on_check_complete(
+            CheckResult(name="test:a", status=CheckStatus.PASSED, duration=2.0)
+        )
+
+        # Build progress line for 1 completed of 3 total
+        display.set_total_checks(3)
+        line = display._build_progress_line(1, 3)
+
+        assert "1/3" in line
+        assert "elapsed" in line
+        assert "ETA:" in line
+
+    def test_build_progress_line_done(self) -> None:
+        """Test progress line shows 'done' when complete."""
+        display = DynamicDisplay(quiet=True)
+        display._overall_start_time = time.time() - 5.0
+
+        line = display._build_progress_line(5, 5)
+
+        assert "5/5" in line
+        assert "done" in line
+
+    def test_progress_uses_expected_total(self) -> None:
+        """Test progress bar uses expected total when set."""
+        display = DynamicDisplay(quiet=True)
+        display._overall_start_time = time.time()
+        display.set_total_checks(10)
+
+        # Only 2 checks discovered but total is 10
+        display.on_check_start("test:a")
+        display.on_check_start("test:b")
+        display.on_check_complete(
+            CheckResult(name="test:a", status=CheckStatus.PASSED, duration=0.1)
+        )
+
+        lines = display._build_display()
+        progress_line = lines[0]
+
+        # Should show 1/10 (expected total) not 1/2 (discovered)
+        assert "1/10" in progress_line

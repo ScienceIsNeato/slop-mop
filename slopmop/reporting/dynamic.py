@@ -5,6 +5,7 @@ and real-time progress updates.
 """
 
 import os
+import shutil
 import sys
 import threading
 import time
@@ -82,6 +83,10 @@ class DynamicDisplay:
         self._started = False
         self._stopped = False
 
+        # Timing for ETA calculation
+        self._overall_start_time: Optional[float] = None
+        self._total_checks_expected: int = 0  # Set via set_total_checks()
+
     def start(self) -> None:
         """Start the display and animation thread."""
         if self.quiet:
@@ -89,6 +94,7 @@ class DynamicDisplay:
 
         self._started = True
         self._stop_event.clear()
+        self._overall_start_time = time.time()
 
         if self._is_tty:
             # Start animation thread
@@ -96,6 +102,15 @@ class DynamicDisplay:
                 target=self._animation_loop, daemon=True
             )
             self._animation_thread.start()
+
+    def set_total_checks(self, total: int) -> None:
+        """Set expected total number of checks for accurate progress.
+
+        Args:
+            total: Total number of checks that will run
+        """
+        with self._lock:
+            self._total_checks_expected = total
 
     def stop(self) -> None:
         """Stop the display and animation thread."""
@@ -165,7 +180,6 @@ class DynamicDisplay:
         Note: We don't print here - the executor logger already prints disabled messages.
         """
         # Intentionally empty - avoid duplicate messages
-        pass
 
     def _animation_loop(self) -> None:
         """Background thread for spinner animation."""
@@ -213,15 +227,16 @@ class DynamicDisplay:
         running = sum(
             1 for c in self._checks.values() if c.state == DisplayState.RUNNING
         )
-        total = len(self._checks)
+        # Use expected total if set, otherwise use discovered checks
+        total = (
+            self._total_checks_expected
+            if self._total_checks_expected > 0
+            else len(self._checks)
+        )
 
-        # Progress bar (only if we have checks)
+        # Progress bar with ETA (only if we have checks)
         if total > 0:
-            pct = completed / total
-            bar_width = 30
-            filled = int(pct * bar_width)
-            bar = "█" * filled + "░" * (bar_width - filled)
-            lines.append(f"Progress: [{bar}] {completed}/{total}")
+            lines.append(self._build_progress_line(completed, total))
             lines.append("")
 
         # Each check
@@ -246,6 +261,87 @@ class DynamicDisplay:
                 lines.append(" · ".join(status_parts))
 
         return lines
+
+    def _build_progress_line(self, completed: int, total: int) -> str:
+        """Build the progress line with bar, stats, and ETA.
+
+        Args:
+            completed: Number of completed checks
+            total: Total number of checks
+
+        Returns:
+            Formatted progress line
+        """
+        # Get terminal width (default 80, cap at 120 for readability)
+        try:
+            term_width = min(shutil.get_terminal_size().columns, 120)
+        except (ValueError, OSError):
+            term_width = 80
+
+        # Calculate times
+        elapsed = 0.0
+        if self._overall_start_time:
+            elapsed = time.time() - self._overall_start_time
+
+        # Calculate ETA based on average completion time
+        eta_str = ""
+        if completed > 0 and completed < total:
+            # Sum actual durations of completed checks
+            total_duration = sum(
+                c.duration
+                for c in self._checks.values()
+                if c.state == DisplayState.COMPLETED
+            )
+            avg_time = total_duration / completed
+            remaining = total - completed
+            eta = avg_time * remaining
+            eta_str = f"ETA: {self._format_time(eta)}"
+        elif completed == total:
+            eta_str = "done"
+
+        # Build components
+        pct = completed / total if total > 0 else 0
+        elapsed_str = self._format_time(elapsed)
+
+        # Right side: "elapsed | ETA" or just elapsed
+        if eta_str:
+            right_side = f"{elapsed_str} elapsed · {eta_str}"
+        else:
+            right_side = f"{elapsed_str} elapsed"
+
+        # Left side: progress bar and count
+        # Calculate bar width dynamically
+        count_str = f"{completed}/{total}"
+        # Fixed parts: "Progress: [" + "] " + count + spacing + right_side
+        fixed_len = len("Progress: []  ") + len(count_str) + 4 + len(right_side)
+        bar_width = max(20, term_width - fixed_len)
+
+        filled = int(pct * bar_width)
+        bar = "█" * filled + "░" * (bar_width - filled)
+
+        left_side = f"Progress: [{bar}] {count_str}"
+
+        # Calculate padding for right-justification
+        total_content = len(left_side) + len(right_side)
+        padding = max(2, term_width - total_content)
+
+        return f"{left_side}{' ' * padding}{right_side}"
+
+    def _format_time(self, seconds: float) -> str:
+        """Format seconds as human-readable time.
+
+        Args:
+            seconds: Time in seconds
+
+        Returns:
+            Formatted string like "5.2s" or "1m 23s"
+        """
+        if seconds < 60:
+            return f"{seconds:.1f}s"
+        else:
+            mins = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{mins}m {secs}s"
 
     def _format_check_line(self, info: CheckDisplayInfo) -> str:
         """Format a single check line.

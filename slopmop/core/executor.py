@@ -89,6 +89,7 @@ class CheckExecutor:
         self._on_check_complete: Optional[Callable[[CheckResult], None]] = None
         self._on_check_start: Optional[Callable[[str], None]] = None
         self._on_check_disabled: Optional[Callable[[str], None]] = None
+        self._on_total_determined: Optional[Callable[[int], None]] = None
 
     def set_progress_callback(self, callback: Callable[[CheckResult], None]) -> None:
         """Set callback for check completion events.
@@ -113,6 +114,14 @@ class CheckExecutor:
             callback: Function called with check name when a check is disabled
         """
         self._on_check_disabled = callback
+
+    def set_total_callback(self, callback: Callable[[int], None]) -> None:
+        """Set callback for when total check count is determined.
+
+        Args:
+            callback: Function called with total number of checks to run
+        """
+        self._on_total_determined = callback
 
     def run_checks(
         self,
@@ -201,6 +210,10 @@ class CheckExecutor:
         if not applicable:
             duration = time.time() - start_time
             return ExecutionSummary.from_results(list(self._results.values()), duration)
+
+        # Notify total checks determined
+        if self._on_total_determined:
+            self._on_total_determined(len(applicable))
 
         # Build dependency graph
         dep_graph = self._build_dependency_graph(applicable)
