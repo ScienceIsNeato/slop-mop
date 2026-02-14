@@ -9,6 +9,7 @@ import shutil
 import sys
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional
@@ -201,24 +202,36 @@ class DynamicDisplay:
             time.sleep(0.1)
 
     def _draw(self) -> None:
-        """Draw the current state to terminal."""
+        """Draw the current state to terminal.
+
+        All cursor movement and writing is done under the lock to prevent
+        interleaving. Lines are truncated to terminal width to prevent
+        wrapping, which would desync the cursor-up line count.
+        """
         if self.quiet or not self._is_tty:
             return
 
         with self._lock:
             lines = self._build_display()
 
-        # Move cursor up to overwrite previous output
-        if self._lines_drawn > 0:
-            sys.stdout.write(f"\033[{self._lines_drawn}A")  # Move up
-            sys.stdout.write("\033[J")  # Clear from cursor to end
+            try:
+                term_width = shutil.get_terminal_size().columns
+            except (ValueError, OSError):
+                term_width = 80
 
-        # Print new output
-        output = "\n".join(lines)
-        sys.stdout.write(output + "\n")
-        sys.stdout.flush()
+            # Move cursor up to overwrite previous output
+            if self._lines_drawn > 0:
+                sys.stdout.write(f"\033[{self._lines_drawn}A")  # Move up
+                sys.stdout.write("\033[J")  # Clear from cursor to end
 
-        self._lines_drawn = len(lines)
+            # Truncate lines to prevent wrapping (which breaks cursor math)
+            truncated = [line[:term_width] for line in lines]
+
+            output = "\n".join(truncated)
+            sys.stdout.write(output + "\n")
+            sys.stdout.flush()
+
+            self._lines_drawn = len(truncated)
 
     def _build_display(self) -> List[str]:
         """Build the display lines.
@@ -298,9 +311,8 @@ class DynamicDisplay:
         Returns:
             Formatted progress line
         """
-        # Get terminal width (default 80, cap at 120 for readability)
         try:
-            term_width = min(shutil.get_terminal_size().columns, 120)
+            term_width = shutil.get_terminal_size().columns
         except (ValueError, OSError):
             term_width = 80
 
@@ -312,7 +324,6 @@ class DynamicDisplay:
         # Calculate ETA based on average completion time
         eta_str = ""
         if completed > 0 and completed < total:
-            # Sum actual durations of completed checks
             total_duration = sum(
                 c.duration
                 for c in self._checks.values()
@@ -325,33 +336,26 @@ class DynamicDisplay:
         elif completed == total:
             eta_str = "done"
 
-        # Build components
-        pct = completed / total if total > 0 else 0
+        # Right side
         elapsed_str = self._format_time(elapsed)
+        right_side = (
+            f"{elapsed_str} elapsed · {eta_str}"
+            if eta_str
+            else f"{elapsed_str} elapsed"
+        )
 
-        # Right side: "elapsed | ETA" or just elapsed
-        if eta_str:
-            right_side = f"{elapsed_str} elapsed · {eta_str}"
-        else:
-            right_side = f"{elapsed_str} elapsed"
-
-        # Left side: progress bar and count
-        # Calculate bar width dynamically
+        # Calculate bar width from remaining space
         count_str = f"{completed}/{total}"
-        # Fixed parts: "Progress: [" + "] " + count + spacing + right_side
-        fixed_len = len("Progress: []  ") + len(count_str) + 4 + len(right_side)
-        bar_width = max(20, term_width - fixed_len)
+        # "Progress: [" + bar + "] " + count + padding(min 2) + right_side
+        chrome_len = len("Progress: [] ") + len(count_str) + 2 + len(right_side)
+        bar_width = max(10, term_width - chrome_len)
 
+        pct = completed / total if total > 0 else 0
         filled = int(pct * bar_width)
         bar = "█" * filled + "░" * (bar_width - filled)
 
         left_side = f"Progress: [{bar}] {count_str}"
-
-        # Calculate padding for right-justification
-        total_content = len(left_side) + len(right_side)
-        padding = max(2, term_width - total_content)
-
-        return f"{left_side}{' ' * padding}{right_side}"
+        return self._right_justify(left_side, right_side)
 
     def _format_time(self, seconds: float) -> str:
         """Format seconds as human-readable time.
@@ -399,6 +403,9 @@ class DynamicDisplay:
     def _right_justify(self, left: str, right: str) -> str:
         """Right-justify a line with left and right parts.
 
+        Uses display width (accounting for wide/emoji characters) to
+        calculate padding correctly.
+
         Args:
             left: Left-aligned content
             right: Right-aligned content
@@ -407,11 +414,35 @@ class DynamicDisplay:
             Formatted line with proper padding
         """
         try:
-            term_width = min(shutil.get_terminal_size().columns, 120)
+            term_width = shutil.get_terminal_size().columns
         except (ValueError, OSError):
             term_width = 80
-        padding = max(1, term_width - len(left) - len(right))
+        left_width = self._display_width(left)
+        right_width = self._display_width(right)
+        padding = max(1, term_width - left_width - right_width)
         return left + (" " * padding) + right
+
+    @staticmethod
+    def _display_width(text: str) -> int:
+        """Calculate terminal display width of a string.
+
+        Wide characters (emoji, CJK) take 2 columns. This prevents
+        lines from overflowing and breaking cursor-based redraw.
+
+        Args:
+            text: String to measure
+
+        Returns:
+            Number of terminal columns the text occupies
+        """
+        width = 0
+        for ch in text:
+            cat = unicodedata.east_asian_width(ch)
+            if cat in ("W", "F"):
+                width += 2
+            else:
+                width += 1
+        return width
 
     @property
     def completed_count(self) -> int:
