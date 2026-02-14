@@ -33,6 +33,8 @@ class CheckDisplayInfo:
     result: Optional[CheckResult] = None
     start_time: float = 0.0
     duration: float = 0.0
+    expected_duration: float = 5.0  # Default estimate
+    completion_order: int = 0  # Order in which check completed (0 = not yet)
 
 
 class DynamicDisplay:
@@ -48,6 +50,26 @@ class DynamicDisplay:
 
     # Spinner frames (Braille dots pattern - smooth animation)
     SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    # Default expected durations by check pattern (seconds)
+    # These are rough estimates - actual times vary by project size
+    DEFAULT_ESTIMATES: Dict[str, float] = {
+        "python:tests": 8.0,
+        "python:coverage": 1.0,
+        "python:type-checking": 3.0,
+        "python:lint-format": 2.0,
+        "python:static-analysis": 2.0,
+        "quality:string-duplication": 10.0,
+        "quality:source-duplication": 5.0,
+        "quality:complexity": 1.0,
+        "quality:dead-code": 2.0,
+        "quality:loc-lock": 3.0,
+        "quality:bogus-tests": 1.0,
+        "security:local": 8.0,
+        "javascript:tests": 10.0,
+        "javascript:lint-format": 3.0,
+        "javascript:types": 5.0,
+    }
 
     RESULT_ICONS = {
         CheckStatus.PASSED: "✅",
@@ -86,6 +108,7 @@ class DynamicDisplay:
         # Timing for ETA calculation
         self._overall_start_time: Optional[float] = None
         self._total_checks_expected: int = 0  # Set via set_total_checks()
+        self._completion_counter: int = 0  # Tracks order of completion
 
     def start(self) -> None:
         """Start the display and animation thread."""
@@ -136,7 +159,11 @@ class DynamicDisplay:
         """
         with self._lock:
             if name not in self._checks:
-                self._checks[name] = CheckDisplayInfo(name=name)
+                # Get expected duration from estimates (default 5s)
+                expected = self.DEFAULT_ESTIMATES.get(name, 5.0)
+                self._checks[name] = CheckDisplayInfo(
+                    name=name, expected_duration=expected
+                )
                 self._check_order.append(name)
 
             self._checks[name].state = DisplayState.RUNNING
@@ -163,6 +190,8 @@ class DynamicDisplay:
             info.result = result
             info.duration = result.duration
             self._completed_count += 1
+            self._completion_counter += 1
+            info.completion_order = self._completion_counter
 
         if not self._is_tty and not self.quiet:
             # Static mode: print completion
@@ -239,14 +268,32 @@ class DynamicDisplay:
             lines.append(self._build_progress_line(completed, total))
             lines.append("")
 
-        # Each check
+        # Sort checks: completed first (by completion order), then running, then pending
+        completed_checks: List[CheckDisplayInfo] = []
+        running_checks: List[CheckDisplayInfo] = []
+        pending_checks: List[CheckDisplayInfo] = []
+
         for name in self._check_order:
             if name not in self._checks:
                 continue
-
             info = self._checks[name]
-            line = self._format_check_line(info)
-            lines.append(line)
+            if info.state == DisplayState.COMPLETED:
+                completed_checks.append(info)
+            elif info.state == DisplayState.RUNNING:
+                running_checks.append(info)
+            else:
+                pending_checks.append(info)
+
+        # Sort completed by completion order
+        completed_checks.sort(key=lambda c: c.completion_order)
+
+        # Display in order: completed, running, pending
+        for info in completed_checks:
+            lines.append(self._format_check_line(info))
+        for info in running_checks:
+            lines.append(self._format_check_line(info))
+        for info in pending_checks:
+            lines.append(self._format_check_line(info))
 
         # Status summary
         if total > 0:
@@ -360,10 +407,19 @@ class DynamicDisplay:
         elif info.state == DisplayState.RUNNING:
             spinner = self.SPINNER_FRAMES[self._spinner_idx]
             elapsed = time.time() - info.start_time
-            return f"{spinner} {info.name}: running ({elapsed:.1f}s)"
+            remaining = max(0.0, info.expected_duration - elapsed)
+
+            # Show elapsed/expected with remaining ETA
+            if remaining > 0:
+                eta_str = f"~{self._format_time(remaining)} left"
+            else:
+                # Over expected time
+                eta_str = f"+{self._format_time(elapsed - info.expected_duration)} over"
+
+            return f"{spinner} {info.name}: ({elapsed:.1f}s / {info.expected_duration:.0f}s) {eta_str}"
 
         else:  # PENDING
-            return f"○ {info.name}: pending"
+            return f"○ {info.name}: pending (~{info.expected_duration:.0f}s)"
 
     @property
     def completed_count(self) -> int:

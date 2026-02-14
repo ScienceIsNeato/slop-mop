@@ -190,6 +190,8 @@ class TestDynamicDisplay:
         assert "○" in line
         assert "test:check" in line
         assert "pending" in line
+        # Shows estimated time
+        assert "~" in line
 
     def test_format_check_line_running(self) -> None:
         """Test formatting running check line."""
@@ -198,14 +200,16 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.5,
+            expected_duration=5.0,
         )
 
         line = display._format_check_line(info)
 
         assert "test:check" in line
-        assert "running" in line
-        # Should show elapsed time
-        assert "1." in line or "2." in line
+        # Shows elapsed/expected format
+        assert "/" in line
+        # Shows remaining ETA
+        assert "left" in line or "over" in line
 
     def test_format_check_line_completed_passed(self) -> None:
         """Test formatting completed (passed) check line."""
@@ -449,3 +453,81 @@ class TestDynamicDisplay:
 
         # Should show 1/10 (expected total) not 1/2 (discovered)
         assert "1/10" in progress_line
+
+    def test_format_check_line_running_over_time(self) -> None:
+        """Test formatting running check that's over expected time."""
+        display = DynamicDisplay(quiet=True)
+        info = CheckDisplayInfo(
+            name="test:check",
+            state=DisplayState.RUNNING,
+            start_time=time.time() - 10.0,  # 10s elapsed
+            expected_duration=5.0,  # Expected 5s
+        )
+
+        line = display._format_check_line(info)
+
+        assert "test:check" in line
+        assert "over" in line  # Should show "+Xs over"
+
+    def test_completion_order_tracked(self) -> None:
+        """Test that completion order is tracked correctly."""
+        display = DynamicDisplay(quiet=True)
+
+        display.on_check_start("test:a")
+        display.on_check_start("test:b")
+        display.on_check_start("test:c")
+
+        # Complete in different order: b, c, a
+        display.on_check_complete(
+            CheckResult(name="test:b", status=CheckStatus.PASSED, duration=0.1)
+        )
+        display.on_check_complete(
+            CheckResult(name="test:c", status=CheckStatus.PASSED, duration=0.2)
+        )
+        display.on_check_complete(
+            CheckResult(name="test:a", status=CheckStatus.PASSED, duration=0.3)
+        )
+
+        assert display._checks["test:b"].completion_order == 1
+        assert display._checks["test:c"].completion_order == 2
+        assert display._checks["test:a"].completion_order == 3
+
+    def test_completed_checks_shown_first(self) -> None:
+        """Test that completed checks appear at top of display."""
+        display = DynamicDisplay(quiet=True)
+        display._overall_start_time = time.time()
+        display.set_total_checks(3)
+
+        # Start all, complete one
+        display.on_check_start("test:a")
+        display.on_check_start("test:b")
+        display.on_check_start("test:c")
+        display.on_check_complete(
+            CheckResult(name="test:b", status=CheckStatus.PASSED, duration=0.1)
+        )
+
+        lines = display._build_display()
+
+        # Find the check lines (skip progress bar and empty line)
+        check_lines = [l for l in lines if "test:" in l]
+
+        # Completed check (test:b) should be first
+        assert "test:b" in check_lines[0]
+        assert "passed" in check_lines[0]
+
+    def test_default_estimates_lookup(self) -> None:
+        """Test that DEFAULT_ESTIMATES are used for known checks."""
+        display = DynamicDisplay(quiet=True)
+
+        # Start a check that has a default estimate
+        display.on_check_start("python:tests")
+
+        assert display._checks["python:tests"].expected_duration == 8.0
+
+    def test_unknown_check_default_estimate(self) -> None:
+        """Test unknown checks get default 5s estimate."""
+        display = DynamicDisplay(quiet=True)
+
+        display.on_check_start("unknown:custom-check")
+
+        assert display._checks["unknown:custom-check"].expected_duration == 5.0
