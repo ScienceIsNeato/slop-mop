@@ -189,9 +189,8 @@ class TestDynamicDisplay:
 
         assert "○" in line
         assert "test:check" in line
-        assert "pending" in line
-        # Shows estimated time
-        assert "~" in line
+        # Shows N/A for ETA (no prior data)
+        assert "ETA: N/A" in line
 
     def test_format_check_line_running(self) -> None:
         """Test formatting running check line."""
@@ -200,16 +199,15 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.5,
-            expected_duration=5.0,
         )
 
         line = display._format_check_line(info)
 
         assert "test:check" in line
-        # Shows elapsed/expected format
-        assert "/" in line
-        # Shows remaining ETA
-        assert "left" in line or "over" in line
+        # Shows elapsed time
+        assert "1." in line or "2." in line
+        # Shows N/A for ETA (no prior data)
+        assert "ETA: N/A" in line
 
     def test_format_check_line_completed_passed(self) -> None:
         """Test formatting completed (passed) check line."""
@@ -454,21 +452,6 @@ class TestDynamicDisplay:
         # Should show 1/10 (expected total) not 1/2 (discovered)
         assert "1/10" in progress_line
 
-    def test_format_check_line_running_over_time(self) -> None:
-        """Test formatting running check that's over expected time."""
-        display = DynamicDisplay(quiet=True)
-        info = CheckDisplayInfo(
-            name="test:check",
-            state=DisplayState.RUNNING,
-            start_time=time.time() - 10.0,  # 10s elapsed
-            expected_duration=5.0,  # Expected 5s
-        )
-
-        line = display._format_check_line(info)
-
-        assert "test:check" in line
-        assert "over" in line  # Should show "+Xs over"
-
     def test_completion_order_tracked(self) -> None:
         """Test that completion order is tracked correctly."""
         display = DynamicDisplay(quiet=True)
@@ -515,19 +498,26 @@ class TestDynamicDisplay:
         assert "test:b" in check_lines[0]
         assert "passed" in check_lines[0]
 
-    def test_default_estimates_lookup(self) -> None:
-        """Test that DEFAULT_ESTIMATES are used for known checks."""
+    def test_no_prior_data_shows_na(self) -> None:
+        """Test that checks with no prior run data show N/A for ETA."""
         display = DynamicDisplay(quiet=True)
 
-        # Start a check that has a default estimate
-        display.on_check_start("python:tests")
+        display.on_check_start("test:new-check")
 
-        assert display._checks["python:tests"].expected_duration == 8.0
+        # No expected_duration set (None = no prior data)
+        assert display._checks["test:new-check"].expected_duration is None
 
-    def test_unknown_check_default_estimate(self) -> None:
-        """Test unknown checks get default 5s estimate."""
+    def test_check_line_right_justified(self) -> None:
+        """Test that ETA column is right-justified."""
         display = DynamicDisplay(quiet=True)
+        info = CheckDisplayInfo(
+            name="test:check",
+            state=DisplayState.RUNNING,
+            start_time=time.time() - 2.0,
+        )
 
-        display.on_check_start("unknown:custom-check")
+        line = display._format_check_line(info)
 
-        assert display._checks["unknown:custom-check"].expected_duration == 5.0
+        # Line should contain padding spaces between name and ETA
+        # The exact spacing depends on terminal width, but there should be some
+        assert "  " in line  # At least some padding

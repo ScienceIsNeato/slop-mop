@@ -33,7 +33,7 @@ class CheckDisplayInfo:
     result: Optional[CheckResult] = None
     start_time: float = 0.0
     duration: float = 0.0
-    expected_duration: float = 5.0  # Default estimate
+    expected_duration: Optional[float] = None  # From prior runs, None = no data
     completion_order: int = 0  # Order in which check completed (0 = not yet)
 
 
@@ -51,25 +51,8 @@ class DynamicDisplay:
     # Spinner frames (Braille dots pattern - smooth animation)
     SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
-    # Default expected durations by check pattern (seconds)
-    # These are rough estimates - actual times vary by project size
-    DEFAULT_ESTIMATES: Dict[str, float] = {
-        "python:tests": 8.0,
-        "python:coverage": 1.0,
-        "python:type-checking": 3.0,
-        "python:lint-format": 2.0,
-        "python:static-analysis": 2.0,
-        "quality:string-duplication": 10.0,
-        "quality:source-duplication": 5.0,
-        "quality:complexity": 1.0,
-        "quality:dead-code": 2.0,
-        "quality:loc-lock": 3.0,
-        "quality:bogus-tests": 1.0,
-        "security:local": 8.0,
-        "javascript:tests": 10.0,
-        "javascript:lint-format": 3.0,
-        "javascript:types": 5.0,
-    }
+    # Width for right-justified ETA column
+    ETA_COLUMN_WIDTH = 15
 
     RESULT_ICONS = {
         CheckStatus.PASSED: "✅",
@@ -159,11 +142,7 @@ class DynamicDisplay:
         """
         with self._lock:
             if name not in self._checks:
-                # Get expected duration from estimates (default 5s)
-                expected = self.DEFAULT_ESTIMATES.get(name, 5.0)
-                self._checks[name] = CheckDisplayInfo(
-                    name=name, expected_duration=expected
-                )
+                self._checks[name] = CheckDisplayInfo(name=name)
                 self._check_order.append(name)
 
             self._checks[name].state = DisplayState.RUNNING
@@ -401,25 +380,38 @@ class DynamicDisplay:
         """
         if info.state == DisplayState.COMPLETED and info.result:
             icon = self.RESULT_ICONS.get(info.result.status, "❓")
-            duration = f"({info.duration:.2f}s)"
-            return f"{icon} {info.name}: {info.result.status.value} {duration}"
+            left = f"{icon} {info.name}: {info.result.status.value}"
+            right = f"({info.duration:.2f}s)"
+            return self._right_justify(left, right)
 
         elif info.state == DisplayState.RUNNING:
             spinner = self.SPINNER_FRAMES[self._spinner_idx]
             elapsed = time.time() - info.start_time
-            remaining = max(0.0, info.expected_duration - elapsed)
-
-            # Show elapsed/expected with remaining ETA
-            if remaining > 0:
-                eta_str = f"~{self._format_time(remaining)} left"
-            else:
-                # Over expected time
-                eta_str = f"+{self._format_time(elapsed - info.expected_duration)} over"
-
-            return f"{spinner} {info.name}: ({elapsed:.1f}s / {info.expected_duration:.0f}s) {eta_str}"
+            left = f"{spinner} {info.name}"
+            right = f"{elapsed:.1f}s   ETA: N/A"
+            return self._right_justify(left, right)
 
         else:  # PENDING
-            return f"○ {info.name}: pending (~{info.expected_duration:.0f}s)"
+            left = f"○ {info.name}"
+            right = "ETA: N/A"
+            return self._right_justify(left, right)
+
+    def _right_justify(self, left: str, right: str) -> str:
+        """Right-justify a line with left and right parts.
+
+        Args:
+            left: Left-aligned content
+            right: Right-aligned content
+
+        Returns:
+            Formatted line with proper padding
+        """
+        try:
+            term_width = min(shutil.get_terminal_size().columns, 120)
+        except (ValueError, OSError):
+            term_width = 80
+        padding = max(1, term_width - len(left) - len(right))
+        return left + (" " * padding) + right
 
     @property
     def completed_count(self) -> int:
