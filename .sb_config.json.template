@@ -150,31 +150,5 @@
         "templates_dir": null
       }
     }
-  },
-  "integration": {
-    "enabled": false,
-    "include_dirs": [],
-    "exclude_dirs": [],
-    "gates": {
-      "smoke-tests": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null,
-        "test_dir": "tests/smoke"
-      },
-      "integration-tests": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null,
-        "test_dir": "tests/integration"
-      },
-      "e2e-tests": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null,
-        "test_dir": "tests/e2e",
-        "test_command": null
-      }
-    }
   }
 }

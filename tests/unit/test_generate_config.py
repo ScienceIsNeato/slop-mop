@@ -303,7 +303,6 @@ class TestTemplateConfig:
         assert "security" in config
         assert "quality" in config
         assert "general" in config
-        assert "integration" in config
 
     def test_generate_template_config_all_gates_enabled(self):
         """Test that template config has all gates enabled."""
@@ -316,7 +315,6 @@ class TestTemplateConfig:
             "security",
             "quality",
             "general",
-            "integration",
         ]:
             if category in config:
                 assert (
