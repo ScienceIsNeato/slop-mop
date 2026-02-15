@@ -13,6 +13,7 @@
     "/lib"
   ],
   "scripts": {
+    "postinstall": "npx tsc",
     "prepare": "husky || true",
     "prepublishOnly": "tsc",
     "test": "node --import=tsx --experimental-test-module-mocks --test 'src/**/*.test.ts'"
