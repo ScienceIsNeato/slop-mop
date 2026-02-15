@@ -163,9 +163,10 @@ class CheckExecutor:
             is_enabled, reason = _is_gate_enabled_in_config(check, config)
             if not is_enabled:
                 disabled_gates.add(check.full_name)
-                logger.info(f"Disabled — {check.full_name}: {reason}")
                 if self._on_check_disabled:
                     self._on_check_disabled(check.full_name)
+                else:
+                    logger.info(f"Disabled — {check.full_name}: {reason}")
 
         # Propagate: if a dependency is disabled, disable its dependents too
         changed = True
@@ -176,10 +177,13 @@ class CheckExecutor:
                     for dep in check.depends_on:
                         if dep in disabled_gates:
                             disabled_gates.add(check.full_name)
-                            logger.info(
-                                f"Disabled — {check.full_name}: "
-                                f"dependency {dep} is disabled"
-                            )
+                            if self._on_check_disabled:
+                                self._on_check_disabled(check.full_name)
+                            else:
+                                logger.info(
+                                    f"Disabled — {check.full_name}: "
+                                    f"dependency {dep} is disabled"
+                                )
                             changed = True
                             break
 
@@ -305,11 +309,13 @@ class CheckExecutor:
         completed: Set[str] = set()
         pending = set(check_map.keys())
 
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=self._max_workers
-        ) as executor:
-            futures: Dict[concurrent.futures.Future[CheckResult], str] = {}
+        # Don't use `with` — we need to control shutdown behavior for fail-fast.
+        # The context manager calls shutdown(wait=True) which blocks until all
+        # in-flight futures complete, causing a multi-second hang after fail-fast.
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._max_workers)
+        futures: Dict[concurrent.futures.Future[CheckResult], str] = {}
 
+        try:
             while (pending or futures) and not self._stop_event.is_set():
                 # Find checks whose dependencies are all completed
                 ready: List[str] = []
@@ -397,6 +403,15 @@ class CheckExecutor:
                 elif not ready:
                     # No checks ready and no futures pending - deadlock or done
                     break
+        finally:
+            if self._stop_event.is_set():
+                # Fail-fast: cancel queued futures and don't wait for running ones
+                for future in futures:
+                    future.cancel()
+                executor.shutdown(wait=False, cancel_futures=True)
+            else:
+                # Normal exit: wait for everything to finish cleanly
+                executor.shutdown(wait=True)
 
         # Handle any remaining pending checks (due to fail-fast)
         for name in pending:

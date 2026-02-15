@@ -130,6 +130,11 @@ def _add_validate_parser(
         action="store_true",
         help="Disable dynamic display (use static line-by-line output)",
     )
+    validate_parser.add_argument(
+        "--clear-history",
+        action="store_true",
+        help="Clear all timing history before running",
+    )
 
 
 def _add_config_parser(
@@ -347,6 +352,11 @@ def _add_status_parser(
         "-q",
         action="store_true",
         help="Minimal output (report card only)",
+    )
+    status_parser.add_argument(
+        "--static",
+        action="store_true",
+        help="Disable dynamic display (use static line-by-line output)",
     )
 
 
