@@ -1,28 +1,41 @@
 # Session Status
 
-## Current Work: feat/config-filtering-and-tool-detection branch — PR #20
+## Current Work: feat/dynamic-check-display branch
 
-### Latest: Three commits ready to push
+### Latest: Dynamic display implemented and committed
 
-**Branch commits (ahead of origin):**
-- `94758de`: fix: use Python tokenize for docstring exclusion in string-duplication check
-- `1d30e0e`: refactor: remove pip install, run slop-mop directly from submodule
-- `3183914`: fix: preserve line numbers in docstring stripping, add PYTHONPATH to wrappers
+**Branch commits:**
+- `5bf05dd`: feat: add brew-style dynamic display for quality checks
 
 ### Key changes in this session:
 
-1. **Docstring stripping** — Moved from regex to Python's `tokenize` module for correct
-   docstring identification. Line numbers are preserved (multi-line docstrings replaced
-   with `pass` + matching newline count). Temp-dir approach kept because in-place
-   modification races with parallel lint checks.
+1. **DynamicDisplay class** — New `slopmop/reporting/dynamic.py` module implementing
+   brew-style live terminal updates with:
+   - Animated spinners (Braille dots pattern) for running checks
+   - Progress bar showing completion percentage
+   - Real-time elapsed time per check
+   - In-place terminal updates using ANSI escape codes
+   - Graceful fallback to static output for non-TTY environments
 
-2. **Removed pip install** — `pip install -e .` was a design flaw (global state, cross-project
-   contamination). Now runs via `python -m slopmop.sm` with PYTHONPATH. `setup.py` deleted,
-   `[project.scripts]` removed from pyproject.toml. New `scripts/sm` wrapper and
-   `scripts/setup.sh` for automated setup.
+2. **Executor callbacks** — Extended `CheckExecutor` with new callbacks:
+   - `set_start_callback`: notified when check begins running
+   - `set_disabled_callback`: notified when check is disabled
+   - Existing `set_progress_callback` for completion events
 
-3. **PYTHONPATH fix** — Both sm wrappers (bundled and setup.sh-generated) were missing
-   `export PYTHONPATH`. Without it, every `scripts/sm` invocation would fail with
-   ModuleNotFoundError. Fixed.
+3. **CLI integration** — 
+   - Added `--static` flag to force line-by-line output
+   - Dynamic display enabled by default on TTY
+   - Auto-detects NO_COLOR environment variable
 
-### All 12 quality gates pass. 675 tests pass.
+4. **Comprehensive tests** — 27 unit tests for DynamicDisplay class covering:
+   - State transitions (pending → running → completed)
+   - Thread safety with concurrent check updates
+   - Output formatting for all check statuses
+   - Quiet mode and non-TTY fallback behavior
+
+### All 12 quality gates pass. 707 tests pass.
+
+### Known issues to address:
+- Duplicate output at end (final state printed twice)
+- Disabled messages appearing twice (logger + callback)
+

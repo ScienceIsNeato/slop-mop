@@ -15,7 +15,16 @@ set -euo pipefail
 # Resolve the slop-mop directory (parent of scripts/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SLOP_MOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_ROOT="$(cd "$SLOP_MOP_DIR/.." && pwd)"
+
+# Determine project root: if slop-mop has a .git directory (not file),
+# it's the primary project. Otherwise it's a submodule and we go up one level.
+if [ -d "$SLOP_MOP_DIR/.git" ]; then
+    # slop-mop IS the project (standalone or development)
+    PROJECT_ROOT="$SLOP_MOP_DIR"
+else
+    # slop-mop is a submodule (.git is a file pointing to parent's .git/modules/)
+    PROJECT_ROOT="$(cd "$SLOP_MOP_DIR/.." && pwd)"
+fi
 
 if [ ! -d "$SLOP_MOP_DIR/slopmop" ]; then
     echo "❌ Error: slopmop module not found at $SLOP_MOP_DIR/slopmop"

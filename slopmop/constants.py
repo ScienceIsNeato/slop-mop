@@ -3,6 +3,12 @@
 # CLI help text
 PROJECT_ROOT_HELP = "Project root directory (default: current directory)"
 
+
+def format_duration_suffix(seconds: float) -> str:
+    """Format a duration as a trailing summary fragment, e.g. ' · ⏱️  3.2s'."""
+    return f" · ⏱️  {seconds:.1f}s"
+
+
 # Check result messages
 NO_ISSUES_FOUND = "No issues found"
 COVERAGE_XML_NOT_FOUND = "coverage.xml not found"

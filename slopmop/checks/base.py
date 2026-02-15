@@ -186,6 +186,19 @@ class BaseCheck(ABC):
         return []
 
     @property
+    def superseded_by(self) -> Optional[str]:
+        """Full name of check that supersedes this one.
+
+        If another check fully encompasses this check's functionality,
+        return its full name (e.g., 'security:full'). This prevents
+        recommending a subset check when its superset is already running.
+
+        Returns:
+            Full name of superseding check, or None if not superseded
+        """
+        return None
+
+    @property
     def config_schema(self) -> List[ConfigField]:
         """Additional configuration fields for this check.
 

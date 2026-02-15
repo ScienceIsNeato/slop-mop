@@ -194,13 +194,21 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         )
 
     def _check_black(self, project_root: str) -> Optional[str]:
-        """Check black formatting."""
+        """Check black formatting.
+
+        In normal operation, auto_fix() runs first, so failures here are typically:
+        - Syntax errors that black can't parse
+        - Files black refuses to format
+        If --no-auto-fix was used, may also see "would reformat" messages.
+        """
         targets = self._get_python_targets(project_root)
         if not targets:
             return None  # No Python targets found
 
-        # Check each target
-        result = None
+        # Run black --check on all targets, collect any failures
+        all_output: List[str] = []
+        any_failed = False
+
         for target in targets:
             result = self._run_command(
                 ["black", "--check", "--line-length", "88", target],
@@ -208,17 +216,21 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 timeout=60,
             )
             if not result.success:
-                break
+                any_failed = True
+                if result.output:
+                    # Black outputs useful info like:
+                    # "error: cannot format file.py: Cannot parse: 1:11: message"
+                    # "would reformat file.py"
+                    all_output.append(result.output.strip())
 
-        if result is None or not result.success:
-            # Extract files that need formatting
-            output = result.output if result else ""
-            lines = output.split("\n")
-            files = [line for line in lines if line.startswith("would reformat")]
-            if files:
-                return f"{len(files)} file(s) need formatting"
-            return "Formatting check failed"
-        return None
+        if not any_failed:
+            return None
+
+        # Combine and return black's actual output (it includes file:line info)
+        combined = "\n".join(all_output)
+        if combined:
+            return combined
+        return "Formatting check failed"
 
     def _check_isort(self, project_root: str) -> Optional[str]:
         """Check isort import order."""
@@ -242,6 +254,28 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         )
 
         if not result.success:
+            # isort outputs "ERROR: file.py ..." or "Skipped X files"
+            # Extract file paths from output for actionable feedback
+            output = result.output if result.output else ""
+            error_lines = [
+                line for line in output.split("\n") if line.startswith("ERROR:")
+            ]
+            if error_lines:
+                # Extract file paths from "ERROR: path/to/file.py ..." lines
+                file_names: List[str] = []
+                for line in error_lines:
+                    parts = line.split(" ")
+                    if len(parts) >= 2:
+                        file_names.append(str(parts[1]))
+                if len(file_names) <= 5:
+                    files_str = "\n  ".join(file_names)
+                    return f"Import order issues:\n  {files_str}"
+                else:
+                    shown = "\n  ".join(file_names[:5])
+                    remaining = len(file_names) - 5
+                    return (
+                        f"Import order issues:\n  {shown}\n  ... and {remaining} more"
+                    )
             return "Import order issues found"
         return None
 

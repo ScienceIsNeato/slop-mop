@@ -14,11 +14,6 @@ def _register_python_checks(registry: CheckRegistry) -> None:
     )
     from slopmop.checks.python.lint_format import PythonLintFormatCheck
     from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
-    from slopmop.checks.python.test_types import (
-        E2ETestCheck,
-        IntegrationTestCheck,
-        SmokeTestCheck,
-    )
     from slopmop.checks.python.tests import PythonTestsCheck
     from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
@@ -28,9 +23,6 @@ def _register_python_checks(registry: CheckRegistry) -> None:
     registry.register(PythonDiffCoverageCheck)
     registry.register(PythonStaticAnalysisCheck)
     registry.register(PythonTypeCheckingCheck)
-    registry.register(SmokeTestCheck)
-    registry.register(IntegrationTestCheck)
-    registry.register(E2ETestCheck)
 
 
 def _register_javascript_checks(registry: CheckRegistry) -> None:
@@ -163,15 +155,6 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "quality:string-duplication",
             "quality:bogus-tests",
             "quality:loc-lock",
-        ],
-    )
-
-    registry.register_alias(
-        "e2e",
-        [
-            "integration:smoke-tests",
-            "integration:integration-tests",
-            "integration:e2e-tests",
         ],
     )
 

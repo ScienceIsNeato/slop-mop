@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional
@@ -12,6 +13,8 @@ from slopmop.checks import ensure_checks_registered
 from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
 from slopmop.reporting.console import ConsoleReporter
+from slopmop.reporting.dynamic import DynamicDisplay
+from slopmop.reporting.timings import clear_timings
 
 
 def _setup_self_validation(project_root: Path) -> str:
@@ -76,15 +79,7 @@ def _print_header(
     project_root: Path, gates: List[str], args: argparse.Namespace
 ) -> None:
     """Print validation header."""
-    print("\n🧹 ./sm validate - Quality Gate Validation")
-    print("=" * 60)
-    from slopmop.reporting import print_project_header
-
-    print_project_header(str(project_root))
-    if args.self_validate:
-        print("🔄 Mode: Self-validation (using isolated config)")
-    print(f"🔍 Quality Gates: {', '.join(gates)}")
-    print("=" * 60)
+    print("\u2728 scanning the code for slop to mop")
     print()
 
 
@@ -104,6 +99,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if not project_root.is_dir():
         print(f"❌ Project root not found: {project_root}")
         return 1
+
+    # Clear timing history if requested
+    if getattr(args, "clear_history", False):
+        if clear_timings(str(project_root)):
+            if not args.quiet:
+                print("🗑️  Timing history cleared")
 
     # Set up self-validation if needed
     temp_config_dir = None
@@ -125,12 +126,34 @@ def cmd_validate(args: argparse.Namespace) -> int:
         quiet=args.quiet,
         verbose=args.verbose,
         profile=profile_name,
+        project_root=str(project_root),
     )
-    executor.set_progress_callback(reporter.on_check_complete)
 
-    # Print header
+    # Determine if we should use dynamic display
+    use_dynamic = (
+        sys.stdout.isatty()
+        and not os.environ.get("NO_COLOR")
+        and not args.quiet
+        and not getattr(args, "static", False)
+    )
+
+    # Print header BEFORE starting dynamic display
     if not args.quiet:
         _print_header(project_root, gates, args)
+
+    # Set up dynamic display if appropriate
+    dynamic_display: Optional[DynamicDisplay] = None
+    if use_dynamic:
+        dynamic_display = DynamicDisplay(quiet=args.quiet)
+        dynamic_display.load_historical_timings(str(project_root))
+        dynamic_display.start()
+        executor.set_start_callback(dynamic_display.on_check_start)
+        executor.set_progress_callback(dynamic_display.on_check_complete)
+        executor.set_disabled_callback(dynamic_display.on_check_disabled)
+        executor.set_total_callback(dynamic_display.set_total_checks)
+    else:
+        # Fall back to traditional reporter
+        executor.set_progress_callback(reporter.on_check_complete)
 
     # Load configuration
     config = load_config(project_root)
@@ -144,9 +167,17 @@ def cmd_validate(args: argparse.Namespace) -> int:
             auto_fix=not args.no_auto_fix,
         )
 
+        # Stop dynamic display before printing summary
+        if dynamic_display:
+            dynamic_display.stop()
+            dynamic_display.save_historical_timings(str(project_root))
+
         # Print summary
         reporter.print_summary(summary)
         return 0 if summary.all_passed else 1
     finally:
+        # Ensure display is stopped on any exit
+        if dynamic_display:
+            dynamic_display.stop()
         if temp_config_dir:
             _cleanup_self_validation(temp_config_dir)
