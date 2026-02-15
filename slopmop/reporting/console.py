@@ -7,7 +7,7 @@ that guide iterative fix-validate-resume workflows.
 import os
 from typing import Optional
 
-from slopmop.constants import format_duration_suffix
+from slopmop.constants import STATUS_EMOJI, format_duration_suffix
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
 
 
@@ -21,16 +21,6 @@ class ConsoleReporter:
     - Actionable fix suggestions
     - Explicit iteration guidance for AI agents
     """
-
-    # Status emoji mapping
-    STATUS_EMOJI = {
-        CheckStatus.PASSED: "✅",
-        CheckStatus.FAILED: "❌",
-        CheckStatus.WARNED: "⚠️",
-        CheckStatus.SKIPPED: "⏭️",
-        CheckStatus.NOT_APPLICABLE: "⊘",
-        CheckStatus.ERROR: "💥",
-    }
 
     def __init__(
         self,
@@ -61,7 +51,7 @@ class ConsoleReporter:
         if self.quiet and result.passed:
             return
 
-        emoji = self.STATUS_EMOJI.get(result.status, "❓")
+        emoji = STATUS_EMOJI.get(result.status, "❓")
         print(f"{emoji} {result.name}: {result.status.value} ({result.duration:.2f}s)")
 
         # Show output for failures or in verbose mode
@@ -202,6 +192,8 @@ class ConsoleReporter:
                 lines = error_lines if error_lines else all_lines
                 for line in lines[:max_preview_lines]:
                     print(f"   {line}")
+            if r.fix_suggestion:
+                print(f"   💡 {r.fix_suggestion}")
 
         for r in errors:
             detail = r.error or "unknown error"
@@ -214,6 +206,8 @@ class ConsoleReporter:
                 lines = error_lines if error_lines else all_lines
                 for line in lines[:max_preview_lines]:
                     print(f"   {line}")
+            if r.fix_suggestion:
+                print(f"   💡 {r.fix_suggestion}")
 
     def _print_failure_sections_with_logs(
         self,
@@ -240,6 +234,8 @@ class ConsoleReporter:
                     print(
                         f"   ... ({len(lines) - max_preview_lines} more lines in log)"
                     )
+            if r.fix_suggestion:
+                print(f"   💡 {r.fix_suggestion}")
             log_path = self._write_failure_log(r)
             if log_path:
                 print(f"   📄 {log_path}")
@@ -260,6 +256,8 @@ class ConsoleReporter:
                     print(
                         f"   ... ({len(lines) - max_preview_lines} more lines in log)"
                     )
+            if r.fix_suggestion:
+                print(f"   💡 {r.fix_suggestion}")
             log_path = self._write_failure_log(r)
             if log_path:
                 print(f"   📄 {log_path}")

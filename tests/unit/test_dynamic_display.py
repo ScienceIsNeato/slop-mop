@@ -4,6 +4,7 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
+from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.dynamic import CheckDisplayInfo, DisplayState, DynamicDisplay
 
@@ -60,7 +61,7 @@ class TestDynamicDisplay:
         display = DynamicDisplay(quiet=True)
 
         assert display.quiet is True
-        assert display._is_tty is True or display._is_tty is False  # Depends on env
+        assert isinstance(display._is_tty, bool)  # Depends on environment
 
     def test_init_empty_checks(self) -> None:
         """Test display starts with no checks."""
@@ -310,16 +311,14 @@ class TestDynamicDisplay:
 
         assert display._stopped is True
 
-    def test_result_icons_mapping(self) -> None:
-        """Test RESULT_ICONS has all statuses."""
-        display = DynamicDisplay(quiet=True)
-
-        assert CheckStatus.PASSED in display.RESULT_ICONS
-        assert CheckStatus.FAILED in display.RESULT_ICONS
-        assert CheckStatus.WARNED in display.RESULT_ICONS
-        assert CheckStatus.SKIPPED in display.RESULT_ICONS
-        assert CheckStatus.NOT_APPLICABLE in display.RESULT_ICONS
-        assert CheckStatus.ERROR in display.RESULT_ICONS
+    def test_status_emoji_mapping(self) -> None:
+        """Test STATUS_EMOJI has all statuses."""
+        assert CheckStatus.PASSED in STATUS_EMOJI
+        assert CheckStatus.FAILED in STATUS_EMOJI
+        assert CheckStatus.WARNED in STATUS_EMOJI
+        assert CheckStatus.SKIPPED in STATUS_EMOJI
+        assert CheckStatus.NOT_APPLICABLE in STATUS_EMOJI
+        assert CheckStatus.ERROR in STATUS_EMOJI
 
     def test_spinner_frames_not_empty(self) -> None:
         """Test SPINNER_FRAMES has animation frames."""

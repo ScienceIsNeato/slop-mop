@@ -2,6 +2,7 @@
 
 import pytest  # noqa: F401  # Required for fixtures
 
+from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
 from slopmop.reporting.console import ConsoleReporter
 
@@ -290,7 +291,7 @@ class TestConsoleReporter:
         assert "   ✅ check2" not in captured.out
 
     def test_print_summary_with_fix_suggestion(self, capsys):
-        """Test fix_suggestion goes to log, not compact summary output."""
+        """Test fix_suggestion appears in compact summary output."""
         results = [
             CheckResult(
                 "check1",
@@ -301,23 +302,20 @@ class TestConsoleReporter:
             ),
         ]
         summary = ExecutionSummary.from_results(results, 1.0)
-        # Without project_root, no log is written and fix_suggestion
-        # is not shown in the compact summary
         reporter = ConsoleReporter()
 
         reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        # Fix suggestion should NOT appear in compact summary
-        assert "Run fix command" not in captured.out
+        # Fix suggestion should appear in compact summary
+        assert "Run fix command" in captured.out
         # Error detail should still appear
         assert "Error" in captured.out
 
     def test_status_emoji_mapping(self):
         """Test status emoji mapping is complete."""
-        reporter = ConsoleReporter()
         for status in CheckStatus:
-            assert status in reporter.STATUS_EMOJI
+            assert status in STATUS_EMOJI
 
     def test_print_failure_details_long_output(self, capsys):
         """Test that long output is truncated."""
@@ -358,8 +356,8 @@ class TestConsoleReporter:
         # Output preview shown
         assert "Black: Formatting OK" in captured.out
         assert "Isort: Import order issues" in captured.out
-        # Fix suggestion NOT shown in compact summary
-        assert "Run: black" not in captured.out
+        # Fix suggestion now shown in compact summary
+        assert "Run: black" in captured.out
         # Log file actually created with full content
         log_file = tmp_path / ".slopmop" / "logs" / "python_lint-format.log"
         assert log_file.exists()

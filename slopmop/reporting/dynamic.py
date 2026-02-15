@@ -14,7 +14,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional
 
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.constants import STATUS_EMOJI
+from slopmop.core.result import CheckResult
 from slopmop.reporting.timings import load_timings, save_timings
 
 
@@ -66,15 +67,6 @@ class DynamicDisplay:
     # Progress bar characters for checks with timing estimates
     PROGRESS_FILL = "█"
     PROGRESS_EMPTY = "░"
-
-    RESULT_ICONS = {
-        CheckStatus.PASSED: "✅",
-        CheckStatus.FAILED: "❌",
-        CheckStatus.WARNED: "⚠️",
-        CheckStatus.SKIPPED: "⏭️",
-        CheckStatus.NOT_APPLICABLE: "⊘",
-        CheckStatus.ERROR: "💥",
-    }
 
     def __init__(self, quiet: bool = False):
         """Initialize dynamic display.
@@ -218,7 +210,7 @@ class DynamicDisplay:
 
         if not self._is_tty and not self.quiet:
             # Static mode: print completion
-            icon = self.RESULT_ICONS.get(result.status, "❓")
+            icon = STATUS_EMOJI.get(result.status, "❓")
             print(
                 f"{icon} {result.name}: {result.status.value} ({result.duration:.2f}s)"
             )
@@ -423,7 +415,7 @@ class DynamicDisplay:
             term_width = 80
 
         if info.state == DisplayState.COMPLETED and info.result:
-            icon = self.RESULT_ICONS.get(info.result.status, "❓")
+            icon = STATUS_EMOJI.get(info.result.status, "❓")
             left = f"{icon} {info.name}: {info.result.status.value}"
             time_str = self._format_time(info.duration)
             right = self._align_columns(time_str, "")
@@ -591,4 +583,5 @@ class DynamicDisplay:
     @property
     def all_completed(self) -> bool:
         """Check if all checks are completed."""
-        return all(c.state == DisplayState.COMPLETED for c in self._checks.values())
+        with self._lock:
+            return all(c.state == DisplayState.COMPLETED for c in self._checks.values())
