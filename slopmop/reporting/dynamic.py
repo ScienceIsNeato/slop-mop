@@ -15,6 +15,7 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.reporting.timings import load_timings, save_timings
 
 
 class DisplayState(Enum):
@@ -52,8 +53,19 @@ class DynamicDisplay:
     # Spinner frames (Braille dots pattern - smooth animation)
     SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
-    # Width for right-justified ETA column
-    ETA_COLUMN_WIDTH = 15
+    # Width for right-justified columns — sized to fit header labels
+    TIME_COLUMN_WIDTH = 12  # "Time Elapsed"
+    ETA_COLUMN_WIDTH = 14  # "Est. Time Rem."
+
+    # Dot leader characters for animated fill on running checks.
+    # The "pulse" is a brighter dot that travels through the leader.
+    DOT_CHAR = "·"
+    PULSE_CHAR = "•"
+    PULSE_WIDTH = 3  # How many chars wide the bright pulse is
+
+    # Progress bar characters for checks with timing estimates
+    PROGRESS_FILL = "█"
+    PROGRESS_EMPTY = "░"
 
     RESULT_ICONS = {
         CheckStatus.PASSED: "✅",
@@ -77,9 +89,11 @@ class DynamicDisplay:
         self._checks: Dict[str, CheckDisplayInfo] = {}
         self._check_order: List[str] = []
         self._completed_count = 0
+        self._disabled_names: List[str] = []
 
         # Animation state
         self._spinner_idx = 0
+        self._animation_tick = 0  # Monotonic counter for dot leader traversal
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._animation_thread: Optional[threading.Thread] = None
@@ -93,6 +107,31 @@ class DynamicDisplay:
         self._overall_start_time: Optional[float] = None
         self._total_checks_expected: int = 0  # Set via set_total_checks()
         self._completion_counter: int = 0  # Tracks order of completion
+
+        # Historical timing data for ETAs
+        self._historical_timings: Dict[str, float] = {}
+
+    def load_historical_timings(self, project_root: str) -> None:
+        """Load historical timing data from disk.
+
+        Args:
+            project_root: Project root directory
+        """
+        self._historical_timings = load_timings(project_root)
+
+    def save_historical_timings(self, project_root: str) -> None:
+        """Save current run's timings to disk for future ETAs.
+
+        Args:
+            project_root: Project root directory
+        """
+        durations = {
+            name: info.duration
+            for name, info in self._checks.items()
+            if info.state == DisplayState.COMPLETED and info.duration > 0
+        }
+        if durations:
+            save_timings(project_root, durations)
 
     def start(self) -> None:
         """Start the display and animation thread."""
@@ -149,6 +188,10 @@ class DynamicDisplay:
             self._checks[name].state = DisplayState.RUNNING
             self._checks[name].start_time = time.time()
 
+            # Populate expected duration from historical data
+            if name in self._historical_timings:
+                self._checks[name].expected_duration = self._historical_timings[name]
+
         if not self._is_tty and not self.quiet:
             # Static mode: print start message
             print(f"  ◐ {name}: running...")
@@ -185,16 +228,16 @@ class DynamicDisplay:
 
         Args:
             name: Check name
-
-        Note: We don't print here - the executor logger already prints disabled messages.
         """
-        # Intentionally empty - avoid duplicate messages
+        with self._lock:
+            self._disabled_names.append(name)
 
     def _animation_loop(self) -> None:
         """Background thread for spinner animation."""
         while not self._stop_event.is_set():
             with self._lock:
                 self._spinner_idx = (self._spinner_idx + 1) % len(self.SPINNER_FRAMES)
+                self._animation_tick += 1
 
             self._draw()
 
@@ -255,15 +298,14 @@ class DynamicDisplay:
             else len(self._checks)
         )
 
-        # Progress bar with ETA (only if we have checks)
+        # Progress bar (only if we have checks)
         if total > 0:
             lines.append(self._build_progress_line(completed, total))
-            lines.append("")
 
-        # Sort checks: completed first (by completion order), then running, then pending
+        # Sort checks: completed first (by completion order),
+        # then active (running+pending) sorted by timing estimate
         completed_checks: List[CheckDisplayInfo] = []
-        running_checks: List[CheckDisplayInfo] = []
-        pending_checks: List[CheckDisplayInfo] = []
+        active_checks: List[CheckDisplayInfo] = []
 
         for name in self._check_order:
             if name not in self._checks:
@@ -271,38 +313,44 @@ class DynamicDisplay:
             info = self._checks[name]
             if info.state == DisplayState.COMPLETED:
                 completed_checks.append(info)
-            elif info.state == DisplayState.RUNNING:
-                running_checks.append(info)
             else:
-                pending_checks.append(info)
+                active_checks.append(info)
 
         # Sort completed by completion order
         completed_checks.sort(key=lambda c: c.completion_order)
 
-        # Display in order: completed, running, pending
+        # Sort active: checks with estimates first (longest first for
+        # visual stability — they stay at top longest as shorter checks
+        # complete and move to the completed section above).
+        # Checks without estimates go last, sorted alphabetically.
+        active_checks.sort(
+            key=lambda c: (
+                0 if c.expected_duration is not None else 1,
+                -(c.expected_duration or 0),
+                c.name,
+            )
+        )
+
+        # Display in order: completed, then sorted active
         for info in completed_checks:
             lines.append(self._format_check_line(info))
-        for info in running_checks:
-            lines.append(self._format_check_line(info))
-        for info in pending_checks:
+        for info in active_checks:
             lines.append(self._format_check_line(info))
 
-        # Status summary
-        if total > 0:
+        # Disabled summary (shown after checks, before status)
+        if self._disabled_names:
+            disabled_str = ", ".join(self._disabled_names)
+            lines.append(f"Disabled: {disabled_str}")
+
+        # Status summary - only show when checks are still running
+        if running > 0:
             lines.append("")
-            status_parts: List[str] = []
-            if running > 0:
-                status_parts.append(f"🔄 {running} running")
-            if completed > 0:
-                status_parts.append(f"✓ {completed} done")
-
-            if status_parts:
-                lines.append(" · ".join(status_parts))
+            lines.append(f"🔄 {running} running · ✓ {completed} done")
 
         return lines
 
     def _build_progress_line(self, completed: int, total: int) -> str:
-        """Build the progress line with bar, stats, and ETA.
+        """Build the progress line with bar and stats (no ETA).
 
         Args:
             completed: Number of completed checks
@@ -316,45 +364,25 @@ class DynamicDisplay:
         except (ValueError, OSError):
             term_width = 80
 
-        # Calculate times
+        # Calculate elapsed time
         elapsed = 0.0
         if self._overall_start_time:
             elapsed = time.time() - self._overall_start_time
 
-        # Calculate ETA based on average completion time
-        eta_str = ""
-        if completed > 0 and completed < total:
-            total_duration = sum(
-                c.duration
-                for c in self._checks.values()
-                if c.state == DisplayState.COMPLETED
-            )
-            avg_time = total_duration / completed
-            remaining = total - completed
-            eta = avg_time * remaining
-            eta_str = f"ETA: {self._format_time(eta)}"
-        elif completed == total:
-            eta_str = "done"
-
-        # Right side
+        # Right side: count + elapsed
         elapsed_str = self._format_time(elapsed)
-        right_side = (
-            f"{elapsed_str} elapsed · {eta_str}"
-            if eta_str
-            else f"{elapsed_str} elapsed"
-        )
+        right_side = f"{completed}/{total} · {elapsed_str} elapsed"
 
         # Calculate bar width from remaining space
-        count_str = f"{completed}/{total}"
-        # "Progress: [" + bar + "] " + count + padding(min 2) + right_side
-        chrome_len = len("Progress: [] ") + len(count_str) + 2 + len(right_side)
+        # "Progress: [" + bar + "]  " + right_side
+        chrome_len = len("Progress: []  ") + len(right_side)
         bar_width = max(10, term_width - chrome_len)
 
         pct = completed / total if total > 0 else 0
         filled = int(pct * bar_width)
         bar = "█" * filled + "░" * (bar_width - filled)
 
-        left_side = f"Progress: [{bar}] {count_str}"
+        left_side = f"Progress: [{bar}]"
         return self._right_justify(left_side, right_side)
 
     def _format_time(self, seconds: float) -> str:
@@ -364,17 +392,24 @@ class DynamicDisplay:
             seconds: Time in seconds
 
         Returns:
-            Formatted string like "5.2s" or "1m 23s"
+            Formatted string like "5.2s", "1m 30s", or "1h 23m 12s"
         """
         if seconds < 60:
             return f"{seconds:.1f}s"
-        else:
+        elif seconds < 3600:
             mins = int(seconds // 60)
-            secs = int(seconds % 60)
-            return f"{mins}m {secs}s"
+            secs = seconds % 60
+            return f"{mins}m {secs:.1f}s"
+        else:
+            hours = int(seconds // 3600)
+            mins = int((seconds % 3600) // 60)
+            secs = seconds % 60
+            return f"{hours}h {mins}m {secs:.1f}s"
 
     def _format_check_line(self, info: CheckDisplayInfo) -> str:
-        """Format a single check line.
+        """Format a single check line with aligned columns.
+
+        Layout: icon name <dot_leader_or_space> elapsed_col  eta_col
 
         Args:
             info: Check display info
@@ -382,23 +417,127 @@ class DynamicDisplay:
         Returns:
             Formatted line string
         """
+        try:
+            term_width = shutil.get_terminal_size().columns
+        except (ValueError, OSError):
+            term_width = 80
+
         if info.state == DisplayState.COMPLETED and info.result:
             icon = self.RESULT_ICONS.get(info.result.status, "❓")
             left = f"{icon} {info.name}: {info.result.status.value}"
-            right = f"({info.duration:.2f}s)"
+            time_str = self._format_time(info.duration)
+            right = self._align_columns(time_str, "")
             return self._right_justify(left, right)
 
         elif info.state == DisplayState.RUNNING:
             spinner = self.SPINNER_FRAMES[self._spinner_idx]
             elapsed = time.time() - info.start_time
             left = f"{spinner} {info.name}"
-            right = f"{elapsed:.1f}s   ETA: N/A"
-            return self._right_justify(left, right)
+            time_str = self._format_time(elapsed)
+            if info.expected_duration is not None and info.expected_duration > 0:
+                remaining = max(0.0, info.expected_duration - elapsed)
+                eta_str = self._format_time(remaining)
+                pct = min(elapsed / info.expected_duration, 0.99)
+                right = self._align_columns(time_str, eta_str)
+                # Show progress bar for checks with timing estimates
+                return self._progress_bar_line(left, right, term_width, pct)
+            else:
+                eta_str = "N/A"
+                right = self._align_columns(time_str, eta_str)
+                # Fill gap with animated dot leader for unknown checks
+                return self._dot_leader_line(left, right, term_width)
 
         else:  # PENDING
             left = f"○ {info.name}"
-            right = "ETA: N/A"
+            time_str = ""
+            if info.expected_duration is not None:
+                eta_str = self._format_time(info.expected_duration)
+            else:
+                eta_str = "N/A"
+            right = self._align_columns(time_str, eta_str)
             return self._right_justify(left, right)
+
+    def _align_columns(self, time_str: str, eta_str: str) -> str:
+        """Right-align the time and ETA into fixed-width columns.
+
+        Args:
+            time_str: Elapsed/duration string
+            eta_str: ETA string
+
+        Returns:
+            Combined right-side string with consistent column widths
+        """
+        return (
+            f"{time_str:>{self.TIME_COLUMN_WIDTH}}  {eta_str:>{self.ETA_COLUMN_WIDTH}}"
+        )
+
+    def _progress_bar_line(
+        self, left: str, right: str, term_width: int, pct: float
+    ) -> str:
+        """Build a line with a progress bar between left and right.
+
+        Replaces the dot leader animation for checks that have timing
+        estimates, showing actual completion percentage.
+
+        Args:
+            left: Left-aligned content (spinner + name)
+            right: Right-aligned content (time columns)
+            term_width: Terminal width in columns
+            pct: Completion percentage (0.0 to 1.0)
+
+        Returns:
+            Formatted line with progress bar
+        """
+        left_w = self._display_width(left)
+        right_w = self._display_width(right)
+        gap = term_width - left_w - right_w - 2  # 1 space padding each side
+
+        if gap < 12:
+            return self._right_justify(left, right)
+
+        pct_label = f"{int(pct * 100):>3}%"
+        bar_width = gap - len(pct_label) - 3  # [] + space before pct
+        if bar_width < 5:
+            return self._right_justify(left, right)
+
+        filled = int(pct * bar_width)
+        bar = self.PROGRESS_FILL * filled + self.PROGRESS_EMPTY * (bar_width - filled)
+        middle = f"[{bar}] {pct_label}"
+
+        return f"{left} {middle} {right}"
+
+    def _dot_leader_line(self, left: str, right: str, term_width: int) -> str:
+        """Build a line with an animated dot leader between left and right.
+
+        A subtle pulse (brighter dot) travels through the dot leader to
+        indicate activity, giving visual feedback even when no timing
+        data is available.
+
+        Args:
+            left: Left-aligned content
+            right: Right-aligned content
+            term_width: Terminal width in columns
+
+        Returns:
+            Formatted line with animated dot leader
+        """
+        left_w = self._display_width(left)
+        right_w = self._display_width(right)
+        gap = term_width - left_w - right_w - 2  # 1 space padding each side
+
+        if gap <= 0:
+            return self._right_justify(left, right)
+
+        # Build dot leader with traveling pulse
+        dots = list(self.DOT_CHAR * gap)
+        # Pulse travels the full width using monotonic tick counter
+        pulse_pos = (self._animation_tick * 2) % max(gap, 1)
+        for i in range(self.PULSE_WIDTH):
+            idx = (pulse_pos + i) % gap
+            dots[idx] = self.PULSE_CHAR
+
+        leader = "".join(dots)
+        return f"{left} {leader} {right}"
 
     def _right_justify(self, left: str, right: str) -> str:
         """Right-justify a line with left and right parts.

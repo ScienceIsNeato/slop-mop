@@ -4,8 +4,10 @@ Provides clear, AI-friendly output with actionable error messages
 that guide iterative fix-validate-resume workflows.
 """
 
+import os
 from typing import Optional
 
+from slopmop.constants import format_duration_suffix
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
 
 
@@ -35,6 +37,7 @@ class ConsoleReporter:
         quiet: bool = False,
         verbose: bool = False,
         profile: Optional[str] = None,
+        project_root: Optional[str] = None,
     ):
         """Initialize reporter.
 
@@ -42,10 +45,12 @@ class ConsoleReporter:
             quiet: Minimal output mode (only failures)
             verbose: Verbose output mode (include all output)
             profile: The profile being run (commit, pr, etc.) for iteration guidance
+            project_root: Project root for writing failure logs
         """
         self.quiet = quiet
         self.verbose = verbose
         self.profile = profile
+        self.project_root = project_root
 
     def on_check_complete(self, result: CheckResult) -> None:
         """Called when a check completes.
@@ -120,49 +125,144 @@ class ConsoleReporter:
         print()
 
     @staticmethod
-    def _print_skip_sections(
-        skipped: list[CheckResult],
-        na: list[CheckResult],
-    ) -> None:
-        """Print skipped and not-applicable result sections."""
-        if skipped:
-            print()
-            print("⏭️  SKIPPED:")
-            for r in skipped:
-                reason = r.output if r.output else "Skipped"
-                print(f"   • {r.name}")
-                print(f"     └─ {reason}")
+    def _skip_reason_code(result: CheckResult) -> str:
+        """Return a short reason code for a skipped check."""
+        output = (result.output or "").lower()
+        if "fail-fast" in output or "fail fast" in output:
+            return "ff"
+        if "disabled" in output or "dependency" in output:
+            return "dep"
+        return "skip"
 
-        if na:
-            print()
-            print("⊘  NOT APPLICABLE:")
-            for r in na:
-                reason = r.output if r.output else "Not applicable to this project"
-                print(f"   • {r.name}")
-                print(f"     └─ {reason}")
+    @staticmethod
+    def _format_skipped_line(skipped: list[CheckResult]) -> str:
+        """Format skipped checks into a compact single line.
+
+        Groups by reason code: e.g. "4 skipped (ff)"
+        or "2 skipped (ff), 1 skipped (dep)" if mixed.
+        """
+        if not skipped:
+            return ""
+
+        from collections import Counter
+
+        codes = Counter(ConsoleReporter._skip_reason_code(r) for r in skipped)
+        parts = [f"{count} skipped ({code})" for code, count in codes.items()]
+        return " · ".join(parts)
+
+    def _write_failure_log(self, result: CheckResult) -> Optional[str]:
+        """Write check output to a log file for detailed review.
+
+        Returns relative path to the log file, or None if no project_root.
+        """
+        if not self.project_root:
+            return None
+
+        log_dir = os.path.join(self.project_root, ".slopmop", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+
+        safe_name = result.name.replace(":", "_").replace("/", "_")
+        log_path = os.path.join(log_dir, f"{safe_name}.log")
+
+        with open(log_path, "w") as f:
+            f.write(f"Check: {result.name}\n")
+            f.write(f"Status: {result.status.value}\n")
+            f.write(f"Duration: {result.duration:.2f}s\n")
+            if result.error:
+                f.write(f"Error: {result.error}\n")
+            if result.fix_suggestion:
+                f.write(f"Fix: {result.fix_suggestion}\n")
+            f.write("\n--- Output ---\n")
+            f.write(result.output or "(no output)")
+            f.write("\n")
+
+        return f".slopmop/logs/{safe_name}.log"
 
     @staticmethod
     def _print_failure_sections(
         failed: list[CheckResult],
         errors: list[CheckResult],
     ) -> None:
-        """Print failure and error detail sections."""
-        if failed:
-            print("❌ FAILED:")
-            for r in failed:
-                print(f"   • {r.name}")
-                if r.error:
-                    print(f"     └─ {r.error}")
-                if r.fix_suggestion:
-                    print(f"     💡 {r.fix_suggestion}")
-            print()
+        """Print compact failure and error details.
 
-        if errors:
-            print("💥 ERRORS (check couldn't run):")
-            for r in errors:
-                print(f"   • {r.name}")
-                print(f"     └─ {r.error}")
-            print()
+        Note: this is a static fallback; callers with a project_root
+        should use _print_failure_sections_with_logs instead.
+        """
+        max_preview_lines = 10
+
+        for r in failed:
+            detail = r.error or ""
+            print(f"❌ {r.name} — {detail}" if detail else f"❌ {r.name}")
+            if r.output:
+                # Filter out passing indicators - only show failure-relevant lines
+                all_lines = r.output.strip().split("\n")
+                error_lines = [
+                    line for line in all_lines if "✅" not in line and line.strip()
+                ]
+                lines = error_lines if error_lines else all_lines
+                for line in lines[:max_preview_lines]:
+                    print(f"   {line}")
+
+        for r in errors:
+            detail = r.error or "unknown error"
+            print(f"💥 {r.name} — {detail}")
+            if r.output:
+                all_lines = r.output.strip().split("\n")
+                error_lines = [
+                    line for line in all_lines if "✅" not in line and line.strip()
+                ]
+                lines = error_lines if error_lines else all_lines
+                for line in lines[:max_preview_lines]:
+                    print(f"   {line}")
+
+    def _print_failure_sections_with_logs(
+        self,
+        failed: list[CheckResult],
+        errors: list[CheckResult],
+    ) -> None:
+        """Print compact failure details with output preview and log path."""
+        max_preview_lines = 10
+
+        for r in failed:
+            detail = r.error or ""
+            print(f"❌ {r.name} — {detail}" if detail else f"❌ {r.name}")
+            if r.output:
+                # Filter out passing indicators - only show failure-relevant lines
+                all_lines = r.output.strip().split("\n")
+                error_lines = [
+                    line for line in all_lines if "✅" not in line and line.strip()
+                ]
+                # Fall back to all lines if filtering removes everything
+                lines = error_lines if error_lines else all_lines
+                for line in lines[:max_preview_lines]:
+                    print(f"   {line}")
+                if len(lines) > max_preview_lines:
+                    print(
+                        f"   ... ({len(lines) - max_preview_lines} more lines in log)"
+                    )
+            log_path = self._write_failure_log(r)
+            if log_path:
+                print(f"   📄 {log_path}")
+
+        for r in errors:
+            detail = r.error or "unknown error"
+            print(f"💥 {r.name} — {detail}")
+            if r.output:
+                # Filter out passing indicators - only show failure-relevant lines
+                all_lines = r.output.strip().split("\n")
+                error_lines = [
+                    line for line in all_lines if "✅" not in line and line.strip()
+                ]
+                lines = error_lines if error_lines else all_lines
+                for line in lines[:max_preview_lines]:
+                    print(f"   {line}")
+                if len(lines) > max_preview_lines:
+                    print(
+                        f"   ... ({len(lines) - max_preview_lines} more lines in log)"
+                    )
+            log_path = self._write_failure_log(r)
+            if log_path:
+                print(f"   📄 {log_path}")
 
     @staticmethod
     def _print_warning_sections(warned: list[CheckResult]) -> None:
@@ -182,41 +282,33 @@ class ConsoleReporter:
         Args:
             summary: Execution summary to display
         """
-        print()
-        print("=" * 60)
-
         # Categorize results
         passed = [r for r in summary.results if r.status == CheckStatus.PASSED]
         failed = [r for r in summary.results if r.status == CheckStatus.FAILED]
         warned = [r for r in summary.results if r.status == CheckStatus.WARNED]
         skipped = [r for r in summary.results if r.status == CheckStatus.SKIPPED]
-        na = [r for r in summary.results if r.status == CheckStatus.NOT_APPLICABLE]
         errors = [r for r in summary.results if r.status == CheckStatus.ERROR]
+
+        print()
+        print("═" * 60)
 
         if summary.all_passed:
             passed_label = f"{summary.passed} checks passed"
             if warned:
                 passed_label += f", {len(warned)} warned"
             print(
-                f"✨ NO SLOP DETECTED · {passed_label} in {summary.total_duration:.1f}s"
+                f"✨ NO SLOP DETECTED · {passed_label}"
+                f" in {summary.total_duration:.1f}s"
             )
-            print("=" * 60)
-            if not self.quiet:
-                for r in passed:
-                    print(f"   ✅ {r.name} ({r.duration:.2f}s)")
-                for r in warned:
-                    print(f"   ⚠️  {r.name} ({r.duration:.2f}s)")
+            print("═" * 60)
             if warned:
                 self._print_warning_sections(warned)
-            self._print_skip_sections(skipped, na)
             print()
             return
 
-        # Failure output - more detailed
-        print("🧹 SLOP DETECTED")
-        print("=" * 60)
+        # --- Failure path: compact output ---
 
-        # Show counts only for non-zero statuses
+        # Build counts line
         counts: list[str] = []
         if passed:
             counts.append(f"✅ {len(passed)} passed")
@@ -227,38 +319,34 @@ class ConsoleReporter:
         if errors:
             counts.append(f"💥 {len(errors)} errored")
         if skipped:
-            counts.append(f"⏭️  {len(skipped)} skipped")
-        if na:
-            counts.append(f"⊘  {len(na)} n/a")
+            counts.append(f"⏭️  {self._format_skipped_line(skipped)}")
 
-        print(f"   {' · '.join(counts)} · ⏱️  {summary.total_duration:.1f}s")
-        print()
+        print(
+            f"🧹 SLOP DETECTED · {' · '.join(counts)}"
+            f"{format_duration_suffix(summary.total_duration)}"
+        )
+        print("─" * 60)
 
-        self._print_failure_sections(failed, errors)
+        # Failure details — with logs when project_root available
+        if self.project_root:
+            self._print_failure_sections_with_logs(failed, errors)
+        else:
+            self._print_failure_sections(failed, errors)
         if warned:
             self._print_warning_sections(warned)
-        self._print_skip_sections(skipped, na)
-        print()
 
-        # Final verdict with iteration guidance
+        # Next steps
         print("─" * 60)
-        print(f"🧹 Time to mop up {summary.failed + summary.errors} issue(s)")
-        print()
-        self._print_iteration_guidance(failed, errors)
-        print("=" * 60)
+        self._print_next_steps(failed, errors)
+        print("═" * 60)
         print()
 
-    def _print_iteration_guidance(
+    def _print_next_steps(
         self,
         failed: list[CheckResult],
         errors: list[CheckResult],
     ) -> None:
-        """Print explicit iteration guidance for AI agents.
-
-        This tells the agent exactly what to do next in a fail-fast,
-        iterative workflow.
-        """
-        # Get the first failure (fail-fast means this is what stopped us)
+        """Print compact next-step commands."""
         first_failure = failed[0] if failed else (errors[0] if errors else None)
         if not first_failure:
             return
@@ -266,43 +354,5 @@ class ConsoleReporter:
         profile = self.profile or "commit"
         gate_name = first_failure.name
 
-        # Build content lines to compute dynamic width
-        title = "🤖 AI AGENT ITERATION GUIDANCE"
-        validate_cmd = f"./sm validate {gate_name} --verbose"
-        resume_cmd = f"./sm validate {profile}"
-
-        lines = [
-            title,
-            f"Profile: {profile}",
-            f"Failed Gate: {gate_name}",
-            "NEXT STEPS:",
-            "",
-            "1. Fix the issue described above",
-            f"2. Validate: {validate_cmd}",
-            f"3. Resume:   {resume_cmd}",
-            "",
-            "Keep iterating until all the slop is mopped.",
-        ]
-
-        # Compute box width (minimum 58 for aesthetics, expand if needed)
-        content_width = max(len(line) for line in lines)
-        box_width = max(58, content_width + 2)  # +2 for padding
-
-        def box_line(text: str) -> str:
-            """Format a line to fit in the box with padding."""
-            return f"│ {text:<{box_width - 2}} │"
-
-        print("┌" + "─" * box_width + "┐")
-        print(box_line(title))
-        print("├" + "─" * box_width + "┤")
-        print(box_line(f"Profile: {profile}"))
-        print(box_line(f"Failed Gate: {gate_name}"))
-        print("├" + "─" * box_width + "┤")
-        print(box_line("NEXT STEPS:"))
-        print(box_line(""))
-        print(box_line("1. Fix the issue described above"))
-        print(box_line(f"2. Validate: {validate_cmd}"))
-        print(box_line(f"3. Resume:   {resume_cmd}"))
-        print(box_line(""))
-        print(box_line("Keep iterating until all the slop is mopped."))
-        print("└" + "─" * box_width + "┘")
+        print(f"Next: ./sm validate {gate_name} --verbose")
+        print(f"      ./sm validate {profile}")
