@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
 from slopmop.constants import NO_ISSUES_FOUND
@@ -83,6 +83,10 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     @property
     def category(self) -> GateCategory:
         return GateCategory.SECURITY
+
+    @property
+    def superseded_by(self) -> Optional[str]:
+        return "security:full"
 
     @property
     def config_schema(self) -> List[ConfigField]:
