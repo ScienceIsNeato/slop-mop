@@ -307,6 +307,7 @@ class BaseCheck(ABC):
             error=error,
             fix_suggestion=fix_suggestion,
             auto_fixed=auto_fixed,
+            category=self.category.key if self.category else None,
         )
 
     def _run_command(

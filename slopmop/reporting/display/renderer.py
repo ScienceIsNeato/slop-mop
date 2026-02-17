@@ -5,7 +5,7 @@ Static helper functions for formatting and measuring terminal output.
 
 import shutil
 import unicodedata
-from typing import Optional
+from typing import List, Optional
 
 from slopmop.reporting.display import config
 
@@ -217,3 +217,138 @@ def build_overall_progress(
 
     left_side = f"Progress: [{bar}]"
     return right_justify(left_side, right_side, term_width)
+
+
+def build_sparkline(current: float, historical: list[float], width: int = 7) -> str:
+    """Build a sparkline showing current timing vs historical.
+
+    Shows how current run compares to past runs (#8).
+
+    Args:
+        current: Current run duration
+        historical: List of past durations (most recent first)
+        width: Number of characters in sparkline
+
+    Returns:
+        Sparkline string like "▁▂▄▆█"
+    """
+    if not historical:
+        return ""
+
+    # Include current + up to (width-1) historical values
+    values = [current] + historical[: width - 1]
+    if not values:
+        return ""
+
+    min_val = min(values)
+    max_val = max(values)
+    range_val = max_val - min_val
+
+    if range_val == 0:
+        # All same value - show middle bars
+        return config.SPARKLINE_CHARS[4] * len(values)
+
+    # Map values to sparkline characters
+    chars = config.SPARKLINE_CHARS
+    result: List[str] = []
+    for val in values:
+        normalized = (val - min_val) / range_val
+        idx = int(normalized * (len(chars) - 1))
+        result.append(chars[idx])
+
+    return "".join(result)
+
+
+def build_category_header(
+    category: str,
+    emoji: str,
+    display_name: str,
+    stats: tuple[int, int],  # (completed, total)
+    term_width: Optional[int] = None,
+) -> str:
+    """Build a category header line with box drawing.
+
+    Args:
+        category: Category key
+        emoji: Category emoji
+        display_name: Human-readable name
+        stats: (completed, total) for this category
+        term_width: Terminal width (auto-detected if None)
+
+    Returns:
+        Formatted header line like "┌──🐍 Python [2/3] ───────────────┐"
+    """
+    if term_width is None:
+        term_width = get_terminal_width()
+
+    completed, total = stats
+    # Build the label: emoji + name + progress
+    progress = f"[{completed}/{total}]"
+    label = f" {emoji} {display_name} {progress} "
+
+    # Calculate padding on each side
+    label_width = display_width(label)
+    available = term_width - label_width - 2  # For corner chars
+    left_pad = 2  # Minimum left padding
+    right_pad = max(1, available - left_pad)
+
+    left_line = config.HEADER_HORIZONTAL * left_pad
+    right_line = config.HEADER_HORIZONTAL * right_pad
+
+    return f"{config.HEADER_LEFT}{left_line}{label}{right_line}{config.HEADER_RIGHT}"
+
+
+def build_check_connector(is_last: bool = False) -> str:
+    """Build the connector character for a check under a category.
+
+    Args:
+        is_last: Whether this is the last check in the category
+
+    Returns:
+        Connector string like "├─" or "└─"
+    """
+    if is_last:
+        return f"{config.CONNECTOR_END}{config.HEADER_HORIZONTAL}"
+    return f"{config.CONNECTOR_TEE}{config.HEADER_HORIZONTAL}"
+
+
+def truncate_for_inline(text: str, max_width: int) -> str:
+    """Truncate text for inline failure preview.
+
+    Args:
+        text: Text to truncate
+        max_width: Maximum display width
+
+    Returns:
+        Truncated text with ellipsis if needed
+    """
+    if not text:
+        return ""
+
+    # Get first non-empty line
+    lines = text.strip().split("\n")
+    first_line = ""
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            first_line = stripped
+            break
+
+    if not first_line:
+        return ""
+
+    # Truncate if needed
+    if display_width(first_line) <= max_width:
+        return first_line
+
+    # Truncate to fit with ellipsis
+    result: List[str] = []
+    width = 0
+    for char in first_line:
+        char_width = 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+        if width + char_width + 1 > max_width:  # +1 for ellipsis
+            break
+        result.append(char)
+        width += char_width
+
+    return "".join(result) + "…"

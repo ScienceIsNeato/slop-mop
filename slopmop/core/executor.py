@@ -87,7 +87,7 @@ class CheckExecutor:
         self._stop_event = threading.Event()
         self._results: Dict[str, CheckResult] = {}
         self._on_check_complete: Optional[Callable[[CheckResult], None]] = None
-        self._on_check_start: Optional[Callable[[str], None]] = None
+        self._on_check_start: Optional[Callable[[str, Optional[str]], None]] = None
         self._on_check_disabled: Optional[Callable[[str], None]] = None
         self._on_total_determined: Optional[Callable[[int], None]] = None
 
@@ -99,11 +99,13 @@ class CheckExecutor:
         """
         self._on_check_complete = callback
 
-    def set_start_callback(self, callback: Callable[[str], None]) -> None:
+    def set_start_callback(
+        self, callback: Callable[[str, Optional[str]], None]
+    ) -> None:
         """Set callback for check start events.
 
         Args:
-            callback: Function called with check name when a check starts
+            callback: Function called with (check_name, category) when a check starts
         """
         self._on_check_start = callback
 
@@ -354,7 +356,8 @@ class CheckExecutor:
 
                         # Notify start callback before submitting
                         if self._on_check_start:
-                            self._on_check_start(name)
+                            category = check.category.key if check.category else None
+                            self._on_check_start(name, category)
 
                         future = executor.submit(
                             self._run_single_check,

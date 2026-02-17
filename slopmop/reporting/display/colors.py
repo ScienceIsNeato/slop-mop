@@ -124,3 +124,63 @@ def reset_color(colors_enabled: Optional[bool] = None) -> str:
         return ""
 
     return Color.RESET.value
+
+
+def dim(text: str, colors_enabled: Optional[bool] = None) -> str:
+    """Apply dim styling to text.
+
+    Used for completed checks to reduce visual emphasis (#2).
+
+    Args:
+        text: Text to dim
+        colors_enabled: Override color detection (for testing)
+
+    Returns:
+        Dimmed text if colors enabled, original text otherwise.
+    """
+    return colorize(text, Color.DIM, colors_enabled)
+
+
+def bold(text: str, colors_enabled: Optional[bool] = None) -> str:
+    """Apply bold styling to text.
+
+    Used for running checks to increase visual emphasis (#2).
+
+    Args:
+        text: Text to make bold
+        colors_enabled: Override color detection (for testing)
+
+    Returns:
+        Bold text if colors enabled, original text otherwise.
+    """
+    return colorize(text, Color.BOLD, colors_enabled)
+
+
+def category_header_color(category: str, colors_enabled: Optional[bool] = None) -> str:
+    """Get ANSI color code for a category header.
+
+    Args:
+        category: Category key (python, quality, security, etc.)
+        colors_enabled: Override color detection (for testing)
+
+    Returns:
+        ANSI color code prefix if colors enabled, empty string otherwise.
+    """
+    if colors_enabled is None:
+        colors_enabled = supports_color()
+
+    if not colors_enabled:
+        return ""
+
+    # Map categories to colors for visual grouping
+    category_colors = {
+        "python": Color.BLUE,
+        "javascript": Color.YELLOW,
+        "security": Color.RED,
+        "quality": Color.CYAN,
+        "general": Color.MAGENTA,
+        "integration": Color.GREEN,
+        "pr": Color.CYAN,
+    }
+    color = category_colors.get(category, Color.WHITE)
+    return color.value
