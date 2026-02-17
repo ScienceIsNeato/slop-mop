@@ -1,12 +1,16 @@
 """Tests for timing persistence module."""
 
 import json
+import time
 from pathlib import Path
 
 from slopmop.reporting.timings import (
     EMA_WEIGHT,
+    MAX_AGE_DAYS,
+    MAX_ENTRIES,
     TIMINGS_DIR,
     TIMINGS_FILE,
+    _prune_timings,
     clear_timings,
     load_timings,
     save_timings,
@@ -144,3 +148,146 @@ class TestClearTimings:
 
         result = load_timings(str(tmp_path))
         assert result == {}
+
+
+class TestPruneTimings:
+    """Tests for timing data pruning."""
+
+    def test_removes_old_entries(self) -> None:
+        """Test entries older than MAX_AGE_DAYS are removed."""
+        now = time.time()
+        old_timestamp = now - (MAX_AGE_DAYS + 1) * 86400  # 1 day past cutoff
+
+        raw = {
+            "old_check": {"avg": 1.0, "count": 1, "last_updated": old_timestamp},
+            "new_check": {"avg": 2.0, "count": 1, "last_updated": now},
+        }
+
+        result = _prune_timings(raw)
+
+        assert "old_check" not in result
+        assert "new_check" in result
+
+    def test_keeps_recent_entries(self) -> None:
+        """Test entries within MAX_AGE_DAYS are kept."""
+        now = time.time()
+        recent_timestamp = now - (MAX_AGE_DAYS - 1) * 86400  # 1 day before cutoff
+
+        raw = {
+            "recent_check": {"avg": 1.0, "count": 1, "last_updated": recent_timestamp}
+        }
+
+        result = _prune_timings(raw)
+
+        assert "recent_check" in result
+
+    def test_pruning_by_max_entries(self) -> None:
+        """Test oldest entries removed when exceeding MAX_ENTRIES."""
+        now = time.time()
+        raw = {}
+
+        # Create more entries than MAX_ENTRIES
+        for i in range(MAX_ENTRIES + 10):
+            raw[f"check_{i}"] = {
+                "avg": float(i),
+                "count": 1,
+                "last_updated": now - i * 60,  # Older = higher i
+            }
+
+        result = _prune_timings(raw)
+
+        # Should have exactly MAX_ENTRIES
+        assert len(result) == MAX_ENTRIES
+        # The newest entries (lowest i) should remain
+        assert "check_0" in result
+        assert "check_1" in result
+        # The oldest entries should be gone
+        assert f"check_{MAX_ENTRIES + 9}" not in result
+
+    def test_preserves_legacy_entries_without_timestamp(self) -> None:
+        """Test entries without last_updated are kept but vulnerable to pruning."""
+        now = time.time()
+        raw = {
+            "legacy_check": {"avg": 1.0, "count": 5},  # No last_updated
+            "new_check": {"avg": 2.0, "count": 1, "last_updated": now},
+        }
+
+        result = _prune_timings(raw)
+
+        # Legacy entry should still be present (assigned timestamp just inside cutoff)
+        assert "legacy_check" in result
+        assert "new_check" in result
+
+
+class TestSaveTimingsWithPruning:
+    """Tests for save_timings pruning behavior."""
+
+    def test_saves_with_last_updated(self, tmp_path: Path) -> None:
+        """Test saved entries include last_updated timestamp."""
+        save_timings(str(tmp_path), {"check:a": 1.0})
+
+        path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
+        data = json.loads(path.read_text())
+
+        assert "last_updated" in data["check:a"]
+        # Should be recent (within last minute)
+        assert time.time() - data["check:a"]["last_updated"] < 60
+
+    def test_prunes_old_on_save(self, tmp_path: Path) -> None:
+        """Test old entries are pruned when saving new data."""
+        timings_dir = tmp_path / TIMINGS_DIR
+        timings_dir.mkdir()
+        timings_file = timings_dir / TIMINGS_FILE
+
+        # Manually create an old entry
+        old_timestamp = time.time() - (MAX_AGE_DAYS + 1) * 86400
+        timings_file.write_text(
+            json.dumps(
+                {
+                    "old_check": {
+                        "avg": 1.0,
+                        "count": 5,
+                        "last_updated": old_timestamp,
+                    },
+                }
+            )
+        )
+
+        # Save new data - should trigger pruning
+        save_timings(str(tmp_path), {"new_check": 2.0})
+
+        data = json.loads(timings_file.read_text())
+        assert "old_check" not in data
+        assert "new_check" in data
+
+
+class TestLoadTimingsWithAge:
+    """Tests for load_timings with age filtering."""
+
+    def test_skips_old_entries_on_load(self, tmp_path: Path) -> None:
+        """Test old entries are not returned from load_timings."""
+        timings_dir = tmp_path / TIMINGS_DIR
+        timings_dir.mkdir()
+        timings_file = timings_dir / TIMINGS_FILE
+
+        now = time.time()
+        old_timestamp = now - (MAX_AGE_DAYS + 1) * 86400
+
+        timings_file.write_text(
+            json.dumps(
+                {
+                    "old_check": {
+                        "avg": 1.0,
+                        "count": 5,
+                        "last_updated": old_timestamp,
+                    },
+                    "new_check": {"avg": 2.0, "count": 1, "last_updated": now},
+                }
+            )
+        )
+
+        result = load_timings(str(tmp_path))
+
+        assert "old_check" not in result
+        assert "new_check" in result
+        assert result["new_check"] == 2.0
