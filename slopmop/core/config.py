@@ -35,14 +35,25 @@ CONFIG_FILE = ".sb_config.json"
 
 
 class GateCategory(Enum):
-    """Categories for organizing quality gates."""
+    """Categories for organizing quality gates.
 
+    Language categories are for language-specific tooling (linters, type checkers).
+    Flaw categories are for language-agnostic analysis.
+    """
+
+    # Language-specific categories
     PYTHON = ("python", "🐍", "Python")
     JAVASCRIPT = ("javascript", "📦", "JavaScript")
-    SECURITY = ("security", "🔐", "Security")
-    QUALITY = ("quality", "📊", "Quality")
+
+    # Flaw-based categories (language-agnostic checks)
+    OVERCONFIDENCE = ("overconfidence", "🧠", "Overconfidence")
+    DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
+    LAZINESS = ("laziness", "🦥", "Laziness")
+    MYOPIA = ("myopia", "🔍", "Myopia")
+
+    # Other categories
     GENERAL = ("general", "🔧", "General")
-    INTEGRATION = ("integration", "🎭", "Integration")
+    PR = ("pr", "🔀", "Pull Request")
 
     def __init__(self, key: str, emoji: str, display_name: str):
         self.key = key

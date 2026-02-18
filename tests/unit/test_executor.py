@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock
 
-from slopmop.checks.base import BaseCheck, GateCategory
+from slopmop.checks.base import BaseCheck, Flaw, GateCategory
 from slopmop.core.executor import CheckExecutor, run_quality_checks
 from slopmop.core.registry import CheckRegistry
 from slopmop.core.result import CheckResult, CheckStatus
@@ -32,6 +32,10 @@ class MockCheck(BaseCheck):
     @property
     def category(self) -> GateCategory:
         return GateCategory.PYTHON
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def depends_on(self) -> list:
@@ -524,6 +528,10 @@ class TestRunQualityChecks:
                 @property
                 def category(self) -> GateCategory:
                     return GateCategory.PYTHON
+
+                @property
+                def flaw(self) -> Flaw:
+                    return Flaw.OVERCONFIDENCE
 
                 def is_applicable(self, project_root: str) -> bool:
                     return True

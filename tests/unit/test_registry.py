@@ -1,6 +1,6 @@
 """Tests for check registry."""
 
-from slopmop.checks.base import BaseCheck, GateCategory
+from slopmop.checks.base import BaseCheck, Flaw, GateCategory
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import CheckDefinition, CheckResult, CheckStatus
 
@@ -24,6 +24,10 @@ class MockCheck(BaseCheck):
     @property
     def category(self) -> GateCategory:
         return GateCategory.PYTHON
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def depends_on(self) -> list:
@@ -341,6 +345,10 @@ class TestRegisterCheckDecorator:
             @property
             def category(self) -> GateCategory:
                 return GateCategory.PYTHON
+
+            @property
+            def flaw(self) -> Flaw:
+                return Flaw.OVERCONFIDENCE
 
             def is_applicable(self, project_root: str) -> bool:
                 return True

@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import List, Set, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,11 @@ class LocLockCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.QUALITY
+        return GateCategory.MYOPIA
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.MYOPIA
 
     @property
     def config_schema(self) -> List[ConfigField]:

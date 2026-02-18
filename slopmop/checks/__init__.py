@@ -80,13 +80,13 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:type-checking",
             "python:tests",
             "python:coverage",
-            "quality:complexity",
-            "quality:dead-code",
-            "quality:source-duplication",
-            "quality:string-duplication",
-            "quality:bogus-tests",
-            "quality:loc-lock",
-            "security:local",
+            "laziness:complexity",
+            "laziness:dead-code",
+            "myopia:source-duplication",
+            "myopia:string-duplication",
+            "deceptiveness:bogus-tests",
+            "myopia:loc-lock",
+            "myopia:local",
             "javascript:lint-format",
             "javascript:types",
             "javascript:tests",
@@ -105,13 +105,13 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "python:tests",
             "python:coverage",
             "python:diff-coverage",
-            "quality:complexity",
-            "quality:dead-code",
-            "quality:source-duplication",
-            "quality:string-duplication",
-            "quality:bogus-tests",
-            "quality:loc-lock",
-            "security:full",
+            "laziness:complexity",
+            "laziness:dead-code",
+            "myopia:source-duplication",
+            "myopia:string-duplication",
+            "deceptiveness:bogus-tests",
+            "myopia:loc-lock",
+            "myopia:full",
             "javascript:lint-format",
             "javascript:types",
             "javascript:tests",
@@ -120,7 +120,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
         ],
     )
 
-    registry.register_alias("quick", ["python:lint-format", "security:local"])
+    registry.register_alias("quick", ["python:lint-format", "myopia:local"])
 
     registry.register_alias(
         "python",
@@ -144,17 +144,17 @@ def _register_aliases(registry: CheckRegistry) -> None:
         ],
     )
 
-    registry.register_alias("security", ["security:full"])
-    registry.register_alias("security-local", ["security:local"])
+    registry.register_alias("security", ["myopia:full"])
+    registry.register_alias("security-local", ["myopia:local"])
 
     registry.register_alias(
         "quality",
         [
-            "quality:complexity",
-            "quality:source-duplication",
-            "quality:string-duplication",
-            "quality:bogus-tests",
-            "quality:loc-lock",
+            "laziness:complexity",
+            "myopia:source-duplication",
+            "myopia:string-duplication",
+            "deceptiveness:bogus-tests",
+            "myopia:loc-lock",
         ],
     )
 

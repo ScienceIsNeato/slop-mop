@@ -11,7 +11,13 @@ import os
 import time
 from typing import List, Optional
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -52,6 +58,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     @property
     def category(self) -> GateCategory:
         return GateCategory.PYTHON
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

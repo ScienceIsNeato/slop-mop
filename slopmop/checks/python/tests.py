@@ -3,7 +3,13 @@
 import time
 from typing import List
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
     has_python_test_files,
@@ -49,6 +55,10 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     @property
     def category(self) -> GateCategory:
         return GateCategory.PYTHON
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def depends_on(self) -> List[str]:

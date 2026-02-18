@@ -11,6 +11,7 @@ from typing import List
 from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
+    Flaw,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -54,6 +55,10 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
     @property
     def category(self) -> GateCategory:
         return GateCategory.JAVASCRIPT
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

@@ -360,13 +360,13 @@ class TestDynamicDisplay:
         """Test disabled summary line appears in build_display output."""
         display = DynamicDisplay(quiet=False)
         display.on_check_disabled("javascript:lint-format")
-        display.on_check_disabled("security:local")
+        display.on_check_disabled("myopia:local")
 
         lines = display._build_display()
         disabled_lines = [line for line in lines if line.startswith("Disabled:")]
         assert len(disabled_lines) == 1
         assert "javascript:lint-format" in disabled_lines[0]
-        assert "security:local" in disabled_lines[0]
+        assert "myopia:local" in disabled_lines[0]
 
     def test_thread_safety(self) -> None:
         """Test display is thread safe."""

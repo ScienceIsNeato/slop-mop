@@ -13,7 +13,7 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
@@ -64,7 +64,11 @@ class SourceDuplicationCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.QUALITY
+        return GateCategory.MYOPIA
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.MYOPIA
 
     @property
     def config_schema(self) -> List[ConfigField]:

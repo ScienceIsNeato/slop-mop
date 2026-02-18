@@ -19,7 +19,7 @@ class TestComplexityCheck:
     def test_full_name(self):
         """Test full check name with category."""
         check = ComplexityCheck({})
-        assert check.full_name == "quality:complexity"
+        assert check.full_name == "laziness:complexity"
 
     def test_display_name(self):
         """Test display name."""
@@ -121,7 +121,7 @@ class TestSourceDuplicationCheck:
     def test_full_name(self):
         """Test full check name with category."""
         check = SourceDuplicationCheck({})
-        assert check.full_name == "quality:source-duplication"
+        assert check.full_name == "myopia:source-duplication"
 
     def test_display_name(self):
         """Test display name."""

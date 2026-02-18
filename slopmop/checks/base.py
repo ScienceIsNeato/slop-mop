@@ -48,15 +48,54 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
     return shutil.which(name)
 
 
-class GateCategory(Enum):
-    """Categories for organizing quality gates by language/type."""
+class Flaw(Enum):
+    """AI character flaws that checks are designed to catch.
 
+    These represent the fundamental weaknesses in LLM-generated code:
+    - OVERCONFIDENCE: "Trust me, it works" - untested assumptions
+    - DECEPTIVENESS: "Look, I wrote tests!" - theater over substance
+    - LAZINESS: "I'll clean that up later" - mess left behind
+    - MYOPIA: "But I fixed the bug!" - tunnel vision, missing big picture
+    """
+
+    OVERCONFIDENCE = ("overconfidence", "🧠", "Overconfidence")
+    DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
+    LAZINESS = ("laziness", "🦥", "Laziness")
+    MYOPIA = ("myopia", "🔍", "Myopia")
+
+    def __init__(self, key: str, emoji: str, display_name: str):
+        self.key = key
+        self.emoji = emoji
+        self._display_name = display_name
+
+    @property
+    def display(self) -> str:
+        return f"{self.emoji} {self._display_name}"
+
+    @property
+    def display_name(self) -> str:
+        return self._display_name
+
+
+class GateCategory(Enum):
+    """Categories for organizing quality gates.
+
+    Language categories are for language-specific tooling (linters, type checkers).
+    Flaw categories are for language-agnostic analysis.
+    """
+
+    # Language-specific categories
     PYTHON = ("python", "🐍", "Python")
     JAVASCRIPT = ("javascript", "📦", "JavaScript")
-    SECURITY = ("security", "🔐", "Security")
-    QUALITY = ("quality", "📊", "Quality")
+
+    # Flaw-based categories (language-agnostic checks)
+    OVERCONFIDENCE = ("overconfidence", "🧠", "Overconfidence")
+    DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
+    LAZINESS = ("laziness", "🦥", "Laziness")
+    MYOPIA = ("myopia", "🔍", "Myopia")
+
+    # Other categories
     GENERAL = ("general", "🔧", "General")
-    INTEGRATION = ("integration", "🎭", "Integration")
     PR = ("pr", "🔀", "Pull Request")
 
     def __init__(self, key: str, emoji: str, display_name: str):
@@ -164,7 +203,16 @@ class BaseCheck(ABC):
         """The language/type category for this check.
 
         Returns:
-            GateCategory enum value (PYTHON, JAVASCRIPT, GENERAL, INTEGRATION)
+            GateCategory enum value (PYTHON, JAVASCRIPT, or flaw-based category)
+        """
+
+    @property
+    @abstractmethod
+    def flaw(self) -> Flaw:
+        """The AI character flaw this check catches.
+
+        Returns:
+            Flaw enum value (OVERCONFIDENCE, DECEPTIVENESS, LAZINESS, MYOPIA)
         """
 
     @property

@@ -8,7 +8,13 @@ import os
 import time
 from typing import List, Optional
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -49,6 +55,10 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     @property
     def category(self) -> GateCategory:
         return GateCategory.GENERAL
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def config_schema(self) -> List[ConfigField]:

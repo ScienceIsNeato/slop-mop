@@ -2,7 +2,45 @@
 
 ## Current Work: feat/dynamic-check-display branch
 
-### Latest: Visual enhancements for dynamic display (b49dbc8)
+### Latest: AI Flaw-based Category Taxonomy Migration (UNCOMMITTED)
+
+**Migration Summary:**
+Overhauled slop-mop's category system from language-based (`quality:`, `security:`) to AI-flaw-based taxonomy. Language-specific checks keep language prefix (`python:`, `javascript:`), language-agnostic checks now use flaw prefix.
+
+**New Flaw Enum (4 values):**
+- `OVERCONFIDENCE` - Checks proving code correctness (tests, types, static analysis)
+- `DECEPTIVENESS` - Checks detecting hiding/faking (bogus tests, fake coverage)
+- `LAZINESS` - Checks detecting shortcuts (lint, dead code, complexity)
+- `MYOPIA` - Checks detecting long-term blindness (security, duplication, LOC limits)
+
+**Updated GateCategory Enum:**
+- Kept: `PYTHON`, `JAVASCRIPT`, `GENERAL`, `PR`
+- Added: `OVERCONFIDENCE`, `DECEPTIVENESS`, `LAZINESS`, `MYOPIA`
+- Removed: `QUALITY`, `SECURITY`, `INTEGRATION`
+
+**Check Name Changes (all tests updated):**
+- `quality:complexity` → `laziness:complexity`
+- `quality:dead-code` → `laziness:dead-code`
+- `quality:source-duplication` → `myopia:source-duplication`
+- `quality:string-duplication` → `myopia:string-duplication`
+- `quality:bogus-tests` → `deceptiveness:bogus-tests`
+- `quality:loc-lock` → `myopia:loc-lock`
+- `security:local` → `myopia:local`
+- `security:full` → `myopia:full`
+
+**Files Modified:**
+- `slopmop/checks/base.py` - Added Flaw enum, updated GateCategory, added abstract `flaw` property
+- `slopmop/core/config.py` - Updated GateCategory import
+- All check files - Added `flaw` property to each check class
+- `slopmop/checks/__init__.py` - Updated validation profile aliases
+- `slopmop/cli/detection.py` - Updated tool requirements mapping
+- All test files - Updated check name assertions, added `flaw` property to mock classes
+
+**Test Status:** 757 tests passing
+
+**Ready to commit.**
+
+### Previous: Visual enhancements for dynamic display (b49dbc8)
 
 **Branch commits:**
 - `b49dbc8`: feat: visual enhancements for dynamic display

@@ -6,6 +6,7 @@ from typing import List
 from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
+    Flaw,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -47,6 +48,10 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
     @property
     def category(self) -> GateCategory:
         return GateCategory.JAVASCRIPT
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def depends_on(self) -> List[str]:

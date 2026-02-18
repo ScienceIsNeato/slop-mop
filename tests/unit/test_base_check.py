@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from slopmop.checks.base import (
     BaseCheck,
+    Flaw,
     GateCategory,
     JavaScriptCheckMixin,
     PythonCheckMixin,
@@ -25,6 +26,10 @@ class ConcreteCheck(BaseCheck):
     @property
     def category(self) -> GateCategory:
         return GateCategory.PYTHON
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     def is_applicable(self, project_root: str) -> bool:
         return True

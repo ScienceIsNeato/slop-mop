@@ -41,7 +41,7 @@ class TestSecurityLocalCheck:
     def test_full_name(self):
         """Test full check name with category."""
         check = SecurityLocalCheck({})
-        assert check.full_name == "security:local"
+        assert check.full_name == "myopia:local"
 
     def test_display_name(self):
         """Test display name."""
@@ -213,7 +213,7 @@ class TestSecurityLocalCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
-        assert "security:local" in result.name
+        assert "myopia:local" in result.name
 
     def test_run_with_failures(self, tmp_path):
         """Test run() when one check fails."""
@@ -467,7 +467,7 @@ class TestSecurityCheck:
     def test_full_name(self):
         """Test full check name with category."""
         check = SecurityCheck({})
-        assert check.full_name == "security:full"
+        assert check.full_name == "myopia:full"
 
     def test_display_name(self):
         """Test display name includes dependency scanning."""
@@ -498,7 +498,7 @@ class TestSecurityCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
-        assert "security:full" in result.name
+        assert "myopia:full" in result.name
 
     def test_run_pip_audit_failure(self, tmp_path):
         """Test run() when pip-audit check fails."""

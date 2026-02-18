@@ -13,7 +13,7 @@ import re
 import time
 from typing import List, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, find_tool
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, find_tool
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_MIN_CONFIDENCE = 80
@@ -61,7 +61,11 @@ class DeadCodeCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.QUALITY
+        return GateCategory.LAZINESS
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

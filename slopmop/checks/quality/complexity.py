@@ -13,7 +13,13 @@ import re
 import time
 from typing import List
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 MAX_RANK = "C"
@@ -58,7 +64,11 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.QUALITY
+        return GateCategory.LAZINESS
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

@@ -24,7 +24,7 @@ class TestDeadCodeCheck:
 
     def test_full_name(self, check):
         """Test full check name with category."""
-        assert check.full_name == "quality:dead-code"
+        assert check.full_name == "laziness:dead-code"
 
     def test_display_name(self, check):
         """Test display name contains Dead Code."""
@@ -37,10 +37,10 @@ class TestDeadCodeCheck:
         assert "90%" in check.display_name
 
     def test_category(self, check):
-        """Test category is quality."""
+        """Test category is laziness."""
         from slopmop.checks.base import GateCategory
 
-        assert check.category == GateCategory.QUALITY
+        assert check.category == GateCategory.LAZINESS
 
     # --- Config schema ---
 

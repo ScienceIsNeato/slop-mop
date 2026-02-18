@@ -6,6 +6,7 @@ from typing import List, Optional
 from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
+    Flaw,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -48,6 +49,10 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     @property
     def category(self) -> GateCategory:
         return GateCategory.JAVASCRIPT
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

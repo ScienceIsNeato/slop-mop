@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Set
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
 from slopmop.checks.constants import skip_reason_no_test_files
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -283,7 +283,11 @@ class BogusTestsCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.QUALITY
+        return GateCategory.DECEPTIVENESS
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.DECEPTIVENESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

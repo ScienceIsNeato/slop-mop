@@ -5,7 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
 from slopmop.core.registry import CheckRegistry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.utils.generate_base_config import (
@@ -35,6 +35,10 @@ class MockCheck(BaseCheck):
     @property
     def category(self) -> GateCategory:
         return GateCategory.PYTHON
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def config_schema(self):
@@ -300,8 +304,9 @@ class TestTemplateConfig:
 
         assert "python" in config
         assert "javascript" in config
-        assert "security" in config
-        assert "quality" in config
+        assert "deceptiveness" in config
+        assert "laziness" in config
+        assert "myopia" in config
         assert "general" in config
 
     def test_generate_template_config_all_gates_enabled(self):
@@ -312,8 +317,9 @@ class TestTemplateConfig:
         for category in [
             "python",
             "javascript",
-            "security",
-            "quality",
+            "deceptiveness",
+            "laziness",
+            "myopia",
             "general",
         ]:
             if category in config:
