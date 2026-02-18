@@ -37,10 +37,8 @@ STOP_TIMEOUT = 0.5
 MIN_PROGRESS_BAR_WIDTH = 12
 MIN_BAR_CONTENT_WIDTH = 5  # Minimum bar content (inside brackets)
 
-# Category display order — language categories first, then flaws, then meta
+# Category display order — flaw categories first, then meta
 CATEGORY_ORDER = [
-    "python",
-    "javascript",
     "overconfidence",
     "deceptiveness",
     "laziness",
@@ -51,3 +49,9 @@ CATEGORY_ORDER = [
 
 # Category header line character
 HEADER_DASH = "─"
+
+# Indent for check lines under category headers
+CHECK_INDENT = "   "  # 3 spaces
+
+# Column widths for status word (passed/failed/etc.)
+STATUS_COLUMN_WIDTH = 8  # "passed" = 6, "failed" = 6, "skipped" = 7, padding

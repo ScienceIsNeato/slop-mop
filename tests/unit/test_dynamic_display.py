@@ -341,12 +341,12 @@ class TestDynamicDisplay:
         """Test on_check_disabled collects disabled check names."""
         display = DynamicDisplay(quiet=False)
 
-        display.on_check_disabled("javascript:lint-format")
-        display.on_check_disabled("javascript:types")
+        display.on_check_disabled("laziness:js-lint")
+        display.on_check_disabled("overconfidence:js-types")
 
         assert display._disabled_names == [
-            "javascript:lint-format",
-            "javascript:types",
+            "laziness:js-lint",
+            "overconfidence:js-types",
         ]
 
     def test_on_check_disabled_quiet(self) -> None:
@@ -359,13 +359,13 @@ class TestDynamicDisplay:
     def test_disabled_shown_in_display(self) -> None:
         """Test disabled summary line appears in build_display output."""
         display = DynamicDisplay(quiet=False)
-        display.on_check_disabled("javascript:lint-format")
+        display.on_check_disabled("laziness:js-lint")
         display.on_check_disabled("myopia:local")
 
         lines = display._build_display()
         disabled_lines = [line for line in lines if line.startswith("Disabled:")]
         assert len(disabled_lines) == 1
-        assert "lint-format" in disabled_lines[0]
+        assert "js-lint" in disabled_lines[0]
         assert "local" in disabled_lines[0]
 
     def test_thread_safety(self) -> None:

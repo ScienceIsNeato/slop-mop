@@ -50,7 +50,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
           produce coverage reports.
 
     Re-validate:
-      ./sm validate javascript:coverage --verbose
+      ./sm validate deceptiveness:js-coverage --verbose
     """
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
@@ -59,7 +59,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def name(self) -> str:
-        return "coverage"
+        return "js-coverage"
 
     @property
     def display_name(self) -> str:
@@ -67,7 +67,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.JAVASCRIPT
+        return GateCategory.DECEPTIVENESS
 
     @property
     def flaw(self) -> Flaw:
@@ -75,7 +75,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["javascript:tests"]
+        return ["overconfidence:js-tests"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

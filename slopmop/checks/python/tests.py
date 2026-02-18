@@ -41,12 +41,12 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
           Usually a missing dependency or renamed module.
 
     Re-validate:
-      ./sm validate python:tests --verbose
+      ./sm validate overconfidence:py-tests --verbose
     """
 
     @property
     def name(self) -> str:
-        return "tests"
+        return "py-tests"
 
     @property
     def display_name(self) -> str:
@@ -54,7 +54,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.PYTHON
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:
@@ -62,7 +62,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["python:lint-format"]
+        return ["laziness:py-lint"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

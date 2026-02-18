@@ -337,7 +337,7 @@ class TestConsoleReporter:
         """Test failure log is written and path cited in output."""
         results = [
             CheckResult(
-                "python:lint-format",
+                "laziness:py-lint",
                 CheckStatus.FAILED,
                 1.0,
                 output="Black: Formatting OK\nIsort: Import order issues\nFlake8: OK",
@@ -352,14 +352,14 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # Log path shown in output
-        assert ".slopmop/logs/python_lint-format.log" in captured.out
+        assert ".slopmop/logs/laziness_py-lint.log" in captured.out
         # Output preview shown
         assert "Black: Formatting OK" in captured.out
         assert "Isort: Import order issues" in captured.out
         # Fix suggestion now shown in compact summary
         assert "Run: black" in captured.out
         # Log file actually created with full content
-        log_file = tmp_path / ".slopmop" / "logs" / "python_lint-format.log"
+        log_file = tmp_path / ".slopmop" / "logs" / "laziness_py-lint.log"
         assert log_file.exists()
         log_content = log_file.read_text()
         assert "Run: black . && isort ." in log_content
@@ -370,7 +370,7 @@ class TestConsoleReporter:
         long_output = "\n".join([f"Error line {i}" for i in range(20)])
         results = [
             CheckResult(
-                "python:tests",
+                "overconfidence:py-tests",
                 CheckStatus.FAILED,
                 5.0,
                 output=long_output,
@@ -391,7 +391,7 @@ class TestConsoleReporter:
         # Overflow indicator shown
         assert "more lines in log" in captured.out
         # Full output in log file
-        log_file = tmp_path / ".slopmop" / "logs" / "python_tests.log"
+        log_file = tmp_path / ".slopmop" / "logs" / "overconfidence_py-tests.log"
         log_content = log_file.read_text()
         assert "Error line 19" in log_content
 
@@ -506,7 +506,7 @@ class TestConsoleReporter:
         """Test next steps uses errors when no failures exist."""
         results = [
             CheckResult(
-                "python:lint-format",
+                "laziness:py-lint",
                 CheckStatus.ERROR,
                 1.0,
                 error="Tool crashed",
@@ -519,7 +519,7 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # Next step points to the error check
-        assert "Next: ./sm validate python:lint-format --verbose" in captured.out
+        assert "Next: ./sm validate laziness:py-lint --verbose" in captured.out
 
     def test_error_output_filters_passing_lines(self, capsys, tmp_path):
         """Test error output filters out ✅ lines like failures do."""

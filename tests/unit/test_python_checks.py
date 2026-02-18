@@ -16,7 +16,7 @@ class TestPythonLintFormatCheck:
     def test_name(self):
         """Test check name."""
         check = PythonLintFormatCheck({})
-        assert check.name == "lint-format"
+        assert check.name == "py-lint"
 
     def test_display_name(self):
         """Test check display name."""
@@ -267,7 +267,7 @@ class TestPythonTestsCheck:
     def test_name(self):
         """Test check name."""
         check = PythonTestsCheck({})
-        assert check.name == "tests"
+        assert check.name == "py-tests"
 
     def test_display_name(self):
         """Test check display name."""
@@ -286,7 +286,7 @@ class TestPythonTestsCheck:
         """Test check dependencies."""
         check = PythonTestsCheck({})
         # Tests depend on lint-format being run first
-        assert "python:lint-format" in check.depends_on
+        assert "laziness:py-lint" in check.depends_on
 
     def test_run_success(self, tmp_path):
         """Test run with passing tests."""
@@ -338,7 +338,7 @@ class TestPythonCoverageCheck:
     def test_name(self):
         """Test check name."""
         check = PythonCoverageCheck({})
-        assert check.name == "coverage"
+        assert check.name == "py-coverage"
 
     def test_display_name(self):
         """Test check display name."""
@@ -348,7 +348,7 @@ class TestPythonCoverageCheck:
     def test_depends_on(self):
         """Test check dependencies."""
         check = PythonCoverageCheck({})
-        assert "python:tests" in check.depends_on
+        assert "overconfidence:py-tests" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project with tests."""
@@ -407,7 +407,7 @@ class TestPythonStaticAnalysisCheck:
     def test_name(self):
         """Test check name."""
         check = PythonStaticAnalysisCheck({})
-        assert check.name == "static-analysis"
+        assert check.name == "py-static-analysis"
 
     def test_display_name_strict(self):
         """Test display name shows strict when enabled (default)."""
@@ -440,7 +440,7 @@ class TestPythonStaticAnalysisCheck:
     def test_depends_on(self):
         """Test check dependencies."""
         check = PythonStaticAnalysisCheck({})
-        assert "python:lint-format" in check.depends_on
+        assert "laziness:py-lint" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project with source dirs."""
@@ -711,7 +711,7 @@ class TestPythonTypeCheckingCheck:
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         check = PythonTypeCheckingCheck({})
-        assert check.name == "type-checking"
+        assert check.name == "py-types"
 
     def test_display_name(self):
         """Test check display name."""

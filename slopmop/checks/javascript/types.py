@@ -60,12 +60,12 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: TypeScript must be in devDependencies.
 
     Re-validate:
-      ./sm validate javascript:types --verbose
+      ./sm validate overconfidence:js-types --verbose
     """
 
     @property
     def name(self) -> str:
-        return "types"
+        return "js-types"
 
     @property
     def display_name(self) -> str:
@@ -73,7 +73,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.JAVASCRIPT
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:
@@ -81,7 +81,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["javascript:lint-format"]
+        return ["laziness:js-lint"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

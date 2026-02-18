@@ -103,9 +103,14 @@ class TestCreateParser:
     def test_validate_with_quality_gates(self):
         """Validate with --quality-gates parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["validate", "-g", "python:tests", "python:coverage"])
+        args = parser.parse_args(
+            ["validate", "-g", "overconfidence:py-tests", "deceptiveness:py-coverage"]
+        )
         assert args.verb == "validate"
-        assert args.quality_gates == ["python:tests", "python:coverage"]
+        assert args.quality_gates == [
+            "overconfidence:py-tests",
+            "deceptiveness:py-coverage",
+        ]
 
     def test_validate_self_flag(self):
         """Validate --self flag parses correctly."""
@@ -297,9 +302,11 @@ class TestCmdConfig:
         with patch("slopmop.checks.ensure_checks_registered"):
             with patch("slopmop.cli.config.get_registry") as mock_registry:
                 mock_reg = MagicMock()
-                mock_reg.list_checks.return_value = ["python:tests"]
+                mock_reg.list_checks.return_value = ["overconfidence:py-tests"]
                 mock_reg.get_definition.return_value = MagicMock(name="Python Tests")
-                mock_reg.list_aliases.return_value = {"commit": ["python:tests"]}
+                mock_reg.list_aliases.return_value = {
+                    "commit": ["overconfidence:py-tests"]
+                }
                 mock_registry.return_value = mock_reg
 
                 result = cmd_config(args)
@@ -342,11 +349,16 @@ class TestCmdHelp:
         with patch("slopmop.checks.ensure_checks_registered"):
             with patch("slopmop.cli.config.get_registry") as mock_registry:
                 mock_reg = MagicMock()
-                mock_reg.list_checks.return_value = ["python:tests", "python:coverage"]
+                mock_reg.list_checks.return_value = [
+                    "overconfidence:py-tests",
+                    "deceptiveness:py-coverage",
+                ]
                 mock_reg.get_definition.return_value = MagicMock(
                     name="Test", auto_fix=False
                 )
-                mock_reg.list_aliases.return_value = {"commit": ["python:tests"]}
+                mock_reg.list_aliases.return_value = {
+                    "commit": ["overconfidence:py-tests"]
+                }
                 mock_registry.return_value = mock_reg
 
                 result = cmd_help(args)
@@ -357,7 +369,7 @@ class TestCmdHelp:
 
     def test_help_specific_gate(self, capsys):
         """Help for specific gate shows details."""
-        args = argparse.Namespace(gate="python:tests")
+        args = argparse.Namespace(gate="overconfidence:py-tests")
 
         mock_check = MagicMock()
         mock_check.__doc__ = "Test documentation"
@@ -389,7 +401,10 @@ class TestCmdHelp:
                 mock_reg = MagicMock()
                 mock_reg.get_definition.return_value = None
                 mock_reg.is_alias.return_value = True
-                mock_reg.expand_alias.return_value = ["python:tests", "python:coverage"]
+                mock_reg.expand_alias.return_value = [
+                    "overconfidence:py-tests",
+                    "deceptiveness:py-coverage",
+                ]
                 mock_registry.return_value = mock_reg
 
                 result = cmd_help(args)

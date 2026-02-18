@@ -80,15 +80,11 @@ class Flaw(Enum):
 class GateCategory(Enum):
     """Categories for organizing quality gates.
 
-    Language categories are for language-specific tooling (linters, type checkers).
-    Flaw categories are for language-agnostic analysis.
+    All checks are categorized by the AI character flaw they detect.
+    Language is an implementation detail, not an organizing principle.
     """
 
-    # Language-specific categories
-    PYTHON = ("python", "🐍", "Python")
-    JAVASCRIPT = ("javascript", "📦", "JavaScript")
-
-    # Flaw-based categories (language-agnostic checks)
+    # Flaw-based categories
     OVERCONFIDENCE = ("overconfidence", "🧠", "Overconfidence")
     DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
     LAZINESS = ("laziness", "🦥", "Laziness")
@@ -220,7 +216,7 @@ class BaseCheck(ABC):
         """Full name including category prefix.
 
         Returns:
-            String like 'python:lint-format'
+            String like 'laziness:py-lint'
         """
         return f"{self.category.key}:{self.name}"
 

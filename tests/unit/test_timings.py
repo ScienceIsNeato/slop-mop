@@ -33,7 +33,7 @@ class TestLoadTimings:
         timings_file.write_text(
             json.dumps(
                 {
-                    "python:tests": {"avg": 3.5, "count": 5},
+                    "overconfidence:py-tests": {"avg": 3.5, "count": 5},
                     "python:lint": {"avg": 0.8, "count": 3},
                 }
             )
@@ -41,7 +41,7 @@ class TestLoadTimings:
 
         result = load_timings(str(tmp_path))
 
-        assert result == {"python:tests": 3.5, "python:lint": 0.8}
+        assert result == {"overconfidence:py-tests": 3.5, "python:lint": 0.8}
 
     def test_handles_corrupt_json(self, tmp_path: Path) -> None:
         """Test handles corrupt JSON gracefully."""
@@ -69,31 +69,33 @@ class TestSaveTimings:
 
     def test_saves_new_timings(self, tmp_path: Path) -> None:
         """Test saves timings to new file."""
-        save_timings(str(tmp_path), {"python:tests": 2.5, "python:lint": 0.6})
+        save_timings(
+            str(tmp_path), {"overconfidence:py-tests": 2.5, "python:lint": 0.6}
+        )
 
         path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
         assert path.exists()
 
         data = json.loads(path.read_text())
-        assert data["python:tests"]["avg"] == 2.5
-        assert data["python:tests"]["count"] == 1
+        assert data["overconfidence:py-tests"]["avg"] == 2.5
+        assert data["overconfidence:py-tests"]["count"] == 1
         assert data["python:lint"]["avg"] == 0.6
 
     def test_merges_with_existing_ema(self, tmp_path: Path) -> None:
         """Test merges new data with existing using EMA."""
         # Save initial data
-        save_timings(str(tmp_path), {"python:tests": 10.0})
+        save_timings(str(tmp_path), {"overconfidence:py-tests": 10.0})
 
         # Save another run — EMA should blend
-        save_timings(str(tmp_path), {"python:tests": 5.0})
+        save_timings(str(tmp_path), {"overconfidence:py-tests": 5.0})
 
         path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
         data = json.loads(path.read_text())
 
         # EMA: 0.3 * 5.0 + 0.7 * 10.0 = 1.5 + 7.0 = 8.5
         expected = EMA_WEIGHT * 5.0 + (1 - EMA_WEIGHT) * 10.0
-        assert abs(data["python:tests"]["avg"] - expected) < 0.01
-        assert data["python:tests"]["count"] == 2
+        assert abs(data["overconfidence:py-tests"]["avg"] - expected) < 0.01
+        assert data["overconfidence:py-tests"]["count"] == 2
 
     def test_creates_directory(self, tmp_path: Path) -> None:
         """Test creates .slopmop directory if needed."""

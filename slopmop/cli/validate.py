@@ -30,19 +30,31 @@ def _setup_self_validation(project_root: Path) -> str:
     # Generate config with auto-detection
     base_config = generate_base_config()
 
-    # Enable Python gates for slopmop itself
-    base_config["python"]["enabled"] = True
-    for gate in ["lint-format", "tests", "coverage", "static-analysis"]:
-        if gate in base_config["python"]["gates"]:
-            base_config["python"]["gates"][gate]["enabled"] = True
+    # Enable Python gates for slopmop itself across flaw categories
+    # py-lint is in laziness
+    if "laziness" in base_config:
+        base_config["laziness"]["enabled"] = True
+        gates = base_config["laziness"].get("gates", {})
+        if "py-lint" in gates:
+            gates["py-lint"]["enabled"] = True
 
-    # Set test_dirs
-    if "tests" in base_config["python"]["gates"]:
-        base_config["python"]["gates"]["tests"]["test_dirs"] = ["tests"]
+    # py-tests, py-static-analysis, py-types are in overconfidence
+    if "overconfidence" in base_config:
+        base_config["overconfidence"]["enabled"] = True
+        gates = base_config["overconfidence"].get("gates", {})
+        for gate in ["py-tests", "py-static-analysis", "py-types"]:
+            if gate in gates:
+                gates[gate]["enabled"] = True
+        if "py-tests" in gates:
+            gates["py-tests"]["test_dirs"] = ["tests"]
 
-    # Set coverage threshold for self-validation
-    if "coverage" in base_config["python"]["gates"]:
-        base_config["python"]["gates"]["coverage"]["threshold"] = 80
+    # py-coverage is in deceptiveness
+    if "deceptiveness" in base_config:
+        base_config["deceptiveness"]["enabled"] = True
+        gates = base_config["deceptiveness"].get("gates", {})
+        if "py-coverage" in gates:
+            gates["py-coverage"]["enabled"] = True
+            gates["py-coverage"]["threshold"] = 80
 
     # Write temp config
     temp_config_file.write_text(json.dumps(base_config, indent=2) + "\n")

@@ -9,7 +9,7 @@ wasting context-window tokens on inference that could have been free.
 When it reads `results: List[Tuple[str, int, int, str]] = []`, the
 schema is self-documenting.
 
-mypy (python:static-analysis) enforces that function SIGNATURES are
+mypy (overconfidence:py-static-analysis) enforces that function SIGNATURES are
 annotated. This gate enforces that every variable, argument, and
 member access resolves to a KNOWN type — not just at function
 boundaries but everywhere the code touches data.
@@ -161,12 +161,12 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
           value to a function. Annotate the source variable.
 
     Re-validate:
-      ./sm validate python:type-checking --verbose
+      ./sm validate overconfidence:py-types --verbose
     """
 
     @property
     def name(self) -> str:
-        return "type-checking"
+        return "py-types"
 
     @property
     def display_name(self) -> str:
@@ -176,7 +176,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.PYTHON
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:
@@ -184,7 +184,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["python:static-analysis"]
+        return ["overconfidence:py-static-analysis"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

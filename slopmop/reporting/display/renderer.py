@@ -298,7 +298,7 @@ def build_category_header(
 def strip_category_prefix(check_name: str) -> str:
     """Strip the category prefix from a check name.
 
-    'python:lint-format' → 'lint-format'
+    'laziness:py-lint' → 'lint-format'
     'myopia:loc-lock'    → 'loc-lock'
     'some-check'         → 'some-check' (no prefix)
 

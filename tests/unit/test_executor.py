@@ -31,7 +31,7 @@ class MockCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.PYTHON
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:
@@ -92,7 +92,7 @@ class TestCheckExecutor:
         registry.register(check_class)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks(str(tmp_path), ["python:check1"])
+        summary = executor.run_checks(str(tmp_path), ["overconfidence:check1"])
 
         assert summary.total_checks == 1
         assert summary.passed == 1
@@ -108,7 +108,9 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
+        summary = executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         assert summary.total_checks == 2
         assert summary.passed == 2
@@ -126,7 +128,9 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=True)
-        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
+        summary = executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         assert summary.failed >= 1
         # check2 may or may not run depending on timing
@@ -140,7 +144,9 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=False)
-        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
+        summary = executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         assert summary.total_checks == 2
         assert check_class1.run_count == 1
@@ -155,7 +161,9 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
+        summary = executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         assert summary.passed == 1
         assert summary.not_applicable == 1
@@ -166,12 +174,16 @@ class TestCheckExecutor:
         """Test that dependencies are respected."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1")
-        check_class2 = make_mock_check_class("check2", depends_on=["python:check1"])
+        check_class2 = make_mock_check_class(
+            "check2", depends_on=["overconfidence:check1"]
+        )
         registry.register(check_class1)
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
+        summary = executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         assert summary.total_checks == 2
         assert summary.passed == 2
@@ -181,14 +193,14 @@ class TestCheckExecutor:
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("dep-check")
         check_class2 = make_mock_check_class(
-            "main-check", depends_on=["python:dep-check"]
+            "main-check", depends_on=["overconfidence:dep-check"]
         )
         registry.register(check_class1)
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
         # Only request main-check, but it depends on dep-check
-        summary = executor.run_checks(str(tmp_path), ["python:main-check"])
+        summary = executor.run_checks(str(tmp_path), ["overconfidence:main-check"])
 
         # Both checks should run (dep-check auto-included)
         assert summary.total_checks == 2
@@ -200,12 +212,16 @@ class TestCheckExecutor:
         """Test that checks are skipped if dependency fails."""
         registry = CheckRegistry()
         check_class1 = make_mock_check_class("check1", status=CheckStatus.FAILED)
-        check_class2 = make_mock_check_class("check2", depends_on=["python:check1"])
+        check_class2 = make_mock_check_class(
+            "check2", depends_on=["overconfidence:check1"]
+        )
         registry.register(check_class1)
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry, fail_fast=False)
-        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
+        summary = executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         assert summary.failed == 1
         assert summary.skipped == 1
@@ -220,7 +236,7 @@ class TestCheckExecutor:
         callback = MagicMock()
         executor = CheckExecutor(registry=registry)
         executor.set_progress_callback(callback)
-        executor.run_checks(str(tmp_path), ["python:check1"])
+        executor.run_checks(str(tmp_path), ["overconfidence:check1"])
 
         callback.assert_called_once()
         result = callback.call_args[0][0]
@@ -242,7 +258,7 @@ class TestCheckExecutor:
         registry.register(check_class)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks(str(tmp_path), ["python:check1"])
+        summary = executor.run_checks(str(tmp_path), ["overconfidence:check1"])
 
         assert summary.total_duration >= 0.05
 
@@ -260,7 +276,7 @@ class TestCheckExecutor:
         registry.register(ExceptionCheck)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks(str(tmp_path), ["python:exception-check"])
+        summary = executor.run_checks(str(tmp_path), ["overconfidence:exception-check"])
 
         assert summary.errors == 1
 
@@ -291,7 +307,9 @@ class TestCheckExecutor:
         registry.register(FixableCheck)
 
         executor = CheckExecutor(registry=registry)
-        executor.run_checks(str(tmp_path), ["python:fixable-check"], auto_fix=True)
+        executor.run_checks(
+            str(tmp_path), ["overconfidence:fixable-check"], auto_fix=True
+        )
 
         assert FixableCheck.fix_called
 
@@ -314,7 +332,9 @@ class TestCheckExecutor:
         registry.register(FixableCheck)
 
         executor = CheckExecutor(registry=registry)
-        executor.run_checks(str(tmp_path), ["python:fixable-check2"], auto_fix=False)
+        executor.run_checks(
+            str(tmp_path), ["overconfidence:fixable-check2"], auto_fix=False
+        )
 
         assert not FixableCheck.fix_called
 
@@ -334,9 +354,11 @@ class TestCheckExecutor:
         registry.register(ConfigCheck)
 
         # Config structure: { "category": { "gates": { "check-name": {...} } } }
-        full_config = {"python": {"gates": {"config-check": {"key": "value"}}}}
+        full_config = {"overconfidence": {"gates": {"config-check": {"key": "value"}}}}
         executor = CheckExecutor(registry=registry)
-        executor.run_checks(str(tmp_path), ["python:config-check"], config=full_config)
+        executor.run_checks(
+            str(tmp_path), ["overconfidence:config-check"], config=full_config
+        )
 
         assert ConfigCheck.received_config == {"key": "value"}
 
@@ -349,7 +371,9 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks(str(tmp_path), ["python:check1", "python:check2"])
+        summary = executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         # All checks should be not applicable
         assert summary.total_checks == 2
@@ -367,11 +391,11 @@ class TestCheckExecutor:
         )
         # Second check depends on first (so would be pending)
         check_class2 = make_mock_check_class(
-            "check2", depends_on=["python:check1"], duration=0.5
+            "check2", depends_on=["overconfidence:check1"], duration=0.5
         )
         # Third check also depends on first
         check_class3 = make_mock_check_class(
-            "check3", depends_on=["python:check1"], duration=0.5
+            "check3", depends_on=["overconfidence:check1"], duration=0.5
         )
         registry.register(check_class1)
         registry.register(check_class2)
@@ -379,7 +403,8 @@ class TestCheckExecutor:
 
         executor = CheckExecutor(registry=registry, fail_fast=True)
         summary = executor.run_checks(
-            str(tmp_path), ["python:check1", "python:check2", "python:check3"]
+            str(tmp_path),
+            ["overconfidence:check1", "overconfidence:check2", "overconfidence:check3"],
         )
 
         # check1 failed, check2/check3 should be skipped due to dependency failure
@@ -413,7 +438,7 @@ class TestCheckExecutor:
         executor = CheckExecutor(registry=registry)
         # Should not raise, just log warning and continue
         summary = executor.run_checks(
-            str(tmp_path), ["python:fix-exception-check"], auto_fix=True
+            str(tmp_path), ["overconfidence:fix-exception-check"], auto_fix=True
         )
 
         # Check should still run and pass
@@ -425,10 +450,10 @@ class TestCheckExecutor:
         check_class = make_mock_check_class("disabled-check")
         registry.register(check_class)
 
-        config = {"disabled_gates": ["python:disabled-check"]}
+        config = {"disabled_gates": ["overconfidence:disabled-check"]}
         executor = CheckExecutor(registry=registry)
         summary = executor.run_checks(
-            str(tmp_path), ["python:disabled-check"], config=config
+            str(tmp_path), ["overconfidence:disabled-check"], config=config
         )
 
         # Disabled gate should not appear in results at all
@@ -441,9 +466,11 @@ class TestCheckExecutor:
         check_class = make_mock_check_class("lint")
         registry.register(check_class)
 
-        config = {"python": {"enabled": False}}
+        config = {"overconfidence": {"enabled": False}}
         executor = CheckExecutor(registry=registry)
-        summary = executor.run_checks(str(tmp_path), ["python:lint"], config=config)
+        summary = executor.run_checks(
+            str(tmp_path), ["overconfidence:lint"], config=config
+        )
 
         assert check_class.run_count == 0
         assert summary.total_checks == 0
@@ -457,7 +484,7 @@ class TestCheckExecutor:
         registry.register(check_class2)
 
         config = {
-            "python": {
+            "overconfidence": {
                 "gates": {
                     "disabled-gate": {"enabled": False},
                 }
@@ -466,7 +493,7 @@ class TestCheckExecutor:
         executor = CheckExecutor(registry=registry)
         summary = executor.run_checks(
             str(tmp_path),
-            ["python:enabled-gate", "python:disabled-gate"],
+            ["overconfidence:enabled-gate", "overconfidence:disabled-gate"],
             config=config,
         )
 
@@ -478,15 +505,17 @@ class TestCheckExecutor:
         """Test that disabling a gate also disables checks that depend on it."""
         registry = CheckRegistry()
         dep_class = make_mock_check_class("tests")
-        dependent_class = make_mock_check_class("coverage", depends_on=["python:tests"])
+        dependent_class = make_mock_check_class(
+            "coverage", depends_on=["overconfidence:py-tests"]
+        )
         registry.register(dep_class)
         registry.register(dependent_class)
 
-        config = {"disabled_gates": ["python:tests"]}
+        config = {"disabled_gates": ["overconfidence:py-tests"]}
         executor = CheckExecutor(registry=registry, fail_fast=False)
         summary = executor.run_checks(
             str(tmp_path),
-            ["python:tests", "python:coverage"],
+            ["overconfidence:py-tests", "deceptiveness:py-coverage"],
             config=config,
         )
 
@@ -527,7 +556,7 @@ class TestRunQualityChecks:
 
                 @property
                 def category(self) -> GateCategory:
-                    return GateCategory.PYTHON
+                    return GateCategory.OVERCONFIDENCE
 
                 @property
                 def flaw(self) -> Flaw:
@@ -546,7 +575,7 @@ class TestRunQualityChecks:
 
             summary = run_quality_checks(
                 str(tmp_path),
-                ["python:convenience-test"],
+                ["overconfidence:convenience-test"],
                 config=None,
                 fail_fast=True,
                 auto_fix=False,

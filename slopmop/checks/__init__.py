@@ -75,11 +75,11 @@ def _register_aliases(registry: CheckRegistry) -> None:
     registry.register_alias(
         "commit",
         [
-            "python:lint-format",
-            "python:static-analysis",
-            "python:type-checking",
-            "python:tests",
-            "python:coverage",
+            "laziness:py-lint",
+            "overconfidence:py-static-analysis",
+            "overconfidence:py-types",
+            "overconfidence:py-tests",
+            "deceptiveness:py-coverage",
             "laziness:complexity",
             "laziness:dead-code",
             "myopia:source-duplication",
@@ -87,11 +87,11 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "deceptiveness:bogus-tests",
             "myopia:loc-lock",
             "myopia:local",
-            "javascript:lint-format",
-            "javascript:types",
-            "javascript:tests",
-            "javascript:coverage",
-            "javascript:bogus-tests",
+            "laziness:js-lint",
+            "overconfidence:js-types",
+            "overconfidence:js-tests",
+            "deceptiveness:js-coverage",
+            "deceptiveness:js-bogus-tests",
         ],
     )
 
@@ -99,12 +99,12 @@ def _register_aliases(registry: CheckRegistry) -> None:
         "pr",
         [
             "pr:comments",
-            "python:lint-format",
-            "python:static-analysis",
-            "python:type-checking",
-            "python:tests",
-            "python:coverage",
-            "python:diff-coverage",
+            "laziness:py-lint",
+            "overconfidence:py-static-analysis",
+            "overconfidence:py-types",
+            "overconfidence:py-tests",
+            "deceptiveness:py-coverage",
+            "deceptiveness:py-diff-coverage",
             "laziness:complexity",
             "laziness:dead-code",
             "myopia:source-duplication",
@@ -112,35 +112,35 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "deceptiveness:bogus-tests",
             "myopia:loc-lock",
             "myopia:full",
-            "javascript:lint-format",
-            "javascript:types",
-            "javascript:tests",
-            "javascript:coverage",
-            "javascript:bogus-tests",
+            "laziness:js-lint",
+            "overconfidence:js-types",
+            "overconfidence:js-tests",
+            "deceptiveness:js-coverage",
+            "deceptiveness:js-bogus-tests",
         ],
     )
 
-    registry.register_alias("quick", ["python:lint-format", "myopia:local"])
+    registry.register_alias("quick", ["laziness:py-lint", "myopia:local"])
 
     registry.register_alias(
         "python",
         [
-            "python:lint-format",
-            "python:static-analysis",
-            "python:type-checking",
-            "python:tests",
-            "python:coverage",
+            "laziness:py-lint",
+            "overconfidence:py-static-analysis",
+            "overconfidence:py-types",
+            "overconfidence:py-tests",
+            "deceptiveness:py-coverage",
         ],
     )
 
     registry.register_alias(
         "javascript",
         [
-            "javascript:lint-format",
-            "javascript:types",
-            "javascript:tests",
-            "javascript:coverage",
-            "javascript:frontend",
+            "laziness:js-lint",
+            "overconfidence:js-types",
+            "overconfidence:js-tests",
+            "deceptiveness:js-coverage",
+            "laziness:js-frontend",
         ],
     )
 

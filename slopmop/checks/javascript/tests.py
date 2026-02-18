@@ -34,12 +34,12 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: Check package.json syntax.
 
     Re-validate:
-      ./sm validate javascript:tests --verbose
+      ./sm validate overconfidence:js-tests --verbose
     """
 
     @property
     def name(self) -> str:
-        return "tests"
+        return "js-tests"
 
     @property
     def display_name(self) -> str:
@@ -47,7 +47,7 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.JAVASCRIPT
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:
@@ -55,7 +55,7 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["javascript:lint-format"]
+        return ["laziness:js-lint"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

@@ -169,7 +169,7 @@ def _add_config_parser(
     config_parser.add_argument(
         "--exclude-dir",
         metavar="CATEGORY:DIR",
-        help="Add directory to exclude list (e.g., python:tests or quality:vendor)",
+        help="Add directory to exclude list (e.g., overconfidence:py-tests or quality:vendor)",
     )
     config_parser.add_argument(
         "--json",

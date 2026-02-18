@@ -16,12 +16,12 @@ class TestJavaScriptTestsCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptTestsCheck({})
-        assert check.name == "tests"
+        assert check.name == "js-tests"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptTestsCheck({})
-        assert check.full_name == "javascript:tests"
+        assert check.full_name == "overconfidence:js-tests"
 
     def test_display_name(self):
         """Test display name."""
@@ -32,7 +32,7 @@ class TestJavaScriptTestsCheck:
     def test_depends_on(self):
         """Test dependencies."""
         check = JavaScriptTestsCheck({})
-        assert "javascript:lint-format" in check.depends_on
+        assert "laziness:js-lint" in check.depends_on
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
@@ -126,12 +126,12 @@ class TestJavaScriptLintFormatCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptLintFormatCheck({})
-        assert check.name == "lint-format"
+        assert check.name == "js-lint"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptLintFormatCheck({})
-        assert check.full_name == "javascript:lint-format"
+        assert check.full_name == "laziness:js-lint"
 
     def test_display_name(self):
         """Test display name."""
@@ -273,12 +273,12 @@ class TestJavaScriptCoverageCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptCoverageCheck({})
-        assert check.name == "coverage"
+        assert check.name == "js-coverage"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptCoverageCheck({})
-        assert check.full_name == "javascript:coverage"
+        assert check.full_name == "deceptiveness:js-coverage"
 
     def test_display_name(self):
         """Test display name."""
@@ -288,7 +288,7 @@ class TestJavaScriptCoverageCheck:
     def test_depends_on(self):
         """Test dependencies."""
         check = JavaScriptCoverageCheck({})
-        assert "javascript:tests" in check.depends_on
+        assert "overconfidence:js-tests" in check.depends_on
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
@@ -310,12 +310,12 @@ class TestFrontendCheck:
     def test_name(self):
         """Test check name."""
         check = FrontendCheck({})
-        assert check.name == "frontend"
+        assert check.name == "js-frontend"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = FrontendCheck({})
-        assert check.full_name == "javascript:frontend"
+        assert check.full_name == "laziness:js-frontend"
 
     def test_display_name(self):
         """Test display name."""
@@ -380,12 +380,12 @@ class TestJavaScriptTypesCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptTypesCheck({})
-        assert check.name == "types"
+        assert check.name == "js-types"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptTypesCheck({})
-        assert check.full_name == "javascript:types"
+        assert check.full_name == "overconfidence:js-types"
 
     def test_display_name(self):
         """Test display name."""
@@ -395,7 +395,7 @@ class TestJavaScriptTypesCheck:
     def test_depends_on(self):
         """Test dependencies."""
         check = JavaScriptTypesCheck({})
-        assert "javascript:lint-format" in check.depends_on
+        assert "laziness:js-lint" in check.depends_on
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""

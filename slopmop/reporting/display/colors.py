@@ -18,6 +18,7 @@ class Color(Enum):
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
+    ITALIC = "\033[3m"
 
     # Foreground colors
     RED = "\033[31m"
@@ -33,6 +34,9 @@ class Color(Enum):
     BRIGHT_RED = "\033[91m"
     BRIGHT_GREEN = "\033[92m"
     BRIGHT_YELLOW = "\033[93m"
+    BRIGHT_BLUE = "\033[94m"
+    BRIGHT_MAGENTA = "\033[95m"
+    BRIGHT_CYAN = "\033[96m"
 
 
 # Map check statuses to colors
@@ -174,13 +178,11 @@ def category_header_color(category: str, colors_enabled: Optional[bool] = None) 
 
     # Map categories to colors for visual grouping
     category_colors = {
-        "python": Color.BLUE,
-        "javascript": Color.YELLOW,
-        "overconfidence": Color.CYAN,
-        "deceptiveness": Color.RED,
+        "overconfidence": Color.BRIGHT_CYAN,
+        "deceptiveness": Color.BRIGHT_MAGENTA,
         "laziness": Color.MAGENTA,
-        "myopia": Color.GREEN,
-        "general": Color.WHITE,
+        "myopia": Color.BRIGHT_GREEN,
+        "general": Color.BLUE,
         "pr": Color.CYAN,
     }
     color = category_colors.get(category, Color.WHITE)

@@ -2,7 +2,37 @@
 
 ## Current Work: feat/dynamic-check-display branch
 
-### Latest: AI Flaw-based Category Taxonomy Migration (UNCOMMITTED)
+### Latest: Eliminate Language Categories — Full Flaw-Based Organization (uncommitted)
+
+**What changed:**
+- Removed `PYTHON` and `JAVASCRIPT` from `GateCategory` enum entirely
+- ALL checks now live under flaw categories: OVERCONFIDENCE, DECEPTIVENESS, LAZINESS, MYOPIA
+- Python checks use `py-` prefix (e.g., `laziness:py-lint`, `overconfidence:py-tests`)
+- JavaScript checks use `js-` prefix (e.g., `laziness:js-lint`, `deceptiveness:js-coverage`)
+- Profile aliases updated in `__init__.py` — "python"/"javascript" aliases still work
+- `validate.py` self-validation rewritten to iterate categories dynamically
+- Duplicate `GateCategory` enum in `core/config.py` also updated
+- All 769 tests passing after comprehensive test migration
+
+**Files modified (source):**
+- `slopmop/checks/base.py` — Removed PYTHON/JAVASCRIPT from GateCategory
+- `slopmop/core/config.py` — Removed from duplicate GateCategory enum
+- `slopmop/checks/python/*.py` — All 6 check classes: new names + categories
+- `slopmop/checks/javascript/*.py` — All 6 check classes: new names + categories
+- `slopmop/checks/__init__.py` — Profile alias rewrites
+- `slopmop/cli/detection.py` — REQUIRED_TOOLS updated
+- `slopmop/cli/validate.py` — _setup_self_validation rewritten
+- `slopmop/reporting/display/config.py` — CATEGORY_ORDER updated
+- `slopmop/reporting/display/colors.py` — Category color mappings updated
+
+**Files modified (tests):**
+- All test files updated via bulk sed + manual fixes
+- `test_registry.py` — Config dict keys restructured for flaw categories
+- `test_generate_config.py` — Template config assertions updated
+- `test_javascript_checks.py` / `test_python_checks.py` — `.name` assertions updated
+- `test_status.py` — Category header assertion updated
+
+### Previous: Category Grouping in Dynamic Display (dffab1c)
 
 **Migration Summary:**
 Overhauled slop-mop's category system from language-based (`quality:`, `security:`) to AI-flaw-based taxonomy. Language-specific checks keep language prefix (`python:`, `javascript:`), language-agnostic checks now use flaw prefix.

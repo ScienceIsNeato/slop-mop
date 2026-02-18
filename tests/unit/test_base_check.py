@@ -25,7 +25,7 @@ class ConcreteCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.PYTHON
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:
@@ -82,7 +82,7 @@ class TestBaseCheck:
         )
 
         # Result name is the full_name (category:name)
-        assert result.name == "python:test-check"
+        assert result.name == "overconfidence:test-check"
         assert result.status == CheckStatus.PASSED
         assert result.duration == 1.5
         assert result.output == "Test output"

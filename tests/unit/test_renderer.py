@@ -109,8 +109,8 @@ class TestStripCategoryPrefix:
     """Tests for strip_category_prefix function."""
 
     def test_strip_python_prefix(self):
-        """Strips python: prefix."""
-        assert strip_category_prefix("python:lint-format") == "lint-format"
+        """Strips category prefix from py-prefixed check."""
+        assert strip_category_prefix("laziness:py-lint") == "py-lint"
 
     def test_strip_myopia_prefix(self):
         """Strips myopia: prefix."""

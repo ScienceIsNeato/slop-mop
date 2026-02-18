@@ -10,7 +10,7 @@ from slopmop.checks.base import find_tool
 # Install commands assume the project venv is active.
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     ("vulture", "laziness:dead-code", "pip install vulture  # in your venv"),
-    ("pyright", "python:type-checking", "pip install pyright  # in your venv"),
+    ("pyright", "overconfidence:py-types", "pip install pyright  # in your venv"),
     ("bandit", "myopia:local", "pip install bandit  # in your venv"),
     ("semgrep", "myopia:local", "pip install semgrep  # in your venv"),
     ("detect-secrets", "myopia:local", "pip install detect-secrets  # in your venv"),
