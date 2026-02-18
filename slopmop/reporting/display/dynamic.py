@@ -13,7 +13,12 @@ from typing import Dict, List, Optional
 from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.display import config
-from slopmop.reporting.display.colors import supports_color
+from slopmop.reporting.display.colors import (
+    category_header_color,
+    reset_color,
+    status_color,
+    supports_color,
+)
 from slopmop.reporting.display.renderer import (
     align_columns,
     build_category_header,
@@ -299,11 +304,15 @@ class DynamicDisplay:
                 1 for c in group_checks if c.state == DisplayState.COMPLETED
             )
             cat_total = len(group_checks)
-            lines.append(
-                build_category_header(
-                    category_label, cat_completed, cat_total, term_width
-                )
+            header = build_category_header(
+                category_label, cat_completed, cat_total, term_width
             )
+            # Colorize the entire header line
+            hdr_color = category_header_color(category_key, self._colors_enabled)
+            rc = reset_color(self._colors_enabled)
+            if hdr_color:
+                header = f"{hdr_color}{header}{rc}"
+            lines.append(header)
 
             # Sort within group: completed by order, then running, then pending
             group_checks.sort(
@@ -383,10 +392,19 @@ class DynamicDisplay:
             Formatted line
         """
         assert info.result is not None
+        ce = self._colors_enabled
 
         short_name = strip_category_prefix(info.name)
         icon = STATUS_EMOJI.get(info.result.status, "❓")
-        left = f"{icon} {short_name}: {info.result.status.value}"
+        status_val = info.result.status.value
+        padded_status = f"{status_val:<{config.STATUS_COLUMN_WIDTH}}"
+
+        # Colorize status word
+        sc = status_color(info.result.status, ce)
+        rc = reset_color(ce)
+        colored_status = f"{sc}{padded_status}{rc}"
+
+        left = f"{config.CHECK_INDENT}{icon} {short_name}: {colored_status}"
 
         # Inline failure preview for failed/error checks
         preview = ""
@@ -416,7 +434,7 @@ class DynamicDisplay:
 
         elapsed = time.time() - info.start_time
         short_name = strip_category_prefix(info.name)
-        left = f"{spinner} {short_name}"
+        left = f"{config.CHECK_INDENT}{spinner} {short_name}"
         time_str = format_time(elapsed)
 
         if info.expected_duration and info.expected_duration > 0:
@@ -440,7 +458,7 @@ class DynamicDisplay:
             Formatted line (without connector)
         """
         short_name = strip_category_prefix(info.name)
-        left = f"○ {short_name}"
+        left = f"{config.CHECK_INDENT}○ {short_name}"
         eta_str = (
             format_time(info.expected_duration) if info.expected_duration else "N/A"
         )
