@@ -36,3 +36,18 @@ STOP_TIMEOUT = 0.5
 # Minimum progress bar width before falling back to simple display
 MIN_PROGRESS_BAR_WIDTH = 12
 MIN_BAR_CONTENT_WIDTH = 5  # Minimum bar content (inside brackets)
+
+# Category display order — language categories first, then flaws, then meta
+CATEGORY_ORDER = [
+    "python",
+    "javascript",
+    "overconfidence",
+    "deceptiveness",
+    "laziness",
+    "myopia",
+    "general",
+    "pr",
+]
+
+# Category header line character
+HEADER_DASH = "─"

@@ -176,10 +176,11 @@ def category_header_color(category: str, colors_enabled: Optional[bool] = None) 
     category_colors = {
         "python": Color.BLUE,
         "javascript": Color.YELLOW,
-        "security": Color.RED,
-        "quality": Color.CYAN,
-        "general": Color.MAGENTA,
-        "integration": Color.GREEN,
+        "overconfidence": Color.CYAN,
+        "deceptiveness": Color.RED,
+        "laziness": Color.MAGENTA,
+        "myopia": Color.GREEN,
+        "general": Color.WHITE,
         "pr": Color.CYAN,
     }
     color = category_colors.get(category, Color.WHITE)

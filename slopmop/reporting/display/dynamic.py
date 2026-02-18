@@ -16,12 +16,14 @@ from slopmop.reporting.display import config
 from slopmop.reporting.display.colors import supports_color
 from slopmop.reporting.display.renderer import (
     align_columns,
+    build_category_header,
     build_dot_leader,
     build_overall_progress,
     build_progress_bar,
     format_time,
     get_terminal_width,
     right_justify,
+    strip_category_prefix,
     truncate_for_inline,
 )
 from slopmop.reporting.display.state import CheckDisplayInfo, DisplayState
@@ -202,7 +204,7 @@ class DynamicDisplay:
             info.completion_order = self._completion_counter
 
         if not self._is_tty and not self.quiet:
-            # Static mode: print completion
+            # Static mode: print completion (full names since no group headers)
             icon = STATUS_EMOJI.get(result.status, "❓")
             print(
                 f"{icon} {result.name}: {result.status.value} ({result.duration:.2f}s)"
@@ -258,7 +260,7 @@ class DynamicDisplay:
             self._lines_drawn = len(truncated)
 
     def _build_display(self) -> List[str]:
-        """Build the display lines.
+        """Build the display lines, grouped by category.
 
         Returns:
             List of lines to display
@@ -288,25 +290,41 @@ class DynamicDisplay:
             lines.append(build_overall_progress(completed, total, elapsed))
             lines.append("")
 
-        # Flat list of all checks, sorted: completed first (by order), then running
-        all_checks = list(self._checks.values())
-        all_checks.sort(
-            key=lambda c: (
-                0 if c.state == DisplayState.COMPLETED else 1,
-                c.completion_order if c.state == DisplayState.COMPLETED else 0,
-                0 if c.expected_duration is not None else 1,
-                -(c.expected_duration or 0),
-                c.name,
-            )
-        )
+        # Group checks by category
+        groups = self._group_checks_by_category()
+        term_width = get_terminal_width()
 
-        for info in all_checks:
-            lines.append(self._format_check_line(info))
+        for category_key, category_label, group_checks in groups:
+            cat_completed = sum(
+                1 for c in group_checks if c.state == DisplayState.COMPLETED
+            )
+            cat_total = len(group_checks)
+            lines.append(
+                build_category_header(
+                    category_label, cat_completed, cat_total, term_width
+                )
+            )
+
+            # Sort within group: completed by order, then running, then pending
+            group_checks.sort(
+                key=lambda c: (
+                    0 if c.state == DisplayState.COMPLETED else 1,
+                    c.completion_order if c.state == DisplayState.COMPLETED else 0,
+                    0 if c.expected_duration is not None else 1,
+                    -(c.expected_duration or 0),
+                    c.name,
+                )
+            )
+
+            for info in group_checks:
+                lines.append(self._format_check_line(info))
 
         # Disabled summary
         if self._disabled_names:
             lines.append("")
-            lines.append(f"Disabled: {', '.join(self._disabled_names)}")
+            # Strip category prefix from disabled names too for consistency
+            disabled_short = [strip_category_prefix(n) for n in self._disabled_names]
+            lines.append(f"Disabled: {', '.join(disabled_short)}")
 
         # Status summary - only when checks still running
         if running > 0:
@@ -314,6 +332,45 @@ class DynamicDisplay:
             lines.append(f"🔄 {running} running · ✓ {completed} done")
 
         return lines
+
+    def _group_checks_by_category(
+        self,
+    ) -> List[tuple[str, str, List[CheckDisplayInfo]]]:
+        """Group checks by category in defined display order.
+
+        Returns:
+            List of (category_key, display_label, checks) tuples.
+            Only categories with checks are included.
+        """
+        from collections import defaultdict
+
+        # Bucket checks by category key
+        buckets: dict[str, List[CheckDisplayInfo]] = defaultdict(list)
+        for info in self._checks.values():
+            cat = info.category or "unknown"
+            buckets[cat].append(info)
+
+        # Build category labels from GateCategory enum
+        from slopmop.checks.base import GateCategory
+
+        cat_labels = {cat.key: cat.display for cat in GateCategory}
+
+        # Emit groups in defined order, skip empty categories
+        groups: List[tuple[str, str, List[CheckDisplayInfo]]] = []
+        seen: set[str] = set()
+        for key in config.CATEGORY_ORDER:
+            if key in buckets:
+                label = cat_labels.get(key, key.title())
+                groups.append((key, label, buckets[key]))
+                seen.add(key)
+
+        # Any categories not in CATEGORY_ORDER go at the end
+        for key in sorted(buckets.keys()):
+            if key not in seen:
+                label = cat_labels.get(key, key.title())
+                groups.append((key, label, buckets[key]))
+
+        return groups
 
     def _format_completed_line(self, info: CheckDisplayInfo, width: int) -> str:
         """Format a completed check line.
@@ -327,8 +384,9 @@ class DynamicDisplay:
         """
         assert info.result is not None
 
+        short_name = strip_category_prefix(info.name)
         icon = STATUS_EMOJI.get(info.result.status, "❓")
-        left = f"{icon} {info.name}: {info.result.status.value}"
+        left = f"{icon} {short_name}: {info.result.status.value}"
 
         # Inline failure preview for failed/error checks
         preview = ""
@@ -357,7 +415,8 @@ class DynamicDisplay:
         spinner = config.SPINNER_FRAMES[self._spinner_idx]
 
         elapsed = time.time() - info.start_time
-        left = f"{spinner} {info.name}"
+        short_name = strip_category_prefix(info.name)
+        left = f"{spinner} {short_name}"
         time_str = format_time(elapsed)
 
         if info.expected_duration and info.expected_duration > 0:
@@ -380,7 +439,8 @@ class DynamicDisplay:
         Returns:
             Formatted line (without connector)
         """
-        left = f"○ {info.name}"
+        short_name = strip_category_prefix(info.name)
+        left = f"○ {short_name}"
         eta_str = (
             format_time(info.expected_duration) if info.expected_duration else "N/A"
         )

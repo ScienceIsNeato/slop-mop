@@ -259,3 +259,55 @@ def truncate_for_inline(text: str, max_width: int) -> str:
         width += char_width
 
     return "".join(result) + "…"
+
+
+def build_category_header(
+    label: str,
+    completed: int,
+    total: int,
+    term_width: Optional[int] = None,
+) -> str:
+    """Build a minimal category header line.
+
+    Produces a line like: ── Python [3/6] ──────────────────
+
+    Args:
+        label: Category display label (e.g. "🐍 Python")
+        completed: Completed checks in this category
+        total: Total checks in this category
+        term_width: Terminal width (auto-detected if None)
+
+    Returns:
+        Formatted header line
+    """
+    if term_width is None:
+        term_width = get_terminal_width()
+
+    dash = config.HEADER_DASH
+    progress = f"[{completed}/{total}]"
+    inner = f" {label} {progress} "
+
+    # Calculate remaining dashes to fill the line
+    inner_width = display_width(inner)
+    prefix_width = 2  # "── " leading dashes
+    remaining = max(0, term_width - prefix_width - inner_width)
+
+    return f"{dash * prefix_width}{inner}{dash * remaining}"
+
+
+def strip_category_prefix(check_name: str) -> str:
+    """Strip the category prefix from a check name.
+
+    'python:lint-format' → 'lint-format'
+    'myopia:loc-lock'    → 'loc-lock'
+    'some-check'         → 'some-check' (no prefix)
+
+    Args:
+        check_name: Full check name (possibly with category prefix)
+
+    Returns:
+        Check name without category prefix
+    """
+    if ":" in check_name:
+        return check_name.split(":", 1)[1]
+    return check_name

@@ -189,7 +189,7 @@ class TestDynamicDisplay:
         line = display._format_check_line(info)
 
         assert "○" in line
-        assert "test:check" in line
+        assert "check" in line
         # Shows N/A for estimated time remaining (no prior data)
         assert "N/A" in line
 
@@ -204,7 +204,7 @@ class TestDynamicDisplay:
 
         line = display._format_check_line(info)
 
-        assert "test:check" in line
+        assert "check" in line
         # Shows elapsed time
         assert "1." in line or "2." in line
         # Shows N/A for estimated time remaining (no prior data)
@@ -227,7 +227,7 @@ class TestDynamicDisplay:
         line = display._format_check_line(info)
 
         assert "✅" in line
-        assert "test:check" in line
+        assert "check" in line
         assert "passed" in line
         assert "1.2s" in line
 
@@ -248,7 +248,7 @@ class TestDynamicDisplay:
         line = display._format_check_line(info)
 
         assert "❌" in line
-        assert "test:check" in line
+        assert "check" in line
         assert "failed" in line
 
     def test_build_display_empty(self) -> None:
@@ -274,8 +274,8 @@ class TestDynamicDisplay:
 
         # Should have progress bar, checks, summary
         assert any("Progress" in line for line in lines)
-        assert any("test:check1" in line for line in lines)
-        assert any("test:check2" in line for line in lines)
+        assert any("check1" in line for line in lines)
+        assert any("check2" in line for line in lines)
 
     def test_start_stop_quiet(self) -> None:
         """Test start/stop in quiet mode does nothing."""
@@ -365,8 +365,8 @@ class TestDynamicDisplay:
         lines = display._build_display()
         disabled_lines = [line for line in lines if line.startswith("Disabled:")]
         assert len(disabled_lines) == 1
-        assert "javascript:lint-format" in disabled_lines[0]
-        assert "myopia:local" in disabled_lines[0]
+        assert "lint-format" in disabled_lines[0]
+        assert "local" in disabled_lines[0]
 
     def test_thread_safety(self) -> None:
         """Test display is thread safe."""
@@ -508,11 +508,19 @@ class TestDynamicDisplay:
 
         lines = display._build_display()
 
-        # Find the check lines (skip progress bar and empty line)
-        check_lines = [line for line in lines if "test:" in line]
+        # Filter check lines (skip progress, headers, disabled, summary)
+        check_lines = [
+            line
+            for line in lines
+            if line.strip()
+            and "Progress" not in line
+            and "─" not in line
+            and not line.strip().startswith("Disabled")
+            and not line.strip().startswith("🔄")
+        ]
 
         # Completed check (test:b) should be first
-        assert "test:b" in check_lines[0]
+        assert "b" in check_lines[0]
         assert "passed" in check_lines[0]
 
     def test_no_prior_data_shows_na(self) -> None:
@@ -545,7 +553,7 @@ class TestDynamicDisplay:
 
         line = display._format_check_line(info)
 
-        assert "test:check" in line
+        assert "check" in line
         # Should show remaining time (3.5 - 1.0 = ~2.5s)
         assert "2." in line or "3." in line
 
@@ -611,7 +619,7 @@ class TestDynamicDisplay:
 
         line = display._format_check_line(info)
 
-        assert "test:check" in line
+        assert "check" in line
         # Should show progress bar characters, not dot leader
         assert display.PROGRESS_FILL in line or display.PROGRESS_EMPTY in line
         # Should show percentage
@@ -631,7 +639,7 @@ class TestDynamicDisplay:
 
         line = display._format_check_line(info)
 
-        assert "test:check" in line
+        assert "check" in line
         # Should contain dot leader
         assert display.DOT_CHAR in line or display.PULSE_CHAR in line
         # Should NOT contain progress bar
@@ -675,16 +683,24 @@ class TestDynamicDisplay:
 
         lines = display._build_display()
 
-        # Find only the check lines (contain "test:")
-        check_lines = [line for line in lines if "test:" in line]
+        # Filter check lines (skip progress, headers, disabled, summary)
+        check_lines = [
+            line
+            for line in lines
+            if line.strip()
+            and "Progress" not in line
+            and "─" not in line
+            and not line.strip().startswith("Disabled")
+            and not line.strip().startswith("🔄")
+        ]
 
         # Expected order: long (10s), medium (5s), short (1s), alpha, zebra
-        assert "test:long" in check_lines[0]
-        assert "test:medium" in check_lines[1]
-        assert "test:short" in check_lines[2]
+        assert "long" in check_lines[0]
+        assert "medium" in check_lines[1]
+        assert "short" in check_lines[2]
         # Unknown checks at bottom, alphabetically
-        assert "test:alpha" in check_lines[3]
-        assert "test:zebra" in check_lines[4]
+        assert "alpha" in check_lines[3]
+        assert "zebra" in check_lines[4]
 
     def test_completed_checks_before_active_in_sorted_display(self) -> None:
         """Test completed checks still appear before active checks."""
@@ -703,10 +719,19 @@ class TestDynamicDisplay:
         )
 
         lines = display._build_display()
-        check_lines = [line for line in lines if "test:" in line]
+        # Filter check lines (skip progress, headers, disabled, summary)
+        check_lines = [
+            line
+            for line in lines
+            if line.strip()
+            and "Progress" not in line
+            and "─" not in line
+            and not line.strip().startswith("Disabled")
+            and not line.strip().startswith("🔄")
+        ]
 
         # Completed check (test:a) should be first
-        assert "test:a" in check_lines[0]
+        assert "a" in check_lines[0]
         assert "passed" in check_lines[0]
 
     def test_save_historical_timings_saves_completed_checks(self, tmp_path) -> None:

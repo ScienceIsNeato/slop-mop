@@ -1,7 +1,9 @@
 """Tests for slopmop.reporting.display.renderer module."""
 
 from slopmop.reporting.display.renderer import (
+    build_category_header,
     display_width,
+    strip_category_prefix,
     truncate_for_inline,
 )
 
@@ -64,3 +66,68 @@ class TestTruncateForInline:
         text = "  Error message  \n  More text  "
         result = truncate_for_inline(text, 50)
         assert result == "Error message"
+
+
+class TestBuildCategoryHeader:
+    """Tests for build_category_header function."""
+
+    def test_basic_header(self):
+        """Header contains label and progress."""
+        header = build_category_header("Python", 3, 6, term_width=40)
+        assert "Python" in header
+        assert "[3/6]" in header
+
+    def test_header_uses_dash(self):
+        """Header uses the configured dash character."""
+        header = build_category_header("Test", 0, 1, term_width=40)
+        assert "─" in header
+
+    def test_header_fills_width(self):
+        """Header pads with dashes to fill terminal width."""
+        header = build_category_header("X", 1, 1, term_width=40)
+        # Header should be approximately terminal width
+        assert display_width(header) <= 40
+
+    def test_header_all_complete(self):
+        """Header shows all completed."""
+        header = build_category_header("Security", 5, 5, term_width=60)
+        assert "[5/5]" in header
+
+    def test_header_none_complete(self):
+        """Header shows zero completed."""
+        header = build_category_header("JS", 0, 3, term_width=60)
+        assert "[0/3]" in header
+
+    def test_header_with_emoji_label(self):
+        """Header works with emoji in label."""
+        header = build_category_header("🐍 Python", 2, 4, term_width=50)
+        assert "🐍 Python" in header
+        assert "[2/4]" in header
+
+
+class TestStripCategoryPrefix:
+    """Tests for strip_category_prefix function."""
+
+    def test_strip_python_prefix(self):
+        """Strips python: prefix."""
+        assert strip_category_prefix("python:lint-format") == "lint-format"
+
+    def test_strip_myopia_prefix(self):
+        """Strips myopia: prefix."""
+        assert strip_category_prefix("myopia:loc-lock") == "loc-lock"
+
+    def test_strip_deceptiveness_prefix(self):
+        """Strips deceptiveness: prefix."""
+        assert strip_category_prefix("deceptiveness:bogus-tests") == "bogus-tests"
+
+    def test_no_prefix_unchanged(self):
+        """Name without colon returned unchanged."""
+        assert strip_category_prefix("some-check") == "some-check"
+
+    def test_multiple_colons_splits_first(self):
+        """Only strips up to first colon."""
+        assert strip_category_prefix("a:b:c") == "b:c"
+
+    def test_empty_string(self):
+        """Empty string returned unchanged."""
+        assert strip_category_prefix("") == ""
