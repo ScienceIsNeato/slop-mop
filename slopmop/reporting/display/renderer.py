@@ -214,6 +214,7 @@ def build_progress_bar(
     term_width: int,
     pct: float,
     colors_enabled: Optional[bool] = None,
+    bar_color: Optional[str] = None,
 ) -> str:
     """Build a line with a progress bar between left and right.
 
@@ -225,6 +226,8 @@ def build_progress_bar(
         term_width: Terminal width in columns
         pct: Completion percentage (0.0 to 1.0)
         colors_enabled: Whether to colorize the filled portion
+        bar_color: ANSI color code to use for the filled portion (e.g. "\033[32m").
+            Defaults to cyan if None.
 
     Returns:
         Formatted line with progress bar
@@ -245,13 +248,14 @@ def build_progress_bar(
     filled_str = config.PROGRESS_FILL * filled
     empty_str = config.PROGRESS_EMPTY * (bar_width - filled)
 
-    # Colorize the filled portion in cyan when colors are enabled
+    # Colorize the filled portion in the category color when colors are enabled
     if colors_enabled is None:
         from slopmop.reporting.display.colors import supports_color
 
         colors_enabled = supports_color()
     if colors_enabled and filled > 0:
-        filled_str = f"\033[36m{filled_str}\033[0m"  # cyan
+        color_code = bar_color if bar_color else "\033[36m"  # default cyan
+        filled_str = f"{color_code}{filled_str}\033[0m"
 
     middle = f"[{filled_str}{empty_str}] {pct_label}"
 

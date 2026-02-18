@@ -502,8 +502,15 @@ class DynamicDisplay:
             eta_str = format_time(remaining)
             pct = min(elapsed / info.expected_duration, 0.99)
             right = align_columns(time_str, eta_str)
+            category = info.name.split(":")[0] if ":" in info.name else ""
+            bar_color = category_header_color(category, self._colors_enabled) or None
             return build_progress_bar(
-                left, right, width, pct, colors_enabled=self._colors_enabled
+                left,
+                right,
+                width,
+                pct,
+                colors_enabled=self._colors_enabled,
+                bar_color=bar_color,
             )
         else:
             right = align_columns(time_str, "N/A")

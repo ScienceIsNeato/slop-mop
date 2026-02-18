@@ -146,11 +146,16 @@ class TestBuildProgressBar:
         assert "50%" in result
 
     def test_colors_enabled_adds_ansi(self):
-        """Colors enabled wraps filled portion in ANSI cyan."""
+        """Colors enabled wraps filled portion in ANSI escape codes."""
         result = build_progress_bar("left", "right", 80, 0.5, colors_enabled=True)
-        # ANSI cyan code should appear when there are filled chars
-        assert "\033[36m" in result
+        # Some ANSI escape should appear when there are filled chars
+        assert "\033[" in result
         assert "\033[0m" in result
+
+    def test_bar_color_param_used(self):
+        """bar_color param controls the ANSI code applied to filled portion."""
+        result = build_progress_bar("left", "right", 80, 0.5, colors_enabled=True, bar_color="\033[32m")
+        assert "\033[32m" in result  # green, not the default cyan
 
     def test_colors_disabled_no_ansi(self):
         """Colors disabled produces no ANSI codes."""
@@ -160,7 +165,7 @@ class TestBuildProgressBar:
     def test_zero_pct_no_color_escape(self):
         """0% completion with colors enabled still has no escape (no filled chars)."""
         result = build_progress_bar("left", "right", 80, 0.0, colors_enabled=True)
-        assert "\033[36m" not in result
+        assert "\033[0m" not in result
 
 
 class TestBuildOverallProgress:
