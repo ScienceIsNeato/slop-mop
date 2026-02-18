@@ -75,12 +75,12 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-validate:
-      ./sm validate security:local --verbose
+      ./sm validate security:scan --verbose
     """
 
     @property
     def name(self) -> str:
-        return "local"
+        return "scan"
 
     @property
     def display_name(self) -> str:

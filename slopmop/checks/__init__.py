@@ -86,7 +86,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "myopia:string-duplication",
             "deceptiveness:bogus-tests",
             "myopia:loc-lock",
-            "myopia:local",
+            "myopia:scan",
             "laziness:js-lint",
             "overconfidence:js-types",
             "overconfidence:js-tests",
@@ -120,7 +120,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
         ],
     )
 
-    registry.register_alias("quick", ["laziness:py-lint", "myopia:local"])
+    registry.register_alias("quick", ["laziness:py-lint", "myopia:scan"])
 
     registry.register_alias(
         "python",
@@ -145,7 +145,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
     )
 
     registry.register_alias("security", ["myopia:full"])
-    registry.register_alias("security-local", ["myopia:local"])
+    registry.register_alias("security-local", ["myopia:scan"])
 
     registry.register_alias(
         "quality",

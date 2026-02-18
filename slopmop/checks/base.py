@@ -58,10 +58,10 @@ class Flaw(Enum):
     - MYOPIA: "But I fixed the bug!" - tunnel vision, missing big picture
     """
 
-    OVERCONFIDENCE = ("overconfidence", "🧠", "Overconfidence")
+    OVERCONFIDENCE = ("overconfidence", "💯", "Overconfidence")
     DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
     LAZINESS = ("laziness", "🦥", "Laziness")
-    MYOPIA = ("myopia", "🔍", "Myopia")
+    MYOPIA = ("myopia", "👓", "Myopia")
 
     def __init__(self, key: str, emoji: str, display_name: str):
         self.key = key
@@ -85,10 +85,10 @@ class GateCategory(Enum):
     """
 
     # Flaw-based categories
-    OVERCONFIDENCE = ("overconfidence", "🧠", "Overconfidence")
+    OVERCONFIDENCE = ("overconfidence", "💯", "Overconfidence")
     DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
     LAZINESS = ("laziness", "🦥", "Laziness")
-    MYOPIA = ("myopia", "🔍", "Myopia")
+    MYOPIA = ("myopia", "👓", "Myopia")
 
     # Other categories
     GENERAL = ("general", "🔧", "General")

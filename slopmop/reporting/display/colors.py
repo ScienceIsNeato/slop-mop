@@ -177,11 +177,12 @@ def category_header_color(category: str, colors_enabled: Optional[bool] = None) 
         return ""
 
     # Map categories to colors for visual grouping
+    # Keep colors visually distinct — avoid pairing similar hues (e.g., two purples)
     category_colors = {
-        "overconfidence": Color.BRIGHT_CYAN,
-        "deceptiveness": Color.BRIGHT_MAGENTA,
-        "laziness": Color.MAGENTA,
-        "myopia": Color.BRIGHT_GREEN,
+        "overconfidence": Color.BRIGHT_CYAN,  # bold teal/blue
+        "deceptiveness": Color.BRIGHT_MAGENTA,  # bold pink/purple
+        "laziness": Color.BRIGHT_YELLOW,  # bold yellow (was MAGENTA — too close to deceptiveness)
+        "myopia": Color.BRIGHT_GREEN,  # bold green
         "general": Color.BLUE,
         "pr": Color.CYAN,
     }

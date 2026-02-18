@@ -378,15 +378,15 @@ class TestPrintGateInventory:
     def test_error_gate_in_profile(self, capsys):
         """Errored gate in profile shows error marker."""
         r = CheckResult(
-            "myopia:local",
+            "myopia:scan",
             CheckStatus.ERROR,
             0.1,
             error="bandit not installed",
         )
         _print_gate_inventory(
-            all_gates=["myopia:local"],
-            profile_gates={"myopia:local"},
-            results_map={"myopia:local": r},
+            all_gates=["myopia:scan"],
+            profile_gates={"myopia:scan"},
+            results_map={"myopia:scan": r},
             applicability={},
             aliases={},
             profile="commit",
@@ -435,8 +435,8 @@ class TestPrintRemediation:
     def test_remediation_for_errored_gate(self, capsys):
         """Errored gate shows remediation."""
         results = {
-            "myopia:local": CheckResult(
-                "myopia:local",
+            "myopia:scan": CheckResult(
+                "myopia:scan",
                 CheckStatus.ERROR,
                 0.1,
                 error="bandit not installed",

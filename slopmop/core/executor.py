@@ -89,7 +89,11 @@ class CheckExecutor:
         self._on_check_complete: Optional[Callable[[CheckResult], None]] = None
         self._on_check_start: Optional[Callable[[str, Optional[str]], None]] = None
         self._on_check_disabled: Optional[Callable[[str], None]] = None
+        self._on_check_na: Optional[Callable[[str], None]] = None
         self._on_total_determined: Optional[Callable[[int], None]] = None
+        self._on_pending_checks: Optional[
+            Callable[[List[tuple[str, Optional[str]]]], None]
+        ] = None
 
     def set_progress_callback(self, callback: Callable[[CheckResult], None]) -> None:
         """Set callback for check completion events.
@@ -117,6 +121,14 @@ class CheckExecutor:
         """
         self._on_check_disabled = callback
 
+    def set_na_callback(self, callback: Callable[[str], None]) -> None:
+        """Set callback for not-applicable check events.
+
+        Args:
+            callback: Function called with check name when a check is N/A
+        """
+        self._on_check_na = callback
+
     def set_total_callback(self, callback: Callable[[int], None]) -> None:
         """Set callback for when total check count is determined.
 
@@ -124,6 +136,18 @@ class CheckExecutor:
             callback: Function called with total number of checks to run
         """
         self._on_total_determined = callback
+
+    def set_pending_callback(
+        self, callback: Callable[[List[tuple[str, Optional[str]]]], None]
+    ) -> None:
+        """Set callback for registering all applicable checks as pending.
+
+        Called after applicability filtering, before execution begins.
+
+        Args:
+            callback: Function called with list of (full_name, category_key) tuples
+        """
+        self._on_pending_checks = callback
 
     def run_checks(
         self,
@@ -205,13 +229,17 @@ class CheckExecutor:
         # Log non-applicable checks with reason
         for check in skipped:
             reason = check.skip_reason(project_root)
-            logger.info(f"Not applicable — {check.full_name}: {reason}")
+            logger.debug(f"Not applicable — {check.full_name}: {reason}")
             self._results[check.full_name] = CheckResult(
                 name=check.full_name,
                 status=CheckStatus.NOT_APPLICABLE,
                 duration=0,
                 output=reason,
             )
+            # Notify via dedicated N/A callback so display can label them
+            # separately from config-disabled checks in the footer.
+            if self._on_check_na:
+                self._on_check_na(check.full_name)
 
         if not applicable:
             duration = time.time() - start_time
@@ -220,6 +248,14 @@ class CheckExecutor:
         # Notify total checks determined
         if self._on_total_determined:
             self._on_total_determined(len(applicable))
+
+        # Register all applicable checks as pending (for display)
+        if self._on_pending_checks:
+            pending_info = [
+                (c.full_name, c.category.key if c.category else None)
+                for c in applicable
+            ]
+            self._on_pending_checks(pending_info)
 
         # Build dependency graph
         dep_graph = self._build_dependency_graph(applicable)

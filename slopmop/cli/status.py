@@ -425,6 +425,7 @@ def run_status(
         executor.set_start_callback(dynamic_display.on_check_start)
         executor.set_progress_callback(dynamic_display.on_check_complete)
         executor.set_disabled_callback(dynamic_display.on_check_disabled)
+        executor.set_na_callback(dynamic_display.on_check_not_applicable)
         executor.set_total_callback(dynamic_display.set_total_checks)
 
     # Print header

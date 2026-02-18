@@ -524,6 +524,41 @@ class TestCheckExecutor:
         assert dependent_class.run_count == 0
         assert summary.total_checks == 0
 
+    def test_na_callback_fires_for_inapplicable_checks(self, tmp_path):
+        """Test set_na_callback fires when a check is not applicable."""
+        registry = CheckRegistry()
+        check_class = make_mock_check_class("js-types", applicable=False)
+        registry.register(check_class)
+
+        na_names = []
+        executor = CheckExecutor(registry=registry)
+        executor.set_na_callback(na_names.append)
+
+        executor.run_checks(str(tmp_path), ["overconfidence:js-types"])
+
+        assert na_names == ["overconfidence:js-types"]
+
+    def test_na_callback_not_called_for_applicable_checks(self, tmp_path):
+        """Test set_na_callback is NOT called when check is applicable."""
+        registry = CheckRegistry()
+        check_class = make_mock_check_class("my-check", applicable=True)
+        registry.register(check_class)
+
+        na_names = []
+        executor = CheckExecutor(registry=registry)
+        executor.set_na_callback(na_names.append)
+
+        executor.run_checks(str(tmp_path), ["overconfidence:my-check"])
+
+        assert na_names == []
+
+    def test_set_na_callback_registers_callback(self):
+        """Test set_na_callback stores the callback."""
+        executor = CheckExecutor()
+        cb = lambda name: None  # noqa: E731
+        executor.set_na_callback(cb)
+        assert executor._on_check_na is cb
+
 
 class TestRunQualityChecks:
     """Tests for the run_quality_checks convenience function."""

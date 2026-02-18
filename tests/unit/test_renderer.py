@@ -2,6 +2,8 @@
 
 from slopmop.reporting.display.renderer import (
     build_category_header,
+    build_overall_progress,
+    build_progress_bar,
     display_width,
     strip_category_prefix,
     truncate_for_inline,
@@ -131,3 +133,57 @@ class TestStripCategoryPrefix:
     def test_empty_string(self):
         """Empty string returned unchanged."""
         assert strip_category_prefix("") == ""
+
+
+class TestBuildProgressBar:
+    """Tests for build_progress_bar function."""
+
+    def test_basic_progress_bar(self):
+        """Progress bar renders with fill and empty chars."""
+        result = build_progress_bar("left", "right", 60, 0.5)
+        assert "[" in result
+        assert "]" in result
+        assert "50%" in result
+
+    def test_colors_enabled_adds_ansi(self):
+        """Colors enabled wraps filled portion in ANSI cyan."""
+        result = build_progress_bar("left", "right", 80, 0.5, colors_enabled=True)
+        # ANSI cyan code should appear when there are filled chars
+        assert "\033[36m" in result
+        assert "\033[0m" in result
+
+    def test_colors_disabled_no_ansi(self):
+        """Colors disabled produces no ANSI codes."""
+        result = build_progress_bar("left", "right", 80, 0.5, colors_enabled=False)
+        assert "\033[" not in result
+
+    def test_zero_pct_no_color_escape(self):
+        """0% completion with colors enabled still has no escape (no filled chars)."""
+        result = build_progress_bar("left", "right", 80, 0.0, colors_enabled=True)
+        assert "\033[36m" not in result
+
+
+class TestBuildOverallProgress:
+    """Tests for build_overall_progress function."""
+
+    def test_basic_progress(self):
+        """Overall progress line shows count and elapsed."""
+        result = build_overall_progress(3, 10, 5.0)
+        assert "3/10" in result
+        assert "elapsed" in result
+
+    def test_colors_enabled_adds_ansi(self):
+        """Colors enabled wraps filled portion in ANSI green."""
+        result = build_overall_progress(5, 10, 2.0, term_width=80, colors_enabled=True)
+        assert "\033[32m" in result
+        assert "\033[0m" in result
+
+    def test_colors_disabled_no_ansi(self):
+        """Colors disabled produces no ANSI codes."""
+        result = build_overall_progress(5, 10, 2.0, term_width=80, colors_enabled=False)
+        assert "\033[" not in result
+
+    def test_zero_completed_no_color_escape(self):
+        """0 completed with colors enabled has no escape (no filled chars)."""
+        result = build_overall_progress(0, 10, 1.0, term_width=80, colors_enabled=True)
+        assert "\033[32m" not in result

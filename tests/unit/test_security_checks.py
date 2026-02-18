@@ -36,12 +36,12 @@ class TestSecurityLocalCheck:
     def test_name(self):
         """Test check name."""
         check = SecurityLocalCheck({})
-        assert check.name == "local"
+        assert check.name == "scan"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = SecurityLocalCheck({})
-        assert check.full_name == "myopia:local"
+        assert check.full_name == "myopia:scan"
 
     def test_display_name(self):
         """Test display name."""
@@ -213,7 +213,7 @@ class TestSecurityLocalCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
-        assert "myopia:local" in result.name
+        assert "myopia:scan" in result.name
 
     def test_run_with_failures(self, tmp_path):
         """Test run() when one check fails."""

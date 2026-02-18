@@ -94,6 +94,10 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
             ),
         ]
 
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping — delegate to JavaScriptCheckMixin."""
+        return JavaScriptCheckMixin.skip_reason(self, project_root)
+
     def is_applicable(self, project_root: str) -> bool:
         """Check if this is a TypeScript project."""
         import os

@@ -162,7 +162,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
         executor.set_start_callback(dynamic_display.on_check_start)
         executor.set_progress_callback(dynamic_display.on_check_complete)
         executor.set_disabled_callback(dynamic_display.on_check_disabled)
+        executor.set_na_callback(dynamic_display.on_check_not_applicable)
         executor.set_total_callback(dynamic_display.set_total_checks)
+        executor.set_pending_callback(dynamic_display.register_pending_checks)
     else:
         # Fall back to traditional reporter
         executor.set_progress_callback(reporter.on_check_complete)

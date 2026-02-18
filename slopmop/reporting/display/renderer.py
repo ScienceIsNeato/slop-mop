@@ -3,11 +3,15 @@
 Static helper functions for formatting and measuring terminal output.
 """
 
+import re
 import shutil
 import unicodedata
 from typing import List, Optional
 
 from slopmop.reporting.display import config
+
+# Regex to match ANSI escape sequences (colors, cursor movement, etc.)
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
 
 def get_terminal_width() -> int:
@@ -25,8 +29,8 @@ def get_terminal_width() -> int:
 def display_width(text: str) -> int:
     """Calculate terminal display width of a string.
 
-    Wide characters (emoji, CJK) take 2 columns. This prevents
-    lines from overflowing and breaking cursor-based redraw.
+    Wide characters (emoji, CJK) take 2 columns.  ANSI escape sequences
+    are stripped before measuring so they don't inflate the count.
 
     Args:
         text: String to measure
@@ -34,14 +38,74 @@ def display_width(text: str) -> int:
     Returns:
         Number of terminal columns the text occupies
     """
+    stripped = _ANSI_RE.sub("", text)
     width = 0
-    for ch in text:
+    for ch in stripped:
         cat = unicodedata.east_asian_width(ch)
         if cat in ("W", "F"):
             width += 2
         else:
             width += 1
     return width
+
+
+def strip_ansi(text: str) -> str:
+    """Remove all ANSI escape sequences from text.
+
+    Args:
+        text: Text possibly containing ANSI codes
+
+    Returns:
+        Clean text with no ANSI sequences.
+    """
+    return _ANSI_RE.sub("", text)
+
+
+def truncate_to_width(text: str, max_width: int) -> str:
+    """Truncate a string to fit within *max_width* visible columns.
+
+    ANSI escape sequences are preserved but don't count toward the
+    width budget, so color codes are never cut in half.  A trailing
+    reset (``\\033[0m``) is appended when the string contains any
+    ANSI code to guarantee no color leaks.
+
+    Args:
+        text: Text to truncate (may contain ANSI codes)
+        max_width: Maximum display columns allowed
+
+    Returns:
+        Truncated string that fits in *max_width* columns.
+    """
+    result: List[str] = []
+    col = 0
+    i = 0
+    has_ansi = False
+
+    while i < len(text):
+        # Check for ANSI escape at current position
+        m = _ANSI_RE.match(text, i)
+        if m:
+            result.append(m.group())
+            has_ansi = True
+            i = m.end()
+            continue
+
+        ch = text[i]
+        cat = unicodedata.east_asian_width(ch)
+        w = 2 if cat in ("W", "F") else 1
+
+        if col + w > max_width:
+            break
+
+        result.append(ch)
+        col += w
+        i += 1
+
+    out = "".join(result)
+    # Ensure we reset color at the end to prevent bleed
+    if has_ansi:
+        out += "\033[0m"
+    return out
 
 
 def format_time(seconds: float) -> str:
@@ -149,6 +213,7 @@ def build_progress_bar(
     right: str,
     term_width: int,
     pct: float,
+    colors_enabled: Optional[bool] = None,
 ) -> str:
     """Build a line with a progress bar between left and right.
 
@@ -159,6 +224,7 @@ def build_progress_bar(
         right: Right-aligned content (time columns)
         term_width: Terminal width in columns
         pct: Completion percentage (0.0 to 1.0)
+        colors_enabled: Whether to colorize the filled portion
 
     Returns:
         Formatted line with progress bar
@@ -176,8 +242,18 @@ def build_progress_bar(
         return right_justify(left, right, term_width)
 
     filled = int(pct * bar_width)
-    bar = config.PROGRESS_FILL * filled + config.PROGRESS_EMPTY * (bar_width - filled)
-    middle = f"[{bar}] {pct_label}"
+    filled_str = config.PROGRESS_FILL * filled
+    empty_str = config.PROGRESS_EMPTY * (bar_width - filled)
+
+    # Colorize the filled portion in cyan when colors are enabled
+    if colors_enabled is None:
+        from slopmop.reporting.display.colors import supports_color
+
+        colors_enabled = supports_color()
+    if colors_enabled and filled > 0:
+        filled_str = f"\033[36m{filled_str}\033[0m"  # cyan
+
+    middle = f"[{filled_str}{empty_str}] {pct_label}"
 
     return f"{left} {middle} {right}"
 
@@ -187,6 +263,7 @@ def build_overall_progress(
     total: int,
     elapsed: float,
     term_width: Optional[int] = None,
+    colors_enabled: Optional[bool] = None,
 ) -> str:
     """Build the overall progress line with bar and stats.
 
@@ -195,6 +272,7 @@ def build_overall_progress(
         total: Total number of checks
         elapsed: Elapsed time in seconds
         term_width: Terminal width (auto-detected if None)
+        colors_enabled: Whether to colorize the filled portion
 
     Returns:
         Formatted progress line
@@ -213,9 +291,18 @@ def build_overall_progress(
 
     pct = completed / total if total > 0 else 0
     filled = int(pct * bar_width)
-    bar = config.PROGRESS_FILL * filled + config.PROGRESS_EMPTY * (bar_width - filled)
+    filled_str = config.PROGRESS_FILL * filled
+    empty_str = config.PROGRESS_EMPTY * (bar_width - filled)
 
-    left_side = f"Progress: [{bar}]"
+    # Colorize filled portion in green when colors are enabled
+    if colors_enabled is None:
+        from slopmop.reporting.display.colors import supports_color
+
+        colors_enabled = supports_color()
+    if colors_enabled and filled > 0:
+        filled_str = f"\033[32m{filled_str}\033[0m"  # green
+
+    left_side = f"Progress: [{filled_str}{empty_str}]"
     return right_justify(left_side, right_side, term_width)
 
 

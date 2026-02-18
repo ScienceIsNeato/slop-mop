@@ -11,9 +11,9 @@ from slopmop.checks.base import find_tool
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     ("vulture", "laziness:dead-code", "pip install vulture  # in your venv"),
     ("pyright", "overconfidence:py-types", "pip install pyright  # in your venv"),
-    ("bandit", "myopia:local", "pip install bandit  # in your venv"),
-    ("semgrep", "myopia:local", "pip install semgrep  # in your venv"),
-    ("detect-secrets", "myopia:local", "pip install detect-secrets  # in your venv"),
+    ("bandit", "myopia:scan", "pip install bandit  # in your venv"),
+    ("semgrep", "myopia:scan", "pip install semgrep  # in your venv"),
+    ("detect-secrets", "myopia:scan", "pip install detect-secrets  # in your venv"),
     ("pip-audit", "myopia:full", "pip install pip-audit  # in your venv"),
 ]
 

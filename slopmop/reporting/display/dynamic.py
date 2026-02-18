@@ -30,6 +30,7 @@ from slopmop.reporting.display.renderer import (
     right_justify,
     strip_category_prefix,
     truncate_for_inline,
+    truncate_to_width,
 )
 from slopmop.reporting.display.state import CheckDisplayInfo, DisplayState
 from slopmop.reporting.timings import load_timings, save_timings
@@ -70,7 +71,8 @@ class DynamicDisplay:
         self._checks: Dict[str, CheckDisplayInfo] = {}
         self._check_order: List[str] = []
         self._completed_count = 0
-        self._disabled_names: List[str] = []
+        self._disabled_names: List[str] = []  # config-disabled checks
+        self._na_names: List[str] = []  # not-applicable checks
 
         # Animation state
         self._spinner_idx = 0
@@ -139,6 +141,25 @@ class DynamicDisplay:
         """
         with self._lock:
             self._total_checks_expected = total
+
+    def register_pending_checks(self, checks: List[tuple[str, Optional[str]]]) -> None:
+        """Register all checks as pending so they appear immediately.
+
+        Called before execution begins so the full list is visible from
+        the start — no more "items only appear when they start".
+
+        Args:
+            checks: List of (full_name, category_key) tuples
+        """
+        with self._lock:
+            for name, category in checks:
+                if name not in self._checks:
+                    info = CheckDisplayInfo(name=name, category=category)
+                    # Populate expected duration from historical data
+                    if name in self._historical_timings:
+                        info.expected_duration = self._historical_timings[name]
+                    self._checks[name] = info
+                    self._check_order.append(name)
 
     def stop(self) -> None:
         """Stop the display and animation thread."""
@@ -216,13 +237,24 @@ class DynamicDisplay:
             )
 
     def on_check_disabled(self, name: str) -> None:
-        """Called when a check is disabled and won't run.
+        """Called when a check is disabled by config.
 
         Args:
             name: Check name
         """
         with self._lock:
-            self._disabled_names.append(name)
+            if name not in self._disabled_names:
+                self._disabled_names.append(name)
+
+    def on_check_not_applicable(self, name: str) -> None:
+        """Called when a check is not applicable for this project type.
+
+        Args:
+            name: Check name
+        """
+        with self._lock:
+            if name not in self._na_names:
+                self._na_names.append(name)
 
     def _animation_loop(self) -> None:
         """Background thread for spinner animation."""
@@ -240,13 +272,17 @@ class DynamicDisplay:
         """Draw the current state to terminal.
 
         All cursor movement and writing is done under the lock to prevent
-        interleaving. Lines are truncated to terminal width to prevent
-        wrapping, which would desync the cursor-up line count.
+        interleaving. Lines are truncated to terminal width using
+        ANSI-aware truncation to prevent color code leaks.
         """
         if self.quiet or not self._is_tty:
             return
 
         with self._lock:
+            # Don't draw anything until we have checks registered
+            if not self._checks:
+                return
+
             lines = self._build_display()
             term_width = get_terminal_width()
 
@@ -255,8 +291,8 @@ class DynamicDisplay:
                 sys.stdout.write(f"\033[{self._lines_drawn}A")  # Move up
                 sys.stdout.write("\033[J")  # Clear from cursor to end
 
-            # Truncate lines to prevent wrapping (which breaks cursor math)
-            truncated = [line[:term_width] for line in lines]
+            # ANSI-aware truncation preserves escape codes and appends reset
+            truncated = [truncate_to_width(line, term_width) for line in lines]
 
             output = "\n".join(truncated)
             sys.stdout.write(output + "\n")
@@ -292,12 +328,23 @@ class DynamicDisplay:
                 if self._overall_start_time
                 else 0.0
             )
-            lines.append(build_overall_progress(completed, total, elapsed))
+            lines.append(
+                build_overall_progress(
+                    completed, total, elapsed, colors_enabled=self._colors_enabled
+                )
+            )
             lines.append("")
 
         # Group checks by category
         groups = self._group_checks_by_category()
         term_width = get_terminal_width()
+
+        # Compute max short-name width across all checks for column alignment
+        all_checks_flat = [c for _, _, gc in groups for c in gc]
+        max_name_w = 0
+        for c in all_checks_flat:
+            sn = strip_category_prefix(c.name)
+            max_name_w = max(max_name_w, len(sn))
 
         for category_key, category_label, group_checks in groups:
             cat_completed = sum(
@@ -326,12 +373,17 @@ class DynamicDisplay:
             )
 
             for info in group_checks:
-                lines.append(self._format_check_line(info))
+                lines.append(self._format_check_line(info, name_width=max_name_w))
 
-        # Disabled summary
+        # N/A summary (not applicable — no matching project type)
+        if self._na_names:
+            lines.append("")
+            na_short = [strip_category_prefix(n) for n in self._na_names]
+            lines.append(f"Not applicable: {', '.join(na_short)}")
+
+        # Disabled summary (explicitly disabled in config)
         if self._disabled_names:
             lines.append("")
-            # Strip category prefix from disabled names too for consistency
             disabled_short = [strip_category_prefix(n) for n in self._disabled_names]
             lines.append(f"Disabled: {', '.join(disabled_short)}")
 
@@ -381,12 +433,15 @@ class DynamicDisplay:
 
         return groups
 
-    def _format_completed_line(self, info: CheckDisplayInfo, width: int) -> str:
+    def _format_completed_line(
+        self, info: CheckDisplayInfo, width: int, name_width: int = 0
+    ) -> str:
         """Format a completed check line.
 
         Args:
             info: Check display info (must be completed with result)
             width: Available width for the line
+            name_width: Minimum name column width for alignment
 
         Returns:
             Formatted line
@@ -395,6 +450,7 @@ class DynamicDisplay:
         ce = self._colors_enabled
 
         short_name = strip_category_prefix(info.name)
+        padded_name = f"{short_name:<{name_width}}" if name_width else short_name
         icon = STATUS_EMOJI.get(info.result.status, "❓")
         status_val = info.result.status.value
         padded_status = f"{status_val:<{config.STATUS_COLUMN_WIDTH}}"
@@ -404,7 +460,7 @@ class DynamicDisplay:
         rc = reset_color(ce)
         colored_status = f"{sc}{padded_status}{rc}"
 
-        left = f"{config.CHECK_INDENT}{icon} {short_name}: {colored_status}"
+        left = f"{config.CHECK_INDENT}{icon} {padded_name}: {colored_status}"
 
         # Inline failure preview for failed/error checks
         preview = ""
@@ -419,12 +475,15 @@ class DynamicDisplay:
         right = align_columns(time_str, "")
         return right_justify(left + preview, right, width)
 
-    def _format_running_line(self, info: CheckDisplayInfo, width: int) -> str:
+    def _format_running_line(
+        self, info: CheckDisplayInfo, width: int, name_width: int = 0
+    ) -> str:
         """Format a running check line with spinner and progress.
 
         Args:
             info: Check display info (must be running)
             width: Available width for the line
+            name_width: Minimum name column width for alignment
 
         Returns:
             Formatted line
@@ -434,7 +493,8 @@ class DynamicDisplay:
 
         elapsed = time.time() - info.start_time
         short_name = strip_category_prefix(info.name)
-        left = f"{config.CHECK_INDENT}{spinner} {short_name}"
+        padded_name = f"{short_name:<{name_width}}" if name_width else short_name
+        left = f"{config.CHECK_INDENT}{spinner} {padded_name}"
         time_str = format_time(elapsed)
 
         if info.expected_duration and info.expected_duration > 0:
@@ -442,36 +502,43 @@ class DynamicDisplay:
             eta_str = format_time(remaining)
             pct = min(elapsed / info.expected_duration, 0.99)
             right = align_columns(time_str, eta_str)
-            return build_progress_bar(left, right, width, pct)
+            return build_progress_bar(
+                left, right, width, pct, colors_enabled=self._colors_enabled
+            )
         else:
             right = align_columns(time_str, "N/A")
             return build_dot_leader(left, right, width, self._animation_tick)
 
-    def _format_pending_line(self, info: CheckDisplayInfo, width: int) -> str:
+    def _format_pending_line(
+        self, info: CheckDisplayInfo, width: int, name_width: int = 0
+    ) -> str:
         """Format a pending check line.
 
         Args:
             info: Check display info (pending state)
             width: Available width for the line
+            name_width: Minimum name column width for alignment
 
         Returns:
             Formatted line (without connector)
         """
         short_name = strip_category_prefix(info.name)
-        left = f"{config.CHECK_INDENT}○ {short_name}"
+        padded_name = f"{short_name:<{name_width}}" if name_width else short_name
+        left = f"{config.CHECK_INDENT}○ {padded_name}"
         eta_str = (
             format_time(info.expected_duration) if info.expected_duration else "N/A"
         )
         right = align_columns("", eta_str)
         return right_justify(left, right, width)
 
-    def _format_check_line(self, info: CheckDisplayInfo) -> str:
+    def _format_check_line(self, info: CheckDisplayInfo, name_width: int = 0) -> str:
         """Format a single check line with aligned columns.
 
         Dispatches to state-specific formatters based on check state.
 
         Args:
             info: Check display info
+            name_width: Minimum name column width for alignment
 
         Returns:
             Formatted line string
@@ -479,11 +546,11 @@ class DynamicDisplay:
         width = get_terminal_width()
 
         if info.state == DisplayState.COMPLETED and info.result:
-            return self._format_completed_line(info, width)
+            return self._format_completed_line(info, width, name_width)
         elif info.state == DisplayState.RUNNING:
-            return self._format_running_line(info, width)
+            return self._format_running_line(info, width, name_width)
         else:
-            return self._format_pending_line(info, width)
+            return self._format_pending_line(info, width, name_width)
 
     @property
     def completed_count(self) -> int:
@@ -506,7 +573,9 @@ class DynamicDisplay:
         elapsed = 0.0
         if self._overall_start_time:
             elapsed = time.time() - self._overall_start_time
-        return build_overall_progress(completed, total, elapsed)
+        return build_overall_progress(
+            completed, total, elapsed, colors_enabled=self._colors_enabled
+        )
 
     def _right_justify(self, left: str, right: str) -> str:
         """Right-justify a line. (Backwards compatibility)"""
