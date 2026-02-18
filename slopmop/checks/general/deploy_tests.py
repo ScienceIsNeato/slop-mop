@@ -26,15 +26,15 @@ class DeployScriptTestsCheck(BaseCheck):
 
     @property
     def name(self) -> str:
-        return "deploy-tests"
+        return "deploy-script-tests"
 
     @property
     def display_name(self) -> str:
-        return "🚀 Deploy Script Tests"
+        return "🚀 Deploy Script Validation"
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.GENERAL
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:

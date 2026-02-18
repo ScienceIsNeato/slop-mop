@@ -60,7 +60,7 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
             print(f"     • {tool_name} → {check_name}")
             print(f"       Install: {install_cmd}")
         print()
-        print("   After installing, re-run: ./sm init")
+        print("   After installing, re-run: ./scripts/sm init")
         print()
 
     print(f"  Recommended profile: {detected['recommended_profile']}")
@@ -229,15 +229,17 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print()
     print("Next steps:")
     print("  1. Review the report card below to see where the repo stands")
-    print("  2. Disable any gates you're not ready for: ./sm config --disable <gate>")
-    print("  3. Run './sm validate commit' and fix what fails")
+    print(
+        "  2. Disable any gates you're not ready for: ./scripts/sm config --disable <gate>"
+    )
+    print("  3. Run './scripts/sm validate commit' and fix what fails")
     print("  4. Gradually enable more gates and tighten thresholds over time")
     print()
     print("Quick reference:")
-    print("  ./sm validate commit   # Fast pre-commit validation")
-    print("  ./sm validate pr       # Full PR validation")
-    print("  ./sm status            # Full report card (no fail-fast)")
-    print("  ./sm config --show     # View current gate settings")
+    print("  ./scripts/sm validate commit   # Fast pre-commit validation")
+    print("  ./scripts/sm validate pr       # Full PR validation")
+    print("  ./scripts/sm status            # Full report card (no fail-fast)")
+    print("  ./scripts/sm config --show     # View current gate settings")
     print()
 
 

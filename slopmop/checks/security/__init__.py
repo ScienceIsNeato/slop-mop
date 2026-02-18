@@ -75,12 +75,12 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-validate:
-      ./sm validate security:scan --verbose
+      ./scripts/sm validate myopia:security-scan --verbose
     """
 
     @property
     def name(self) -> str:
-        return "scan"
+        return "security-scan"
 
     @property
     def display_name(self) -> str:
@@ -96,7 +96,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def superseded_by(self) -> Optional[str]:
-        return "myopia:full"
+        return "myopia:security-audit"
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -339,12 +339,12 @@ class SecurityCheck(SecurityLocalCheck):
       pip-audit not available: pip install pip-audit
 
     Re-validate:
-      ./sm validate security:full --verbose
+      ./scripts/sm validate myopia:security-audit --verbose
     """
 
     @property
     def name(self) -> str:
-        return "full"
+        return "security-audit"
 
     @property
     def display_name(self) -> str:

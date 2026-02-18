@@ -360,13 +360,13 @@ class TestDynamicDisplay:
         """Test disabled summary line appears in build_display output."""
         display = DynamicDisplay(quiet=False)
         display.on_check_disabled("laziness:js-lint")
-        display.on_check_disabled("myopia:scan")
+        display.on_check_disabled("myopia:security-scan")
 
         lines = display._build_display()
         disabled_lines = [line for line in lines if line.startswith("Disabled:")]
         assert len(disabled_lines) == 1
         assert "js-lint" in disabled_lines[0]
-        assert "scan" in disabled_lines[0]
+        assert "security-scan" in disabled_lines[0]
 
     def test_thread_safety(self) -> None:
         """Test display is thread safe."""
@@ -846,7 +846,7 @@ class TestDynamicDisplay:
         """Test N/A and disabled checks render as separate footer lines."""
         display = DynamicDisplay(quiet=True)
         display.on_check_not_applicable("overconfidence:js-types")
-        display.on_check_disabled("myopia:scan")
+        display.on_check_disabled("myopia:security-scan")
 
         lines = display._build_display()
         na_lines = [line for line in lines if line.startswith("Not applicable:")]
@@ -854,7 +854,7 @@ class TestDynamicDisplay:
         assert len(na_lines) == 1
         assert len(disabled_lines) == 1
         assert "js-types" in na_lines[0]
-        assert "scan" in disabled_lines[0]
+        assert "security-scan" in disabled_lines[0]
 
     def test_load_historical_timings(self, tmp_path) -> None:
         """Test load_historical_timings loads timing data."""

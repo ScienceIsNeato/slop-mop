@@ -41,20 +41,20 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
       Jinja2 not installed: pip install jinja2
 
     Re-validate:
-      ./sm validate general:templates --verbose
+      ./scripts/sm validate laziness:template-syntax --verbose
     """
 
     @property
     def name(self) -> str:
-        return "templates"
+        return "template-syntax"
 
     @property
     def display_name(self) -> str:
-        return "📄 Template Validation (Jinja2)"
+        return "📄 Template Syntax Validation (Jinja2)"
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.GENERAL
+        return GateCategory.LAZINESS
 
     @property
     def flaw(self) -> Flaw:

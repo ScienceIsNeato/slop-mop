@@ -43,7 +43,6 @@ CATEGORY_ORDER = [
     "deceptiveness",
     "laziness",
     "myopia",
-    "general",
     "pr",
 ]
 

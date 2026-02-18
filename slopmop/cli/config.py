@@ -57,7 +57,6 @@ VALID_CATEGORIES = {
     "javascript",
     "security",
     "quality",
-    "general",
     "integration",
 }
 

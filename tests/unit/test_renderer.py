@@ -154,7 +154,9 @@ class TestBuildProgressBar:
 
     def test_bar_color_param_used(self):
         """bar_color param controls the ANSI code applied to filled portion."""
-        result = build_progress_bar("left", "right", 80, 0.5, colors_enabled=True, bar_color="\033[32m")
+        result = build_progress_bar(
+            "left", "right", 80, 0.5, colors_enabled=True, bar_color="\033[32m"
+        )
         assert "\033[32m" in result  # green, not the default cyan
 
     def test_colors_disabled_no_ansi(self):

@@ -378,15 +378,15 @@ class TestPrintGateInventory:
     def test_error_gate_in_profile(self, capsys):
         """Errored gate in profile shows error marker."""
         r = CheckResult(
-            "myopia:scan",
+            "myopia:security-scan",
             CheckStatus.ERROR,
             0.1,
             error="bandit not installed",
         )
         _print_gate_inventory(
-            all_gates=["myopia:scan"],
-            profile_gates={"myopia:scan"},
-            results_map={"myopia:scan": r},
+            all_gates=["myopia:security-scan"],
+            profile_gates={"myopia:security-scan"},
+            results_map={"myopia:security-scan": r},
             applicability={},
             aliases={},
             profile="commit",
@@ -430,13 +430,13 @@ class TestPrintRemediation:
         assert "deceptiveness:py-coverage" in out
         assert "Coverage below 80% threshold" in out
         assert "Add tests for uncovered modules" in out
-        assert "sm validate deceptiveness:py-coverage" in out
+        assert "scripts/sm validate deceptiveness:py-coverage" in out
 
     def test_remediation_for_errored_gate(self, capsys):
         """Errored gate shows remediation."""
         results = {
-            "myopia:scan": CheckResult(
-                "myopia:scan",
+            "myopia:security-scan": CheckResult(
+                "myopia:security-scan",
                 CheckStatus.ERROR,
                 0.1,
                 error="bandit not installed",

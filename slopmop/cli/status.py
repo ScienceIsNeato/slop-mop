@@ -29,9 +29,9 @@ _CATEGORY_ORDER = [
     "deceptiveness",
     "laziness",
     "myopia",
-    "general",
     "pr",
     # Legacy keys kept for backward compatibility
+    "general",
     "python",
     "quality",
     "security",
@@ -173,9 +173,20 @@ def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
             print(f"{emoji} {r.name}")
             if r.error:
                 print(f"   {r.error}")
+            if r.output:
+                lines = [
+                    line
+                    for line in r.output.strip().split("\n")
+                    if "\u2705" not in line and line.strip()
+                ]
+                preview = lines[:15]
+                for line in preview:
+                    print(f"   {line}")
+                if len(lines) > 15:
+                    print(f"   ... ({len(lines) - 15} more lines — run with --verbose)")
             if r.fix_suggestion:
                 print(f"   Fix: {r.fix_suggestion}")
-            print(f"   Verify: ./sm validate {r.name}")
+            print(f"   Verify: ./scripts/sm validate {r.name}")
 
     if warned:
         print()
@@ -362,7 +373,7 @@ def run_status(
 
     The default profile is "pr" (broader than "commit") because
     status is an observatory, not an iterative validation loop.
-    It's worth running security:full, diff-coverage, and JS gates
+    It's worth running myopia:security-audit, diff-coverage, and JS gates
     here even if they'd slow down the commit workflow.
 
     Args:

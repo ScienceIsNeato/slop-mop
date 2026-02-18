@@ -1,19 +1,15 @@
 {
   "version": "1.0",
   "default_profile": "commit",
-  "python": {
-    "enabled": false,
+  "overconfidence": {
+    "enabled": true,
     "include_dirs": [],
-    "exclude_dirs": [],
+    "exclude_dirs": [
+      "slop-mop"
+    ],
     "gates": {
-      "lint-format": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null,
-        "line_length": 88
-      },
-      "tests": {
-        "enabled": false,
+      "py-tests": {
+        "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "test_dirs": [
@@ -21,112 +17,198 @@
         ],
         "timeout": 300
       },
-      "coverage": {
-        "enabled": false,
+      "py-static-analysis": {
+        "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
-        "threshold": 80
+        "strict_typing": true
       },
-      "diff-coverage": {
-        "enabled": false,
+      "py-types": {
+        "enabled": true,
         "auto_fix": false,
-        "config_file_path": null
+        "config_file_path": null,
+        "strict": true
       },
-      "static-analysis": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null
-      }
-    }
-  },
-  "javascript": {
-    "enabled": false,
-    "include_dirs": [],
-    "exclude_dirs": [],
-    "gates": {
-      "lint-format": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null
-      },
-      "tests": {
-        "enabled": false,
+      "js-tests": {
+        "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "test_command": "npm test"
       },
-      "coverage": {
-        "enabled": false,
+      "js-types": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "tsconfig": "tsconfig.json"
+      },
+      "deploy-script-tests": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "test_script": "scripts/__tests__/deploy_app.test.sh"
+      }
+    }
+  },
+  "deceptiveness": {
+    "enabled": true,
+    "include_dirs": [],
+    "exclude_dirs": [
+      "slop-mop"
+    ],
+    "gates": {
+      "py-coverage": {
+        "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "threshold": 80
       },
-      "frontend": {
-        "enabled": false,
+      "py-diff-coverage": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null
+      },
+      "js-coverage": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "threshold": 80
+      },
+      "js-bogus-tests": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "max_allowed": 0,
+        "exclude_dirs": []
+      },
+      "bogus-tests": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "test_dirs": [
+          "tests"
+        ],
+        "exclude_patterns": [
+          "conftest.py"
+        ]
+      }
+    }
+  },
+  "laziness": {
+    "enabled": true,
+    "include_dirs": [],
+    "exclude_dirs": [
+      "slop-mop"
+    ],
+    "gates": {
+      "py-lint": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "line_length": 88
+      },
+      "js-lint": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "npm_install_flags": []
+      },
+      "js-frontend": {
+        "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "frontend_dirs": []
-      }
-    }
-  },
-  "security": {
-    "enabled": false,
-    "include_dirs": [],
-    "exclude_dirs": [],
-    "gates": {
-      "full": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null,
-        "scanners": [
-          "bandit",
-          "semgrep",
-          "detect-secrets"
-        ],
-        "exclude_dirs": [
-          "venv",
-          ".venv",
-          "node_modules",
-          "cursor-rules",
-          "archives",
-          "logs"
-        ]
       },
-      "local": {
-        "enabled": false,
-        "auto_fix": false,
-        "config_file_path": null,
-        "scanners": [
-          "bandit",
-          "semgrep",
-          "detect-secrets"
-        ],
-        "exclude_dirs": [
-          "venv",
-          ".venv",
-          "node_modules",
-          "cursor-rules",
-          "archives",
-          "logs"
-        ]
-      }
-    }
-  },
-  "quality": {
-    "enabled": false,
-    "include_dirs": [],
-    "exclude_dirs": [],
-    "gates": {
       "complexity": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "max_rank": "C",
         "max_complexity": 15,
         "src_dirs": []
       },
-      "duplication": {
-        "enabled": false,
+      "dead-code": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "min_confidence": 80,
+        "exclude_patterns": [
+          "**/venv/**",
+          "**/.venv/**",
+          "**/node_modules/**",
+          "**/test_*",
+          "**/tests/**",
+          "**/conftest.py",
+          "**/*.egg-info/**",
+          "**/build/**",
+          "**/dist/**",
+          "**/cursor-rules/**"
+        ],
+        "src_dirs": [
+          "."
+        ],
+        "whitelist_file": ""
+      },
+      "template-syntax": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "templates_dir": null
+      }
+    }
+  },
+  "myopia": {
+    "enabled": true,
+    "include_dirs": [],
+    "exclude_dirs": [
+      "slop-mop"
+    ],
+    "gates": {
+      "security-audit": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "scanners": [
+          "bandit",
+          "semgrep",
+          "detect-secrets"
+        ],
+        "exclude_dirs": [
+          "venv",
+          ".venv",
+          "node_modules",
+          "cursor-rules",
+          "archives",
+          "logs",
+          "tests",
+          "*/.venv",
+          "*/venv"
+        ],
+        "bandit_config_file": null
+      },
+      "security-scan": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "scanners": [
+          "bandit",
+          "semgrep",
+          "detect-secrets"
+        ],
+        "exclude_dirs": [
+          "venv",
+          ".venv",
+          "node_modules",
+          "cursor-rules",
+          "archives",
+          "logs",
+          "tests",
+          "*/.venv",
+          "*/venv"
+        ],
+        "bandit_config_file": null
+      },
+      "source-duplication": {
+        "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "threshold": 5,
@@ -134,20 +216,58 @@
           "."
         ],
         "min_tokens": 50,
-        "min_lines": 5
+        "min_lines": 5,
+        "exclude_dirs": []
+      },
+      "string-duplication": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "threshold": 2,
+        "min_file_count": 1,
+        "min_length": 8,
+        "min_words": 3,
+        "include_patterns": [
+          "**/*.py"
+        ],
+        "ignore_patterns": [
+          "**/node_modules/**",
+          "**/.venv/**",
+          "**/venv/**",
+          "**/__pycache__/**",
+          "**/.git/**",
+          "**/*.egg-info/**",
+          "**/test_*",
+          "**/tests/**",
+          "**/conftest.py"
+        ]
+      },
+      "loc-lock": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "max_file_lines": 1000,
+        "max_function_lines": 100,
+        "include_dirs": [
+          "."
+        ],
+        "exclude_dirs": [],
+        "extensions": []
       }
     }
   },
-  "general": {
-    "enabled": false,
+  "pr": {
+    "enabled": true,
     "include_dirs": [],
-    "exclude_dirs": [],
+    "exclude_dirs": [
+      "slop-mop"
+    ],
     "gates": {
-      "templates": {
-        "enabled": false,
+      "comments": {
+        "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
-        "templates_dir": null
+        "fail_on_unresolved": true
       }
     }
   }
