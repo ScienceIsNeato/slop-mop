@@ -376,14 +376,18 @@ class CheckExecutor:
 
                 # Process skipped checks
                 for name in skipped_due_to_deps:
-                    self._results[name] = CheckResult(
+                    result = CheckResult(
                         name=name,
                         status=CheckStatus.SKIPPED,
                         duration=0,
                         output="Skipped due to failed dependency",
                     )
+                    self._results[name] = result
                     pending.discard(name)
                     completed.add(name)
+                    # Notify display so progress bar reaches 100%
+                    if self._on_check_complete:
+                        self._on_check_complete(result)
 
                 # Submit ready checks
                 for name in ready:
@@ -455,12 +459,32 @@ class CheckExecutor:
         # Handle any remaining pending checks (due to fail-fast)
         for name in pending:
             if name not in self._results:
-                self._results[name] = CheckResult(
+                result = CheckResult(
                     name=name,
                     status=CheckStatus.SKIPPED,
                     duration=0,
                     output="Skipped due to fail-fast",
                 )
+                self._results[name] = result
+                if self._on_check_complete:
+                    self._on_check_complete(result)
+
+        # Handle submitted-but-cancelled futures (fail-fast cancelled them after submission)
+        for future, name in list(futures.items()):
+            if name not in self._results:
+                try:
+                    # Future may have completed before cancel took effect
+                    result = future.result(timeout=0)
+                except Exception:
+                    result = CheckResult(
+                        name=name,
+                        status=CheckStatus.SKIPPED,
+                        duration=0,
+                        output="Skipped due to fail-fast",
+                    )
+                self._results[name] = result
+                if self._on_check_complete:
+                    self._on_check_complete(result)
 
     def _run_single_check(
         self,

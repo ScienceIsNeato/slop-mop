@@ -111,7 +111,7 @@ else
     # npm install triggers the postinstall hook which runs tsc automatically.
     # HUSKY=0 prevents husky from printing ".git can't be found" since
     # this directory is not a standalone git repo.
-    (cd "$FDS_DIR" && HUSKY=0 npm install --silent 2>&1)
+    (cd "$FDS_DIR" && HUSKY=0 npm install --silent 2>&1) || true
     if [ -f "$FDS_DIR/lib/cli/index.js" ]; then
         echo "✅ find-duplicate-strings installed successfully"
     else

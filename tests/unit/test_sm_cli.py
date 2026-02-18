@@ -711,3 +711,68 @@ class TestCmdCi:
         captured = capsys.readouterr()
         assert result == 2
         assert "gh" in captured.out.lower()
+
+
+class TestSetupDynamicDisplay:
+    """Tests for _setup_dynamic_display helper in validate.py."""
+
+    def test_wires_all_callbacks_and_returns_display(self, tmp_path):
+        """_setup_dynamic_display wires callbacks and returns started display."""
+        from unittest.mock import MagicMock, patch
+
+        from slopmop.cli.validate import _setup_dynamic_display
+        from slopmop.core.executor import CheckExecutor
+        from slopmop.reporting.console import ConsoleReporter
+
+        executor = MagicMock(spec=CheckExecutor)
+        reporter = MagicMock(spec=ConsoleReporter)
+
+        with patch("slopmop.cli.validate.DynamicDisplay") as MockDisplay:
+            mock_display = MagicMock()
+            MockDisplay.return_value = mock_display
+
+            result = _setup_dynamic_display(
+                executor, reporter, quiet=True, project_root=tmp_path
+            )
+
+        assert result is mock_display
+        mock_display.start.assert_called_once()
+        executor.set_start_callback.assert_called_once()
+        executor.set_disabled_callback.assert_called_once()
+        executor.set_na_callback.assert_called_once()
+        executor.set_total_callback.assert_called_once()
+        executor.set_pending_callback.assert_called_once()
+        executor.set_progress_callback.assert_called_once()
+
+    def test_combined_callback_routes_failures_to_reporter(self, tmp_path):
+        """Combined callback passes failed results to reporter but not passing ones."""
+        from unittest.mock import MagicMock, patch
+
+        from slopmop.cli.validate import _setup_dynamic_display
+        from slopmop.core.executor import CheckExecutor
+        from slopmop.core.result import CheckResult, CheckStatus
+        from slopmop.reporting.console import ConsoleReporter
+
+        executor = MagicMock(spec=CheckExecutor)
+        reporter = MagicMock(spec=ConsoleReporter)
+
+        with patch("slopmop.cli.validate.DynamicDisplay") as MockDisplay:
+            mock_display = MagicMock()
+            MockDisplay.return_value = mock_display
+            _setup_dynamic_display(
+                executor, reporter, quiet=True, project_root=tmp_path
+            )
+
+        # Extract the combined callback that was registered
+        combined = executor.set_progress_callback.call_args[0][0]
+
+        passed = CheckResult("check1", CheckStatus.PASSED, 0.1)
+        failed = CheckResult("check2", CheckStatus.FAILED, 0.1)
+
+        combined(passed)
+        combined(failed)
+
+        # Display receives all results
+        assert mock_display.on_check_complete.call_count == 2
+        # Reporter only receives failures
+        reporter.on_check_complete.assert_called_once_with(failed)

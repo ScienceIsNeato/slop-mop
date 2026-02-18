@@ -25,12 +25,17 @@ from slopmop.reporting.dynamic import DynamicDisplay
 
 # Category display order — controls section ordering in the inventory
 _CATEGORY_ORDER = [
+    "overconfidence",
+    "deceptiveness",
+    "laziness",
+    "myopia",
+    "general",
+    "pr",
+    # Legacy keys kept for backward compatibility
     "python",
     "quality",
     "security",
-    "general",
     "javascript",
-    "pr",
 ]
 
 
@@ -418,20 +423,22 @@ def run_status(
 
     # Set up dynamic display if appropriate
     dynamic_display: Optional[DynamicDisplay] = None
+
+    # Print header before starting the animation thread to avoid
+    # blank newlines being interleaved with header output (mirrors validate.py)
+    if not quiet:
+        print("🧹 slop-mop · sweeping your code clean")
+        print()
+
     if use_dynamic:
         dynamic_display = DynamicDisplay(quiet=quiet)
         dynamic_display.load_historical_timings(str(root))
-        dynamic_display.start()
         executor.set_start_callback(dynamic_display.on_check_start)
         executor.set_progress_callback(dynamic_display.on_check_complete)
         executor.set_disabled_callback(dynamic_display.on_check_disabled)
         executor.set_na_callback(dynamic_display.on_check_not_applicable)
         executor.set_total_callback(dynamic_display.set_total_checks)
-
-    # Print header
-    if not quiet:
-        print("🧹 slop-mop · sweeping your code clean")
-        print()
+        dynamic_display.start()  # Start animation AFTER header is printed
 
     try:
         summary = executor.run_checks(

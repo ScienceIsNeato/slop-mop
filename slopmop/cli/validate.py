@@ -12,6 +12,7 @@ from typing import List, Optional
 from slopmop.checks import ensure_checks_registered
 from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
+from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.timings import clear_timings
@@ -95,6 +96,47 @@ def _print_header(
     print()
 
 
+def _setup_dynamic_display(
+    executor: "CheckExecutor",
+    reporter: "ConsoleReporter",
+    quiet: bool,
+    project_root: Path,
+) -> "DynamicDisplay":
+    """Configure and start the dynamic display, wiring all executor callbacks.
+
+    Also adds a combined progress callback so failure details are printed via
+    the console reporter even when the dynamic display is active.
+
+    Args:
+        executor: The check executor to wire callbacks onto.
+        reporter: The console reporter (used for failure details).
+        quiet: Whether to suppress output.
+        project_root: Project root for loading historical timings.
+
+    Returns:
+        The started DynamicDisplay instance.
+    """
+    display = DynamicDisplay(quiet=quiet)
+    display.load_historical_timings(str(project_root))
+    display.start()
+    executor.set_start_callback(display.on_check_start)
+    executor.set_disabled_callback(display.on_check_disabled)
+    executor.set_na_callback(display.on_check_not_applicable)
+    executor.set_total_callback(display.set_total_checks)
+    executor.set_pending_callback(display.register_pending_checks)
+
+    # Combined callback: update display AND print failure details via reporter
+    _reporter_cb = reporter.on_check_complete
+
+    def _combined(result: CheckResult) -> None:
+        display.on_check_complete(result)
+        if result.failed or result.status == CheckStatus.ERROR:
+            _reporter_cb(result)
+
+    executor.set_progress_callback(_combined)
+    return display
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     """Handle the validate command."""
     # Import here to avoid circular imports
@@ -156,15 +198,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
     # Set up dynamic display if appropriate
     dynamic_display: Optional[DynamicDisplay] = None
     if use_dynamic:
-        dynamic_display = DynamicDisplay(quiet=args.quiet)
-        dynamic_display.load_historical_timings(str(project_root))
-        dynamic_display.start()
-        executor.set_start_callback(dynamic_display.on_check_start)
-        executor.set_progress_callback(dynamic_display.on_check_complete)
-        executor.set_disabled_callback(dynamic_display.on_check_disabled)
-        executor.set_na_callback(dynamic_display.on_check_not_applicable)
-        executor.set_total_callback(dynamic_display.set_total_checks)
-        executor.set_pending_callback(dynamic_display.register_pending_checks)
+        dynamic_display = _setup_dynamic_display(
+            executor, reporter, args.quiet, project_root
+        )
     else:
         # Fall back to traditional reporter
         executor.set_progress_callback(reporter.on_check_complete)

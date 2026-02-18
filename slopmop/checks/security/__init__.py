@@ -96,7 +96,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def superseded_by(self) -> Optional[str]:
-        return "security:full"
+        return "myopia:full"
 
     @property
     def config_schema(self) -> List[ConfigField]:

@@ -559,6 +559,51 @@ class TestCheckExecutor:
         executor.set_na_callback(cb)
         assert executor._on_check_na is cb
 
+    def test_dep_skipped_check_fires_progress_callback(self, tmp_path):
+        """Checks skipped due to failed dependency must fire the progress callback."""
+        registry = CheckRegistry()
+        check_class1 = make_mock_check_class("check1", status=CheckStatus.FAILED)
+        check_class2 = make_mock_check_class(
+            "check2", depends_on=["overconfidence:check1"]
+        )
+        registry.register(check_class1)
+        registry.register(check_class2)
+
+        completed_names: list = []
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        executor.set_progress_callback(lambda r: completed_names.append(r.name))
+
+        executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
+
+        # Both checks must fire the callback so progress bar reaches 100%
+        assert any("check1" in n for n in completed_names)
+        assert any("check2" in n for n in completed_names)
+
+    def test_fail_fast_pending_checks_fire_callback(self, tmp_path):
+        """Checks remaining in pending after fail-fast must fire the progress callback."""
+        registry = CheckRegistry()
+        check_class1 = make_mock_check_class(
+            "check1", status=CheckStatus.FAILED, duration=0.01
+        )
+        check_class2 = make_mock_check_class(
+            "check2", depends_on=["overconfidence:check1"], duration=0.5
+        )
+        registry.register(check_class1)
+        registry.register(check_class2)
+
+        completed_names: list = []
+        executor = CheckExecutor(registry=registry, fail_fast=True)
+        executor.set_progress_callback(lambda r: completed_names.append(r.name))
+
+        executor.run_checks(
+            str(tmp_path), ["overconfidence:check1", "overconfidence:check2"]
+        )
+
+        assert any("check1" in n for n in completed_names)
+        assert any("check2" in n for n in completed_names)
+
 
 class TestRunQualityChecks:
     """Tests for the run_quality_checks convenience function."""

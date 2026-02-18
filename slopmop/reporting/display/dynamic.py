@@ -174,8 +174,9 @@ class DynamicDisplay:
         # Final redraw to ensure clean state
         if self._started and self._is_tty:
             self._draw()
-            # Print a newline to separate from summary
-            print()
+            # Only print separator newline if something was actually drawn
+            if self._lines_drawn > 0:
+                print()
 
     def on_check_start(self, name: str, category: Optional[str] = None) -> None:
         """Called when a check starts running.
@@ -284,6 +285,9 @@ class DynamicDisplay:
                 return
 
             lines = self._build_display()
+            if not lines:
+                return
+
             term_width = get_terminal_width()
 
             # Move cursor up to overwrite previous output
