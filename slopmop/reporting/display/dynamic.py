@@ -1,36 +1,24 @@
 """Dynamic terminal display for quality gate execution.
 
 Provides brew-style live updating display with spinners for running checks
-and real-time progress updates. Now with category grouping, visual hierarchy,
-and inline failure previews.
+and real-time progress updates.
 """
 
 import os
 import sys
 import threading
 import time
-from collections import defaultdict
 from typing import Dict, List, Optional
 
 from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.display import config
-from slopmop.reporting.display.colors import (
-    bold,
-    category_header_color,
-    dim,
-    reset_color,
-    status_color,
-    supports_color,
-)
+from slopmop.reporting.display.colors import supports_color
 from slopmop.reporting.display.renderer import (
     align_columns,
-    build_category_header,
-    build_check_connector,
     build_dot_leader,
     build_overall_progress,
     build_progress_bar,
-    display_width,
     format_time,
     get_terminal_width,
     right_justify,
@@ -269,116 +257,13 @@ class DynamicDisplay:
 
             self._lines_drawn = len(truncated)
 
-    def _group_checks_by_category(
-        self,
-    ) -> tuple[Dict[str, List[CheckDisplayInfo]], List[CheckDisplayInfo]]:
-        """Group checks by category.
-
-        Returns:
-            Tuple of (by_category dict, uncategorized list)
-        """
-        by_category: Dict[str, List[CheckDisplayInfo]] = defaultdict(list)
-        uncategorized: List[CheckDisplayInfo] = []
-
-        for name in self._check_order:
-            if name not in self._checks:
-                continue
-            info = self._checks[name]
-            if info.category:
-                by_category[info.category].append(info)
-            else:
-                uncategorized.append(info)
-
-        return dict(by_category), uncategorized
-
-    def _render_category_section(
-        self,
-        category: str,
-        checks: List[CheckDisplayInfo],
-        stats: tuple[int, int],
-        term_width: int,
-    ) -> List[str]:
-        """Render a category header and its checks.
-
-        Args:
-            category: Category key
-            checks: List of checks in this category
-            stats: Tuple of (completed, total) for this category
-            term_width: Terminal width
-
-        Returns:
-            List of lines for this category section
-        """
-        lines: List[str] = []
-
-        # Get category info
-        emoji, display_name = config.CATEGORY_INFO.get(
-            category, ("❓", category.title())
-        )
-
-        # Add category header with box drawing
-        header_color = category_header_color(category, self._colors_enabled)
-        reset = reset_color(self._colors_enabled)
-        header = build_category_header(category, emoji, display_name, stats, term_width)
-        lines.append(f"{header_color}{header}{reset}")
-
-        # Sort checks: running first, then by completion order
-        checks.sort(
-            key=lambda c: (
-                0 if c.state == DisplayState.RUNNING else 1,
-                c.completion_order if c.state == DisplayState.COMPLETED else 0,
-            )
-        )
-
-        # Display checks under this category
-        for i, info in enumerate(checks):
-            is_last = i == len(checks) - 1
-            connector = build_check_connector(is_last)
-            line = self._format_check_line(info, connector)
-            lines.append(line)
-
-        return lines
-
-    def _sort_uncategorized(
-        self, checks: List[CheckDisplayInfo]
-    ) -> List[CheckDisplayInfo]:
-        """Sort uncategorized checks for display.
-
-        Completed checks first (by completion order), then running checks
-        sorted by estimate (longest first for visual stability).
-
-        Args:
-            checks: List of uncategorized checks
-
-        Returns:
-            Sorted list (modifies in place and returns same list)
-        """
-        checks.sort(
-            key=lambda c: (
-                # Primary: completed (0) before running/pending (1)
-                0 if c.state == DisplayState.COMPLETED else 1,
-                # Secondary (for completed): completion order
-                c.completion_order if c.state == DisplayState.COMPLETED else 0,
-                # Secondary (for running): with estimate before without
-                0 if c.expected_duration is not None else 1,
-                # Tertiary (for running): longest estimate first (negative)
-                -(c.expected_duration or 0),
-                # Fallback: alphabetical
-                c.name,
-            )
-        )
-        return checks
-
     def _build_display(self) -> List[str]:
         """Build the display lines.
-
-        Groups checks by category with headers for visual organization.
 
         Returns:
             List of lines to display
         """
         lines: List[str] = []
-        term_width = get_terminal_width()
 
         # Count overall stats
         completed = sum(
@@ -403,33 +288,20 @@ class DynamicDisplay:
             lines.append(build_overall_progress(completed, total, elapsed))
             lines.append("")
 
-        # Group and compute stats
-        by_category, uncategorized = self._group_checks_by_category()
-        category_stats = {
-            cat: (
-                sum(1 for c in checks if c.state == DisplayState.COMPLETED),
-                len(checks),
+        # Flat list of all checks, sorted: completed first (by order), then running
+        all_checks = list(self._checks.values())
+        all_checks.sort(
+            key=lambda c: (
+                0 if c.state == DisplayState.COMPLETED else 1,
+                c.completion_order if c.state == DisplayState.COMPLETED else 0,
+                0 if c.expected_duration is not None else 1,
+                -(c.expected_duration or 0),
+                c.name,
             )
-            for cat, checks in by_category.items()
-        }
+        )
 
-        # Render categories in defined order
-        for category in config.CATEGORY_ORDER:
-            if category not in by_category or not by_category[category]:
-                continue
-            stats = category_stats.get(category, (0, len(by_category[category])))
-            lines.extend(
-                self._render_category_section(
-                    category, by_category[category], stats, term_width
-                )
-            )
-
-        # Render uncategorized checks
-        if uncategorized:
-            if by_category:
-                lines.append("")
-            for info in self._sort_uncategorized(uncategorized):
-                lines.append(self._format_check_line(info))
+        for info in all_checks:
+            lines.append(self._format_check_line(info))
 
         # Disabled summary
         if self._disabled_names:
@@ -451,15 +323,12 @@ class DynamicDisplay:
             width: Available width for the line
 
         Returns:
-            Formatted line (without connector)
+            Formatted line
         """
         assert info.result is not None
 
         icon = STATUS_EMOJI.get(info.result.status, "❓")
-        color_prefix = status_color(info.result.status, self._colors_enabled)
-        color_suffix = reset_color(self._colors_enabled)
-        status_text = f"{color_prefix}{info.result.status.value}{color_suffix}"
-        left = f"{icon} {info.name}: {status_text}"
+        left = f"{icon} {info.name}: {info.result.status.value}"
 
         # Inline failure preview for failed/error checks
         preview = ""
@@ -470,19 +339,9 @@ class DynamicDisplay:
                 if preview:
                     preview = f" — {preview}"
 
-        # Timing comparison indicator
-        sparkline = ""
-        if info.expected_duration and info.expected_duration > 0 and info.duration > 0:
-            ratio = info.duration / info.expected_duration
-            if ratio < 0.8:
-                sparkline = " ⚡"
-            elif ratio > 1.2:
-                sparkline = " 🐢"
-
-        time_str = format_time(info.duration) + sparkline
+        time_str = format_time(info.duration)
         right = align_columns(time_str, "")
-        line = right_justify(left + preview, right, width)
-        return dim(line, self._colors_enabled)
+        return right_justify(left + preview, right, width)
 
     def _format_running_line(self, info: CheckDisplayInfo, width: int) -> str:
         """Format a running check line with spinner and progress.
@@ -492,14 +351,10 @@ class DynamicDisplay:
             width: Available width for the line
 
         Returns:
-            Formatted line (without connector)
+            Formatted line
         """
-        # Category-specific spinner
-        if info.category and info.category in config.CATEGORY_SPINNERS:
-            frames = config.CATEGORY_SPINNERS[info.category]
-            spinner = frames[self._spinner_idx % len(frames)]
-        else:
-            spinner = config.SPINNER_FRAMES[self._spinner_idx]
+        # Use default spinner
+        spinner = config.SPINNER_FRAMES[self._spinner_idx]
 
         elapsed = time.time() - info.start_time
         left = f"{spinner} {info.name}"
@@ -510,12 +365,10 @@ class DynamicDisplay:
             eta_str = format_time(remaining)
             pct = min(elapsed / info.expected_duration, 0.99)
             right = align_columns(time_str, eta_str)
-            line = build_progress_bar(left, right, width, pct)
+            return build_progress_bar(left, right, width, pct)
         else:
             right = align_columns(time_str, "N/A")
-            line = build_dot_leader(left, right, width, self._animation_tick)
-
-        return bold(line, self._colors_enabled)
+            return build_dot_leader(left, right, width, self._animation_tick)
 
     def _format_pending_line(self, info: CheckDisplayInfo, width: int) -> str:
         """Format a pending check line.
@@ -534,28 +387,25 @@ class DynamicDisplay:
         right = align_columns("", eta_str)
         return right_justify(left, right, width)
 
-    def _format_check_line(self, info: CheckDisplayInfo, connector: str = "") -> str:
+    def _format_check_line(self, info: CheckDisplayInfo) -> str:
         """Format a single check line with aligned columns.
 
         Dispatches to state-specific formatters based on check state.
 
         Args:
             info: Check display info
-            connector: Optional box-drawing connector prefix
 
         Returns:
             Formatted line string
         """
-        available_width = get_terminal_width() - display_width(connector)
+        width = get_terminal_width()
 
         if info.state == DisplayState.COMPLETED and info.result:
-            line = self._format_completed_line(info, available_width)
+            return self._format_completed_line(info, width)
         elif info.state == DisplayState.RUNNING:
-            line = self._format_running_line(info, available_width)
+            return self._format_running_line(info, width)
         else:
-            line = self._format_pending_line(info, available_width)
-
-        return connector + line
+            return self._format_pending_line(info, width)
 
     @property
     def completed_count(self) -> int:
@@ -587,8 +437,3 @@ class DynamicDisplay:
     def _align_columns(self, time_str: str, eta_str: str) -> str:
         """Right-align the time and ETA. (Backwards compatibility)"""
         return align_columns(time_str, eta_str)
-
-    @staticmethod
-    def _display_width(text: str) -> int:
-        """Calculate terminal display width. (Backwards compatibility)"""
-        return display_width(text)
