@@ -23,6 +23,7 @@ bandit>=1.7.0
 detect-secrets>=1.4.0
 semgrep>=1.0.0
 pip-audit>=2.0.0
+cryptography>=46.0.5  # CVE GHSA-r6ph-v2qm-q3c2 fixed in 46.0.5
 
 # Quality analysis
 vulture>=2.14
