@@ -210,23 +210,26 @@ class TestFindOtherProfiles:
     def test_finds_matching_profiles(self):
         """Returns profiles that include the gate."""
         aliases = {
-            "commit": ["python:tests", "python:lint-format"],
-            "pr": ["python:tests", "pr:comments"],
-            "quick": ["python:lint-format"],
+            "commit": ["overconfidence:py-tests", "laziness:py-lint"],
+            "pr": ["overconfidence:py-tests", "pr:comments"],
+            "quick": ["laziness:py-lint"],
         }
-        result = _find_other_profiles("python:tests", aliases, "commit")
+        result = _find_other_profiles("overconfidence:py-tests", aliases, "commit")
         assert result == ["pr"]
 
     def test_excludes_current_profile(self):
         """Does not include the current profile."""
-        aliases = {"commit": ["python:tests"], "pr": ["python:tests"]}
-        result = _find_other_profiles("python:tests", aliases, "commit")
+        aliases = {
+            "commit": ["overconfidence:py-tests"],
+            "pr": ["overconfidence:py-tests"],
+        }
+        result = _find_other_profiles("overconfidence:py-tests", aliases, "commit")
         assert "commit" not in result
 
     def test_returns_empty_for_unique_gate(self):
         """Returns empty list if gate only in current profile."""
-        aliases = {"commit": ["python:tests"], "pr": ["pr:comments"]}
-        result = _find_other_profiles("python:tests", aliases, "commit")
+        aliases = {"commit": ["overconfidence:py-tests"], "pr": ["pr:comments"]}
+        result = _find_other_profiles("overconfidence:py-tests", aliases, "commit")
         assert result == []
 
 
@@ -240,11 +243,11 @@ class TestPrintGateInventory:
 
     def test_passing_gate_in_profile(self, capsys):
         """Passing profile gate shows checkmark."""
-        r = CheckResult("python:tests", CheckStatus.PASSED, 1.0)
+        r = CheckResult("overconfidence:py-tests", CheckStatus.PASSED, 1.0)
         _print_gate_inventory(
-            all_gates=["python:tests"],
-            profile_gates={"python:tests"},
-            results_map={"python:tests": r},
+            all_gates=["overconfidence:py-tests"],
+            profile_gates={"overconfidence:py-tests"},
+            results_map={"overconfidence:py-tests": r},
             applicability={},
             aliases={},
             profile="commit",
@@ -255,11 +258,11 @@ class TestPrintGateInventory:
 
     def test_failing_gate_in_profile(self, capsys):
         """Failing profile gate shows X mark."""
-        r = CheckResult("python:coverage", CheckStatus.FAILED, 2.0)
+        r = CheckResult("deceptiveness:py-coverage", CheckStatus.FAILED, 2.0)
         _print_gate_inventory(
-            all_gates=["python:coverage"],
-            profile_gates={"python:coverage"},
-            results_map={"python:coverage": r},
+            all_gates=["deceptiveness:py-coverage"],
+            profile_gates={"deceptiveness:py-coverage"},
+            results_map={"deceptiveness:py-coverage": r},
             applicability={},
             aliases={},
             profile="commit",
@@ -277,7 +280,7 @@ class TestPrintGateInventory:
             applicability={"pr:comments": (True, "")},
             aliases={
                 "pr": ["pr:comments"],
-                "commit": ["python:tests"],
+                "commit": ["overconfidence:py-tests"],
             },
             profile="commit",
         )
@@ -288,11 +291,11 @@ class TestPrintGateInventory:
     def test_not_applicable_gate(self, capsys):
         """Not applicable gate shows reason."""
         _print_gate_inventory(
-            all_gates=["javascript:tests"],
+            all_gates=["overconfidence:js-tests"],
             profile_gates=set(),
             results_map={},
             applicability={
-                "javascript:tests": (False, "No JavaScript code detected"),
+                "overconfidence:js-tests": (False, "No JavaScript code detected"),
             },
             aliases={},
             profile="commit",
@@ -304,15 +307,15 @@ class TestPrintGateInventory:
     def test_skipped_gate_in_profile(self, capsys):
         """Skipped profile gate shows reason."""
         r = CheckResult(
-            "javascript:lint-format",
+            "laziness:js-lint",
             CheckStatus.SKIPPED,
             0.0,
             output="No package.json found",
         )
         _print_gate_inventory(
-            all_gates=["javascript:lint-format"],
-            profile_gates={"javascript:lint-format"},
-            results_map={"javascript:lint-format": r},
+            all_gates=["laziness:js-lint"],
+            profile_gates={"laziness:js-lint"},
+            results_map={"laziness:js-lint": r},
             applicability={},
             aliases={},
             profile="pr",
@@ -324,15 +327,15 @@ class TestPrintGateInventory:
     def test_not_applicable_gate_in_profile(self, capsys):
         """NOT_APPLICABLE profile gate shows n/a with reason."""
         r = CheckResult(
-            "javascript:tests",
+            "overconfidence:js-tests",
             CheckStatus.NOT_APPLICABLE,
             0.0,
             output="No package.json found in project root",
         )
         _print_gate_inventory(
-            all_gates=["javascript:tests"],
-            profile_gates={"javascript:tests"},
-            results_map={"javascript:tests": r},
+            all_gates=["overconfidence:js-tests"],
+            profile_gates={"overconfidence:js-tests"},
+            results_map={"overconfidence:js-tests": r},
             applicability={},
             aliases={},
             profile="pr",
@@ -343,25 +346,27 @@ class TestPrintGateInventory:
 
     def test_shows_category_header(self, capsys):
         """Inventory groups gates under category headers."""
-        r = CheckResult("python:tests", CheckStatus.PASSED, 0.5)
+        r = CheckResult("overconfidence:py-tests", CheckStatus.PASSED, 0.5)
         _print_gate_inventory(
-            all_gates=["python:tests"],
-            profile_gates={"python:tests"},
-            results_map={"python:tests": r},
+            all_gates=["overconfidence:py-tests"],
+            profile_gates={"overconfidence:py-tests"},
+            results_map={"overconfidence:py-tests": r},
             applicability={},
             aliases={},
             profile="commit",
         )
         out = capsys.readouterr().out
-        assert "Python" in out
+        assert "Overconfidence" in out
 
     def test_inventory_header(self, capsys):
         """Inventory section has GATE INVENTORY header."""
         _print_gate_inventory(
-            all_gates=["python:tests"],
-            profile_gates={"python:tests"},
+            all_gates=["overconfidence:py-tests"],
+            profile_gates={"overconfidence:py-tests"},
             results_map={
-                "python:tests": CheckResult("python:tests", CheckStatus.PASSED, 0.5)
+                "overconfidence:py-tests": CheckResult(
+                    "overconfidence:py-tests", CheckStatus.PASSED, 0.5
+                )
             },
             applicability={},
             aliases={},
@@ -373,15 +378,15 @@ class TestPrintGateInventory:
     def test_error_gate_in_profile(self, capsys):
         """Errored gate in profile shows error marker."""
         r = CheckResult(
-            "security:local",
+            "myopia:security-scan",
             CheckStatus.ERROR,
             0.1,
             error="bandit not installed",
         )
         _print_gate_inventory(
-            all_gates=["security:local"],
-            profile_gates={"security:local"},
-            results_map={"security:local": r},
+            all_gates=["myopia:security-scan"],
+            profile_gates={"myopia:security-scan"},
+            results_map={"myopia:security-scan": r},
             applicability={},
             aliases={},
             profile="commit",
@@ -401,7 +406,9 @@ class TestPrintRemediation:
     def test_no_remediation_when_all_pass(self, capsys):
         """No remediation printed when all gates pass."""
         results = {
-            "python:tests": CheckResult("python:tests", CheckStatus.PASSED, 1.0),
+            "overconfidence:py-tests": CheckResult(
+                "overconfidence:py-tests", CheckStatus.PASSED, 1.0
+            ),
         }
         _print_remediation(results)
         assert "REMEDIATION" not in capsys.readouterr().out
@@ -409,8 +416,8 @@ class TestPrintRemediation:
     def test_remediation_for_failing_gate(self, capsys):
         """Failing gate shows remediation with verify command."""
         results = {
-            "python:coverage": CheckResult(
-                "python:coverage",
+            "deceptiveness:py-coverage": CheckResult(
+                "deceptiveness:py-coverage",
                 CheckStatus.FAILED,
                 1.0,
                 error="Coverage below 80% threshold",
@@ -420,16 +427,16 @@ class TestPrintRemediation:
         _print_remediation(results)
         out = capsys.readouterr().out
         assert "REMEDIATION" in out
-        assert "python:coverage" in out
+        assert "deceptiveness:py-coverage" in out
         assert "Coverage below 80% threshold" in out
         assert "Add tests for uncovered modules" in out
-        assert "sm validate python:coverage" in out
+        assert "scripts/sm validate deceptiveness:py-coverage" in out
 
     def test_remediation_for_errored_gate(self, capsys):
         """Errored gate shows remediation."""
         results = {
-            "security:local": CheckResult(
-                "security:local",
+            "myopia:security-scan": CheckResult(
+                "myopia:security-scan",
                 CheckStatus.ERROR,
                 0.1,
                 error="bandit not installed",
@@ -452,8 +459,8 @@ class TestPrintVerdict:
     def test_clean_verdict(self, capsys):
         """All passing shows no AI slop detected."""
         results = [
-            CheckResult("python:tests", CheckStatus.PASSED, 1.0),
-            CheckResult("python:coverage", CheckStatus.PASSED, 0.5),
+            CheckResult("overconfidence:py-tests", CheckStatus.PASSED, 1.0),
+            CheckResult("deceptiveness:py-coverage", CheckStatus.PASSED, 0.5),
         ]
         summary = ExecutionSummary.from_results(results, 1.5)
         _print_verdict(summary)
@@ -462,8 +469,8 @@ class TestPrintVerdict:
     def test_failing_verdict(self, capsys):
         """Failures show count of passing/failing."""
         results = [
-            CheckResult("python:tests", CheckStatus.PASSED, 1.0),
-            CheckResult("python:coverage", CheckStatus.FAILED, 0.5),
+            CheckResult("overconfidence:py-tests", CheckStatus.PASSED, 1.0),
+            CheckResult("deceptiveness:py-coverage", CheckStatus.FAILED, 0.5),
         ]
         summary = ExecutionSummary.from_results(results, 1.5)
         _print_verdict(summary)
@@ -474,9 +481,9 @@ class TestPrintVerdict:
     def test_skipped_excluded_from_count(self, capsys):
         """Skipped gates are not counted in the total."""
         results = [
-            CheckResult("python:tests", CheckStatus.PASSED, 1.0),
+            CheckResult("overconfidence:py-tests", CheckStatus.PASSED, 1.0),
             CheckResult(
-                "javascript:tests",
+                "overconfidence:js-tests",
                 CheckStatus.SKIPPED,
                 0.0,
                 output="no JS",
@@ -489,9 +496,9 @@ class TestPrintVerdict:
     def test_not_applicable_excluded_from_count(self, capsys):
         """NOT_APPLICABLE gates are not counted in the total."""
         results = [
-            CheckResult("python:tests", CheckStatus.PASSED, 1.0),
+            CheckResult("overconfidence:py-tests", CheckStatus.PASSED, 1.0),
             CheckResult(
-                "javascript:tests",
+                "overconfidence:js-tests",
                 CheckStatus.NOT_APPLICABLE,
                 0.0,
                 output="No package.json found",

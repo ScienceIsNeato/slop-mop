@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, cast
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -63,7 +63,12 @@ class StringDuplicationCheck(BaseCheck):
     @property
     def category(self) -> GateCategory:
         """Return check category."""
-        return GateCategory.QUALITY
+        return GateCategory.MYOPIA
+
+    @property
+    def flaw(self) -> Flaw:
+        """Return the AI flaw this check guards against."""
+        return Flaw.MYOPIA
 
     @property
     def config_schema(self) -> List[ConfigField]:

@@ -16,7 +16,7 @@ class TestPythonLintFormatCheck:
     def test_name(self):
         """Test check name."""
         check = PythonLintFormatCheck({})
-        assert check.name == "lint-format"
+        assert check.name == "py-lint"
 
     def test_display_name(self):
         """Test check display name."""
@@ -143,12 +143,12 @@ class TestPythonLintFormatCheck:
 
         assert result is None
 
-    def test_check_black_fails_no_specific_files(self, tmp_path):
-        """Test _check_black when black fails but no specific files listed."""
+    def test_check_black_fails_returns_actual_output(self, tmp_path):
+        """Test _check_black returns actual black output on failure."""
         (tmp_path / "test.py").touch()
 
         mock_runner = MagicMock()
-        # Black fails but no "would reformat" lines
+        # Black fails with an error message
         mock_runner.run.return_value = SubprocessResult(
             returncode=1, stdout="oh no an error occurred", stderr="", duration=1.0
         )
@@ -156,7 +156,109 @@ class TestPythonLintFormatCheck:
         check = PythonLintFormatCheck({}, runner=mock_runner)
         result = check._check_black(str(tmp_path))
 
-        assert result == "Formatting check failed"
+        # Returns actual output from black
+        assert result == "oh no an error occurred"
+
+    def test_check_black_fails_returns_raw_file_paths(self, tmp_path):
+        """Test _check_black returns raw black output including file paths."""
+        (tmp_path / "test.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="would reformat src/foo.py\nwould reformat src/bar.py",
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_black(str(tmp_path))
+
+        assert result is not None
+        # Returns raw black output
+        assert "would reformat src/foo.py" in result
+        assert "src/bar.py" in result
+
+    def test_check_black_fails_returns_all_output(self, tmp_path):
+        """Test _check_black returns all black output without artificial truncation."""
+        (tmp_path / "test.py").touch()
+
+        files = [f"would reformat file{i}.py" for i in range(8)]
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="\n".join(files),
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_black(str(tmp_path))
+
+        assert result is not None
+        # Returns raw output - all files included (reporter handles truncation)
+        assert "file0.py" in result
+        assert "file4.py" in result
+        assert "file7.py" in result  # All files returned, not truncated here
+
+    def test_check_isort_fails_shows_file_paths(self, tmp_path):
+        """Test _check_isort shows actual file paths when isort fails."""
+        (tmp_path / "test.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="ERROR: src/foo.py Imports are incorrectly sorted",
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_isort(str(tmp_path))
+
+        assert result is not None
+        assert "Import order issues:" in result
+        assert "src/foo.py" in result
+
+    def test_check_isort_fails_truncates_many_files(self, tmp_path):
+        """Test _check_isort truncates list when >5 files have issues."""
+        (tmp_path / "test.py").touch()
+
+        errors = [f"ERROR: file{i}.py Imports are incorrectly sorted" for i in range(8)]
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="\n".join(errors),
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_isort(str(tmp_path))
+
+        assert result is not None
+        assert "Import order issues:" in result
+        assert "file0.py" in result
+        assert "file4.py" in result
+        assert "file5.py" not in result  # Should be truncated
+        assert "... and 3 more" in result
+
+    def test_check_isort_fails_no_error_lines(self, tmp_path):
+        """Test _check_isort returns generic message when no ERROR: lines."""
+        (tmp_path / "test.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="Something went wrong",
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_isort(str(tmp_path))
+
+        assert result == "Import order issues found"
 
 
 class TestPythonTestsCheck:
@@ -165,7 +267,7 @@ class TestPythonTestsCheck:
     def test_name(self):
         """Test check name."""
         check = PythonTestsCheck({})
-        assert check.name == "tests"
+        assert check.name == "py-tests"
 
     def test_display_name(self):
         """Test check display name."""
@@ -184,7 +286,7 @@ class TestPythonTestsCheck:
         """Test check dependencies."""
         check = PythonTestsCheck({})
         # Tests depend on lint-format being run first
-        assert "python:lint-format" in check.depends_on
+        assert "laziness:py-lint" in check.depends_on
 
     def test_run_success(self, tmp_path):
         """Test run with passing tests."""
@@ -236,7 +338,7 @@ class TestPythonCoverageCheck:
     def test_name(self):
         """Test check name."""
         check = PythonCoverageCheck({})
-        assert check.name == "coverage"
+        assert check.name == "py-coverage"
 
     def test_display_name(self):
         """Test check display name."""
@@ -246,7 +348,7 @@ class TestPythonCoverageCheck:
     def test_depends_on(self):
         """Test check dependencies."""
         check = PythonCoverageCheck({})
-        assert "python:tests" in check.depends_on
+        assert "overconfidence:py-tests" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project with tests."""
@@ -305,7 +407,7 @@ class TestPythonStaticAnalysisCheck:
     def test_name(self):
         """Test check name."""
         check = PythonStaticAnalysisCheck({})
-        assert check.name == "static-analysis"
+        assert check.name == "py-static-analysis"
 
     def test_display_name_strict(self):
         """Test display name shows strict when enabled (default)."""
@@ -338,7 +440,7 @@ class TestPythonStaticAnalysisCheck:
     def test_depends_on(self):
         """Test check dependencies."""
         check = PythonStaticAnalysisCheck({})
-        assert "python:lint-format" in check.depends_on
+        assert "laziness:py-lint" in check.depends_on
 
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project with source dirs."""
@@ -609,7 +711,7 @@ class TestPythonTypeCheckingCheck:
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         check = PythonTypeCheckingCheck({})
-        assert check.name == "type-checking"
+        assert check.name == "py-types"
 
     def test_display_name(self):
         """Test check display name."""

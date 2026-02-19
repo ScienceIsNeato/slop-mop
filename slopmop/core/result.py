@@ -35,6 +35,7 @@ class CheckResult:
         error: Error message if status is ERROR or FAILED
         fix_suggestion: Actionable suggestion for fixing failures
         auto_fixed: Whether issues were automatically fixed
+        category: Category key for grouping (python, quality, security, etc.)
     """
 
     name: str
@@ -44,6 +45,7 @@ class CheckResult:
     error: Optional[str] = None
     fix_suggestion: Optional[str] = None
     auto_fixed: bool = False
+    category: Optional[str] = None
 
     @property
     def passed(self) -> bool:

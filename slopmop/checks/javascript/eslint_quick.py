@@ -11,6 +11,7 @@ from typing import List
 from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
+    Flaw,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -40,12 +41,12 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
           for syntax errors.
 
     Re-validate:
-      ./sm validate javascript:frontend --verbose
+      ./sm validate laziness:js-frontend --verbose
     """
 
     @property
     def name(self) -> str:
-        return "frontend"
+        return "js-frontend"
 
     @property
     def display_name(self) -> str:
@@ -53,7 +54,11 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.JAVASCRIPT
+        return GateCategory.LAZINESS
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

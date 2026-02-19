@@ -24,7 +24,7 @@ class TestStringDuplicationCheck:
 
     def test_full_name(self, check):
         """Test full check name with category."""
-        assert check.full_name == "quality:string-duplication"
+        assert check.full_name == "myopia:string-duplication"
 
     def test_display_name(self, check):
         """Test display name includes identifier."""
@@ -36,10 +36,10 @@ class TestStringDuplicationCheck:
         assert len(check.description) > 0
 
     def test_category(self, check):
-        """Test check category is QUALITY."""
+        """Test check category is MYOPIA."""
         from slopmop.checks.base import GateCategory
 
-        assert check.category == GateCategory.QUALITY
+        assert check.category == GateCategory.MYOPIA
 
     def test_config_schema(self, check):
         """Test config schema includes expected fields."""

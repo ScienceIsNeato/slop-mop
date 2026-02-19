@@ -1,6 +1,6 @@
 """Tests for check registry."""
 
-from slopmop.checks.base import BaseCheck, GateCategory
+from slopmop.checks.base import BaseCheck, Flaw, GateCategory
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import CheckDefinition, CheckResult, CheckStatus
 
@@ -23,7 +23,11 @@ class MockCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.PYTHON
+        return GateCategory.OVERCONFIDENCE
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def depends_on(self) -> list:
@@ -63,7 +67,7 @@ class TestCheckRegistry:
         registry.register(check_class)
 
         # Registry now uses full_name (category:name)
-        assert "python:test-check" in registry.list_checks()
+        assert "overconfidence:test-check" in registry.list_checks()
 
     def test_register_check_with_definition(self):
         """Test registering a check creates definition."""
@@ -71,10 +75,10 @@ class TestCheckRegistry:
         check_class = make_mock_check_class("test-check")
 
         registry.register(check_class)
-        definition = registry.get_definition("python:test-check")
+        definition = registry.get_definition("overconfidence:test-check")
 
         assert definition is not None
-        assert definition.flag == "python:test-check"
+        assert definition.flag == "overconfidence:test-check"
         assert definition.name == "Mock: test-check"
 
     def test_register_duplicate_check_overwrites(self):
@@ -87,7 +91,7 @@ class TestCheckRegistry:
         # Should not raise, just warn and overwrite
         registry.register(check_class2)
 
-        assert "python:test-check" in registry.list_checks()
+        assert "overconfidence:test-check" in registry.list_checks()
 
     def test_register_alias(self):
         """Test registering an alias."""
@@ -97,11 +101,13 @@ class TestCheckRegistry:
 
         registry.register(check_class1)
         registry.register(check_class2)
-        registry.register_alias("both", ["python:check1", "python:check2"])
+        registry.register_alias(
+            "both", ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         aliases = registry.list_aliases()
         assert "both" in aliases
-        assert aliases["both"] == ["python:check1", "python:check2"]
+        assert aliases["both"] == ["overconfidence:check1", "overconfidence:check2"]
 
     def test_get_checks_by_name(self):
         """Test getting checks by name."""
@@ -112,7 +118,7 @@ class TestCheckRegistry:
         registry.register(check_class1)
         registry.register(check_class2)
 
-        checks = registry.get_checks(["python:check1"], {})
+        checks = registry.get_checks(["overconfidence:check1"], {})
         assert len(checks) == 1
         assert checks[0].name == "check1"
 
@@ -124,7 +130,9 @@ class TestCheckRegistry:
 
         registry.register(check_class1)
         registry.register(check_class2)
-        registry.register_alias("both", ["python:check1", "python:check2"])
+        registry.register_alias(
+            "both", ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         checks = registry.get_checks(["both"], {})
         assert len(checks) == 2
@@ -145,8 +153,8 @@ class TestCheckRegistry:
         registry.register(check_class)
 
         # Config structure: { "category": { "gates": { "check-name": {...} } } }
-        full_config = {"python": {"gates": {"check1": {"threshold": 90}}}}
-        checks = registry.get_checks(["python:check1"], full_config)
+        full_config = {"overconfidence": {"gates": {"check1": {"threshold": 90}}}}
+        checks = registry.get_checks(["overconfidence:check1"], full_config)
 
         assert len(checks) == 1
         assert checks[0].config == {"threshold": 90}
@@ -156,23 +164,28 @@ class TestCheckRegistry:
         registry = CheckRegistry()
 
         full_config = {
-            "python": {
+            "overconfidence": {
                 "enabled": True,
-                "gates": {"coverage": {"threshold": 80}, "tests": {"timeout": 300}},
+                "gates": {"py-tests": {"timeout": 300}},
             },
-            "javascript": {"gates": {"lint": {"auto_fix": True}}},
+            "deceptiveness": {
+                "gates": {"py-coverage": {"threshold": 80}},
+            },
+            "laziness": {"gates": {"js-lint": {"auto_fix": True}}},
         }
 
-        # Extract python:coverage config
-        config = registry._extract_gate_config("python:coverage", full_config)
+        # Extract deceptiveness:py-coverage config
+        config = registry._extract_gate_config("deceptiveness:py-coverage", full_config)
         assert config == {"threshold": 80}
 
-        # Extract javascript:lint config
-        config = registry._extract_gate_config("javascript:lint", full_config)
+        # Extract laziness:js-lint config
+        config = registry._extract_gate_config("laziness:js-lint", full_config)
         assert config == {"auto_fix": True}
 
         # Extract nonexistent gate returns empty dict
-        config = registry._extract_gate_config("python:nonexistent", full_config)
+        config = registry._extract_gate_config(
+            "overconfidence:nonexistent", full_config
+        )
         assert config == {}
 
         # Invalid name format returns empty dict
@@ -184,18 +197,18 @@ class TestCheckRegistry:
         registry = CheckRegistry()
 
         full_config = {
-            "python": {
+            "overconfidence": {
                 "include_dirs": ["src", "lib"],
                 "exclude_dirs": ["vendor"],
                 "gates": {
-                    "coverage": {"threshold": 80},
-                    "tests": {"exclude_dirs": ["generated"]},  # Gate-level override
+                    "py-tests": {"threshold": 80},
+                    "py-types": {"exclude_dirs": ["generated"]},  # Gate-level override
                 },
             },
         }
 
         # Category-level include/exclude should propagate to gate config
-        config = registry._extract_gate_config("python:coverage", full_config)
+        config = registry._extract_gate_config("overconfidence:py-tests", full_config)
         assert config == {
             "threshold": 80,
             "include_dirs": ["src", "lib"],
@@ -203,14 +216,16 @@ class TestCheckRegistry:
         }
 
         # Gate-level exclude_dirs should take precedence over category-level
-        config = registry._extract_gate_config("python:tests", full_config)
+        config = registry._extract_gate_config("overconfidence:py-types", full_config)
         assert config == {
             "include_dirs": ["src", "lib"],  # From category
             "exclude_dirs": ["generated"],  # From gate (overrides category)
         }
 
         # Nonexistent gate still gets category-level include/exclude
-        config = registry._extract_gate_config("python:nonexistent", full_config)
+        config = registry._extract_gate_config(
+            "overconfidence:nonexistent", full_config
+        )
         assert config == {
             "include_dirs": ["src", "lib"],
             "exclude_dirs": ["vendor"],
@@ -222,7 +237,7 @@ class TestCheckRegistry:
         check_class = make_mock_check_class("check1")
         registry.register(check_class)
 
-        check = registry.get_check("python:check1", {})
+        check = registry.get_check("overconfidence:check1", {})
         assert check is not None
         assert check.name == "check1"
 
@@ -250,18 +265,22 @@ class TestCheckRegistry:
     def test_is_alias(self):
         """Test checking if name is an alias."""
         registry = CheckRegistry()
-        registry.register_alias("myalias", ["python:check1", "python:check2"])
+        registry.register_alias(
+            "myalias", ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         assert registry.is_alias("myalias") is True
-        assert registry.is_alias("python:check1") is False
+        assert registry.is_alias("overconfidence:check1") is False
 
     def test_expand_alias(self):
         """Test expanding an alias."""
         registry = CheckRegistry()
-        registry.register_alias("myalias", ["python:check1", "python:check2"])
+        registry.register_alias(
+            "myalias", ["overconfidence:check1", "overconfidence:check2"]
+        )
 
         expanded = registry.expand_alias("myalias")
-        assert expanded == ["python:check1", "python:check2"]
+        assert expanded == ["overconfidence:check1", "overconfidence:check2"]
 
     def test_expand_alias_non_alias(self):
         """Test expanding a non-alias returns itself."""
@@ -286,7 +305,9 @@ class TestCheckRegistry:
         check_class = make_mock_check_class("check1")
         registry.register(check_class)
 
-        checks = registry.get_checks(["python:check1", "python:check1"], {})
+        checks = registry.get_checks(
+            ["overconfidence:check1", "overconfidence:check1"], {}
+        )
         assert len(checks) == 1
 
     def test_get_applicable_checks(self, tmp_path):
@@ -340,7 +361,11 @@ class TestRegisterCheckDecorator:
 
             @property
             def category(self) -> GateCategory:
-                return GateCategory.PYTHON
+                return GateCategory.OVERCONFIDENCE
+
+            @property
+            def flaw(self) -> Flaw:
+                return Flaw.OVERCONFIDENCE
 
             def is_applicable(self, project_root: str) -> bool:
                 return True
@@ -354,7 +379,7 @@ class TestRegisterCheckDecorator:
                 )
 
         reg = get_registry()
-        assert "python:decorated-check" in reg.list_checks()
+        assert "overconfidence:decorated-check" in reg.list_checks()
 
 
 class TestCheckDefinition:

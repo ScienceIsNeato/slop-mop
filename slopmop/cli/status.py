@@ -8,6 +8,7 @@ output — just a quiet run followed by a full report.
 
 import argparse
 import json
+import os
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -16,19 +17,25 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
+from slopmop.constants import format_duration_suffix
 from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.reporting.dynamic import DynamicDisplay
 
 # Category display order — controls section ordering in the inventory
 _CATEGORY_ORDER = [
+    "overconfidence",
+    "deceptiveness",
+    "laziness",
+    "myopia",
+    "pr",
+    # Legacy keys kept for backward compatibility
+    "general",
     "python",
     "quality",
     "security",
-    "general",
     "javascript",
-    "integration",
-    "pr",
 ]
 
 
@@ -166,9 +173,20 @@ def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
             print(f"{emoji} {r.name}")
             if r.error:
                 print(f"   {r.error}")
+            if r.output:
+                lines = [
+                    line
+                    for line in r.output.strip().split("\n")
+                    if "\u2705" not in line and line.strip()
+                ]
+                preview = lines[:15]
+                for line in preview:
+                    print(f"   {line}")
+                if len(lines) > 15:
+                    print(f"   ... ({len(lines) - 15} more lines — run with --verbose)")
             if r.fix_suggestion:
                 print(f"   Fix: {r.fix_suggestion}")
-            print(f"   Verify: ./sm validate {r.name}")
+            print(f"   Verify: ./scripts/sm validate {r.name}")
 
     if warned:
         print()
@@ -204,7 +222,7 @@ def _print_verdict(summary: ExecutionSummary) -> None:
             "✨ All applicable gates pass — "
             f"no AI slop detected in repo"
             f"{warn_suffix}"
-            f" · ⏱️  {summary.total_duration:.1f}s"
+            f"{format_duration_suffix(summary.total_duration)}"
         )
     else:
         passed_count = len([r for r in ran if r.status == CheckStatus.PASSED])
@@ -212,7 +230,7 @@ def _print_verdict(summary: ExecutionSummary) -> None:
             f"🧹 {passed_count}/{len(ran)} gates passing, "
             f"{len(failing)} failing"
             f"{warn_suffix}"
-            f" · ⏱️  {summary.total_duration:.1f}s"
+            f"{format_duration_suffix(summary.total_duration)}"
         )
     print("═" * 60)
 
@@ -221,11 +239,16 @@ def _print_recommendations(
     all_gates: List[str],
     profile_gates: Set[str],
     applicability: Dict[str, Tuple[bool, str]],
+    registry: Any,
+    config: Dict[str, Any],
 ) -> None:
     """Print recommendations for expanding gate coverage.
 
     Suggests applicable gates that aren't in the current profile,
     giving users a clear path to increase strictness.
+
+    Filters out checks that are superseded by checks already in the profile
+    (e.g., don't recommend security:local when security:full is running).
     """
     # Find applicable gates NOT in current profile
     recommended: List[str] = []
@@ -233,6 +256,11 @@ def _print_recommendations(
         if gate not in profile_gates:
             is_applicable, _ = applicability.get(gate, (True, ""))
             if is_applicable:
+                # Check if this gate is superseded by something in the profile
+                check = registry.get_check(gate, config)
+                if check and check.superseded_by:
+                    if check.superseded_by in profile_gates:
+                        continue  # Skip - superseding check is already running
                 recommended.append(gate)
 
     if not recommended:
@@ -335,6 +363,7 @@ def run_status(
     profile: str = "pr",
     quiet: bool = False,
     verbose: bool = False,
+    static: bool = False,
 ) -> int:
     """Run all gates and print a gate inventory report.
 
@@ -344,7 +373,7 @@ def run_status(
 
     The default profile is "pr" (broader than "commit") because
     status is an observatory, not an iterative validation loop.
-    It's worth running security:full, diff-coverage, and JS gates
+    It's worth running myopia:security-audit, diff-coverage, and JS gates
     here even if they'd slow down the commit workflow.
 
     Args:
@@ -352,6 +381,7 @@ def run_status(
         profile: Profile alias to run (default: "pr").
         quiet: Suppress header and progress indicator.
         verbose: Write full JSON report to sm_status_<timestamp>.json.
+        static: Disable dynamic display (use static line-by-line output).
 
     Returns:
         0 if all gates pass, 1 otherwise.
@@ -388,26 +418,54 @@ def run_status(
             else:
                 applicability[gate_name] = (False, "check class not found")
 
-    # Header
-    if not quiet:
-        print()
-        print(f"🧹 Slop-Mop Status — {profile} profile")
-        print("═" * 60)
-        print(f"\nRunning {len(profile_gate_list)} gates...")
-        sys.stdout.flush()
-
-    # Run gates silently — no progress callback
+    # Set up executor (status never uses fail-fast or auto-fix)
     executor = CheckExecutor(
         registry=registry,
         fail_fast=False,
     )
 
-    summary = executor.run_checks(
-        project_root=str(root),
-        check_names=[profile],
-        config=config,
-        auto_fix=False,
+    # Determine if we should use dynamic display
+    use_dynamic = (
+        sys.stdout.isatty()
+        and not os.environ.get("NO_COLOR")
+        and not quiet
+        and not static
     )
+
+    # Set up dynamic display if appropriate
+    dynamic_display: Optional[DynamicDisplay] = None
+
+    # Print header before starting the animation thread to avoid
+    # blank newlines being interleaved with header output (mirrors validate.py)
+    if not quiet:
+        print("🧹 slop-mop · sweeping your code clean")
+        print()
+
+    if use_dynamic:
+        dynamic_display = DynamicDisplay(quiet=quiet)
+        dynamic_display.load_historical_timings(str(root))
+        executor.set_start_callback(dynamic_display.on_check_start)
+        executor.set_progress_callback(dynamic_display.on_check_complete)
+        executor.set_disabled_callback(dynamic_display.on_check_disabled)
+        executor.set_na_callback(dynamic_display.on_check_not_applicable)
+        executor.set_total_callback(dynamic_display.set_total_checks)
+        dynamic_display.start()  # Start animation AFTER header is printed
+
+    try:
+        summary = executor.run_checks(
+            project_root=str(root),
+            check_names=[profile],
+            config=config,
+            auto_fix=False,
+        )
+
+        # Stop dynamic display before printing reports
+        if dynamic_display:
+            dynamic_display.stop()
+            dynamic_display.save_historical_timings(str(root))
+    finally:
+        if dynamic_display:
+            dynamic_display.stop()
 
     # Build results map
     results_map: Dict[str, CheckResult] = {r.name: r for r in summary.results}
@@ -433,6 +491,8 @@ def run_status(
         all_gates=all_gates,
         profile_gates=profile_gates,
         applicability=applicability,
+        registry=registry,
+        config=config,
     )
 
     # Write verbose JSON report
@@ -463,4 +523,5 @@ def cmd_status(args: argparse.Namespace) -> int:
         profile=args.profile or "pr",
         quiet=args.quiet,
         verbose=args.verbose,
+        static=getattr(args, "static", False),
     )

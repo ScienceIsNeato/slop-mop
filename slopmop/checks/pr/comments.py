@@ -12,7 +12,7 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -53,6 +53,10 @@ class PRCommentsCheck(BaseCheck):
     @property
     def category(self) -> GateCategory:
         return GateCategory.PR
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

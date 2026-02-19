@@ -48,15 +48,50 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
     return shutil.which(name)
 
 
-class GateCategory(Enum):
-    """Categories for organizing quality gates by language/type."""
+class Flaw(Enum):
+    """AI character flaws that checks are designed to catch.
 
-    PYTHON = ("python", "🐍", "Python")
-    JAVASCRIPT = ("javascript", "📦", "JavaScript")
-    SECURITY = ("security", "🔐", "Security")
-    QUALITY = ("quality", "📊", "Quality")
+    These represent the fundamental weaknesses in LLM-generated code:
+    - OVERCONFIDENCE: "Trust me, it works" - untested assumptions
+    - DECEPTIVENESS: "Look, I wrote tests!" - theater over substance
+    - LAZINESS: "I'll clean that up later" - mess left behind
+    - MYOPIA: "But I fixed the bug!" - tunnel vision, missing big picture
+    """
+
+    OVERCONFIDENCE = ("overconfidence", "💯", "Overconfidence")
+    DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
+    LAZINESS = ("laziness", "🦥", "Laziness")
+    MYOPIA = ("myopia", "👓", "Myopia")
+
+    def __init__(self, key: str, emoji: str, display_name: str):
+        self.key = key
+        self.emoji = emoji
+        self._display_name = display_name
+
+    @property
+    def display(self) -> str:
+        return f"{self.emoji} {self._display_name}"
+
+    @property
+    def display_name(self) -> str:
+        return self._display_name
+
+
+class GateCategory(Enum):
+    """Categories for organizing quality gates.
+
+    All checks are categorized by the AI character flaw they detect.
+    Language is an implementation detail, not an organizing principle.
+    """
+
+    # Flaw-based categories
+    OVERCONFIDENCE = ("overconfidence", "💯", "Overconfidence")
+    DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
+    LAZINESS = ("laziness", "🦥", "Laziness")
+    MYOPIA = ("myopia", "👓", "Myopia")
+
+    # Other categories
     GENERAL = ("general", "🔧", "General")
-    INTEGRATION = ("integration", "🎭", "Integration")
     PR = ("pr", "🔀", "Pull Request")
 
     def __init__(self, key: str, emoji: str, display_name: str):
@@ -164,7 +199,16 @@ class BaseCheck(ABC):
         """The language/type category for this check.
 
         Returns:
-            GateCategory enum value (PYTHON, JAVASCRIPT, GENERAL, INTEGRATION)
+            GateCategory enum value (PYTHON, JAVASCRIPT, or flaw-based category)
+        """
+
+    @property
+    @abstractmethod
+    def flaw(self) -> Flaw:
+        """The AI character flaw this check catches.
+
+        Returns:
+            Flaw enum value (OVERCONFIDENCE, DECEPTIVENESS, LAZINESS, MYOPIA)
         """
 
     @property
@@ -172,7 +216,7 @@ class BaseCheck(ABC):
         """Full name including category prefix.
 
         Returns:
-            String like 'python:lint-format'
+            String like 'laziness:py-lint'
         """
         return f"{self.category.key}:{self.name}"
 
@@ -184,6 +228,19 @@ class BaseCheck(ABC):
         dependencies complete successfully.
         """
         return []
+
+    @property
+    def superseded_by(self) -> Optional[str]:
+        """Full name of check that supersedes this one.
+
+        If another check fully encompasses this check's functionality,
+        return its full name (e.g., 'security:full'). This prevents
+        recommending a subset check when its superset is already running.
+
+        Returns:
+            Full name of superseding check, or None if not superseded
+        """
+        return None
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -294,6 +351,7 @@ class BaseCheck(ABC):
             error=error,
             fix_suggestion=fix_suggestion,
             auto_fixed=auto_fixed,
+            category=self.category.key if self.category else None,
         )
 
     def _run_command(

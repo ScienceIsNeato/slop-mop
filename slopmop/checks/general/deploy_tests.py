@@ -8,7 +8,7 @@ import os
 import time
 from typing import List
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -26,15 +26,19 @@ class DeployScriptTestsCheck(BaseCheck):
 
     @property
     def name(self) -> str:
-        return "deploy-tests"
+        return "deploy-script-tests"
 
     @property
     def display_name(self) -> str:
-        return "🚀 Deploy Script Tests"
+        return "🚀 Deploy Script Validation"
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.GENERAL
+        return GateCategory.OVERCONFIDENCE
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def config_schema(self) -> List[ConfigField]:

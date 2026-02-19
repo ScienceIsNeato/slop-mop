@@ -14,11 +14,6 @@ def _register_python_checks(registry: CheckRegistry) -> None:
     )
     from slopmop.checks.python.lint_format import PythonLintFormatCheck
     from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
-    from slopmop.checks.python.test_types import (
-        E2ETestCheck,
-        IntegrationTestCheck,
-        SmokeTestCheck,
-    )
     from slopmop.checks.python.tests import PythonTestsCheck
     from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
@@ -28,9 +23,6 @@ def _register_python_checks(registry: CheckRegistry) -> None:
     registry.register(PythonDiffCoverageCheck)
     registry.register(PythonStaticAnalysisCheck)
     registry.register(PythonTypeCheckingCheck)
-    registry.register(SmokeTestCheck)
-    registry.register(IntegrationTestCheck)
-    registry.register(E2ETestCheck)
 
 
 def _register_javascript_checks(registry: CheckRegistry) -> None:
@@ -83,23 +75,23 @@ def _register_aliases(registry: CheckRegistry) -> None:
     registry.register_alias(
         "commit",
         [
-            "python:lint-format",
-            "python:static-analysis",
-            "python:type-checking",
-            "python:tests",
-            "python:coverage",
-            "quality:complexity",
-            "quality:dead-code",
-            "quality:source-duplication",
-            "quality:string-duplication",
-            "quality:bogus-tests",
-            "quality:loc-lock",
-            "security:local",
-            "javascript:lint-format",
-            "javascript:types",
-            "javascript:tests",
-            "javascript:coverage",
-            "javascript:bogus-tests",
+            "laziness:py-lint",
+            "overconfidence:py-static-analysis",
+            "overconfidence:py-types",
+            "overconfidence:py-tests",
+            "deceptiveness:py-coverage",
+            "laziness:complexity",
+            "laziness:dead-code",
+            "myopia:source-duplication",
+            "myopia:string-duplication",
+            "deceptiveness:bogus-tests",
+            "myopia:loc-lock",
+            "myopia:security-scan",
+            "laziness:js-lint",
+            "overconfidence:js-types",
+            "overconfidence:js-tests",
+            "deceptiveness:js-coverage",
+            "deceptiveness:js-bogus-tests",
         ],
     )
 
@@ -107,71 +99,62 @@ def _register_aliases(registry: CheckRegistry) -> None:
         "pr",
         [
             "pr:comments",
-            "python:lint-format",
-            "python:static-analysis",
-            "python:type-checking",
-            "python:tests",
-            "python:coverage",
-            "python:diff-coverage",
-            "quality:complexity",
-            "quality:dead-code",
-            "quality:source-duplication",
-            "quality:string-duplication",
-            "quality:bogus-tests",
-            "quality:loc-lock",
-            "security:full",
-            "javascript:lint-format",
-            "javascript:types",
-            "javascript:tests",
-            "javascript:coverage",
-            "javascript:bogus-tests",
+            "laziness:py-lint",
+            "overconfidence:py-static-analysis",
+            "overconfidence:py-types",
+            "overconfidence:py-tests",
+            "deceptiveness:py-coverage",
+            "deceptiveness:py-diff-coverage",
+            "laziness:complexity",
+            "laziness:dead-code",
+            "myopia:source-duplication",
+            "myopia:string-duplication",
+            "deceptiveness:bogus-tests",
+            "myopia:loc-lock",
+            "myopia:security-audit",
+            "laziness:js-lint",
+            "overconfidence:js-types",
+            "overconfidence:js-tests",
+            "deceptiveness:js-coverage",
+            "deceptiveness:js-bogus-tests",
         ],
     )
 
-    registry.register_alias("quick", ["python:lint-format", "security:local"])
+    registry.register_alias("quick", ["laziness:py-lint", "myopia:security-scan"])
 
     registry.register_alias(
         "python",
         [
-            "python:lint-format",
-            "python:static-analysis",
-            "python:type-checking",
-            "python:tests",
-            "python:coverage",
+            "laziness:py-lint",
+            "overconfidence:py-static-analysis",
+            "overconfidence:py-types",
+            "overconfidence:py-tests",
+            "deceptiveness:py-coverage",
         ],
     )
 
     registry.register_alias(
         "javascript",
         [
-            "javascript:lint-format",
-            "javascript:types",
-            "javascript:tests",
-            "javascript:coverage",
-            "javascript:frontend",
+            "laziness:js-lint",
+            "overconfidence:js-types",
+            "overconfidence:js-tests",
+            "deceptiveness:js-coverage",
+            "laziness:js-frontend",
         ],
     )
 
-    registry.register_alias("security", ["security:full"])
-    registry.register_alias("security-local", ["security:local"])
+    registry.register_alias("security", ["myopia:security-audit"])
+    registry.register_alias("security-local", ["myopia:security-scan"])
 
     registry.register_alias(
         "quality",
         [
-            "quality:complexity",
-            "quality:source-duplication",
-            "quality:string-duplication",
-            "quality:bogus-tests",
-            "quality:loc-lock",
-        ],
-    )
-
-    registry.register_alias(
-        "e2e",
-        [
-            "integration:smoke-tests",
-            "integration:integration-tests",
-            "integration:e2e-tests",
+            "laziness:complexity",
+            "myopia:source-duplication",
+            "myopia:string-duplication",
+            "deceptiveness:bogus-tests",
+            "myopia:loc-lock",
         ],
     )
 

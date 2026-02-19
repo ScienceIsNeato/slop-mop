@@ -24,18 +24,18 @@ class TestTemplateValidationCheck:
     def test_name(self):
         """Test check name."""
         check = TemplateValidationCheck({})
-        assert check.name == "templates"
+        assert check.name == "template-syntax"
 
     def test_display_name(self):
         """Test display name."""
         check = TemplateValidationCheck({})
-        assert "Template Validation" in check.display_name
+        assert "Template Syntax Validation" in check.display_name
         assert "Jinja2" in check.display_name
 
     def test_full_name(self):
         """Test full name includes category."""
         check = TemplateValidationCheck({})
-        assert check.full_name == "general:templates"
+        assert check.full_name == "laziness:template-syntax"
 
     def test_config_schema(self):
         """Test config schema defines templates_dir."""

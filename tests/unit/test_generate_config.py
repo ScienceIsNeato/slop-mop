@@ -5,7 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
 from slopmop.core.registry import CheckRegistry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.utils.generate_base_config import (
@@ -34,7 +34,11 @@ class MockCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.PYTHON
+        return GateCategory.OVERCONFIDENCE
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def config_schema(self):
@@ -96,7 +100,7 @@ class TestGenerateLanguageConfig:
     def test_language_config_structure(self):
         """Test that language config has expected structure."""
         check = MockCheck({})
-        config = generate_language_config([check], GateCategory.PYTHON)
+        config = generate_language_config([check], GateCategory.OVERCONFIDENCE)
 
         assert "enabled" in config
         assert config["enabled"] is False
@@ -111,7 +115,7 @@ class TestGenerateLanguageConfig:
         """Test that all_enabled=True sets category and gates to enabled."""
         check = MockCheck({})
         config = generate_language_config(
-            [check], GateCategory.PYTHON, all_enabled=True
+            [check], GateCategory.OVERCONFIDENCE, all_enabled=True
         )
 
         assert config["enabled"] is True
@@ -120,7 +124,7 @@ class TestGenerateLanguageConfig:
     def test_gates_contain_check_configs(self):
         """Test that gates dictionary contains check configurations."""
         check = MockCheck({})
-        config = generate_language_config([check], GateCategory.PYTHON)
+        config = generate_language_config([check], GateCategory.OVERCONFIDENCE)
 
         gate_config = config["gates"]["mock-check"]
         assert "enabled" in gate_config
@@ -142,7 +146,7 @@ class TestGenerateBaseConfig:
         assert config["version"] == "1.0"
         assert "default_profile" in config
         assert config["default_profile"] == "commit"
-        assert "python" in config
+        assert "overconfidence" in config
 
     def test_base_config_all_disabled_by_default(self):
         """Test that base config has everything disabled by default."""
@@ -151,8 +155,8 @@ class TestGenerateBaseConfig:
 
         config = generate_base_config(registry)
 
-        assert config["python"]["enabled"] is False
-        assert config["python"]["gates"]["mock-check"]["enabled"] is False
+        assert config["overconfidence"]["enabled"] is False
+        assert config["overconfidence"]["gates"]["mock-check"]["enabled"] is False
 
     def test_base_config_all_enabled_when_requested(self):
         """Test that all_enabled=True enables everything."""
@@ -161,8 +165,8 @@ class TestGenerateBaseConfig:
 
         config = generate_base_config(registry, all_enabled=True)
 
-        assert config["python"]["enabled"] is True
-        assert config["python"]["gates"]["mock-check"]["enabled"] is True
+        assert config["overconfidence"]["enabled"] is True
+        assert config["overconfidence"]["gates"]["mock-check"]["enabled"] is True
 
     def test_categories_are_included(self):
         """Test that all categories with checks are included."""
@@ -172,8 +176,8 @@ class TestGenerateBaseConfig:
         config = generate_base_config(registry)
 
         # Python should be included because MockCheck is registered
-        assert "python" in config
-        assert "mock-check" in config["python"]["gates"]
+        assert "overconfidence" in config
+        assert "mock-check" in config["overconfidence"]["gates"]
 
 
 class TestGenerateConfigSchema:
@@ -186,8 +190,8 @@ class TestGenerateConfigSchema:
 
         schema = generate_config_schema(registry)
 
-        assert "python:mock-check" in schema
-        check_schema = schema["python:mock-check"]
+        assert "overconfidence:mock-check" in schema
+        check_schema = schema["overconfidence:mock-check"]
 
         assert "display_name" in check_schema
         assert "category" in check_schema
@@ -295,15 +299,15 @@ class TestTemplateConfig:
     """Tests for template config generation."""
 
     def test_generate_template_config_has_all_categories(self):
-        """Test that template config includes all categories."""
+        """Test that template config includes all primary categories."""
         config = generate_template_config()
 
-        assert "python" in config
-        assert "javascript" in config
-        assert "security" in config
-        assert "quality" in config
-        assert "general" in config
-        assert "integration" in config
+        assert "overconfidence" in config
+        assert "deceptiveness" in config
+        assert "laziness" in config
+        assert "myopia" in config
+        # general category is legacy — deploy/template checks moved to overconfidence/laziness
+        assert "general" not in config
 
     def test_generate_template_config_all_gates_enabled(self):
         """Test that template config has all gates enabled."""
@@ -311,12 +315,10 @@ class TestTemplateConfig:
 
         # Check all category-level enabled flags are True
         for category in [
-            "python",
-            "javascript",
-            "security",
-            "quality",
-            "general",
-            "integration",
+            "overconfidence",
+            "deceptiveness",
+            "laziness",
+            "myopia",
         ]:
             if category in config:
                 assert (

@@ -30,6 +30,7 @@ from typing import List
 from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
+    Flaw,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -59,12 +60,12 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: TypeScript must be in devDependencies.
 
     Re-validate:
-      ./sm validate javascript:types --verbose
+      ./sm validate overconfidence:js-types --verbose
     """
 
     @property
     def name(self) -> str:
-        return "types"
+        return "js-types"
 
     @property
     def display_name(self) -> str:
@@ -72,11 +73,15 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.JAVASCRIPT
+        return GateCategory.OVERCONFIDENCE
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def depends_on(self) -> List[str]:
-        return ["javascript:lint-format"]
+        return ["laziness:js-lint"]
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -88,6 +93,10 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                 description="Path to tsconfig.json (relative to project root)",
             ),
         ]
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping — delegate to JavaScriptCheckMixin."""
+        return JavaScriptCheckMixin.skip_reason(self, project_root)
 
     def is_applicable(self, project_root: str) -> bool:
         """Check if this is a TypeScript project."""

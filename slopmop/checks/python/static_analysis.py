@@ -7,7 +7,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 # mypy error code pattern: file.py:10: error: message  [code]
@@ -40,12 +46,12 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
           inferred type. Check your class hierarchy.
 
     Re-validate:
-      ./sm validate python:static-analysis --verbose
+      ./sm validate overconfidence:py-static-analysis --verbose
     """
 
     @property
     def name(self) -> str:
-        return "static-analysis"
+        return "py-static-analysis"
 
     @property
     def display_name(self) -> str:
@@ -55,7 +61,11 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.PYTHON
+        return GateCategory.OVERCONFIDENCE
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -76,7 +86,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["python:lint-format"]
+        return ["laziness:py-lint"]
 
     def is_applicable(self, project_root: str) -> bool:
         """Applicable only if there are Python source directories to type-check."""

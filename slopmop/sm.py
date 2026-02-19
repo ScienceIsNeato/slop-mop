@@ -125,6 +125,16 @@ def _add_validate_parser(
         action="store_true",
         help="Minimal output (only show failures)",
     )
+    validate_parser.add_argument(
+        "--static",
+        action="store_true",
+        help="Disable dynamic display (use static line-by-line output)",
+    )
+    validate_parser.add_argument(
+        "--clear-history",
+        action="store_true",
+        help="Clear all timing history before running",
+    )
 
 
 def _add_config_parser(
@@ -159,7 +169,7 @@ def _add_config_parser(
     config_parser.add_argument(
         "--exclude-dir",
         metavar="CATEGORY:DIR",
-        help="Add directory to exclude list (e.g., python:tests or quality:vendor)",
+        help="Add directory to exclude list (e.g., overconfidence:py-tests or quality:vendor)",
     )
     config_parser.add_argument(
         "--json",
@@ -342,6 +352,11 @@ def _add_status_parser(
         "-q",
         action="store_true",
         help="Minimal output (report card only)",
+    )
+    status_parser.add_argument(
+        "--static",
+        action="store_true",
+        help="Disable dynamic display (use static line-by-line output)",
     )
 
 

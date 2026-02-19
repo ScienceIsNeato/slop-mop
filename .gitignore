@@ -52,3 +52,4 @@ sm_status_*.json
 # Auto-generated AI agent instructions (from cursor-rules)
 AGENTS.md
 .windsurfrules
+.slopmop/

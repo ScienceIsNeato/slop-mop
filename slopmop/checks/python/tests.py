@@ -3,7 +3,13 @@
 import time
 from typing import List
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
     has_python_test_files,
@@ -35,12 +41,12 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
           Usually a missing dependency or renamed module.
 
     Re-validate:
-      ./sm validate python:tests --verbose
+      ./sm validate overconfidence:py-tests --verbose
     """
 
     @property
     def name(self) -> str:
-        return "tests"
+        return "py-tests"
 
     @property
     def display_name(self) -> str:
@@ -48,11 +54,15 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.PYTHON
+        return GateCategory.OVERCONFIDENCE
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.OVERCONFIDENCE
 
     @property
     def depends_on(self) -> List[str]:
-        return ["python:lint-format"]
+        return ["laziness:py-lint"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

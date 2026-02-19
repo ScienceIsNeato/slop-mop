@@ -20,7 +20,7 @@ class TestLocLockCheck:
     def test_category(self):
         """Test check category."""
         check = LocLockCheck({})
-        assert check.category.key == "quality"
+        assert check.category.key == "myopia"
 
     def test_config_schema_has_required_fields(self):
         """Test config schema includes key fields."""

@@ -17,7 +17,7 @@ class TestBogusTestsCheckProperties:
     def test_full_name(self):
         """Test full check name with category."""
         check = BogusTestsCheck({})
-        assert check.full_name == "quality:bogus-tests"
+        assert check.full_name == "deceptiveness:bogus-tests"
 
     def test_display_name(self):
         """Test display name."""

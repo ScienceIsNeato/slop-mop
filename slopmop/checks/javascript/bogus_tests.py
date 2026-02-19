@@ -20,6 +20,7 @@ from typing import Iterator, List, Optional, Pattern, Tuple
 from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
+    Flaw,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -343,12 +344,12 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
           expect() calls to verify behavior.
 
     Re-validate:
-      ./sm validate javascript:bogus-tests --verbose
+      ./sm validate deceptiveness:js-bogus-tests --verbose
     """
 
     @property
     def name(self) -> str:
-        return "bogus-tests"
+        return "js-bogus-tests"
 
     @property
     def display_name(self) -> str:
@@ -356,7 +357,11 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.JAVASCRIPT
+        return GateCategory.DECEPTIVENESS
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.DECEPTIVENESS
 
     @property
     def depends_on(self) -> List[str]:

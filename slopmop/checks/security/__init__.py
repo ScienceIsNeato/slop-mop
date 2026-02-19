@@ -16,9 +16,15 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, List, Optional
 
-from slopmop.checks.base import BaseCheck, ConfigField, GateCategory, PythonCheckMixin
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    PythonCheckMixin,
+)
 from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -69,12 +75,12 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-validate:
-      ./sm validate security:local --verbose
+      ./scripts/sm validate myopia:security-scan --verbose
     """
 
     @property
     def name(self) -> str:
-        return "local"
+        return "security-scan"
 
     @property
     def display_name(self) -> str:
@@ -82,7 +88,15 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.SECURITY
+        return GateCategory.MYOPIA
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.MYOPIA
+
+    @property
+    def superseded_by(self) -> Optional[str]:
+        return "myopia:security-audit"
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -325,12 +339,12 @@ class SecurityCheck(SecurityLocalCheck):
       pip-audit not available: pip install pip-audit
 
     Re-validate:
-      ./sm validate security:full --verbose
+      ./scripts/sm validate myopia:security-audit --verbose
     """
 
     @property
     def name(self) -> str:
-        return "full"
+        return "security-audit"
 
     @property
     def display_name(self) -> str:

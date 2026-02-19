@@ -57,7 +57,6 @@ VALID_CATEGORIES = {
     "javascript",
     "security",
     "quality",
-    "general",
     "integration",
 }
 
@@ -108,7 +107,9 @@ def _add_exclude_dir(config_file: Path, config: dict[str, Any], spec: str) -> in
     parsed = _parse_category_dir(spec)
     if not parsed:
         print(f"❌ Invalid format: {spec}")
-        print(f"   Expected: CATEGORY:DIR (e.g., python:tests, quality:vendor)")
+        print(
+            f"   Expected: CATEGORY:DIR (e.g., overconfidence:py-tests, quality:vendor)"
+        )
         print(f"   Valid categories: {', '.join(sorted(VALID_CATEGORIES))}")
         return 1
 

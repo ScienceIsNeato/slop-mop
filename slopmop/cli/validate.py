@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional
@@ -11,7 +12,10 @@ from typing import List, Optional
 from slopmop.checks import ensure_checks_registered
 from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
+from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
+from slopmop.reporting.dynamic import DynamicDisplay
+from slopmop.reporting.timings import clear_timings
 
 
 def _setup_self_validation(project_root: Path) -> str:
@@ -27,19 +31,31 @@ def _setup_self_validation(project_root: Path) -> str:
     # Generate config with auto-detection
     base_config = generate_base_config()
 
-    # Enable Python gates for slopmop itself
-    base_config["python"]["enabled"] = True
-    for gate in ["lint-format", "tests", "coverage", "static-analysis"]:
-        if gate in base_config["python"]["gates"]:
-            base_config["python"]["gates"][gate]["enabled"] = True
+    # Enable Python gates for slopmop itself across flaw categories
+    # py-lint is in laziness
+    if "laziness" in base_config:
+        base_config["laziness"]["enabled"] = True
+        gates = base_config["laziness"].get("gates", {})
+        if "py-lint" in gates:
+            gates["py-lint"]["enabled"] = True
 
-    # Set test_dirs
-    if "tests" in base_config["python"]["gates"]:
-        base_config["python"]["gates"]["tests"]["test_dirs"] = ["tests"]
+    # py-tests, py-static-analysis, py-types are in overconfidence
+    if "overconfidence" in base_config:
+        base_config["overconfidence"]["enabled"] = True
+        gates = base_config["overconfidence"].get("gates", {})
+        for gate in ["py-tests", "py-static-analysis", "py-types"]:
+            if gate in gates:
+                gates[gate]["enabled"] = True
+        if "py-tests" in gates:
+            gates["py-tests"]["test_dirs"] = ["tests"]
 
-    # Set coverage threshold for self-validation
-    if "coverage" in base_config["python"]["gates"]:
-        base_config["python"]["gates"]["coverage"]["threshold"] = 80
+    # py-coverage is in deceptiveness
+    if "deceptiveness" in base_config:
+        base_config["deceptiveness"]["enabled"] = True
+        gates = base_config["deceptiveness"].get("gates", {})
+        if "py-coverage" in gates:
+            gates["py-coverage"]["enabled"] = True
+            gates["py-coverage"]["threshold"] = 80
 
     # Write temp config
     temp_config_file.write_text(json.dumps(base_config, indent=2) + "\n")
@@ -76,16 +92,49 @@ def _print_header(
     project_root: Path, gates: List[str], args: argparse.Namespace
 ) -> None:
     """Print validation header."""
-    print("\n🧹 ./sm validate - Quality Gate Validation")
-    print("=" * 60)
-    from slopmop.reporting import print_project_header
-
-    print_project_header(str(project_root))
-    if args.self_validate:
-        print("🔄 Mode: Self-validation (using isolated config)")
-    print(f"🔍 Quality Gates: {', '.join(gates)}")
-    print("=" * 60)
+    print("\u2728 scanning the code for slop to mop")
     print()
+
+
+def _setup_dynamic_display(
+    executor: "CheckExecutor",
+    reporter: "ConsoleReporter",
+    quiet: bool,
+    project_root: Path,
+) -> "DynamicDisplay":
+    """Configure and start the dynamic display, wiring all executor callbacks.
+
+    Also adds a combined progress callback so failure details are printed via
+    the console reporter even when the dynamic display is active.
+
+    Args:
+        executor: The check executor to wire callbacks onto.
+        reporter: The console reporter (used for failure details).
+        quiet: Whether to suppress output.
+        project_root: Project root for loading historical timings.
+
+    Returns:
+        The started DynamicDisplay instance.
+    """
+    display = DynamicDisplay(quiet=quiet)
+    display.load_historical_timings(str(project_root))
+    display.start()
+    executor.set_start_callback(display.on_check_start)
+    executor.set_disabled_callback(display.on_check_disabled)
+    executor.set_na_callback(display.on_check_not_applicable)
+    executor.set_total_callback(display.set_total_checks)
+    executor.set_pending_callback(display.register_pending_checks)
+
+    # Combined callback: update display AND print failure details via reporter
+    _reporter_cb = reporter.on_check_complete
+
+    def _combined(result: CheckResult) -> None:
+        display.on_check_complete(result)
+        if result.failed or result.status == CheckStatus.ERROR:
+            _reporter_cb(result)
+
+    executor.set_progress_callback(_combined)
+    return display
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -104,6 +153,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if not project_root.is_dir():
         print(f"❌ Project root not found: {project_root}")
         return 1
+
+    # Clear timing history if requested
+    if getattr(args, "clear_history", False):
+        if clear_timings(str(project_root)):
+            if not args.quiet:
+                print("🗑️  Timing history cleared")
 
     # Set up self-validation if needed
     temp_config_dir = None
@@ -125,12 +180,30 @@ def cmd_validate(args: argparse.Namespace) -> int:
         quiet=args.quiet,
         verbose=args.verbose,
         profile=profile_name,
+        project_root=str(project_root),
     )
-    executor.set_progress_callback(reporter.on_check_complete)
 
-    # Print header
+    # Determine if we should use dynamic display
+    use_dynamic = (
+        sys.stdout.isatty()
+        and not os.environ.get("NO_COLOR")
+        and not args.quiet
+        and not getattr(args, "static", False)
+    )
+
+    # Print header BEFORE starting dynamic display
     if not args.quiet:
         _print_header(project_root, gates, args)
+
+    # Set up dynamic display if appropriate
+    dynamic_display: Optional[DynamicDisplay] = None
+    if use_dynamic:
+        dynamic_display = _setup_dynamic_display(
+            executor, reporter, args.quiet, project_root
+        )
+    else:
+        # Fall back to traditional reporter
+        executor.set_progress_callback(reporter.on_check_complete)
 
     # Load configuration
     config = load_config(project_root)
@@ -144,9 +217,17 @@ def cmd_validate(args: argparse.Namespace) -> int:
             auto_fix=not args.no_auto_fix,
         )
 
+        # Stop dynamic display before printing summary
+        if dynamic_display:
+            dynamic_display.stop()
+            dynamic_display.save_historical_timings(str(project_root))
+
         # Print summary
         reporter.print_summary(summary)
         return 0 if summary.all_passed else 1
     finally:
+        # Ensure display is stopped on any exit
+        if dynamic_display:
+            dynamic_display.stop()
         if temp_config_dir:
             _cleanup_self_validation(temp_config_dir)

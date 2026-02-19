@@ -35,14 +35,20 @@ CONFIG_FILE = ".sb_config.json"
 
 
 class GateCategory(Enum):
-    """Categories for organizing quality gates."""
+    """Categories for organizing quality gates.
 
-    PYTHON = ("python", "🐍", "Python")
-    JAVASCRIPT = ("javascript", "📦", "JavaScript")
-    SECURITY = ("security", "🔐", "Security")
-    QUALITY = ("quality", "📊", "Quality")
+    All checks are organized by the AI flaw they address.
+    """
+
+    # Flaw-based categories
+    OVERCONFIDENCE = ("overconfidence", "🧠", "Overconfidence")
+    DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
+    LAZINESS = ("laziness", "🦥", "Laziness")
+    MYOPIA = ("myopia", "🔍", "Myopia")
+
+    # Other categories
     GENERAL = ("general", "🔧", "General")
-    INTEGRATION = ("integration", "🎭", "Integration")
+    PR = ("pr", "🔀", "Pull Request")
 
     def __init__(self, key: str, emoji: str, display_name: str):
         self.key = key
@@ -299,7 +305,7 @@ class SlopmopConfig:
     def is_gate_enabled(self, language: str, gate_name: str) -> bool:
         """Check if a gate is enabled (language:gate format or separate args)."""
         if ":" in language:
-            # Handle "python:lint-format" format
+            # Handle "laziness:py-lint" format
             language, gate_name = language.split(":", 1)
         lang_config = self.get_language_config(language)
         return lang_config.is_gate_enabled(gate_name)
@@ -338,7 +344,7 @@ def validate_include_dirs(
         ConfigError: If include_dirs is empty
     """
     if not include_dirs:
-        # Parse language from gate_name (e.g., "python:lint-format" -> "python")
+        # Parse language from gate_name (e.g., "laziness:py-lint" -> "python")
         language = gate_name.split(":")[0] if ":" in gate_name else gate_name
         raise ConfigError(
             f"{gate_name}: No include_dirs configured",

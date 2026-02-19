@@ -6,6 +6,7 @@ from typing import List, Optional
 from slopmop.checks.base import (
     BaseCheck,
     ConfigField,
+    Flaw,
     GateCategory,
     JavaScriptCheckMixin,
 )
@@ -34,12 +35,12 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
           or missing registry access.
 
     Re-validate:
-      ./sm validate javascript:lint-format --verbose
+      ./sm validate laziness:js-lint --verbose
     """
 
     @property
     def name(self) -> str:
-        return "lint-format"
+        return "js-lint"
 
     @property
     def display_name(self) -> str:
@@ -47,7 +48,11 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.JAVASCRIPT
+        return GateCategory.LAZINESS
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:

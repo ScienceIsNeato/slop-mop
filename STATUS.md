@@ -1,28 +1,18 @@
-# Session Status
+# Project Status
 
-## Current Work: feat/config-filtering-and-tool-detection branch — PR #20
+## Active Branch: `feat/dynamic-check-display`
 
-### Latest: Three commits ready to push
+PR #24 — brew-style dynamic terminal UI for `sm validate` / `sm status`.
 
-**Branch commits (ahead of origin):**
-- `94758de`: fix: use Python tokenize for docstring exclusion in string-duplication check
-- `1d30e0e`: refactor: remove pip install, run slop-mop directly from submodule
-- `3183914`: fix: preserve line numbers in docstring stripping, add PYTHONPATH to wrappers
+### What's in This Branch
 
-### Key changes in this session:
+- **Dynamic display** (`DynamicDisplay`): live-updating TTY output with animated spinners, progress bars, ETA from persisted timings, and category-grouped headers
+- **Timing persistence**: `.slopmop/timings.json` stores per-check historical averages; pruned after 30 days / 100 entries
+- **Flaw-based taxonomy**: all checks now live under `overconfidence:`, `deceptiveness:`, `laziness:`, or `myopia:` instead of language/quality/security prefixes
+- **Visual polish**: per-category progress bar colors, separate N/A vs disabled footer lines, BRIGHT_YELLOW laziness header
+- **`--static` flag**: opt out of dynamic display for scripted/CI use
+- **`--clear-history` flag**: wipe stored timings
 
-1. **Docstring stripping** — Moved from regex to Python's `tokenize` module for correct
-   docstring identification. Line numbers are preserved (multi-line docstrings replaced
-   with `pass` + matching newline count). Temp-dir approach kept because in-place
-   modification races with parallel lint checks.
+### Current State
 
-2. **Removed pip install** — `pip install -e .` was a design flaw (global state, cross-project
-   contamination). Now runs via `python -m slopmop.sm` with PYTHONPATH. `setup.py` deleted,
-   `[project.scripts]` removed from pyproject.toml. New `scripts/sm` wrapper and
-   `scripts/setup.sh` for automated setup.
-
-3. **PYTHONPATH fix** — Both sm wrappers (bundled and setup.sh-generated) were missing
-   `export PYTHONPATH`. Without it, every `scripts/sm` invocation would fail with
-   ModuleNotFoundError. Fixed.
-
-### All 12 quality gates pass. 675 tests pass.
+All quality gates passing. See open [PR #24](https://github.com/ScienceIsNeato/slop-mop/pull/24) for remaining review comments.
