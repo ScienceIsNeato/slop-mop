@@ -8,6 +8,7 @@ This check:
 """
 
 import os
+import sys
 import time
 from typing import List, Optional
 
@@ -92,6 +93,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Run autoflake first to remove unused imports
         result = self._run_command(
             [
+                sys.executable,
+                "-m",
                 "autoflake",
                 "--in-place",
                 "--remove-all-unused-imports",
@@ -106,9 +109,11 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             fixed = True
 
         # Run black on each target
+        # Use sys.executable -m to ensure black runs under the same Python
+        # interpreter (and venv) as slop-mop, avoiding broken system installs.
         for target in targets:
             result = self._run_command(
-                ["black", "--line-length", "88", target],
+                [sys.executable, "-m", "black", "--line-length", "88", target],
                 cwd=project_root,
                 timeout=60,
             )
@@ -116,8 +121,11 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 fixed = True
 
         # Run isort — skip hidden directories to match _check_isort behaviour
+        # Use sys.executable -m to match the black approach above.
         result = self._run_command(
             [
+                sys.executable,
+                "-m",
                 "isort",
                 "--profile",
                 "black",
@@ -221,7 +229,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         for target in targets:
             result = self._run_command(
-                ["black", "--check", "--line-length", "88", target],
+                [sys.executable, "-m", "black", "--check", "--line-length", "88", target],
                 cwd=project_root,
                 timeout=60,
             )
@@ -246,6 +254,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         """Check isort import order."""
         result = self._run_command(
             [
+                sys.executable,
+                "-m",
                 "isort",
                 "--check-only",
                 "--profile",
@@ -332,6 +342,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         result = self._run_command(
             [
+                sys.executable,
+                "-m",
                 "flake8",
                 "--select=E9,F63,F7,F82,F401",
                 "--max-line-length=88",

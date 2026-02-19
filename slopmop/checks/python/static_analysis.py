@@ -2,6 +2,7 @@
 
 import os
 import re
+import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -153,7 +154,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
     def _build_command(self, source_dirs: List[str]) -> List[str]:
         """Build the mypy command with configured flags."""
-        cmd = ["mypy", *source_dirs, "--ignore-missing-imports", "--no-strict-optional"]
+        cmd = [sys.executable, "-m", "mypy", *source_dirs, "--ignore-missing-imports", "--no-strict-optional"]
 
         if self._is_strict():
             cmd.extend(["--disallow-untyped-defs", "--disallow-any-generics"])
