@@ -33,7 +33,7 @@ git clone https://github.com/ScienceIsNeato/bucket-o-slop.git .
 
 # Install slop-mop from the mounted source
 cp -r /slopmop-src /tmp/slopmop-build
-pip install /tmp/slopmop-build --quiet
+pip install /tmp/slopmop-build
 
 # Pick a branch: main | all-fail | mixed
 git checkout main

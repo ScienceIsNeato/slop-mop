@@ -99,13 +99,13 @@ class RunResult:
 
     @property
     def install_succeeded(self) -> bool:
-        """False when pip install exited with the sentinel code 2."""
-        return self.exit_code != INSTALL_FAILED_EXIT
+        """True only when clone passed and pip install didn't fail."""
+        return self.clone_succeeded and self.exit_code != INSTALL_FAILED_EXIT
 
     @property
     def init_succeeded(self) -> bool:
-        """False when sm init exited with the sentinel code 4."""
-        return self.exit_code != INIT_FAILED_EXIT
+        """True only when install passed and sm init didn't fail."""
+        return self.install_succeeded and self.exit_code != INIT_FAILED_EXIT
 
     @property
     def validation_ran(self) -> bool:

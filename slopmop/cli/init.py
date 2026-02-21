@@ -254,7 +254,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     config_file = project_root / ".sb_config.json"
     setup_config_file = Path(args.config) if args.config else None
 
-    print("\n� Slop-Mop Interactive Setup")
+    print("\n🪣 Slop-Mop Interactive Setup")
     print("=" * 60)
     from slopmop.reporting import print_project_header
 

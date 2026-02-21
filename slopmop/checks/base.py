@@ -398,7 +398,7 @@ class BaseCheck(ABC):
         if command and cwd and not Path(command[0]).is_absolute():
             resolved = find_tool(command[0], cwd)
             if resolved:
-                command = [resolved] + command[1:]
+                command = [resolved, *command[1:]]
         return self._runner.run(command, cwd=cwd, timeout=timeout)
 
 

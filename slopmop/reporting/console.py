@@ -320,7 +320,7 @@ class ConsoleReporter:
             counts.append(f"⏭️  {self._format_skipped_line(skipped)}")
 
         print(
-            f"� SLOP DETECTED · {' · '.join(counts)}"
+            f"🪣 SLOP DETECTED · {' · '.join(counts)}"
             f"{format_duration_suffix(summary.total_duration)}"
         )
         print("─" * 60)

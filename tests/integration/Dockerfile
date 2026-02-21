@@ -11,11 +11,19 @@ FROM python:3.12-slim
 #
 # The bucket-o-slop fixture repo is cloned from GitHub at runtime — no
 # local checkout is required on the host machine.
+# Pin the NodeSource GPG key fingerprint and verify before trusting the repo.
+# This avoids piping an unverified remote script to bash.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g jscpd \
     && apt-get clean \

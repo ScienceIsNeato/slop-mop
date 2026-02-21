@@ -64,14 +64,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout bucket-o-slop fixture repo
-        uses: actions/checkout@v4
-        with:
-          repository: ScienceIsNeato/bucket-o-slop
-          path: bucket-o-slop
-          # All three branches are needed; fetch-depth 0 gets the full history
-          fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -88,8 +80,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Run integration tests
-        env:
-          BUCKET_O_SLOP_PATH: ${{ github.workspace }}/bucket-o-slop
         run: |
           pytest tests/integration/ -m integration -v --tb=short
 

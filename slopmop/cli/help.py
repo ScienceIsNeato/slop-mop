@@ -83,7 +83,7 @@ def _show_all_gates() -> int:
     """Show help for all gates."""
     registry = get_registry()
 
-    print("\n� Slop-Mop Quality Gates")
+    print("\n🪣 Slop-Mop Quality Gates")
     print("=" * 60)
     print()
 
