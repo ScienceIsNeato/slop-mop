@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.registry import CheckRegistry, get_registry
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, ScopeInfo
 
 logger = logging.getLogger(__name__)
 
@@ -504,6 +504,17 @@ class CheckExecutor:
         """
         logger.debug(f"Running {check.display_name}")
 
+        # Measure scope before running (lightweight file count)
+        scope: Optional[ScopeInfo] = None
+        measure_fn = getattr(check, "measure_scope", None)
+        if callable(measure_fn):
+            try:
+                scope_result = measure_fn(project_root)
+                if isinstance(scope_result, ScopeInfo):
+                    scope = scope_result
+            except Exception as e:
+                logger.debug(f"Scope measurement failed for {check.full_name}: {e}")
+
         # Try auto-fix first if enabled
         if auto_fix and check.can_auto_fix():
             try:
@@ -516,6 +527,9 @@ class CheckExecutor:
         # Run the check
         try:
             result = check.run(project_root)
+            # Attach scope metrics if the check reported them
+            if scope is not None and result.scope is None:
+                result.scope = scope
             return result
         except Exception as e:
             logger.error(f"Check {check.full_name} failed with exception: {e}")
@@ -524,6 +538,7 @@ class CheckExecutor:
                 status=CheckStatus.ERROR,
                 duration=0,
                 error=str(e),
+                scope=scope,
             )
 
 

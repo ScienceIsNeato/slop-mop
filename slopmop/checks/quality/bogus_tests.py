@@ -17,9 +17,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Set
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    count_source_scope,
+)
 from slopmop.checks.constants import skip_reason_no_test_files
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 
 # Pytest assertion helpers that count as "real" assertions
 ASSERTION_HELPERS: Set[str] = {
@@ -330,6 +336,13 @@ class BogusTestsCheck(BaseCheck):
         """Return skip reason when no test files exist to scan."""
         test_dirs = self.config.get("test_dirs", ["tests"])
         return skip_reason_no_test_files(test_dirs)
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Report scope as test files in configured test_dirs."""
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        return count_source_scope(
+            project_root, include_dirs=test_dirs, extensions={".py"}
+        )
 
     def run(self, project_root: str) -> CheckResult:
         """Scan test files for bogus test patterns."""

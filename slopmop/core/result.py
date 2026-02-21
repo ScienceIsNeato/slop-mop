@@ -6,7 +6,7 @@ to represent check definitions, statuses, and results.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, List, Optional, cast
+from typing import Callable, Dict, List, Optional, cast
 
 
 class CheckStatus(Enum):
@@ -24,6 +24,37 @@ class CheckStatus(Enum):
 
 
 @dataclass
+class ScopeInfo:
+    """Scope metrics for a quality gate check.
+
+    Tracks the number of files and lines of code examined by a check,
+    giving users visibility into what each gate actually scanned.
+
+    Attributes:
+        files: Number of source files examined
+        lines: Total lines of code across those files
+    """
+
+    files: int = 0
+    lines: int = 0
+
+    def __add__(self, other: "ScopeInfo") -> "ScopeInfo":
+        return ScopeInfo(self.files + other.files, self.lines + other.lines)
+
+    def format_compact(self) -> str:
+        """Format scope as a compact string like '47 files · 3.2k LOC'."""
+        parts: List[str] = []
+        if self.files > 0:
+            parts.append(f"{self.files} files")
+        if self.lines > 0:
+            if self.lines >= 10_000:
+                parts.append(f"{self.lines / 1000:.1f}k LOC")
+            else:
+                parts.append(f"{self.lines:,} LOC")
+        return " · ".join(parts)
+
+
+@dataclass
 class CheckResult:
     """Result of executing a quality gate check.
 
@@ -36,6 +67,7 @@ class CheckResult:
         fix_suggestion: Actionable suggestion for fixing failures
         auto_fixed: Whether issues were automatically fixed
         category: Category key for grouping (python, quality, security, etc.)
+        scope: Scope metrics (files/LOC examined), if available
     """
 
     name: str
@@ -46,6 +78,7 @@ class CheckResult:
     fix_suggestion: Optional[str] = None
     auto_fixed: bool = False
     category: Optional[str] = None
+    scope: Optional[ScopeInfo] = None
 
     @property
     def passed(self) -> bool:
@@ -126,6 +159,48 @@ class ExecutionSummary:
     def all_passed(self) -> bool:
         """Return True if all checks passed (no failures or errors)."""
         return self.failed == 0 and self.errors == 0
+
+    def scope_by_category(self) -> Dict[str, ScopeInfo]:
+        """Aggregate scope info by category, taking max per category.
+
+        When multiple checks in the same category report scope, we take
+        the maximum files/lines since they typically scan overlapping sets.
+
+        Returns:
+            Dict mapping category key to aggregated ScopeInfo
+        """
+        by_cat: Dict[str, ScopeInfo] = {}
+        for r in self.results:
+            if r.scope and r.category:
+                existing = by_cat.get(r.category)
+                if existing is None:
+                    by_cat[r.category] = ScopeInfo(
+                        files=r.scope.files, lines=r.scope.lines
+                    )
+                else:
+                    # Take the max — checks in same category scan overlapping files
+                    by_cat[r.category] = ScopeInfo(
+                        files=max(existing.files, r.scope.files),
+                        lines=max(existing.lines, r.scope.lines),
+                    )
+        return by_cat
+
+    def total_scope(self) -> Optional[ScopeInfo]:
+        """Get overall scope across all categories.
+
+        Takes the max files/lines across categories to avoid
+        double-counting overlapping scans.
+
+        Returns:
+            Aggregate ScopeInfo, or None if no checks reported scope
+        """
+        by_cat = self.scope_by_category()
+        if not by_cat:
+            return None
+        return ScopeInfo(
+            files=max(s.files for s in by_cat.values()),
+            lines=max(s.lines for s in by_cat.values()),
+        )
 
     @classmethod
     def from_results(

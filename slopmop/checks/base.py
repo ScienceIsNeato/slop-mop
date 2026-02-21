@@ -15,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,89 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
             return str(candidate)
 
     return shutil.which(name)
+
+
+# Standard directories to exclude from scope counting
+SCOPE_EXCLUDED_DIRS = {
+    "node_modules",
+    ".git",
+    "venv",
+    ".venv",
+    "__pycache__",
+    ".pytest_cache",
+    "dist",
+    "build",
+    ".tox",
+    "htmlcov",
+    "cursor-rules",
+    ".mypy_cache",
+    "logs",
+    ".slopmop",
+    ".egg-info",
+}
+
+
+def count_source_scope(
+    project_root: str,
+    include_dirs: Optional[List[str]] = None,
+    extensions: Optional[set[str]] = None,
+    exclude_dirs: Optional[set[str]] = None,
+) -> ScopeInfo:
+    """Count source files and lines in target directories.
+
+    Provides a fast, lightweight scan for scope metrics — no parsing,
+    just file counting and line counting.  Used by checks to report
+    how many files/LOC they examined.
+
+    Args:
+        project_root: Project root directory
+        include_dirs: Directories to scan (relative to root). Defaults to ["."]
+        extensions: File extensions to include (e.g. {".py"}). None = all source files
+        exclude_dirs: Additional directories to exclude (merged with SCOPE_EXCLUDED_DIRS)
+
+    Returns:
+        ScopeInfo with file and line counts
+    """
+    root = Path(project_root)
+    dirs = include_dirs or ["."]
+    excluded = SCOPE_EXCLUDED_DIRS | (exclude_dirs or set())
+
+    total_files = 0
+    total_lines = 0
+
+    for dir_name in dirs:
+        scan_path = root / dir_name
+        if not scan_path.exists():
+            continue
+
+        for file_path in scan_path.rglob("*"):
+            if not file_path.is_file():
+                continue
+
+            # Skip excluded directories
+            parts = set(file_path.relative_to(root).parts)
+            if parts & excluded:
+                continue
+
+            # Skip .egg-info directories (not exact match, contains pattern)
+            rel_str = str(file_path.relative_to(root))
+            if ".egg-info" in rel_str:
+                continue
+
+            # Filter by extension if specified
+            if extensions and file_path.suffix not in extensions:
+                continue
+
+            total_files += 1
+            try:
+                content = file_path.read_text(errors="replace")
+                total_lines += content.count("\n") + (
+                    1 if content and not content.endswith("\n") else 0
+                )
+            except (OSError, UnicodeDecodeError):
+                pass  # Skip unreadable files
+
+    return ScopeInfo(files=total_files, lines=total_lines)
 
 
 class Flaw(Enum):
@@ -569,6 +652,19 @@ class PythonCheckMixin:
         ):
             return "No Python project markers (setup.py, pyproject.toml, or requirements.txt)"
         return "Python check not applicable"
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Measure scope for Python checks — counts .py files and LOC.
+
+        Uses include_dirs from config if available, otherwise scans
+        the entire project root.
+        """
+        config = getattr(self, "config", {})
+        include_dirs = config.get("include_dirs") or config.get("src_dirs")
+        include_list = list(include_dirs) if include_dirs else None
+        return count_source_scope(
+            project_root, include_dirs=include_list, extensions={".py"}
+        )
 
 
 class JavaScriptCheckMixin:

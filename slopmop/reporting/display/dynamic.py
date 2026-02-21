@@ -11,7 +11,7 @@ import time
 from typing import Dict, List, Optional
 
 from slopmop.constants import STATUS_EMOJI
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 from slopmop.reporting.display import config
 from slopmop.reporting.display.colors import (
     category_header_color,
@@ -355,8 +355,14 @@ class DynamicDisplay:
                 1 for c in group_checks if c.state == DisplayState.COMPLETED
             )
             cat_total = len(group_checks)
+            cat_scope = self._aggregate_category_scope(group_checks)
+
             header = build_category_header(
-                category_label, cat_completed, cat_total, term_width
+                category_label,
+                cat_completed,
+                cat_total,
+                term_width,
+                scope=cat_scope,
             )
             # Colorize the entire header line
             hdr_color = category_header_color(category_key, self._colors_enabled)
@@ -397,6 +403,33 @@ class DynamicDisplay:
             lines.append(f"🔄 {running} running · ✓ {completed} done")
 
         return lines
+
+    @staticmethod
+    def _aggregate_category_scope(
+        group_checks: List[CheckDisplayInfo],
+    ) -> Optional[ScopeInfo]:
+        """Aggregate scope across completed checks in a category.
+
+        Uses max (not sum) because checks within the same category
+        typically scan overlapping file sets.
+
+        Args:
+            group_checks: Checks in this category
+
+        Returns:
+            Aggregated ScopeInfo, or None if no checks reported scope
+        """
+        scope: Optional[ScopeInfo] = None
+        for c in group_checks:
+            if c.state == DisplayState.COMPLETED and c.result and c.result.scope:
+                if scope is None:
+                    scope = c.result.scope
+                else:
+                    scope = ScopeInfo(
+                        files=max(scope.files, c.result.scope.files),
+                        lines=max(scope.lines, c.result.scope.lines),
+                    )
+        return scope
 
     def _group_checks_by_category(
         self,

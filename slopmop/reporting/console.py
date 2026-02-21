@@ -294,8 +294,10 @@ class ConsoleReporter:
             passed_label = f"{summary.passed} checks passed"
             if warned:
                 passed_label += f", {len(warned)} warned"
+            scope = summary.total_scope()
+            scope_suffix = f" · {scope.format_compact()}" if scope else ""
             print(
-                f"✨ NO SLOP DETECTED · {passed_label}"
+                f"✨ NO SLOP DETECTED · {passed_label}{scope_suffix}"
                 f" in {summary.total_duration:.1f}s"
             )
             print("═" * 60)
@@ -319,8 +321,10 @@ class ConsoleReporter:
         if skipped:
             counts.append(f"⏭️  {self._format_skipped_line(skipped)}")
 
+        scope = summary.total_scope()
+        scope_suffix = f" · {scope.format_compact()}" if scope else ""
         print(
-            f"🪣 SLOP DETECTED · {' · '.join(counts)}"
+            f"🪣 SLOP DETECTED · {' · '.join(counts)}{scope_suffix}"
             f"{format_duration_suffix(summary.total_duration)}"
         )
         print("─" * 60)

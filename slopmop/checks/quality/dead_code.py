@@ -11,10 +11,17 @@ universal concern regardless of project type.
 import os
 import re
 import time
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, find_tool
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    count_source_scope,
+    find_tool,
+)
+from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 
 DEFAULT_MIN_CONFIDENCE = 80
 MAX_FINDINGS_TO_SHOW = 15
@@ -117,6 +124,13 @@ class DeadCodeCheck(BaseCheck):
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping - no Python source files."""
         return "No Python files found to scan for dead code"
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Report scope as Python files in configured src_dirs."""
+        src_dirs = self.config.get("src_dirs", ["."])
+        return count_source_scope(
+            project_root, include_dirs=src_dirs, extensions={".py"}
+        )
 
     def _get_min_confidence(self) -> int:
         """Get configured minimum confidence threshold."""
