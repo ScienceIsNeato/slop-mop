@@ -280,16 +280,46 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 return SecuritySubResult("semgrep", False, result.stderr[-300:])
             return SecuritySubResult("semgrep", True, "Scan completed")
 
+    @staticmethod
+    def _only_timestamp_changed(old: str, new: str) -> bool:
+        """Return True if the only difference is the generated_at value."""
+        old_lines = old.splitlines()
+        new_lines = new.splitlines()
+        if len(old_lines) != len(new_lines):
+            return False
+        diffs = [
+            (a, b) for a, b in zip(old_lines, new_lines) if a != b
+        ]
+        if len(diffs) != 1:
+            return False
+        old_line, new_line = diffs[0]
+        return '"generated_at"' in old_line and '"generated_at"' in new_line
+
     def _run_detect_secrets(self, project_root: str) -> SecuritySubResult:
         """Run detect-secrets hook."""
         # Check for baseline file
         config_file = self.config.get("config_file_path")
 
         cmd = [self.get_project_python(project_root), "-m", "detect_secrets", "scan"]
+
+        # detect-secrets scan --baseline MUTATES the file in-place (updates
+        # generated_at timestamp) even when no secrets change.  Save the
+        # original content so we can restore it if only the timestamp changed.
+        baseline_path = None
+        original_content = None
         if config_file:
             cmd.extend(["--baseline", config_file])
+            baseline_path = Path(project_root) / config_file
+            if baseline_path.exists():
+                original_content = baseline_path.read_text()
 
         result = self._run_command(cmd, cwd=project_root, timeout=60)
+
+        # Restore baseline if only the generated_at timestamp changed
+        if original_content is not None and baseline_path is not None and baseline_path.exists():
+            new_content = baseline_path.read_text()
+            if self._only_timestamp_changed(original_content, new_content):
+                baseline_path.write_text(original_content)
 
         if result.success:
             try:
