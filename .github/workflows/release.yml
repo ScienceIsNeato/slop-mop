@@ -1,0 +1,136 @@
+# Publish to PyPI when a version tag is pushed.
+#
+# Workflow:
+#   1. Push a tag:  git tag v0.1.0 && git push origin v0.1.0
+#   2. This workflow builds the package and uploads to PyPI
+#   3. A GitHub Release is created with auto-generated notes
+#
+# Prerequisites (one-time setup):
+#   - Create a PyPI account at https://pypi.org/account/register/
+#   - Go to https://pypi.org/manage/account/publishing/
+#   - Add a "pending publisher":
+#       Owner:      ScienceIsNeato
+#       Repository: slop-mop
+#       Workflow:   release.yml
+#       Environment: pypi
+#   - (Optional) Do the same on https://test.pypi.org for staging
+
+name: Release to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"  # Trigger on version tags: v0.1.0, v1.0.0, etc.
+
+# Cancel any in-progress release for the same tag
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Gate: make sure the code is healthy before publishing ──
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tools/find-duplicate-strings/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build string-duplication tool
+        run: |
+          cd tools/find-duplicate-strings
+          npm install
+          npx tsc
+
+      - name: Run slop-mop on itself
+        run: python -m slopmop.sm validate --self
+
+  # ── Build the distribution artifacts ──
+  build:
+    name: Build Package
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Verify package version matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"  # strip leading 'v'
+          PKG_VERSION=$(python -c "import slopmop; print(slopmop.__version__)")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "❌ Tag version ($TAG_VERSION) does not match package version ($PKG_VERSION)"
+            echo "   Update slopmop/__init__.py to match the tag, then re-tag."
+            exit 1
+          fi
+          echo "✅ Version match: $TAG_VERSION"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ── Publish to PyPI via Trusted Publishing ──
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi  # Must match the environment configured in PyPI trusted publishing
+    permissions:
+      id-token: write  # Required for Trusted Publishing (OIDC)
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── Create a GitHub Release ──
+  github-release:
+    name: GitHub Release
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
