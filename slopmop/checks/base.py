@@ -6,6 +6,7 @@ existing code.
 """
 
 import logging
+import os
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -21,12 +22,18 @@ logger = logging.getLogger(__name__)
 
 
 def find_tool(name: str, project_root: str) -> Optional[str]:
-    """Find a tool executable, checking the project venv first.
+    """Find a tool executable, preferring the project's own environment.
 
-    VS Code git hooks and other non-interactive contexts don't activate
-    the venv, so tools installed there (vulture, pyright, etc.) aren't
-    on $PATH. This checks venv/bin/<name> before falling back to
-    shutil.which().
+    Resolution order:
+    1. project_root/venv/bin/<name>  — local venv (highest priority)
+    2. project_root/.venv/bin/<name> — local .venv
+    3. $VIRTUAL_ENV/bin/<name>       — currently-activated venv
+    4. shutil.which(<name>)          — system PATH (e.g. pipx-installed sm)
+
+    When sm is installed via pipx, step 4 finds pipx's bundled tools.
+    Steps 1-3 ensure the project's own tools are preferred, which matters
+    for tools like pytest (plugins), bandit, or semgrep where version
+    differences or missing plugins can affect results.
 
     Args:
         name: Executable name (e.g. "vulture", "pyright").
@@ -42,6 +49,17 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
             return str(candidate)
         # Windows
         candidate = root / venv_dir / "Scripts" / f"{name}.exe"
+        if candidate.exists():
+            return str(candidate)
+
+    # Check the currently activated venv (e.g. user ran `source venv/bin/activate`
+    # but the venv lives outside project_root, or sm is invoked via pipx)
+    virtual_env = os.environ.get("VIRTUAL_ENV")
+    if virtual_env:
+        candidate = Path(virtual_env) / "bin" / name
+        if candidate.exists():
+            return str(candidate)
+        candidate = Path(virtual_env) / "Scripts" / f"{name}.exe"
         if candidate.exists():
             return str(candidate)
 
@@ -362,14 +380,25 @@ class BaseCheck(ABC):
     ) -> SubprocessResult:
         """Run a command using the subprocess runner.
 
+        When the first element is a bare executable name (not an absolute
+        path), it is resolved via find_tool() using cwd as the project root.
+        This ensures the project's own tools (from its venv) take priority
+        over sm's own bundled dependencies — critical when sm is installed
+        via pipx, where bundled pytest won't have framework-specific plugins
+        (pytest-django, pytest-asyncio, etc.) that the project relies on.
+
         Args:
             command: Command to run
-            cwd: Working directory
+            cwd: Working directory (also used as project root for tool lookup)
             timeout: Timeout in seconds
 
         Returns:
             SubprocessResult
         """
+        if command and cwd and not Path(command[0]).is_absolute():
+            resolved = find_tool(command[0], cwd)
+            if resolved:
+                command = [resolved] + command[1:]
         return self._runner.run(command, cwd=cwd, timeout=timeout)
 
 

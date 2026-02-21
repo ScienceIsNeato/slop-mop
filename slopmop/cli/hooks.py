@@ -129,7 +129,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
                 found_other_hooks.append(hook_type)
 
     if found_sb_hooks:
-        print("🧹 Slop-Mop-managed hooks:")
+        print("� Slop-Mop-managed hooks:")
         for hook_type, info in found_sb_hooks:
             print(f"   ✅ {hook_type}: profile={info['profile']}")
         print()

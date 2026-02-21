@@ -120,7 +120,7 @@ def _print_failed_status(
     completed: List[Any], in_progress: List[Any], failed: List[Any]
 ) -> None:
     """Print status when there are failures."""
-    print("🧹 SLOP IN CI")
+    print("� SLOP IN CI")
     print()
     print(
         f"   ✅ {len(completed)} passed · ❌ {len(failed)} failed · 🔄 {len(in_progress)} pending"
@@ -177,7 +177,7 @@ def cmd_ci(args: argparse.Namespace) -> int:
 
     # Print header
     print()
-    print("🧹 ./sm ci - CI Status Check")
+    print("� ./sm ci - CI Status Check")
     print("=" * 60)
     from slopmop.reporting import print_project_header
 

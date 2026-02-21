@@ -365,7 +365,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="./sm",
         description="""
-🧹 sm - Slop-Mop Quality Gate Framework
+� sm - Slop-Mop Quality Gate Framework
 
 A language-agnostic, bolt-on code validation tool designed to catch AI-generated
 slop before it lands in your codebase. Provides fast, actionable feedback for

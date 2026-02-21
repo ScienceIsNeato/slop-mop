@@ -214,6 +214,16 @@ class _TestAnalyzer(ast.NodeVisitor):
                 ):
                     return True
 
+                # Custom assertion helpers: any function/method whose name
+                # contains "assert" (e.g., _assert_gate_failed, assert_valid,
+                # result.assert_prerequisites).  This covers the common
+                # pattern of factoring assertion logic into helper functions.
+                if call_name:
+                    # Get the final component (method/function name)
+                    leaf = call_name.rsplit(".", 1)[-1]
+                    if "assert" in leaf.lower():
+                        return True
+
             # pytest.raises used as context manager
             if isinstance(child, ast.With):
                 for item in child.items:

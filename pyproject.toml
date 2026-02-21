@@ -53,9 +53,8 @@ dependencies = [
     "jinja2>=3.0.0",
 ]
 
-# NOTE: No [project.scripts] section. slop-mop is designed to run directly
-# from the submodule via `python -m slopmop.sm`, NOT installed as a global
-# pip package. Each project uses its own copy via git submodule. See README.
+[project.scripts]
+sm = "slopmop.sm:main"
 
 [project.urls]
 Homepage = "https://github.com/ScienceIsNeato/slop-mop"
@@ -82,10 +81,13 @@ no_strict_optional = true
 exclude = ["venv", "build", "dist"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: marks tests as integration tests (require Docker + bucket-o-slop repo)",
+]
 
 [tool.coverage.run]
 source = ["slopmop"]

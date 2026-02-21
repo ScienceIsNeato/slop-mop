@@ -1,6 +1,6 @@
 """Tests for base check module."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -102,15 +102,22 @@ class TestBaseCheck:
         assert result.fix_suggestion == "Fix it"
 
     def test_run_command(self, tmp_path):
-        """Test _run_command helper."""
+        """Test _run_command helper.
+
+        find_tool() is mocked to return a predictable resolved path so the
+        assertion is stable across environments regardless of which python / echo
+        is on PATH.
+        """
         mock_runner = MagicMock()
         mock_runner.run.return_value = MagicMock(returncode=0)
         check = ConcreteCheck({}, runner=mock_runner)
 
-        check._run_command(["echo", "test"], cwd=str(tmp_path))
+        resolved_echo = "/usr/bin/echo"
+        with patch("slopmop.checks.base.find_tool", return_value=resolved_echo):
+            check._run_command(["echo", "test"], cwd=str(tmp_path))
 
         mock_runner.run.assert_called_once_with(
-            ["echo", "test"],
+            [resolved_echo, "test"],
             cwd=str(tmp_path),
             timeout=None,
         )
