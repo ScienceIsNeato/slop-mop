@@ -1,4 +1,4 @@
-# 🧹 Slop-Mop
+# 🪣 Slop-Mop
 
 <a href="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml"><img src="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml/badge.svg" alt="Slop-Mop CI"/></a> <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Attribution-blue.svg" alt="License: Attribution"/></a> <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"/></a>
 
@@ -16,15 +16,16 @@ LLMs optimize for task completion, not codebase health. Left unchecked, they car
 ## Quick Start
 
 ```bash
-git submodule add https://github.com/ScienceIsNeato/slop-mop.git
-./slop-mop/scripts/setup.sh   # Creates venv, installs tools, adds ./sm
-./sm init                     # Auto-detects project, writes config
-./sm validate commit          # Run quality gates
+# Install once per machine
+pipx install slopmop        # recommended — isolated, no dep conflicts
+# or: pip install slopmop
+
+# Per-project setup (run in your repo root)
+sm init                     # auto-detects project type, writes .sb_config.json
+sm validate commit          # run quality gates
 ```
 
-> **Why no `pip install`?** Each project gets its own slop-mop copy via git submodule. No global state, no cross-project contamination, no mystery version mismatches. See [Architecture](#architecture) for details.
-
-Auto-detects your project type and enables relevant gates. See [`./sm init`](#setup-sm-init) for details and [`./sm config`](#configuration-sm-config) for customization.
+Auto-detects your project type and enables relevant gates. See [`sm init`](#setup-sm-init) for details and [`sm config`](#configuration-sm-config) for customization.
 
 ---
 
@@ -33,7 +34,7 @@ Auto-detects your project type and enables relevant gates. See [`./sm init`](#se
 Run a profile, fix what fails, repeat:
 
 ```bash
-./sm validate commit
+sm validate commit
 ```
 
 When a gate fails, the output tells you exactly what to do next:
@@ -48,14 +49,14 @@ When a gate fails, the output tells you exactly what to do next:
 │ NEXT STEPS:                                              │
 │                                                          │
 │ 1. Fix the issue described above                         │
-│ 2. Validate: ./sm validate python-coverage --verbose     │
-│ 3. Resume:   ./sm validate commit                        │
+│ 2. Validate: sm validate python-coverage --verbose       │
+│ 3. Resume:   sm validate commit                          │
 │                                                          │
 │ Keep iterating until all the slop is mopped.             │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Iterate until all gates pass, then commit. Use `./sm status` for a full report card.
+Iterate until all gates pass, then commit. Use `sm status` for a full report card.
 
 ---
 
@@ -111,11 +112,11 @@ JS gates auto-skip when no JavaScript is detected.
 
 ---
 
-## Setup: `./sm init`
+## Setup: `sm init`
 
 ```bash
-./sm init                    # Interactive setup
-./sm init --non-interactive  # Auto-detect, use defaults
+sm init                    # Interactive setup
+sm init --non-interactive  # Auto-detect, use defaults
 ```
 
 Scans your repo, detects languages and test frameworks, writes `.sb_config.json`. Re-run to start fresh (backs up existing config first).
@@ -123,27 +124,27 @@ Scans your repo, detects languages and test frameworks, writes `.sb_config.json`
 Start with what passes, disable the rest, ramp up over time:
 
 ```bash
-./sm config --disable python:coverage   # Not ready yet
-./sm validate commit                    # Get everything else green first
-./sm config --enable python:coverage    # Enable later
+sm config --disable python:coverage   # Not ready yet
+sm validate commit                    # Get everything else green first
+sm config --enable python:coverage    # Enable later
 ```
 
 ---
 
-## Configuration: `./sm config`
+## Configuration: `sm config`
 
 ```bash
-./sm config --show              # Show all gates and their status
-./sm config --enable <gate>     # Enable a disabled gate
-./sm config --disable <gate>    # Disable a gate
-./sm config --json <file>       # Update config from a JSON file
+sm config --show              # Show all gates and their status
+sm config --enable <gate>     # Enable a disabled gate
+sm config --disable <gate>    # Disable a gate
+sm config --json <file>       # Update config from a JSON file
 ```
 
 ### Include / Exclude Directories
 
 ```bash
-./sm config --exclude-dir quality:generated    # Skip generated code
-./sm config --include-dir python:src           # Only check src/
+sm config --exclude-dir quality:generated    # Skip generated code
+sm config --include-dir python:src           # Only check src/
 ```
 
 - `include_dirs`: whitelist — only these dirs are scanned
@@ -169,19 +170,19 @@ Edit `.sb_config.json` directly for per-gate configuration:
 
 ---
 
-## Git Hooks: `./sm commit-hooks`
+## Git Hooks: `sm commit-hooks`
 
 ```bash
-./sm commit-hooks install commit    # Install pre-commit hook
-./sm commit-hooks status            # Show installed hooks
-./sm commit-hooks uninstall         # Remove slop-mop hooks
+sm commit-hooks install commit    # Install pre-commit hook
+sm commit-hooks status            # Show installed hooks
+sm commit-hooks uninstall         # Remove slop-mop hooks
 ```
 
 Once installed, gates run automatically before every `git commit`. Failed gates block the commit.
 
 ---
 
-## CI Integration: `./sm ci`
+## CI Integration: `sm ci`
 
 Example GitHub Actions workflow:
 
@@ -200,48 +201,48 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -r slop-mop/requirements.txt
-      - run: python -m slopmop.sm validate commit
-        env:
-          PYTHONPATH: slop-mop
+      - run: pip install slopmop
+      - run: sm validate commit
       - if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          PYTHONPATH: slop-mop
-        run: python -m slopmop.sm validate pr:comments
+        run: sm validate pr:comments
 ```
 
 Check CI status locally:
 
 ```bash
-./sm ci               # Current PR
-./sm ci 42             # Specific PR
-./sm ci --watch        # Poll until CI completes
+sm ci               # Current PR
+sm ci 42             # Specific PR
+sm ci --watch        # Poll until CI completes
 ```
 
-The `pr:comments` gate checks for unresolved PR review threads. Use `./sm validate pr` locally to see what's outstanding, fix or resolve each thread, then re-run until clear.
+The `pr:comments` gate checks for unresolved PR review threads. Use `sm validate pr` locally to see what's outstanding, fix or resolve each thread, then re-run until clear.
 
 ---
 
 ## Architecture
 
-Slop-mop runs directly from the git submodule — **not** via `pip install`. This is intentional:
+Slop-mop installs as a normal package (`pipx install slopmop` or `pip install slopmop`) and is configured per-project via `.sb_config.json`. The `sm` command is on your PATH once and works in any repo.
 
-- **No global state**: Each project gets its own copy. Changes in one project don’t affect others.
-- **No version drift**: The version is pinned by the submodule ref, not by pip metadata.
-- **No entry point conflicts**: No `sm` command in PATH competing across projects.
-- **Deterministic**: `python -m slopmop.sm` from the submodule always runs *this* project’s version.
+**Tool resolution order**: When sm runs a check, it looks for the required tool in this order:
+1. `<project_root>/venv/bin/<tool>` or `.venv/bin/<tool>` — project-local venv (highest priority)
+2. `$VIRTUAL_ENV/bin/<tool>` — currently activated venv
+3. System PATH — where sm's own bundled tools live when installed via pipx
+
+This means if your project has its own `pytest` (with project-specific plugins like `pytest-django`), sm will use it. If it doesn't, sm falls back to its own.
+
+**Version pinning**: If you need strict version pinning, the git submodule approach still works. Add `slop-mop` as a submodule and invoke `python -m slopmop.sm` from it directly. The submodule model is supported but no longer recommended for most projects.
 
 ## Development
 
 ```bash
 # Working on slop-mop itself
-pip install -r requirements.txt
-python -m slopmop.sm validate --self
+pip install -e .
+sm validate --self
 pytest
 ```
 

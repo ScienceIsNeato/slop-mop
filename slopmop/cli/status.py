@@ -164,7 +164,7 @@ def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
 
     if failing:
         print()
-        print("🧹 REMEDIATION NEEDED")
+        print("🪣 REMEDIATION NEEDED")
         print("─" * 60)
 
         for r in failing:
@@ -227,7 +227,7 @@ def _print_verdict(summary: ExecutionSummary) -> None:
     else:
         passed_count = len([r for r in ran if r.status == CheckStatus.PASSED])
         print(
-            f"🧹 {passed_count}/{len(ran)} gates passing, "
+            f"🪣 {passed_count}/{len(ran)} gates passing, "
             f"{len(failing)} failing"
             f"{warn_suffix}"
             f"{format_duration_suffix(summary.total_duration)}"
@@ -438,7 +438,7 @@ def run_status(
     # Print header before starting the animation thread to avoid
     # blank newlines being interleaved with header output (mirrors validate.py)
     if not quiet:
-        print("🧹 slop-mop · sweeping your code clean")
+        print("🪣 slop-mop · sweeping your code clean")
         print()
 
     if use_dynamic:

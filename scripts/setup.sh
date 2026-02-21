@@ -21,7 +21,7 @@ SLOP_MOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$SLOP_MOP_DIR/.." && pwd)"
 
 echo ""
-echo "🧹 Slop-Mop Setup"
+echo "🪣 Slop-Mop Setup"
 echo "============================================================"
 echo "📂 Project root:  $PROJECT_ROOT"
 echo "📂 Slop-mop dir:  $SLOP_MOP_DIR"

@@ -6,6 +6,7 @@ existing code.
 """
 
 import logging
+import os
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -14,19 +15,25 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
 
 
 def find_tool(name: str, project_root: str) -> Optional[str]:
-    """Find a tool executable, checking the project venv first.
+    """Find a tool executable, preferring the project's own environment.
 
-    VS Code git hooks and other non-interactive contexts don't activate
-    the venv, so tools installed there (vulture, pyright, etc.) aren't
-    on $PATH. This checks venv/bin/<name> before falling back to
-    shutil.which().
+    Resolution order:
+    1. project_root/venv/bin/<name>  — local venv (highest priority)
+    2. project_root/.venv/bin/<name> — local .venv
+    3. $VIRTUAL_ENV/bin/<name>       — currently-activated venv
+    4. shutil.which(<name>)          — system PATH (e.g. pipx-installed sm)
+
+    When sm is installed via pipx, step 4 finds pipx's bundled tools.
+    Steps 1-3 ensure the project's own tools are preferred, which matters
+    for tools like pytest (plugins), bandit, or semgrep where version
+    differences or missing plugins can affect results.
 
     Args:
         name: Executable name (e.g. "vulture", "pyright").
@@ -45,7 +52,101 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
         if candidate.exists():
             return str(candidate)
 
+    # Check the currently activated venv (e.g. user ran `source venv/bin/activate`
+    # but the venv lives outside project_root, or sm is invoked via pipx)
+    virtual_env = os.environ.get("VIRTUAL_ENV")
+    if virtual_env:
+        candidate = Path(virtual_env) / "bin" / name
+        if candidate.exists():
+            return str(candidate)
+        candidate = Path(virtual_env) / "Scripts" / f"{name}.exe"
+        if candidate.exists():
+            return str(candidate)
+
     return shutil.which(name)
+
+
+# Standard directories to exclude from scope counting
+SCOPE_EXCLUDED_DIRS = {
+    "node_modules",
+    ".git",
+    "venv",
+    ".venv",
+    "__pycache__",
+    ".pytest_cache",
+    "dist",
+    "build",
+    ".tox",
+    "htmlcov",
+    "cursor-rules",
+    ".mypy_cache",
+    "logs",
+    ".slopmop",
+    ".egg-info",
+}
+
+
+def count_source_scope(
+    project_root: str,
+    include_dirs: Optional[List[str]] = None,
+    extensions: Optional[set[str]] = None,
+    exclude_dirs: Optional[set[str]] = None,
+) -> ScopeInfo:
+    """Count source files and lines in target directories.
+
+    Provides a fast, lightweight scan for scope metrics — no parsing,
+    just file counting and line counting.  Used by checks to report
+    how many files/LOC they examined.
+
+    Args:
+        project_root: Project root directory
+        include_dirs: Directories to scan (relative to root). Defaults to ["."]
+        extensions: File extensions to include (e.g. {".py"}). None = all source files
+        exclude_dirs: Additional directories to exclude (merged with SCOPE_EXCLUDED_DIRS)
+
+    Returns:
+        ScopeInfo with file and line counts
+    """
+    root = Path(project_root)
+    dirs = include_dirs or ["."]
+    excluded = SCOPE_EXCLUDED_DIRS | (exclude_dirs or set())
+
+    total_files = 0
+    total_lines = 0
+
+    for dir_name in dirs:
+        scan_path = root / dir_name
+        if not scan_path.exists():
+            continue
+
+        for file_path in scan_path.rglob("*"):
+            if not file_path.is_file():
+                continue
+
+            # Skip excluded directories
+            parts = set(file_path.relative_to(root).parts)
+            if parts & excluded:
+                continue
+
+            # Skip .egg-info directories (not exact match, contains pattern)
+            rel_str = str(file_path.relative_to(root))
+            if ".egg-info" in rel_str:
+                continue
+
+            # Filter by extension if specified
+            if extensions and file_path.suffix not in extensions:
+                continue
+
+            total_files += 1
+            try:
+                content = file_path.read_text(errors="replace")
+                total_lines += content.count("\n") + (
+                    1 if content and not content.endswith("\n") else 0
+                )
+            except (OSError, UnicodeDecodeError):
+                pass  # Skip unreadable files
+
+    return ScopeInfo(files=total_files, lines=total_lines)
 
 
 class Flaw(Enum):
@@ -362,14 +463,25 @@ class BaseCheck(ABC):
     ) -> SubprocessResult:
         """Run a command using the subprocess runner.
 
+        When the first element is a bare executable name (not an absolute
+        path), it is resolved via find_tool() using cwd as the project root.
+        This ensures the project's own tools (from its venv) take priority
+        over sm's own bundled dependencies — critical when sm is installed
+        via pipx, where bundled pytest won't have framework-specific plugins
+        (pytest-django, pytest-asyncio, etc.) that the project relies on.
+
         Args:
             command: Command to run
-            cwd: Working directory
+            cwd: Working directory (also used as project root for tool lookup)
             timeout: Timeout in seconds
 
         Returns:
             SubprocessResult
         """
+        if command and cwd and not Path(command[0]).is_absolute():
+            resolved = find_tool(command[0], cwd)
+            if resolved:
+                command = [resolved, *command[1:]]
         return self._runner.run(command, cwd=cwd, timeout=timeout)
 
 
@@ -540,6 +652,19 @@ class PythonCheckMixin:
         ):
             return "No Python project markers (setup.py, pyproject.toml, or requirements.txt)"
         return "Python check not applicable"
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Measure scope for Python checks — counts .py files and LOC.
+
+        Uses include_dirs from config if available, otherwise scans
+        the entire project root.
+        """
+        config = getattr(self, "config", {})
+        include_dirs = config.get("include_dirs") or config.get("src_dirs")
+        include_list = list(include_dirs) if include_dirs else None
+        return count_source_scope(
+            project_root, include_dirs=include_list, extensions={".py"}
+        )
 
 
 class JavaScriptCheckMixin:

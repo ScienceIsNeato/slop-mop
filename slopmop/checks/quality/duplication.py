@@ -130,7 +130,7 @@ class SourceDuplicationCheck(BaseCheck):
             return "No Python or JavaScript/TypeScript source files found"
         return "Duplication check not applicable"
 
-    # Default directories to ignore
+    # Default directories/files to ignore (build artifacts, caches, vendored)
     _DEFAULT_IGNORES = [
         "node_modules",
         "dist",
@@ -140,6 +140,7 @@ class SourceDuplicationCheck(BaseCheck):
         ".venv",
         "venv",
         "coverage",
+        "coverage.xml",  # pytest-cov build artifact
         ".mypy_cache",
         ".pytest_cache",
         ".tox",

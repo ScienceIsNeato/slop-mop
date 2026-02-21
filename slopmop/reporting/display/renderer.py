@@ -8,6 +8,7 @@ import shutil
 import unicodedata
 from typing import List, Optional
 
+from slopmop.core.result import ScopeInfo
 from slopmop.reporting.display import config
 
 # Regex to match ANSI escape sequences (colors, cursor movement, etc.)
@@ -357,16 +358,19 @@ def build_category_header(
     completed: int,
     total: int,
     term_width: Optional[int] = None,
+    scope: Optional[ScopeInfo] = None,
 ) -> str:
     """Build a minimal category header line.
 
     Produces a line like: ── Python [3/6] ──────────────────
+    Or with scope:        ── Python [3/6] · 23 files · 1.2k LOC ──
 
     Args:
         label: Category display label (e.g. "🐍 Python")
         completed: Completed checks in this category
         total: Total checks in this category
         term_width: Terminal width (auto-detected if None)
+        scope: Optional scope metrics for files/LOC scanned
 
     Returns:
         Formatted header line
@@ -376,7 +380,8 @@ def build_category_header(
 
     dash = config.HEADER_DASH
     progress = f"[{completed}/{total}]"
-    inner = f" {label} {progress} "
+    scope_suffix = f" · {scope.format_compact()}" if scope else ""
+    inner = f" {label} {progress}{scope_suffix} "
 
     # Calculate remaining dashes to fill the line
     inner_width = display_width(inner)

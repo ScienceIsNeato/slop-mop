@@ -11,10 +11,16 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import List, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    count_source_scope,
+)
+from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +188,18 @@ class LocLockCheck(BaseCheck):
         if config_exts:
             return {ext if ext.startswith(".") else f".{ext}" for ext in config_exts}
         return SOURCE_EXTENSIONS
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Report scope using all source extensions (not just .py)."""
+        include_dirs = self.config.get("include_dirs", ["."])
+        extensions = self._get_extensions()
+        config_excludes = set(self.config.get("exclude_dirs", []))
+        return count_source_scope(
+            project_root,
+            include_dirs=include_dirs,
+            extensions=extensions,
+            exclude_dirs=config_excludes,
+        )
 
     def run(self, project_root: str) -> CheckResult:
         """Run LOC enforcement check."""
