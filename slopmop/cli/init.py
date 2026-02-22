@@ -160,8 +160,7 @@ def _disable_non_applicable(
     py_only_gates = {
         "bogus-tests",
         "complexity",
-        "security-scan",
-        "security-audit",
+        "dead-code",
         "template-syntax",
     }
 

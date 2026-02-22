@@ -14,6 +14,7 @@ from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 from slopmop.reporting.display import config
 from slopmop.reporting.display.colors import (
+    Color,
     category_header_color,
     reset_color,
     status_color,
@@ -374,7 +375,11 @@ class DynamicDisplay:
             # Sort within group: completed by order, then running, then pending
             group_checks.sort(
                 key=lambda c: (
-                    0 if c.state == DisplayState.COMPLETED else 1,
+                    (
+                        0
+                        if c.state == DisplayState.COMPLETED
+                        else 1 if c.state == DisplayState.RUNNING else 2
+                    ),
                     c.completion_order if c.state == DisplayState.COMPLETED else 0,
                     0 if c.expected_duration is not None else 1,
                     -(c.expected_duration or 0),
@@ -597,7 +602,7 @@ class DynamicDisplay:
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
 
         # Dim the text when colors are available
-        dim = "\033[2m" if self._colors_enabled else ""
+        dim = Color.DIM.value if self._colors_enabled else ""
         rc = reset_color(self._colors_enabled)
 
         left = f"{config.CHECK_INDENT}{dim}{indicator} {padded_name}: waiting{rc}"
