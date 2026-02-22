@@ -1,3 +1,3 @@
 """Slop-Mop: Quality gates for AI-assisted codebases."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
