@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from slopmop import __version__
 from slopmop.constants import PROJECT_ROOT_HELP
 
 logger = logging.getLogger(__name__)
@@ -408,7 +409,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 1.0.0",
+        version=f"%(prog)s {__version__}",
     )
 
     return parser

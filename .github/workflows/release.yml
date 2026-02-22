@@ -83,10 +83,19 @@ jobs:
       - name: Verify package version matches tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"  # strip leading 'v'
-          PKG_VERSION=$(python -c "import slopmop; print(slopmop.__version__)")
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "❌ Tag version ($TAG_VERSION) does not match package version ($PKG_VERSION)"
-            echo "   Update slopmop/__init__.py to match the tag, then re-tag."
+          INIT_VERSION=$(python -c "import slopmop; print(slopmop.__version__)")
+          TOML_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          FAIL=0
+          if [ "$INIT_VERSION" != "$TOML_VERSION" ]; then
+            echo "❌ __init__.py ($INIT_VERSION) and pyproject.toml ($TOML_VERSION) disagree"
+            FAIL=1
+          fi
+          if [ "$TAG_VERSION" != "$TOML_VERSION" ]; then
+            echo "❌ Tag ($TAG_VERSION) does not match pyproject.toml ($TOML_VERSION)"
+            FAIL=1
+          fi
+          if [ $FAIL -ne 0 ]; then
+            echo "   Update both slopmop/__init__.py and pyproject.toml to match the tag."
             exit 1
           fi
           echo "✅ Version match: $TAG_VERSION"
@@ -127,10 +136,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
+          gh release create "$TAG" dist/* \
+            --title "$TAG" \
             --generate-notes
