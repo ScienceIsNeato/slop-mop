@@ -1,29 +1,37 @@
 # Slop-Mop Dependencies
-# This is the single source of truth for tool dependencies.
-# Install via: pip install -r requirements.txt (in your project venv)
+#
+# ⚠️  pyproject.toml is the SINGLE SOURCE OF TRUTH for dependencies.
+# This file exists as a fallback for setup.sh if editable install fails,
+# and as a human-readable summary. Keep it in sync with pyproject.toml.
+#
+# Install via: pip install -e .  (preferred)
+#         or:  pip install -r requirements.txt  (fallback)
+
+# Tools slop-mop checks rely on
+vulture>=2.14
+ruff>=0.1.0
 
 # Testing
 pytest>=7.0.0
 pytest-cov>=4.0.0
 diff-cover>=7.0.0
-jinja2>=3.0.0  # For template validation tests
 
 # Linting and formatting
-black>=23.0.0
+black>=25.11.0
 isort>=5.12.0
 autoflake>=2.0.0
 flake8>=6.0.0
 
 # Type checking
-mypy>=1.0.0
+mypy>=1.17.0
 pyright>=1.1.0
 
 # Security scanning
 bandit>=1.7.0
 detect-secrets>=1.4.0
-semgrep>=1.0.0
+semgrep>=1.140.0
 pip-audit>=2.0.0
-cryptography>=46.0.5  # CVE GHSA-r6ph-v2qm-q3c2 fixed in 46.0.5
+cryptography>=46.0.5  # CVE GHSA-r6ph-v2qm-q3c2
 
-# Quality analysis
-vulture>=2.14
+# Templating
+jinja2>=3.0.0

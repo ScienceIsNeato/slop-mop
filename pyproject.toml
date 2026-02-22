@@ -49,6 +49,7 @@ dependencies = [
     "detect-secrets>=1.4.0",
     "semgrep>=1.140.0",
     "pip-audit>=2.0.0",
+    "cryptography>=46.0.5",  # CVE GHSA-r6ph-v2qm-q3c2
     # Templating
     "jinja2>=3.0.0",
 ]
