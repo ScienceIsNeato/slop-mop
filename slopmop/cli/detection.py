@@ -126,17 +126,21 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     recommended: list[str] = []
     if detected["has_python"]:
         recommended.extend(
-            ["python-lint-format", "python-tests", "python-static-analysis"]
+            [
+                "laziness:py-lint",
+                "overconfidence:py-tests",
+                "overconfidence:py-static-analysis",
+            ]
         )
         if detected["has_pytest"]:
-            recommended.append("python-coverage")
+            recommended.append("deceptiveness:py-coverage")
 
     if detected["has_javascript"]:
-        recommended.extend(["js-lint-format", "js-tests"])
+        recommended.extend(["laziness:js-lint", "overconfidence:js-tests"])
         if detected["has_jest"]:
-            recommended.append("js-coverage")
+            recommended.append("deceptiveness:js-coverage")
         if detected["has_typescript"]:
-            recommended.append("javascript-types")
+            recommended.append("overconfidence:js-types")
 
     return recommended
 

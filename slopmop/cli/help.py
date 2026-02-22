@@ -2,9 +2,10 @@
 
 import argparse
 import textwrap
-from typing import List
+from typing import Dict, List
 
 from slopmop.checks import ensure_checks_registered
+from slopmop.checks.base import GateCategory
 from slopmop.core.registry import get_registry
 
 
@@ -87,22 +88,23 @@ def _show_all_gates() -> int:
     print("=" * 60)
     print()
 
-    # Group by category
-    python_gates: List[str] = []
-    js_gates: List[str] = []
-    general_gates: List[str] = []
+    # Group by flaw category using the check's category property
+    gates_by_category: Dict[GateCategory, List[str]] = {cat: [] for cat in GateCategory}
 
     for name in sorted(registry.list_checks()):
-        if name.startswith("python-"):
-            python_gates.append(name)
-        elif name.startswith("js-") or name == "frontend-check":
-            js_gates.append(name)
+        check = registry.get_check(name, {})
+        if check:
+            gates_by_category[check.category].append(name)
         else:
-            general_gates.append(name)
+            # Fallback: parse category from gate name prefix (e.g. "laziness:py-lint")
+            cat_key = name.split(":")[0] if ":" in name else "general"
+            cat = GateCategory.from_key(cat_key)
+            if cat:
+                gates_by_category[cat].append(name)
 
-    _print_gate_group("🐍 Python", python_gates)
-    _print_gate_group("📜 JavaScript", js_gates)
-    _print_gate_group("📋 General", general_gates)
+    for category in GateCategory:
+        gates = gates_by_category.get(category, [])
+        _print_gate_group(f"{category.emoji} {category.display_name}", gates)
 
     print("📦 Profiles:")
     for alias, gates in sorted(registry.list_aliases().items()):

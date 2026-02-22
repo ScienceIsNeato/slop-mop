@@ -58,33 +58,36 @@ class TestDeepMerge:
         """Works with slopmop config-like structures."""
         base = {
             "version": "1.0",
-            "python": {
+            "overconfidence": {
                 "enabled": False,
                 "gates": {
-                    "lint-format": {"enabled": True},
-                    "tests": {"enabled": True},
+                    "py-tests": {"enabled": True},
+                    "py-types": {"enabled": True},
                 },
             },
         }
         updates = {
-            "python": {
+            "overconfidence": {
                 "enabled": True,
                 "gates": {
-                    "tests": {"test_dirs": ["tests", "spec"]},
-                    "coverage": {"enabled": True, "threshold": 80},
+                    "py-tests": {"test_dirs": ["tests", "spec"]},
+                    "py-static-analysis": {"enabled": True, "threshold": 80},
                 },
             }
         }
         _deep_merge(base, updates)
 
         assert base["version"] == "1.0"
-        assert base["python"]["enabled"] is True
-        assert base["python"]["gates"]["lint-format"] == {"enabled": True}
-        assert base["python"]["gates"]["tests"] == {
+        assert base["overconfidence"]["enabled"] is True
+        assert base["overconfidence"]["gates"]["py-types"] == {"enabled": True}
+        assert base["overconfidence"]["gates"]["py-tests"] == {
             "enabled": True,
             "test_dirs": ["tests", "spec"],
         }
-        assert base["python"]["gates"]["coverage"] == {"enabled": True, "threshold": 80}
+        assert base["overconfidence"]["gates"]["py-static-analysis"] == {
+            "enabled": True,
+            "threshold": 80,
+        }
 
 
 class TestCmdValidateSelf:

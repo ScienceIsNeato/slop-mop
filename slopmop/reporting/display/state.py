@@ -34,4 +34,6 @@ class CheckDisplayInfo:
     duration: float = 0.0
     expected_duration: Optional[float] = None  # From prior runs, None = no data
     completion_order: int = 0  # Order in which check completed (0 = not yet)
-    category: Optional[str] = None  # Category key (python, quality, security, etc.)
+    category: Optional[str] = (
+        None  # Category key (overconfidence, laziness, myopia, etc.)
+    )

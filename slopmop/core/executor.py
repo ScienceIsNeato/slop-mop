@@ -34,7 +34,7 @@ def _is_gate_enabled_in_config(
     if isinstance(disabled_gates_val, list) and check.full_name in disabled_gates_val:
         return False, f"{check.full_name} is in disabled_gates list"
 
-    category_key = check.category.key  # e.g., "python", "javascript", "quality"
+    category_key = check.category.key  # e.g., "overconfidence", "laziness", "myopia"
     gate_name = check.name  # e.g., "lint-format", "dead-code"
 
     # Check if language/category is enabled

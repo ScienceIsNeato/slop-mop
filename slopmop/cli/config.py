@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Optional, Tuple, cast
 
 from slopmop.checks import ensure_checks_registered
+from slopmop.checks.base import GateCategory
 from slopmop.core.registry import get_registry
 
 
@@ -52,13 +53,7 @@ def _disable_gate(config_file: Path, config: dict[str, Any], gate_name: str) -> 
     return 0
 
 
-VALID_CATEGORIES = {
-    "python",
-    "javascript",
-    "security",
-    "quality",
-    "integration",
-}
+VALID_CATEGORIES = {cat.key for cat in GateCategory}
 
 
 def _parse_category_dir(spec: str) -> Optional[Tuple[str, str]]:
@@ -83,7 +78,7 @@ def _add_include_dir(config_file: Path, config: dict[str, Any], spec: str) -> in
     parsed = _parse_category_dir(spec)
     if not parsed:
         print(f"❌ Invalid format: {spec}")
-        print(f"   Expected: CATEGORY:DIR (e.g., python:src, quality:lib)")
+        print(f"   Expected: CATEGORY:DIR (e.g., overconfidence:src, laziness:lib)")
         print(f"   Valid categories: {', '.join(sorted(VALID_CATEGORIES))}")
         return 1
 

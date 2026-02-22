@@ -237,7 +237,7 @@ class TestWriteConfig:
         """Test that config is written as formatted JSON."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / ".sb_config.json"
-            config = {"version": "1.0", "python": {"enabled": True}}
+            config = {"version": "1.0", "laziness": {"enabled": True}}
 
             write_config(config_path, config, backup=False)
 

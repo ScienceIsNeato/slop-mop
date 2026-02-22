@@ -30,12 +30,7 @@ _CATEGORY_ORDER = [
     "laziness",
     "myopia",
     "pr",
-    # Legacy keys kept for backward compatibility
     "general",
-    "python",
-    "quality",
-    "security",
-    "javascript",
 ]
 
 
