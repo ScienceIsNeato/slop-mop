@@ -22,10 +22,12 @@ on:
     tags:
       - "v*"  # Trigger on version tags: v0.1.0, v1.0.0, etc.
 
-# Cancel any in-progress release for the same tag
+# Prevent concurrent releases for the same tag, but never cancel an in-progress
+# release — PyPI forbids re-uploading the same version, so a partial publish
+# caused by cancellation would be permanently broken.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   # ── Gate: make sure the code is healthy before publishing ──
