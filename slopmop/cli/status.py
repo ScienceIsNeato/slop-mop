@@ -449,6 +449,7 @@ def run_status(
         executor.set_disabled_callback(dynamic_display.on_check_disabled)
         executor.set_na_callback(dynamic_display.on_check_not_applicable)
         executor.set_total_callback(dynamic_display.set_total_checks)
+        executor.set_pending_callback(dynamic_display.register_pending_checks)
         dynamic_display.start()  # Start animation AFTER header is printed
 
     try:

@@ -10,6 +10,9 @@ REFRESH_INTERVAL = 1.0 / REFRESH_RATE_HZ  # 0.1 seconds
 # Default spinner frames (Braille dots pattern - smooth animation)
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
+# Waiting indicator frames for pending checks (gentle pulse)
+WAITING_FRAMES = ["○", "○", "◌", "◌"]
+
 # Column widths for right-aligned content
 TIME_COLUMN_WIDTH = 12  # "Time Elapsed"
 ETA_COLUMN_WIDTH = 14  # "Est. Time Rem."

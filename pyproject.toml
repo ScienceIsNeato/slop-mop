@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Quality gates for AI-assisted codebases — catch the slop LLMs leave behind."
 readme = "README.md"
 license = {text = "Slop-Mop Attribution License v1.0"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "ScienceIsNeato"}
 ]
@@ -19,11 +19,11 @@ classifiers = [
     "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Quality Assurance",
     "Topic :: Software Development :: Testing",
 ]
@@ -38,16 +38,16 @@ dependencies = [
     "pytest-cov>=4.0.0",
     "diff-cover>=7.0.0",
     # Code quality
-    "black>=23.0.0",
+    "black>=25.11.0",
     "isort>=5.12.0",
     "autoflake>=2.0.0",
-    "mypy>=1.0.0",
+    "mypy>=1.17.0",
     "pyright>=1.1.0",
     "flake8>=6.0.0",
     # Security
     "bandit>=1.7.0",
     "detect-secrets>=1.4.0",
-    "semgrep>=1.0.0",
+    "semgrep>=1.140.0",
     "pip-audit>=2.0.0",
     # Templating
     "jinja2>=3.0.0",
@@ -69,14 +69,14 @@ exclude = ["tests*"]
 
 [tool.black]
 line-length = 88
-target-version = ["py39", "py310", "py311", "py312"]
+target-version = ["py310", "py311", "py312", "py313", "py314"]
 
 [tool.isort]
 profile = "black"
 line_length = 88
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 ignore_missing_imports = true
 no_strict_optional = true
 exclude = ["venv", "build", "dist"]

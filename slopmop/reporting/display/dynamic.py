@@ -385,6 +385,22 @@ class DynamicDisplay:
             for info in group_checks:
                 lines.append(self._format_check_line(info, name_width=max_name_w))
 
+        # Append footer sections (N/A, disabled, status summary)
+        self._append_footer(lines, completed, running)
+
+        return lines
+
+    def _append_footer(self, lines: List[str], completed: int, running: int) -> None:
+        """Append footer sections to display output.
+
+        Adds N/A summary, disabled summary, and running/pending status
+        to the bottom of the dynamic display.
+
+        Args:
+            lines: Display lines to append to (modified in place)
+            completed: Number of completed checks
+            running: Number of running checks
+        """
         # N/A summary (not applicable — no matching project type)
         if self._na_names:
             lines.append("")
@@ -397,12 +413,19 @@ class DynamicDisplay:
             disabled_short = [strip_category_prefix(n) for n in self._disabled_names]
             lines.append(f"Disabled: {', '.join(disabled_short)}")
 
-        # Status summary - only when checks still running
-        if running > 0:
+        # Status summary - only when checks still running or pending
+        pending = sum(
+            1 for c in self._checks.values() if c.state == DisplayState.PENDING
+        )
+        if running > 0 or pending > 0:
+            parts: List[str] = []
+            if pending > 0:
+                parts.append(f"◌ {pending} waiting")
+            if running > 0:
+                parts.append(f"🔄 {running} running")
+            parts.append(f"✓ {completed} done")
             lines.append("")
-            lines.append(f"🔄 {running} running · ✓ {completed} done")
-
-        return lines
+            lines.append(" · ".join(parts))
 
     @staticmethod
     def _aggregate_category_scope(
@@ -556,7 +579,7 @@ class DynamicDisplay:
     def _format_pending_line(
         self, info: CheckDisplayInfo, width: int, name_width: int = 0
     ) -> str:
-        """Format a pending check line.
+        """Format a pending check line with animated waiting indicator.
 
         Args:
             info: Check display info (pending state)
@@ -566,12 +589,19 @@ class DynamicDisplay:
         Returns:
             Formatted line (without connector)
         """
+        # Slow-cycle the waiting indicator (change every ~4 ticks = ~0.4s)
+        frame_idx = (self._animation_tick // 4) % len(config.WAITING_FRAMES)
+        indicator = config.WAITING_FRAMES[frame_idx]
+
         short_name = strip_category_prefix(info.name)
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
-        left = f"{config.CHECK_INDENT}○ {padded_name}"
-        eta_str = (
-            format_time(info.expected_duration) if info.expected_duration else "N/A"
-        )
+
+        # Dim the text when colors are available
+        dim = "\033[2m" if self._colors_enabled else ""
+        rc = reset_color(self._colors_enabled)
+
+        left = f"{config.CHECK_INDENT}{dim}{indicator} {padded_name}: waiting{rc}"
+        eta_str = format_time(info.expected_duration) if info.expected_duration else ""
         right = align_columns("", eta_str)
         return right_justify(left, right, width)
 
