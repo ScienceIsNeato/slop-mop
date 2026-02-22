@@ -4,17 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slopmop"
-version = "1.0.0"
-description = "AI-Focused Quality Gate Framework"
+version = "0.0.0"
+description = "Quality gates for AI-assisted codebases — catch the slop LLMs leave behind."
 readme = "README.md"
 license = {text = "Slop-Mop Attribution License v1.0"}
 requires-python = ">=3.9"
 authors = [
     {name = "ScienceIsNeato"}
 ]
-keywords = ["quality-gate", "linting", "testing", "ci-cd", "code-quality"]
+keywords = ["quality-gate", "linting", "testing", "ci-cd", "code-quality", "ai", "llm", "vibe-coding"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
@@ -60,6 +60,7 @@ sm = "slopmop.sm:main"
 Homepage = "https://github.com/ScienceIsNeato/slop-mop"
 Repository = "https://github.com/ScienceIsNeato/slop-mop"
 Issues = "https://github.com/ScienceIsNeato/slop-mop/issues"
+Changelog = "https://github.com/ScienceIsNeato/slop-mop/releases"
 
 [tool.setuptools.packages.find]
 where = ["."]
