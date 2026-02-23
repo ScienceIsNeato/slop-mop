@@ -1,13 +1,30 @@
 """Bogus test detection via AST analysis.
 
 Catches test functions that exist structurally but don't test anything:
-- Empty bodies (pass, ..., or docstring-only)
-- Tautological assertions (assert True, assert 1 == 1, assert not False)
-- Test functions with no assert statements and no assertion helpers
 
-These patterns are a common reward-hacking vector for AI agents:
-the agent creates tests to satisfy coverage requirements without
-actually exercising any behavior.
+- Empty bodies (pass, ..., or docstring-only) — always fail
+- Tautological assertions (assert True, assert 1 == 1) — always fail
+- Suspiciously short tests with no assertion mechanism — configurable
+
+A test body of 0 meaningful statements is the *only* definitively wrong
+length.  Tautological assertions are also definitively wrong.  Everything
+else is a configurable heuristic: ``min_test_statements`` controls how
+short is "too short", and ``short_test_severity`` controls whether
+violations block (fail) or merely report (warn).
+
+Assertion detection recognises:
+
+- ``assert`` statements (Python built-in)
+- ``pytest.raises``, ``pytest.warns``, ``pytest.deprecated_call``
+  (context managers that ARE assertions)
+
+Tests that use any of these are never flagged as "suspiciously short".
+The heuristic targets tests that have *neither* ``assert`` nor a
+recognised assertion context manager — and are also very short,
+which is a strong signal of reward-hack stubs.
+
+Set ``min_test_statements`` to 0 to disable the short-test heuristic
+entirely (empty/tautological checks remain active regardless).
 """
 
 import ast
@@ -15,7 +32,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -27,24 +44,9 @@ from slopmop.checks.base import (
 from slopmop.checks.constants import skip_reason_no_test_files
 from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 
-# Pytest assertion helpers that count as "real" assertions
-ASSERTION_HELPERS: Set[str] = {
-    "pytest.raises",
-    "pytest.warns",
-    "pytest.approx",
-    "pytest.fail",
-    # mock assertion methods
-    "assert_called",
-    "assert_called_once",
-    "assert_called_with",
-    "assert_called_once_with",
-    "assert_any_call",
-    "assert_has_calls",
-    "assert_not_called",
-    # Playwright / BDD-style assertion entry points
-    # e.g. expect(page.locator("h1")).to_be_visible()
-    "expect",
-}
+# Inline suppression comment: adding this to a test function's def line
+# or anywhere in the function body tells the checker to skip it.
+SUPPRESS_MARKER = "overconfidence:short-test-ok"
 
 
 @dataclass
@@ -63,10 +65,21 @@ class BogusTestFinding:
 class _TestAnalyzer(ast.NodeVisitor):
     """AST visitor that identifies bogus test functions."""
 
-    def __init__(self, filepath: str, project_root: str) -> None:
+    def __init__(
+        self,
+        filepath: str,
+        project_root: str,
+        source_lines: List[str],
+        min_test_statements: int = 2,
+    ) -> None:
         self.filepath = filepath
         self.rel_path = os.path.relpath(filepath, project_root)
+        self.source_lines = source_lines
+        self.min_test_statements = min_test_statements
         self.findings: List[BogusTestFinding] = []
+        # Short-test findings are tracked separately so the caller
+        # can decide whether they're failures or warnings.
+        self.short_test_findings: List[BogusTestFinding] = []
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         if node.name.startswith("test_") or (
@@ -83,6 +96,8 @@ class _TestAnalyzer(ast.NodeVisitor):
         body = node.body
 
         # Check for empty body: pass, ..., or docstring-only
+        # (Always a hard failure — 0 statements is the only *definitively*
+        # wrong test body length.)
         if self._is_empty_body(body):
             self.findings.append(
                 BogusTestFinding(
@@ -94,7 +109,7 @@ class _TestAnalyzer(ast.NodeVisitor):
             )
             return
 
-        # Check for tautological assertions
+        # Check for tautological assertions (always a hard failure)
         tautology = self._find_tautology(body)
         if tautology:
             self.findings.append(
@@ -107,16 +122,83 @@ class _TestAnalyzer(ast.NodeVisitor):
             )
             return
 
-        # Check for no assertions at all
-        if not self._has_assertions(node):
-            self.findings.append(
-                BogusTestFinding(
-                    file=self.rel_path,
-                    function=node.name,
-                    line=node.lineno,
-                    reason="no assertions or assertion helpers found",
+        # Inline suppression only applies to the short-test heuristic.
+        # Empty bodies and tautological assertions are always flagged.
+        if self._is_suppressed(node):
+            return
+
+        # Short-test heuristic: no assertion mechanism AND few statements.
+        # We recognise assert statements and pytest assertion context
+        # managers (raises, warns, deprecated_call).  Tests that use
+        # either are never flagged as "suspiciously short".
+        if not self._has_assertion_mechanism(node):
+            meaningful = self._count_meaningful_statements(body)
+            if meaningful <= self.min_test_statements:
+                self.short_test_findings.append(
+                    BogusTestFinding(
+                        file=self.rel_path,
+                        function=node.name,
+                        line=node.lineno,
+                        reason=(
+                            f"suspiciously short test ({meaningful} statement(s), "
+                            f"no assertions)"
+                        ),
+                    )
                 )
-            )
+
+    def _is_suppressed(self, node: ast.FunctionDef) -> bool:
+        """Check if a test has the inline suppression comment."""
+        # Check the def line and the range of lines covered by the function
+        end_line = getattr(node, "end_lineno", None) or node.lineno
+        for lineno in range(node.lineno, end_line + 1):
+            idx = lineno - 1  # source_lines is 0-indexed
+            if 0 <= idx < len(self.source_lines):
+                if SUPPRESS_MARKER in self.source_lines[idx]:
+                    return True
+        return False
+
+    def _count_meaningful_statements(self, body: List[ast.stmt]) -> int:
+        """Count non-trivial statements in a function body."""
+        return sum(
+            1
+            for stmt in body
+            if not isinstance(stmt, ast.Pass)
+            and not self._is_ellipsis(stmt)
+            and not self._is_docstring(stmt)
+        )
+
+    # Pytest context managers that act as assertions
+    _PYTEST_ASSERTION_CALLS = frozenset(
+        {
+            "pytest.raises",
+            "pytest.warns",
+            "pytest.deprecated_call",
+        }
+    )
+
+    def _has_assertion_mechanism(self, node: ast.AST) -> bool:
+        """Check if a node contains any assertion mechanism.
+
+        Recognises:
+        - ``assert`` statements
+        - ``pytest.raises``, ``pytest.warns``, ``pytest.deprecated_call``
+        """
+        for child in ast.walk(node):
+            if isinstance(child, ast.Assert):
+                return True
+            # Check for pytest assertion context managers used via `with`
+            if isinstance(child, ast.With):
+                for item in child.items:
+                    call_name = self._get_with_call_name(item.context_expr)
+                    if call_name in self._PYTEST_ASSERTION_CALLS:
+                        return True
+        return False
+
+    def _get_with_call_name(self, node: ast.expr) -> Optional[str]:
+        """Extract dotted call name from a `with` context expression."""
+        if not isinstance(node, ast.Call):
+            return None
+        return self._get_call_name(node)
 
     def _is_empty_body(self, body: List[ast.stmt]) -> bool:
         """Check if function body is effectively empty."""
@@ -208,41 +290,6 @@ class _TestAnalyzer(ast.NodeVisitor):
 
         return False
 
-    def _has_assertions(self, node: ast.AST) -> bool:
-        """Recursively check if a node contains any assert or assertion helper."""
-        for child in ast.walk(node):
-            # Direct assert statement
-            if isinstance(child, ast.Assert):
-                return True
-
-            # Assertion helper calls: pytest.raises, mock.assert_called, etc.
-            if isinstance(child, ast.Call):
-                call_name = self._get_call_name(child)
-                if call_name and any(
-                    call_name.endswith(helper) for helper in ASSERTION_HELPERS
-                ):
-                    return True
-
-                # Custom assertion helpers: any function/method whose name
-                # contains "assert" (e.g., _assert_gate_failed, assert_valid,
-                # result.assert_prerequisites).  This covers the common
-                # pattern of factoring assertion logic into helper functions.
-                if call_name:
-                    # Get the final component (method/function name)
-                    leaf = call_name.rsplit(".", 1)[-1]
-                    if "assert" in leaf.lower():
-                        return True
-
-            # pytest.raises used as context manager
-            if isinstance(child, ast.With):
-                for item in child.items:
-                    if isinstance(item.context_expr, ast.Call):
-                        call_name = self._get_call_name(item.context_expr)
-                        if call_name and call_name.endswith("pytest.raises"):
-                            return True
-
-        return False
-
     def _get_call_name(self, node: ast.Call) -> Optional[str]:
         """Extract dotted name from a Call node."""
         if isinstance(node.func, ast.Name):
@@ -263,11 +310,25 @@ class BogusTestsCheck(BaseCheck):
     """Bogus test detection via AST analysis.
 
     Pure Python check (no external tool). Parses test files to find
-    test functions that exist structurally but don't test anything:
-    empty bodies, tautological assertions (assert True), or functions
-    with no assertions at all. These are a common reward-hacking
-    pattern where an agent creates tests to satisfy coverage gates
-    without exercising real behavior.
+    test functions that exist structurally but don't test anything.
+
+    **Always fail (definitively wrong):**
+
+    - Empty bodies (pass, ..., or docstring-only)
+    - Tautological assertions (assert True, assert 1 == 1)
+
+    **Configurable (heuristic):**
+
+    - Suspiciously short tests with no assertion mechanism
+
+    A test body of 0 meaningful statements is the *only* definitively
+    wrong length.  The short-test heuristic is a configurable signal:
+    body complexity distinguishes reward-hack stubs from real tests.
+
+    Assertion detection recognises ``assert`` statements AND
+    ``pytest.raises``, ``pytest.warns``, ``pytest.deprecated_call``
+    context managers.  Tests using any of these are never flagged
+    as suspiciously short.
 
     Profiles: commit, pr
 
@@ -275,17 +336,30 @@ class BogusTestsCheck(BaseCheck):
       test_dirs: ["tests"] — directories to scan for test files.
       exclude_patterns: ["conftest.py"] — conftest files contain
           fixtures, not tests, so they're excluded by default.
+      min_test_statements: 2 — tests with no assertion mechanism
+          and this many or fewer meaningful statements are flagged.
+          Set to 0 to disable the short-test heuristic (empty and
+          tautological checks remain active).
+      short_test_severity: "fail" — "fail" or "warn" for short
+          tests.  Empty/tautological tests always fail regardless.
+
+    Inline suppression:
+      Add ``# overconfidence:short-test-ok`` to a test function's
+      def line or body to suppress short-test findings for that test.
 
     Common failures:
-      Empty test body: Replace `pass` or `...` with actual
+      Empty test body: Replace ``pass`` or ``...`` with actual
           assertions that exercise behavior.
-      Tautological assertion: Replace `assert True` or
-          `assert 1 == 1` with assertions on real return values.
-      No assertions: Add assert statements or use pytest.raises,
-          mock.assert_called, etc.
+      Tautological assertion: Replace ``assert True`` or
+          ``assert 1 == 1`` with assertions on real return values.
+      Suspiciously short test: Add assert/pytest.raises/etc., or
+          if the test is intentionally assertion-free (e.g., smoke
+          test), add ``# overconfidence:short-test-ok``.  If most
+          tests that fail are legitimate, consider lowering
+          ``min_test_statements`` or setting it to 0.
 
     Re-validate:
-      ./sm validate quality:bogus-tests --verbose
+      ./sm validate deceptiveness:bogus-tests --verbose
     """
 
     @property
@@ -323,6 +397,29 @@ class BogusTestsCheck(BaseCheck):
                 default=["conftest.py"],
                 description="File patterns to exclude from scanning",
             ),
+            ConfigField(
+                name="min_test_statements",
+                field_type="integer",
+                default=2,
+                min_value=0,
+                max_value=50,
+                description=(
+                    "Tests with no assertion mechanism (assert/pytest.raises"
+                    "/pytest.warns) and this many or fewer meaningful "
+                    "statements are flagged as suspiciously short. "
+                    "Set to 0 to disable (empty/tautological still caught)."
+                ),
+            ),
+            ConfigField(
+                name="short_test_severity",
+                field_type="string",
+                default="fail",
+                choices=["fail", "warn"],
+                description=(
+                    "Severity for suspiciously short tests: 'fail' blocks "
+                    "the gate, 'warn' reports but does not block"
+                ),
+            ),
         ]
 
     def is_applicable(self, project_root: str) -> bool:
@@ -352,9 +449,12 @@ class BogusTestsCheck(BaseCheck):
         start_time = time.time()
         test_dirs = self.config.get("test_dirs", ["tests"])
         exclude_patterns = self.config.get("exclude_patterns", ["conftest.py"])
+        min_stmts = self.config.get("min_test_statements", 2)
+        short_severity = self.config.get("short_test_severity", "fail")
         root = Path(project_root)
 
         all_findings: List[BogusTestFinding] = []
+        all_short_findings: List[BogusTestFinding] = []
         files_scanned = 0
         parse_errors: List[str] = []
 
@@ -371,10 +471,17 @@ class BogusTestsCheck(BaseCheck):
                 files_scanned += 1
                 try:
                     source = test_file.read_text(encoding="utf-8")
+                    source_lines = source.splitlines()
                     tree = ast.parse(source, filename=str(test_file))
-                    analyzer = _TestAnalyzer(str(test_file), project_root)
+                    analyzer = _TestAnalyzer(
+                        str(test_file),
+                        project_root,
+                        source_lines,
+                        min_test_statements=min_stmts,
+                    )
                     analyzer.visit(tree)
                     all_findings.extend(analyzer.findings)
+                    all_short_findings.extend(analyzer.short_test_findings)
                 except (SyntaxError, UnicodeDecodeError) as e:
                     parse_errors.append(
                         f"  {os.path.relpath(str(test_file), project_root)}: {e}"
@@ -390,22 +497,44 @@ class BogusTestsCheck(BaseCheck):
                 output="\n".join(parse_errors),
             )
 
-        if not all_findings:
+        # Always-fail findings (empty body, tautological)
+        hard_fail = len(all_findings) > 0
+
+        # Short-test findings: fail or warn depending on config
+        short_fail = short_severity == "fail" and len(all_short_findings) > 0
+        short_warn = short_severity == "warn" and len(all_short_findings) > 0
+
+        total = len(all_findings) + len(all_short_findings)
+
+        if total == 0:
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
                 output=f"No bogus tests found ({files_scanned} files scanned)",
             )
 
-        detail = "\n".join(str(f) for f in all_findings)
+        combined = all_findings + all_short_findings
+        detail = "\n".join(str(f) for f in combined)
+        suppress_hint = (
+            "Review and either rewrite or add "
+            '"# overconfidence:short-test-ok" comment to suppress '
+            "this warning/error"
+        )
+
+        if hard_fail or short_fail:
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=duration,
+                output=f"Found {total} bogus test(s):\n\n{detail}",
+                error=f"{total} test(s) don't actually test anything",
+                fix_suggestion=suppress_hint,
+            )
+
+        # short_warn is True here
         return self._create_result(
-            status=CheckStatus.FAILED,
+            status=CheckStatus.WARNED,
             duration=duration,
-            output=f"Found {len(all_findings)} bogus test(s):\n\n{detail}",
-            error=f"{len(all_findings)} test(s) don't actually test anything",
-            fix_suggestion=(
-                "Replace bogus tests with real assertions that exercise behavior. "
-                "If a test is intentionally empty (e.g., placeholder), "
-                "add a comment: # bogus-tests: ignore"
-            ),
+            output=f"Found {total} suspicious test(s):\n\n{detail}",
+            error=f"{total} suspiciously short test(s) found",
+            fix_suggestion=suppress_hint,
         )

@@ -2,7 +2,9 @@
 
 import textwrap
 
-from slopmop.checks.quality.bogus_tests import BogusTestsCheck
+from slopmop.checks.quality.bogus_tests import (
+    BogusTestsCheck,
+)
 from slopmop.core.result import CheckStatus
 
 
@@ -36,6 +38,16 @@ class TestBogusTestsCheckProperties:
         field_names = [f.name for f in schema]
         assert "test_dirs" in field_names
         assert "exclude_patterns" in field_names
+        assert "min_test_statements" in field_names
+        assert "short_test_severity" in field_names
+
+    def test_min_test_statements_allows_zero(self):
+        """Test that min_test_statements accepts 0 (disable heuristic)."""
+        check = BogusTestsCheck({})
+        schema = check.config_schema
+        mts = next(f for f in schema if f.name == "min_test_statements")
+        assert mts.min_value == 0
+        assert mts.default == 2
 
 
 class TestBogusTestsApplicability:
@@ -177,61 +189,108 @@ class TestTautologicalAssertions:
         assert result.status == CheckStatus.PASSED
 
 
-class TestNoAssertions:
-    """Tests for detection of assertion-free test functions."""
+class TestShortTests:
+    """Tests for the short-test heuristic (no assert + few statements)."""
 
-    def test_detects_no_assertions(self, tmp_path):
-        """Test detects test function with no assert statements."""
+    def test_detects_one_statement_no_assert(self, tmp_path):
+        """Single-statement test with no assert is flagged at default threshold."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_noassert.py").write_text(textwrap.dedent("""\
-            def test_no_assertions():
-                x = 1 + 1
-                y = x * 2
-                print(y)
+        (test_dir / "test_short.py").write_text(textwrap.dedent("""\
+            def test_just_a_call():
+                print("hello")
             """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
-        assert "no assertions" in result.output
+        assert "suspiciously short" in result.output
 
-    def test_allows_pytest_raises(self, tmp_path):
-        """Test accepts pytest.raises as a valid assertion."""
+    def test_detects_two_statements_no_assert(self, tmp_path):
+        """Two-statement test with no assert is flagged at default threshold."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_raises.py").write_text(textwrap.dedent("""\
-            import pytest
+        (test_dir / "test_short.py").write_text(textwrap.dedent("""\
+            def test_two_lines():
+                x = 1 + 1
+                print(x)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "suspiciously short" in result.output
 
-            def test_raises_exception():
-                with pytest.raises(ValueError):
-                    int("not_a_number")
+    def test_passes_three_statements_no_assert(self, tmp_path):
+        """Three-statement test with no assert passes at default threshold."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_long.py").write_text(textwrap.dedent("""\
+            def test_three_lines():
+                x = 1
+                y = x + 1
+                print(y)
             """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
 
-    def test_allows_mock_assert_called(self, tmp_path):
-        """Test accepts mock.assert_called_once_with as a valid assertion."""
+    def test_threshold_zero_disables_heuristic(self, tmp_path):
+        """Setting min_test_statements=0 disables the short-test check."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_mock.py").write_text(textwrap.dedent("""\
-            from unittest.mock import MagicMock
-
-            def test_mock_called():
-                mock = MagicMock()
-                mock("hello")
-                mock.assert_called_once_with("hello")
+        (test_dir / "test_short.py").write_text(textwrap.dedent("""\
+            def test_just_a_call():
+                print("hello")
             """))
-        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        check = BogusTestsCheck(
+            {
+                "test_dirs": ["tests"],
+                "min_test_statements": 0,
+            }
+        )
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
 
-    def test_allows_playwright_expect(self, tmp_path):
-        """Test accepts Playwright expect() as a valid assertion.
+    def test_custom_threshold(self, tmp_path):
+        """Custom threshold flags tests at that level."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_medium.py").write_text(textwrap.dedent("""\
+            def test_four_lines():
+                a = 1
+                b = 2
+                c = a + b
+                print(c)
+            """))
+        check = BogusTestsCheck(
+            {
+                "test_dirs": ["tests"],
+                "min_test_statements": 5,
+            }
+        )
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "suspiciously short" in result.output
 
-        Python Playwright uses expect(locator).to_be_visible() etc.
-        These don't use the 'assert' keyword but are real assertions.
-        """
+    def test_warn_severity(self, tmp_path):
+        """Short-test severity 'warn' returns WARNED instead of FAILED."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_short.py").write_text(textwrap.dedent("""\
+            def test_just_a_call():
+                print("hello")
+            """))
+        check = BogusTestsCheck(
+            {
+                "test_dirs": ["tests"],
+                "short_test_severity": "warn",
+            }
+        )
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.WARNED
+        assert "suspicious" in result.output
+
+    def test_framework_test_passes_above_threshold(self, tmp_path):
+        """Longer framework tests (e.g., Playwright) pass at default threshold."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
         (test_dir / "test_playwright.py").write_text(textwrap.dedent("""\
@@ -246,20 +305,151 @@ class TestNoAssertions:
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
 
-    def test_allows_playwright_expect_in_async(self, tmp_path):
-        """Test accepts async Playwright expect() as a valid assertion."""
+    def test_assert_keyword_exempts_from_short_test(self, tmp_path):
+        """Tests with assert keyword are never flagged as short tests."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
-        (test_dir / "test_async_pw.py").write_text(textwrap.dedent("""\
-            from playwright.async_api import expect
+        (test_dir / "test_short_assert.py").write_text(textwrap.dedent("""\
+            def test_short_but_asserts():
+                assert True is not False
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        # Has assert keyword → not a short-test finding
+        # Has non-tautological assertion → passes
+        assert result.status == CheckStatus.PASSED
 
-            async def test_navigation(page):
-                await page.goto("https://example.com")
-                await expect(page.locator(".title")).to_have_count(3)
+    def test_pytest_raises_exempts_from_short_test(self, tmp_path):
+        """Tests with pytest.raises are never flagged as short tests."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_raises.py").write_text(textwrap.dedent("""\
+            import pytest
+
+            def test_raises_value_error():
+                with pytest.raises(ValueError):
+                    int("not a number")
             """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
+
+    def test_pytest_warns_exempts_from_short_test(self, tmp_path):
+        """Tests with pytest.warns are never flagged as short tests."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_warns.py").write_text(textwrap.dedent("""\
+            import pytest
+            import warnings
+
+            def test_warns_deprecation():
+                with pytest.warns(DeprecationWarning):
+                    warnings.warn("old", DeprecationWarning)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_pytest_raises_with_match_exempts(self, tmp_path):
+        """pytest.raises with match kwarg is also recognised."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_raises_match.py").write_text(textwrap.dedent("""\
+            import pytest
+
+            def test_raises_with_match():
+                with pytest.raises(ValueError, match="invalid"):
+                    int("nope")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_non_pytest_context_manager_still_flagged(self, tmp_path):
+        """Non-pytest context managers don't exempt from short-test."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_other_cm.py").write_text(textwrap.dedent("""\
+            def test_with_open():
+                with open("/dev/null") as f:
+                    f.read()
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "suspiciously short" in result.output
+
+
+class TestSuppression:
+    """Tests for the inline suppression comment."""
+
+    def test_suppression_on_def_line(self, tmp_path):
+        """Suppression comment on the def line skips short-test."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_supp.py").write_text(textwrap.dedent("""\
+            def test_smoke():  # overconfidence:short-test-ok
+                print("ok")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_suppression_in_body(self, tmp_path):
+        """Suppression comment inside the function body works."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_supp.py").write_text(textwrap.dedent("""\
+            def test_smoke():
+                # overconfidence:short-test-ok
+                print("ok")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_suppression_only_affects_annotated_test(self, tmp_path):
+        """Suppression only affects the annotated test."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_mixed_supp.py").write_text(textwrap.dedent("""\
+            def test_suppressed():  # overconfidence:short-test-ok
+                print("ok")
+
+            def test_not_suppressed():
+                print("also ok")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "test_not_suppressed" in result.output
+        assert "test_suppressed" not in result.output
+
+    def test_suppression_does_not_affect_empty_body(self, tmp_path):
+        """Suppression does NOT suppress empty body detection."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_supp_empty.py").write_text(textwrap.dedent("""\
+            def test_empty():  # overconfidence:short-test-ok
+                pass
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "empty test body" in result.output
+
+    def test_suppression_does_not_affect_tautology(self, tmp_path):
+        """Suppression does NOT suppress tautological assertion detection."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_supp_taut.py").write_text(textwrap.dedent("""\
+            def test_taut():  # overconfidence:short-test-ok
+                assert True
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "tautological" in result.output
 
 
 class TestLegitimateTests:
@@ -356,7 +546,7 @@ class TestMultipleFindings:
             def test_tautology():
                 assert True
 
-            def test_no_assert():
+            def test_short_no_assert():
                 x = 1 + 1
 
             def test_real():
@@ -365,10 +555,12 @@ class TestMultipleFindings:
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
+        # 2 hard findings + 1 short-test finding = 3 total
         assert "3 bogus test(s)" in result.output
         assert "test_empty" in result.output
         assert "test_tautology" in result.output
-        assert "test_no_assert" in result.output
+        assert "test_short_no_assert" in result.output
+        assert "suspiciously short" in result.output
         assert "test_real" not in result.output
 
 
