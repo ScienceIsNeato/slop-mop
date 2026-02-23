@@ -148,8 +148,10 @@ class _TestAnalyzer(ast.NodeVisitor):
 
     def _is_suppressed(self, node: ast.FunctionDef) -> bool:
         """Check if a test has the inline suppression comment."""
-        # Check the def line and the range of lines covered by the function
-        end_line = getattr(node, "end_lineno", None) or node.lineno
+        # Check the def line and the range of lines covered by the function.
+        # end_lineno is guaranteed on Python 3.8+ after ast.parse();
+        # we require 3.10+, but the type stubs declare it Optional.
+        end_line: int = node.end_lineno if node.end_lineno is not None else node.lineno
         for lineno in range(node.lineno, end_line + 1):
             idx = lineno - 1  # source_lines is 0-indexed
             if 0 <= idx < len(self.source_lines):
