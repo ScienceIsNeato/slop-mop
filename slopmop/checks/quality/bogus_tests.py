@@ -41,6 +41,9 @@ ASSERTION_HELPERS: Set[str] = {
     "assert_any_call",
     "assert_has_calls",
     "assert_not_called",
+    # Playwright / BDD-style assertion entry points
+    # e.g. expect(page.locator("h1")).to_be_visible()
+    "expect",
 }
 
 

@@ -226,6 +226,41 @@ class TestNoAssertions:
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
 
+    def test_allows_playwright_expect(self, tmp_path):
+        """Test accepts Playwright expect() as a valid assertion.
+
+        Python Playwright uses expect(locator).to_be_visible() etc.
+        These don't use the 'assert' keyword but are real assertions.
+        """
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_playwright.py").write_text(textwrap.dedent("""\
+            from playwright.sync_api import expect
+
+            def test_homepage(page):
+                page.goto("https://example.com")
+                expect(page.locator("h1")).to_be_visible()
+                expect(page.locator("h1")).to_have_text("Hello")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_allows_playwright_expect_in_async(self, tmp_path):
+        """Test accepts async Playwright expect() as a valid assertion."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_async_pw.py").write_text(textwrap.dedent("""\
+            from playwright.async_api import expect
+
+            async def test_navigation(page):
+                await page.goto("https://example.com")
+                await expect(page.locator(".title")).to_have_count(3)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
 
 class TestLegitimateTests:
     """Tests confirming legitimate test patterns are not flagged."""

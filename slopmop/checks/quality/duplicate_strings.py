@@ -136,19 +136,37 @@ class StringDuplicationCheck(BaseCheck):
         """Return reason for skipping - no Python source files."""
         return "No Python files found to scan for duplicate strings"
 
-    def _get_tool_path(self) -> Path:
-        """Get the path to the vendored find-duplicate-strings tool."""
-        # Navigate from this file to tools/find-duplicate-strings
-        current_file = Path(__file__)
-        project_root = current_file.parent.parent.parent.parent
-        return (
-            project_root
-            / "tools"
-            / "find-duplicate-strings"
-            / "lib"
-            / "cli"
-            / "index.js"
-        )
+    def _get_tool_path(self, project_root: str = "") -> Optional[Path]:
+        """Find the find-duplicate-strings tool.
+
+        Searches in order:
+        1. The target project's tools/ directory (works for projects
+           that vendor the tool, or when sm is pip-installed)
+        2. The slopmop package source tree (works in a git checkout)
+        3. Global npm installation via shutil.which
+
+        Returns the path to index.js, or None if not found.
+        """
+        tool_rel = Path("tools") / "find-duplicate-strings" / "lib" / "cli" / "index.js"
+
+        # 1. Target project's tools/ directory
+        if project_root:
+            candidate = Path(project_root) / tool_rel
+            if candidate.exists():
+                return candidate
+
+        # 2. slopmop package source tree (development checkout)
+        pkg_root = Path(__file__).parent.parent.parent.parent
+        candidate = pkg_root / tool_rel
+        if candidate.exists():
+            return candidate
+
+        # 3. Global npm: check if find-duplicate-strings is on PATH
+        global_bin = shutil.which("find-duplicate-strings")
+        if global_bin:
+            return Path(global_bin)
+
+        return None
 
     def _get_effective_config(self) -> dict[str, Any]:
         """Get effective configuration with defaults."""
@@ -172,9 +190,12 @@ class StringDuplicationCheck(BaseCheck):
         }
         return {**defaults, **self.config}
 
-    def _build_command(self, config: dict[str, Any]) -> list[str]:
+    def _build_command(
+        self, config: dict[str, Any], tool_path: Optional[Path] = None
+    ) -> list[str]:
         """Build the find-duplicate-strings command."""
-        tool_path = self._get_tool_path()
+        if tool_path is None:
+            tool_path = self._get_tool_path() or Path("find-duplicate-strings")
         threshold = config.get("threshold", 3)
         include_patterns = config.get("include_patterns", ["**/*.py"])
         ignore_patterns = config.get("ignore_patterns", [])
@@ -196,9 +217,14 @@ class StringDuplicationCheck(BaseCheck):
             else:
                 glob_pattern = include_patterns[0]
 
-        cmd: list[str] = [
-            "node",
-            str(tool_path),
+        cmd: list[str] = (
+            # If tool_path points to a .js file, invoke via node;
+            # if it's a global binary (from shutil.which), call directly
+            ["node", str(tool_path)]
+            if str(tool_path).endswith(".js")
+            else [str(tool_path)]
+        )
+        cmd += [
             glob_pattern,
             "--threshold",
             str(threshold),
@@ -320,13 +346,30 @@ class StringDuplicationCheck(BaseCheck):
 
         return "\n".join(lines)
 
-    def _get_strip_docstrings_path(self) -> Path:
-        """Get path to the strip_docstrings.py helper script."""
-        current_file = Path(__file__)
-        project_root = current_file.parent.parent.parent.parent
-        return project_root / "tools" / "find-duplicate-strings" / "strip_docstrings.py"
+    def _get_strip_docstrings_path(self, project_root: str = "") -> Optional[Path]:
+        """Find the strip_docstrings.py helper script.
 
-    def _load_strip_function(self) -> Optional[Callable[[str], str]]:
+        Searches in the same locations as _get_tool_path:
+        1. Target project's tools/ directory
+        2. slopmop package source tree
+        """
+        script_rel = Path("tools") / "find-duplicate-strings" / "strip_docstrings.py"
+
+        if project_root:
+            candidate = Path(project_root) / script_rel
+            if candidate.exists():
+                return candidate
+
+        pkg_root = Path(__file__).parent.parent.parent.parent
+        candidate = pkg_root / script_rel
+        if candidate.exists():
+            return candidate
+
+        return None
+
+    def _load_strip_function(
+        self, project_root: str = ""
+    ) -> Optional[Callable[[str], str]]:
         """Dynamically load the strip_docstrings function.
 
         Returns the function, or None if the module can't be loaded.
@@ -335,8 +378,8 @@ class StringDuplicationCheck(BaseCheck):
         """
         import importlib.util
 
-        script_path = self._get_strip_docstrings_path()
-        if not script_path.exists():
+        script_path = self._get_strip_docstrings_path(project_root)
+        if script_path is None or not script_path.exists():
             return None
 
         spec = importlib.util.spec_from_file_location(
@@ -376,7 +419,7 @@ class StringDuplicationCheck(BaseCheck):
         if not has_python:
             return None
 
-        strip_fn = self._load_strip_function()
+        strip_fn = self._load_strip_function(project_root)
         if strip_fn is None:
             return None
 
@@ -428,16 +471,16 @@ class StringDuplicationCheck(BaseCheck):
         effective_config = self._get_effective_config()
 
         # Check if tool exists
-        tool_path = self._get_tool_path()
-        if not tool_path.exists():
+        tool_path = self._get_tool_path(project_root)
+        if tool_path is None:
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 output="",
                 error=(
-                    "find-duplicate-strings tool not found. "
-                    "Run: cd tools/find-duplicate-strings "
-                    "&& npm install && npx tsc"
+                    "find-duplicate-strings tool not installed locally. "
+                    "Run: sm init (sets up tools/) or install globally: "
+                    "npm install -g find-duplicate-strings"
                 ),
             )
 
@@ -449,7 +492,7 @@ class StringDuplicationCheck(BaseCheck):
         scan_root = tmp_dir if tmp_dir else project_root
 
         try:
-            cmd = self._build_command(effective_config)
+            cmd = self._build_command(effective_config, tool_path)
             result = self._run_command(cmd, cwd=scan_root)
         except Exception as e:
             return self._create_result(
