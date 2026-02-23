@@ -79,12 +79,14 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
                 default="C",
                 description="Maximum complexity rank (A-F)",
                 choices=["A", "B", "C", "D", "E", "F"],
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="max_complexity",
                 field_type="integer",
                 default=15,
                 description="Maximum cyclomatic complexity score",
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="src_dirs",

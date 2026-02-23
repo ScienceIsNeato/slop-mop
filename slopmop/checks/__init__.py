@@ -51,6 +51,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
         BogusTestsCheck,
         ComplexityCheck,
         DeadCodeCheck,
+        GateDodgingCheck,
         LocLockCheck,
         SourceDuplicationCheck,
         StringDuplicationCheck,
@@ -62,6 +63,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(BogusTestsCheck)
     registry.register(ComplexityCheck)
     registry.register(DeadCodeCheck)
+    registry.register(GateDodgingCheck)
     registry.register(SourceDuplicationCheck)
     registry.register(StringDuplicationCheck)
     registry.register(LocLockCheck)
@@ -85,6 +87,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "myopia:source-duplication",
             "myopia:string-duplication",
             "deceptiveness:bogus-tests",
+            "deceptiveness:gate-dodging",
             "myopia:loc-lock",
             "myopia:security-scan",
             "laziness:js-lint",
@@ -110,6 +113,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "myopia:source-duplication",
             "myopia:string-duplication",
             "deceptiveness:bogus-tests",
+            "deceptiveness:gate-dodging",
             "myopia:loc-lock",
             "myopia:security-audit",
             "laziness:js-lint",

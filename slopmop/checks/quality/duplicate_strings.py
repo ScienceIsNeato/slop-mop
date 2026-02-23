@@ -80,6 +80,7 @@ class StringDuplicationCheck(BaseCheck):
                 default=2,
                 description="Minimum occurrences to report a duplicate",
                 min_value=2,
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="min_file_count",
@@ -87,6 +88,7 @@ class StringDuplicationCheck(BaseCheck):
                 default=1,
                 description="Minimum number of files a string must appear in",
                 min_value=1,
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="min_length",
@@ -94,6 +96,7 @@ class StringDuplicationCheck(BaseCheck):
                 default=8,
                 description="Minimum string length to consider",
                 min_value=1,
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="min_words",
@@ -101,12 +104,14 @@ class StringDuplicationCheck(BaseCheck):
                 default=3,
                 description="Minimum word count to consider (filters single-word identifiers)",
                 min_value=1,
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="include_patterns",
                 field_type="string[]",
                 default=["**/*.py"],
                 description="Glob patterns for files to scan",
+                permissiveness="more_is_stricter",
             ),
             ConfigField(
                 name="ignore_patterns",
@@ -123,6 +128,7 @@ class StringDuplicationCheck(BaseCheck):
                     "**/conftest.py",
                 ],
                 description="Glob patterns to ignore",
+                permissiveness="fewer_is_stricter",
             ),
         ]
 

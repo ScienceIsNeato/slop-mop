@@ -394,12 +394,14 @@ class BogusTestsCheck(BaseCheck):
                 field_type="string[]",
                 default=["tests"],
                 description="Directories to scan for test files",
+                permissiveness="more_is_stricter",
             ),
             ConfigField(
                 name="exclude_patterns",
                 field_type="string[]",
                 default=["conftest.py"],
                 description="File patterns to exclude from scanning",
+                permissiveness="fewer_is_stricter",
             ),
             ConfigField(
                 name="min_test_statements",
@@ -413,6 +415,7 @@ class BogusTestsCheck(BaseCheck):
                     "statements are flagged as suspiciously short. "
                     "Set to 0 to disable (empty/tautological still caught)."
                 ),
+                permissiveness="higher_is_stricter",
             ),
             ConfigField(
                 name="short_test_severity",
@@ -423,6 +426,7 @@ class BogusTestsCheck(BaseCheck):
                     "Severity for suspiciously short tests: 'fail' blocks "
                     "the gate, 'warn' reports but does not block"
                 ),
+                permissiveness="fail_is_stricter",
             ),
         ]
 

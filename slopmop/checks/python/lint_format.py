@@ -71,6 +71,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 field_type="integer",
                 default=88,
                 description="Maximum line length for black",
+                permissiveness="lower_is_stricter",
             ),
         ]
 

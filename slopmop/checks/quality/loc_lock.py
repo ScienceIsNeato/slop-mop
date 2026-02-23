@@ -127,6 +127,7 @@ class LocLockCheck(BaseCheck):
                 description="Maximum lines allowed per file",
                 min_value=100,
                 max_value=10000,
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="max_function_lines",
@@ -135,18 +136,21 @@ class LocLockCheck(BaseCheck):
                 description="Maximum lines allowed per function/method",
                 min_value=10,
                 max_value=1000,
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="include_dirs",
                 field_type="string[]",
                 default=["."],
                 description="Directories to scan (relative to project root)",
+                permissiveness="more_is_stricter",
             ),
             ConfigField(
                 name="exclude_dirs",
                 field_type="string[]",
                 default=[],
                 description="Additional directories to exclude",
+                permissiveness="fewer_is_stricter",
             ),
             ConfigField(
                 name="extensions",

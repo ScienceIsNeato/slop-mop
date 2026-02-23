@@ -72,6 +72,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 field_type="string[]",
                 default=["tests"],
                 description="Directories containing test files",
+                permissiveness="more_is_stricter",
             ),
             ConfigField(
                 name="timeout",

@@ -14,12 +14,14 @@ from slopmop.checks.quality.complexity import ComplexityCheck
 from slopmop.checks.quality.dead_code import DeadCodeCheck
 from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
 from slopmop.checks.quality.duplication import SourceDuplicationCheck
+from slopmop.checks.quality.gate_dodging import GateDodgingCheck
 from slopmop.checks.quality.loc_lock import LocLockCheck
 
 __all__ = [
     "BogusTestsCheck",
     "ComplexityCheck",
     "DeadCodeCheck",
+    "GateDodgingCheck",
     "SourceDuplicationCheck",
     "StringDuplicationCheck",
     "LocLockCheck",

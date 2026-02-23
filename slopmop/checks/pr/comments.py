@@ -66,6 +66,7 @@ class PRCommentsCheck(BaseCheck):
                 field_type="bool",
                 default=True,
                 description="Whether to fail if unresolved comments exist",
+                permissiveness="true_is_stricter",
             ),
         ]
 

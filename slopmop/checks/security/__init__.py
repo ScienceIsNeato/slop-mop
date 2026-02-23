@@ -106,12 +106,14 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 field_type="string[]",
                 default=["bandit", "semgrep", "detect-secrets"],
                 description="Security scanners to run",
+                permissiveness="more_is_stricter",
             ),
             ConfigField(
                 name="exclude_dirs",
                 field_type="string[]",
                 default=EXCLUDED_DIRS.copy(),
                 description="Directories to exclude from scanning",
+                permissiveness="fewer_is_stricter",
             ),
             ConfigField(
                 name="bandit_config_file",
