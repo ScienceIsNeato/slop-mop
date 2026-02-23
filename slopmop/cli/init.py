@@ -250,8 +250,10 @@ def _set_bogus_tests_defaults(
 
     Defaults ``min_test_statements`` to 1 — catches only the most
     egregious stubs (single return/print statement, no assertions)
-    while avoiding false positives from 2-statement tests that use
-    pytest.raises or similar patterns.
+    while avoiding false positives in short tests that rely on
+    framework-level assertion mechanisms (for example Playwright
+    ``expect()`` or ``pytest.raises``) rather than explicit ``assert``
+    statements.
     """
     if not detected["has_python"]:
         return

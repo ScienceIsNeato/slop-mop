@@ -47,7 +47,7 @@ class TestBogusTestsCheckProperties:
         schema = check.config_schema
         mts = next(f for f in schema if f.name == "min_test_statements")
         assert mts.min_value == 0
-        assert mts.default == 2
+        assert mts.default == 1
 
 
 class TestBogusTestsApplicability:
@@ -206,7 +206,21 @@ class TestShortTests:
         assert "suspiciously short" in result.output
 
     def test_detects_two_statements_no_assert(self, tmp_path):
-        """Two-statement test with no assert is flagged at default threshold."""
+        """Two-statement test with no assert is flagged at threshold=2."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_short.py").write_text(textwrap.dedent("""\
+            def test_two_lines():
+                x = 1 + 1
+                print(x)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"], "min_test_statements": 2})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "suspiciously short" in result.output
+
+    def test_two_statements_pass_at_default_threshold(self, tmp_path):
+        """Two-statement test passes at default threshold (1)."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
         (test_dir / "test_short.py").write_text(textwrap.dedent("""\
@@ -216,11 +230,10 @@ class TestShortTests:
             """))
         check = BogusTestsCheck({"test_dirs": ["tests"]})
         result = check.run(str(tmp_path))
-        assert result.status == CheckStatus.FAILED
-        assert "suspiciously short" in result.output
+        assert result.status == CheckStatus.PASSED
 
     def test_passes_three_statements_no_assert(self, tmp_path):
-        """Three-statement test with no assert passes at default threshold."""
+        """Three-statement test with no assert passes at threshold=2."""
         test_dir = tmp_path / "tests"
         test_dir.mkdir()
         (test_dir / "test_long.py").write_text(textwrap.dedent("""\
@@ -229,7 +242,7 @@ class TestShortTests:
                 y = x + 1
                 print(y)
             """))
-        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        check = BogusTestsCheck({"test_dirs": ["tests"], "min_test_statements": 2})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
 
@@ -562,6 +575,55 @@ class TestMultipleFindings:
         assert "test_short_no_assert" in result.output
         assert "suspiciously short" in result.output
         assert "test_real" not in result.output
+
+
+class TestFixSuggestion:
+    """Tests for tailored fix_suggestion based on finding types."""
+
+    def test_hard_only_suggests_rewrite(self, tmp_path):
+        """When only hard failures, don't suggest suppression comment."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_hard.py").write_text(textwrap.dedent("""\
+            def test_empty():
+                pass
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "cannot be suppressed" in result.fix_suggestion
+        assert "short-test-ok" not in result.fix_suggestion
+
+    def test_short_only_suggests_suppression(self, tmp_path):
+        """When only short-test findings, suggest suppression comment."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_short.py").write_text(textwrap.dedent("""\
+            def test_stub():
+                x = 1
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "short-test-ok" in result.fix_suggestion
+        assert "cannot be suppressed" not in result.fix_suggestion
+
+    def test_mixed_suggests_both(self, tmp_path):
+        """When both hard and short findings, explain both."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_mixed.py").write_text(textwrap.dedent("""\
+            def test_empty():
+                pass
+
+            def test_stub():
+                x = 1
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "cannot be suppressed" in result.fix_suggestion
+        assert "short-test-ok" in result.fix_suggestion
 
 
 class TestSyntaxErrors:

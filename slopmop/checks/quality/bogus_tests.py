@@ -400,7 +400,7 @@ class BogusTestsCheck(BaseCheck):
             ConfigField(
                 name="min_test_statements",
                 field_type="integer",
-                default=2,
+                default=1,
                 min_value=0,
                 max_value=50,
                 description=(
@@ -449,7 +449,7 @@ class BogusTestsCheck(BaseCheck):
         start_time = time.time()
         test_dirs = self.config.get("test_dirs", ["tests"])
         exclude_patterns = self.config.get("exclude_patterns", ["conftest.py"])
-        min_stmts = self.config.get("min_test_statements", 2)
+        min_stmts = self.config.get("min_test_statements", 1)
         short_severity = self.config.get("short_test_severity", "fail")
         root = Path(project_root)
 
@@ -497,14 +497,34 @@ class BogusTestsCheck(BaseCheck):
                 output="\n".join(parse_errors),
             )
 
-        # Always-fail findings (empty body, tautological)
-        hard_fail = len(all_findings) > 0
+        return self._build_result(
+            all_findings,
+            all_short_findings,
+            files_scanned,
+            duration,
+            short_severity,
+        )
 
-        # Short-test findings: fail or warn depending on config
-        short_fail = short_severity == "fail" and len(all_short_findings) > 0
-        short_warn = short_severity == "warn" and len(all_short_findings) > 0
+    def _build_result(
+        self,
+        hard_findings: List[BogusTestFinding],
+        short_findings: List[BogusTestFinding],
+        files_scanned: int,
+        duration: float,
+        short_severity: str,
+    ) -> CheckResult:
+        """Build the final check result from collected findings.
 
-        total = len(all_findings) + len(all_short_findings)
+        Separates always-fail findings (empty body, tautological) from
+        configurable short-test findings, and tailors the fix suggestion
+        so users aren't told to use suppression comments for findings
+        that cannot be suppressed.
+        """
+        hard_fail = len(hard_findings) > 0
+        short_fail = short_severity == "fail" and len(short_findings) > 0
+        short_warn = short_severity == "warn" and len(short_findings) > 0
+
+        total = len(hard_findings) + len(short_findings)
 
         if total == 0:
             return self._create_result(
@@ -513,13 +533,27 @@ class BogusTestsCheck(BaseCheck):
                 output=f"No bogus tests found ({files_scanned} files scanned)",
             )
 
-        combined = all_findings + all_short_findings
+        combined = hard_findings + short_findings
         detail = "\n".join(str(f) for f in combined)
-        suppress_hint = (
-            "Review and either rewrite or add "
-            '"# overconfidence:short-test-ok" comment to suppress '
-            "this warning/error"
-        )
+
+        # Tailor fix suggestions: suppression only works for short-test
+        # findings, not hard failures (empty body / tautological).
+        if hard_fail and not short_findings:
+            fix_suggestion = (
+                "Rewrite these tests to include real assertions — "
+                "empty and tautological tests cannot be suppressed"
+            )
+        elif hard_fail and short_findings:
+            fix_suggestion = (
+                "Rewrite empty/tautological tests (cannot be suppressed). "
+                "For short tests, add assertions or "
+                '"# overconfidence:short-test-ok" to suppress'
+            )
+        else:
+            fix_suggestion = (
+                "Review and either rewrite or add "
+                '"# overconfidence:short-test-ok" comment to suppress'
+            )
 
         if hard_fail or short_fail:
             return self._create_result(
@@ -527,7 +561,7 @@ class BogusTestsCheck(BaseCheck):
                 duration=duration,
                 output=f"Found {total} bogus test(s):\n\n{detail}",
                 error=f"{total} test(s) don't actually test anything",
-                fix_suggestion=suppress_hint,
+                fix_suggestion=fix_suggestion,
             )
 
         # short_warn is True here
@@ -536,5 +570,5 @@ class BogusTestsCheck(BaseCheck):
             duration=duration,
             output=f"Found {total} suspicious test(s):\n\n{detail}",
             error=f"{total} suspiciously short test(s) found",
-            fix_suggestion=suppress_hint,
+            fix_suggestion=fix_suggestion,
         )
