@@ -70,7 +70,7 @@ class _TestAnalyzer(ast.NodeVisitor):
         filepath: str,
         project_root: str,
         source_lines: List[str],
-        min_test_statements: int = 2,
+        min_test_statements: int = 1,
     ) -> None:
         self.filepath = filepath
         self.rel_path = os.path.relpath(filepath, project_root)
@@ -240,7 +240,9 @@ class _TestAnalyzer(ast.NodeVisitor):
         meaningful = [
             stmt
             for stmt in body
-            if not self._is_docstring(stmt) and not isinstance(stmt, ast.Pass)
+            if not self._is_docstring(stmt)
+            and not isinstance(stmt, ast.Pass)
+            and not self._is_ellipsis(stmt)
         ]
 
         # Only flag if the body is just one or two tautological asserts
@@ -338,7 +340,7 @@ class BogusTestsCheck(BaseCheck):
       test_dirs: ["tests"] — directories to scan for test files.
       exclude_patterns: ["conftest.py"] — conftest files contain
           fixtures, not tests, so they're excluded by default.
-      min_test_statements: 2 — tests with no assertion mechanism
+      min_test_statements: 1 — tests with no assertion mechanism
           and this many or fewer meaningful statements are flagged.
           Set to 0 to disable the short-test heuristic (empty and
           tautological checks remain active).

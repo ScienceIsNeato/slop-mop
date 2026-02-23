@@ -174,6 +174,21 @@ class TestTautologicalAssertions:
         assert result.status == CheckStatus.FAILED
         assert "tautological" in result.output
 
+    def test_detects_tautology_with_ellipsis_and_docstring(self, tmp_path):
+        """Ellipsis and docstrings are ignored — tautology is still flagged."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_taut.py").write_text(textwrap.dedent("""\
+            def test_bogus():
+                \"\"\"Looks busy but isn't.\"\"\"
+                ...
+                assert True
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "tautological" in result.output
+
     def test_does_not_flag_tautology_with_real_code(self, tmp_path):
         """Test does NOT flag assert True if real assertions also present."""
         test_dir = tmp_path / "tests"
