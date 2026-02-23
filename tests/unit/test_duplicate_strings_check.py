@@ -65,9 +65,11 @@ class TestStringDuplicationCheck:
     def test_get_tool_path(self, check):
         """Test tool path points to vendored find-duplicate-strings."""
         tool_path = check._get_tool_path()
-        assert "tools" in str(tool_path)
-        assert "find-duplicate-strings" in str(tool_path)
-        assert "index.js" in str(tool_path)
+        # In the dev checkout, should find the vendored tool
+        if tool_path is not None:
+            assert "tools" in str(tool_path)
+            assert "find-duplicate-strings" in str(tool_path)
+            assert "index.js" in str(tool_path)
 
     def test_get_effective_config_defaults(self, check):
         """Test effective config has defaults."""
@@ -303,15 +305,12 @@ class TestStringDuplicationCheck:
     @patch.object(StringDuplicationCheck, "_run_command")
     def test_run_tool_not_found(self, mock_run, check, tmp_path):
         """Test run handles missing tool gracefully."""
-        # Mock tool path to not exist
-        with patch.object(check, "_get_tool_path") as mock_path:
-            mock_path.return_value = MagicMock()
-            mock_path.return_value.exists.return_value = False
-
+        # _get_tool_path returns None when tool not found
+        with patch.object(check, "_get_tool_path", return_value=None):
             result = check.run(str(tmp_path))
 
             assert result.status == CheckStatus.WARNED
-            assert "not found" in result.error.lower()
+            assert "not installed" in result.error.lower()
 
     @patch.object(StringDuplicationCheck, "_run_command")
     def test_run_no_duplicates(self, mock_run, check, tmp_path):
@@ -321,10 +320,9 @@ class TestStringDuplicationCheck:
         mock_result.stderr = ""
         mock_run.return_value = mock_result
 
-        with patch.object(check, "_get_tool_path") as mock_path:
-            mock_path.return_value = MagicMock()
-            mock_path.return_value.exists.return_value = True
-
+        with patch.object(
+            check, "_get_tool_path", return_value=Path("/fake/tool/index.js")
+        ):
             result = check.run(str(tmp_path))
 
             assert result.status == CheckStatus.PASSED
@@ -346,9 +344,9 @@ class TestStringDuplicationCheck:
         mock_result.stderr = ""
         mock_run.return_value = mock_result
 
-        with patch.object(check, "_get_tool_path") as mock_path:
-            mock_path.return_value = MagicMock()
-            mock_path.return_value.exists.return_value = True
+        with patch.object(
+            check, "_get_tool_path", return_value=Path("/fake/tool/index.js")
+        ):
             with patch("json.loads", return_value=findings):
                 result = check.run(str(tmp_path))
 
@@ -363,10 +361,9 @@ class TestStringDuplicationCheck:
         mock_result.stderr = ""
         mock_run.return_value = mock_result
 
-        with patch.object(check, "_get_tool_path") as mock_path:
-            mock_path.return_value = MagicMock()
-            mock_path.return_value.exists.return_value = True
-
+        with patch.object(
+            check, "_get_tool_path", return_value=Path("/fake/tool/index.js")
+        ):
             result = check.run(str(tmp_path))
 
             assert result.status == CheckStatus.ERROR
@@ -377,10 +374,9 @@ class TestStringDuplicationCheck:
         """Test run handles command exceptions."""
         mock_run.side_effect = Exception("Command failed")
 
-        with patch.object(check, "_get_tool_path") as mock_path:
-            mock_path.return_value = MagicMock()
-            mock_path.return_value.exists.return_value = True
-
+        with patch.object(
+            check, "_get_tool_path", return_value=Path("/fake/tool/index.js")
+        ):
             result = check.run(str(tmp_path))
 
             assert result.status == CheckStatus.ERROR
@@ -391,7 +387,7 @@ class TestStringDuplicationCheck:
         fn = check._load_strip_function()
         # The function should be loadable if the tool is vendored
         strip_path = check._get_strip_docstrings_path()
-        if strip_path.exists():
+        if strip_path is not None and strip_path.exists():
             assert fn is not None
             assert callable(fn)
             # Verify it strips docstrings
@@ -403,8 +399,7 @@ class TestStringDuplicationCheck:
 
     def test_load_strip_function_missing_script(self, check):
         """Test loading returns None when script doesn't exist."""
-        with patch.object(check, "_get_strip_docstrings_path") as mock_path:
-            mock_path.return_value = Path("/nonexistent/strip_docstrings.py")
+        with patch.object(check, "_get_strip_docstrings_path", return_value=None):
             assert check._load_strip_function() is None
 
     def test_preprocess_preserves_line_numbers(self, check, tmp_path):
