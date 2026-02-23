@@ -209,6 +209,14 @@ class GateCategory(Enum):
         """Human-readable category name."""
         return self._display_name
 
+    @classmethod
+    def from_key(cls, key: str) -> Optional["GateCategory"]:
+        """Get category by key string (e.g. 'laziness' -> LAZINESS)."""
+        for cat in cls:
+            if cat.key == key:
+                return cat
+        return None
+
 
 @dataclass
 class ConfigField:

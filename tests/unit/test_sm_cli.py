@@ -29,7 +29,7 @@ class TestLoadConfig:
 
     def test_loads_config_from_file(self, tmp_path):
         """Config is loaded from .sb_config.json."""
-        config = {"python": {"enabled": True}}
+        config = {"laziness": {"enabled": True}}
         config_file = tmp_path / ".sb_config.json"
         config_file.write_text(json.dumps(config))
 
@@ -129,16 +129,16 @@ class TestCreateParser:
     def test_config_enable(self):
         """Config --enable parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["config", "--enable", "python-security"])
+        args = parser.parse_args(["config", "--enable", "myopia:security-scan"])
         assert args.verb == "config"
-        assert args.enable == "python-security"
+        assert args.enable == "myopia:security-scan"
 
     def test_help_subcommand(self):
         """Help subcommand parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["help", "python-lint-format"])
+        args = parser.parse_args(["help", "laziness:py-lint"])
         assert args.verb == "help"
-        assert args.gate == "python-lint-format"
+        assert args.gate == "laziness:py-lint"
 
     def test_init_subcommand(self):
         """Init subcommand parses correctly."""
@@ -234,11 +234,11 @@ class TestDetectProjectType:
         assert result["has_typescript"] is True
 
     def test_typescript_recommends_types_gate(self, tmp_path):
-        """TypeScript projects recommend javascript-types gate."""
+        """TypeScript projects recommend js-types gate."""
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
         result = detect_project_type(tmp_path)
-        assert "javascript-types" in result["recommended_gates"]
+        assert "overconfidence:js-types" in result["recommended_gates"]
 
 
 class TestPromptFunctions:
@@ -286,7 +286,7 @@ class TestCmdConfig:
 
     def test_show_config(self, tmp_path, capsys):
         """--show displays configuration."""
-        config = {"python": {"enabled": True}}
+        config = {"laziness": {"enabled": True}}
         (tmp_path / ".sb_config.json").write_text(json.dumps(config))
 
         args = argparse.Namespace(
@@ -318,13 +318,13 @@ class TestCmdConfig:
     def test_enable_gate(self, tmp_path):
         """--enable adds gate to enabled list."""
         (tmp_path / ".sb_config.json").write_text(
-            json.dumps({"disabled_gates": ["python-security"]})
+            json.dumps({"disabled_gates": ["myopia:security-scan"]})
         )
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
             show=False,
-            enable="python-security",
+            enable="myopia:security-scan",
             disable=None,
             include_dir=None,
             exclude_dir=None,
@@ -336,7 +336,7 @@ class TestCmdConfig:
 
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert "python-security" not in config.get("disabled_gates", [])
+        assert "myopia:security-scan" not in config.get("disabled_gates", [])
 
 
 class TestCmdHelp:

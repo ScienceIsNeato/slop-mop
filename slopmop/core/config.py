@@ -2,7 +2,7 @@
 
 This module provides:
 - Config loading and validation
-- Per-language configuration with sub-gates
+- Per-category configuration with sub-gates
 - Directory validation (include/exclude)
 - Threshold validation
 
@@ -10,12 +10,12 @@ Config structure (.sb_config.json):
 {
   "version": "1.0",
   "default_profile": "commit",
-  "python": {
+  "overconfidence": {
     "enabled": true,
     "include_dirs": ["src"],
     "gates": {
-      "lint-format": { "enabled": true },
-      "coverage": { "enabled": true, "threshold": 80 }
+      "py-tests": { "enabled": true },
+      "py-types": { "enabled": true }
     }
   }
 }
@@ -24,44 +24,16 @@ Config structure (.sb_config.json):
 import json
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, cast
+
+# Single source of truth for GateCategory — re-export from checks.base
+from slopmop.checks.base import GateCategory  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 # Config file name
 CONFIG_FILE = ".sb_config.json"
-
-
-class GateCategory(Enum):
-    """Categories for organizing quality gates.
-
-    All checks are organized by the AI flaw they address.
-    """
-
-    # Flaw-based categories
-    OVERCONFIDENCE = ("overconfidence", "🧠", "Overconfidence")
-    DECEPTIVENESS = ("deceptiveness", "🎭", "Deceptiveness")
-    LAZINESS = ("laziness", "🦥", "Laziness")
-    MYOPIA = ("myopia", "🔍", "Myopia")
-
-    # Other categories
-    GENERAL = ("general", "🔧", "General")
-    PR = ("pr", "🔀", "Pull Request")
-
-    def __init__(self, key: str, emoji: str, display_name: str):
-        self.key = key
-        self.emoji = emoji
-        self.display_name = display_name
-
-    @classmethod
-    def from_key(cls, key: str) -> Optional["GateCategory"]:
-        """Get category by key string."""
-        for cat in cls:
-            if cat.key == key:
-                return cat
-        return None
 
 
 class ConfigError(Exception):
@@ -155,8 +127,8 @@ class GateConfig:
 
 
 @dataclass
-class LanguageConfig:
-    """Configuration for a language category (python, javascript, general)."""
+class CategoryConfig:
+    """Configuration for a flaw category (overconfidence, laziness, etc.)."""
 
     enabled: bool = False
     include_dirs: List[str] = field(default_factory=lambda: cast(List[str], []))
@@ -166,8 +138,8 @@ class LanguageConfig:
     )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LanguageConfig":
-        """Create LanguageConfig from dictionary."""
+    def from_dict(cls, data: Dict[str, Any]) -> "CategoryConfig":
+        """Create CategoryConfig from dictionary."""
         gates: Dict[str, GateConfig] = {}
         gates_data = cast(Dict[str, Any], data.get("gates", {}))
         for gate_name, gate_data in gates_data.items():
@@ -209,15 +181,24 @@ class LanguageConfig:
         return self.get_gate_config(gate_name).enabled
 
 
+# Backward-compatible alias
+LanguageConfig = CategoryConfig
+
+
 @dataclass
 class SlopmopConfig:
-    """Top-level slopmop configuration."""
+    """Top-level slopmop configuration.
+
+    Categories are stored dynamically — any GateCategory key
+    (overconfidence, deceptiveness, laziness, myopia, pr, general)
+    is looked up from the categories dict rather than hardcoded fields.
+    """
 
     version: str = "1.0"
     default_profile: str = "commit"
-    python: LanguageConfig = field(default_factory=LanguageConfig)
-    javascript: LanguageConfig = field(default_factory=LanguageConfig)
-    general: LanguageConfig = field(default_factory=LanguageConfig)
+    categories: Dict[str, CategoryConfig] = field(
+        default_factory=lambda: cast(Dict[str, CategoryConfig], {})
+    )
     profiles: Dict[str, List[str]] = field(
         default_factory=lambda: cast(Dict[str, List[str]], {})
     )
@@ -247,26 +228,23 @@ class SlopmopConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SlopmopConfig":
-        """Create config from dictionary."""
-        python = LanguageConfig()
-        javascript = LanguageConfig()
-        general = LanguageConfig()
+        """Create config from dictionary.
 
-        if "python" in data and isinstance(data["python"], dict):
-            python = LanguageConfig.from_dict(cast(Dict[str, Any], data["python"]))
-        if "javascript" in data and isinstance(data["javascript"], dict):
-            javascript = LanguageConfig.from_dict(
-                cast(Dict[str, Any], data["javascript"])
-            )
-        if "general" in data and isinstance(data["general"], dict):
-            general = LanguageConfig.from_dict(cast(Dict[str, Any], data["general"]))
+        Any key that matches a GateCategory key is loaded as a
+        CategoryConfig.  Non-category keys (version, default_profile,
+        profiles, disabled_gates, etc.) are handled separately.
+        """
+        category_keys = {cat.key for cat in GateCategory}
+        categories: Dict[str, CategoryConfig] = {}
+
+        for key, value in data.items():
+            if key in category_keys and isinstance(value, dict):
+                categories[key] = CategoryConfig.from_dict(cast(Dict[str, Any], value))
 
         return cls(
             version=data.get("version", "1.0"),
             default_profile=data.get("default_profile", "commit"),
-            python=python,
-            javascript=javascript,
-            general=general,
+            categories=categories,
             profiles=data.get("profiles", {}),
         )
 
@@ -276,13 +254,9 @@ class SlopmopConfig:
             "version": self.version,
             "default_profile": self.default_profile,
         }
-        # Only include languages that are enabled or have config
-        if self.python.enabled or self.python.gates:
-            result["python"] = self.python.to_dict()
-        if self.javascript.enabled or self.javascript.gates:
-            result["javascript"] = self.javascript.to_dict()
-        if self.general.enabled or self.general.gates:
-            result["general"] = self.general.to_dict()
+        for key, cat_config in self.categories.items():
+            if cat_config.enabled or cat_config.gates:
+                result[key] = cat_config.to_dict()
         if self.profiles:
             result["profiles"] = self.profiles
         return result
@@ -293,36 +267,32 @@ class SlopmopConfig:
         config_path.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
         logger.info(f"Configuration saved to {config_path}")
 
-    def get_language_config(self, language: str) -> LanguageConfig:
-        """Get configuration for a language category."""
-        lang_map = {
-            "python": self.python,
-            "javascript": self.javascript,
-            "general": self.general,
-        }
-        return lang_map.get(language, LanguageConfig())
+    def get_category_config(self, category_key: str) -> CategoryConfig:
+        """Get configuration for a flaw category."""
+        return self.categories.get(category_key, CategoryConfig())
 
-    def is_gate_enabled(self, language: str, gate_name: str) -> bool:
-        """Check if a gate is enabled (language:gate format or separate args)."""
-        if ":" in language:
-            # Handle "laziness:py-lint" format
-            language, gate_name = language.split(":", 1)
-        lang_config = self.get_language_config(language)
-        return lang_config.is_gate_enabled(gate_name)
+    # Backward-compatible alias
+    get_language_config = get_category_config
 
-    def get_gate_include_dirs(self, language: str, gate_name: str) -> List[str]:
-        """Get include_dirs for a gate, with fallback to language level."""
-        lang_config = self.get_language_config(language)
-        gate_config = lang_config.get_gate_config(gate_name)
-        # Gate-level override takes priority
+    def is_gate_enabled(self, category_key: str, gate_name: str = "") -> bool:
+        """Check if a gate is enabled (category:gate format or separate args)."""
+        if ":" in category_key:
+            category_key, gate_name = category_key.split(":", 1)
+        cat_config = self.get_category_config(category_key)
+        return cat_config.is_gate_enabled(gate_name)
+
+    def get_gate_include_dirs(self, category_key: str, gate_name: str) -> List[str]:
+        """Get include_dirs for a gate, with fallback to category level."""
+        cat_config = self.get_category_config(category_key)
+        gate_config = cat_config.get_gate_config(gate_name)
         if gate_config.include_dirs:
             return gate_config.include_dirs
-        return lang_config.include_dirs
+        return cat_config.include_dirs
 
-    def get_gate_exclude_dirs(self, language: str) -> List[str]:
-        """Get exclude_dirs for a language (merged with always-exclude)."""
-        lang_config = self.get_language_config(language)
-        return list(ALWAYS_EXCLUDE) + lang_config.exclude_dirs
+    def get_gate_exclude_dirs(self, category_key: str) -> List[str]:
+        """Get exclude_dirs for a category (merged with always-exclude)."""
+        cat_config = self.get_category_config(category_key)
+        return list(ALWAYS_EXCLUDE) + cat_config.exclude_dirs
 
 
 def validate_include_dirs(
@@ -344,13 +314,13 @@ def validate_include_dirs(
         ConfigError: If include_dirs is empty
     """
     if not include_dirs:
-        # Parse language from gate_name (e.g., "laziness:py-lint" -> "python")
-        language = gate_name.split(":")[0] if ":" in gate_name else gate_name
+        # Parse category from gate_name (e.g., "laziness:py-lint" -> "laziness")
+        category = gate_name.split(":")[0] if ":" in gate_name else gate_name
         raise ConfigError(
             f"{gate_name}: No include_dirs configured",
             fix_suggestion=(
                 f'Run "./sm init" to configure, or add to .sb_config.json:\n'
-                f'  "{language}": {{ "include_dirs": ["src"] }}'
+                f'  "{category}": {{ "include_dirs": ["src"] }}'
             ),
         )
 

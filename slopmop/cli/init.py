@@ -119,14 +119,14 @@ def _build_interactive_config(
     if detected["has_python"]:
         if not prompt_yes_no("Enable Python security scanning", True):
             config["disabled_gates"].extend(
-                ["python-security", "python-security-local"]
+                ["myopia:security-scan", "myopia:security-audit"]
             )
         if not prompt_yes_no("Enable code complexity checks", True):
-            config["disabled_gates"].append("python-complexity")
+            config["disabled_gates"].append("laziness:complexity")
 
     if detected["has_javascript"]:
         if not prompt_yes_no("Enable JavaScript linting", True):
-            config["disabled_gates"].append("js-lint-format")
+            config["disabled_gates"].append("laziness:js-lint")
 
     # Coverage threshold
     default_threshold = preconfig.get("coverage_threshold", 80)
@@ -145,57 +145,79 @@ def _build_interactive_config(
 def _disable_non_applicable(
     base_config: Dict[str, Any], detected: Dict[str, Any]
 ) -> None:
-    """Disable categories and gates that don't apply to this project.
+    """Disable gates that don't apply to this project.
 
-    Starts from an all-enabled template and turns OFF things that
-    aren't relevant. This is the inverse of the old approach which
-    started disabled and turned things ON.
+    The config is organized by flaw category (overconfidence, laziness, etc.),
+    not by language. When a project doesn't have Python or JavaScript, we
+    disable the language-specific gates within each category rather than
+    disabling whole categories.
     """
-    # Disable entire categories that don't apply
-    if not detected["has_python"]:
-        if "python" in base_config:
-            base_config["python"]["enabled"] = False
-            for gate in base_config["python"].get("gates", {}).values():
-                gate["enabled"] = False
+    # Gate short-name prefixes that indicate language specificity
+    py_prefixes = ("py-",)
+    js_prefixes = ("js-",)
 
-    if not detected["has_javascript"]:
-        if "javascript" in base_config:
-            base_config["javascript"]["enabled"] = False
-            for gate in base_config["javascript"].get("gates", {}).values():
-                gate["enabled"] = False
+    # Python-only gates that don't use the py- prefix
+    py_only_gates = {
+        "bogus-tests",
+        "complexity",
+        "dead-code",
+        "template-syntax",
+    }
 
-    # Apply detected test dirs
+    for category_key in list(base_config.keys()):
+        section = base_config.get(category_key)
+        if not isinstance(section, dict) or "gates" not in section:
+            continue
+
+        section = cast(Dict[str, Any], section)
+        gates = cast(Dict[str, Any], section.get("gates", {}))
+        for gate_name, gate_config in gates.items():
+            if not isinstance(gate_config, dict):
+                continue
+
+            # Disable Python-specific gates if no Python detected
+            if not detected["has_python"]:
+                if any(gate_name.startswith(p) for p in py_prefixes):
+                    gate_config["enabled"] = False
+                elif gate_name in py_only_gates:
+                    gate_config["enabled"] = False
+
+            # Disable JavaScript-specific gates if no JavaScript detected
+            if not detected["has_javascript"]:
+                if any(gate_name.startswith(p) for p in js_prefixes):
+                    gate_config["enabled"] = False
+
+    # Apply detected test dirs to py-tests gate
     if detected["has_python"] and detected["test_dirs"]:
-        if "tests" in base_config.get("python", {}).get("gates", {}):
-            base_config["python"]["gates"]["tests"]["test_dirs"] = detected["test_dirs"]
+        for cat_key in base_config:
+            section = base_config.get(cat_key)
+            if isinstance(section, dict) and "gates" in section:
+                if "py-tests" in section["gates"]:
+                    section["gates"]["py-tests"]["test_dirs"] = detected["test_dirs"]
 
 
 def _apply_user_config(base_config: Dict[str, Any], config: Dict[str, Any]) -> None:
     """Apply user config overrides to base config."""
     base_config["default_profile"] = config.get("default_profile", "commit")
 
-    # Apply disabled gates
+    # Apply disabled gates — format is "category:gate" (e.g. "myopia:security-scan")
     for gate_full_name in config.get("disabled_gates", []):
-        if ":" not in gate_full_name and "-" in gate_full_name:
-            parts = gate_full_name.split("-", 1)
-            if len(parts) == 2:
-                category, gate = parts[0], parts[1]
-                if category in base_config and "gates" in base_config[category]:
-                    if gate in base_config[category]["gates"]:
-                        base_config[category]["gates"][gate]["enabled"] = False
+        if ":" in gate_full_name:
+            category, gate = gate_full_name.split(":", 1)
+            if category in base_config and "gates" in base_config[category]:
+                if gate in base_config[category]["gates"]:
+                    base_config[category]["gates"][gate]["enabled"] = False
 
-    # Apply coverage threshold
+    # Apply coverage threshold across all categories that have coverage gates
     if "coverage_threshold" in config:
-        if "python" in base_config and "gates" in base_config["python"]:
-            if "coverage" in base_config["python"]["gates"]:
-                base_config["python"]["gates"]["coverage"]["threshold"] = config[
-                    "coverage_threshold"
-                ]
-        if "javascript" in base_config and "gates" in base_config["javascript"]:
-            if "coverage" in base_config["javascript"]["gates"]:
-                base_config["javascript"]["gates"]["coverage"]["threshold"] = config[
-                    "coverage_threshold"
-                ]
+        for cat_key in base_config:
+            section = base_config.get(cat_key)
+            if isinstance(section, dict) and "gates" in section:
+                cat_gates = cast(Dict[str, Any], section["gates"])
+                for gate_name, gate_config in cat_gates.items():
+                    if isinstance(gate_config, dict) and "coverage" in gate_name:
+                        if "threshold" in gate_config:
+                            gate_config["threshold"] = config["coverage_threshold"]
 
 
 def _disable_checks_with_missing_tools(

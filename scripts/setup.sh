@@ -54,37 +54,22 @@ echo ""
 echo "📦 Upgrading pip..."
 "$PYTHON" -m pip install --upgrade pip --quiet
 
-# ─── Step 3: Install slop-mop dependencies ────────────────────────
+# ─── Step 3: Install slop-mop and all dependencies ────────────────
 echo ""
-echo "📦 Installing slop-mop dependencies..."
+echo "📦 Installing slop-mop (editable) and all dependencies..."
 
-# Use requirements.txt as the single source of truth for deps
-REQUIREMENTS="$SLOP_MOP_DIR/requirements.txt"
-if [ ! -f "$REQUIREMENTS" ]; then
-    echo "❌ Error: requirements.txt not found at $REQUIREMENTS"
-    exit 1
-fi
-
-"$PIP" install -r "$REQUIREMENTS" --quiet 2>&1 || {
+# Install slop-mop in editable mode — pyproject.toml is the single
+# source of truth for dependencies.  This ensures every tool that
+# slop-mop checks depend on is present in the project venv.
+"$PIP" install -e "$SLOP_MOP_DIR" --quiet 2>&1 || {
     echo ""
-    echo "⚠️  Some packages failed to install. Trying individually..."
-    FAILED=()
-    while IFS= read -r line; do
-        # Skip comments and empty lines
-        [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        [[ -z "${line// }" ]] && continue
-        "$PIP" install "$line" --quiet 2>&1 || FAILED+=("$line")
-    done < "$REQUIREMENTS"
-    
-    if [ ${#FAILED[@]} -gt 0 ]; then
-        echo ""
-        echo "❌ Failed to install these packages:"
-        for pkg in "${FAILED[@]}"; do
-            echo "   • $pkg"
-        done
-        echo ""
-        echo "   These checks may not work until the packages are installed."
-        echo "   You can try installing them manually or check platform compatibility."
+    echo "⚠️  pip install -e failed. Falling back to requirements.txt..."
+    REQUIREMENTS="$SLOP_MOP_DIR/requirements.txt"
+    if [ -f "$REQUIREMENTS" ]; then
+        "$PIP" install -r "$REQUIREMENTS" --quiet 2>&1 || true
+    else
+        echo "❌ Error: Neither editable install nor requirements.txt succeeded."
+        exit 1
     fi
 }
 
@@ -193,31 +178,34 @@ else
 fi
 
 # ─── Step 6: Verify installations ─────────────────────────────────
-# Derive the tool list from requirements.txt (single source of truth)
-# rather than maintaining a separate hardcoded list.
+# Verify that slop-mop is installed and its key dependencies are present.
+# pyproject.toml is the single source of truth; pip install -e handles deps.
 echo ""
 echo "🔍 Verifying installed packages..."
 
+# First, verify the slopmop package itself
+if "$PIP" show slopmop &>/dev/null; then
+    echo "   ✅ slopmop package installed (editable)"
+else
+    echo "   ❌ slopmop package NOT installed — setup may have failed"
+fi
+
+# Verify key tool dependencies are importable / available
 PASS=0
 FAIL=0
 MISSING=()
 
-while IFS= read -r line; do
-    # Skip comments and blank lines
-    [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ -z "${line// }" ]] && continue
-    # Strip version specifiers: "black>=23.0.0" -> "black"
-    pkg=$(echo "$line" | sed 's/[><=!;].*//' | xargs)
-    [ -z "$pkg" ] && continue
+CORE_DEPS=(pytest ruff black isort flake8 bandit vulture pyright mypy jinja2)
+for pkg in "${CORE_DEPS[@]}"; do
     if "$PIP" show "$pkg" &>/dev/null; then
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
         MISSING+=("$pkg")
     fi
-done < "$REQUIREMENTS"
+done
 
-echo "   ✅ $PASS/$((PASS + FAIL)) packages verified"
+echo "   ✅ $PASS/$((PASS + FAIL)) core tool packages verified"
 if [ $FAIL -gt 0 ]; then
     echo "   ⚠️  $FAIL packages not found after install:"
     for pkg in "${MISSING[@]}"; do

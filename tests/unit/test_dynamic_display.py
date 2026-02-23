@@ -188,10 +188,10 @@ class TestDynamicDisplay:
 
         line = display._format_check_line(info)
 
-        assert "○" in line
+        assert "○" in line or "◌" in line
         assert "check" in line
-        # Shows N/A for estimated time remaining (no prior data)
-        assert "N/A" in line
+        # Shows "waiting" status text
+        assert "waiting" in line
 
     def test_format_check_line_running(self) -> None:
         """Test formatting running check line."""

@@ -107,11 +107,11 @@ class TestCheckDefinition:
     def test_create_definition(self):
         """Test creating a check definition."""
         definition = CheckDefinition(
-            flag="python-lint-format",
+            flag="laziness:py-lint",
             name="🎨 Python Lint & Format",
         )
 
-        assert definition.flag == "python-lint-format"
+        assert definition.flag == "laziness:py-lint"
         assert definition.name == "🎨 Python Lint & Format"
         assert definition.depends_on == []
         assert definition.auto_fix is False
@@ -119,12 +119,12 @@ class TestCheckDefinition:
     def test_definition_with_dependencies(self):
         """Test definition with dependencies."""
         definition = CheckDefinition(
-            flag="python-coverage",
+            flag="deceptiveness:py-coverage",
             name="📊 Coverage",
-            depends_on=["python-tests"],
+            depends_on=["overconfidence:py-tests"],
         )
 
-        assert definition.depends_on == ["python-tests"]
+        assert definition.depends_on == ["overconfidence:py-tests"]
 
     def test_definition_equality(self):
         """Test definition equality based on flag."""

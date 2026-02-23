@@ -1,7 +1,7 @@
 """Shared constants and skip reason helpers for check modules.
 
 Centralizes duplicate strings that appear across multiple checks,
-flagged by the quality:string-duplication gate.
+flagged by the myopia:string-duplication gate.
 """
 
 # Skip reasons shared across Python checks
