@@ -407,6 +407,65 @@ class TestShortTests:
         assert result.status == CheckStatus.FAILED
         assert "suspiciously short" in result.output
 
+    def test_pytest_raises_function_call_form_exempts(self, tmp_path):
+        """pytest.raises(Exc, func, arg) function call form is recognised."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_raises_call.py").write_text(textwrap.dedent("""\
+            import pytest
+
+            def test_raises_call_form():
+                pytest.raises(ValueError, int, "bad")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_aliased_raises_context_manager_exempts(self, tmp_path):
+        """from pytest import raises — context manager form is recognised."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_aliased_cm.py").write_text(textwrap.dedent("""\
+            from pytest import raises
+
+            def test_raises_aliased():
+                with raises(ValueError):
+                    int("bad")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_aliased_raises_function_call_exempts(self, tmp_path):
+        """from pytest import raises — function call form is recognised."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_aliased_call.py").write_text(textwrap.dedent("""\
+            from pytest import raises
+
+            def test_raises_aliased_call():
+                raises(ValueError, int, "bad")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_aliased_warns_exempts(self, tmp_path):
+        """from pytest import warns — bare warns() is recognised."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_aliased_warns.py").write_text(textwrap.dedent("""\
+            import warnings
+            from pytest import warns
+
+            def test_warns_aliased():
+                with warns(DeprecationWarning):
+                    warnings.warn("old", DeprecationWarning)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
 
 class TestSuppression:
     """Tests for the inline suppression comment."""
@@ -478,6 +537,33 @@ class TestSuppression:
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
         assert "tautological" in result.output
+
+    def test_suppression_marker_in_string_does_not_suppress(self, tmp_path):
+        """Marker inside a string literal does NOT suppress the check."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_str_marker.py").write_text(textwrap.dedent("""\
+            def test_marker_in_string():
+                print("overconfidence:short-test-ok")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "suspiciously short" in result.output
+
+    def test_suppression_marker_in_docstring_does_not_suppress(self, tmp_path):
+        """Marker inside a docstring does NOT suppress the check."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_doc_marker.py").write_text(textwrap.dedent('''\
+            def test_marker_in_docstring():
+                """See overconfidence:short-test-ok for details."""
+                print("hello")
+            '''))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "suspiciously short" in result.output
 
 
 class TestLegitimateTests:

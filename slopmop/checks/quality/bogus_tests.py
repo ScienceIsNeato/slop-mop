@@ -16,12 +16,14 @@ Assertion detection recognises:
 
 - ``assert`` statements (Python built-in)
 - ``pytest.raises``, ``pytest.warns``, ``pytest.deprecated_call``
-  (context managers that ARE assertions)
+  used as context managers (``with pytest.raises(...)``) OR as
+  standalone function calls (``pytest.raises(Exc, func, arg)``)
+- Aliased bare names (``from pytest import raises``)
 
 Tests that use any of these are never flagged as "suspiciously short".
 The heuristic targets tests that have *neither* ``assert`` nor a
-recognised assertion context manager — and are also very short,
-which is a strong signal of reward-hack stubs.
+recognised assertion call — and are also very short, which is a
+strong signal of reward-hack stubs.
 
 Set ``min_test_statements`` to 0 to disable the short-test heuristic
 entirely (empty/tautological checks remain active regardless).
@@ -147,7 +149,11 @@ class _TestAnalyzer(ast.NodeVisitor):
                 )
 
     def _is_suppressed(self, node: ast.FunctionDef) -> bool:
-        """Check if a test has the inline suppression comment."""
+        """Check if a test has the inline suppression comment.
+
+        Only matches the marker when it appears in a Python comment
+        (after ``#``), not inside string literals or docstrings.
+        """
         # Check the def line and the range of lines covered by the function.
         # end_lineno is guaranteed on Python 3.8+ after ast.parse();
         # we require 3.10+, but the type stubs declare it Optional.
@@ -155,7 +161,9 @@ class _TestAnalyzer(ast.NodeVisitor):
         for lineno in range(node.lineno, end_line + 1):
             idx = lineno - 1  # source_lines is 0-indexed
             if 0 <= idx < len(self.source_lines):
-                if SUPPRESS_MARKER in self.source_lines[idx]:
+                line = self.source_lines[idx]
+                comment_start = line.find("#")
+                if comment_start != -1 and SUPPRESS_MARKER in line[comment_start:]:
                     return True
         return False
 
@@ -169,12 +177,20 @@ class _TestAnalyzer(ast.NodeVisitor):
             and not self._is_docstring(stmt)
         )
 
-    # Pytest context managers that act as assertions
+    # Pytest calls that act as assertions — both fully-qualified and bare
+    # names (for ``from pytest import raises`` aliased imports).
     _PYTEST_ASSERTION_CALLS = frozenset(
         {
             "pytest.raises",
             "pytest.warns",
             "pytest.deprecated_call",
+            # Bare names for aliased imports:
+            #   from pytest import raises
+            #   from pytest import warns
+            #   from pytest import deprecated_call
+            "raises",
+            "warns",
+            "deprecated_call",
         }
     )
 
@@ -184,23 +200,20 @@ class _TestAnalyzer(ast.NodeVisitor):
         Recognises:
         - ``assert`` statements
         - ``pytest.raises``, ``pytest.warns``, ``pytest.deprecated_call``
+          as context managers (``with`` statements) OR function calls
+        - Aliased bare names (``from pytest import raises``)
         """
         for child in ast.walk(node):
             if isinstance(child, ast.Assert):
                 return True
-            # Check for pytest assertion context managers used via `with`
-            if isinstance(child, ast.With):
-                for item in child.items:
-                    call_name = self._get_with_call_name(item.context_expr)
-                    if call_name in self._PYTEST_ASSERTION_CALLS:
-                        return True
+            # Check all Call nodes — catches both ``with pytest.raises(...)``
+            # context managers and standalone ``pytest.raises(Exc, func, arg)``
+            # function calls, plus aliased bare names like ``raises(...)``.
+            if isinstance(child, ast.Call):
+                call_name = self._get_call_name(child)
+                if call_name in self._PYTEST_ASSERTION_CALLS:
+                    return True
         return False
-
-    def _get_with_call_name(self, node: ast.expr) -> Optional[str]:
-        """Extract dotted call name from a `with` context expression."""
-        if not isinstance(node, ast.Call):
-            return None
-        return self._get_call_name(node)
 
     def _is_empty_body(self, body: List[ast.stmt]) -> bool:
         """Check if function body is effectively empty."""
@@ -331,8 +344,9 @@ class BogusTestsCheck(BaseCheck):
 
     Assertion detection recognises ``assert`` statements AND
     ``pytest.raises``, ``pytest.warns``, ``pytest.deprecated_call``
-    context managers.  Tests using any of these are never flagged
-    as suspiciously short.
+    as context managers or function calls (including aliased bare
+    names via ``from pytest import raises``).  Tests using any of
+    these are never flagged as suspiciously short.
 
     Profiles: commit, pr
 
