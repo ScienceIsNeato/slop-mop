@@ -623,6 +623,138 @@ class TestLegitimateTests:
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
 
+    def test_nested_test_function_not_flagged(self, tmp_path):
+        """Nested functions named test_* inside a test are not pytest tests."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_decorators.py").write_text(textwrap.dedent("""\
+            def test_login_required_decorator():
+                def test_endpoint(request):
+                    return "OK"
+
+                # actual assertion on the decorator behaviour
+                assert test_endpoint is not None
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_deeply_nested_test_function_not_flagged(self, tmp_path):
+        """Deeply nested test_* helpers (2+ levels) are not flagged."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_nested.py").write_text(textwrap.dedent("""\
+            def test_complex_decorator():
+                def wrapper():
+                    def test_inner():
+                        pass
+                    return test_inner
+                result = wrapper()
+                assert callable(result)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_nested_empty_test_not_flagged(self, tmp_path):
+        """Even a nested test_* with an empty body must not be flagged."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_decorator2.py").write_text(textwrap.dedent("""\
+            def test_decorator_applies():
+                def test_func():
+                    pass  # placeholder for decorator target
+
+                assert test_func is not None
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_class_nested_test_function_not_flagged(self, tmp_path):
+        """Nested test_* inside a class test method is not flagged."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_class_nested.py").write_text(textwrap.dedent("""\
+            class TestPermissions:
+                def test_admin_required(self):
+                    def test_endpoint(request):
+                        return "admin"
+                    assert test_endpoint("req") == "admin"
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_self_assert_methods_recognised(self, tmp_path):
+        """unittest-style self.assert*() calls are assertion mechanisms."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_unittest_style.py").write_text(textwrap.dedent("""\
+            class TestWithUnittest:
+                def test_equality(self):
+                    self.assertEqual(1 + 1, 2)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_self_assertTrue_recognised(self, tmp_path):
+        """self.assertTrue() is an assertion mechanism."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_assertTrue.py").write_text(textwrap.dedent("""\
+            class TestBool:
+                def test_truthy(self):
+                    self.assertTrue(bool(1))
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_self_assertRaises_recognised(self, tmp_path):
+        """self.assertRaises() is an assertion mechanism."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_assertRaises.py").write_text(textwrap.dedent("""\
+            class TestExceptions:
+                def test_raises(self):
+                    self.assertRaises(ValueError, int, "bad")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_self_assertRedirects_recognised(self, tmp_path):
+        """Django-specific self.assertRedirects() is an assertion mechanism."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_django.py").write_text(textwrap.dedent("""\
+            class TestViews:
+                def test_redirect(self):
+                    self.assertRedirects("response", "/expected/")
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_async_nested_function_not_flagged(self, tmp_path):
+        """Async nested test_* is not flagged either."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_async.py").write_text(textwrap.dedent("""\
+            import asyncio
+
+            async def test_async_decorator():
+                async def test_endpoint():
+                    return "OK"
+                result = await test_endpoint()
+                assert result == "OK"
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
 
 class TestExcludePatterns:
     """Tests for file exclusion behavior."""

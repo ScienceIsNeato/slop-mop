@@ -106,3 +106,8 @@ class TestCommandValidator:
         with pytest.raises(SecurityError) as exc_info:
             validator.validate("python -m pytest")  # type: ignore
         assert "must be a list" in str(exc_info.value)
+
+    def test_allows_find_duplicate_strings(self):
+        """Test that find-duplicate-strings is whitelisted."""
+        validator = CommandValidator()
+        assert validator.validate(["find-duplicate-strings", "--help"]) is True

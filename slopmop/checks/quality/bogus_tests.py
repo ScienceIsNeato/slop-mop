@@ -82,14 +82,26 @@ class _TestAnalyzer(ast.NodeVisitor):
         # Short-test findings are tracked separately so the caller
         # can decide whether they're failures or warnings.
         self.short_test_findings: List[BogusTestFinding] = []
+        # Track function nesting depth.  Pytest only discovers
+        # module-level functions and direct class methods — nested
+        # function definitions (e.g. helper functions named test_*
+        # inside a test) are NOT test cases and must be skipped.
+        self._function_depth = 0
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        if node.name.startswith("test_") or (
+        is_test_name = node.name.startswith("test_") or (
             node.name.startswith("test")
             and (len(node.name) == 4 or node.name[4].isupper())
-        ):
+        )
+        # Only analyse test functions at depth 0 (module-level or
+        # direct class methods).  Nested definitions — e.g. decorator
+        # test helpers like ``def test_endpoint(): ...`` inside a real
+        # test — are not collected by pytest and must be skipped.
+        if is_test_name and self._function_depth == 0:
             self._analyze_test(node)
+        self._function_depth += 1
         self.generic_visit(node)
+        self._function_depth -= 1
 
     visit_AsyncFunctionDef = visit_FunctionDef  # type: ignore[assignment]
 
@@ -202,6 +214,7 @@ class _TestAnalyzer(ast.NodeVisitor):
         - ``pytest.raises``, ``pytest.warns``, ``pytest.deprecated_call``
           as context managers (``with`` statements) OR function calls
         - Aliased bare names (``from pytest import raises``)
+        - ``self.assert*()`` calls (unittest / Django TestCase methods)
         """
         for child in ast.walk(node):
             if isinstance(child, ast.Assert):
@@ -213,7 +226,22 @@ class _TestAnalyzer(ast.NodeVisitor):
                 call_name = self._get_call_name(child)
                 if call_name in self._PYTEST_ASSERTION_CALLS:
                     return True
+                # Detect unittest / Django TestCase assertion methods:
+                # self.assertEqual(), self.assertTrue(), self.assertRaises(),
+                # self.assertRedirects(), self.assertContains(), etc.
+                if self._is_self_assert_call(child):
+                    return True
         return False
+
+    @staticmethod
+    def _is_self_assert_call(node: ast.Call) -> bool:
+        """Return True if *node* is a ``self.assert*(...)`` method call."""
+        return (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr.startswith("assert")
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+        )
 
     def _is_empty_body(self, body: List[ast.stmt]) -> bool:
         """Check if function body is effectively empty."""
