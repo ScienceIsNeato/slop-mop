@@ -18,7 +18,7 @@ import os
 import shutil
 import tempfile
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -29,12 +29,6 @@ from slopmop.checks.base import (
 )
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.subprocess.runner import SubprocessResult
-
-# File patterns that eslint should scan
-TEST_GLOBS = [
-    "**/*.test.{js,jsx,ts,tsx}",
-    "**/*.spec.{js,jsx,ts,tsx}",
-]
 
 # Directories to always ignore
 IGNORE_PATTERNS = [
@@ -149,50 +143,14 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             ".spec.ts",
             ".spec.tsx",
         ]
+        EXCLUDED_DIRS = {"node_modules", "dist", "build", "coverage", ".git"}
         for suffix in test_suffixes:
-            # Use rglob to find any matching file
+            # Use rglob but skip excluded directories
             pattern = f"*{suffix}"
-            if any(root.rglob(pattern)):
-                return True
+            for match in root.rglob(pattern):
+                if not any(part in EXCLUDED_DIRS for part in match.parts):
+                    return True
         return False
-
-    def _build_eslint_config(
-        self, project_root: str
-    ) -> Tuple[str, List[Dict[str, Any]], List[str]]:
-        """Build an inline ESLint flat config as a JSON string.
-
-        Generates a temporary flat config that enables ONLY the
-        jest/expect-expect rule, avoiding interference with the
-        project's own ESLint configuration.
-
-        Returns the path to the temporary config file.
-        """
-        additional: List[str] = self.config.get("additional_assert_functions", [])
-        # Default assertion functions that are commonly used
-        assert_fns: List[str] = ["expect", *additional]
-
-        # Build ignore patterns from config + defaults
-        exclude_dirs: List[str] = self.config.get("exclude_dirs", [])
-        ignores: List[str] = IGNORE_PATTERNS + [f"{d}/" for d in exclude_dirs]
-
-        # ESLint flat config format
-        config: List[Dict[str, Any]] = [
-            {
-                "ignores": ignores,
-            },
-            {
-                "plugins": {},  # Placeholder — plugin loaded via require
-                "rules": {
-                    "jest/expect-expect": [
-                        "error",
-                        {"assertFunctionNames": assert_fns},
-                    ],
-                },
-            },
-        ]
-
-        config_path = os.path.join(project_root, ".eslint-expect-check.json")
-        return config_path, config, assert_fns
 
     def _find_test_files(self, project_root: str) -> List[str]:
         """Find test files to scan, respecting exclude_dirs."""
@@ -252,7 +210,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         # --plugin CLI flags in favour of flat config.
         tmpdir = tempfile.mkdtemp(prefix="sm-eslint-")
         try:
-            install_err = self._install_eslint_deps(tmpdir, project_root)
+            install_err = self._install_eslint_deps(tmpdir, project_root, start_time)
             if install_err is not None:
                 return install_err
 
@@ -290,7 +248,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _install_eslint_deps(
-        self, tmpdir: str, project_root: str
+        self, tmpdir: str, project_root: str, start_time: float
     ) -> Optional[CheckResult]:
         """Install eslint@8 + eslint-plugin-jest to a temp directory.
 
@@ -312,7 +270,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         if result.returncode != 0:
             return self._create_result(
                 status=CheckStatus.ERROR,
-                duration=0,
+                duration=time.time() - start_time,
                 error="Failed to install eslint dependencies",
                 output=result.output,
                 fix_suggestion="Ensure npm is available on PATH: npm --version",
@@ -351,7 +309,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             )
 
         # Try to parse the JSON output
-        violations = self._extract_violations(result.output, project_root)
+        violations = self._extract_violations(result.stdout, project_root)
 
         if violations is None:
             # Couldn't parse — maybe eslint gave non-JSON output

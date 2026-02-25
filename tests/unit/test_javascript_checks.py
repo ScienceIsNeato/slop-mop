@@ -638,7 +638,7 @@ class TestJavaScriptExpectCheck:
         mock_result.success = True
         mock_result.timed_out = False
         mock_result.returncode = 0
-        mock_result.output = json.dumps([{"filePath": "/app.test.js", "messages": []}])
+        mock_result.stdout = json.dumps([{"filePath": "/app.test.js", "messages": []}])
 
         with (
             patch.object(check, "_install_eslint_deps", return_value=None),
@@ -675,7 +675,7 @@ class TestJavaScriptExpectCheck:
         mock_result.success = False
         mock_result.timed_out = False
         mock_result.returncode = 1
-        mock_result.output = eslint_output
+        mock_result.stdout = eslint_output
 
         with (
             patch.object(check, "_install_eslint_deps", return_value=None),
@@ -712,7 +712,7 @@ class TestJavaScriptExpectCheck:
         mock_result.success = False
         mock_result.timed_out = False
         mock_result.returncode = 1
-        mock_result.output = eslint_output
+        mock_result.stdout = eslint_output
 
         with (
             patch.object(check, "_install_eslint_deps", return_value=None),
@@ -790,7 +790,7 @@ class TestJavaScriptExpectCheck:
             mock_result.success = True
             mock_result.timed_out = False
             mock_result.returncode = 0
-            mock_result.output = json.dumps([])
+            mock_result.stdout = json.dumps([])
             return mock_result
 
         with (
