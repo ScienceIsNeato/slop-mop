@@ -1,7 +1,6 @@
 """JavaScript lint and format check using ESLint and Prettier."""
 
 import time
-from pathlib import Path
 from typing import List, Optional
 
 from slopmop.checks.base import (
@@ -78,40 +77,6 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     def can_auto_fix(self) -> bool:
         return True
-
-    def _get_npm_install_command(self, project_root: str) -> List[str]:
-        """Build npm install command with appropriate flags.
-
-        Checks both config (npm_install_flags) and .npmrc (legacy-peer-deps).
-        """
-        cmd = ["npm", "install"]
-
-        # Add flags from config
-        config_flags = self.config.get("npm_install_flags", [])
-        cmd.extend(config_flags)
-
-        # Check .npmrc for legacy-peer-deps
-        npmrc_path = Path(project_root) / ".npmrc"
-        if npmrc_path.exists():
-            try:
-                content = npmrc_path.read_text()
-                # Parse line by line, ignoring comments (# and ;)
-                for line in content.splitlines():
-                    line = line.strip()
-                    # Skip comment lines
-                    if line.startswith("#") or line.startswith(";"):
-                        continue
-                    # Check for active legacy-peer-deps setting
-                    if (
-                        "legacy-peer-deps=true" in line
-                        and "--legacy-peer-deps" not in cmd
-                    ):
-                        cmd.append("--legacy-peer-deps")
-                        break
-            except Exception:
-                pass  # Ignore .npmrc read errors
-
-        return cmd
 
     def auto_fix(self, project_root: str) -> bool:
         """Auto-fix formatting issues."""
