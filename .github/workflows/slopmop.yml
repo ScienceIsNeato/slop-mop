@@ -50,6 +50,7 @@ jobs:
   wait-for-bots:
     name: ⏳ Wait for External Bots
     runs-on: ubuntu-latest
+    needs: integration  # run after all real CI — bots have had plenty of time to start
     if: github.event_name == 'pull_request'
 
     steps:
@@ -57,71 +58,46 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Wait for external bots (like Bugbot) to finish their review.
+          # By this point validate + integration have finished (~4-5 min).
+          # Any external bot that's going to run (Bugbot, etc.) has had
+          # plenty of time to register and start.
           #
-          # Two phases:
-          #   Phase 1 — Wait for at least one external check suite to register
-          #             (any status: queued, in_progress, completed).
-          #   Phase 2 — Wait for all non-completed suites to finish.
-          #
-          # If no external suites appear within 10 min we assume there are
-          # no bots configured and exit successfully.
+          # Logic:
+          #   - Check for in_progress external suites
+          #   - If any: poll until they complete (up to 15 min)
+          #   - If none: exit immediately (bot finished or was never scheduled)
           COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
           POLL_INTERVAL=15
+          MAX_POLLS=60  # 60 × 15s = 15 min
 
-          # --- Phase 1: Wait for at least one external suite to register ---
-          MAX_APPEAR=40  # 40 × 15s = 10 min
-          APPEAR=0
-          echo "🔍 Phase 1 — waiting for an external check suite to register..."
-          while [ $APPEAR -lt $MAX_APPEAR ]; do
-            REGISTERED=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
-              --jq '[.check_suites[] | select(.app.slug != "github-actions")] | length')
-
-            if [ "$REGISTERED" -gt 0 ]; then
-              echo "✅ Found ${REGISTERED} external check suite(s)."
-              break
-            fi
-
-            APPEAR=$((APPEAR + 1))
-            echo "⏳ No external suites yet (attempt ${APPEAR}/${MAX_APPEAR})"
-            sleep $POLL_INTERVAL
-          done
-
-          if [ "$REGISTERED" = "0" ] || [ -z "$REGISTERED" ]; then
-            echo "⚠️ No external check suites registered after $((MAX_APPEAR * POLL_INTERVAL))s — nothing to wait for."
-            exit 0
-          fi
-
-          # --- Phase 2: Wait for all external suites to complete ---
-          MAX_COMPLETE=60  # 60 × 15s = 15 min
-          COMPLETE=0
-          echo "🔍 Phase 2 — waiting for external check suites to complete..."
-          while [ $COMPLETE -lt $MAX_COMPLETE ]; do
-            # Show which suites are still pending
+          echo "🔍 Checking for in-progress external check suites..."
+          POLL=0
+          while [ $POLL -lt $MAX_POLLS ]; do
+            # Show what's still running
             gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
-              --jq '.check_suites[] | select(.app.slug != "github-actions") | select(.status != "completed") | "  🔄 \(.app.name) (\(.app.slug)): \(.status)"'
+              --jq '.check_suites[] | select(.app.slug != "github-actions") | select(.status == "in_progress") | "  🔄 \(.app.name) (\(.app.slug)): \(.status)"'
 
-            PENDING=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
-              --jq '[.check_suites[] | select(.app.slug != "github-actions") | select(.status != "completed")] | length')
+            IN_PROGRESS=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
+              --jq '[.check_suites[] | select(.app.slug != "github-actions") | select(.status == "in_progress")] | length')
 
-            if [ "$PENDING" = "0" ]; then
-              echo "✅ All external check suites have completed."
+            if [ "$IN_PROGRESS" = "0" ]; then
+              echo "✅ No external check suites in progress — clear to proceed."
               exit 0
             fi
 
-            COMPLETE=$((COMPLETE + 1))
-            echo "⏳ ${PENDING} suite(s) still pending (attempt ${COMPLETE}/${MAX_COMPLETE})"
+            POLL=$((POLL + 1))
+            echo "⏳ ${IN_PROGRESS} suite(s) still in progress (attempt ${POLL}/${MAX_POLLS})"
             sleep $POLL_INTERVAL
           done
 
-          echo "❌ Timed out — external check suite(s) still not completed after $((MAX_COMPLETE * POLL_INTERVAL))s."
+          echo "❌ Timed out — external suite(s) still in progress after $((MAX_POLLS * POLL_INTERVAL))s."
           echo "Cannot reliably check PR comments while bots are still running."
           exit 1
 
   pr-comments:
     name: PR Comment Check
     runs-on: ubuntu-latest
-    needs: [integration, wait-for-bots]  # converge both parallel paths
+    needs: wait-for-bots  # runs after CI + bot wait are both done
     if: github.event_name == 'pull_request'
 
     steps:
