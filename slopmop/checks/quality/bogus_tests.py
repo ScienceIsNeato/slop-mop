@@ -19,6 +19,8 @@ Assertion detection recognises:
   used as context managers (``with pytest.raises(...)``) OR as
   standalone function calls (``pytest.raises(Exc, func, arg)``)
 - Aliased bare names (``from pytest import raises``)
+- ``self.assert*()`` calls (unittest / Django ``TestCase`` methods
+  such as ``assertEqual``, ``assertTrue``, ``assertRaises``, etc.)
 
 Tests that use any of these are never flagged as "suspiciously short".
 The heuristic targets tests that have *neither* ``assert`` nor a
