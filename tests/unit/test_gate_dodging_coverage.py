@@ -96,9 +96,29 @@ class TestLoadBaseConfigPaths:
 class TestIsMorePermissiveEdgeCases:
     """Cover remaining branches not hit by TestIsMorePermissive."""
 
-    def test_lower_is_stricter_non_numeric(self):
-        """Non-numeric values for lower_is_stricter → False."""
-        assert _is_more_permissive("lower_is_stricter", "x", "y") is False
+    def test_lower_is_stricter_non_numeric_non_string(self):
+        """Non-numeric, non-string values for lower_is_stricter → False."""
+        assert _is_more_permissive("lower_is_stricter", [1], [2]) is False
+
+    def test_lower_is_stricter_string_loosened(self):
+        """String comparison: 'C' → 'F' is more permissive (higher rank)."""
+        assert _is_more_permissive("lower_is_stricter", "C", "F") is True
+
+    def test_lower_is_stricter_string_tightened(self):
+        """String comparison: 'F' → 'C' is NOT more permissive."""
+        assert _is_more_permissive("lower_is_stricter", "F", "C") is False
+
+    def test_lower_is_stricter_string_equal(self):
+        """String comparison: equal values → False."""
+        assert _is_more_permissive("lower_is_stricter", "C", "C") is False
+
+    def test_higher_is_stricter_string_loosened(self):
+        """String comparison: 'F' → 'C' is more permissive (lower value)."""
+        assert _is_more_permissive("higher_is_stricter", "F", "C") is True
+
+    def test_higher_is_stricter_string_tightened(self):
+        """String comparison: 'C' → 'F' is NOT more permissive."""
+        assert _is_more_permissive("higher_is_stricter", "C", "F") is False
 
     def test_fewer_is_stricter_both_empty(self):
         """Empty lists for fewer_is_stricter → False."""
@@ -163,6 +183,25 @@ class TestBuildSchemaLookup:
         lookup = _build_schema_lookup()
         assert "deceptiveness:bogus-tests" in lookup
         assert "deceptiveness:gate-dodging" in lookup
+
+    def test_dead_code_min_confidence_is_lower_is_stricter(self):
+        """min_confidence should be lower_is_stricter (lower = more findings = stricter)."""
+        lookup = _build_schema_lookup()
+        dead_code_fields = lookup.get("laziness:dead-code", {})
+        mc = dead_code_fields.get("min_confidence")
+        assert mc is not None, "min_confidence field not found in dead-code schema"
+        assert mc.permissiveness == "lower_is_stricter"
+
+    def test_complexity_max_rank_string_comparison_works(self):
+        """max_rank loosening ('C' → 'F') should be detected as more permissive."""
+        lookup = _build_schema_lookup()
+        complexity_fields = lookup.get("laziness:complexity", {})
+        mr = complexity_fields.get("max_rank")
+        assert mr is not None, "max_rank field not found in complexity schema"
+        assert mr.permissiveness == "lower_is_stricter"
+        # Verify the comparison actually works for string values
+        assert _is_more_permissive("lower_is_stricter", "C", "F") is True
+        assert _is_more_permissive("lower_is_stricter", "F", "C") is False
 
 
 # ---------------------------------------------------------------------------

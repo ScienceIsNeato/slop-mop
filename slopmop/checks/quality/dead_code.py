@@ -82,7 +82,7 @@ class DeadCodeCheck(BaseCheck):
                 field_type="integer",
                 default=DEFAULT_MIN_CONFIDENCE,
                 description="Minimum confidence to report (60-100)",
-                permissiveness="higher_is_stricter",
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="exclude_patterns",

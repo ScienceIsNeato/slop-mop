@@ -117,11 +117,16 @@ def _is_more_permissive(
         # Higher = stricter, so new < old = more permissive
         if isinstance(new_value, (int, float)) and isinstance(old_value, (int, float)):
             return new_value < old_value
+        if isinstance(new_value, str) and isinstance(old_value, str):
+            return new_value < old_value
         return False
 
     if permissiveness == "lower_is_stricter":
         # Lower = stricter, so new > old = more permissive
         if isinstance(new_value, (int, float)) and isinstance(old_value, (int, float)):
+            return new_value > old_value
+        # Support ordered string values (e.g. complexity rank "A" < "C" < "F")
+        if isinstance(new_value, str) and isinstance(old_value, str):
             return new_value > old_value
         return False
 
