@@ -31,15 +31,19 @@ def _setup_self_validation(project_root: Path) -> str:
     # Generate config with auto-detection
     base_config = generate_base_config()
 
-    # Enable Python gates for slopmop itself across flaw categories
-    # py-lint is in laziness
+    # Enable all gates that match the commit profile for slopmop itself.
+    # Organized by flaw category — each gate listed explicitly so drift
+    # between this config and the commit profile alias is obvious.
+
+    # laziness: py-lint, complexity, dead-code
     if "laziness" in base_config:
         base_config["laziness"]["enabled"] = True
         gates = base_config["laziness"].get("gates", {})
-        if "py-lint" in gates:
-            gates["py-lint"]["enabled"] = True
+        for gate in ["py-lint", "complexity", "dead-code"]:
+            if gate in gates:
+                gates[gate]["enabled"] = True
 
-    # py-tests, py-static-analysis, py-types are in overconfidence
+    # overconfidence: py-static-analysis, py-types, py-tests
     if "overconfidence" in base_config:
         base_config["overconfidence"]["enabled"] = True
         gates = base_config["overconfidence"].get("gates", {})
@@ -49,13 +53,28 @@ def _setup_self_validation(project_root: Path) -> str:
         if "py-tests" in gates:
             gates["py-tests"]["test_dirs"] = ["tests"]
 
-    # py-coverage is in deceptiveness
+    # deceptiveness: py-coverage, bogus-tests, gate-dodging
     if "deceptiveness" in base_config:
         base_config["deceptiveness"]["enabled"] = True
         gates = base_config["deceptiveness"].get("gates", {})
+        for gate in ["py-coverage", "bogus-tests", "gate-dodging"]:
+            if gate in gates:
+                gates[gate]["enabled"] = True
         if "py-coverage" in gates:
-            gates["py-coverage"]["enabled"] = True
             gates["py-coverage"]["threshold"] = 80
+
+    # myopia: security-scan, source-duplication, string-duplication, loc-lock
+    if "myopia" in base_config:
+        base_config["myopia"]["enabled"] = True
+        gates = base_config["myopia"].get("gates", {})
+        for gate in [
+            "security-scan",
+            "source-duplication",
+            "string-duplication",
+            "loc-lock",
+        ]:
+            if gate in gates:
+                gates[gate]["enabled"] = True
 
     # Write temp config
     temp_config_file.write_text(json.dumps(base_config, indent=2) + "\n")
