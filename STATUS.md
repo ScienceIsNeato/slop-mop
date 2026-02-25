@@ -1,5 +1,6 @@
 # Project Status
 
+<<<<<<< Updated upstream
 ## Active Branch: `chore/display-tweaks`
 
 Post-v0.1.0 release polish: display improvements, Python 3.14 compatibility, README rewrite, category migration.
@@ -41,3 +42,42 @@ All 832 unit tests passing. Category migration complete across 15 files: 11 sour
 4. `test_result.py` — `CheckDefinition` test fixtures use flaw-based gate names
 
 **Docs updated**: `.github/instructions/project-slop-mop.instructions.md`
+=======
+## Current Work: feat/friction-fixes-and-improvements branch — PR #23
+
+### Latest: Merged PR #22 into PR #23
+
+**Summary:**
+- Consolidated two open PRs (#22 and #23) into a single PR (#23)
+- All 12 quality gates pass
+- All 7 PR review comments addressed and resolved
+- PR #22 closed with comment explaining the merge
+
+### Combined changes now in PR #23:
+
+**From original PR #23 (six friction points):**
+1. `sm` wrapper: cd to project root before exec
+2. `python:lint-format`: respect include_dirs; skip hidden dirs
+3. `javascript:types` added to commit and pr profiles
+4. `setup.sh`: auto-build find-duplicate-strings tool
+5. `setup.sh`: arithmetic trap exit 1 fix
+6. `setup.sh`: suppress husky noise
+
+**Merged from PR #22:**
+- Prioritize project-local venvs over VIRTUAL_ENV
+- npm_install_flags support for React Native projects
+- sm wrapper fallback to system Python for JS-only projects
+- venv detection priority updates
+
+**Additional fixes for PR review comments:**
+- setup.sh: Add npm/npx availability check before build
+- setup.sh: Capture subshell exit status with `|| true` for graceful failure
+- lint_format.py: Use `--extend-exclude` instead of `--exclude` for flake8
+- lint_format.py: Add `__pycache__` and `.*` (hidden dirs) to exclude list
+- lint_format.py: Soften docstring about hidden dir scanning
+
+### Status:
+- CI checks running on PR #23
+- PR #22 closed
+- Waiting for CI to complete
+>>>>>>> Stashed changes

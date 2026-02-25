@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from slopmop.checks.base import ConfigField
+from slopmop.checks.base import ConfigField, Flaw
 from slopmop.checks.quality.gate_dodging import (
     JUSTIFICATION_PREFIX,
     GateDodgingCheck,
@@ -46,6 +46,10 @@ class TestGateDodgingCheckProperties:
         schema = check.config_schema
         field_names = [f.name for f in schema]
         assert "base_ref" in field_names
+
+    def test_flaw_is_deceptiveness(self):
+        check = GateDodgingCheck({})
+        assert check.flaw == Flaw.DECEPTIVENESS
 
 
 # ---------------------------------------------------------------------------
