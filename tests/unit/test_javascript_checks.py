@@ -640,7 +640,10 @@ class TestJavaScriptExpectCheck:
         mock_result.returncode = 0
         mock_result.output = json.dumps([{"filePath": "/app.test.js", "messages": []}])
 
-        with patch.object(check, "_run_command", return_value=mock_result):
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", return_value=mock_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
@@ -674,7 +677,10 @@ class TestJavaScriptExpectCheck:
         mock_result.returncode = 1
         mock_result.output = eslint_output
 
-        with patch.object(check, "_run_command", return_value=mock_result):
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", return_value=mock_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
@@ -708,7 +714,10 @@ class TestJavaScriptExpectCheck:
         mock_result.returncode = 1
         mock_result.output = eslint_output
 
-        with patch.object(check, "_run_command", return_value=mock_result):
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", return_value=mock_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
@@ -724,7 +733,10 @@ class TestJavaScriptExpectCheck:
         mock_result.timed_out = True
         mock_result.output = ""
 
-        with patch.object(check, "_run_command", return_value=mock_result):
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", return_value=mock_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.ERROR
@@ -742,7 +754,10 @@ class TestJavaScriptExpectCheck:
         mock_result.returncode = 2
         mock_result.output = "ESLint configuration error"
 
-        with patch.object(check, "_run_command", return_value=mock_result):
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", return_value=mock_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.ERROR
@@ -778,7 +793,10 @@ class TestJavaScriptExpectCheck:
             mock_result.output = json.dumps([])
             return mock_result
 
-        with patch.object(check, "_run_command", side_effect=capture_command):
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", side_effect=capture_command),
+        ):
             check.run(str(tmp_path))
 
         # Verify the rule config includes custom assert function names
@@ -869,7 +887,10 @@ class TestJavaScriptExpectCheck:
         mock_result.returncode = 0
         mock_result.output = "All good"  # Not JSON
 
-        with patch.object(check, "_run_command", return_value=mock_result):
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", return_value=mock_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
@@ -886,8 +907,27 @@ class TestJavaScriptExpectCheck:
         mock_result.returncode = 1
         mock_result.output = "Something went wrong"
 
-        with patch.object(check, "_run_command", return_value=mock_result):
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", return_value=mock_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.ERROR
         assert "Could not parse" in result.error
+
+    def test_run_npm_install_fails(self, tmp_path):
+        """Test run() reports error when eslint dep install fails."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "app.test.js").write_text("test('x', () => {})")
+        check = JavaScriptExpectCheck({})
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.output = "npm ERR! code E404"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.ERROR
+        assert "install eslint" in result.error.lower()

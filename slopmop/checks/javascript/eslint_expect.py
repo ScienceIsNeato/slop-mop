@@ -15,6 +15,8 @@ so no permanent devDependency is required in the target project.
 
 import json
 import os
+import shutil
+import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -239,37 +241,79 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         # Build the rule config as a JSON string for --rule
         rule_config = json.dumps(["error", {"assertFunctionNames": assert_fns}])
 
-        # Use npx to run eslint with the jest plugin inline.
+        # Install eslint + plugin to an isolated temp directory.
+        # We can't use `npx --package=... eslint` because ESLint resolves
+        # plugins relative to CWD, not the npx temp directory. In fresh
+        # environments (Docker, CI), the plugin isn't in the npx cache so
+        # ESLint can't find it. Installing to a known location and using
+        # --resolve-plugins-relative-to is reliable everywhere.
+        #
         # Pin to eslint@8 — ESLint 9.x removed the --no-eslintrc and
-        # --plugin CLI flags in favour of flat config. Since we use
-        # one-shot npx invocations (no project dependency), eslint@8
-        # keeps the CLI approach clean and portable.
-        # --no-eslintrc prevents the project's own eslint config from
-        # interfering. We ONLY want expect-expect.
-        cmd = [
-            "npx",
-            "--yes",
-            "--package=eslint@8",
-            "--package=eslint-plugin-jest",
-            "--",
-            "eslint",
-            "--no-eslintrc",
-            "--plugin",
-            "jest",
-            "--rule",
-            f"jest/expect-expect: {rule_config}",
-            "--format",
-            "json",
-            *test_files,
+        # --plugin CLI flags in favour of flat config.
+        tmpdir = tempfile.mkdtemp(prefix="sm-eslint-")
+        try:
+            install_err = self._install_eslint_deps(tmpdir, project_root)
+            if install_err is not None:
+                return install_err
+
+            eslint_bin = os.path.join(tmpdir, "node_modules", ".bin", "eslint")
+            node_modules = os.path.join(tmpdir, "node_modules")
+
+            # --no-eslintrc prevents the project's own eslint config from
+            # interfering. We ONLY want expect-expect.
+            cmd = [
+                eslint_bin,
+                "--no-eslintrc",
+                "--resolve-plugins-relative-to",
+                node_modules,
+                "--plugin",
+                "jest",
+                "--rule",
+                f"jest/expect-expect: {rule_config}",
+                "--format",
+                "json",
+                *test_files,
+            ]
+
+            result = self._run_command(cmd, cwd=project_root, timeout=120)
+            duration = time.time() - start_time
+
+            # Parse ESLint JSON output
+            return self._parse_eslint_output(
+                result, duration, len(test_files), max_violations, project_root
+            )
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _install_eslint_deps(
+        self, tmpdir: str, project_root: str
+    ) -> Optional[CheckResult]:
+        """Install eslint@8 + eslint-plugin-jest to a temp directory.
+
+        Returns None on success, or a CheckResult on failure.
+        """
+        install_cmd = [
+            "npm",
+            "install",
+            "--prefix",
+            tmpdir,
+            "eslint@8",
+            "eslint-plugin-jest",
+            "--no-save",
+            "--no-audit",
+            "--no-fund",
+            "--loglevel=error",
         ]
-
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
-        duration = time.time() - start_time
-
-        # Parse ESLint JSON output
-        return self._parse_eslint_output(
-            result, duration, len(test_files), max_violations, project_root
-        )
+        result = self._run_command(install_cmd, cwd=project_root, timeout=60)
+        if result.returncode != 0:
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=0,
+                error="Failed to install eslint dependencies",
+                output=result.output,
+                fix_suggestion="Ensure npm is available on PATH: npm --version",
+            )
+        return None
 
     def _parse_eslint_output(
         self,
@@ -297,8 +341,8 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 output=result.output,
                 fix_suggestion=(
                     "This may indicate eslint-plugin-jest couldn't be loaded. "
-                    "Ensure node/npx is on PATH and try: "
-                    "npx --yes eslint-plugin-jest --version"
+                    "Ensure node/npm is on PATH and try: "
+                    "npm install eslint@8 eslint-plugin-jest"
                 ),
             )
 
