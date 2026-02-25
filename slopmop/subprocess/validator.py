@@ -63,6 +63,7 @@ class CommandValidator:
             "autoflake",
             "pyright",
             "ruff",
+            "find-duplicate-strings",
             # JavaScript/Node ecosystem
             "node",
             "npm",

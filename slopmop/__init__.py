@@ -1,3 +1,5 @@
 """Slop-Mop: Quality gates for AI-assisted codebases."""
 
-__version__ = "0.3.0"
+from importlib.metadata import version as _pkg_version
+
+__version__ = _pkg_version("slopmop")

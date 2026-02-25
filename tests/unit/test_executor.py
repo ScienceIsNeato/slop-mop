@@ -604,6 +604,24 @@ class TestCheckExecutor:
         assert any("check1" in n for n in completed_names)
         assert any("check2" in n for n in completed_names)
 
+    def test_run_single_check_skips_when_stop_event_set(self, tmp_path):
+        """_run_single_check short-circuits when stop event is already set."""
+        registry = CheckRegistry()
+        check_class = make_mock_check_class("check1")
+        registry.register(check_class)
+
+        executor = CheckExecutor(registry=registry, fail_fast=True)
+        # Pre-set the stop event (simulates fail-fast already triggered)
+        executor._stop_event.set()
+
+        check_instance = check_class({})
+        result = executor._run_single_check(check_instance, str(tmp_path), False)
+
+        assert result.status == CheckStatus.SKIPPED
+        assert "fail-fast" in result.output.lower()
+        # The check's run() should NOT have been called
+        assert check_class.run_count == 0
+
 
 class TestRunQualityChecks:
     """Tests for the run_quality_checks convenience function."""

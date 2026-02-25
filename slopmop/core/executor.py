@@ -16,6 +16,8 @@ from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, Scop
 
 logger = logging.getLogger(__name__)
 
+_SKIP_FAIL_FAST = "Skipped due to fail-fast"
+
 
 def _is_gate_enabled_in_config(
     check: BaseCheck, config: Dict[str, Any]
@@ -448,10 +450,19 @@ class CheckExecutor:
                     break
         finally:
             if self._stop_event.is_set():
-                # Fail-fast: cancel queued futures and don't wait for running ones
+                # Fail-fast: cancel queued futures, then perform a
+                # *waiting* shutdown.  The waiting shutdown is
+                # deliberate — without it, Python's atexit handler
+                # for ThreadPoolExecutor calls shutdown(wait=True)
+                # during sys.exit(), blocking on worker threads that
+                # are still finishing their current task.  By waiting
+                # here (where we've already set the stop event so
+                # newly-started checks short-circuit via the guard in
+                # _run_single_check), all workers finish promptly and
+                # the atexit handler becomes a no-op.
                 for future in futures:
                     future.cancel()
-                executor.shutdown(wait=False, cancel_futures=True)
+                executor.shutdown(wait=True, cancel_futures=True)
             else:
                 # Normal exit: wait for everything to finish cleanly
                 executor.shutdown(wait=True)
@@ -463,7 +474,7 @@ class CheckExecutor:
                     name=name,
                     status=CheckStatus.SKIPPED,
                     duration=0,
-                    output="Skipped due to fail-fast",
+                    output=_SKIP_FAIL_FAST,
                 )
                 self._results[name] = result
                 if self._on_check_complete:
@@ -480,7 +491,7 @@ class CheckExecutor:
                         name=name,
                         status=CheckStatus.SKIPPED,
                         duration=0,
-                        output="Skipped due to fail-fast",
+                        output=_SKIP_FAIL_FAST,
                     )
                 self._results[name] = result
                 if self._on_check_complete:
@@ -502,6 +513,16 @@ class CheckExecutor:
         Returns:
             CheckResult
         """
+        # Short-circuit if fail-fast already triggered — avoids
+        # starting expensive work after a failure is detected.
+        if self._stop_event.is_set():
+            return CheckResult(
+                name=check.full_name,
+                status=CheckStatus.SKIPPED,
+                duration=0,
+                output=_SKIP_FAIL_FAST,
+            )
+
         logger.debug(f"Running {check.display_name}")
 
         # Measure scope before running (lightweight file count)
