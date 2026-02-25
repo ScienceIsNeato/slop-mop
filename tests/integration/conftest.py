@@ -37,7 +37,7 @@ from tests.integration.docker_manager import DockerManager, RunResult
 # ---------------------------------------------------------------------------
 FIXTURE_REFS: dict[str, str] = {
     # feat/add-js-slop-main — Python + JS tests with assertions (gate passes)
-    "main": "83a544ed1be486bd7793f767130bef5adba8edc0",  # pragma: allowlist secret
+    "main": "41f826dd563cff648734bcb4c482119239127dec",  # pragma: allowlist secret
     # feat/add-js-slop-all-fail — Python slop + JS tests without assertions (gate fails)
     "all-fail": "37dc23351b3bc9f89bd8b4b94c014dbe3d37f1bb",  # pragma: allowlist secret
     # feat/add-js-slop-mixed — Python slop + JS tests with assertions (gate passes)
