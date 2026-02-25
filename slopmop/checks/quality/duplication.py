@@ -80,30 +80,35 @@ class SourceDuplicationCheck(BaseCheck):
                 description="Maximum allowed duplication percentage",
                 min_value=0,
                 max_value=100,
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="include_dirs",
                 field_type="string[]",
                 default=["."],
                 description="Directories to scan for duplication",
+                permissiveness="more_is_stricter",
             ),
             ConfigField(
                 name="min_tokens",
                 field_type="integer",
                 default=50,
                 description="Minimum token count to consider as duplicate",
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="min_lines",
                 field_type="integer",
                 default=5,
                 description="Minimum line count to consider as duplicate",
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="exclude_dirs",
                 field_type="string[]",
                 default=[],
                 description="Additional directories to exclude from duplication scanning",
+                permissiveness="fewer_is_stricter",
             ),
         ]
 

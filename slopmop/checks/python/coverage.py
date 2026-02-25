@@ -122,6 +122,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 description="Minimum coverage percentage required",
                 min_value=0,
                 max_value=100,
+                permissiveness="higher_is_stricter",
             ),
         ]
 

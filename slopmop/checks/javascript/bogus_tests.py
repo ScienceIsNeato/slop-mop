@@ -375,12 +375,14 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 field_type="integer",
                 default=0,
                 description="Maximum bogus tests allowed (0 = none)",
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="exclude_dirs",
                 field_type="string[]",
                 default=[],
                 description="Additional directories to exclude from scanning",
+                permissiveness="fewer_is_stricter",
             ),
         ]
 

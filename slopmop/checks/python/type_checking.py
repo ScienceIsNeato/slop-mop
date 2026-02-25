@@ -200,6 +200,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                     "self-documenting for AI agents. When false, pyright only "
                     "catches basic errors like missing imports."
                 ),
+                permissiveness="true_is_stricter",
             ),
         ]
 

@@ -82,6 +82,7 @@ class DeadCodeCheck(BaseCheck):
                 field_type="integer",
                 default=DEFAULT_MIN_CONFIDENCE,
                 description="Minimum confidence to report (60-100)",
+                permissiveness="lower_is_stricter",
             ),
             ConfigField(
                 name="exclude_patterns",
@@ -99,12 +100,14 @@ class DeadCodeCheck(BaseCheck):
                     "**/cursor-rules/**",
                 ],
                 description="Glob patterns to exclude from scanning",
+                permissiveness="fewer_is_stricter",
             ),
             ConfigField(
                 name="src_dirs",
                 field_type="string[]",
                 default=["."],
                 description="Directories to scan for dead code",
+                permissiveness="more_is_stricter",
             ),
             ConfigField(
                 name="whitelist_file",

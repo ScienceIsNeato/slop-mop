@@ -81,6 +81,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                     "otherwise cascade into hundreds of 'unknown type' errors "
                     "in editors like Pylance/pyright."
                 ),
+                permissiveness="true_is_stricter",
             ),
         ]
 

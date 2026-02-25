@@ -220,7 +220,20 @@ class GateCategory(Enum):
 
 @dataclass
 class ConfigField:
-    """Definition of a configuration field for a check."""
+    """Definition of a configuration field for a check.
+
+    The ``permissiveness`` attribute is used by the gate-dodging check
+    to determine whether a config change makes a gate *more* permissive.
+    Possible values:
+
+    - ``"higher_is_stricter"`` — higher numeric/alpha value = stricter
+    - ``"lower_is_stricter"``  — lower numeric/alpha value = stricter
+    - ``"fewer_is_stricter"``  — fewer list items = stricter
+    - ``"more_is_stricter"``   — more list items = stricter
+    - ``"fail_is_stricter"``   — severity hierarchy: fail > warn
+    - ``"true_is_stricter"``   — boolean True = stricter
+    - ``None`` — neutral / not a strictness knob (default)
+    """
 
     name: str
     field_type: str  # "boolean", "integer", "string", "string[]"
@@ -230,6 +243,7 @@ class ConfigField:
     min_value: Optional[int] = None  # For integers
     max_value: Optional[int] = None  # For integers
     choices: Optional[List[str]] = None  # For enums
+    permissiveness: Optional[str] = None  # See class docstring
 
 
 # Standard config fields that all gates have
@@ -239,6 +253,7 @@ STANDARD_CONFIG_FIELDS = [
         field_type="boolean",
         default=False,
         description="Whether this gate is enabled",
+        permissiveness="true_is_stricter",
     ),
     ConfigField(
         name="auto_fix",

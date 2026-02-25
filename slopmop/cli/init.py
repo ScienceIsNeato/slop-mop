@@ -243,6 +243,30 @@ def _disable_checks_with_missing_tools(
                 base_config[category]["gates"][gate]["enabled"] = False
 
 
+def _set_bogus_tests_defaults(
+    base_config: Dict[str, Any], detected: Dict[str, Any]
+) -> None:
+    """Set sensible defaults for the bogus-tests gate.
+
+    Defaults ``min_test_statements`` to 1 — catches only the most
+    egregious stubs (single return/print statement, no assertions)
+    while avoiding false positives in short tests that rely on
+    framework-level assertion mechanisms (for example Playwright
+    ``expect()`` or ``pytest.raises``) rather than explicit ``assert``
+    statements.
+    """
+    if not detected["has_python"]:
+        return
+
+    deceptiveness = base_config.get("deceptiveness", {})
+    gates = deceptiveness.get("gates", {})
+    bogus_cfg = gates.get("bogus-tests")
+    if not bogus_cfg or not bogus_cfg.get("enabled", False):
+        return
+
+    bogus_cfg["min_test_statements"] = 1
+
+
 def _print_next_steps(config: Dict[str, Any]) -> None:
     """Print next steps after setup completion."""
     print()
@@ -320,6 +344,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     _disable_non_applicable(base_config, detected)
     _apply_user_config(base_config, config)
     _disable_checks_with_missing_tools(base_config, detected)
+    _set_bogus_tests_defaults(base_config, detected)
 
     # Merge with existing config if present
     if config_file.exists():
