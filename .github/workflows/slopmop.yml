@@ -57,61 +57,64 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Wait for external bots (like Bugbot) to finish.
+          # Wait for external bots (like Bugbot) to finish their review.
           #
-          # IMPORTANT: We only track suites that are "in_progress" — not
-          # "queued".  Some apps (e.g. Vercel) register a check suite on
-          # every PR but never actually run it, leaving it "queued" forever.
-          # Waiting for those would block CI indefinitely.
+          # Two phases:
+          #   Phase 1 — Wait for at least one external check suite to register
+          #             (any status: queued, in_progress, completed).
+          #   Phase 2 — Wait for all non-completed suites to finish.
+          #
+          # If no external suites appear within 10 min we assume there are
+          # no bots configured and exit successfully.
           COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
           POLL_INTERVAL=15
 
-          # --- Phase 1: Wait for at least one external suite to start ---
+          # --- Phase 1: Wait for at least one external suite to register ---
           MAX_APPEAR=40  # 40 × 15s = 10 min
           APPEAR=0
-          echo "🔍 Phase 1 — waiting for an external check suite to start..."
+          echo "🔍 Phase 1 — waiting for an external check suite to register..."
           while [ $APPEAR -lt $MAX_APPEAR ]; do
-            ACTIVE=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
-              --jq '[.check_suites[] | select(.app.slug != "github-actions") | select(.status == "in_progress" or .status == "completed")] | length')
+            REGISTERED=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
+              --jq '[.check_suites[] | select(.app.slug != "github-actions")] | length')
 
-            if [ "$ACTIVE" -gt 0 ]; then
-              echo "✅ Found ${ACTIVE} active external check suite(s)."
+            if [ "$REGISTERED" -gt 0 ]; then
+              echo "✅ Found ${REGISTERED} external check suite(s)."
               break
             fi
 
             APPEAR=$((APPEAR + 1))
-            echo "⏳ No active external suites yet (attempt ${APPEAR}/${MAX_APPEAR})"
+            echo "⏳ No external suites yet (attempt ${APPEAR}/${MAX_APPEAR})"
             sleep $POLL_INTERVAL
           done
 
-          if [ "$ACTIVE" = "0" ] || [ -z "$ACTIVE" ]; then
-            echo "⚠️ No external check suites started after $((MAX_APPEAR * POLL_INTERVAL))s — nothing to wait for."
+          if [ "$REGISTERED" = "0" ] || [ -z "$REGISTERED" ]; then
+            echo "⚠️ No external check suites registered after $((MAX_APPEAR * POLL_INTERVAL))s — nothing to wait for."
             exit 0
           fi
 
-          # --- Phase 2: Wait for in_progress suites to finish ---
+          # --- Phase 2: Wait for all external suites to complete ---
           MAX_COMPLETE=60  # 60 × 15s = 15 min
           COMPLETE=0
-          echo "🔍 Phase 2 — waiting for in-progress check suites to complete..."
+          echo "🔍 Phase 2 — waiting for external check suites to complete..."
           while [ $COMPLETE -lt $MAX_COMPLETE ]; do
-            # Show which suites are still running
+            # Show which suites are still pending
             gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
-              --jq '.check_suites[] | select(.app.slug != "github-actions") | select(.status == "in_progress") | "  🔄 \(.app.name) (\(.app.slug)): \(.status)"'
+              --jq '.check_suites[] | select(.app.slug != "github-actions") | select(.status != "completed") | "  🔄 \(.app.name) (\(.app.slug)): \(.status)"'
 
-            RUNNING=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
-              --jq '[.check_suites[] | select(.app.slug != "github-actions") | select(.status == "in_progress")] | length')
+            PENDING=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
+              --jq '[.check_suites[] | select(.app.slug != "github-actions") | select(.status != "completed")] | length')
 
-            if [ "$RUNNING" = "0" ]; then
-              echo "✅ All active external check suites have completed."
+            if [ "$PENDING" = "0" ]; then
+              echo "✅ All external check suites have completed."
               exit 0
             fi
 
             COMPLETE=$((COMPLETE + 1))
-            echo "⏳ ${RUNNING} suite(s) still in_progress (attempt ${COMPLETE}/${MAX_COMPLETE})"
+            echo "⏳ ${PENDING} suite(s) still pending (attempt ${COMPLETE}/${MAX_COMPLETE})"
             sleep $POLL_INTERVAL
           done
 
-          echo "❌ Timed out — external check suite(s) still in_progress after $((MAX_COMPLETE * POLL_INTERVAL))s."
+          echo "❌ Timed out — external check suite(s) still not completed after $((MAX_COMPLETE * POLL_INTERVAL))s."
           echo "Cannot reliably check PR comments while bots are still running."
           exit 1
 

@@ -28,6 +28,20 @@ from slopmop.checks.base import (
     JavaScriptCheckMixin,
 )
 from slopmop.core.result import CheckResult, CheckStatus
+
+# Shared constants for test file discovery — single source of truth so
+# is_applicable() and _find_test_files() can never silently diverge.
+TEST_SUFFIXES = (
+    ".test.js",
+    ".test.jsx",
+    ".test.ts",
+    ".test.tsx",
+    ".spec.js",
+    ".spec.jsx",
+    ".spec.ts",
+    ".spec.tsx",
+)
+EXCLUDED_DIRS = {"node_modules", "dist", "build", "coverage", ".git"}
 from slopmop.subprocess.runner import SubprocessResult
 
 
@@ -125,19 +139,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         from pathlib import Path
 
         root = Path(project_root)
-        test_suffixes = [
-            ".test.js",
-            ".test.jsx",
-            ".test.ts",
-            ".test.tsx",
-            ".spec.js",
-            ".spec.jsx",
-            ".spec.ts",
-            ".spec.tsx",
-        ]
-        EXCLUDED_DIRS = {"node_modules", "dist", "build", "coverage", ".git"}
-        for suffix in test_suffixes:
-            # Use rglob but skip excluded directories
+        for suffix in TEST_SUFFIXES:
             pattern = f"*{suffix}"
             for match in root.rglob(pattern):
                 if not any(
@@ -152,24 +154,13 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
 
         root = Path(project_root)
         exclude_dirs = set(self.config.get("exclude_dirs", []))
-        skip_dirs = {"node_modules", ".git", "dist", "build", "coverage"} | exclude_dirs
-
-        test_suffixes = {
-            ".test.js",
-            ".test.jsx",
-            ".test.ts",
-            ".test.tsx",
-            ".spec.js",
-            ".spec.jsx",
-            ".spec.ts",
-            ".spec.tsx",
-        }
+        skip_dirs = EXCLUDED_DIRS | exclude_dirs
 
         files: List[str] = []
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = [d for d in dirnames if d not in skip_dirs]
             for filename in filenames:
-                if any(filename.endswith(suffix) for suffix in test_suffixes):
+                if any(filename.endswith(suffix) for suffix in TEST_SUFFIXES):
                     files.append(os.path.join(dirpath, filename))
 
         return files
