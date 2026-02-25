@@ -261,6 +261,9 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
 
             # --no-eslintrc prevents the project's own eslint config from
             # interfering. We ONLY want expect-expect.
+            # --parser-options=ecmaVersion:latest is required because
+            # --no-eslintrc resets ecmaVersion to ES5, which can't parse
+            # arrow functions, const/let, template literals, etc.
             cmd = [
                 eslint_bin,
                 "--no-eslintrc",
@@ -268,6 +271,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 node_modules,
                 "--plugin",
                 "jest",
+                "--parser-options=ecmaVersion:latest",
                 "--rule",
                 f"jest/expect-expect: {rule_config}",
                 "--format",
@@ -414,6 +418,8 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         """Extract expect-expect violations from ESLint JSON output.
 
         Returns list of {file, line, message} dicts, or None if parsing fails.
+        Fatal parse errors are included as violations to prevent silent passes
+        when ESLint can't analyze the files (e.g., syntax-level issues).
         """
         try:
             data: List[Dict[str, Any]] = json.loads(output)
@@ -429,12 +435,24 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
 
             for message in file_result.get("messages", []):
                 rule_id = message.get("ruleId", "")
+                is_fatal = message.get("fatal", False)
+
                 if rule_id == "jest/expect-expect":
                     violations.append(
                         {
                             "file": filepath,
                             "line": message.get("line", 0),
                             "message": message.get("message", "Test has no assertions"),
+                        }
+                    )
+                elif is_fatal:
+                    # Fatal parse errors mean the file couldn't be analyzed.
+                    # Surface them so the check doesn't silently pass.
+                    violations.append(
+                        {
+                            "file": filepath,
+                            "line": message.get("line", 0),
+                            "message": f"Parse error: {message.get('message', 'unknown')}",
                         }
                     )
 

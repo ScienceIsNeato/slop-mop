@@ -869,6 +869,35 @@ class TestJavaScriptExpectCheck:
         assert violations[0]["file"] == "src/app.test.js"
         assert violations[0]["line"] == 5
 
+    def test_extract_violations_includes_fatal_parse_errors(self):
+        """Test _extract_violations surfaces fatal parse errors as violations."""
+        check = JavaScriptExpectCheck({})
+        project_root = "/project"
+        output = json.dumps(
+            [
+                {
+                    "filePath": "/project/src/broken.test.js",
+                    "messages": [
+                        {
+                            "ruleId": None,
+                            "fatal": True,
+                            "line": 11,
+                            "message": "Parsing error: Unexpected token )",
+                        }
+                    ],
+                }
+            ]
+        )
+
+        violations = check._extract_violations(output, project_root)
+
+        assert violations is not None
+        assert len(violations) == 1
+        assert violations[0]["file"] == "src/broken.test.js"
+        assert violations[0]["line"] == 11
+        assert "Parse error" in violations[0]["message"]
+        assert "Unexpected token" in violations[0]["message"]
+
     def test_extract_violations_handles_invalid_json(self):
         """Test _extract_violations returns None for non-JSON output."""
         check = JavaScriptExpectCheck({})
