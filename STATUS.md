@@ -1,16 +1,27 @@
 # Project Status
 
-## Active Branch: `feat/release-script-and-js-expect`
+## Active Branch: `feat/release-script-and-js-expect` → PR #41
 
-Two features: release automation script + eslint expect-expect check.
+**Status: ALL CI CHECKS PASS — READY TO MERGE** ✅
 
-### Current State
+### PR #41 Summary
 
-All 13 quality gates passing locally. Ready for commit.
+8 commits, `+1150/-19` lines across 9 files. Latest commit: `11e82ab`.
 
 ### What's in This Branch
 
-- **Release script** (`scripts/release.sh`): Lightweight release automation — takes `patch|minor|major`, reads current version from pyproject.toml, computes bumped version, creates `release/vX.Y.Z` branch, commits version change, pushes, opens PR with changelog. Paper trail for every release.
-- **Prepare Release workflow** (`.github/workflows/prepare-release.yml`): CI wrapper for the release script — `workflow_dispatch` with choice input, uses `github-actions[bot]` identity.
-- **JS eslint expect-expect check** (`slopmop/checks/javascript/eslint_expect.py`): New `deceptiveness:js-expect-assert` gate that uses eslint-plugin-jest's `expect-expect` rule for AST-based assertion enforcement. Complements the regex-based `js-bogus-tests` check. Supports `additional_assert_functions`, `exclude_dirs`, and `max_violations` config. Added to `commit` and `pr` profiles.
-- **17 new tests** for the eslint expect-expect check covering pass/fail/skip/timeout/config error/custom assert functions/dir exclusion/JSON parsing.
+- **Release script** (`scripts/release.sh`): Lightweight release automation.
+- **Prepare Release workflow** (`.github/workflows/prepare-release.yml`): CI wrapper.
+- **JS eslint expect-expect check** (`slopmop/checks/javascript/eslint_expect.py`): New `deceptiveness:js-expect-assert` gate.
+- **17 unit tests + 3 integration tests** for the eslint expect-expect check.
+
+### CI Results (latest run on `11e82ab`)
+
+- ✅ Slop-Mop Validation — passed
+- ✅ 🪣 Integration Tests — passed (including test_exit_code_is_zero)
+- ✅ PR Comment Check — passed (all 5 Bugbot threads resolved)
+
+### Fixes Made This Session
+
+1. bucket-o-slop fixture SHA updated to `8454269` — disabled js-lint/security-audit
+2. 5 Bugbot findings fixed: stdout/stderr isolation, node_modules filter, dead code removed, duration fix
