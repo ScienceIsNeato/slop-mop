@@ -240,12 +240,16 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         rule_config = json.dumps(["error", {"assertFunctionNames": assert_fns}])
 
         # Use npx to run eslint with the jest plugin inline.
-        # --no-eslintrc / --no-config-lookup prevents the project's own
-        # eslint config from interfering. We ONLY want expect-expect.
+        # Pin to eslint@8 — ESLint 9.x removed the --no-eslintrc and
+        # --plugin CLI flags in favour of flat config. Since we use
+        # one-shot npx invocations (no project dependency), eslint@8
+        # keeps the CLI approach clean and portable.
+        # --no-eslintrc prevents the project's own eslint config from
+        # interfering. We ONLY want expect-expect.
         cmd = [
             "npx",
             "--yes",
-            "--package=eslint",
+            "--package=eslint@8",
             "--package=eslint-plugin-jest",
             "--",
             "eslint",
