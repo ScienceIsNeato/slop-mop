@@ -1,0 +1,54 @@
+# Prepare a release: bump version, create branch + PR.
+#
+# This is the CI wrapper for scripts/release.sh. It provides a
+# GitHub Actions UI button to trigger releases with a paper trail.
+#
+# Usage:
+#   1. Go to Actions → "Prepare Release" → Run workflow
+#   2. Select bump type (patch/minor/major)
+#   3. Workflow creates the release branch + PR
+#   4. Review and merge the PR
+#   5. Push the tag to trigger release.yml
+
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: Prepare Release (${{ inputs.bump }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use the default GITHUB_TOKEN — it can push branches + create PRs
+          # but cannot push tags (by design — tag push is the final manual step)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run release script
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/release.sh ${{ inputs.bump }}

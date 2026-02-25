@@ -29,6 +29,7 @@ def _register_javascript_checks(registry: CheckRegistry) -> None:
     """Register all JavaScript-related checks."""
     from slopmop.checks.javascript.bogus_tests import JavaScriptBogusTestsCheck
     from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
+    from slopmop.checks.javascript.eslint_expect import JavaScriptExpectCheck
     from slopmop.checks.javascript.eslint_quick import FrontendCheck
     from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
     from slopmop.checks.javascript.tests import JavaScriptTestsCheck
@@ -40,6 +41,7 @@ def _register_javascript_checks(registry: CheckRegistry) -> None:
     registry.register(FrontendCheck)
     registry.register(JavaScriptTypesCheck)
     registry.register(JavaScriptBogusTestsCheck)
+    registry.register(JavaScriptExpectCheck)
 
 
 def _register_crosscutting_checks(registry: CheckRegistry) -> None:
@@ -95,6 +97,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "overconfidence:js-tests",
             "deceptiveness:js-coverage",
             "deceptiveness:js-bogus-tests",
+            "deceptiveness:js-expect-assert",
         ],
     )
 
@@ -121,6 +124,7 @@ def _register_aliases(registry: CheckRegistry) -> None:
             "overconfidence:js-tests",
             "deceptiveness:js-coverage",
             "deceptiveness:js-bogus-tests",
+            "deceptiveness:js-expect-assert",
         ],
     )
 

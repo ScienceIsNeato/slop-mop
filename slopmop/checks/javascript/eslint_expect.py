@@ -1,0 +1,393 @@
+"""ESLint expect-expect check for JavaScript/TypeScript tests.
+
+Uses eslint-plugin-jest's `expect-expect` rule to enforce that every
+test body contains at least one assertion. This is a mature, AST-based
+alternative to regex heuristics — it understands scope, closures, and
+helper functions, catching cases that simple pattern matching misses.
+
+Complements the regex-based JavaScriptBogusTestsCheck:
+  - Regex check catches tautologies (expect(true).toBe(true)) and empty bodies
+  - This check catches assertion-free tests via full AST analysis
+
+The rule auto-installs `eslint-plugin-jest` as a one-shot npx invocation,
+so no permanent devDependency is required in the target project.
+"""
+
+import json
+import os
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    JavaScriptCheckMixin,
+)
+from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.subprocess.runner import SubprocessResult
+
+# File patterns that eslint should scan
+TEST_GLOBS = [
+    "**/*.test.{js,jsx,ts,tsx}",
+    "**/*.spec.{js,jsx,ts,tsx}",
+]
+
+# Directories to always ignore
+IGNORE_PATTERNS = [
+    "node_modules/",
+    "dist/",
+    "build/",
+    "coverage/",
+]
+
+
+class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
+    """Enforce assertions in JS/TS tests via eslint-plugin-jest expect-expect.
+
+    Runs ESLint with the jest/expect-expect rule on test files to catch
+    tests that have no assertions. The rule uses full AST analysis, making
+    it more reliable than regex matching for detecting assertion-free tests.
+
+    This check complements the regex-based js-bogus-tests check:
+    - js-bogus-tests: Catches tautologies and empty bodies (no AST needed)
+    - js-expect-assert: Catches assertion-free tests via AST (more accurate)
+
+    Profiles: commit, pr
+
+    Configuration:
+      additional_assert_functions: [] — Custom assertion function names to
+          allow (e.g., ["customAssert", "expectSaga"]). These are passed
+          to the expect-expect rule's assertFunctionNames option.
+      exclude_dirs: [] — Additional directories to exclude from scanning.
+      max_violations: 0 — Maximum violations before failure (default: 0).
+
+    Prerequisites:
+      Requires node/npx on PATH. The eslint plugin is loaded inline
+      via --rulesdir or flat config — no project dependency needed.
+
+    Common failures:
+      Tests without assertions: Add expect() calls or mark the test
+          name in additional_assert_functions if it uses a custom
+          assertion helper.
+
+    Re-validate:
+      ./sm validate deceptiveness:js-expect-assert --verbose
+    """
+
+    @property
+    def name(self) -> str:
+        return "js-expect-assert"
+
+    @property
+    def display_name(self) -> str:
+        return "🔍 Expect Assertions (ESLint jest/expect-expect)"
+
+    @property
+    def category(self) -> GateCategory:
+        return GateCategory.DECEPTIVENESS
+
+    @property
+    def flaw(self) -> Flaw:
+        return Flaw.DECEPTIVENESS
+
+    @property
+    def depends_on(self) -> List[str]:
+        return []
+
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        return [
+            ConfigField(
+                name="additional_assert_functions",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Custom assertion function names to allow "
+                    '(e.g., ["customAssert", "expectSaga"])'
+                ),
+            ),
+            ConfigField(
+                name="exclude_dirs",
+                field_type="string[]",
+                default=[],
+                description="Additional directories to exclude from scanning",
+                permissiveness="fewer_is_stricter",
+            ),
+            ConfigField(
+                name="max_violations",
+                field_type="integer",
+                default=0,
+                description="Maximum violations before failure (0 = none)",
+                permissiveness="lower_is_stricter",
+            ),
+        ]
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping — delegate to JavaScriptCheckMixin."""
+        return JavaScriptCheckMixin.skip_reason(self, project_root)
+
+    def is_applicable(self, project_root: str) -> bool:
+        """Check if this is a JavaScript project with test files."""
+        if not self.is_javascript_project(project_root):
+            return False
+
+        # Check for test files matching our globs
+        from pathlib import Path
+
+        root = Path(project_root)
+        test_suffixes = [
+            ".test.js",
+            ".test.jsx",
+            ".test.ts",
+            ".test.tsx",
+            ".spec.js",
+            ".spec.jsx",
+            ".spec.ts",
+            ".spec.tsx",
+        ]
+        for suffix in test_suffixes:
+            # Use rglob to find any matching file
+            pattern = f"*{suffix}"
+            if any(root.rglob(pattern)):
+                return True
+        return False
+
+    def _build_eslint_config(
+        self, project_root: str
+    ) -> Tuple[str, List[Dict[str, Any]], List[str]]:
+        """Build an inline ESLint flat config as a JSON string.
+
+        Generates a temporary flat config that enables ONLY the
+        jest/expect-expect rule, avoiding interference with the
+        project's own ESLint configuration.
+
+        Returns the path to the temporary config file.
+        """
+        additional: List[str] = self.config.get("additional_assert_functions", [])
+        # Default assertion functions that are commonly used
+        assert_fns: List[str] = ["expect", *additional]
+
+        # Build ignore patterns from config + defaults
+        exclude_dirs: List[str] = self.config.get("exclude_dirs", [])
+        ignores: List[str] = IGNORE_PATTERNS + [f"{d}/" for d in exclude_dirs]
+
+        # ESLint flat config format
+        config: List[Dict[str, Any]] = [
+            {
+                "ignores": ignores,
+            },
+            {
+                "plugins": {},  # Placeholder — plugin loaded via require
+                "rules": {
+                    "jest/expect-expect": [
+                        "error",
+                        {"assertFunctionNames": assert_fns},
+                    ],
+                },
+            },
+        ]
+
+        config_path = os.path.join(project_root, ".eslint-expect-check.json")
+        return config_path, config, assert_fns
+
+    def _find_test_files(self, project_root: str) -> List[str]:
+        """Find test files to scan, respecting exclude_dirs."""
+        from pathlib import Path
+
+        root = Path(project_root)
+        exclude_dirs = set(self.config.get("exclude_dirs", []))
+        skip_dirs = {"node_modules", ".git", "dist", "build", "coverage"} | exclude_dirs
+
+        test_suffixes = {
+            ".test.js",
+            ".test.jsx",
+            ".test.ts",
+            ".test.tsx",
+            ".spec.js",
+            ".spec.jsx",
+            ".spec.ts",
+            ".spec.tsx",
+        }
+
+        files: List[str] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+            for filename in filenames:
+                if any(filename.endswith(suffix) for suffix in test_suffixes):
+                    files.append(os.path.join(dirpath, filename))
+
+        return files
+
+    def run(self, project_root: str) -> CheckResult:
+        """Run eslint-plugin-jest expect-expect on test files."""
+        start_time = time.time()
+
+        test_files = self._find_test_files(project_root)
+        if not test_files:
+            return self._create_result(
+                status=CheckStatus.SKIPPED,
+                duration=time.time() - start_time,
+                output="No test files found to check.",
+            )
+
+        max_violations: int = self.config.get("max_violations", 0)
+        additional: List[str] = self.config.get("additional_assert_functions", [])
+        assert_fns: List[str] = ["expect", *additional]
+
+        # Build the rule config as a JSON string for --rule
+        rule_config = json.dumps(["error", {"assertFunctionNames": assert_fns}])
+
+        # Use npx to run eslint with the jest plugin inline.
+        # --no-eslintrc / --no-config-lookup prevents the project's own
+        # eslint config from interfering. We ONLY want expect-expect.
+        cmd = [
+            "npx",
+            "--yes",
+            "--package=eslint",
+            "--package=eslint-plugin-jest",
+            "--",
+            "eslint",
+            "--no-eslintrc",
+            "--plugin",
+            "jest",
+            "--rule",
+            f"jest/expect-expect: {rule_config}",
+            "--format",
+            "json",
+            *test_files,
+        ]
+
+        result = self._run_command(cmd, cwd=project_root, timeout=120)
+        duration = time.time() - start_time
+
+        # Parse ESLint JSON output
+        return self._parse_eslint_output(
+            result, duration, len(test_files), max_violations, project_root
+        )
+
+    def _parse_eslint_output(
+        self,
+        result: SubprocessResult,
+        duration: float,
+        files_checked: int,
+        max_violations: int,
+        project_root: str,
+    ) -> CheckResult:
+        """Parse ESLint JSON output and create a CheckResult."""
+        if result.timed_out:
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=duration,
+                error="ESLint timed out (120s). Project may need npm install first.",
+                fix_suggestion="Run: npm install && sm validate deceptiveness:js-expect-assert",
+            )
+
+        # ESLint returns exit code 1 for lint errors, 2 for config errors
+        if result.returncode == 2:
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=duration,
+                error="ESLint configuration error",
+                output=result.output,
+                fix_suggestion=(
+                    "This may indicate eslint-plugin-jest couldn't be loaded. "
+                    "Ensure node/npx is on PATH and try: "
+                    "npx --yes eslint-plugin-jest --version"
+                ),
+            )
+
+        # Try to parse the JSON output
+        violations = self._extract_violations(result.output, project_root)
+
+        if violations is None:
+            # Couldn't parse — maybe eslint gave non-JSON output
+            # If returncode 0, call it passed (no lint errors)
+            if result.success:
+                return self._create_result(
+                    status=CheckStatus.PASSED,
+                    duration=duration,
+                    output=f"✅ All {files_checked} test file(s) have assertions.",
+                )
+            # Non-zero, non-parseable — report raw output
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=duration,
+                error="Could not parse ESLint output",
+                output=result.output[:2000],
+                fix_suggestion="Run the command manually to diagnose: "
+                "npx eslint --plugin jest --rule 'jest/expect-expect: error' <test-file>",
+            )
+
+        violation_count = len(violations)
+
+        if violation_count == 0:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output=f"✅ All {files_checked} test file(s) have assertions.",
+            )
+
+        # Build human-readable output
+        output_lines = [
+            f"Found {violation_count} test(s) without assertions:",
+            "",
+        ]
+        for v in violations:
+            output_lines.append(f"  {v['file']}:{v['line']} — {v['message']}")
+
+        output = "\n".join(output_lines)
+
+        if violation_count <= max_violations:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output=f"⚠️ {violation_count} test(s) without assertions "
+                f"(max allowed: {max_violations})\n\n{output}",
+            )
+
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output=output,
+            error=f"Found {violation_count} test(s) without assertions "
+            f"(max allowed: {max_violations})",
+            fix_suggestion=(
+                "Add expect() calls to each test, or configure "
+                "additional_assert_functions in .sb_config.json if "
+                "tests use custom assertion helpers."
+            ),
+        )
+
+    def _extract_violations(
+        self, output: str, project_root: str
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Extract expect-expect violations from ESLint JSON output.
+
+        Returns list of {file, line, message} dicts, or None if parsing fails.
+        """
+        try:
+            data: List[Dict[str, Any]] = json.loads(output)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+        violations: List[Dict[str, Any]] = []
+        for file_result in data:
+            filepath = file_result.get("filePath", "")
+            # Make path relative to project root for readability
+            if filepath.startswith(project_root):
+                filepath = os.path.relpath(filepath, project_root)
+
+            for message in file_result.get("messages", []):
+                rule_id = message.get("ruleId", "")
+                if rule_id == "jest/expect-expect":
+                    violations.append(
+                        {
+                            "file": filepath,
+                            "line": message.get("line", 0),
+                            "message": message.get("message", "Test has no assertions"),
+                        }
+                    )
+
+        return violations
