@@ -30,14 +30,6 @@ from slopmop.checks.base import (
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.subprocess.runner import SubprocessResult
 
-# Directories to always ignore
-IGNORE_PATTERNS = [
-    "node_modules/",
-    "dist/",
-    "build/",
-    "coverage/",
-]
-
 
 class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
     """Enforce assertions in JS/TS tests via eslint-plugin-jest expect-expect.
@@ -148,7 +140,9 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             # Use rglob but skip excluded directories
             pattern = f"*{suffix}"
             for match in root.rglob(pattern):
-                if not any(part in EXCLUDED_DIRS for part in match.parts):
+                if not any(
+                    part in EXCLUDED_DIRS for part in match.relative_to(root).parts
+                ):
                     return True
         return False
 
