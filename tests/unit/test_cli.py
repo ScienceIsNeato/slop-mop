@@ -1,7 +1,6 @@
 """Tests for CLI helper functions."""
 
 from slopmop.cli.config import _deep_merge, _normalize_flat_keys
-from slopmop.cli.init import _deep_merge as _init_deep_merge
 
 
 class TestDeepMerge:
@@ -9,51 +8,55 @@ class TestDeepMerge:
 
     def test_simple_merge_adds_new_keys(self):
         """New keys from updates are added to base."""
-        base = {"a": 1}
-        updates = {"b": 2}
-        _init_deep_merge(base, updates)
-        assert base == {"a": 1, "b": 2}
+        result = _deep_merge({"a": 1}, {"b": 2})
+        assert result == {"a": 1, "b": 2}
 
     def test_simple_merge_overwrites_existing(self):
         """Existing keys are overwritten by updates."""
-        base = {"a": 1}
-        updates = {"a": 2}
-        _init_deep_merge(base, updates)
-        assert base == {"a": 2}
+        result = _deep_merge({"a": 1}, {"a": 2})
+        assert result == {"a": 2}
 
     def test_nested_dict_merge(self):
         """Nested dicts are merged recursively."""
-        base = {"outer": {"a": 1, "b": 2}}
-        updates = {"outer": {"b": 3, "c": 4}}
-        _init_deep_merge(base, updates)
-        assert base == {"outer": {"a": 1, "b": 3, "c": 4}}
+        result = _deep_merge(
+            {"outer": {"a": 1, "b": 2}},
+            {"outer": {"b": 3, "c": 4}},
+        )
+        assert result == {"outer": {"a": 1, "b": 3, "c": 4}}
 
     def test_deeply_nested_merge(self):
         """Works for deeply nested structures."""
-        base = {"l1": {"l2": {"l3": {"a": 1}}}}
-        updates = {"l1": {"l2": {"l3": {"b": 2}}}}
-        _init_deep_merge(base, updates)
-        assert base == {"l1": {"l2": {"l3": {"a": 1, "b": 2}}}}
+        result = _deep_merge(
+            {"l1": {"l2": {"l3": {"a": 1}}}},
+            {"l1": {"l2": {"l3": {"b": 2}}}},
+        )
+        assert result == {"l1": {"l2": {"l3": {"a": 1, "b": 2}}}}
 
     def test_non_dict_overwrites_dict(self):
         """Non-dict updates overwrite dict base values."""
-        base = {"a": {"nested": 1}}
-        updates = {"a": "string"}
-        _init_deep_merge(base, updates)
-        assert base == {"a": "string"}
+        result = _deep_merge({"a": {"nested": 1}}, {"a": "string"})
+        assert result == {"a": "string"}
 
     def test_dict_overwrites_non_dict(self):
         """Dict updates overwrite non-dict base values."""
-        base = {"a": "string"}
-        updates = {"a": {"nested": 1}}
-        _init_deep_merge(base, updates)
-        assert base == {"a": {"nested": 1}}
+        result = _deep_merge({"a": "string"}, {"a": {"nested": 1}})
+        assert result == {"a": {"nested": 1}}
 
     def test_empty_updates_leaves_base_unchanged(self):
         """Empty updates dict leaves base unchanged."""
         base = {"a": 1, "b": {"c": 2}}
-        _init_deep_merge(base, {})
+        result = _deep_merge(base, {})
+        assert result == {"a": 1, "b": {"c": 2}}
+        assert base == {"a": 1, "b": {"c": 2}}  # not mutated
+
+    def test_does_not_mutate_inputs(self):
+        """_deep_merge returns a new dict without mutating inputs."""
+        base = {"a": 1, "b": {"c": 2}}
+        overlay = {"b": {"d": 3}, "e": 4}
+        result = _deep_merge(base, overlay)
+        assert result == {"a": 1, "b": {"c": 2, "d": 3}, "e": 4}
         assert base == {"a": 1, "b": {"c": 2}}
+        assert overlay == {"b": {"d": 3}, "e": 4}
 
     def test_config_like_structure(self):
         """Works with slopmop config-like structures."""
@@ -76,16 +79,16 @@ class TestDeepMerge:
                 },
             }
         }
-        _init_deep_merge(base, updates)
+        result = _deep_merge(base, updates)
 
-        assert base["version"] == "1.0"
-        assert base["overconfidence"]["enabled"] is True
-        assert base["overconfidence"]["gates"]["py-types"] == {"enabled": True}
-        assert base["overconfidence"]["gates"]["py-tests"] == {
+        assert result["version"] == "1.0"
+        assert result["overconfidence"]["enabled"] is True
+        assert result["overconfidence"]["gates"]["py-types"] == {"enabled": True}
+        assert result["overconfidence"]["gates"]["py-tests"] == {
             "enabled": True,
             "test_dirs": ["tests", "spec"],
         }
-        assert base["overconfidence"]["gates"]["py-static-analysis"] == {
+        assert result["overconfidence"]["gates"]["py-static-analysis"] == {
             "enabled": True,
             "threshold": 80,
         }
@@ -164,35 +167,6 @@ class TestNormalizeFlatKeys:
         # Both the gate config AND the top-level category key must survive
         assert result["laziness"]["gates"]["dead-code"]["whitelist_file"] == "w.py"
         assert result["laziness"]["enabled"] is True
-
-
-class TestConfigDeepMerge:
-    """Tests for _deep_merge in config.py (returns merged copy)."""
-
-    def test_returns_merged_copy(self):
-        """_deep_merge returns a new dict without mutating inputs."""
-        base = {"a": 1, "b": {"c": 2}}
-        overlay = {"b": {"d": 3}, "e": 4}
-        result = _deep_merge(base, overlay)
-        assert result == {"a": 1, "b": {"c": 2, "d": 3}, "e": 4}
-        # Originals not mutated
-        assert base == {"a": 1, "b": {"c": 2}}
-        assert overlay == {"b": {"d": 3}, "e": 4}
-
-    def test_overlay_wins_for_scalars(self):
-        """Scalar overlay overwrites scalar base."""
-        result = _deep_merge({"a": 1}, {"a": 2})
-        assert result == {"a": 2}
-
-    def test_nested_merge(self):
-        """Nested dicts merge recursively."""
-        result = _deep_merge(
-            {"cat": {"gates": {"a": {"enabled": True}}}},
-            {"cat": {"gates": {"b": {"enabled": False}}}},
-        )
-        assert result == {
-            "cat": {"gates": {"a": {"enabled": True}, "b": {"enabled": False}}}
-        }
 
 
 class TestCmdInitNonInteractiveDetection:

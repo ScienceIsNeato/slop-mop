@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, cast
 
+from slopmop.cli.config import _deep_merge
 from slopmop.cli.detection import detect_project_type
 
 
@@ -29,15 +30,6 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
     if not response:
         return default
     return response in ("y", "yes", "1", "true")
-
-
-def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
-    """Deep merge updates into base dict, modifying base in place."""
-    for key, value in updates.items():
-        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _deep_merge(cast(Dict[str, Any], base[key]), cast(Dict[str, Any], value))
-        else:
-            base[key] = value
 
 
 def _print_detection_results(detected: Dict[str, Any]) -> None:
@@ -369,7 +361,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             backup_path = backup_config(config_file)
             if backup_path:
                 print(f"📦 Backed up existing config to: {backup_path}")
-            _deep_merge(base_config, existing)
+            base_config = _deep_merge(base_config, existing)
         except json.JSONDecodeError:
             pass
 
