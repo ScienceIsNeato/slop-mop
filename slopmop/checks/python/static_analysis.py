@@ -13,6 +13,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -21,6 +22,7 @@ _MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
 
 
 class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.SM_TOOL
     """Static type checking with mypy.
 
     Wraps mypy to enforce type safety across Python source. In strict

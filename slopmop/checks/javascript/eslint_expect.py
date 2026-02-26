@@ -26,6 +26,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -46,6 +47,8 @@ from slopmop.subprocess.runner import SubprocessResult
 
 
 class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
+    tool_context = ToolContext.NODE
+
     """Enforce assertions in JS/TS tests via eslint-plugin-jest expect-expect.
 
     Runs ESLint with the jest/expect-expect rule on test files to catch

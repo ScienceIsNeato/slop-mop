@@ -18,6 +18,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
@@ -66,6 +67,7 @@ def _get_compare_branch() -> str:
 
 
 class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.PROJECT
     """Python test coverage enforcement.
 
     Wraps coverage.py to verify project-wide coverage meets the
@@ -146,6 +148,11 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         Instead of meta-information, outputs exactly which lines need tests.
         """
         start_time = time.time()
+
+        # PROJECT check: bail early when no project venv exists
+        venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+        if venv_warn is not None:
+            return venv_warn
 
         # Check for coverage.xml
         coverage_file = Path(project_root) / "coverage.xml"
@@ -283,6 +290,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
 
 class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.PROJECT
     """Coverage enforcement on changed files only.
 
     Wraps diff-cover to check coverage on files changed vs the
@@ -342,6 +350,12 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
+
+        # PROJECT check: bail early when no project venv exists
+        venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+        if venv_warn is not None:
+            return venv_warn
+
         coverage_file = os.path.join(project_root, "coverage.xml")
 
         if not _wait_for_coverage_xml(coverage_file):

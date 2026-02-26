@@ -14,11 +14,13 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.PROJECT
     """Jinja2 template syntax validation.
 
     Compiles all templates in the configured directory to catch
@@ -95,6 +97,11 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
+
+        # PROJECT check: bail early when no project venv exists
+        venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+        if venv_warn is not None:
+            return venv_warn
 
         # Check for dedicated template smoke test first
         template_test = os.path.join(

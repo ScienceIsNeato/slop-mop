@@ -9,11 +9,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, cast
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, ToolContext
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 class StringDuplicationCheck(BaseCheck):
+    tool_context = ToolContext.NODE
     """Duplicate string literal detection.
 
     Wraps the vendored find-duplicate-strings tool to detect string

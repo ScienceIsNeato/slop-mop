@@ -19,6 +19,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -27,6 +28,7 @@ MAX_COMPLEXITY = 20
 
 
 class ComplexityCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.SM_TOOL
     """Cyclomatic complexity enforcement.
 
     Wraps radon to flag functions with complexity rank D or higher.
@@ -126,8 +128,6 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
             )
 
         cmd = [
-            self.get_project_python(project_root),
-            "-m",
             "radon",
             "cc",
             "--min",

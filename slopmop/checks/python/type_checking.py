@@ -36,6 +36,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -130,6 +131,7 @@ def _detect_source_dirs(project_root: str) -> List[str]:
 
 
 class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.SM_TOOL
     """Type-completeness enforcement with pyright.
 
     Wraps pyright (Pylance's engine) to verify every variable,

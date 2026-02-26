@@ -17,11 +17,13 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.SM_TOOL
     """Python code formatting and lint enforcement.
 
     Wraps autoflake, black, isort, and flake8 to enforce consistent

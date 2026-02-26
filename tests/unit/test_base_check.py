@@ -8,6 +8,7 @@ from slopmop.checks.base import (
     GateCategory,
     JavaScriptCheckMixin,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -121,6 +122,177 @@ class TestBaseCheck:
             cwd=str(tmp_path),
             timeout=None,
         )
+
+
+class TestToolContext:
+    """Tests for ToolContext enum."""
+
+    def test_enum_values(self):
+        """ToolContext has exactly the four expected members."""
+        assert set(ToolContext.__members__) == {"PURE", "SM_TOOL", "PROJECT", "NODE"}
+
+    def test_pure_is_default_on_base_check(self):
+        """BaseCheck defaults to ToolContext.PURE."""
+        check = ConcreteCheck({})
+        assert check.tool_context is ToolContext.PURE
+
+    def test_annotations_on_concrete_checks(self):
+        """Spot-check a few real checks for correct tool_context."""
+        from slopmop.checks.python.tests import PythonTestsCheck
+        from slopmop.checks.quality.complexity import ComplexityCheck
+        from slopmop.checks.quality.duplication import SourceDuplicationCheck
+        from slopmop.checks.security import SecurityLocalCheck
+
+        assert SecurityLocalCheck.tool_context is ToolContext.SM_TOOL
+        assert PythonTestsCheck.tool_context is ToolContext.PROJECT
+        assert ComplexityCheck.tool_context is ToolContext.SM_TOOL
+        assert SourceDuplicationCheck.tool_context is ToolContext.NODE
+
+
+class TestHasProjectVenv:
+    """Tests for PythonCheckMixin.has_project_venv()."""
+
+    def setup_method(self):
+        class TestMixin(PythonCheckMixin):
+            pass
+
+        self.mixin = TestMixin()
+
+    def test_no_venv(self, tmp_path, monkeypatch):
+        """Returns False when no venv directory exists and VIRTUAL_ENV unset."""
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        assert self.mixin.has_project_venv(str(tmp_path)) is False
+
+    def test_venv_directory(self, tmp_path):
+        """Returns True when venv/ with bin/python exists."""
+        venv_bin = tmp_path / "venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "python").touch()
+        assert self.mixin.has_project_venv(str(tmp_path)) is True
+
+    def test_dot_venv_directory(self, tmp_path):
+        """Returns True when .venv/ with bin/python exists."""
+        venv_bin = tmp_path / ".venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "python").touch()
+        assert self.mixin.has_project_venv(str(tmp_path)) is True
+
+    def test_virtual_env_envvar(self, tmp_path, monkeypatch):
+        """Returns True when VIRTUAL_ENV points to a real venv."""
+        venv_dir = tmp_path / "some_env"
+        (venv_dir / "bin").mkdir(parents=True)
+        (venv_dir / "bin" / "python").touch()
+        monkeypatch.setenv("VIRTUAL_ENV", str(venv_dir))
+        assert self.mixin.has_project_venv(str(tmp_path)) is True
+
+    def test_empty_venv_dir_no_python(self, tmp_path, monkeypatch):
+        """Bare venv/ dir without bin/python and no VIRTUAL_ENV → False."""
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        (tmp_path / "venv").mkdir()
+        assert self.mixin.has_project_venv(str(tmp_path)) is False
+
+
+class TestSuggestVenvCommand:
+    """Tests for PythonCheckMixin.suggest_venv_command()."""
+
+    def test_poetry(self, tmp_path):
+        (tmp_path / "poetry.lock").touch()
+        assert PythonCheckMixin.suggest_venv_command(str(tmp_path)) == "poetry install"
+
+    def test_pipenv(self, tmp_path):
+        (tmp_path / "Pipfile").touch()
+        assert (
+            PythonCheckMixin.suggest_venv_command(str(tmp_path))
+            == "pipenv install --dev"
+        )
+
+    def test_pdm(self, tmp_path):
+        (tmp_path / "pdm.lock").touch()
+        assert PythonCheckMixin.suggest_venv_command(str(tmp_path)) == "pdm install"
+
+    def test_pyproject_toml(self, tmp_path):
+        (tmp_path / "pyproject.toml").touch()
+        cmd = PythonCheckMixin.suggest_venv_command(str(tmp_path))
+        assert "pip install -e" in cmd
+        assert "venv" in cmd
+
+    def test_requirements_txt(self, tmp_path):
+        (tmp_path / "requirements.txt").touch()
+        cmd = PythonCheckMixin.suggest_venv_command(str(tmp_path))
+        assert "requirements.txt" in cmd
+        assert "venv" in cmd
+
+    def test_bare_minimum(self, tmp_path):
+        cmd = PythonCheckMixin.suggest_venv_command(str(tmp_path))
+        assert "python3 -m venv venv" in cmd
+
+
+class TestCheckProjectVenvOrWarn:
+    """Tests for PythonCheckMixin.check_project_venv_or_warn()."""
+
+    def _make_check(self):
+        """Create a concrete PROJECT check with both BaseCheck and mixin."""
+
+        class ProjectCheck(BaseCheck, PythonCheckMixin):
+            tool_context = ToolContext.PROJECT
+
+            @property
+            def name(self):
+                return "project-test"
+
+            @property
+            def display_name(self):
+                return "Project Test"
+
+            @property
+            def category(self):
+                return GateCategory.OVERCONFIDENCE
+
+            @property
+            def flaw(self):
+                return Flaw.OVERCONFIDENCE
+
+            def is_applicable(self, project_root):
+                return True
+
+            def run(self, project_root):
+                raise NotImplementedError
+
+        return ProjectCheck({})
+
+    def test_returns_warned_when_no_venv(self, tmp_path, monkeypatch):
+        """Returns a WARNED CheckResult when no project venv found."""
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        check = self._make_check()
+        import time
+
+        result = check.check_project_venv_or_warn(str(tmp_path), time.time())
+        assert result is not None
+        assert result.status is CheckStatus.WARNED
+        assert "No project virtual environment" in result.error
+
+    def test_returns_none_when_venv_exists(self, tmp_path):
+        """Returns None so the caller can continue normally."""
+        venv_bin = tmp_path / "venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "python").touch()
+
+        check = self._make_check()
+        import time
+
+        result = check.check_project_venv_or_warn(str(tmp_path), time.time())
+        assert result is None
+
+    def test_fix_suggestion_contains_command(self, tmp_path, monkeypatch):
+        """Fix suggestion includes the suggest_venv_command output."""
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        (tmp_path / "requirements.txt").touch()
+        check = self._make_check()
+        import time
+
+        result = check.check_project_venv_or_warn(str(tmp_path), time.time())
+        assert result is not None
+        assert "requirements.txt" in result.fix_suggestion
 
 
 class TestPythonCheckMixin:

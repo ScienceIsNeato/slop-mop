@@ -14,11 +14,14 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
+    tool_context = ToolContext.NODE
+
     """Quick frontend JavaScript validation.
 
     Wraps ESLint in errors-only (--quiet) mode for rapid feedback

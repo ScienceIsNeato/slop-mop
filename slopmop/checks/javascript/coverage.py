@@ -16,6 +16,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
@@ -31,6 +32,8 @@ MAX_FILES_TO_SHOW = 5
 
 
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
+    tool_context = ToolContext.NODE
+
     """Jest coverage threshold enforcement.
 
     Wraps Jest with --coverageReporters=json-summary to parse

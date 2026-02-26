@@ -24,6 +24,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus
@@ -51,6 +52,7 @@ class SecuritySubResult:
 
 
 class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.SM_TOOL
     """Local security scanning (no network required).
 
     Wraps bandit, semgrep, and detect-secrets in parallel.
@@ -197,8 +199,6 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         config_file = self.config.get("bandit_config_file")
 
         cmd = [
-            self.get_project_python(project_root),
-            "-m",
             "bandit",
             "-r",
             ".",
@@ -287,7 +287,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         # Check for baseline file
         config_file = self.config.get("config_file_path")
 
-        cmd = [self.get_project_python(project_root), "-m", "detect_secrets", "scan"]
+        cmd = ["detect-secrets", "scan"]
         if config_file:
             cmd.extend(["--baseline", config_file])
 
@@ -403,9 +403,7 @@ class SecurityCheck(SecurityLocalCheck):
         Replaces safety which hangs on `safety scan` with no API key.
         """
         cmd = [
-            self.get_project_python(project_root),
-            "-m",
-            "pip_audit",
+            "pip-audit",
             "--format",
             "json",
         ]

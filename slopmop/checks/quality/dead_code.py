@@ -18,6 +18,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    ToolContext,
     count_source_scope,
     find_tool,
 )
@@ -28,6 +29,7 @@ MAX_FINDINGS_TO_SHOW = 15
 
 
 class DeadCodeCheck(BaseCheck):
+    tool_context = ToolContext.SM_TOOL
     """Dead code detection via static AST analysis.
 
     Wraps vulture to find unused functions, classes, imports,

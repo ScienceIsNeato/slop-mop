@@ -13,7 +13,7 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, ToolContext
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
@@ -22,6 +22,7 @@ MIN_LINES = 5
 
 
 class SourceDuplicationCheck(BaseCheck):
+    tool_context = ToolContext.NODE
     """Cross-language code duplication detection.
 
     Wraps jscpd to detect copy-paste code across Python, JavaScript,

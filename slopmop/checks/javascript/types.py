@@ -33,12 +33,15 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
+    tool_context = ToolContext.NODE
+
     """TypeScript type checking via tsc --noEmit.
 
     Wraps the TypeScript compiler in check-only mode. The --noEmit

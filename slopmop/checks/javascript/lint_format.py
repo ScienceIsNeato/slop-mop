@@ -9,12 +9,15 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
+    tool_context = ToolContext.NODE
+
     """JavaScript/TypeScript lint and format enforcement.
 
     Wraps ESLint and Prettier. Auto-fix runs ESLint --fix and

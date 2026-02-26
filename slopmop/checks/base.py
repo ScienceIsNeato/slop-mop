@@ -13,12 +13,49 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
+
+
+class ToolContext(Enum):
+    """How a gate resolves the external tools it needs.
+
+    Every gate must declare a tool_context so the framework knows how to
+    locate executables and what to do when a project lacks a virtual
+    environment.
+
+    Categories:
+
+    PURE — No external tools.  Pure Python analysis (AST, regex, file
+           scanning).  Always runnable.  Examples: bogus-tests, loc-lock,
+           gate-dodging.
+
+    SM_TOOL — Tool ships with slop-mop (bundled via pipx / pip dependency).
+              Resolved via ``find_tool(name)`` → project venv → VIRTUAL_ENV
+              → PATH.  The tool does NOT need to import the target project's
+              code.  Examples: black, vulture, radon, bandit, pip-audit.
+
+    PROJECT — Tool must run inside the target project's Python environment
+              because it imports project code (pytest loads conftest.py and
+              test fixtures, coverage instruments project modules, jinja2
+              compiles project templates).  Resolved via
+              ``get_project_python()``.  When no project venv exists the
+              gate **warns and skips** instead of failing — with an
+              actionable message telling the user exactly how to create one.
+
+    NODE — Tool is resolved via npm/npx from the project's node_modules.
+           Requires ``package.json`` at project root.  Examples: eslint,
+           jest, prettier.
+    """
+
+    PURE = "pure"
+    SM_TOOL = "sm_tool"
+    PROJECT = "project"
+    NODE = "node"
 
 
 def find_tool(name: str, project_root: str) -> Optional[str]:
@@ -282,11 +319,16 @@ class BaseCheck(ABC):
     - run(): Execute the check and return result
 
     Optional overrides:
+    - tool_context: ToolContext declaring how tools are resolved
     - depends_on: List of check names this depends on
     - config_schema: Additional config fields beyond standard ones
     - can_auto_fix(): Whether issues can be auto-fixed
     - auto_fix(): Attempt to fix issues automatically
     """
+
+    # Default tool context — subclasses SHOULD override.  PURE is the safest
+    # default because it makes no assumptions about tool availability.
+    tool_context: ClassVar[ToolContext] = ToolContext.PURE
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
@@ -541,6 +583,83 @@ class PythonCheckMixin:
             return result.stdout.strip()
         except Exception:
             return "unknown version"
+
+    def has_project_venv(self, project_root: str) -> bool:
+        """Check if the project has a discoverable virtual environment.
+
+        Returns True if any of these exist:
+        1. project_root/venv/
+        2. project_root/.venv/
+        3. VIRTUAL_ENV environment variable is set
+        """
+        root = Path(project_root)
+        for venv_dir in ["venv", ".venv"]:
+            if (root / venv_dir / "bin" / "python").exists():
+                return True
+            if (root / venv_dir / "Scripts" / "python.exe").exists():
+                return True
+        if os.environ.get("VIRTUAL_ENV"):
+            venv_path = Path(os.environ["VIRTUAL_ENV"])
+            if (venv_path / "bin" / "python").exists():
+                return True
+            if (venv_path / "Scripts" / "python.exe").exists():
+                return True
+        return False
+
+    @staticmethod
+    def suggest_venv_command(project_root: str) -> str:
+        """Suggest the right venv creation command for this project.
+
+        Detects the project's package manager and returns an actionable
+        command string.  The user can copy-paste it directly.
+        """
+        root = Path(project_root)
+
+        # Poetry
+        if (root / "poetry.lock").exists():
+            return "poetry install"
+        # Pipenv
+        if (root / "Pipfile").exists():
+            return "pipenv install --dev"
+        # PDM
+        if (root / "pdm.lock").exists():
+            return "pdm install"
+        # Standard: pyproject.toml or requirements.txt
+        if (root / "pyproject.toml").exists():
+            return "python3 -m venv venv && source venv/bin/activate && pip install -e '.[dev]'"
+        if (root / "requirements.txt").exists():
+            return "python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+        # Bare minimum
+        return "python3 -m venv venv && source venv/bin/activate"
+
+    def check_project_venv_or_warn(
+        self, project_root: str, start_time: float
+    ) -> Optional[CheckResult]:
+        """Return a WARNED result when no project venv is found.
+
+        PROJECT-context checks should call this at the top of ``run()``.
+        If a venv *does* exist, returns ``None`` so the caller can
+        continue with normal execution.
+
+        Usage::
+
+            result = self.check_project_venv_or_warn(project_root, start_time)
+            if result is not None:
+                return result
+        """
+        import time
+
+        if not self.has_project_venv(project_root):
+            return self._create_result(  # type: ignore[attr-defined]
+                status=CheckStatus.WARNED,
+                duration=time.time() - start_time,
+                error="No project virtual environment found",
+                fix_suggestion=(
+                    "Create a venv so this check can run against your project:\n"
+                    f"  cd {project_root} && {self.suggest_venv_command(project_root)}"
+                ),
+            )
+        return None
 
     def get_project_python(self, project_root: str) -> str:
         """Get the Python executable for the project.
