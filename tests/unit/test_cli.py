@@ -150,6 +150,21 @@ class TestNormalizeFlatKeys:
         """Empty dict produces empty dict."""
         assert _normalize_flat_keys({}) == {}
 
+    def test_flat_and_hierarchical_same_category_merges(self):
+        """Flat key + hierarchical key for same category deep-merges.
+
+        Regression: Bugbot flagged that a non-flat key with the same category
+        overwrote previously accumulated flat-key data instead of merging.
+        """
+        data = {
+            "laziness:dead-code": {"whitelist_file": "w.py"},
+            "laziness": {"enabled": True},
+        }
+        result = _normalize_flat_keys(data)
+        # Both the gate config AND the top-level category key must survive
+        assert result["laziness"]["gates"]["dead-code"]["whitelist_file"] == "w.py"
+        assert result["laziness"]["enabled"] is True
+
 
 class TestConfigDeepMerge:
     """Tests for _deep_merge in config.py (returns merged copy)."""

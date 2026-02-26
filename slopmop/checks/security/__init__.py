@@ -405,9 +405,14 @@ class SecurityCheck(SecurityLocalCheck):
 
         pip-audit is fast (~1s), offline-capable, and uses the OSV database.
         Replaces safety which hangs on `safety scan` with no API key.
+
+        Unlike bandit and detect-secrets (which scan source *files*),
+        pip-audit audits the *installed packages* of whichever Python
+        runs it.  We therefore use the project's Python so that the
+        project's dependencies are inspected, not slop-mop's own.
         """
         cmd = [
-            sys.executable,
+            self.get_project_python(project_root),
             "-m",
             "pip_audit",
             "--format",

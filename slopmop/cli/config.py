@@ -38,8 +38,20 @@ def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
                     cat_dict["gates"] = {}
                 cat_dict["gates"][gate_name] = value
                 continue
-        # Pass through non-flat keys unchanged
-        normalized[key] = value
+        # Pass through non-flat keys — deep-merge if both sides are dicts
+        # (avoids overwriting flat-key data already accumulated for the
+        # same category, e.g. "laziness:dead-code" followed by "laziness")
+        if (
+            key in normalized
+            and isinstance(normalized[key], dict)
+            and isinstance(value, dict)
+        ):
+            normalized[key] = _deep_merge(
+                cast(Dict[str, Any], normalized[key]),
+                cast(Dict[str, Any], value),
+            )
+        else:
+            normalized[key] = value
 
     return normalized
 
