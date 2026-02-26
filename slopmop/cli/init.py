@@ -313,7 +313,6 @@ def cmd_init(args: argparse.Namespace) -> int:
     # Auto-detect project characteristics
     print("🔍 Detecting project type...")
     detected = detect_project_type(project_root)
-    _print_detection_results(detected)
 
     # Build configuration
     # Auto-detect non-interactive terminal (e.g. AI agent, piped stdin, CI).
@@ -328,8 +327,8 @@ def cmd_init(args: argparse.Namespace) -> int:
             "To silence this message, pass --non-interactive.)"
         )
 
-    # Print mode-appropriate banner so output is accurate in both
-    # interactive and non-interactive contexts (e.g., CI/agents).
+    # Print mode-appropriate banner first, then detection details,
+    # so the user sees the title heading before the wall of results.
     if non_interactive:
         print("\n🪣 Slop-Mop Setup (non-interactive mode)")
     else:
@@ -337,6 +336,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     print("=" * 60)
     print_project_header(str(project_root))
     print()
+    _print_detection_results(detected)
 
     if non_interactive:
         config = _build_non_interactive_config(detected, preconfig)
