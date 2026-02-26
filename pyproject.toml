@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slopmop"
-version = "0.3.0"
+version = "0.4.0"
 description = "Quality gates for AI-assisted codebases — catch the slop LLMs leave behind."
 readme = "README.md"
 license = {text = "Slop-Mop Attribution License v1.0"}
