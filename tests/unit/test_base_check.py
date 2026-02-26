@@ -265,31 +265,29 @@ class TestPythonCheckMixin:
         result = self.mixin.get_project_python(str(tmp_path))
         assert result == str(project_python)
 
-    def test_get_project_python_falls_back_to_system_python(
+    def test_get_project_python_falls_back_to_sys_executable(
         self, tmp_path, monkeypatch
     ):
-        """Test get_project_python falls back to system Python when no venv."""
-        import shutil
+        """get_project_python prefers sys.executable over system Python when no venv.
+
+        When no project venv or VIRTUAL_ENV exists, sys.executable is preferred
+        because it's slop-mop's own Python which has all bundled tools (pip-audit,
+        bandit, detect-secrets). System Python from PATH is a last resort.
+        """
+        import sys
 
         # Clear VIRTUAL_ENV
         monkeypatch.delenv("VIRTUAL_ENV", raising=False)
 
         result = self.mixin.get_project_python(str(tmp_path))
 
-        # Should find python3 or python in PATH (system Python)
-        expected = shutil.which("python3") or shutil.which("python")
-        if expected:
-            assert result == expected
-        else:
-            # If no system Python, falls back to sys.executable
-            import sys
-
-            assert result == sys.executable
+        # Should use sys.executable (slop-mop's Python with bundled tools)
+        assert result == sys.executable
 
     def test_get_project_python_falls_back_to_sys_executable_no_path(
         self, tmp_path, monkeypatch
     ):
-        """Test get_project_python falls back to sys.executable if no Python in PATH."""
+        """get_project_python falls back to sys.executable even if no Python in PATH."""
         import sys
 
         # Clear VIRTUAL_ENV
@@ -301,10 +299,33 @@ class TestPythonCheckMixin:
         result = self.mixin.get_project_python(str(tmp_path))
         assert result == sys.executable
 
+    def test_get_project_python_falls_back_to_system_python_no_sys_executable(
+        self, tmp_path, monkeypatch
+    ):
+        """get_project_python falls through to system Python when sys.executable is empty."""
+        import shutil
+        import sys
+
+        # Clear VIRTUAL_ENV
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        # Simulate sys.executable being falsy (e.g. embedded interpreters)
+        monkeypatch.setattr(sys, "executable", "")
+
+        result = self.mixin.get_project_python(str(tmp_path))
+
+        # Should fall through to system Python in PATH
+        expected = shutil.which("python3") or shutil.which("python")
+        if expected:
+            assert result == expected
+        else:
+            # Edge case: nothing found at all, returns "python3" literal
+            assert result == "python3"
+
     def test_get_project_python_logs_warning_no_venv(
         self, tmp_path, monkeypatch, caplog
     ):
-        """Test get_project_python logs warning when no venv found."""
+        """get_project_python logs warning when no venv found."""
         import logging
 
         # Clear VIRTUAL_ENV

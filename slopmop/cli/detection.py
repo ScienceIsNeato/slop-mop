@@ -7,10 +7,19 @@ from typing import Any, Dict, List, Tuple
 from slopmop.checks.base import find_tool
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
-# Install commands assume the project venv is active.
+# Used during `sm init` to auto-disable checks whose tools aren't available.
+# find_tool() resolves these via project venv → .venv → VIRTUAL_ENV → PATH.
+# When sm is installed via pipx, most tools are bundled and found via PATH.
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
+    # Lint & format (py-lint gate)
+    ("black", "laziness:py-lint", "pip install black  # in your venv"),
+    ("isort", "laziness:py-lint", "pip install isort  # in your venv"),
+    ("autoflake", "laziness:py-lint", "pip install autoflake  # in your venv"),
+    ("flake8", "laziness:py-lint", "pip install flake8  # in your venv"),
+    # Static analysis & types
     ("vulture", "laziness:dead-code", "pip install vulture  # in your venv"),
     ("pyright", "overconfidence:py-types", "pip install pyright  # in your venv"),
+    # Security scanning
     ("bandit", "myopia:security-scan", "pip install bandit  # in your venv"),
     ("semgrep", "myopia:security-scan", "pip install semgrep  # in your venv"),
     (
