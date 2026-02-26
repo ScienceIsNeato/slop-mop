@@ -90,6 +90,104 @@ class TestDeepMerge:
         }
 
 
+class TestCmdInitNonInteractiveDetection:
+    """Tests for automatic non-interactive terminal detection in sm init."""
+
+    def _make_args(self, tmp_path, non_interactive=False):
+        """Create an argparse Namespace mimicking sm init."""
+        import argparse
+
+        return argparse.Namespace(
+            project_root=str(tmp_path),
+            config=None,
+            non_interactive=non_interactive,
+        )
+
+    def test_falls_back_when_stdin_not_tty(self, tmp_path, capsys):
+        """cmd_init auto-detects non-interactive terminal and uses defaults."""
+        from unittest.mock import patch
+
+        # Ensure there's a detectable project file
+        (tmp_path / "setup.py").write_text("")
+
+        args = self._make_args(tmp_path, non_interactive=False)
+
+        with (
+            patch("slopmop.cli.init.sys") as mock_sys,
+            patch("slopmop.cli.status.run_status", return_value=0),
+        ):
+            mock_sys.stdin.isatty.return_value = False
+            from slopmop.cli.init import cmd_init
+
+            result = cmd_init(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Non-interactive terminal detected" in out
+        assert "auto-detected defaults" in out
+
+    def test_no_fallback_when_stdin_is_tty(self, tmp_path, capsys, monkeypatch):
+        """cmd_init uses interactive mode when stdin is a TTY.
+
+        We pass --non-interactive explicitly to avoid actually blocking on
+        input(), but verify the auto-detection message does NOT appear.
+        """
+        from unittest.mock import patch
+
+        (tmp_path / "setup.py").write_text("")
+
+        # Explicitly pass non_interactive=True to avoid blocking input()
+        args = self._make_args(tmp_path, non_interactive=True)
+
+        with patch("slopmop.cli.status.run_status", return_value=0):
+            from slopmop.cli.init import cmd_init
+
+            result = cmd_init(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # When --non-interactive is explicitly set, the auto-detection
+        # message should NOT appear (it only shows on auto-fallback)
+        assert "Non-interactive terminal detected" not in out
+
+    def test_explicit_non_interactive_flag_skips_tty_check(self, tmp_path, capsys):
+        """--non-interactive flag works regardless of TTY status."""
+        from unittest.mock import patch
+
+        (tmp_path / "setup.py").write_text("")
+        args = self._make_args(tmp_path, non_interactive=True)
+
+        with (
+            patch("slopmop.cli.init.sys") as mock_sys,
+            patch("slopmop.cli.status.run_status", return_value=0),
+        ):
+            # Even with a TTY, --non-interactive should skip prompts
+            mock_sys.stdin.isatty.return_value = True
+            from slopmop.cli.init import cmd_init
+
+            result = cmd_init(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Non-interactive mode: using detected defaults" in out
+
+
+class TestPrintNextSteps:
+    """Tests for _print_next_steps output."""
+
+    def test_uses_sm_not_scripts_sm(self, capsys):
+        """Next steps should reference 'sm', not './scripts/sm'."""
+        from slopmop.cli.init import _print_next_steps
+
+        _print_next_steps({})
+        out = capsys.readouterr().out
+        assert "./scripts/sm" not in out
+        assert "sm validate commit" in out
+        assert "sm config --disable" in out
+        assert "sm status" in out
+        assert "sm config --show" in out
+
+
 class TestCmdValidateSelf:
     """Tests for --self validation behavior."""
 
