@@ -61,7 +61,7 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
             print(f"     • {tool_name} → {check_name}")
             print(f"       Install: {install_cmd}")
         print()
-        print("   After installing, re-run: ./scripts/sm init")
+        print("   After installing, re-run: sm init")
         print()
 
     print(f"  Recommended profile: {detected['recommended_profile']}")
@@ -299,12 +299,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     config_file = project_root / ".sb_config.json"
     setup_config_file = Path(args.config) if args.config else None
 
-    print("\n🪣 Slop-Mop Interactive Setup")
-    print("=" * 60)
     from slopmop.reporting import print_project_header
-
-    print_project_header(str(project_root))
-    print()
 
     # Load pre-populated config if provided
     preconfig: Dict[str, Any] = {}
@@ -332,6 +327,17 @@ def cmd_init(args: argparse.Namespace) -> int:
             "   (To force interactive mode, run from a TTY. "
             "To silence this message, pass --non-interactive.)"
         )
+
+    # Print mode-appropriate banner so output is accurate in both
+    # interactive and non-interactive contexts (e.g., CI/agents).
+    if non_interactive:
+        print("\n🪣 Slop-Mop Setup (non-interactive mode)")
+    else:
+        print("\n🪣 Slop-Mop Interactive Setup")
+    print("=" * 60)
+    print_project_header(str(project_root))
+    print()
+
     if non_interactive:
         config = _build_non_interactive_config(detected, preconfig)
     else:

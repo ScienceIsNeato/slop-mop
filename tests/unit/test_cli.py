@@ -126,28 +126,35 @@ class TestCmdInitNonInteractiveDetection:
         assert "Non-interactive terminal detected" in out
         assert "auto-detected defaults" in out
 
-    def test_no_fallback_when_stdin_is_tty(self, tmp_path, capsys, monkeypatch):
-        """cmd_init uses interactive mode when stdin is a TTY.
+    def test_no_fallback_when_stdin_is_tty(self, tmp_path, capsys):
+        """cmd_init does not auto-fallback when stdin is a TTY.
 
-        We pass --non-interactive explicitly to avoid actually blocking on
-        input(), but verify the auto-detection message does NOT appear.
+        We simulate a TTY by forcing sys.stdin.isatty() to return True and
+        stub input() so the interactive path does not block, then verify the
+        auto-detection message does NOT appear.
         """
         from unittest.mock import patch
 
         (tmp_path / "setup.py").write_text("")
 
-        # Explicitly pass non_interactive=True to avoid blocking input()
-        args = self._make_args(tmp_path, non_interactive=True)
+        # Do not set --non-interactive so that TTY auto-detection is used
+        args = self._make_args(tmp_path, non_interactive=False)
 
-        with patch("slopmop.cli.status.run_status", return_value=0):
+        with (
+            patch("slopmop.cli.init.sys") as mock_sys,
+            patch("slopmop.cli.init.input", return_value=""),
+            patch("slopmop.cli.init.prompt_yes_no", return_value=True),
+            patch("slopmop.cli.status.run_status", return_value=0),
+        ):
+            mock_sys.stdin.isatty.return_value = True
             from slopmop.cli.init import cmd_init
 
             result = cmd_init(args)
 
         assert result == 0
         out = capsys.readouterr().out
-        # When --non-interactive is explicitly set, the auto-detection
-        # message should NOT appear (it only shows on auto-fallback)
+        # When stdin is a TTY and --non-interactive is not set, the
+        # auto-detection fallback message should NOT appear.
         assert "Non-interactive terminal detected" not in out
 
     def test_explicit_non_interactive_flag_skips_tty_check(self, tmp_path, capsys):
