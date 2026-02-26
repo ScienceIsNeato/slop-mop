@@ -14,6 +14,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -43,6 +44,8 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate laziness:js-frontend --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

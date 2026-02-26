@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, cast
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, ToolContext
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -44,6 +44,8 @@ class StringDuplicationCheck(BaseCheck):
     Re-validate:
       ./sm validate quality:string-duplication --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

@@ -5,9 +5,11 @@ Handles interactive and non-interactive project setup.
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, cast
 
+from slopmop.cli.config import _deep_merge
 from slopmop.cli.detection import detect_project_type
 
 
@@ -28,15 +30,6 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
     if not response:
         return default
     return response in ("y", "yes", "1", "true")
-
-
-def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> None:
-    """Deep merge updates into base dict, modifying base in place."""
-    for key, value in updates.items():
-        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _deep_merge(cast(Dict[str, Any], base[key]), cast(Dict[str, Any], value))
-        else:
-            base[key] = value
 
 
 def _print_detection_results(detected: Dict[str, Any]) -> None:
@@ -60,7 +53,7 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
             print(f"     • {tool_name} → {check_name}")
             print(f"       Install: {install_cmd}")
         print()
-        print("   After installing, re-run: ./scripts/sm init")
+        print("   After installing, re-run: sm init")
         print()
 
     print(f"  Recommended profile: {detected['recommended_profile']}")
@@ -275,17 +268,15 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print()
     print("Next steps:")
     print("  1. Review the report card below to see where the repo stands")
-    print(
-        "  2. Disable any gates you're not ready for: ./scripts/sm config --disable <gate>"
-    )
-    print("  3. Run './scripts/sm validate commit' and fix what fails")
+    print("  2. Disable any gates you're not ready for: sm config --disable <gate>")
+    print("  3. Run 'sm validate commit' and fix what fails")
     print("  4. Gradually enable more gates and tighten thresholds over time")
     print()
     print("Quick reference:")
-    print("  ./scripts/sm validate commit   # Fast pre-commit validation")
-    print("  ./scripts/sm validate pr       # Full PR validation")
-    print("  ./scripts/sm status            # Full report card (no fail-fast)")
-    print("  ./scripts/sm config --show     # View current gate settings")
+    print("  sm validate commit   # Fast pre-commit validation")
+    print("  sm validate pr       # Full PR validation")
+    print("  sm status            # Full report card (no fail-fast)")
+    print("  sm config --show     # View current gate settings")
     print()
 
 
@@ -300,12 +291,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     config_file = project_root / ".sb_config.json"
     setup_config_file = Path(args.config) if args.config else None
 
-    print("\n🪣 Slop-Mop Interactive Setup")
-    print("=" * 60)
     from slopmop.reporting import print_project_header
-
-    print_project_header(str(project_root))
-    print()
 
     # Load pre-populated config if provided
     preconfig: Dict[str, Any] = {}
@@ -319,10 +305,32 @@ def cmd_init(args: argparse.Namespace) -> int:
     # Auto-detect project characteristics
     print("🔍 Detecting project type...")
     detected = detect_project_type(project_root)
-    _print_detection_results(detected)
 
     # Build configuration
-    if args.non_interactive:
+    # Auto-detect non-interactive terminal (e.g. AI agent, piped stdin, CI).
+    # input() blocks forever in these contexts, so fall back gracefully.
+    non_interactive = args.non_interactive
+    if not non_interactive and not sys.stdin.isatty():
+        non_interactive = True
+        print(
+            "🤖 Non-interactive terminal detected — "
+            "using auto-detected defaults.\n"
+            "   (To force interactive mode, run from a TTY. "
+            "To silence this message, pass --non-interactive.)"
+        )
+
+    # Print mode-appropriate banner first, then detection details,
+    # so the user sees the title heading before the wall of results.
+    if non_interactive:
+        print("\n🪣 Slop-Mop Setup (non-interactive mode)")
+    else:
+        print("\n🪣 Slop-Mop Interactive Setup")
+    print("=" * 60)
+    print_project_header(str(project_root))
+    print()
+    _print_detection_results(detected)
+
+    if non_interactive:
         config = _build_non_interactive_config(detected, preconfig)
     else:
         config = _build_interactive_config(detected, preconfig)
@@ -353,7 +361,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             backup_path = backup_config(config_file)
             if backup_path:
                 print(f"📦 Backed up existing config to: {backup_path}")
-            _deep_merge(base_config, existing)
+            base_config = _deep_merge(base_config, existing)
         except json.JSONDecodeError:
             pass
 

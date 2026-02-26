@@ -19,6 +19,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -53,6 +54,8 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate laziness:complexity --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
@@ -126,8 +129,6 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
             )
 
         cmd = [
-            self.get_project_python(project_root),
-            "-m",
             "radon",
             "cc",
             "--min",
@@ -139,7 +140,11 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
         duration = time.time() - start_time
 
-        if result.returncode == 127:
+        # returncode 127 = shell "command not found"
+        # returncode -1 = FileNotFoundError from SubprocessRunner
+        if result.returncode == 127 or (
+            result.returncode == -1 and "Command not found" in result.stderr
+        ):
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=duration,

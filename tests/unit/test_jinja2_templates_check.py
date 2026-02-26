@@ -201,3 +201,43 @@ class TestTemplateValidationCheckHelpers:
 
         check = TemplateValidationCheck({"templates_dir": "templates"})
         assert check._get_templates_dir(str(tmp_path)) == "templates"
+
+
+class TestTemplateValidationVenvGuard:
+    """Tests for venv guard placement in run().
+
+    Bugbot flagged that the venv guard was at the top of run(), blocking
+    _validate_templates which imports jinja2 directly (no project venv needed).
+    Only _run_template_test (pytest) genuinely needs a project venv.
+    """
+
+    def test_validate_templates_works_without_project_venv(self, tmp_path):
+        """_validate_templates runs even without project venv (uses bundled jinja2)."""
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "base.html").write_text("<html>{{ title }}</html>")
+
+        check = TemplateValidationCheck({"templates_dir": "templates"})
+        # No venv/ or .venv/ exists in tmp_path → has_project_venv returns False
+        result = check.run(str(tmp_path))
+        # Should NOT be WARNED — should proceed to validate templates
+        assert result.status == CheckStatus.PASSED
+        assert "1 template" in result.output
+
+    def test_template_test_warns_without_project_venv(self, tmp_path):
+        """_run_template_test returns WARNED when no project venv exists."""
+        # Create the template test file structure
+        test_dir = tmp_path / "tests" / "integration"
+        test_dir.mkdir(parents=True)
+        (test_dir / "test_template_smoke.py").write_text("# test file")
+
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+
+        check = TemplateValidationCheck({"templates_dir": "templates"})
+        # No venv/ or .venv/ in tmp_path, and clear VIRTUAL_ENV so
+        # has_project_venv returns False
+        with patch.dict("os.environ", {}, clear=True):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.WARNED
+        assert "No project virtual environment found" in result.error

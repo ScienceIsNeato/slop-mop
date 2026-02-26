@@ -33,6 +33,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus
@@ -62,6 +63,8 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate overconfidence:js-types --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

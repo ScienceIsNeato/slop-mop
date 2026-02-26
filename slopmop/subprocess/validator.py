@@ -57,6 +57,8 @@ class CommandValidator:
             "vulture",
             "xenon",
             "bandit",
+            "detect-secrets",
+            "pip-audit",
             "semgrep",
             "safety",
             "diff-cover",

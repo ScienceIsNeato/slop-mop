@@ -133,6 +133,48 @@ Inherit from `BaseCheck` (and optionally `PythonCheckMixin` or `JavaScriptCheckM
 | `can_auto_fix()`            | `False`         |                             |
 | `auto_fix(project_root)`    | `False`         |                             |
 | `skip_reason(project_root)` | Generic message |                             |
+| `tool_context`              | `ToolContext.PURE` | See **Tool Context** below |
+
+### Tool Context (Required Decision)
+
+Every gate must declare its `tool_context` — a `ClassVar` that tells slop-mop how the gate resolves its external tools. This determines runtime behavior when the gate is bolted onto a project that may or may not have its own virtual environment.
+
+```python
+from slopmop.checks.base import ToolContext
+
+class MyCheck(BaseCheck, PythonCheckMixin):
+    tool_context = ToolContext.SM_TOOL  # ← Set this explicitly
+```
+
+**Categories:**
+
+| Context          | Meaning                                              | Tool resolution            | Example gates                 |
+| ---------------- | ---------------------------------------------------- | -------------------------- | ----------------------------- |
+| `ToolContext.PURE`    | No external tools needed (AST, regex, file parsing)  | N/A                        | `LocLockCheck`, `BogusTestsCheck` |
+| `ToolContext.SM_TOOL` | Uses tools bundled with slop-mop (via pipx)          | `find_tool()` / bare cmd   | `SecurityLocalCheck`, `ComplexityCheck` |
+| `ToolContext.PROJECT` | Runs against the project's own Python env            | `get_project_python()`     | `PythonTestsCheck`, `PythonCoverageCheck` |
+| `ToolContext.NODE`    | Requires Node.js toolchain in the project            | `npx` / `node_modules`     | `SourceDuplicationCheck`, `FrontendCheck` |
+
+**Decision guide:**
+
+1. Does your gate call any external executable? **No** → `PURE`
+2. Does it wrap a Python tool that ships with slop-mop (listed in `pyproject.toml` dependencies)? **Yes** → `SM_TOOL`. Use bare command name in `_run_command()` (e.g., `["bandit", ...]`), not `get_project_python() + -m`.
+3. Does it need to run *inside* the project's own Python environment (pytest, coverage, project-specific imports)? **Yes** → `PROJECT`. Use `get_project_python()`. Call `check_project_venv_or_warn()` at the top of `run()`.
+4. Does it need Node.js / npm packages? **Yes** → `NODE`.
+
+**PROJECT checks must include the venv guard:**
+
+```python
+def run(self, project_root: str) -> CheckResult:
+    start_time = time.time()
+
+    # PROJECT check: bail early when no project venv exists
+    venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+    if venv_warn is not None:
+        return venv_warn
+
+    # ... normal check logic ...
+```
 
 **The class docstring IS the help text.** `sm help <gate>` displays it directly. Write it like documentation, not like a code comment. Include:
 

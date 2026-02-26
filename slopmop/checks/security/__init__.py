@@ -12,6 +12,7 @@ with code files, not just Python projects.
 """
 
 import json
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus
@@ -77,6 +79,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./scripts/sm validate myopia:security-scan --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
@@ -197,7 +201,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         config_file = self.config.get("bandit_config_file")
 
         cmd = [
-            self.get_project_python(project_root),
+            sys.executable,
             "-m",
             "bandit",
             "-r",
@@ -287,7 +291,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         # Check for baseline file
         config_file = self.config.get("config_file_path")
 
-        cmd = [self.get_project_python(project_root), "-m", "detect_secrets", "scan"]
+        cmd = [sys.executable, "-m", "detect_secrets", "scan"]
         if config_file:
             cmd.extend(["--baseline", config_file])
 
@@ -401,6 +405,11 @@ class SecurityCheck(SecurityLocalCheck):
 
         pip-audit is fast (~1s), offline-capable, and uses the OSV database.
         Replaces safety which hangs on `safety scan` with no API key.
+
+        Unlike bandit and detect-secrets (which scan source *files*),
+        pip-audit audits the *installed packages* of whichever Python
+        runs it.  We therefore use the project's Python so that the
+        project's dependencies are inspected, not slop-mop's own.
         """
         cmd = [
             self.get_project_python(project_root),

@@ -16,6 +16,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
@@ -52,6 +53,8 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate deceptiveness:js-coverage --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)

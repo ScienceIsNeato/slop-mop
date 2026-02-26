@@ -14,6 +14,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -43,6 +44,8 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./scripts/sm validate laziness:template-syntax --verbose
     """
+
+    tool_context = ToolContext.PROJECT
 
     @property
     def name(self) -> str:
@@ -96,7 +99,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
 
-        # Check for dedicated template smoke test first
+        # Check for dedicated template smoke test first (needs project venv)
         template_test = os.path.join(
             project_root, "tests", "integration", "test_template_smoke.py"
         )
@@ -118,7 +121,17 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     def _run_template_test(
         self, project_root: str, test_path: str, start_time: float
     ) -> CheckResult:
-        """Run existing template smoke test."""
+        """Run existing template smoke test.
+
+        Unlike _validate_templates (which imports jinja2 directly from
+        slop-mop's bundled env), this path runs pytest and needs the
+        project's venv.
+        """
+        # PROJECT check: bail early when no project venv exists
+        venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+        if venv_warn is not None:
+            return venv_warn
+
         cmd = [
             self.get_project_python(project_root),
             "-m",

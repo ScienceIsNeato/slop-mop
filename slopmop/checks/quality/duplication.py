@@ -13,7 +13,7 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, ToolContext
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
@@ -49,6 +49,8 @@ class SourceDuplicationCheck(BaseCheck):
     Re-validate:
       ./sm validate quality:source-duplication --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)

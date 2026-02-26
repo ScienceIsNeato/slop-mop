@@ -17,6 +17,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -46,6 +47,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate laziness:py-lint --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:

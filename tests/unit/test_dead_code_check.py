@@ -143,12 +143,25 @@ class TestDeadCodeCheck:
         assert "--exclude" in cmd
 
     def test_build_command_with_whitelist(self, tmp_path):
-        """Test command includes whitelist file when configured."""
+        """Test whitelist file is placed as positional arg before flags.
+
+        Vulture uses argparse with positional PATH args. The whitelist
+        must appear alongside source dirs (before --min-confidence and
+        --exclude) or argparse will reject it.
+        Regression test for: https://github.com/ScienceIsNeato/slop-mop/issues/49
+        """
         wl_file = tmp_path / "whitelist.py"
         wl_file.write_text("# whitelist")
         check = DeadCodeCheck({"whitelist_file": "whitelist.py"})
         cmd = check._build_command(str(tmp_path))
         assert str(wl_file) in cmd
+        # Whitelist must come BEFORE any flags
+        wl_idx = cmd.index(str(wl_file))
+        assert "--min-confidence" in cmd
+        flag_idx = cmd.index("--min-confidence")
+        assert (
+            wl_idx < flag_idx
+        ), f"whitelist at index {wl_idx} must precede --min-confidence at {flag_idx}"
 
     def test_build_command_ignores_missing_whitelist(self, tmp_path):
         """Test command skips whitelist if file doesn't exist."""

@@ -18,6 +18,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    ToolContext,
     count_source_scope,
     find_tool,
 )
@@ -57,6 +58,8 @@ class DeadCodeCheck(BaseCheck):
     Re-validate:
       ./sm validate quality:dead-code --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
@@ -169,7 +172,17 @@ class DeadCodeCheck(BaseCheck):
             src_dirs = ["."]
 
         vulture_path = find_tool("vulture", project_root) or "vulture"
-        cmd = [vulture_path] + src_dirs
+        # Build positional args first: vulture <src_dirs> [whitelist]
+        # Vulture uses argparse which requires positional PATH args before flags.
+        positional = [vulture_path] + src_dirs
+
+        whitelist = self.config.get("whitelist_file", "")
+        if whitelist:
+            whitelist_path = os.path.join(project_root, whitelist)
+            if os.path.isfile(whitelist_path):
+                positional.append(whitelist_path)
+
+        cmd = positional
         cmd.extend(["--min-confidence", str(self._get_min_confidence())])
 
         exclude_patterns = self._get_exclude_patterns()
@@ -179,12 +192,6 @@ class DeadCodeCheck(BaseCheck):
             exclude_names = self._glob_patterns_to_vulture_excludes(exclude_patterns)
             if exclude_names:
                 cmd.extend(["--exclude", ",".join(exclude_names)])
-
-        whitelist = self.config.get("whitelist_file", "")
-        if whitelist:
-            whitelist_path = os.path.join(project_root, whitelist)
-            if os.path.isfile(whitelist_path):
-                cmd.append(whitelist_path)
 
         return cmd
 

@@ -9,6 +9,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus
@@ -37,6 +38,8 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate laziness:js-lint --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

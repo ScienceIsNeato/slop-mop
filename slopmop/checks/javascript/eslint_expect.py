@@ -26,6 +26,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     JavaScriptCheckMixin,
+    ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -77,6 +78,8 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate deceptiveness:js-expect-assert --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

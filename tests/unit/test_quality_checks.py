@@ -109,6 +109,29 @@ class TestComplexityCheck:
         assert result.status == CheckStatus.WARNED
         assert "Radon not available" in result.error
 
+    def test_run_radon_file_not_found_error(self, tmp_path):
+        """Test run() when SubprocessRunner raises FileNotFoundError (returncode -1).
+
+        When find_tool() returns None and the bare 'radon' command doesn't exist,
+        SubprocessRunner catches FileNotFoundError and returns returncode=-1 with
+        stderr containing 'Command not found'. The check must recognise this as
+        'tool not installed' rather than silently passing.
+        Regression test for: PR #48 Bugbot comment on radon detection.
+        """
+        (tmp_path / "app.py").write_text("def test(): pass")
+        check = ComplexityCheck({})
+
+        mock_result = MagicMock()
+        mock_result.returncode = -1
+        mock_result.stderr = "Command not found: radon\n[Errno 2] No such file"
+        mock_result.output = ""
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert "Radon not available" in result.error
+
 
 class TestSourceDuplicationCheck:
     """Tests for SourceDuplicationCheck."""

@@ -610,3 +610,34 @@ class TestRunPipAudit:
             result = check._run_pip_audit(str(tmp_path))
 
         assert result.passed is True
+
+    def test_pip_audit_uses_project_python(self, tmp_path):
+        """pip-audit must use project Python, not sys.executable.
+
+        Unlike bandit/detect-secrets (which scan source *files*),
+        pip-audit audits installed *packages* — it needs the project's
+        Python so it inspects the project's dependencies, not slop-mop's.
+
+        Regression: Bugbot flagged that sys.executable was used, which
+        audited slop-mop's own bundled packages instead of the project's.
+        """
+        # Create a fake project venv so get_project_python returns it
+        venv_bin = tmp_path / "venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        fake_python = venv_bin / "python"
+        fake_python.write_text("#!/bin/sh")
+        fake_python.chmod(0o755)
+
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = json.dumps({"dependencies": []})
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
+            check._run_pip_audit(str(tmp_path))
+
+        # Verify the command's first element is the project Python, not sys.executable
+        cmd_used = mock_cmd.call_args[0][0]
+        assert cmd_used[0] == str(
+            fake_python
+        ), f"Expected project Python {fake_python}, got {cmd_used[0]}"

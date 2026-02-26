@@ -9,6 +9,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     PythonCheckMixin,
+    ToolContext,
 )
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
@@ -43,6 +44,8 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate overconfidence:py-tests --verbose
     """
+
+    tool_context = ToolContext.PROJECT
 
     @property
     def name(self) -> str:
@@ -99,6 +102,11 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     def run(self, project_root: str) -> CheckResult:
         """Run pytest."""
         start_time = time.time()
+
+        # PROJECT check: bail early when no project venv exists
+        venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+        if venv_warn is not None:
+            return venv_warn
 
         # Run pytest with coverage to generate coverage.xml
         result = self._run_command(
