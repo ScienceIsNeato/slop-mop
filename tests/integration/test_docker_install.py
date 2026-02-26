@@ -26,9 +26,9 @@ Three branches × one container = ~2-3 minutes for the whole suite.
 
 Branch fixture summary
 ----------------------
-  main      — all gates pass
-  all-fail  — every gate uniquely broken
-  mixed     — security + dead-code + bogus-tests fail; source-duplication disabled
+  main      — all gates pass (Python + JS)
+  all-fail  — every gate uniquely broken (Python + JS)
+  mixed     — security + dead-code + bogus-tests fail; source-duplication disabled; JS passes
 
 Run integration tests::
 
@@ -99,6 +99,24 @@ def _assert_gate_not_passing(result: RunResult, gate_name: str) -> None:
         f"Gate '{gate_name}' should NOT be passing on this branch.\n"
         f"Passing lines:\n"
         + "\n".join(f"  {l.strip()}" for l in passing_lines)
+        + f"\n\n{result}"
+    )
+
+
+def _assert_gate_passed(result: RunResult, gate_name: str) -> None:
+    """Assert that *gate_name* is present and marked as PASSING.
+
+    Looks for lines containing both the gate name and the PASSING indicator
+    (the ✅ emoji or the word "passing").
+    """
+    lines = result.output.splitlines()
+    gate_lines = [l for l in lines if gate_name in l]
+    assert gate_lines, f"Gate '{gate_name}' not found anywhere in output.\n{result}"
+    passed_lines = [l for l in gate_lines if "passing" in l.lower() or "\u2705" in l]
+    assert passed_lines, (
+        f"Gate '{gate_name}' found but NOT marked as passing.\n"
+        f"Matching lines:\n"
+        + "\n".join(f"  {l.strip()}" for l in gate_lines)
         + f"\n\n{result}"
     )
 
@@ -175,6 +193,11 @@ class TestHappyPath:
                 gate in result_main.output
             ), f"Expected gate '{gate}' in output.\n{result_main}"
 
+    def test_js_expect_gate_passes(self, result_main: RunResult) -> None:
+        """js-expect-assert should pass — all JS tests have proper assertions."""
+        result_main.assert_prerequisites()
+        _assert_gate_passed(result_main, "js-expect-assert")
+
 
 class TestAllFail:
     """Branch all-fail: every gate uniquely broken -> exit 1."""
@@ -210,6 +233,11 @@ class TestAllFail:
     def test_bogus_tests_gate_fails(self, result_all_fail: RunResult) -> None:
         result_all_fail.assert_prerequisites()
         _assert_gate_failed(result_all_fail, "bogus-tests")
+
+    def test_js_expect_gate_fails(self, result_all_fail: RunResult) -> None:
+        """js-expect-assert should fail — JS tests have zero assertions."""
+        result_all_fail.assert_prerequisites()
+        _assert_gate_failed(result_all_fail, "js-expect-assert")
 
 
 class TestMixed:
@@ -252,3 +280,8 @@ class TestMixed:
             "source-duplication should be disabled (skipped) but was "
             f"reported as failed:\n" + "\n".join(failing_lines)
         )
+
+    def test_js_expect_gate_passes(self, result_mixed: RunResult) -> None:
+        """js-expect-assert should pass — JS tests on mixed have proper assertions."""
+        result_mixed.assert_prerequisites()
+        _assert_gate_passed(result_mixed, "js-expect-assert")

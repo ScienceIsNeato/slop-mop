@@ -47,9 +47,57 @@ jobs:
       - name: Run slop-mop on itself
         run: python -m slopmop.sm validate --self
 
+  wait-for-bots:
+    name: ⏳ Wait for External Bots
+    runs-on: ubuntu-latest
+    needs: integration  # run after all real CI — bots have had plenty of time to start
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Wait for external check suites (Bugbot, etc.)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # By this point validate + integration have finished (~4-5 min).
+          # Any external bot that's going to run (Bugbot, etc.) has had
+          # plenty of time to register and start.
+          #
+          # Logic:
+          #   - Check for in_progress external suites
+          #   - If any: poll until they complete (up to 15 min)
+          #   - If none: exit immediately (bot finished or was never scheduled)
+          COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+          POLL_INTERVAL=15
+          MAX_POLLS=60  # 60 × 15s = 15 min
+
+          echo "🔍 Checking for in-progress external check suites..."
+          POLL=0
+          while [ $POLL -lt $MAX_POLLS ]; do
+            # Show what's still running
+            gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
+              --jq '.check_suites[] | select(.app.slug != "github-actions") | select(.status == "in_progress") | "  🔄 \(.app.name) (\(.app.slug)): \(.status)"'
+
+            IN_PROGRESS=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/check-suites" \
+              --jq '[.check_suites[] | select(.app.slug != "github-actions") | select(.status == "in_progress")] | length')
+
+            if [ "$IN_PROGRESS" = "0" ]; then
+              echo "✅ No external check suites in progress — clear to proceed."
+              exit 0
+            fi
+
+            POLL=$((POLL + 1))
+            echo "⏳ ${IN_PROGRESS} suite(s) still in progress (attempt ${POLL}/${MAX_POLLS})"
+            sleep $POLL_INTERVAL
+          done
+
+          echo "❌ Timed out — external suite(s) still in progress after $((MAX_POLLS * POLL_INTERVAL))s."
+          echo "Cannot reliably check PR comments while bots are still running."
+          exit 1
+
   pr-comments:
     name: PR Comment Check
     runs-on: ubuntu-latest
+    needs: wait-for-bots  # runs after CI + bot wait are both done
     if: github.event_name == 'pull_request'
 
     steps:

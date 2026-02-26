@@ -247,6 +247,7 @@ class DockerManager:
     def run_sm(
         self,
         branch: str,
+        ref: Optional[str] = None,
         command: Optional[list[str]] = None,
         extra_env: Optional[dict[str, str]] = None,
     ) -> RunResult:
@@ -259,7 +260,12 @@ class DockerManager:
         Parameters
         ----------
         branch:
-            Git branch to check out inside the container.
+            Logical branch name, used for labelling in ``RunResult``.
+        ref:
+            Exact git ref (SHA, tag, or branch) to check out inside the
+            container.  When ``None`` (the default) *branch* is used as
+            the checkout target.  Pin to a SHA for deterministic fixtures
+            that don't drift when ``bucket-o-slop`` changes.
         command:
             Override the default ``["sm", "validate", "commit"]``.
         extra_env:
@@ -285,6 +291,9 @@ class DockerManager:
         for key, val in (extra_env or {}).items():
             docker_cmd += ["-e", f"{key}={val}"]
 
+        # Resolve the checkout target: explicit ref (SHA/tag) or branch name.
+        checkout_target = ref or branch
+
         # Four-phase shell script.  Each phase has a distinct sentinel exit
         # code so tests can pinpoint where something went wrong.
         #
@@ -302,7 +311,7 @@ class DockerManager:
         shell_script = (
             f"git clone {BUCKET_O_SLOP_REPO} . 2>&1 "
             f"|| {{ echo 'REPO_CLONE_FAILED'; exit {CLONE_FAILED_EXIT}; }}; "
-            f"git checkout {branch} 2>&1 "
+            f"git checkout {checkout_target} 2>&1 "
             f"|| {{ echo 'BRANCH_CHECKOUT_FAILED'; exit {CHECKOUT_FAILED_EXIT}; }}; "
             f"cp -r /slopmop-src /tmp/slopmop-build 2>&1 "
             f"&& pip install /tmp/slopmop-build --quiet 2>&1 "
