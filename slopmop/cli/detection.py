@@ -28,6 +28,12 @@ REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
         "pip install detect-secrets  # in your venv",
     ),
     ("pip-audit", "myopia:security-audit", "pip install pip-audit  # in your venv"),
+    # Complexity scanning (not bundled — install system-wide or in venv)
+    (
+        "radon",
+        "laziness:complexity",
+        "pip install radon  # in your venv or: brew install radon",
+    ),
 ]
 
 

@@ -140,7 +140,11 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(cmd, cwd=project_root, timeout=120)
         duration = time.time() - start_time
 
-        if result.returncode == 127:
+        # returncode 127 = shell "command not found"
+        # returncode -1 = FileNotFoundError from SubprocessRunner
+        if result.returncode == 127 or (
+            result.returncode == -1 and "Command not found" in result.stderr
+        ):
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=duration,

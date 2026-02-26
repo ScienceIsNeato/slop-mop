@@ -3,22 +3,81 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Optional, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, cast
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
 from slopmop.core.registry import get_registry
 
 
+def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize flat 'category:gate' keys into hierarchical config.
+
+    Converts flat keys like ``{"laziness:dead-code": {"whitelist_file": "w.py"}}``
+    into the nested structure the runtime expects::
+
+        {"laziness": {"gates": {"dead-code": {"whitelist_file": "w.py"}}}}
+
+    Keys that are NOT in ``category:gate`` format are passed through unchanged.
+    If a key matches a GateCategory but has no colon, it's also passed through
+    (it's already a category-level dict).
+    """
+    category_keys = {cat.key for cat in GateCategory}
+    normalized: Dict[str, Any] = {}
+
+    for key, value in data.items():
+        if ":" in key:
+            parts = key.split(":", 1)
+            category, gate_name = parts[0], parts[1]
+            if category in category_keys and isinstance(value, dict):
+                # Merge into hierarchical structure
+                if category not in normalized:
+                    normalized[category] = {}
+                cat_dict = normalized[category]
+                if "gates" not in cat_dict:
+                    cat_dict["gates"] = {}
+                cat_dict["gates"][gate_name] = value
+                continue
+        # Pass through non-flat keys unchanged
+        normalized[key] = value
+
+    return normalized
+
+
+def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep-merge overlay into base, returning the merged result.
+
+    For nested dicts, merge recursively. For all other types, overlay wins.
+    """
+    merged = base.copy()
+    for key, value in overlay.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(
+                cast(Dict[str, Any], merged[key]),
+                cast(Dict[str, Any], value),
+            )
+        else:
+            merged[key] = value
+    return merged
+
+
 def _update_from_json(config_file: Path, config: dict[str, Any], json_path: str) -> int:
-    """Update config from a JSON file."""
+    """Update config from a JSON file.
+
+    Accepts both flat (``"category:gate"``) and hierarchical formats.
+    Flat keys are normalized to hierarchical before merging so the
+    runtime can always find them at ``config[category]["gates"][gate]``.
+    """
     json_file = Path(json_path)
     if not json_file.exists():
         print(f"❌ Config file not found: {json_path}")
         return 1
     try:
         new_config = json.loads(json_file.read_text())
-        config.update(new_config)
+        normalized = _normalize_flat_keys(new_config)
+        merged = _deep_merge(config, normalized)
+        config.clear()
+        config.update(merged)
         config_file.write_text(json.dumps(config, indent=2))
         print(f"✅ Configuration updated from {json_path}")
     except json.JSONDecodeError:

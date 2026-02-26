@@ -1,6 +1,7 @@
 """Tests for CLI helper functions."""
 
-from slopmop.cli.init import _deep_merge
+from slopmop.cli.config import _deep_merge, _normalize_flat_keys
+from slopmop.cli.init import _deep_merge as _init_deep_merge
 
 
 class TestDeepMerge:
@@ -10,48 +11,48 @@ class TestDeepMerge:
         """New keys from updates are added to base."""
         base = {"a": 1}
         updates = {"b": 2}
-        _deep_merge(base, updates)
+        _init_deep_merge(base, updates)
         assert base == {"a": 1, "b": 2}
 
     def test_simple_merge_overwrites_existing(self):
         """Existing keys are overwritten by updates."""
         base = {"a": 1}
         updates = {"a": 2}
-        _deep_merge(base, updates)
+        _init_deep_merge(base, updates)
         assert base == {"a": 2}
 
     def test_nested_dict_merge(self):
         """Nested dicts are merged recursively."""
         base = {"outer": {"a": 1, "b": 2}}
         updates = {"outer": {"b": 3, "c": 4}}
-        _deep_merge(base, updates)
+        _init_deep_merge(base, updates)
         assert base == {"outer": {"a": 1, "b": 3, "c": 4}}
 
     def test_deeply_nested_merge(self):
         """Works for deeply nested structures."""
         base = {"l1": {"l2": {"l3": {"a": 1}}}}
         updates = {"l1": {"l2": {"l3": {"b": 2}}}}
-        _deep_merge(base, updates)
+        _init_deep_merge(base, updates)
         assert base == {"l1": {"l2": {"l3": {"a": 1, "b": 2}}}}
 
     def test_non_dict_overwrites_dict(self):
         """Non-dict updates overwrite dict base values."""
         base = {"a": {"nested": 1}}
         updates = {"a": "string"}
-        _deep_merge(base, updates)
+        _init_deep_merge(base, updates)
         assert base == {"a": "string"}
 
     def test_dict_overwrites_non_dict(self):
         """Dict updates overwrite non-dict base values."""
         base = {"a": "string"}
         updates = {"a": {"nested": 1}}
-        _deep_merge(base, updates)
+        _init_deep_merge(base, updates)
         assert base == {"a": {"nested": 1}}
 
     def test_empty_updates_leaves_base_unchanged(self):
         """Empty updates dict leaves base unchanged."""
         base = {"a": 1, "b": {"c": 2}}
-        _deep_merge(base, {})
+        _init_deep_merge(base, {})
         assert base == {"a": 1, "b": {"c": 2}}
 
     def test_config_like_structure(self):
@@ -75,7 +76,7 @@ class TestDeepMerge:
                 },
             }
         }
-        _deep_merge(base, updates)
+        _init_deep_merge(base, updates)
 
         assert base["version"] == "1.0"
         assert base["overconfidence"]["enabled"] is True
@@ -87,6 +88,95 @@ class TestDeepMerge:
         assert base["overconfidence"]["gates"]["py-static-analysis"] == {
             "enabled": True,
             "threshold": 80,
+        }
+
+
+class TestNormalizeFlatKeys:
+    """Tests for _normalize_flat_keys which converts flat 'category:gate' keys.
+
+    Regression tests for: https://github.com/ScienceIsNeato/slop-mop/issues/50
+    """
+
+    def test_flat_key_normalized_to_hierarchical(self):
+        """Flat 'category:gate' becomes nested {category: {gates: {gate: ...}}}."""
+        flat = {"laziness:dead-code": {"whitelist_file": "w.py"}}
+        result = _normalize_flat_keys(flat)
+        assert result == {
+            "laziness": {"gates": {"dead-code": {"whitelist_file": "w.py"}}}
+        }
+
+    def test_multiple_flat_keys_same_category(self):
+        """Multiple gates in the same category merge correctly."""
+        flat = {
+            "myopia:source-duplication": {"threshold": 6},
+            "myopia:string-duplication": {"threshold": 3},
+        }
+        result = _normalize_flat_keys(flat)
+        assert result == {
+            "myopia": {
+                "gates": {
+                    "source-duplication": {"threshold": 6},
+                    "string-duplication": {"threshold": 3},
+                }
+            }
+        }
+
+    def test_mixed_flat_and_hierarchical(self):
+        """Non-flat keys pass through alongside normalized flat keys."""
+        data = {
+            "version": "1.0",
+            "laziness:complexity": {"max_rank": "D"},
+        }
+        result = _normalize_flat_keys(data)
+        assert result["version"] == "1.0"
+        assert result["laziness"]["gates"]["complexity"]["max_rank"] == "D"
+
+    def test_already_hierarchical_passes_through(self):
+        """Already-hierarchical config passes through unchanged."""
+        hierarchical = {
+            "version": "1.0",
+            "laziness": {"gates": {"dead-code": {"whitelist_file": "w.py"}}},
+        }
+        result = _normalize_flat_keys(hierarchical)
+        assert result == hierarchical
+
+    def test_unknown_category_colon_key_passes_through(self):
+        """Colon key with unrecognized category passes through unchanged."""
+        data = {"foo:bar": {"value": 1}}
+        result = _normalize_flat_keys(data)
+        assert result == {"foo:bar": {"value": 1}}
+
+    def test_empty_dict(self):
+        """Empty dict produces empty dict."""
+        assert _normalize_flat_keys({}) == {}
+
+
+class TestConfigDeepMerge:
+    """Tests for _deep_merge in config.py (returns merged copy)."""
+
+    def test_returns_merged_copy(self):
+        """_deep_merge returns a new dict without mutating inputs."""
+        base = {"a": 1, "b": {"c": 2}}
+        overlay = {"b": {"d": 3}, "e": 4}
+        result = _deep_merge(base, overlay)
+        assert result == {"a": 1, "b": {"c": 2, "d": 3}, "e": 4}
+        # Originals not mutated
+        assert base == {"a": 1, "b": {"c": 2}}
+        assert overlay == {"b": {"d": 3}, "e": 4}
+
+    def test_overlay_wins_for_scalars(self):
+        """Scalar overlay overwrites scalar base."""
+        result = _deep_merge({"a": 1}, {"a": 2})
+        assert result == {"a": 2}
+
+    def test_nested_merge(self):
+        """Nested dicts merge recursively."""
+        result = _deep_merge(
+            {"cat": {"gates": {"a": {"enabled": True}}}},
+            {"cat": {"gates": {"b": {"enabled": False}}}},
+        )
+        assert result == {
+            "cat": {"gates": {"a": {"enabled": True}, "b": {"enabled": False}}}
         }
 
 
