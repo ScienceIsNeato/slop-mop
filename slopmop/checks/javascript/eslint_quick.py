@@ -20,8 +20,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
-    tool_context = ToolContext.NODE
-
     """Quick frontend JavaScript validation.
 
     Wraps ESLint in errors-only (--quiet) mode for rapid feedback
@@ -46,6 +44,8 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate laziness:js-frontend --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

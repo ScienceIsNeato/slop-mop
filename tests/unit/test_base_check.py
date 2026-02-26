@@ -148,6 +148,32 @@ class TestToolContext:
         assert ComplexityCheck.tool_context is ToolContext.SM_TOOL
         assert SourceDuplicationCheck.tool_context is ToolContext.NODE
 
+    def test_tool_context_does_not_shadow_docstring(self):
+        """tool_context placed after docstring so __doc__ is not None.
+
+        Regression: placing tool_context before the class docstring
+        causes Python to treat the string as an orphan expression,
+        breaking sm help <gate>.
+        """
+        from slopmop.checks.python.lint_format import PythonLintFormatCheck
+        from slopmop.checks.python.tests import PythonTestsCheck
+        from slopmop.checks.quality.complexity import ComplexityCheck
+        from slopmop.checks.security import SecurityLocalCheck
+
+        for cls in [
+            SecurityLocalCheck,
+            PythonLintFormatCheck,
+            PythonTestsCheck,
+            ComplexityCheck,
+        ]:
+            assert cls.__doc__ is not None, (
+                f"{cls.__name__}.__doc__ is None — "
+                f"tool_context likely placed before the class docstring"
+            )
+            assert (
+                len(cls.__doc__) > 10
+            ), f"{cls.__name__}.__doc__ is suspiciously short"
+
 
 class TestHasProjectVenv:
     """Tests for PythonCheckMixin.has_project_venv()."""

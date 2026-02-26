@@ -131,7 +131,6 @@ def _detect_source_dirs(project_root: str) -> List[str]:
 
 
 class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.SM_TOOL
     """Type-completeness enforcement with pyright.
 
     Wraps pyright (Pylance's engine) to verify every variable,
@@ -165,6 +164,8 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate overconfidence:py-types --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:

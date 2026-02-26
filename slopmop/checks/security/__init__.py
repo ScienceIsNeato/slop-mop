@@ -12,6 +12,7 @@ with code files, not just Python projects.
 """
 
 import json
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -52,7 +53,6 @@ class SecuritySubResult:
 
 
 class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.SM_TOOL
     """Local security scanning (no network required).
 
     Wraps bandit, semgrep, and detect-secrets in parallel.
@@ -79,6 +79,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./scripts/sm validate myopia:security-scan --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
@@ -199,6 +201,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         config_file = self.config.get("bandit_config_file")
 
         cmd = [
+            sys.executable,
+            "-m",
             "bandit",
             "-r",
             ".",
@@ -287,7 +291,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         # Check for baseline file
         config_file = self.config.get("config_file_path")
 
-        cmd = ["detect-secrets", "scan"]
+        cmd = [sys.executable, "-m", "detect_secrets", "scan"]
         if config_file:
             cmd.extend(["--baseline", config_file])
 
@@ -403,7 +407,9 @@ class SecurityCheck(SecurityLocalCheck):
         Replaces safety which hangs on `safety scan` with no API key.
         """
         cmd = [
-            "pip-audit",
+            sys.executable,
+            "-m",
+            "pip_audit",
             "--format",
             "json",
         ]

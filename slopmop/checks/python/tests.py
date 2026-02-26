@@ -20,7 +20,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class PythonTestsCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.PROJECT
     """Python test execution via pytest.
 
     Wraps pytest with coverage instrumentation. Runs all tests and
@@ -45,6 +44,8 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate overconfidence:py-tests --verbose
     """
+
+    tool_context = ToolContext.PROJECT
 
     @property
     def name(self) -> str:

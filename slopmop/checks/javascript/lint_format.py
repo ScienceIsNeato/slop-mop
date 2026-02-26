@@ -16,8 +16,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
-    tool_context = ToolContext.NODE
-
     """JavaScript/TypeScript lint and format enforcement.
 
     Wraps ESLint and Prettier. Auto-fix runs ESLint --fix and
@@ -40,6 +38,8 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate laziness:js-lint --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

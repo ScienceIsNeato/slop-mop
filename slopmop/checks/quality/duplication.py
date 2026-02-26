@@ -22,7 +22,6 @@ MIN_LINES = 5
 
 
 class SourceDuplicationCheck(BaseCheck):
-    tool_context = ToolContext.NODE
     """Cross-language code duplication detection.
 
     Wraps jscpd to detect copy-paste code across Python, JavaScript,
@@ -50,6 +49,8 @@ class SourceDuplicationCheck(BaseCheck):
     Re-validate:
       ./sm validate quality:source-duplication --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)

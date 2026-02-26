@@ -47,8 +47,6 @@ from slopmop.subprocess.runner import SubprocessResult
 
 
 class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
-    tool_context = ToolContext.NODE
-
     """Enforce assertions in JS/TS tests via eslint-plugin-jest expect-expect.
 
     Runs ESLint with the jest/expect-expect rule on test files to catch
@@ -80,6 +78,8 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate deceptiveness:js-expect-assert --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

@@ -32,8 +32,6 @@ MAX_FILES_TO_SHOW = 5
 
 
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
-    tool_context = ToolContext.NODE
-
     """Jest coverage threshold enforcement.
 
     Wraps Jest with --coverageReporters=json-summary to parse
@@ -55,6 +53,8 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate deceptiveness:js-coverage --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)

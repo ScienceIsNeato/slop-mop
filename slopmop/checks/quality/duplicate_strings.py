@@ -14,7 +14,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class StringDuplicationCheck(BaseCheck):
-    tool_context = ToolContext.NODE
     """Duplicate string literal detection.
 
     Wraps the vendored find-duplicate-strings tool to detect string
@@ -45,6 +44,8 @@ class StringDuplicationCheck(BaseCheck):
     Re-validate:
       ./sm validate quality:string-duplication --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

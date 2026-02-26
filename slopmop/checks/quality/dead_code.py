@@ -29,7 +29,6 @@ MAX_FINDINGS_TO_SHOW = 15
 
 
 class DeadCodeCheck(BaseCheck):
-    tool_context = ToolContext.SM_TOOL
     """Dead code detection via static AST analysis.
 
     Wraps vulture to find unused functions, classes, imports,
@@ -59,6 +58,8 @@ class DeadCodeCheck(BaseCheck):
     Re-validate:
       ./sm validate quality:dead-code --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:

@@ -40,8 +40,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
-    tool_context = ToolContext.NODE
-
     """TypeScript type checking via tsc --noEmit.
 
     Wraps the TypeScript compiler in check-only mode. The --noEmit
@@ -65,6 +63,8 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate overconfidence:js-types --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

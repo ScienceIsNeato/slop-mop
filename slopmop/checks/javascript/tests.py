@@ -16,8 +16,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
-    tool_context = ToolContext.NODE
-
     """JavaScript test execution via Jest.
 
     Wraps Jest with --coverage and --passWithNoTests. Installs
@@ -39,6 +37,8 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
     Re-validate:
       ./sm validate overconfidence:js-tests --verbose
     """
+
+    tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:

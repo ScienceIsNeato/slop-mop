@@ -20,7 +20,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.PROJECT
     """Jinja2 template syntax validation.
 
     Compiles all templates in the configured directory to catch
@@ -45,6 +44,8 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./scripts/sm validate laziness:template-syntax --verbose
     """
+
+    tool_context = ToolContext.PROJECT
 
     @property
     def name(self) -> str:

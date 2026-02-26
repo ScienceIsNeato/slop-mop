@@ -28,7 +28,6 @@ MAX_COMPLEXITY = 20
 
 
 class ComplexityCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.SM_TOOL
     """Cyclomatic complexity enforcement.
 
     Wraps radon to flag functions with complexity rank D or higher.
@@ -55,6 +54,8 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate laziness:complexity --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:

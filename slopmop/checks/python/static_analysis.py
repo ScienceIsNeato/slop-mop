@@ -22,7 +22,6 @@ _MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
 
 
 class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.SM_TOOL
     """Static type checking with mypy.
 
     Wraps mypy to enforce type safety across Python source. In strict
@@ -50,6 +49,8 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate overconfidence:py-static-analysis --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:

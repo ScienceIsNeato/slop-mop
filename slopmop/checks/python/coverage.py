@@ -67,7 +67,6 @@ def _get_compare_branch() -> str:
 
 
 class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.PROJECT
     """Python test coverage enforcement.
 
     Wraps coverage.py to verify project-wide coverage meets the
@@ -91,6 +90,8 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate deceptiveness:py-coverage --verbose
     """
+
+    tool_context = ToolContext.PROJECT
 
     DEFAULT_THRESHOLD = 80
 
@@ -290,7 +291,6 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
 
 class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.PROJECT
     """Coverage enforcement on changed files only.
 
     Wraps diff-cover to check coverage on files changed vs the
@@ -313,6 +313,8 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate deceptiveness:py-diff-coverage --verbose
     """
+
+    tool_context = ToolContext.PROJECT
 
     @property
     def name(self) -> str:

@@ -23,7 +23,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
-    tool_context = ToolContext.SM_TOOL
     """Python code formatting and lint enforcement.
 
     Wraps autoflake, black, isort, and flake8 to enforce consistent
@@ -48,6 +47,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     Re-validate:
       ./sm validate laziness:py-lint --verbose
     """
+
+    tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
