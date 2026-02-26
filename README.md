@@ -35,13 +35,13 @@ sm init                       # auto-detects languages, writes .sb_config.json
 sm validate commit            # fix what it finds, commit when green
 ```
 
-That's it. Three commands. Auto-detects Python, JavaScript, or both. Enables applicable gates, disables the rest.
+`sm init` auto-detects Python, JavaScript, or both and writes a `.sb_config.json` with applicable gates enabled.
 
 ---
 
 ## The Loop
 
-The entire workflow is one loop:
+Development with slop-mop follows a single repeated cycle:
 
 ```
 sm validate commit → see what fails → fix it → repeat → commit
