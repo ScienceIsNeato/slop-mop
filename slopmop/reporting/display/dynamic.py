@@ -537,8 +537,33 @@ class DynamicDisplay:
                     preview = f" — {preview}"
 
         time_str = format_time(info.duration)
+
+        # Build adornments: delta from mean and sparkline
+        stats = info.timing_stats
+        adornment = ""
+        if stats and stats.mean > 0.001:
+            ce = self._colors_enabled
+            rc = reset_color(ce)
+
+            # Delta: +0.3s (+15%)
+            delta_text = stats.format_delta(info.duration)
+            if delta_text:
+                delta_val = info.duration - stats.mean
+                if delta_val >= 0:
+                    sigma = stats.sigma_over(info.duration)
+                    dc = overrun_color(sigma, ce)
+                else:
+                    dc = Color.DIM.value if ce else ""
+                adornment += f" {dc}{delta_text}{rc}" if dc else f" {delta_text}"
+
+            # Sparkline (trend)
+            spark = stats.sparkline(max_width=8)
+            if spark:
+                dim = Color.DIM.value if ce else ""
+                adornment += f" {dim}{spark}{rc}" if dim else f" {spark}"
+
         right = align_columns(time_str, "")
-        return right_justify(left + preview, right, width)
+        return right_justify(left + preview + adornment, right, width)
 
     def _format_running_line(
         self, info: CheckDisplayInfo, width: int, name_width: int = 0

@@ -62,6 +62,70 @@ class TestTimingStats:
         stats = TimingStats(mean=1.0, std_dev=0.005, sample_count=10)
         assert stats.sigma_over(1.5) == 0.0
 
+    def test_compute_stats_stores_samples_tuple(self) -> None:
+        """_compute_stats stores samples as a rounded tuple."""
+        stats = _compute_stats([1.1111, 2.2222, 3.3333])
+        assert isinstance(stats.samples, tuple)
+        assert stats.samples == (1.111, 2.222, 3.333)
+
+    def test_sparkline_returns_empty_for_single_sample(self) -> None:
+        """sparkline needs at least 2 samples."""
+        stats = TimingStats(mean=1.0, std_dev=0.0, sample_count=1, samples=(1.0,))
+        assert stats.sparkline() == ""
+
+    def test_sparkline_renders_block_chars(self) -> None:
+        """sparkline maps values to 8-level block characters."""
+        stats = TimingStats(
+            mean=5.0,
+            std_dev=1.0,
+            sample_count=5,
+            samples=(1.0, 3.0, 5.0, 7.0, 9.0),
+        )
+        spark = stats.sparkline()
+        assert len(spark) == 5
+        # Should be ascending: lowest block → highest block
+        assert spark[0] == "▁"
+        assert spark[-1] == "█"
+
+    def test_sparkline_flat_line(self) -> None:
+        """sparkline renders flat line when all values are identical."""
+        stats = TimingStats(
+            mean=2.0,
+            std_dev=0.0,
+            sample_count=3,
+            samples=(2.0, 2.0, 2.0),
+        )
+        spark = stats.sparkline()
+        assert len(spark) == 3
+        # All same block char (middle)
+        assert len(set(spark)) == 1
+
+    def test_sparkline_respects_max_width(self) -> None:
+        """sparkline truncates to last max_width samples."""
+        samples = tuple(float(i) for i in range(20))
+        stats = TimingStats(mean=9.5, std_dev=5.0, sample_count=20, samples=samples)
+        spark = stats.sparkline(max_width=5)
+        assert len(spark) == 5
+
+    def test_format_delta_positive(self) -> None:
+        """format_delta shows +Xs (+X%) for overruns."""
+        stats = TimingStats(mean=2.0, std_dev=0.5, sample_count=10)
+        delta = stats.format_delta(2.4)
+        assert "+0.4s" in delta
+        assert "+20%" in delta
+
+    def test_format_delta_negative(self) -> None:
+        """format_delta shows -Xs (-X%) for underruns."""
+        stats = TimingStats(mean=2.0, std_dev=0.5, sample_count=10)
+        delta = stats.format_delta(1.6)
+        assert "-0.4s" in delta
+        assert "-20%" in delta
+
+    def test_format_delta_zero_mean(self) -> None:
+        """format_delta returns empty string when mean is ~0."""
+        stats = TimingStats(mean=0.0, std_dev=0.0, sample_count=1)
+        assert stats.format_delta(1.0) == ""
+
 
 class TestLoadTimings:
     """Tests for load_timings."""

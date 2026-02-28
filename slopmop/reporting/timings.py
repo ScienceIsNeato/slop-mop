@@ -49,6 +49,10 @@ TIMINGS_DIR = ".slopmop"
 TIMINGS_FILE = "timings.json"
 
 
+# Unicode block characters for sparkline rendering (8 levels).
+_SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
+
+
 @dataclass(frozen=True)
 class TimingStats:
     """Statistical summary of historical check timings.
@@ -61,6 +65,7 @@ class TimingStats:
     mean: float  # Average duration in seconds
     std_dev: float  # Population standard deviation
     sample_count: int  # Number of samples behind these stats
+    samples: tuple[float, ...] = ()  # Raw durations (chronological, newest last)
 
     def sigma_over(self, elapsed: float) -> float:
         """How many standard deviations *elapsed* is above the mean.
@@ -77,6 +82,57 @@ class TimingStats:
         if elapsed <= self.mean or self.std_dev < 0.01:
             return 0.0
         return (elapsed - self.mean) / self.std_dev
+
+    def sparkline(self, max_width: int = 10) -> str:
+        """Render recent samples as a Unicode sparkline.
+
+        Maps each value to one of 8 block characters (▁▂▃▄▅▆▇█)
+        scaled between the min and max of the displayed window.
+        The newest sample is on the right.
+
+        Args:
+            max_width: Maximum number of characters to render.
+                       Uses the last *max_width* samples.
+
+        Returns:
+            Sparkline string, or empty string if < 2 samples.
+        """
+        if len(self.samples) < 2:
+            return ""
+        window = self.samples[-max_width:]
+        lo = min(window)
+        hi = max(window)
+        span = hi - lo
+        if span < 0.001:
+            # All values are effectively identical — flat line
+            return _SPARK_BLOCKS[3] * len(window)
+        return "".join(_SPARK_BLOCKS[min(int((v - lo) / span * 7), 7)] for v in window)
+
+    def format_delta(self, elapsed: float) -> str:
+        """Format delta from mean as '+/-Xs (+/-X%)'.
+
+        Args:
+            elapsed: Observed duration in seconds.
+
+        Returns:
+            Delta string like '+0.3s (+15%)' or '-0.2s (-10%)'.
+            Empty string if mean is 0.
+        """
+        if self.mean < 0.001:
+            return ""
+        delta = elapsed - self.mean
+        pct = (delta / self.mean) * 100
+        sign = "+" if delta >= 0 else ""
+
+        # Format the delta value compactly
+        if abs(delta) < 0.05:
+            delta_str = f"{sign}{delta:.2f}s"
+        elif abs(delta) < 10:
+            delta_str = f"{sign}{delta:.1f}s"
+        else:
+            delta_str = f"{sign}{delta:.0f}s"
+
+        return f"{delta_str} ({sign}{pct:.0f}%)"
 
 
 def _timings_path(project_root: str) -> Path:
@@ -100,6 +156,7 @@ def _compute_stats(samples: List[float]) -> TimingStats:
         mean=round(mean, 3),
         std_dev=round(math.sqrt(variance), 3),
         sample_count=n,
+        samples=tuple(round(s, 3) for s in samples),
     )
 
 
