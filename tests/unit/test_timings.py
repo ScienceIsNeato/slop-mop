@@ -510,3 +510,123 @@ class TestLoadTimingsWithAge:
         assert "old_check" not in result
         assert "new_check" in result
         assert result["new_check"].mean == 2.0
+
+
+class TestResultTrendline:
+    """Tests for result history trendline rendering."""
+
+    def test_result_trendline_empty_when_no_results(self) -> None:
+        """Empty string when no results recorded."""
+        stats = TimingStats(mean=1.0, std_dev=0.1, sample_count=3)
+        assert stats.result_trendline() == ""
+
+    def test_result_trendline_renders_dots(self) -> None:
+        """Renders colored dots for each result."""
+        stats = TimingStats(
+            mean=1.0,
+            std_dev=0.1,
+            sample_count=3,
+            results=("passed", "failed", "passed"),
+        )
+        trend = stats.result_trendline(colors_enabled=False)
+        assert trend == "●●●"
+
+    def test_result_trendline_with_colors(self) -> None:
+        """Each dot gets ANSI color when colors enabled."""
+        stats = TimingStats(
+            mean=1.0,
+            std_dev=0.1,
+            sample_count=2,
+            results=("passed", "failed"),
+        )
+        trend = stats.result_trendline(colors_enabled=True)
+        assert "\033[32m" in trend  # green for passed
+        assert "\033[31m" in trend  # red for failed
+        assert "●" in trend
+
+    def test_result_trendline_respects_max_width(self) -> None:
+        """Only last N results shown when max_width constrains."""
+        stats = TimingStats(
+            mean=1.0,
+            std_dev=0.1,
+            sample_count=5,
+            results=("passed", "passed", "passed", "failed", "passed"),
+        )
+        trend = stats.result_trendline(max_width=3, colors_enabled=False)
+        assert trend == "●●●"
+
+    def test_result_trendline_all_statuses(self) -> None:
+        """All status types render as dots."""
+        stats = TimingStats(
+            mean=1.0,
+            std_dev=0.1,
+            sample_count=4,
+            results=("passed", "failed", "warned", "skipped"),
+        )
+        trend = stats.result_trendline(colors_enabled=True)
+        assert "\033[32m" in trend  # green passed
+        assert "\033[31m" in trend  # red failed
+        assert "\033[33m" in trend  # yellow warned
+        assert "\033[90m" in trend  # gray skipped
+
+
+class TestComputeStatsWithResults:
+    """Tests for _compute_stats with result history."""
+
+    def test_compute_stats_stores_results(self) -> None:
+        """Results are passed through to TimingStats."""
+        from slopmop.reporting.timings import _compute_stats
+
+        stats = _compute_stats(
+            [1.0, 2.0, 3.0],
+            results=["passed", "failed", "passed"],
+        )
+        assert stats.results == ("passed", "failed", "passed")
+
+    def test_compute_stats_no_results_default_empty(self) -> None:
+        """Without results param, results tuple is empty."""
+        from slopmop.reporting.timings import _compute_stats
+
+        stats = _compute_stats([1.0, 2.0])
+        assert stats.results == ()
+
+
+class TestSaveTimingsWithResults:
+    """Tests for save_timings with result history persistence."""
+
+    def test_save_and_load_results(self, tmp_path: Path) -> None:
+        """Results are saved and loaded round-trip."""
+        save_timings(
+            str(tmp_path),
+            {"check:a": 1.0},
+            results={"check:a": "passed"},
+        )
+        save_timings(
+            str(tmp_path),
+            {"check:a": 2.0},
+            results={"check:a": "failed"},
+        )
+
+        stats = load_timings(str(tmp_path))
+        assert stats["check:a"].results == ("passed", "failed")
+
+    def test_save_results_fifo_cap(self, tmp_path: Path) -> None:
+        """Results are capped at MAX_SAMPLES along with durations."""
+        for i in range(MAX_SAMPLES + 5):
+            status = "passed" if i % 2 == 0 else "failed"
+            save_timings(
+                str(tmp_path),
+                {"check:a": float(i)},
+                results={"check:a": status},
+            )
+
+        stats = load_timings(str(tmp_path))
+        assert len(stats["check:a"].results) == MAX_SAMPLES
+
+    def test_save_without_results_backward_compat(self, tmp_path: Path) -> None:
+        """Saving without results still works (backward compat)."""
+        save_timings(str(tmp_path), {"check:a": 1.0})
+
+        stats = load_timings(str(tmp_path))
+        assert stats["check:a"].results == ()
+        assert stats["check:a"].mean == 1.0

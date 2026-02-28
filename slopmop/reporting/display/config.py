@@ -72,4 +72,4 @@ OVERRUN_ALERT_SIGMA = 3.0  # Red
 MIN_SAMPLES_FOR_SIGMA = 3
 
 # Column widths for status word (passed/failed/etc.)
-STATUS_COLUMN_WIDTH = 8  # "passed" = 6, "failed" = 6, "skipped" = 7, padding
+STATUS_COLUMN_WIDTH = 5  # "done" = 4 + 1 padding (status word is now neutral)

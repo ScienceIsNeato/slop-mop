@@ -52,6 +52,21 @@ TIMINGS_FILE = "timings.json"
 # Unicode block characters for sparkline rendering (8 levels).
 _SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
 
+# Dot character for result trendline.
+_RESULT_DOT = "●"
+
+# Map check-status values to ANSI color codes for result dots.
+# Uses the same palette as STATUS_COLORS in colors.py but avoids
+# importing the display layer (timings is lower-level).
+_RESULT_STATUS_COLORS: Dict[str, str] = {
+    "passed": "\033[32m",  # green
+    "failed": "\033[31m",  # red
+    "warned": "\033[33m",  # yellow
+    "error": "\033[91m",  # bright red
+    "skipped": "\033[90m",  # gray
+    "not_applicable": "\033[90m",  # gray
+}
+
 
 @dataclass(frozen=True)
 class TimingStats:
@@ -66,6 +81,7 @@ class TimingStats:
     std_dev: float  # Population standard deviation
     sample_count: int  # Number of samples behind these stats
     samples: tuple[float, ...] = ()  # Raw durations (chronological, newest last)
+    results: tuple[str, ...] = ()  # Check outcomes ("passed", "failed", etc.)
 
     def sigma_over(self, elapsed: float) -> float:
         """How many standard deviations *elapsed* is above the mean.
@@ -108,6 +124,33 @@ class TimingStats:
             return _SPARK_BLOCKS[3] * len(window)
         return "".join(_SPARK_BLOCKS[min(int((v - lo) / span * 7), 7)] for v in window)
 
+    def result_trendline(self, max_width: int = 8, colors_enabled: bool = True) -> str:
+        """Render recent check outcomes as colored dots.
+
+        Each dot represents one historical run, colored by result:
+        green = passed, red = failed, yellow = warned, gray = skipped.
+        Newest result is on the right.
+
+        Args:
+            max_width: Maximum number of dots to render.
+            colors_enabled: Whether to emit ANSI color codes.
+
+        Returns:
+            Colored dot string, or empty string if no results.
+        """
+        if not self.results:
+            return ""
+        window = self.results[-max_width:]
+        reset = "\033[0m"
+        parts: list[str] = []
+        for status in window:
+            color = _RESULT_STATUS_COLORS.get(status, "") if colors_enabled else ""
+            if color:
+                parts.append(f"{color}{_RESULT_DOT}{reset}")
+            else:
+                parts.append(_RESULT_DOT)
+        return "".join(parts)
+
     def format_delta(self, elapsed: float) -> str:
         """Format delta from mean as '+/-Xs (+/-X%)'.
 
@@ -140,14 +183,18 @@ def _timings_path(project_root: str) -> Path:
     return Path(project_root) / TIMINGS_DIR / TIMINGS_FILE
 
 
-def _compute_stats(samples: List[float]) -> TimingStats:
+def _compute_stats(
+    samples: List[float],
+    results: Optional[List[str]] = None,
+) -> TimingStats:
     """Compute mean and population std dev from a list of durations.
 
     Args:
         samples: List of duration values (must not be empty).
+        results: Optional parallel list of status strings.
 
     Returns:
-        TimingStats with mean, std_dev, and sample_count.
+        TimingStats with mean, std_dev, sample_count, samples, and results.
     """
     n = len(samples)
     mean = sum(samples) / n
@@ -157,6 +204,7 @@ def _compute_stats(samples: List[float]) -> TimingStats:
         std_dev=round(math.sqrt(variance), 3),
         sample_count=n,
         samples=tuple(round(s, 3) for s in samples),
+        results=tuple(results) if results else (),
     )
 
 
@@ -228,7 +276,14 @@ def load_timings(project_root: str) -> Dict[str, TimingStats]:
             typed_samples: List[float] = [
                 float(cast(float, s)) for s in cast(List[object], raw_samples)
             ]
-            result[name] = _compute_stats(typed_samples)
+
+            # Load result history (parallel to samples, may be absent)
+            raw_results: object = checked.get("results")
+            typed_results: Optional[List[str]] = None
+            if isinstance(raw_results, list):
+                typed_results = [str(r) for r in cast(List[object], raw_results)]
+
+            result[name] = _compute_stats(typed_samples, typed_results)
         return result
     except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         logger.debug(f"Could not load timings from {path}: {exc}")
@@ -305,6 +360,7 @@ def save_timings(
     project_root: str,
     durations: Dict[str, float],
     existing: Optional[Dict[str, Dict[str, Any]]] = None,
+    results: Optional[Dict[str, str]] = None,
 ) -> None:
     """Save check timings to disk, appending to sample history.
 
@@ -316,6 +372,9 @@ def save_timings(
         project_root: Project root directory
         durations: Dict mapping check name to duration from this run
         existing: Pre-loaded raw timings data (if None, loads from disk)
+        results: Dict mapping check name to status string from this run
+                 (e.g. "passed", "failed"). Stored alongside durations
+                 to support result-history trendlines.
     """
     path = _timings_path(project_root)
     now = time.time()
@@ -333,6 +392,7 @@ def save_timings(
     # Merge new durations — append to sample list
     for name, duration in durations.items():
         rounded = round(duration, 3)
+        result_status = results.get(name) if results else None
 
         if name in raw and isinstance(raw[name], dict):
             entry = raw[name]
@@ -346,19 +406,34 @@ def save_timings(
                 samples = []
             samples.append(rounded)
 
+            # Result history — kept in sync with samples
+            result_list: List[str] = entry.get("results", [])
+            if not isinstance(result_list, list):
+                result_list = []
+            if result_status:
+                result_list.append(result_status)
+
             # FIFO cap — keep only the most recent MAX_SAMPLES
             if len(samples) > MAX_SAMPLES:
                 samples = samples[-MAX_SAMPLES:]
+            if len(result_list) > MAX_SAMPLES:
+                result_list = result_list[-MAX_SAMPLES:]
 
-            raw[name] = {
+            entry_data: Dict[str, Any] = {
                 "samples": samples,
                 "last_updated": now,
             }
+            if result_list:
+                entry_data["results"] = result_list
+            raw[name] = entry_data
         else:
-            raw[name] = {
+            entry_data = {
                 "samples": [rounded],
                 "last_updated": now,
             }
+            if result_status:
+                entry_data["results"] = [result_status]
+            raw[name] = entry_data
 
     # Prune old/excess entries
     raw = _prune_timings(raw)

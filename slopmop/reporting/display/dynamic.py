@@ -115,8 +115,15 @@ class DynamicDisplay:
             for name, info in self._checks.items()
             if info.state == DisplayState.COMPLETED and info.duration > 0
         }
+        results = {
+            name: info.result.status.value
+            for name, info in self._checks.items()
+            if info.state == DisplayState.COMPLETED
+            and info.duration > 0
+            and info.result is not None
+        }
         if durations:
-            save_timings(project_root, durations)
+            save_timings(project_root, durations, results=results)
 
     def start(self) -> None:
         """Start the display and animation thread."""
@@ -503,6 +510,9 @@ class DynamicDisplay:
     ) -> str:
         """Format a completed check line.
 
+        Layout:
+          {icon} {name}: done {result_trendline} {scope}   ...   {time} {delta} {sparkline}
+
         Args:
             info: Check display info (must be completed with result)
             width: Available width for the line
@@ -517,8 +527,10 @@ class DynamicDisplay:
         short_name = strip_category_prefix(info.name)
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
         icon = STATUS_EMOJI.get(info.result.status, "❓")
-        status_val = info.result.status.value
-        padded_status = f"{status_val:<{config.STATUS_COLUMN_WIDTH}}"
+
+        # Use neutral "done" for all completed checks — the emoji
+        # already communicates pass/fail/warn status.
+        padded_status = f"{'done':<{config.STATUS_COLUMN_WIDTH}}"
 
         # Colorize status word
         sc = status_color(info.result.status, ce)
@@ -527,24 +539,32 @@ class DynamicDisplay:
 
         left = f"{config.CHECK_INDENT}{icon} {padded_name}: {colored_status}"
 
+        # Result history trendline (colored dots for recent outcomes)
+        stats = info.timing_stats
+        if stats:
+            trend = stats.result_trendline(max_width=8, colors_enabled=ce)
+            if trend:
+                left += f" {trend}"
+
+        # Per-check scope info (files/LOC this gate scanned)
+        if info.result.scope:
+            scope_text = info.result.scope.format_compact()
+            if scope_text:
+                dim_c = Color.DIM.value if ce else ""
+                left += f" {dim_c}{scope_text}{rc}"
+
         # Inline failure preview for failed/error checks
-        preview = ""
         if info.result.status in (CheckStatus.FAILED, CheckStatus.ERROR):
             preview_text = info.result.error or info.result.output
             if preview_text:
                 preview = truncate_for_inline(preview_text, config.MAX_PREVIEW_WIDTH)
                 if preview:
-                    preview = f" — {preview}"
+                    left += f" — {preview}"
 
+        # Right side: time elapsed, then timing adornments (delta + sparkline)
         time_str = format_time(info.duration)
-
-        # Build adornments: delta from mean and sparkline
-        stats = info.timing_stats
         adornment = ""
         if stats and stats.mean > 0.001:
-            ce = self._colors_enabled
-            rc = reset_color(ce)
-
             # Delta: +0.3s (+15%)
             delta_text = stats.format_delta(info.duration)
             if delta_text:
@@ -556,14 +576,14 @@ class DynamicDisplay:
                     dc = Color.DIM.value if ce else ""
                 adornment += f" {dc}{delta_text}{rc}" if dc else f" {delta_text}"
 
-            # Sparkline (trend)
+            # Sparkline (duration trend)
             spark = stats.sparkline(max_width=8)
             if spark:
-                dim = Color.DIM.value if ce else ""
-                adornment += f" {dim}{spark}{rc}" if dim else f" {spark}"
+                dim_c = Color.DIM.value if ce else ""
+                adornment += f" {dim_c}{spark}{rc}" if dim_c else f" {spark}"
 
-        right = align_columns(time_str, "")
-        return right_justify(left + preview + adornment, right, width)
+        right = align_columns(time_str + adornment, "")
+        return right_justify(left, right, width)
 
     def _format_running_line(
         self, info: CheckDisplayInfo, width: int, name_width: int = 0
