@@ -3,14 +3,14 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from slopmop.checks.base import Flaw, GateCategory
 from slopmop.checks.quality.config_debt import (
-    _BENIGN_EXCLUDES,
-    _EXCLUDE_FILE_THRESHOLD,
     ConfigDebtCheck,
     _load_config,
     check_disabled_gates,
-    check_exclude_drift,
+    check_scope_drift,
     check_stale_applicability,
 )
 from slopmop.core.result import CheckStatus
@@ -31,13 +31,6 @@ def _make_python_project(root: Path) -> None:
 def _make_javascript_project(root: Path) -> None:
     """Place a JavaScript project marker."""
     (root / "package.json").write_text('{"name": "demo"}')
-
-
-def _populate_source_files(directory: Path, count: int, ext: str = ".py") -> None:
-    """Create *count* dummy source files in *directory*."""
-    directory.mkdir(parents=True, exist_ok=True)
-    for i in range(count):
-        (directory / f"file_{i}{ext}").write_text(f"# file {i}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -274,104 +267,132 @@ class TestDisabledGates:
 
 
 # ---------------------------------------------------------------------------
-# check_exclude_drift
+# check_scope_drift
 # ---------------------------------------------------------------------------
 
 
-class TestExcludeDrift:
-    """Scenario 3: exclude_dirs containing source files."""
+class TestScopeDrift:
+    """Scenario 3: include/exclude dirs differ from generated baseline."""
 
-    def test_flags_dir_with_source_files(self, tmp_path: Path):
-        """Excluded dir with many source files → flag it."""
-        _populate_source_files(tmp_path / "my_module", _EXCLUDE_FILE_THRESHOLD)
+    def test_extra_excludes_flagged(self):
+        """Excludes in current but not baseline → finding."""
         config = {
-            "laziness": {
-                "exclude_dirs": ["my_module"],
-            },
+            "laziness": {"exclude_dirs": ["slop-mop", "vendor", "legacy"]},
         }
-        findings = check_exclude_drift(tmp_path, config)
+        baseline = {
+            "laziness": {"exclude_dirs": ["slop-mop"]},
+        }
+        findings = check_scope_drift(config, baseline)
         assert len(findings) == 1
-        assert "my_module" in findings[0]
-        assert "source files" in findings[0]
+        assert "2 extra exclude_dirs" in findings[0]
+        assert "legacy" in findings[0]
+        assert "vendor" in findings[0]
 
-    def test_no_flag_below_threshold(self, tmp_path: Path):
-        """Few source files → not interesting enough to flag."""
-        _populate_source_files(tmp_path / "my_module", _EXCLUDE_FILE_THRESHOLD - 1)
+    def test_no_finding_when_excludes_match(self):
+        """Excludes identical to baseline → no finding."""
         config = {
-            "laziness": {
-                "exclude_dirs": ["my_module"],
-            },
+            "laziness": {"exclude_dirs": ["slop-mop"]},
         }
-        findings = check_exclude_drift(tmp_path, config)
+        baseline = {
+            "laziness": {"exclude_dirs": ["slop-mop"]},
+        }
+        findings = check_scope_drift(config, baseline)
         assert findings == []
 
-    def test_benign_dirs_skipped(self, tmp_path: Path):
-        """Well-known dirs like node_modules are not flagged."""
-        for benign in ("node_modules", ".venv", "slop-mop"):
-            assert benign in _BENIGN_EXCLUDES
+    def test_missing_includes_flagged(self):
+        """Includes in baseline but missing from current → finding."""
         config = {
-            "laziness": {
-                "exclude_dirs": ["node_modules", ".venv", "slop-mop"],
-            },
+            "laziness": {"include_dirs": []},
         }
-        # Even if they exist with source files, skip
-        _populate_source_files(tmp_path / "node_modules", 100)
-        findings = check_exclude_drift(tmp_path, config)
-        assert findings == []
-
-    def test_dot_dirs_skipped(self, tmp_path: Path):
-        """Dot-prefixed dirs are skipped."""
-        _populate_source_files(tmp_path / ".hidden", _EXCLUDE_FILE_THRESHOLD)
-        config = {
-            "laziness": {
-                "exclude_dirs": [".hidden"],
-            },
+        baseline = {
+            "laziness": {"include_dirs": ["src", "lib"]},
         }
-        findings = check_exclude_drift(tmp_path, config)
-        assert findings == []
-
-    def test_glob_patterns_skipped(self, tmp_path: Path):
-        """Glob patterns in exclude_dirs are skipped."""
-        config = {
-            "laziness": {
-                "exclude_dirs": ["**/test_*", "*.egg-info"],
-            },
-        }
-        findings = check_exclude_drift(tmp_path, config)
-        assert findings == []
-
-    def test_nonexistent_dir_skipped(self, tmp_path: Path):
-        """Excluded dir that doesn't exist is silently ignored."""
-        config = {
-            "laziness": {
-                "exclude_dirs": ["does_not_exist"],
-            },
-        }
-        findings = check_exclude_drift(tmp_path, config)
-        assert findings == []
-
-    def test_deduplicates_across_categories(self, tmp_path: Path):
-        """Same dir excluded by two categories → one finding."""
-        _populate_source_files(tmp_path / "shared_exclude", _EXCLUDE_FILE_THRESHOLD)
-        config = {
-            "laziness": {"exclude_dirs": ["shared_exclude"]},
-            "myopia": {"exclude_dirs": ["shared_exclude"]},
-        }
-        findings = check_exclude_drift(tmp_path, config)
+        findings = check_scope_drift(config, baseline)
         assert len(findings) == 1
+        assert "2 include_dirs removed" in findings[0]
+        assert "src" in findings[0]
+        assert "lib" in findings[0]
 
-    def test_js_source_files_detected(self, tmp_path: Path):
-        """JavaScript/TypeScript files also count."""
-        _populate_source_files(
-            tmp_path / "legacy_module", _EXCLUDE_FILE_THRESHOLD, ext=".ts"
-        )
+    def test_no_finding_when_includes_match(self):
+        """Includes identical to baseline → no finding."""
         config = {
-            "overconfidence": {
-                "exclude_dirs": ["legacy_module"],
+            "laziness": {"include_dirs": ["src"]},
+        }
+        baseline = {
+            "laziness": {"include_dirs": ["src"]},
+        }
+        findings = check_scope_drift(config, baseline)
+        assert findings == []
+
+    def test_extra_includes_not_flagged(self):
+        """More includes than baseline is fine (not narrowing scope)."""
+        config = {
+            "laziness": {"include_dirs": ["src", "lib", "extra"]},
+        }
+        baseline = {
+            "laziness": {"include_dirs": ["src"]},
+        }
+        findings = check_scope_drift(config, baseline)
+        assert findings == []
+
+    def test_fewer_excludes_not_flagged(self):
+        """Fewer excludes than baseline is fine (widening scope)."""
+        config = {
+            "laziness": {"exclude_dirs": []},
+        }
+        baseline = {
+            "laziness": {"exclude_dirs": ["slop-mop"]},
+        }
+        findings = check_scope_drift(config, baseline)
+        assert findings == []
+
+    def test_multiple_categories(self):
+        """Drift in multiple categories → separate findings."""
+        config = {
+            "laziness": {"exclude_dirs": ["slop-mop", "vendor"]},
+            "myopia": {"exclude_dirs": ["slop-mop", "old_code"]},
+        }
+        baseline = {
+            "laziness": {"exclude_dirs": ["slop-mop"]},
+            "myopia": {"exclude_dirs": ["slop-mop"]},
+        }
+        findings = check_scope_drift(config, baseline)
+        assert len(findings) == 2
+
+    def test_category_missing_from_baseline(self):
+        """Category in current but not baseline → skipped."""
+        config = {
+            "laziness": {"exclude_dirs": ["slop-mop", "vendor"]},
+        }
+        baseline = {}  # no laziness category
+        findings = check_scope_drift(config, baseline)
+        assert findings == []
+
+    def test_category_missing_from_current(self):
+        """Category in baseline but not current → skipped."""
+        config = {}
+        baseline = {
+            "laziness": {"include_dirs": ["src"]},
+        }
+        findings = check_scope_drift(config, baseline)
+        assert findings == []
+
+    def test_both_excludes_and_includes_drift(self):
+        """Both extra excludes and missing includes in same category."""
+        config = {
+            "laziness": {
+                "exclude_dirs": ["slop-mop", "vendor"],
+                "include_dirs": [],
             },
         }
-        findings = check_exclude_drift(tmp_path, config)
-        assert len(findings) == 1
+        baseline = {
+            "laziness": {
+                "exclude_dirs": ["slop-mop"],
+                "include_dirs": ["src"],
+            },
+        }
+        findings = check_scope_drift(config, baseline)
+        assert len(findings) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -430,59 +451,70 @@ class TestConfigDebtRun:
         assert result.status == CheckStatus.WARNED
         assert "laziness:complexity" in result.output
 
-    def test_exclude_drift_warns(self, tmp_path: Path):
-        """Exclude dir with source files → WARNED."""
-        _populate_source_files(tmp_path / "my_module", _EXCLUDE_FILE_THRESHOLD)
+    def test_scope_drift_warns(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Extra excludes beyond baseline → WARNED."""
         _write_config(
             tmp_path,
             {
-                "laziness": {"exclude_dirs": ["my_module"]},
+                "laziness": {"exclude_dirs": ["slop-mop", "vendor"]},
             },
+        )
+        monkeypatch.setattr(
+            "slopmop.utils.generate_base_config.generate_base_config",
+            lambda: {"laziness": {"exclude_dirs": ["slop-mop"]}},
         )
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.WARNED
-        assert "my_module" in result.output
+        assert "vendor" in result.output
 
-    def test_multiple_findings_combined(self, tmp_path: Path):
+    def test_multiple_findings_combined(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Multiple debt items → single WARNED with count."""
         _make_python_project(tmp_path)
-        _populate_source_files(tmp_path / "excluded", _EXCLUDE_FILE_THRESHOLD)
         _write_config(
             tmp_path,
             {
                 "disabled_gates": ["myopia:security-scan"],
                 "laziness": {
                     "enabled": True,
-                    "exclude_dirs": ["excluded"],
+                    "exclude_dirs": ["slop-mop", "vendor"],
                     "gates": {"py-lint": {"enabled": False}},
                 },
             },
         )
+        monkeypatch.setattr(
+            "slopmop.utils.generate_base_config.generate_base_config",
+            lambda: {"laziness": {"exclude_dirs": ["slop-mop"]}},
+        )
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.WARNED
-        # Should have 3 findings: stale, disabled, exclude
+        # Should have 3 findings: stale, disabled, scope drift
         assert "3 config debt item(s)" in result.output
 
-    def test_never_fails(self, tmp_path: Path):
+    def test_never_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Even with lots of debt, status is WARNED not FAILED."""
         _make_python_project(tmp_path)
         _make_javascript_project(tmp_path)
-        _populate_source_files(tmp_path / "hidden_code", _EXCLUDE_FILE_THRESHOLD)
         _write_config(
             tmp_path,
             {
                 "disabled_gates": ["a:b", "c:d", "e:f"],
                 "laziness": {
                     "enabled": True,
-                    "exclude_dirs": ["hidden_code"],
+                    "exclude_dirs": ["slop-mop", "hidden_code"],
                     "gates": {
                         "py-lint": {"enabled": False},
                         "js-lint": {"enabled": False},
                     },
                 },
             },
+        )
+        monkeypatch.setattr(
+            "slopmop.utils.generate_base_config.generate_base_config",
+            lambda: {"laziness": {"exclude_dirs": ["slop-mop"]}},
         )
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))

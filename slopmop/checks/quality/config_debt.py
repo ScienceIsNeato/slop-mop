@@ -15,9 +15,10 @@ the config as the project evolves.  This check audits the current
    Disabling is legitimate short-term, but the intent should be to
    re-enable once the underlying debt is addressed.
 
-3. **Exclude drift** — ``exclude_dirs`` entries that point at real
-   directories containing source code, which hides those files from
-   quality gates.
+3. **Scope drift** — The current config's ``include_dirs`` /
+   ``exclude_dirs`` differ from the baseline that ``sm init`` would
+   generate.  Extra excludes or missing includes suggest someone
+   narrowed the scope to make gates pass rather than fixing issues.
 
 The check always returns WARNED (never FAILED).  Its purpose is to
 nudge toward addressing config debt over time, not to block work.
@@ -63,46 +64,6 @@ _LANGUAGE_DETECTORS: Dict[str, Callable[[Path], bool]] = {
     "python": _has_python_markers,
     "javascript": _has_javascript_markers,
 }
-
-# Directories commonly excluded for good reasons — not config debt.
-_BENIGN_EXCLUDES: frozenset[str] = frozenset(
-    {
-        # Build / dependency artifacts
-        "node_modules",
-        ".venv",
-        "venv",
-        ".env",
-        "env",
-        "__pycache__",
-        "dist",
-        "build",
-        ".tox",
-        ".nox",
-        ".pytest_cache",
-        ".mypy_cache",
-        ".ruff_cache",
-        "htmlcov",
-        ".coverage",
-        ".eggs",
-        # VCS
-        ".git",
-        ".hg",
-        ".svn",
-        # Meta / documentation / tooling
-        "slop-mop",
-        "cursor-rules",
-        "docs",
-        "doc",
-        "documentation",
-        "migrations",
-    }
-)
-
-# Source-file extensions used to gauge whether an excluded dir matters.
-_SOURCE_EXTENSIONS = ("*.py", "*.js", "*.ts", "*.jsx", "*.tsx")
-
-# If an excluded dir has at least this many source files, flag it.
-_EXCLUDE_FILE_THRESHOLD = 5
 
 
 # ── Public helpers (exposed for testing) ──────────────────────────────
@@ -185,68 +146,63 @@ def check_disabled_gates(explicitly_disabled: Set[str]) -> List[str]:
     ]
 
 
-def check_exclude_drift(
-    root: Path,
+def check_scope_drift(
     config: Dict[str, Any],
+    baseline: Dict[str, Any],
 ) -> List[str]:
-    """Find exclude_dirs entries that contain source files.
+    """Compare include/exclude dirs against the generated baseline.
 
-    Skips well-known benign directories, dot-prefixed names, and
-    glob patterns.  Only flags directories with at least
-    ``_EXCLUDE_FILE_THRESHOLD`` source files.
+    Flags two forms of drift:
+
+    * **Extra excludes** — entries in ``exclude_dirs`` that are not in
+      the baseline (someone added dirs to hide from gates).
+    * **Missing includes** — entries in the baseline ``include_dirs``
+      that are absent from the current config (someone narrowed scope).
+
+    *baseline* is the config that ``generate_base_config()`` would
+    produce for this project right now.
     """
     findings: List[str] = []
-    seen: Set[str] = set()
-
     flaw_keys = {cat.key for cat in GateCategory}
+
     for cat_key in flaw_keys:
-        cat_val_raw = config.get(cat_key)
-        if not isinstance(cat_val_raw, dict):
+        cur_raw = config.get(cat_key)
+        base_raw = baseline.get(cat_key)
+        if not isinstance(cur_raw, dict) or not isinstance(base_raw, dict):
             continue
-        cat_val: Dict[str, Any] = cast(Dict[str, Any], cat_val_raw)
+        cur_cat: Dict[str, Any] = cast(Dict[str, Any], cur_raw)
+        base_cat: Dict[str, Any] = cast(Dict[str, Any], base_raw)
 
-        excl_dirs_raw: object = cat_val.get("exclude_dirs", [])
-        if not isinstance(excl_dirs_raw, list):
-            continue
-        exclude_dirs: List[str] = [
-            str(item)
-            for item in cast(List[object], excl_dirs_raw)
-            if isinstance(item, str)
-        ]
+        # --- Extra excludes ------------------------------------------------
+        cur_excludes: Set[str] = _str_set(cur_cat.get("exclude_dirs", []))
+        base_excludes: Set[str] = _str_set(base_cat.get("exclude_dirs", []))
+        added_excludes = sorted(cur_excludes - base_excludes)
+        if added_excludes:
+            dirs = ", ".join(added_excludes)
+            findings.append(
+                f"{cat_key}: {len(added_excludes)} extra exclude_dirs "
+                f"beyond baseline — {dirs}"
+            )
 
-        for excl in exclude_dirs:
-            if excl in seen:
-                continue
-            seen.add(excl)
-
-            # Skip well-known benign dirs, dot-dirs, and globs
-            if excl in _BENIGN_EXCLUDES or excl.startswith("."):
-                continue
-            if any(c in excl for c in ("*", "?", "[")):
-                continue
-
-            excl_path = root / excl
-            if not excl_path.is_dir():
-                continue
-
-            # Count source files (cap quickly for speed)
-            count = 0
-            for ext in _SOURCE_EXTENSIONS:
-                for _ in excl_path.rglob(ext):
-                    count += 1
-                    if count >= _EXCLUDE_FILE_THRESHOLD:
-                        break
-                if count >= _EXCLUDE_FILE_THRESHOLD:
-                    break
-
-            if count >= _EXCLUDE_FILE_THRESHOLD:
-                findings.append(
-                    f"exclude_dirs '{excl}' contains {count}+ source "
-                    f"files — verify this exclusion is intentional "
-                    f"({cat_key})"
-                )
+        # --- Missing includes ----------------------------------------------
+        cur_includes: Set[str] = _str_set(cur_cat.get("include_dirs", []))
+        base_includes: Set[str] = _str_set(base_cat.get("include_dirs", []))
+        missing_includes = sorted(base_includes - cur_includes)
+        if missing_includes:
+            dirs = ", ".join(missing_includes)
+            findings.append(
+                f"{cat_key}: {len(missing_includes)} include_dirs removed "
+                f"from baseline — {dirs}"
+            )
 
     return findings
+
+
+def _str_set(val: object) -> Set[str]:
+    """Coerce an unknown value to a set of strings."""
+    if not isinstance(val, list):
+        return set()
+    return {str(item) for item in cast(List[object], val) if isinstance(item, str)}
 
 
 # ── Check class ───────────────────────────────────────────────────────
@@ -261,8 +217,8 @@ class ConfigDebtCheck(BaseCheck):
        ``js-*``) disabled but the project now has that language.
     2. **Disabled gates** — Gates in the ``disabled_gates`` top-level
        list (set via ``sm config --disable``).
-    3. **Exclude drift** — ``exclude_dirs`` entries that contain real
-       source code.
+    3. **Scope drift** — ``include_dirs`` / ``exclude_dirs`` differ
+       from the generated baseline (extra excludes or missing includes).
 
     Always returns WARNED (never FAILED) — this is a nudge, not a
     blocker.
@@ -319,7 +275,10 @@ class ConfigDebtCheck(BaseCheck):
         findings: List[str] = []
         findings.extend(check_stale_applicability(root, config, explicitly_disabled))
         findings.extend(check_disabled_gates(explicitly_disabled))
-        findings.extend(check_exclude_drift(root, config))
+        from slopmop.utils.generate_base_config import generate_base_config
+
+        baseline = generate_base_config()
+        findings.extend(check_scope_drift(config, baseline))
 
         duration = time.time() - start
 
