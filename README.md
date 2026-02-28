@@ -11,18 +11,16 @@
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop" width="300" align="right"/>
 
-AI agents are excellent ship captains — decisive in battle, relentless at accomplishing objectives. But they're terrible at maintaining the ship. They don't notice the deck getting grimy, the rigging fraying, the hull accumulating rot. The first few battles go great. Then the ship gets sluggish. Eventually, it sinks.
+AI agents are great at winning battles and terrible at maintaining the ship. They close tickets, ship features, pass tests — and leave behind duplicated code, untested paths, creeping complexity, and security gaps. Nobody *intends* to create this mess. It's a natural byproduct of accomplishing tasks, and without something to catch it, it accumulates until the codebase becomes unnavigable.
 
-This is the trajectory of every vibe-coded repo: fast early wins, then mounting tech debt, then a codebase so tangled that the agent can't reason about it anymore. Every change breaks something. Context windows fill with noise. The ship is ankle-deep in slop.
+The useful thing is that every AI agent makes the same kinds of mistakes. They're **overconfident** (code compiles, must be correct), **deceptive** (tests pass, must be tested), **lazy** (it works, no need to clean up), and **myopic** (this file is fine, never mind what it duplicates). These failure modes are predictable, which means they're automatable.
 
-**Slop** is the residue of doing work — duplicated code, untested paths, creeping complexity, security gaps. Nobody *intends* to create it. It's a byproduct of closing tickets. And without something to catch it, it just sits there getting worse.
+Slop-mop runs a set of quality gates organized around these four failure modes. Each gate targets a specific pattern — bogus tests, dead code, duplicated strings, complexity creep, missing coverage — and when one fails, it tells the agent exactly what's wrong and how to fix it. Two levels:
 
-That's what slop-mop is: a **smart mop** that autonomously detects slop and tells you exactly how to clean it up. The captain stays focused on battle. The mop handles maintenance. Two modes:
+- **Swab** (`sm swab`) — routine maintenance, every commit. Quick checks that keep things from getting worse.
+- **Scour** (`sm scour`) — deep inspection before opening a PR. Catches what routine swabbing misses.
 
-- **Swab** (`sm swab`) — routine deck maintenance before every commit. Quick, light, keeps things from getting worse.
-- **Scour** (`sm scour`) — deep clean before going to port (opening a PR). Thorough inspection. Catches what routine swabbing misses.
-
-The mop finds the mess. The bilge pump (you, or your agent) removes it. The ship stays seaworthy.
+The mop finds the slop. You (or your agent) clean it up. The ship stays seaworthy.
 
 ---
 
