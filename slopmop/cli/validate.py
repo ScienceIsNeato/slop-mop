@@ -40,11 +40,11 @@ def _setup_self_validation(project_root: Path) -> str:
     # Organized by flaw category — each gate listed explicitly so drift
     # between this config and the commit profile alias is obvious.
 
-    # laziness: py-lint, complexity, dead-code
+    # laziness: py-lint, complexity, dead-code, config-debt
     if "laziness" in base_config:
         base_config["laziness"]["enabled"] = True
         gates = base_config["laziness"].get("gates", {})
-        for gate in ["py-lint", "complexity", "dead-code"]:
+        for gate in ["py-lint", "complexity", "dead-code", "config-debt"]:
             if gate in gates:
                 gates[gate]["enabled"] = True
 

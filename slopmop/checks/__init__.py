@@ -52,6 +52,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.quality import (
         BogusTestsCheck,
         ComplexityCheck,
+        ConfigDebtCheck,
         DeadCodeCheck,
         GateDodgingCheck,
         LocLockCheck,
@@ -69,6 +70,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(SourceDuplicationCheck)
     registry.register(StringDuplicationCheck)
     registry.register(LocLockCheck)
+    registry.register(ConfigDebtCheck)
     registry.register(TemplateValidationCheck)
     registry.register(DeployScriptTestsCheck)
     registry.register(PRCommentsCheck)
