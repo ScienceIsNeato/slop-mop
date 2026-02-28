@@ -70,7 +70,7 @@ When a gate fails, the output tells the agent exactly what to do next:
 └──────────────────────────────────────────────────────────┘
 ```
 
-This is purpose-built for AI agents. The guidance is machine-readable, the iteration is mechanical, and the agent never has to wonder what to do next. It saves tokens (no flailing), saves CI dollars (catch it locally), and keeps the codebase habitable long-term.
+This is purpose-built for AI agents. The guidance is machine-readable, the iteration is mechanical, and the agent never has to wonder what to do next. Fewer wasted iterations, issues caught locally instead of in CI, and a codebase that stays navigable long-term.
 
 Use `sm status` for a report card of all gates at once.
 
@@ -173,8 +173,8 @@ JS gates auto-skip when no JavaScript is detected.
 
 ### Time Budget (Preview)
 
-Short on time? Use `--swabbing-time` to set a budget in seconds. Gates are
-ordered by historical runtime and skipped once the budget would be exceeded:
+Use `--swabbing-time` to set a time budget in seconds. Gates are ordered by
+historical runtime and skipped once the budget would be exceeded:
 
 ```bash
 sm swab --swabbing-time 30    # only run gates that fit in ~30 seconds
@@ -187,9 +187,9 @@ sm scour --swabbing-time 120  # thorough pass, but cap at 2 minutes
 
 ---
 
-## Getting Started: The Remediation Path
+## Getting Started
 
-Most projects won't pass all gates on day one. That's expected. Here's the ramp:
+Most projects won't pass all gates on day one. That's expected.
 
 ### 1. Initialize
 
@@ -232,9 +232,7 @@ sm config --enable laziness:complexity         # refactored enough, turn it on
 sm config --enable deceptiveness:py-coverage   # coverage is at 75%, set threshold to 70
 ```
 
-### 7. Let Agents Vibe-Code
-
-With hooks in place, agents can write code freely. Slop-mop catches the slop before it reaches the repo. This saves tokens (no back-and-forth debugging), saves CI money (catch it locally), and keeps the codebase survivable long-term.
+With hooks in place, every commit runs through slop-mop. Gates that aren't ready yet stay disabled until the codebase catches up.
 
 ---
 
