@@ -70,7 +70,7 @@ When a gate fails, the output tells the agent exactly what to do next:
 └──────────────────────────────────────────────────────────┘
 ```
 
-This is purpose-built for AI agents. The guidance is machine-readable, the iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
+This is purpose-built for AI agents. The guidance is token-optimized and machine-readable, the iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
 
 Use `sm status` for a report card of all gates at once.
 
@@ -82,7 +82,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 ### 🔴 Overconfidence
 
-> *"It compiles, therefore it's correct."*
+> *"It compiles, therefore it's correct and will work perfectly in production"*
 
 The LLM generates code that looks right, passes a syntax check, and silently breaks at runtime. These gates verify that the code actually works.
 
@@ -97,7 +97,7 @@ The LLM generates code that looks right, passes a syntax check, and silently bre
 
 ### 🟡 Deceptiveness
 
-> *"Tests pass, therefore the code is tested."*
+> *"These tests are in the way of closing the ticket - how can I get around them?"*
 
 The LLM writes tests that assert nothing, mock everything, or cover the happy path and call it done. Coverage numbers look great. The code is still broken.
 
@@ -111,7 +111,7 @@ The LLM writes tests that assert nothing, mock everything, or cover the happy pa
 
 ### 🟠 Laziness
 
-> *"It works, therefore it's done."*
+> *"When I ran mypy, it returned errors unrelated to my code changes..."*
 
 The LLM solves the immediate problem and moves on. Formatting is inconsistent, dead code accumulates, complexity creeps upward, and nobody notices until the codebase is incomprehensible.
 
@@ -126,7 +126,7 @@ The LLM solves the immediate problem and moves on. Formatting is inconsistent, d
 
 ### 🔵 Myopia
 
-> *"My change is fine. Why would I look at the bigger picture?"*
+> *"Updrading to the newest dependency would slow us down - this deprecated version is fine for now"*
 
 The LLM has a 200k-token context window and still manages tunnel vision. It duplicates code across files, ignores security implications, and lets functions grow unbounded because it can't see the pattern.
 
@@ -155,21 +155,14 @@ Every gate has an intrinsic **level** — the point in the workflow where it bel
 | **Swab** | `sm swab` | All overconfidence, deceptiveness, laziness, myopia checks | Before every commit |
 | **Scour** | `sm scour` | Everything in swab + PR comments, diff-coverage, full security audit | Before opening or updating a PR |
 
-Scour is a strict superset of swab — it runs everything swab does, plus context-dependent gates that need a PR or deeper analysis.
+Scour is a strict superset of swab — it runs everything swab does, plus context-dependent gates that need a PR, deeper analysis, or more execution time.
 
-### Aliases
+Individual gates can be run directly with `-g`:
 
-For convenience, named aliases run a subset with `-g`:
-
-| Alias | Gates | Purpose |
-|-------|-------|---------|
-| `quick` | 2 gates — lint + security scan | Fast feedback during development |
-| `python` | 5 gates — Python-specific subset | Language-focused validation |
-| `javascript` | 5 gates — JS/TS-specific subset | Language-focused validation |
-| `quality` | 5 gates — complexity, duplication, loc-lock | Code quality only |
-| `security` | 1 gate — full security audit | Security-focused validation |
-
-JS gates auto-skip when no JavaScript is detected.
+```bash
+sm swab -g deceptiveness:py-coverage    # re-check just coverage
+sm swab -g laziness:complexity          # re-check just complexity
+```
 
 ### Time Budget (Preview)
 
