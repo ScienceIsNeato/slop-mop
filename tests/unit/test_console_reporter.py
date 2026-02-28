@@ -716,3 +716,177 @@ class TestConsoleReporter:
         log_path = reporter._write_failure_log(result)
 
         assert log_path is None
+
+
+class TestNotRunSection:
+    """Tests for the 'Not run' summary section."""
+
+    def test_not_run_section_disabled(self, capsys):
+        """Disabled checks appear in not-run section."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "myopia:security-scan",
+                CheckStatus.SKIPPED,
+                0,
+                output="Disabled in config",
+                skip_reason=SkipReason.DISABLED,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (1):" in captured.out
+        assert "myopia:security-scan — disabled" in captured.out
+
+    def test_not_run_section_not_applicable(self, capsys):
+        """N/A checks appear in not-run section."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "overconfidence:js-tests",
+                CheckStatus.NOT_APPLICABLE,
+                0,
+                output="No JavaScript files",
+                skip_reason=SkipReason.NOT_APPLICABLE,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (1):" in captured.out
+        assert "overconfidence:js-tests — not applicable" in captured.out
+
+    def test_not_run_section_time_budget(self, capsys):
+        """Time-budget skips include estimated duration."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "myopia:source-duplication",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped — estimated 15.2s would exceed 10s time budget",
+                skip_reason=SkipReason.TIME_BUDGET,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (1):" in captured.out
+        assert "myopia:source-duplication — time budget (est. 15.2s)" in captured.out
+
+    def test_not_run_section_fail_fast(self, capsys):
+        """Fail-fast skips appear in not-run section."""
+        results = [
+            CheckResult("check1", CheckStatus.FAILED, 1.0, error="broke"),
+            CheckResult(
+                "check2",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped due to fail-fast",
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (1):" in captured.out
+        assert "check2 — fail-fast" in captured.out
+
+    def test_not_run_section_multiple_reasons(self, capsys):
+        """Multiple skip reasons are grouped and sorted."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "laziness:complexity",
+                CheckStatus.SKIPPED,
+                0,
+                output="Disabled in config",
+                skip_reason=SkipReason.DISABLED,
+            ),
+            CheckResult(
+                "overconfidence:js-tests",
+                CheckStatus.NOT_APPLICABLE,
+                0,
+                output="No JS files",
+                skip_reason=SkipReason.NOT_APPLICABLE,
+            ),
+            CheckResult(
+                "myopia:source-duplication",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped — estimated 12.0s would exceed 10s time budget",
+                skip_reason=SkipReason.TIME_BUDGET,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (3):" in captured.out
+        # Disabled comes before N/A, N/A before time budget
+        disabled_pos = captured.out.index("complexity — disabled")
+        na_pos = captured.out.index("js-tests — not applicable")
+        time_pos = captured.out.index("source-duplication — time budget")
+        assert disabled_pos < na_pos < time_pos
+
+    def test_not_run_section_omitted_when_all_ran(self, capsys):
+        """No 'Not run' section when every check executed."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult("check2", CheckStatus.PASSED, 2.0),
+        ]
+        summary = ExecutionSummary.from_results(results, 3.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run" not in captured.out
+
+    def test_not_run_label_no_skip_reason(self):
+        """Fallback label when skip_reason is None."""
+        result = CheckResult("check1", CheckStatus.SKIPPED, 0)
+        label = ConsoleReporter._not_run_label(result)
+        assert label == "skipped"
+
+    def test_not_run_label_time_budget_without_estimate(self):
+        """Time budget label without parseable estimate in output."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0,
+            output="No estimate available",
+            skip_reason=SkipReason.TIME_BUDGET,
+        )
+        label = ConsoleReporter._not_run_label(result)
+        assert label == "time budget"
+
+    def test_not_run_section_in_failure_path(self, capsys):
+        """Not-run section appears in SLOP DETECTED output too."""
+        results = [
+            CheckResult("check1", CheckStatus.FAILED, 1.0, error="broke"),
+            CheckResult(
+                "check2",
+                CheckStatus.SKIPPED,
+                0,
+                output="Disabled in config",
+                skip_reason=SkipReason.DISABLED,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "SLOP DETECTED" in captured.out
+        assert "Not run (1):" in captured.out
+        assert "check2 — disabled" in captured.out

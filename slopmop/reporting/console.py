@@ -5,6 +5,7 @@ that guide iterative fix-and-resume workflows.
 """
 
 import os
+import re
 from typing import Optional
 
 from slopmop.constants import STATUS_EMOJI, format_duration_suffix
@@ -312,6 +313,7 @@ class ConsoleReporter:
             print("═" * 60)
             if warned:
                 self._print_warning_sections(warned)
+            self._print_not_run_section(summary.results)
             print()
             return
 
@@ -349,6 +351,7 @@ class ConsoleReporter:
         # Next steps
         print("─" * 60)
         self._print_next_steps(failed, errors)
+        self._print_not_run_section(summary.results)
         print("═" * 60)
         print()
 
@@ -367,3 +370,71 @@ class ConsoleReporter:
 
         print(f"Next: ./sm swab -g {gate_name} --verbose")
         print(f"      ./sm {profile}")
+
+    # ── Skip reason display order ────────────────────────────────────
+    _SKIP_REASON_ORDER = [
+        SkipReason.DISABLED,
+        SkipReason.NOT_APPLICABLE,
+        SkipReason.TIME_BUDGET,
+        SkipReason.FAIL_FAST,
+        SkipReason.FAILED_DEPENDENCY,
+        SkipReason.SUPERSEDED,
+    ]
+
+    _SKIP_REASON_LABEL = {
+        SkipReason.FAIL_FAST: "fail-fast",
+        SkipReason.FAILED_DEPENDENCY: "dependency failed",
+        SkipReason.NOT_APPLICABLE: "not applicable",
+        SkipReason.DISABLED: "disabled",
+        SkipReason.TIME_BUDGET: "time budget",
+        SkipReason.SUPERSEDED: "superseded",
+    }
+
+    @staticmethod
+    def _not_run_label(result: CheckResult) -> str:
+        """Return a human-readable label for why a check was not run.
+
+        For time-budget skips the estimated duration is appended when
+        available, e.g. ``time budget (est. 15.2s)``.
+        """
+        reason = result.skip_reason
+        if reason is None:
+            return "skipped"
+        label: str = ConsoleReporter._SKIP_REASON_LABEL.get(reason, reason.value)
+        if reason == SkipReason.TIME_BUDGET and result.output:
+            match = re.search(r"estimated (\d+\.\d+)s", result.output)
+            if match:
+                label += f" (est. {match.group(1)}s)"
+        return label
+
+    @staticmethod
+    def _print_not_run_section(results: list[CheckResult]) -> None:
+        """Print a compact section listing every check that was not run.
+
+        Checks are grouped by skip reason in a fixed display order so the
+        output is deterministic and easy to scan.
+        """
+        not_run = [
+            r
+            for r in results
+            if r.status in (CheckStatus.SKIPPED, CheckStatus.NOT_APPLICABLE)
+        ]
+        if not not_run:
+            return
+
+        # Sort by defined reason order, then alphabetically by name
+        def _sort_key(r: CheckResult) -> tuple[int, str]:
+            reason = r.skip_reason
+            if reason is not None and reason in ConsoleReporter._SKIP_REASON_ORDER:
+                idx = ConsoleReporter._SKIP_REASON_ORDER.index(reason)
+            else:
+                idx = len(ConsoleReporter._SKIP_REASON_ORDER)
+            return (idx, r.name)
+
+        not_run.sort(key=_sort_key)
+
+        print()
+        print(f"⏭️  Not run ({len(not_run)}):")
+        for r in not_run:
+            label = ConsoleReporter._not_run_label(r)
+            print(f"   {r.name} — {label}")

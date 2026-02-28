@@ -216,6 +216,15 @@ class CheckExecutor:
                     f"replaced by {target} in this run"
                 )
         if superseded:
+            for check in checks:
+                if check.full_name in superseded:
+                    self._results[check.full_name] = CheckResult(
+                        name=check.full_name,
+                        status=CheckStatus.SKIPPED,
+                        duration=0,
+                        output=f"Superseded by {check.superseded_by} in this run",
+                        skip_reason=SkipReason.SUPERSEDED,
+                    )
             checks = [c for c in checks if c.full_name not in superseded]
 
         # Filter out disabled checks (by config), including dependents
@@ -247,6 +256,17 @@ class CheckExecutor:
                                 )
                             changed = True
                             break
+
+        # Record disabled checks in results so they appear in the summary
+        for check in checks:
+            if check.full_name in disabled_gates:
+                self._results[check.full_name] = CheckResult(
+                    name=check.full_name,
+                    status=CheckStatus.SKIPPED,
+                    duration=0,
+                    output="Disabled in config",
+                    skip_reason=SkipReason.DISABLED,
+                )
 
         enabled_checks: List[BaseCheck] = [
             c for c in checks if c.full_name not in disabled_gates
