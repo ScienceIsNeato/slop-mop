@@ -93,13 +93,6 @@ class TestCreateParser:
         assert parser is not None
         assert parser.prog == "./sm"
 
-    def test_validate_subcommand(self):
-        """Validate subcommand parses correctly (backward compat)."""
-        parser = create_parser()
-        args = parser.parse_args(["validate", "commit"])
-        assert args.verb == "validate"
-        assert args.profile == "commit"
-
     def test_swab_subcommand(self):
         """Swab subcommand parses correctly."""
         parser = create_parser()
@@ -112,18 +105,6 @@ class TestCreateParser:
         args = parser.parse_args(["scour"])
         assert args.verb == "scour"
 
-    def test_validate_with_quality_gates(self):
-        """Validate with --quality-gates parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(
-            ["validate", "-g", "overconfidence:py-tests", "deceptiveness:py-coverage"]
-        )
-        assert args.verb == "validate"
-        assert args.quality_gates == [
-            "overconfidence:py-tests",
-            "deceptiveness:py-coverage",
-        ]
-
     def test_swab_with_quality_gates(self):
         """Swab with --quality-gates parses correctly."""
         parser = create_parser()
@@ -135,13 +116,6 @@ class TestCreateParser:
             "overconfidence:py-tests",
             "deceptiveness:py-coverage",
         ]
-
-    def test_validate_self_flag(self):
-        """Validate --self flag parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["validate", "--self"])
-        assert args.verb == "validate"
-        assert args.self_validate is True
 
     def test_swab_self_flag(self):
         """Swab --self flag parses correctly."""
@@ -201,10 +175,10 @@ class TestCreateParser:
     def test_commit_hooks_install(self):
         """Commit-hooks install parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["commit-hooks", "install", "commit"])
+        args = parser.parse_args(["commit-hooks", "install", "swab"])
         assert args.verb == "commit-hooks"
         assert args.hooks_action == "install"
-        assert args.profile == "commit"
+        assert args.profile == "swab"
 
     def test_commit_hooks_uninstall(self):
         """Commit-hooks uninstall parses correctly."""
@@ -473,8 +447,8 @@ class TestGitHooksFunctions:
         assert result is None
 
     def test_generate_hook_script(self):
-        """Generates valid hook script with legacy profile mapped to verb."""
-        script = _generate_hook_script("commit")
+        """Generates valid hook script with swab verb."""
+        script = _generate_hook_script("swab")
         assert "slopmop.sm swab" in script
         assert "MANAGED BY SLOP-MOP" in script
         # Should use python -m slopmop.sm for direct submodule execution
@@ -496,18 +470,6 @@ sm swab
         result = _parse_hook_info(content)
         assert result is not None
         assert result["profile"] == "swab"
-        assert result["managed"] is True
-
-    def test_parse_hook_info_legacy_format(self):
-        """Parses legacy-format hook info (Profile: commit)."""
-        content = """# MANAGED BY SLOP-MOP - DO NOT EDIT
-#!/bin/sh
-# Profile: commit
-sm validate commit
-"""
-        result = _parse_hook_info(content)
-        assert result is not None
-        assert result["profile"] == "commit"
         assert result["managed"] is True
 
     def test_parse_hook_info_not_managed(self):
@@ -549,13 +511,13 @@ class TestCmdCommitHooks:
         assert "Git Hooks Status" in captured.out
 
     def test_install_hook(self, tmp_path, capsys):
-        """Install creates hook file (legacy profile mapped to verb)."""
+        """Install creates hook file with swab verb."""
         (tmp_path / ".git").mkdir()
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
             hooks_action="install",
-            profile="commit",
+            profile="swab",
         )
 
         result = cmd_commit_hooks(args)
@@ -569,7 +531,7 @@ class TestCmdCommitHooks:
         """Uninstall removes managed hooks."""
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
         hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
-        hook_file.write_text("# MANAGED BY SLOP-MOP - DO NOT EDIT\nsm validate")
+        hook_file.write_text("# MANAGED BY SLOP-MOP\n# Command: sm swab\nsm swab")
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
@@ -595,14 +557,6 @@ class TestMain:
         with pytest.raises(SystemExit) as exc_info:
             main(["--version"])
         assert exc_info.value.code == 0
-
-    def test_main_validate_calls_cmd_validate(self):
-        """Main routes validate to cmd_validate (backward compat)."""
-        with patch("slopmop.cli.cmd_validate") as mock_cmd:
-            mock_cmd.return_value = 0
-            result = main(["validate", "commit"])
-            mock_cmd.assert_called_once()
-            assert result == 0
 
     def test_main_swab_calls_cmd_swab(self):
         """Main routes swab to cmd_swab."""

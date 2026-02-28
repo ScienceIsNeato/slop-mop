@@ -274,8 +274,8 @@ class TestPrintNextSteps:
         assert "sm config --show" in out
 
 
-class TestCmdValidateSelf:
-    """Tests for --self validation behavior."""
+class TestCmdSwabSelf:
+    """Tests for --self validation behavior via cmd_swab."""
 
     def test_self_validate_creates_temp_config(self):
         """Test that --self validation uses a temp config, not the real one."""
@@ -283,18 +283,18 @@ class TestCmdValidateSelf:
         import os
         from unittest.mock import MagicMock, patch
 
-        # We can't easily test the full cmd_validate, but we can verify
-        # the logic by checking that SB_CONFIG_FILE env var is set during --self
-        # Create args simulating --self
+        # Verify that SB_CONFIG_FILE env var is set during --self
         args = argparse.Namespace(
             self_validate=True,
             project_root=".",
-            profile=None,
             quality_gates=None,
             no_fail_fast=False,
             no_auto_fix=False,
             verbose=False,
             quiet=True,
+            clear_history=False,
+            static=False,
+            swabbing_time=None,
         )
 
         # Mock the executor to avoid actually running checks
@@ -306,15 +306,15 @@ class TestCmdValidateSelf:
             mock_executor_class.return_value = mock_executor
 
             with patch("slopmop.cli.validate.ConsoleReporter"):
-                from slopmop.cli.validate import cmd_validate
+                from slopmop.cli.validate import cmd_swab
 
                 # Store original env
                 original_env = os.environ.get("SB_CONFIG_FILE")
 
                 try:
-                    result = cmd_validate(args)
+                    result = cmd_swab(args)
 
-                    # After cmd_validate completes, env var should be cleaned up
+                    # After cmd_swab completes, env var should be cleaned up
                     assert os.environ.get("SB_CONFIG_FILE") is None
                     assert result == 0
                 finally:
@@ -333,12 +333,14 @@ class TestCmdValidateSelf:
         args = argparse.Namespace(
             self_validate=True,
             project_root=".",
-            profile=None,
             quality_gates=None,
             no_fail_fast=False,
             no_auto_fix=False,
             verbose=False,
             quiet=True,
+            clear_history=False,
+            static=False,
+            swabbing_time=None,
         )
 
         captured_temp_dir = []
@@ -360,9 +362,9 @@ class TestCmdValidateSelf:
 
             with patch("slopmop.cli.validate.ConsoleReporter"):
                 with patch("tempfile.mkdtemp", capture_mkdtemp):
-                    from slopmop.cli.validate import cmd_validate
+                    from slopmop.cli.validate import cmd_swab
 
-                    cmd_validate(args)
+                    cmd_swab(args)
 
                     # Temp dir should have been created
                     assert len(captured_temp_dir) == 1

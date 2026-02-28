@@ -1,7 +1,7 @@
 """Console output formatting for quality gate results.
 
 Provides clear, AI-friendly output with actionable error messages
-that guide iterative fix-validate-resume workflows.
+that guide iterative fix-and-resume workflows.
 """
 
 import os

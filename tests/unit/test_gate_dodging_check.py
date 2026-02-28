@@ -683,23 +683,3 @@ class TestRegistration:
         ensure_checks_registered()
         registry = get_registry()
         assert "deceptiveness:gate-dodging" in registry._check_classes
-
-    def test_in_commit_alias(self):
-        """Gate-dodging is included in the 'commit' profile alias."""
-        from slopmop.checks import ensure_checks_registered
-        from slopmop.core.registry import get_registry
-
-        ensure_checks_registered()
-        registry = get_registry()
-        commit_checks = registry._aliases.get("commit", [])
-        assert "deceptiveness:gate-dodging" in commit_checks
-
-    def test_in_pr_alias(self):
-        """Gate-dodging is included in the 'pr' profile alias."""
-        from slopmop.checks import ensure_checks_registered
-        from slopmop.core.registry import get_registry
-
-        ensure_checks_registered()
-        registry = get_registry()
-        pr_checks = registry._aliases.get("pr", [])
-        assert "deceptiveness:gate-dodging" in pr_checks

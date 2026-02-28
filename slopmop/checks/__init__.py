@@ -74,66 +74,6 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(PRCommentsCheck)
 
 
-def _register_legacy_aliases(registry: CheckRegistry) -> None:
-    """Register legacy ``commit`` and ``pr`` profile aliases.
-
-    Kept for backward compatibility with ``sm validate commit`` /
-    ``sm validate pr`` (deprecated shim).  Gate level (swab/scour) is now
-    intrinsic to each check class via the ``level`` ClassVar.
-    """
-    registry.register_alias(
-        "commit",
-        [
-            "laziness:py-lint",
-            "overconfidence:py-static-analysis",
-            "overconfidence:py-types",
-            "overconfidence:py-tests",
-            "deceptiveness:py-coverage",
-            "laziness:complexity",
-            "laziness:dead-code",
-            "myopia:source-duplication",
-            "myopia:string-duplication",
-            "deceptiveness:bogus-tests",
-            "deceptiveness:gate-dodging",
-            "myopia:loc-lock",
-            "myopia:security-scan",
-            "laziness:js-lint",
-            "overconfidence:js-types",
-            "overconfidence:js-tests",
-            "deceptiveness:js-coverage",
-            "deceptiveness:js-bogus-tests",
-            "deceptiveness:js-expect-assert",
-        ],
-    )
-
-    registry.register_alias(
-        "pr",
-        [
-            "pr:comments",
-            "laziness:py-lint",
-            "overconfidence:py-static-analysis",
-            "overconfidence:py-types",
-            "overconfidence:py-tests",
-            "deceptiveness:py-coverage",
-            "deceptiveness:py-diff-coverage",
-            "laziness:complexity",
-            "laziness:dead-code",
-            "myopia:source-duplication",
-            "myopia:string-duplication",
-            "deceptiveness:bogus-tests",
-            "deceptiveness:gate-dodging",
-            "myopia:loc-lock",
-            "myopia:security-audit",
-            "laziness:js-lint",
-            "overconfidence:js-types",
-            "overconfidence:js-tests",
-            "deceptiveness:js-coverage",
-            "deceptiveness:js-bogus-tests",
-            "deceptiveness:js-expect-assert",
-        ],
-    )
-
-
 def _register_aliases(registry: CheckRegistry) -> None:
     """Register convenience group aliases for -g flag.
 
@@ -141,9 +81,6 @@ def _register_aliases(registry: CheckRegistry) -> None:
     check class via the ``level`` ClassVar.  Aliases here are convenience
     shortcuts for ``-g`` when you want to run a subset of gates by topic.
     """
-    # Legacy profile aliases (backward compat for sm validate)
-    _register_legacy_aliases(registry)
-
     # ── Convenience group aliases (for -g flag) ───────────────────────
     registry.register_alias("quick", ["laziness:py-lint", "myopia:security-scan"])
 

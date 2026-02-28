@@ -28,7 +28,7 @@ def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
     return git_dir / "hooks"
 
 
-def _generate_hook_script(profile: str) -> str:
+def _generate_hook_script(verb: str) -> str:
     """Generate the pre-commit hook script content.
 
     The hook runs slop-mop directly from the submodule via
@@ -36,16 +36,8 @@ def _generate_hook_script(profile: str) -> str:
     uses its own slop-mop copy via git submodule.
 
     Args:
-        profile: The validation command to run. Typically "swab" for
-                 pre-commit hooks (fast, every-commit gates).
+        verb: The validation command to run ("swab" or "scour").
     """
-    # Map legacy profiles to new verbs
-    if profile in ("commit", "quick"):
-        verb = "swab"
-    elif profile == "pr":
-        verb = "scour"
-    else:
-        verb = profile  # "swab" or "scour" passed directly
 
     return f"""{SB_HOOK_MARKER}
 #!/bin/sh
@@ -104,16 +96,12 @@ def _parse_hook_info(hook_content: str) -> Optional[dict[str, Any]]:
     if SB_HOOK_MARKER not in hook_content:
         return None
 
-    # Try new format first: "# Command: sm swab"
+    # Try to extract the command verb
     match = re.search(r"# Command: sm (\w+)", hook_content)
     if match:
         return {"profile": match.group(1), "managed": True}
 
-    # Fall back to legacy format: "# Profile: commit"
-    match = re.search(r"# Profile: (\w+)", hook_content)
-    profile = match.group(1) if match else "unknown"
-
-    return {"profile": profile, "managed": True}
+    return {"profile": "unknown", "managed": True}
 
 
 def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
@@ -201,18 +189,9 @@ def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
 
     print_project_header(str(project_root))
     print(f"📄 Hook: {hook_file}")
-
-    # Determine the verb for display
-    if profile in ("commit", "quick"):
-        verb = "swab"
-    elif profile == "pr":
-        verb = "scour"
-    else:
-        verb = profile
-
-    print(f"🎯 Command: sm {verb}")
+    print(f"🎯 Command: sm {profile}")
     print()
-    print(f"The hook will run './sm {verb}' before each commit.")
+    print(f"The hook will run './sm {profile}' before each commit.")
     print("Commits will be blocked if quality gates fail.")
     print()
     print("To remove: ./sm commit-hooks uninstall")

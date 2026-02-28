@@ -11,13 +11,9 @@ Usage:
     sm ci [PR_NUMBER] [--watch]
     sm help [GATE]
 
-    (deprecated)
-    sm validate [<profile>] [--quality-gates GATES] [--self]
-
 Verbs:
     swab          Quick validation (every commit)
     scour         Thorough validation (PR readiness — superset of swab)
-    validate      (deprecated) Use swab or scour instead
     config        View or update configuration
     init          Interactive setup and project configuration
     commit-hooks  Manage git pre-commit hooks
@@ -169,26 +165,6 @@ def _add_scour_parser(
     _add_validation_flags(scour_parser)
 
 
-def _add_validate_parser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-) -> None:
-    """Add the validate subcommand parser (DEPRECATED)."""
-    validate_parser = subparsers.add_parser(
-        "validate",
-        help="(deprecated) Use 'swab' or 'scour' instead",
-        description=(
-            "DEPRECATED: Use 'sm swab' (quick) or 'sm scour' (thorough) instead."
-        ),
-    )
-    validate_parser.add_argument(
-        "profile",
-        nargs="?",
-        default=None,
-        help="Profile to run: commit, pr, quick, python, javascript, e2e",
-    )
-    _add_validation_flags(validate_parser)
-
-
 def _add_config_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -316,7 +292,7 @@ def _add_hooks_parser(
         "profile",
         nargs="?",
         default="swab",
-        help="Command to run on commit: swab (default), scour, or legacy profile",
+        help="Command to run on commit: swab (default) or scour",
     )
     hooks_install.add_argument(
         "--project-root",
@@ -428,7 +404,6 @@ both human developers and AI coding assistants.
 Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
-  validate    (deprecated) Use swab or scour instead
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -455,7 +430,6 @@ Examples:
 
     _add_swab_parser(subparsers)
     _add_scour_parser(subparsers)
-    _add_validate_parser(subparsers)
     _add_status_parser(subparsers)
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
@@ -483,7 +457,6 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_scour,
         cmd_status,
         cmd_swab,
-        cmd_validate,
     )
 
     parser = create_parser()
@@ -500,8 +473,6 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_swab(parsed_args)
     elif parsed_args.verb == "scour":
         return cmd_scour(parsed_args)
-    elif parsed_args.verb == "validate":
-        return cmd_validate(parsed_args)
     elif parsed_args.verb == "status":
         return cmd_status(parsed_args)
     elif parsed_args.verb == "config":

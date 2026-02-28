@@ -1,6 +1,6 @@
 """Entry point for running slopmop as a module.
 
-Usage: python -m slopmop validate commit
+Usage: python -m slopmop swab
 """
 
 import sys

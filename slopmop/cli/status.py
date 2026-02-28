@@ -438,7 +438,8 @@ def run_status(
     dynamic_display: Optional[DynamicDisplay] = None
 
     # Print header before starting the animation thread to avoid
-    # blank newlines being interleaved with header output (mirrors validate.py)
+    # blank newlines being interleaved with header output (mirrors the
+    # validation commands)
     if not quiet:
         print("🪣 slop-mop · sweeping your code clean")
         print()

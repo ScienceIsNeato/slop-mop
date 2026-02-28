@@ -1,7 +1,7 @@
-"""Validate command for slop-mop CLI.
+"""Validation commands for slop-mop CLI.
 
 Provides ``sm swab`` (quick, every-commit) and ``sm scour`` (thorough, PR)
-top-level commands, plus the legacy ``sm validate`` shim.
+top-level commands.
 """
 
 import argparse
@@ -96,22 +96,6 @@ def _cleanup_self_validation(temp_config_dir: str) -> None:
     shutil.rmtree(temp_config_dir, ignore_errors=True)
 
 
-def _determine_gates(args: argparse.Namespace) -> tuple[List[str], Optional[str]]:
-    """Determine which gates to run and the profile name.
-
-    Returns (gates_list, profile_name).
-    """
-    if args.profile:
-        return [args.profile], args.profile
-    elif args.quality_gates:
-        gates: List[str] = []
-        for gate in args.quality_gates:
-            gates.extend(g.strip() for g in gate.split(",") if g.strip())
-        return gates, None
-    else:
-        return ["commit"], "commit"
-
-
 def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
     """Parse explicit -g quality gates from args, if any.
 
@@ -182,14 +166,14 @@ def _run_validation(
     gates: List[str],
     profile_name: Optional[str],
 ) -> int:
-    """Core validation pipeline shared by swab, scour, and validate.
+    """Core validation pipeline shared by swab and scour.
 
     Args:
         args: Parsed CLI arguments (must have project_root, self_validate,
               quiet, verbose, no_fail_fast, no_auto_fix, static,
               clear_history flags).
         gates: List of gate names or aliases to run.
-        profile_name: Display label (e.g. "swab", "scour", "commit").
+        profile_name: Display label (e.g. "swab", "scour").
 
     Returns:
         Exit code (0 = all passed, 1 = failures).
@@ -317,29 +301,3 @@ def cmd_scour(args: argparse.Namespace) -> int:
     registry = get_registry()
     gate_names = registry.get_gate_names_for_level(GateLevel.SCOUR)
     return _run_validation(args, gate_names, "scour")
-
-
-def cmd_validate(args: argparse.Namespace) -> int:
-    """Handle the validate command (DEPRECATED — use swab/scour)."""
-    ensure_checks_registered()
-
-    # Deprecation warning
-    print(
-        "⚠️  'sm validate' is deprecated and will be removed in a future version.",
-        file=sys.stderr,
-    )
-
-    gates, profile_name = _determine_gates(args)
-
-    if profile_name == "pr":
-        print("   Use 'sm scour' instead of 'sm validate pr'", file=sys.stderr)
-    elif profile_name == "commit":
-        print("   Use 'sm swab' instead of 'sm validate commit'", file=sys.stderr)
-    else:
-        print(
-            "   Use 'sm swab' (quick) or 'sm scour' (thorough) instead",
-            file=sys.stderr,
-        )
-    print(file=sys.stderr)
-
-    return _run_validation(args, gates, profile_name)
