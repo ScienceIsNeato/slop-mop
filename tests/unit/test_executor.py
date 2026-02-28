@@ -903,33 +903,3 @@ class TestSwabbingTimeBudget:
         assert "overconfidence:fast" in accepted_names
         assert "overconfidence:medium" in accepted_names
         assert "overconfidence:slow" in skipped_names
-
-    # ── Mid-run termination ───────────────────────────────────────────
-
-    def test_midrun_terminates_timed_gates_after_deadline(self, tmp_path):
-        """In-flight gates with timing data are terminated when budget expires."""
-        # Create a slow check that takes longer than the budget
-        registry = self._make_registry(
-            ("quick", 0.01, CheckStatus.PASSED),
-            ("slowrunner", 3.0, CheckStatus.PASSED),  # takes 3s
-        )
-        # Both have timing data, but estimates are low (so pre-filter accepts)
-        timings = {
-            "overconfidence:quick": 0.01,
-            "overconfidence:slowrunner": 0.5,  # estimated 0.5s but actually 3s
-        }
-
-        executor = CheckExecutor(registry=registry, fail_fast=False)
-        summary = executor.run_checks(
-            str(tmp_path),
-            ["overconfidence:quick", "overconfidence:slowrunner"],
-            swabbing_time=1,  # 1-second budget
-            timings=timings,
-        )
-
-        results = {r.name: r for r in summary.results}
-        # quick should have passed normally — MockCheck.run() uses short name
-        assert results["quick"].passed
-        # slowrunner may have been terminated or may have completed
-        # (depends on thread scheduling) — but the budget mechanism was activated
-        assert summary.total_checks == 2

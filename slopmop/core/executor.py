@@ -287,21 +287,12 @@ class CheckExecutor:
         # Gates WITH timing data are sorted shortest-first and accepted
         # until the accumulated estimate would exceed the budget.
         budget_active = swabbing_time is not None and swabbing_time > 0
-        deadline: Optional[float] = None
-        timed_gate_names: Set[str] = set()
 
         if budget_active:
             assert swabbing_time is not None  # for type checker
             applicable, budget_skipped = self._apply_time_budget(
                 applicable, timings or {}, swabbing_time
             )
-            # Record which gates in the accepted set have timing data
-            # (needed for mid-run termination — only these get killed).
-            timed_gate_names = {
-                c.full_name for c in applicable if c.full_name in (timings or {})
-            }
-            # Absolute deadline for mid-run termination
-            deadline = time.time() + swabbing_time
 
             for check in budget_skipped:
                 est = (timings or {}).get(check.full_name, 0)
@@ -345,8 +336,6 @@ class CheckExecutor:
             dep_graph,
             project_root,
             auto_fix,
-            deadline=deadline,
-            timed_gate_names=timed_gate_names,
         )
 
         duration = time.time() - start_time
@@ -459,8 +448,6 @@ class CheckExecutor:
         dep_graph: Dict[str, Set[str]],
         project_root: str,
         auto_fix: bool,
-        deadline: Optional[float] = None,
-        timed_gate_names: Optional[Set[str]] = None,
     ) -> None:
         """Execute checks respecting dependencies.
 
@@ -471,17 +458,10 @@ class CheckExecutor:
             dep_graph: Dependency graph
             project_root: Project root path
             auto_fix: Whether to auto-fix
-            deadline: Absolute time (``time.time()`` epoch) after which
-                in-flight checks with timing data should be terminated.
-                ``None`` means no deadline.
-            timed_gate_names: Set of check full_names that have historical
-                timing data.  Only these are subject to deadline termination.
         """
         check_map = {c.full_name: c for c in checks}
         completed: Set[str] = set()
         pending = set(check_map.keys())
-        _timed = timed_gate_names or set()
-        _budget_expired = False
 
         # Don't use `with` — we need to control shutdown behavior for fail-fast.
         # The context manager calls shutdown(wait=True) which blocks until all
@@ -491,51 +471,6 @@ class CheckExecutor:
 
         try:
             while (pending or futures) and not self._stop_event.is_set():
-                # ── Deadline check ────────────────────────────────────
-                # When the time budget expires, terminate in-flight timed
-                # checks and prevent new timed checks from being submitted.
-                if (
-                    deadline is not None
-                    and not _budget_expired
-                    and time.time() >= deadline
-                ):
-                    _budget_expired = True
-                    logger.debug("Swabbing-time budget expired")
-
-                    # Cancel in-flight futures for timed gates
-                    for fut, fname in list(futures.items()):
-                        if fname in _timed:
-                            fut.cancel()
-                            futures.pop(fut)
-                            result = CheckResult(
-                                name=fname,
-                                status=CheckStatus.SKIPPED,
-                                duration=0,
-                                output=("Terminated — swabbing-time budget expired"),
-                                skip_reason=SkipReason.TIME_BUDGET,
-                            )
-                            with self._lock:
-                                self._results[fname] = result
-                            completed.add(fname)
-                            if self._on_check_complete:
-                                self._on_check_complete(result)
-
-                    # Skip any pending timed gates
-                    for name in list(pending):
-                        if name in _timed:
-                            result = CheckResult(
-                                name=name,
-                                status=CheckStatus.SKIPPED,
-                                duration=0,
-                                output=("Skipped — swabbing-time budget expired"),
-                                skip_reason=SkipReason.TIME_BUDGET,
-                            )
-                            self._results[name] = result
-                            pending.discard(name)
-                            completed.add(name)
-                            if self._on_check_complete:
-                                self._on_check_complete(result)
-
                 # Find checks whose dependencies are all completed
                 ready: List[str] = []
                 skipped_due_to_deps: List[str] = []
@@ -591,16 +526,9 @@ class CheckExecutor:
                         pending.discard(name)
 
                 # Wait for at least one check to complete.
-                # When a deadline is active, use a short timeout so the
-                # loop re-enters the deadline check promptly.
                 if futures:
-                    wait_timeout: Optional[float] = None
-                    if deadline is not None and not _budget_expired:
-                        wait_timeout = max(0.1, deadline - time.time())
-
                     done, _ = concurrent.futures.wait(
                         futures.keys(),
-                        timeout=wait_timeout,
                         return_when=concurrent.futures.FIRST_COMPLETED,
                     )
 
@@ -632,9 +560,8 @@ class CheckExecutor:
                                 )
                             completed.add(name)
 
-                elif not ready and not (deadline is not None and not _budget_expired):
+                elif not ready:
                     # No checks ready and no futures pending - deadlock or done
-                    # (unless we're still waiting for a budget deadline to fire)
                     break
         finally:
             if self._stop_event.is_set():

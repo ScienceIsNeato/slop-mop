@@ -169,8 +169,7 @@ sm swab -g laziness:complexity          # re-check just complexity
 Use `--swabbing-time` to set a time budget in seconds. Gates with historical
 runtime data are sorted fastest-first and skipped once the accumulated
 estimate would exceed the budget. Gates without timing history always run
-(to establish a baseline). If wall-clock time exceeds the budget mid-run,
-in-flight gates with timing data are terminated.
+(to establish a baseline). Once a gate starts running, it runs to completion.
 
 ```bash
 sm swab --swabbing-time 30    # only run gates that fit in ~30 seconds

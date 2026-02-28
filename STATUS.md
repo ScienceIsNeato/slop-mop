@@ -29,10 +29,10 @@ Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`
 ### Swabbing-Time Implementation
 
 - **Pre-run budget filtering**: Gates with historical timing data sorted fastest-first; greedily accepted until budget exceeded; gates without timing data always run (to establish baseline)
-- **Mid-run termination**: Deadline set at start; when expired, in-flight gates with timing data are cancelled/terminated; gates without timing data continue unaffected
+- **No mid-run termination**: Once a gate starts running, it runs to completion (avoids noise from borderline timing)
 - **Config integration**: `sm init` defaults to 20s; `sm config --swabbing-time N` to change; `<= 0` disables
 - **Swab-only**: Time budgets only apply to swab runs; scour always runs all gates
-- **executor.py**: `run_checks()` extended with `swabbing_time`/`timings` params; new `_apply_time_budget()` method; deadline-based cancellation in `_execute_with_dependencies()`
+- **executor.py**: `run_checks()` extended with `swabbing_time`/`timings` params; new `_apply_time_budget()` method
 - **validate.py**: CLI flag → config fallback → profile check chain; loads timings via `load_timings()`
 
 ### Test Updates
@@ -40,14 +40,14 @@ Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`
 - test_sm_cli.py — swab/scour parser tests, `--swabbing-time` tests (parser, config set, config disable), hook format tests, routing tests
 - test_cli.py — `_print_next_steps` assertions updated
 - test_console_reporter.py — next-step string updated, SkipReason-based skip code tests
-- test_executor.py — SkipReason assertions for dependency-skip and inapplicable results; 10 new `TestSwabbingTimeBudget` tests (pre-run filtering, accumulation, no-history baseline, zero/negative disable, mid-run termination)
+- test_executor.py — SkipReason assertions for dependency-skip and inapplicable results; 9 `TestSwabbingTimeBudget` tests (pre-run filtering, accumulation, no-history baseline, zero/negative disable)
 - test_generate_config.py — `default_profile` assertion removed
 - test_status.py — fully updated (imports, parser, helpers, inventory, remediation)
 - Integration tests — docker_manager default command, docstrings
 
 ### Validation
 
-- 1068 unit tests pass
+- 1067 unit tests pass
 - 11 self-validation gates green (sm swab --self)
 - CI workflows updated (sm scour --self, sm scour -g pr:comments)
 - README fully updated (zero `validate` references remain)
