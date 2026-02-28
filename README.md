@@ -11,7 +11,7 @@
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop" width="300" align="right"/>
 
-AI agents are great at winning battles and terrible at maintaining the ship. They close tickets, ship features, pass tests — and leave behind duplicated code, untested paths, creeping complexity, and security gaps. Nobody *intends* to create this mess. It's a natural byproduct of accomplishing tasks, and without something to catch it, it accumulates until the codebase becomes unnavigable.
+AI agents are captaining a lot of ships these days. As a group, they are great naval tacticians in battle, but horrible at maintaining their ships. They close tickets, ship features, pass tests — and leave behind duplicated code, untested paths, creeping complexity, and security gaps. Nobody *intends* to create this mess. It's a natural byproduct of accomplishing tasks, and without something to catch it, it accumulates until the codebase becomes unnavigable.
 
 The useful thing is that every AI agent makes the same kinds of mistakes. They're **overconfident** (code compiles, must be correct), **deceptive** (tests pass, must be tested), **lazy** (it works, no need to clean up), and **myopic** (this file is fine, never mind what it duplicates). These failure modes are predictable, which means they're automatable.
 
@@ -70,7 +70,7 @@ When a gate fails, the output tells the agent exactly what to do next:
 └──────────────────────────────────────────────────────────┘
 ```
 
-This is purpose-built for AI agents. The guidance is machine-readable, the iteration is mechanical, and the agent never has to wonder what to do next. Fewer wasted iterations, issues caught locally instead of in CI, and a codebase that stays navigable long-term.
+This is purpose-built for AI agents. The guidance is machine-readable, the iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
 
 Use `sm status` for a report card of all gates at once.
 
