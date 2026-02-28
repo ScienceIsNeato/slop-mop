@@ -32,7 +32,8 @@ pipx install slopmop          # recommended — isolated, no dep conflicts
 sm init                       # auto-detects languages, writes .sb_config.json
 
 # Run quality gates
-sm validate commit            # fix what it finds, commit when green
+sm swab                       # fix what it finds, commit when green
+sm scour                      # thorough check before opening a PR
 ```
 
 `sm init` auto-detects Python, JavaScript, or both and writes a `.sb_config.json` with applicable gates enabled.
@@ -44,7 +45,7 @@ sm validate commit            # fix what it finds, commit when green
 Development with slop-mop follows a single repeated cycle:
 
 ```
-sm validate commit → see what fails → fix it → repeat → commit
+sm swab → see what fails → fix it → repeat → commit
 ```
 
 When a gate fails, the output tells you exactly what to do next:
@@ -53,14 +54,14 @@ When a gate fails, the output tells you exactly what to do next:
 ┌──────────────────────────────────────────────────────────┐
 │ 🤖 AI AGENT ITERATION GUIDANCE                           │
 ├──────────────────────────────────────────────────────────┤
-│ Profile: commit                                          │
+│ Level: swab                                              │
 │ Failed Gate: deceptiveness:py-coverage                   │
 ├──────────────────────────────────────────────────────────┤
 │ NEXT STEPS:                                              │
 │                                                          │
 │ 1. Fix the issue described above                         │
-│ 2. Validate: sm validate deceptiveness:py-coverage       │
-│ 3. Resume:   sm validate commit                          │
+│ 2. Re-check: sm swab -g deceptiveness:py-coverage        │
+│ 3. Resume:   sm swab                                     │
 │                                                          │
 │ Keep iterating until all the slop is mopped.             │
 └──────────────────────────────────────────────────────────┘
@@ -142,14 +143,23 @@ The LLM has a 200k-token context window and still manages tunnel vision. It dupl
 
 ---
 
-## Profiles
+## Levels
 
-Profiles bundle gates into workflows. Use profiles, not individual gates:
+Every gate has an intrinsic **level** — the point in your workflow where it belongs:
 
-| Profile | Gates | When to Use |
-|---------|-------|-------------|
-| `commit` | 17 gates — all overconfidence, deceptiveness, laziness, myopia checks | Before every commit |
-| `pr` | 19 gates — all commit gates + PR comments + diff-coverage | Before opening or updating a PR |
+| Level | Command | Gates | When to Use |
+|-------|---------|-------|-------------|
+| **Swab** | `sm swab` | All overconfidence, deceptiveness, laziness, myopia checks | Before every commit |
+| **Scour** | `sm scour` | Everything in swab + PR comments, diff-coverage, full security audit | Before opening or updating a PR |
+
+Scour is a strict superset of swab — it runs everything swab does, plus context-dependent gates that need a PR or deeper analysis.
+
+### Aliases
+
+For convenience, named aliases let you run a subset with `-g`:
+
+| Alias | Gates | Purpose |
+|-------|-------|---------|
 | `quick` | 2 gates — lint + security scan | Fast feedback during development |
 | `python` | 5 gates — Python-specific subset | Language-focused validation |
 | `javascript` | 5 gates — JS/TS-specific subset | Language-focused validation |
@@ -157,6 +167,20 @@ Profiles bundle gates into workflows. Use profiles, not individual gates:
 | `security` | 1 gate — full security audit | Security-focused validation |
 
 JS gates auto-skip when no JavaScript is detected.
+
+### Time Budget (Preview)
+
+Short on time? Use `--swabbing-time` to set a budget in seconds. Gates are
+ordered by historical runtime and skipped once the budget would be exceeded:
+
+```bash
+sm swab --swabbing-time 30    # only run gates that fit in ~30 seconds
+sm scour --swabbing-time 120  # thorough pass, but cap at 2 minutes
+```
+
+> **Note:** `--swabbing-time` is a preview feature — the flag is accepted but
+> budget enforcement is not yet active. Full implementation is coming in a
+> future release.
 
 ---
 
@@ -173,7 +197,7 @@ sm init                       # auto-detects everything, writes .sb_config.json
 ### 2. See Where You Stand
 
 ```bash
-sm validate commit            # run all gates, see what fails
+sm swab                       # run swab-level gates, see what fails
 sm status                     # full report card
 ```
 
@@ -182,17 +206,17 @@ sm status                     # full report card
 ```bash
 sm config --disable laziness:complexity        # too many complex functions right now
 sm config --disable deceptiveness:py-coverage  # coverage is at 30%, not 80%
-sm validate commit                             # get the rest green first
+sm swab                                        # get the rest green first
 ```
 
 ### 4. Fix Everything That's Left
 
-Iterate: run `sm validate commit`, fix a failure, run again. The iteration guidance tells you exactly what to do after each failure.
+Iterate: run `sm swab`, fix a failure, run again. The iteration guidance tells you exactly what to do after each failure.
 
 ### 5. Install Hooks
 
 ```bash
-sm commit-hooks install commit    # pre-commit hook runs quality gates
+sm commit-hooks install           # pre-commit hook runs sm swab
 sm commit-hooks status            # verify hooks are installed
 ```
 
@@ -237,7 +261,6 @@ Edit directly for per-gate configuration:
 ```json
 {
   "version": "1.0",
-  "default_profile": "commit",
   "python": {
     "gates": {
       "coverage": { "threshold": 80 },
@@ -265,7 +288,7 @@ on:
     branches: [main]
 
 jobs:
-  validate:
+  quality-gates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -275,11 +298,11 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install slopmop
-      - run: sm validate commit
+      - run: sm swab
       - if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: sm validate pr:comments
+        run: sm scour
 ```
 
 ### Check CI Status Locally
@@ -312,7 +335,7 @@ This means if your project has its own `pytest` (with plugins like `pytest-djang
 ```bash
 # Working on slop-mop itself
 pip install -e .
-sm validate --self            # dogfooding — sm validates its own code
+sm scour --self               # dogfooding — sm validates its own code
 pytest
 ```
 

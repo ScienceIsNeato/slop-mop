@@ -35,8 +35,8 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: Check package.json for syntax errors
           or missing registry access.
 
-    Re-validate:
-      ./sm validate laziness:js-lint --verbose
+    Re-check:
+      ./sm swab -g laziness:js-lint --verbose
     """
 
     tool_context = ToolContext.NODE

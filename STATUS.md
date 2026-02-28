@@ -1,36 +1,44 @@
 # Project Status
 
-## Active Branch: `fix/init-non-interactive-detection` → PR #48
+## Active Branch: `feat/swab-scour`
 
-**Status: PUSHED — awaiting CI on commit `5f84349`** ⏳
+**Status: LOCAL — all tests pass, self-validation green, ready to push** ✅
 
-### PR #48 Summary (Consolidated)
+### Summary
 
-9 commits pushed, 5 themes consolidated into one PR. Latest: `5f84349`.
+Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`swab`/`scour`). New top-level commands `sm swab` (fast, every commit) and `sm scour` (thorough, PR-level). `sm validate` retained as deprecated shim. `--swabbing-time` flag added as preview (accepted but not enforced). `SkipReason` enum added for structured skip metadata. All `validate` terminology scrubbed from source and docs.
 
-### What's in This Branch
+### Core Changes
 
-1. **Non-interactive terminal detection** (`sm init`): Auto-detect non-TTY stdin, fall back to non-interactive mode. Prevents hanging in CI/Docker/piped shells.
-2. **README overhaul**: Neutral LLM-focused copy replacing GoT-themed opener. Badge cleanup, section reordering.
-3. **Bolt-on usability**: `get_project_python()` now prefers `sys.executable` (slop-mop's Python with bundled tools) over system Python. Expanded `REQUIRED_TOOLS` to include py-lint dependencies.
-4. **ToolContext enum**: Categorizes all 24 gates into PURE/SM_TOOL/PROJECT/NODE. Migrates security checks (bandit, detect-secrets, pip-audit) and complexity (radon) from `get_project_python()` to bare commands via `find_tool()`. PROJECT checks now warn-and-skip with actionable venv creation command when no project venv exists.
-5. **Bug fixes (closes #49, #50, Bugbot comment)**: vulture whitelist argparse ordering, `sm config --json` flat→hierarchical normalization, radon added to REQUIRED_TOOLS + FileNotFoundError guard.
+1. **GateLevel enum** (`SWAB`, `SCOUR`) as ClassVar on `BaseCheck` — 3 checks set to `SCOUR` (PRCommentsCheck, PythonDiffCoverageCheck, SecurityCheck)
+2. **Registry** `get_gate_names_for_level()` — SCOUR returns all gates, SWAB filters scour-only
+3. **Executor** superseded_by auto-filtering after dependency expansion
+4. **validate.py** refactored — shared `_run_validation()`, `cmd_swab()`, `cmd_scour()`, deprecated `cmd_validate()`
+5. **sm.py** — `_add_validation_flags()` shared helper with `--swabbing-time` flag, swab/scour parsers, routing
+6. **status.py** — level-based gate resolution, renamed display functions/strings
+7. **hooks.py** — maps legacy profiles to verbs, new `# Command: sm {verb}` format
+8. **init.py** — `_print_next_steps()` references swab/scour
+9. **console.py** — next-step remediation uses `./sm swab -g <gate>`, skip reason codes use `SkipReason` enum
+10. **All check docstrings** — `./sm validate <gate>` → `./sm swab -g <gate>`, `Re-validate:` → `Re-check:`
+11. **`_register_aliases` refactored** — split into `_register_legacy_aliases` + `_register_aliases` to fix LOC lock
+12. **`generate_base_config`** — removed `default_profile`
+13. **SkipReason enum** — 6 structured skip reasons: FAIL_FAST, NOT_APPLICABLE, DISABLED, DEPENDENCY_FAILED, SUPERSEDED, TIME_BUDGET
+14. **CheckResult.skip_reason** — `Optional[SkipReason]` field set by executor on all SKIPPED/NOT_APPLICABLE results
+15. **Terminology cleanup** — all `validate` references removed from sm.py docstring, help.py, README
 
-### Commits
+### Test Updates
 
-- `3d4a566` — fix: auto-detect non-interactive terminal in sm init
-- `b6a26a3` — fix: address PR #48 Bugbot findings
-- `bd9157c` — fix: overhaul README opener, remove Tyrion branding
-- `7517406` — fix: remove salesy copy from Quick Start and Loop
-- `9758fd7` — fix: improve bolt-on usability for projects without a venv
-- `b7acd08` — feat: add ToolContext enum for explicit tool resolution routing
-- `f10b05d` — fix: move detection results after setup banner in sm init
-- `9f13569` — fix: move tool_context after docstrings, restore sys.executable for bundled tools
-- `5f84349` — fix: resolve #49, #50, and Bugbot radon detection comment
+- test_sm_cli.py — swab/scour parser tests, `--swabbing-time` tests, hook format tests, routing tests
+- test_cli.py — `_print_next_steps` assertions updated
+- test_console_reporter.py — next-step string updated, SkipReason-based skip code tests
+- test_executor.py — SkipReason assertions for dependency-skip and inapplicable results
+- test_generate_config.py — `default_profile` assertion removed
+- test_status.py — fully updated (imports, parser, helpers, inventory, remediation)
+- Integration tests — docker_manager default command, docstrings
 
-### Local Validation
+### Validation
 
-- 1065 unit tests pass
-- All 13 commit-profile quality gates green
-- 5 Bugbot review threads resolved (all)
-- Issues #49 and #50 referenced in commit (auto-close on merge)
+- 1061 unit tests pass
+- 13 self-validation gates green (sm swab --self)
+- CI workflows updated (sm scour --self, sm scour -g pr:comments)
+- README fully updated (zero `validate` references remain)

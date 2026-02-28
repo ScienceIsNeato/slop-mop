@@ -268,7 +268,7 @@ class TestPrintNextSteps:
         _print_next_steps({})
         out = capsys.readouterr().out
         assert "./scripts/sm" not in out
-        assert "sm validate commit" in out
+        assert "sm swab" in out
         assert "sm config --disable" in out
         assert "sm status" in out
         assert "sm config --show" in out

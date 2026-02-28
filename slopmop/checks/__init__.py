@@ -74,8 +74,13 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(PRCommentsCheck)
 
 
-def _register_aliases(registry: CheckRegistry) -> None:
-    """Register all profile aliases."""
+def _register_legacy_aliases(registry: CheckRegistry) -> None:
+    """Register legacy ``commit`` and ``pr`` profile aliases.
+
+    Kept for backward compatibility with ``sm validate commit`` /
+    ``sm validate pr`` (deprecated shim).  Gate level (swab/scour) is now
+    intrinsic to each check class via the ``level`` ClassVar.
+    """
     registry.register_alias(
         "commit",
         [
@@ -128,6 +133,18 @@ def _register_aliases(registry: CheckRegistry) -> None:
         ],
     )
 
+
+def _register_aliases(registry: CheckRegistry) -> None:
+    """Register convenience group aliases for -g flag.
+
+    These are NOT profiles — gate level (swab/scour) is intrinsic to each
+    check class via the ``level`` ClassVar.  Aliases here are convenience
+    shortcuts for ``-g`` when you want to run a subset of gates by topic.
+    """
+    # Legacy profile aliases (backward compat for sm validate)
+    _register_legacy_aliases(registry)
+
+    # ── Convenience group aliases (for -g flag) ───────────────────────
     registry.register_alias("quick", ["laziness:py-lint", "myopia:security-scan"])
 
     registry.register_alias(

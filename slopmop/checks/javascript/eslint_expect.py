@@ -75,8 +75,8 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
           name in additional_assert_functions if it uses a custom
           assertion helper.
 
-    Re-validate:
-      ./sm validate deceptiveness:js-expect-assert --verbose
+    Re-check:
+      ./sm swab -g deceptiveness:js-expect-assert --verbose
     """
 
     tool_context = ToolContext.NODE
@@ -279,7 +279,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 status=CheckStatus.ERROR,
                 duration=duration,
                 error="ESLint timed out (120s). Project may need npm install first.",
-                fix_suggestion="Run: npm install && sm validate deceptiveness:js-expect-assert",
+                fix_suggestion="Run: npm install && sm swab -g deceptiveness:js-expect-assert",
             )
 
         # ESLint returns exit code 1 for lint errors, 2 for config errors

@@ -60,8 +60,8 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
           with very large projects or circular type references.
       npm install failed: TypeScript must be in devDependencies.
 
-    Re-validate:
-      ./sm validate overconfidence:js-types --verbose
+    Re-check:
+      ./sm swab -g overconfidence:js-types --verbose
     """
 
     tool_context = ToolContext.NODE

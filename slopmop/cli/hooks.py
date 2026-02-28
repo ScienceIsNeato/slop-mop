@@ -34,12 +34,24 @@ def _generate_hook_script(profile: str) -> str:
     The hook runs slop-mop directly from the submodule via
     `python -m slopmop.sm` — no pip install required. Each project
     uses its own slop-mop copy via git submodule.
+
+    Args:
+        profile: The validation command to run. Typically "swab" for
+                 pre-commit hooks (fast, every-commit gates).
     """
+    # Map legacy profiles to new verbs
+    if profile in ("commit", "quick"):
+        verb = "swab"
+    elif profile == "pr":
+        verb = "scour"
+    else:
+        verb = profile  # "swab" or "scour" passed directly
+
     return f"""{SB_HOOK_MARKER}
 #!/bin/sh
 #
 # Pre-commit hook managed by slop-mop
-# Profile: {profile}
+# Command: sm {verb}
 # To remove: ./sm commit-hooks uninstall
 #
 
@@ -69,7 +81,7 @@ else
 fi
 
 # Run slop-mop directly from the submodule (no pip install needed)
-PYTHONPATH="$SM_DIR:${{PYTHONPATH:-}}" $PYTHON -m slopmop.sm validate {profile}
+PYTHONPATH="$SM_DIR:${{PYTHONPATH:-}}" $PYTHON -m slopmop.sm {verb}
 
 # Capture exit code
 result=$?
@@ -77,7 +89,7 @@ result=$?
 if [ $result -ne 0 ]; then
     echo ""
     echo "❌ Commit blocked by slop-mop quality gates"
-    echo "   Run './sm validate {profile}' to see details"
+    echo "   Run './sm {verb}' to see details"
     echo ""
     exit 1
 fi
@@ -92,6 +104,12 @@ def _parse_hook_info(hook_content: str) -> Optional[dict[str, Any]]:
     if SB_HOOK_MARKER not in hook_content:
         return None
 
+    # Try new format first: "# Command: sm swab"
+    match = re.search(r"# Command: sm (\w+)", hook_content)
+    if match:
+        return {"profile": match.group(1), "managed": True}
+
+    # Fall back to legacy format: "# Profile: commit"
     match = re.search(r"# Profile: (\w+)", hook_content)
     profile = match.group(1) if match else "unknown"
 
@@ -131,7 +149,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     if found_sb_hooks:
         print("🪣 Slop-Mop-managed hooks:")
         for hook_type, info in found_sb_hooks:
-            print(f"   ✅ {hook_type}: profile={info['profile']}")
+            print(f"   ✅ {hook_type}: {info['profile']}")
         print()
 
     if found_other_hooks:
@@ -145,7 +163,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
         print()
 
     print("Commands:")
-    print("   ./sm commit-hooks install <profile>  # Install pre-commit hook")
+    print("   ./sm commit-hooks install           # Install pre-commit hook (swab)")
     print("   ./sm commit-hooks uninstall          # Remove sm hooks")
     print()
     return 0
@@ -166,7 +184,7 @@ def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
             print()
             print("Options:")
             print("   1. Back up your existing hook and run install again")
-            print("   2. Manually add './sm validate' to your existing hook")
+            print("   2. Manually add './sm swab' to your existing hook")
             print()
             return 1
 
@@ -183,9 +201,18 @@ def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
 
     print_project_header(str(project_root))
     print(f"📄 Hook: {hook_file}")
-    print(f"🎯 Profile: {profile}")
+
+    # Determine the verb for display
+    if profile in ("commit", "quick"):
+        verb = "swab"
+    elif profile == "pr":
+        verb = "scour"
+    else:
+        verb = profile
+
+    print(f"🎯 Command: sm {verb}")
     print()
-    print(f"The hook will run './sm validate {profile}' before each commit.")
+    print(f"The hook will run './sm {verb}' before each commit.")
     print("Commits will be blocked if quality gates fail.")
     print()
     print("To remove: ./sm commit-hooks uninstall")

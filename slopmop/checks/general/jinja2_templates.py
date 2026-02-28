@@ -41,8 +41,8 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
           "templates" to .sb_config.json.
       Jinja2 not installed: pip install jinja2
 
-    Re-validate:
-      ./scripts/sm validate laziness:template-syntax --verbose
+    Re-check:
+      ./sm swab -g laziness:template-syntax --verbose
     """
 
     tool_context = ToolContext.PROJECT

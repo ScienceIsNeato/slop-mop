@@ -97,8 +97,8 @@ class LocLockCheck(BaseCheck):
       Function too long: Extract helper functions for distinct
           concepts. Three 30-line functions > one 90-line function.
 
-    Re-validate:
-      ./sm validate quality:loc-lock --verbose
+    Re-check:
+      ./sm swab -g quality:loc-lock --verbose
     """
 
     @property

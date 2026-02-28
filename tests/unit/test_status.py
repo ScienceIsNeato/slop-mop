@@ -9,7 +9,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from slopmop.cli.status import (
-    _find_other_profiles,
+    _find_other_aliases,
     _print_gate_inventory,
     _print_remediation,
     _print_verdict,
@@ -33,9 +33,12 @@ def _mock_registry(
     mock_reg.list_aliases.return_value = aliases or {}
     mock_reg.expand_alias.return_value = expand_alias_return or []
     mock_reg.is_alias.return_value = is_alias
+    # Level-based discovery returns whatever all_gates has
+    mock_reg.get_gate_names_for_level.return_value = all_gates or []
     mock_check = MagicMock()
     mock_check.is_applicable.return_value = True
     mock_check.skip_reason.return_value = ""
+    mock_check.superseded_by = None
     mock_reg.get_check.return_value = mock_check
     return mock_reg
 
@@ -88,14 +91,14 @@ class TestStatusParser:
         parser = create_parser()
         args = parser.parse_args(["status"])
         assert args.verb == "status"
-        assert args.profile == "pr"
+        assert args.profile == "scour"
 
-    def test_status_with_profile(self):
-        """Status with explicit profile parses correctly."""
+    def test_status_with_level(self):
+        """Status with explicit level parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["status", "pr"])
+        args = parser.parse_args(["status", "scour"])
         assert args.verb == "status"
-        assert args.profile == "pr"
+        assert args.profile == "scour"
 
     def test_status_with_verbose(self):
         """Status --verbose flag parses correctly."""
@@ -143,7 +146,7 @@ class TestCmdStatus:
         """Helper: run cmd_status with standard mocks."""
         (tmp_path / ".sb_config.json").write_text(json.dumps({}))
         ns = dict(
-            profile="commit",
+            profile="swab",
             project_root=str(tmp_path),
             verbose=False,
             quiet=True,
@@ -189,7 +192,7 @@ class TestCmdStatus:
     def test_invalid_project_root(self, tmp_path, capsys):
         """Returns 1 for non-existent project root."""
         args = argparse.Namespace(
-            profile="commit",
+            profile="swab",
             project_root=str(tmp_path / "nonexistent"),
             verbose=False,
             quiet=False,
@@ -204,32 +207,35 @@ class TestCmdStatus:
 # ---------------------------------------------------------------------------
 
 
-class TestFindOtherProfiles:
-    """Tests for _find_other_profiles helper."""
+class TestFindOtherAliases:
+    """Tests for _find_other_aliases helper."""
 
-    def test_finds_matching_profiles(self):
-        """Returns profiles that include the gate."""
+    def test_finds_matching_aliases(self):
+        """Returns aliases that include the gate."""
         aliases = {
-            "commit": ["overconfidence:py-tests", "laziness:py-lint"],
-            "pr": ["overconfidence:py-tests", "pr:comments"],
+            "python": ["overconfidence:py-tests", "laziness:py-lint"],
+            "quality": ["overconfidence:py-tests", "laziness:complexity"],
             "quick": ["laziness:py-lint"],
         }
-        result = _find_other_profiles("overconfidence:py-tests", aliases, "commit")
-        assert result == ["pr"]
+        result = _find_other_aliases("overconfidence:py-tests", aliases, "python")
+        assert result == ["quality"]
 
-    def test_excludes_current_profile(self):
-        """Does not include the current profile."""
+    def test_excludes_current_level(self):
+        """Does not include the current level."""
         aliases = {
-            "commit": ["overconfidence:py-tests"],
-            "pr": ["overconfidence:py-tests"],
+            "python": ["overconfidence:py-tests"],
+            "quality": ["overconfidence:py-tests"],
         }
-        result = _find_other_profiles("overconfidence:py-tests", aliases, "commit")
-        assert "commit" not in result
+        result = _find_other_aliases("overconfidence:py-tests", aliases, "python")
+        assert "python" not in result
 
     def test_returns_empty_for_unique_gate(self):
-        """Returns empty list if gate only in current profile."""
-        aliases = {"commit": ["overconfidence:py-tests"], "pr": ["pr:comments"]}
-        result = _find_other_profiles("overconfidence:py-tests", aliases, "commit")
+        """Returns empty list if gate only in current alias."""
+        aliases = {
+            "python": ["overconfidence:py-tests"],
+            "quality": ["laziness:complexity"],
+        }
+        result = _find_other_aliases("overconfidence:py-tests", aliases, "python")
         assert result == []
 
 
@@ -242,7 +248,7 @@ class TestPrintGateInventory:
     """Tests for _print_gate_inventory output formatting."""
 
     def test_passing_gate_in_profile(self, capsys):
-        """Passing profile gate shows checkmark."""
+        """Passing gate shows checkmark."""
         r = CheckResult("overconfidence:py-tests", CheckStatus.PASSED, 1.0)
         _print_gate_inventory(
             all_gates=["overconfidence:py-tests"],
@@ -250,14 +256,14 @@ class TestPrintGateInventory:
             results_map={"overconfidence:py-tests": r},
             applicability={},
             aliases={},
-            profile="commit",
+            profile="swab",
         )
         out = capsys.readouterr().out
         assert "tests" in out
         assert "passing" in out
 
     def test_failing_gate_in_profile(self, capsys):
-        """Failing profile gate shows X mark."""
+        """Failing gate shows X mark."""
         r = CheckResult("deceptiveness:py-coverage", CheckStatus.FAILED, 2.0)
         _print_gate_inventory(
             all_gates=["deceptiveness:py-coverage"],
@@ -265,28 +271,28 @@ class TestPrintGateInventory:
             results_map={"deceptiveness:py-coverage": r},
             applicability={},
             aliases={},
-            profile="commit",
+            profile="swab",
         )
         out = capsys.readouterr().out
         assert "coverage" in out
         assert "FAILING" in out
 
-    def test_gate_not_in_profile_with_other_profiles(self, capsys):
-        """Gate outside profile shows which profiles include it."""
+    def test_gate_not_included_with_other_aliases(self, capsys):
+        """Gate outside level shows which aliases include it."""
         _print_gate_inventory(
             all_gates=["pr:comments"],
             profile_gates=set(),
             results_map={},
             applicability={"pr:comments": (True, "")},
             aliases={
-                "pr": ["pr:comments"],
-                "commit": ["overconfidence:py-tests"],
+                "quality": ["pr:comments"],
+                "python": ["overconfidence:py-tests"],
             },
-            profile="commit",
+            profile="swab",
         )
         out = capsys.readouterr().out
-        assert "not in profile" in out
-        assert "pr" in out
+        assert "not included" in out
+        assert "quality" in out
 
     def test_not_applicable_gate(self, capsys):
         """Not applicable gate shows reason."""
@@ -298,14 +304,14 @@ class TestPrintGateInventory:
                 "overconfidence:js-tests": (False, "No JavaScript code detected"),
             },
             aliases={},
-            profile="commit",
+            profile="swab",
         )
         out = capsys.readouterr().out
         assert "n/a" in out
         assert "No JavaScript code detected" in out
 
     def test_skipped_gate_in_profile(self, capsys):
-        """Skipped profile gate shows reason."""
+        """Skipped gate shows reason."""
         r = CheckResult(
             "laziness:js-lint",
             CheckStatus.SKIPPED,
@@ -318,14 +324,14 @@ class TestPrintGateInventory:
             results_map={"laziness:js-lint": r},
             applicability={},
             aliases={},
-            profile="pr",
+            profile="scour",
         )
         out = capsys.readouterr().out
         assert "skipped" in out
         assert "No package.json found" in out
 
     def test_not_applicable_gate_in_profile(self, capsys):
-        """NOT_APPLICABLE profile gate shows n/a with reason."""
+        """NOT_APPLICABLE gate shows n/a with reason."""
         r = CheckResult(
             "overconfidence:js-tests",
             CheckStatus.NOT_APPLICABLE,
@@ -338,7 +344,7 @@ class TestPrintGateInventory:
             results_map={"overconfidence:js-tests": r},
             applicability={},
             aliases={},
-            profile="pr",
+            profile="scour",
         )
         out = capsys.readouterr().out
         assert "n/a" in out
@@ -353,7 +359,7 @@ class TestPrintGateInventory:
             results_map={"overconfidence:py-tests": r},
             applicability={},
             aliases={},
-            profile="commit",
+            profile="swab",
         )
         out = capsys.readouterr().out
         assert "Overconfidence" in out
@@ -370,7 +376,7 @@ class TestPrintGateInventory:
             },
             applicability={},
             aliases={},
-            profile="commit",
+            profile="swab",
         )
         out = capsys.readouterr().out
         assert "GATE INVENTORY" in out
@@ -389,7 +395,7 @@ class TestPrintGateInventory:
             results_map={"myopia:security-scan": r},
             applicability={},
             aliases={},
-            profile="commit",
+            profile="swab",
         )
         out = capsys.readouterr().out
         assert "ERROR" in out
@@ -430,7 +436,7 @@ class TestPrintRemediation:
         assert "deceptiveness:py-coverage" in out
         assert "Coverage below 80% threshold" in out
         assert "Add tests for uncovered modules" in out
-        assert "scripts/sm validate deceptiveness:py-coverage" in out
+        assert "sm scour -g deceptiveness:py-coverage" in out
 
     def test_remediation_for_errored_gate(self, capsys):
         """Errored gate shows remediation."""
@@ -517,7 +523,7 @@ class TestPrintVerdict:
 class TestRunStatus:
     """Tests for the run_status() function called directly."""
 
-    def _run(self, tmp_path, summary=None, profile="commit"):
+    def _run(self, tmp_path, summary=None, profile="swab"):
         """Helper: call run_status with standard mocks."""
         (tmp_path / ".sb_config.json").write_text(json.dumps({}))
         summary = summary or _passing_summary()
@@ -552,11 +558,11 @@ class TestRunStatus:
         assert result == 1
         assert "not found" in capsys.readouterr().out
 
-    def test_accepts_profile(self, tmp_path):
-        """run_status passes the profile through to run_checks."""
-        _, _, executor, _ = self._run(tmp_path, profile="pr")
-        call_kwargs = executor.run_checks.call_args[1]
-        assert call_kwargs["check_names"] == ["pr"]
+    def test_accepts_level(self, tmp_path):
+        """run_status passes the level through to gate resolution."""
+        _, _, executor, registry = self._run(tmp_path, profile="scour")
+        # When profile is "scour", run_status resolves via get_gate_names_for_level
+        registry.get_gate_names_for_level.assert_called()
 
 
 # ---------------------------------------------------------------------------

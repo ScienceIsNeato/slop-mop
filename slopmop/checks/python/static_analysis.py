@@ -46,8 +46,8 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
       attr-defined: Accessing an attribute that doesn't exist on the
           inferred type. Check your class hierarchy.
 
-    Re-validate:
-      ./sm validate overconfidence:py-static-analysis --verbose
+    Re-check:
+      ./sm swab -g overconfidence:py-static-analysis --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

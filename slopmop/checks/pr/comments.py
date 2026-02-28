@@ -12,7 +12,7 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, GateLevel
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -23,7 +23,7 @@ class PRCommentsCheck(BaseCheck):
     threads. Fails if any threads are still open, ensuring all
     reviewer feedback is addressed before merge.
 
-    Profiles: pr
+    Level: scour (PR readiness context required)
 
     Configuration:
       fail_on_unresolved: True — fail the gate if unresolved
@@ -38,9 +38,11 @@ class PRCommentsCheck(BaseCheck):
       gh CLI not available: Install GitHub CLI:
           https://cli.github.com/
 
-    Re-validate:
-      ./sm validate pr:comments --verbose
+    Re-check:
+      sm scour -g pr:comments --verbose
     """
+
+    level = GateLevel.SCOUR
 
     @property
     def name(self) -> str:
@@ -566,7 +568,7 @@ class PRCommentsCheck(BaseCheck):
         )
         lines.append("")
         lines.append("# Re-run this check:")
-        lines.append("./sm validate pr:comments")
+        lines.append("./sm scour -g pr:comments")
         lines.append("")
         lines.append("━" * 80)
         lines.append(
@@ -687,7 +689,7 @@ class PRCommentsCheck(BaseCheck):
         lines.append("  1. Read the full report above")
         lines.append("  2. Address comments by category (most complex first)")
         lines.append("  3. Use provided commands to resolve each thread")
-        lines.append("  4. Re-run: ./sm validate pr:comments")
+        lines.append("  4. Re-run: ./sm scour -g pr:comments")
 
         return "\n".join(lines)
 

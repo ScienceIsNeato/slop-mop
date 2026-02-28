@@ -41,8 +41,8 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
       Import errors: A test imports something that doesn't exist.
           Usually a missing dependency or renamed module.
 
-    Re-validate:
-      ./sm validate overconfidence:py-tests --verbose
+    Re-check:
+      ./sm swab -g overconfidence:py-tests --verbose
     """
 
     tool_context = ToolContext.PROJECT

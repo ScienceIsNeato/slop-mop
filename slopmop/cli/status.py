@@ -1,9 +1,9 @@
 """Status command for slop-mop CLI.
 
-Runs all gates in a profile and prints a gate inventory showing
-what's registered, what's applicable, what's passing, and what
-needs fixing.  Unlike validate, there is no per-gate progress
-output — just a quiet run followed by a full report.
+Runs all gates and prints a gate inventory showing what's registered,
+what's applicable, what's passing, and what needs fixing.  Unlike
+swab/scour, there is no per-gate progress output — just a quiet run
+followed by a full report.
 """
 
 import argparse
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks import ensure_checks_registered
-from slopmop.checks.base import GateCategory
+from slopmop.checks.base import GateCategory, GateLevel
 from slopmop.constants import format_duration_suffix
 from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
@@ -42,14 +42,14 @@ def _get_category_display(category_key: str) -> Tuple[str, str]:
     return "❓", category_key.title()
 
 
-def _find_other_profiles(
-    gate: str, aliases: Dict[str, List[str]], current_profile: str
+def _find_other_aliases(
+    gate: str, aliases: Dict[str, List[str]], current_level: str
 ) -> List[str]:
-    """Find profiles that include a gate, excluding the current one."""
+    """Find aliases that include a gate, excluding the current level."""
     return [
         alias
         for alias, gates in aliases.items()
-        if gate in gates and alias != current_profile
+        if gate in gates and alias != current_level
     ]
 
 
@@ -64,7 +64,7 @@ def _print_gate_inventory(
     """Print the full gate inventory grouped by category.
 
     Shows every registered gate with its status relative to the
-    current profile and run results.
+    current level and run results.
     """
     # Group gates by category key
     by_category: Dict[str, List[str]] = defaultdict(list)
@@ -91,17 +91,17 @@ def _print_gate_inventory(
             gate_name = gate.split(":", 1)[1]
 
             if gate in profile_gates:
-                line = _format_profile_gate(gate_name, results_map.get(gate))
+                line = _format_active_gate(gate_name, results_map.get(gate))
             else:
-                line = _format_non_profile_gate(
+                line = _format_inactive_gate(
                     gate, gate_name, applicability, aliases, profile
                 )
 
             print(line)
 
 
-def _format_profile_gate(gate_name: str, result: Optional[CheckResult]) -> str:
-    """Format a gate that's in the active profile."""
+def _format_active_gate(gate_name: str, result: Optional[CheckResult]) -> str:
+    """Format a gate that's in the active level."""
     _STATUS_DISPLAY = {
         CheckStatus.PASSED: ("✅", "passing"),
         CheckStatus.FAILED: ("❌", "FAILING"),
@@ -110,7 +110,7 @@ def _format_profile_gate(gate_name: str, result: Optional[CheckResult]) -> str:
     }
 
     if result is None:
-        return f"   ?  {gate_name:<28} — in profile, no result"
+        return f"   ?  {gate_name:<28} — included, no result"
 
     if result.status in _STATUS_DISPLAY:
         icon, label = _STATUS_DISPLAY[result.status]
@@ -127,23 +127,23 @@ def _format_profile_gate(gate_name: str, result: Optional[CheckResult]) -> str:
     return f"   ?  {gate_name:<28} — unknown status"
 
 
-def _format_non_profile_gate(
+def _format_inactive_gate(
     gate: str,
     gate_name: str,
     applicability: Dict[str, Tuple[bool, str]],
     aliases: Dict[str, List[str]],
-    profile: str,
+    level: str,
 ) -> str:
-    """Format a gate that's not in the active profile."""
+    """Format a gate that's not in the active level."""
     is_applicable, skip_reason = applicability.get(gate, (True, ""))
     if not is_applicable:
         return f"   ⊘  {gate_name:<28} — n/a ({skip_reason})"
 
-    other = _find_other_profiles(gate, aliases, profile)
+    other = _find_other_aliases(gate, aliases, level)
     if other:
-        profiles_str = ", ".join(sorted(other))
-        return f"   ·  {gate_name:<28}" f" — not in profile (in: {profiles_str})"
-    return f"   ·  {gate_name:<28} — not in profile"
+        aliases_str = ", ".join(sorted(other))
+        return f"   ·  {gate_name:<28}" f" — not included (in: {aliases_str})"
+    return f"   ·  {gate_name:<28} — not included"
 
 
 def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
@@ -181,7 +181,7 @@ def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
                     print(f"   ... ({len(lines) - 15} more lines — run with --verbose)")
             if r.fix_suggestion:
                 print(f"   Fix: {r.fix_suggestion}")
-            print(f"   Verify: ./scripts/sm validate {r.name}")
+            print(f"   Verify: sm scour -g {r.name}")
 
     if warned:
         print()
@@ -264,14 +264,14 @@ def _print_recommendations(
     print()
     print("💡 RECOMMENDATIONS")
     print("─" * 60)
-    print("These gates are applicable but not in your current profile:")
+    print("These gates are applicable but not included at this level:")
     print()
 
     for gate in sorted(recommended):
-        print(f"   ./sm validate {gate:<30}  # try it out")
+        print(f"   sm scour -g {gate:<30}  # try it out")
 
     print()
-    print("Run individually to see results, then add to your profile incrementally.")
+    print("Run individually to see results, then enable in your config.")
     print()
 
 
@@ -355,7 +355,7 @@ def _write_verbose_json(
 
 def run_status(
     project_root: str,
-    profile: str = "pr",
+    profile: str = "scour",
     quiet: bool = False,
     verbose: bool = False,
     static: bool = False,
@@ -366,14 +366,14 @@ def run_status(
     and the post-init report.  It can be called directly without
     constructing an argparse.Namespace.
 
-    The default profile is "pr" (broader than "commit") because
-    status is an observatory, not an iterative validation loop.
-    It's worth running myopia:security-audit, diff-coverage, and JS gates
-    here even if they'd slow down the commit workflow.
+    The default level is "scour" (all gates) because status is an
+    observatory, not an iterative validation loop.
 
     Args:
         project_root: Absolute path to the project root.
-        profile: Profile alias to run (default: "pr").
+        profile: Level or alias to run (default: "scour"). Accepts
+                 "swab", "scour", or any registered alias for backward
+                 compatibility.
         quiet: Suppress header and progress indicator.
         verbose: Write full JSON report to sm_status_<timestamp>.json.
         static: Disable dynamic display (use static line-by-line output).
@@ -393,13 +393,20 @@ def run_status(
     registry = get_registry()
     config = load_config(root)
 
-    # Enumerate all registered gates and profile membership
+    # ── Resolve gate list ─────────────────────────────────────────
+    # Try level-based discovery first, then fall through to alias
+    level_map = {"swab": GateLevel.SWAB, "scour": GateLevel.SCOUR}
+    if profile in level_map:
+        profile_gate_list = registry.get_gate_names_for_level(level_map[profile])
+    elif registry.is_alias(profile):
+        profile_gate_list = registry.expand_alias(profile)
+    else:
+        profile_gate_list = [profile]
+    profile_gates = set(profile_gate_list)
+
+    # Enumerate all registered gates
     all_gates = registry.list_checks()
     aliases = registry.list_aliases()
-    profile_gate_list = (
-        registry.expand_alias(profile) if registry.is_alias(profile) else [profile]
-    )
-    profile_gates = set(profile_gate_list)
 
     # Check applicability for gates NOT in the profile
     applicability: Dict[str, Tuple[bool, str]] = {}
@@ -450,7 +457,7 @@ def run_status(
     try:
         summary = executor.run_checks(
             project_root=str(root),
-            check_names=[profile],
+            check_names=profile_gate_list,
             config=config,
             auto_fix=False,
         )
@@ -511,12 +518,12 @@ def run_status(
 def cmd_status(args: argparse.Namespace) -> int:
     """Handle the status command.
 
-    Runs the specified profile (default: pr) with no per-gate
+    Runs the specified level (default: scour) with no per-gate
     progress, then prints a full gate inventory and remediation report.
     """
     return run_status(
         project_root=args.project_root,
-        profile=args.profile or "pr",
+        profile=getattr(args, "profile", None) or "scour",
         quiet=args.quiet,
         verbose=args.verbose,
         static=getattr(args, "static", False),

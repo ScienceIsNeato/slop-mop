@@ -37,15 +37,15 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
           screens, narrow enough to diff side-by-side.
 
     Common failures:
-      Formatting drift: Run `sm validate laziness:py-lint` with
+      Formatting drift: Run `sm swab -g laziness:py-lint` with
           auto-fix enabled. Black and isort will fix in place.
       Unused imports: autoflake removes them automatically during
           auto-fix. If you need to keep one, add `# noqa: F401`.
       Flake8 E9/F63/F7/F82: These are critical errors (syntax,
           assertion on tuples, undefined names). Fix the code.
 
-    Re-validate:
-      ./sm validate laziness:py-lint --verbose
+    Re-check:
+      ./sm swab -g laziness:py-lint --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

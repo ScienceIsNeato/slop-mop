@@ -7,7 +7,7 @@ enabling dynamic check discovery and configuration-based selection.
 import logging
 from typing import Any, Dict, List, Optional, Type
 
-from slopmop.checks.base import BaseCheck
+from slopmop.checks.base import BaseCheck, GateLevel
 from slopmop.core.result import CheckDefinition
 
 logger = logging.getLogger(__name__)
@@ -195,6 +195,24 @@ class CheckRegistry:
     def list_aliases(self) -> Dict[str, List[str]]:
         """List all registered aliases and their checks."""
         return dict(self._aliases)
+
+    def get_gate_names_for_level(self, level: GateLevel) -> List[str]:
+        """Get all registered gate names appropriate for a given level.
+
+        Swab returns only SWAB-level gates.
+        Scour returns ALL gates (SWAB + SCOUR) since scour is a superset.
+
+        Args:
+            level: The gate level to filter by
+
+        Returns:
+            List of gate names (category:check-name format)
+        """
+        names: List[str] = []
+        for name, check_class in self._check_classes.items():
+            if level == GateLevel.SCOUR or check_class.level == GateLevel.SWAB:
+                names.append(name)
+        return names
 
     def get_applicable_checks(
         self, project_root: str, config: Dict[str, Any]

@@ -12,7 +12,13 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.registry import CheckRegistry, get_registry
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, ScopeInfo
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    ExecutionSummary,
+    ScopeInfo,
+    SkipReason,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +191,23 @@ class CheckExecutor:
         # Auto-include dependencies that weren't explicitly requested
         checks = self._expand_dependencies(checks, config)
 
+        # Filter superseded checks: if a check's superseded_by target is
+        # also in the run set, skip the weaker check.  This happens during
+        # scour runs where both security-scan (swab) and security-audit
+        # (scour) would otherwise both execute.
+        requested_names = {c.full_name for c in checks}
+        superseded: Set[str] = set()
+        for check in checks:
+            target = check.superseded_by
+            if target and target in requested_names:
+                superseded.add(check.full_name)
+                logger.debug(
+                    f"Superseded — {check.full_name}: "
+                    f"replaced by {target} in this run"
+                )
+        if superseded:
+            checks = [c for c in checks if c.full_name not in superseded]
+
         # Filter out disabled checks (by config), including dependents
         disabled_gates: Set[str] = set()
         for check in checks:
@@ -237,6 +260,7 @@ class CheckExecutor:
                 status=CheckStatus.NOT_APPLICABLE,
                 duration=0,
                 output=reason,
+                skip_reason=SkipReason.NOT_APPLICABLE,
             )
             # Notify via dedicated N/A callback so display can label them
             # separately from config-disabled checks in the footer.
@@ -383,6 +407,7 @@ class CheckExecutor:
                         status=CheckStatus.SKIPPED,
                         duration=0,
                         output="Skipped due to failed dependency",
+                        skip_reason=SkipReason.FAILED_DEPENDENCY,
                     )
                     self._results[name] = result
                     pending.discard(name)
@@ -475,6 +500,7 @@ class CheckExecutor:
                     status=CheckStatus.SKIPPED,
                     duration=0,
                     output=_SKIP_FAIL_FAST,
+                    skip_reason=SkipReason.FAIL_FAST,
                 )
                 self._results[name] = result
                 if self._on_check_complete:
@@ -492,6 +518,7 @@ class CheckExecutor:
                         status=CheckStatus.SKIPPED,
                         duration=0,
                         output=_SKIP_FAIL_FAST,
+                        skip_reason=SkipReason.FAIL_FAST,
                     )
                 self._results[name] = result
                 if self._on_check_complete:
@@ -521,6 +548,7 @@ class CheckExecutor:
                 status=CheckStatus.SKIPPED,
                 duration=0,
                 output=_SKIP_FAIL_FAST,
+                skip_reason=SkipReason.FAIL_FAST,
             )
 
         logger.debug(f"Running {check.display_name}")

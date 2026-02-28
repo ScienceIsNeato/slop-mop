@@ -450,8 +450,8 @@ class GateDodgingCheck(BaseCheck):
       Added exclusions: If legitimate, add a justification comment.
       Disabled gate: Re-enable the gate and fix the failing code.
 
-    Re-validate:
-      ./sm validate deceptiveness:gate-dodging --verbose
+    Re-check:
+      ./sm swab -g deceptiveness:gate-dodging --verbose
     """
 
     @property

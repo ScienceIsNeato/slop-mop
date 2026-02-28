@@ -51,8 +51,8 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
           arbitrary line reduction.
       radon not available: pip install radon
 
-    Re-validate:
-      ./sm validate laziness:complexity --verbose
+    Re-check:
+      ./sm swab -g laziness:complexity --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

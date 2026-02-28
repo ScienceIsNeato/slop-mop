@@ -144,8 +144,6 @@ class TestGenerateBaseConfig:
 
         assert "version" in config
         assert config["version"] == "1.0"
-        assert "default_profile" in config
-        assert config["default_profile"] == "commit"
         assert "overconfidence" in config
 
     def test_base_config_all_disabled_by_default(self):

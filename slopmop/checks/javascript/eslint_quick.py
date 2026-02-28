@@ -41,8 +41,8 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
       ESLint config error: Check .eslintrc or eslint.config.js
           for syntax errors.
 
-    Re-validate:
-      ./sm validate laziness:js-frontend --verbose
+    Re-check:
+      ./sm swab -g laziness:js-frontend --verbose
     """
 
     tool_context = ToolContext.NODE

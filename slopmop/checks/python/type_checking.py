@@ -161,8 +161,8 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
       reportUnknownArgumentType: You're passing an unknown-typed
           value to a function. Annotate the source variable.
 
-    Re-validate:
-      ./sm validate overconfidence:py-types --verbose
+    Re-check:
+      ./sm swab -g overconfidence:py-types --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

@@ -23,6 +23,27 @@ class CheckStatus(Enum):
         return self.value
 
 
+class SkipReason(Enum):
+    """Why a check was skipped or excluded from a run.
+
+    Each value is the short code displayed in the summary footer,
+    e.g. ``3 skipped (ff)``.
+
+    Set on :pyclass:`CheckResult` via the ``skip_reason`` field whenever
+    the status is SKIPPED or NOT_APPLICABLE.
+    """
+
+    FAIL_FAST = "ff"  # Stopped after an earlier failure
+    FAILED_DEPENDENCY = "dep"  # A prerequisite check failed
+    NOT_APPLICABLE = "n/a"  # Check doesn't apply (e.g. no Python files)
+    DISABLED = "off"  # Turned off in .sb_config.json
+    TIME_BUDGET = "time"  # Would exceed --swabbing-time budget
+    SUPERSEDED = "sup"  # Replaced by a more thorough check in this run
+
+    def __str__(self) -> str:
+        return self.value
+
+
 @dataclass
 class ScopeInfo:
     """Scope metrics for a quality gate check.
@@ -79,6 +100,7 @@ class CheckResult:
     auto_fixed: bool = False
     category: Optional[str] = None
     scope: Optional[ScopeInfo] = None
+    skip_reason: Optional["SkipReason"] = None
 
     @property
     def passed(self) -> bool:

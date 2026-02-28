@@ -125,7 +125,6 @@ def generate_base_config(
 
     config: Dict[str, Any] = {
         "version": "1.0",
-        "default_profile": "commit",
     }
 
     # Group checks by category

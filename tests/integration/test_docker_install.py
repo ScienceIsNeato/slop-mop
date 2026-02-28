@@ -6,7 +6,7 @@ only system dependencies (git, Node.js, jscpd) present.  The test then:
   Phase 0: ``git clone bucket-o-slop``        — clone the fixture repo
   Phase A: ``pip install /slopmop-src``        — install slop-mop
   Phase B: ``sm init --non-interactive``       — initialise the project
-  Phase C: ``sm validate commit --no-fail-fast`` — run all quality gates
+  Phase C: ``sm swab --no-fail-fast``          — run all quality gates
 
 All four phases run in sequence inside a single container.  Sentinel exit
 codes distinguish *where* a failure occurred:
@@ -175,7 +175,7 @@ class TestInit:
 
 
 # ---------------------------------------------------------------------------
-# Phase C — sm validate (gate behaviour)
+# Phase C — sm swab (gate behaviour)
 # ---------------------------------------------------------------------------
 
 

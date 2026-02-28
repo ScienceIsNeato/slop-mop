@@ -55,8 +55,8 @@ class DeadCodeCheck(BaseCheck):
       Unused import: Remove it or mark with # noqa if needed for
           side effects.
 
-    Re-validate:
-      ./sm validate quality:dead-code --verbose
+    Re-check:
+      ./sm swab -g quality:dead-code --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

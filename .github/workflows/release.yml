@@ -62,7 +62,7 @@ jobs:
           npx tsc
 
       - name: Run slop-mop on itself
-        run: python -m slopmop.sm validate --self
+        run: python -m slopmop.sm scour --self
 
   # ── Build the distribution artifacts ──
   build:

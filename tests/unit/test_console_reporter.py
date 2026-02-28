@@ -3,7 +3,7 @@
 import pytest  # noqa: F401  # Required for fixtures
 
 from slopmop.constants import STATUS_EMOJI
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, SkipReason
 from slopmop.reporting.console import ConsoleReporter
 
 
@@ -398,16 +398,88 @@ class TestConsoleReporter:
     def test_skip_reason_code_fail_fast(self):
         """Test _skip_reason_code returns 'ff' for fail-fast skips."""
         result = CheckResult(
-            "check1", CheckStatus.SKIPPED, 0.0, output="Skipped: fail-fast triggered"
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            output="Skipped: fail-fast triggered",
+            skip_reason=SkipReason.FAIL_FAST,
         )
         assert ConsoleReporter._skip_reason_code(result) == "ff"
 
     def test_skip_reason_code_dependency(self):
         """Test _skip_reason_code returns 'dep' for dependency skips."""
         result = CheckResult(
-            "check1", CheckStatus.SKIPPED, 0.0, output="Skipped: disabled by config"
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            output="Skipped due to failed dependency",
+            skip_reason=SkipReason.FAILED_DEPENDENCY,
         )
         assert ConsoleReporter._skip_reason_code(result) == "dep"
+
+    def test_skip_reason_code_not_applicable(self):
+        """Test _skip_reason_code returns 'n/a' for not-applicable skips."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.NOT_APPLICABLE,
+            0.0,
+            skip_reason=SkipReason.NOT_APPLICABLE,
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "n/a"
+
+    def test_skip_reason_code_disabled(self):
+        """Test _skip_reason_code returns 'off' for disabled skips."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            skip_reason=SkipReason.DISABLED,
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "off"
+
+    def test_skip_reason_code_time_budget(self):
+        """Test _skip_reason_code returns 'time' for time budget skips."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            skip_reason=SkipReason.TIME_BUDGET,
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "time"
+
+    def test_skip_reason_code_superseded(self):
+        """Test _skip_reason_code returns 'sup' for superseded checks."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            skip_reason=SkipReason.SUPERSEDED,
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "sup"
+
+    def test_skip_reason_code_legacy_fallback_fail_fast(self):
+        """Test legacy fallback: string matching when skip_reason is None."""
+        result = CheckResult(
+            "check1", CheckStatus.SKIPPED, 0.0, output="Skipped: fail-fast triggered"
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "ff"
+
+    def test_skip_reason_code_legacy_fallback_dependency(self):
+        """Test legacy fallback: string matching for dependency."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            output="Skipped due to failed dependency",
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "dep"
+
+    def test_skip_reason_code_legacy_fallback_disabled(self):
+        """Test legacy fallback: string matching for disabled."""
+        result = CheckResult(
+            "check1", CheckStatus.SKIPPED, 0.0, output="Skipped: disabled by config"
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "off"
 
     def test_skip_reason_code_default(self):
         """Test _skip_reason_code returns 'skip' for unknown reasons."""
@@ -423,8 +495,20 @@ class TestConsoleReporter:
     def test_format_skipped_line_single_reason(self):
         """Test _format_skipped_line with single reason code."""
         results = [
-            CheckResult("c1", CheckStatus.SKIPPED, 0.0, output="fail-fast"),
-            CheckResult("c2", CheckStatus.SKIPPED, 0.0, output="fail fast"),
+            CheckResult(
+                "c1",
+                CheckStatus.SKIPPED,
+                0.0,
+                output="fail-fast",
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
+            CheckResult(
+                "c2",
+                CheckStatus.SKIPPED,
+                0.0,
+                output="fail fast",
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
         ]
         line = ConsoleReporter._format_skipped_line(results)
         assert "2 skipped (ff)" in line
@@ -432,13 +516,28 @@ class TestConsoleReporter:
     def test_format_skipped_line_mixed_reasons(self):
         """Test _format_skipped_line with multiple reason codes."""
         results = [
-            CheckResult("c1", CheckStatus.SKIPPED, 0.0, output="fail-fast"),
-            CheckResult("c2", CheckStatus.SKIPPED, 0.0, output="disabled"),
-            CheckResult("c3", CheckStatus.SKIPPED, 0.0, output="something else"),
+            CheckResult(
+                "c1",
+                CheckStatus.SKIPPED,
+                0.0,
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
+            CheckResult(
+                "c2",
+                CheckStatus.SKIPPED,
+                0.0,
+                skip_reason=SkipReason.DISABLED,
+            ),
+            CheckResult(
+                "c3",
+                CheckStatus.SKIPPED,
+                0.0,
+                output="something else",
+            ),
         ]
         line = ConsoleReporter._format_skipped_line(results)
         assert "1 skipped (ff)" in line
-        assert "1 skipped (dep)" in line
+        assert "1 skipped (off)" in line
         assert "1 skipped (skip)" in line
 
     def test_print_summary_errors_with_output_and_logs(self, capsys, tmp_path):
@@ -519,7 +618,7 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # Next step points to the error check
-        assert "Next: ./sm validate laziness:py-lint --verbose" in captured.out
+        assert "Next: ./sm swab -g laziness:py-lint --verbose" in captured.out
 
     def test_error_output_filters_passing_lines(self, capsys, tmp_path):
         """Test error output filters out ✅ lines like failures do."""

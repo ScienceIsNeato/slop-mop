@@ -46,8 +46,8 @@ class SourceDuplicationCheck(BaseCheck):
           specific file pairs and line ranges.
       jscpd not available: npm install -g jscpd
 
-    Re-validate:
-      ./sm validate quality:source-duplication --verbose
+    Re-check:
+      ./sm swab -g quality:source-duplication --verbose
     """
 
     tool_context = ToolContext.NODE

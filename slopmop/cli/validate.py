@@ -1,4 +1,8 @@
-"""Validate command for slop-mop CLI."""
+"""Validate command for slop-mop CLI.
+
+Provides ``sm swab`` (quick, every-commit) and ``sm scour`` (thorough, PR)
+top-level commands, plus the legacy ``sm validate`` shim.
+"""
 
 import argparse
 import json
@@ -10,6 +14,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from slopmop.checks import ensure_checks_registered
+from slopmop.checks.base import GateLevel
 from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
@@ -107,6 +112,19 @@ def _determine_gates(args: argparse.Namespace) -> tuple[List[str], Optional[str]
         return ["commit"], "commit"
 
 
+def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
+    """Parse explicit -g quality gates from args, if any.
+
+    Returns a flat list of gate names, or None if -g was not used.
+    """
+    if not getattr(args, "quality_gates", None):
+        return None
+    gates: List[str] = []
+    for gate in args.quality_gates:
+        gates.extend(g.strip() for g in gate.split(",") if g.strip())
+    return gates
+
+
 def _print_header(
     project_root: Path, gates: List[str], args: argparse.Namespace
 ) -> None:
@@ -156,12 +174,27 @@ def _setup_dynamic_display(
     return display
 
 
-def cmd_validate(args: argparse.Namespace) -> int:
-    """Handle the validate command."""
-    # Import here to avoid circular imports
-    from slopmop.sm import load_config
+# ─── Shared execution pipeline ───────────────────────────────────────────
 
-    ensure_checks_registered()
+
+def _run_validation(
+    args: argparse.Namespace,
+    gates: List[str],
+    profile_name: Optional[str],
+) -> int:
+    """Core validation pipeline shared by swab, scour, and validate.
+
+    Args:
+        args: Parsed CLI arguments (must have project_root, self_validate,
+              quiet, verbose, no_fail_fast, no_auto_fix, static,
+              clear_history flags).
+        gates: List of gate names or aliases to run.
+        profile_name: Display label (e.g. "swab", "scour", "commit").
+
+    Returns:
+        Exit code (0 = all passed, 1 = failures).
+    """
+    from slopmop.sm import load_config
 
     # Determine project root
     if args.self_validate:
@@ -183,9 +216,6 @@ def cmd_validate(args: argparse.Namespace) -> int:
     temp_config_dir = None
     if args.self_validate:
         temp_config_dir = _setup_self_validation(project_root)
-
-    # Determine gates
-    gates, profile_name = _determine_gates(args)
 
     # Create executor
     registry = get_registry()
@@ -213,6 +243,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
     # Print header BEFORE starting dynamic display
     if not args.quiet:
         _print_header(project_root, gates, args)
+
+    # Handle time budget (preview feature)
+    swabbing_time = getattr(args, "swabbing_time", None)
+    if swabbing_time is not None and not args.quiet:
+        print(f"⏱️  Time budget: {swabbing_time}s (preview — not yet enforced)")
+        print()
 
     # Set up dynamic display if appropriate
     dynamic_display: Optional[DynamicDisplay] = None
@@ -250,3 +286,60 @@ def cmd_validate(args: argparse.Namespace) -> int:
             dynamic_display.stop()
         if temp_config_dir:
             _cleanup_self_validation(temp_config_dir)
+
+
+# ─── Top-level commands ──────────────────────────────────────────────────
+
+
+def cmd_swab(args: argparse.Namespace) -> int:
+    """Handle the swab command (quick, every-commit validation)."""
+    ensure_checks_registered()
+
+    # Explicit -g overrides level-based discovery
+    explicit = _parse_quality_gates(args)
+    if explicit:
+        return _run_validation(args, explicit, None)
+
+    registry = get_registry()
+    gate_names = registry.get_gate_names_for_level(GateLevel.SWAB)
+    return _run_validation(args, gate_names, "swab")
+
+
+def cmd_scour(args: argparse.Namespace) -> int:
+    """Handle the scour command (thorough, PR-readiness validation)."""
+    ensure_checks_registered()
+
+    # Explicit -g overrides level-based discovery
+    explicit = _parse_quality_gates(args)
+    if explicit:
+        return _run_validation(args, explicit, None)
+
+    registry = get_registry()
+    gate_names = registry.get_gate_names_for_level(GateLevel.SCOUR)
+    return _run_validation(args, gate_names, "scour")
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Handle the validate command (DEPRECATED — use swab/scour)."""
+    ensure_checks_registered()
+
+    # Deprecation warning
+    print(
+        "⚠️  'sm validate' is deprecated and will be removed in a future version.",
+        file=sys.stderr,
+    )
+
+    gates, profile_name = _determine_gates(args)
+
+    if profile_name == "pr":
+        print("   Use 'sm scour' instead of 'sm validate pr'", file=sys.stderr)
+    elif profile_name == "commit":
+        print("   Use 'sm swab' instead of 'sm validate commit'", file=sys.stderr)
+    else:
+        print(
+            "   Use 'sm swab' (quick) or 'sm scour' (thorough) instead",
+            file=sys.stderr,
+        )
+    print(file=sys.stderr)
+
+    return _run_validation(args, gates, profile_name)

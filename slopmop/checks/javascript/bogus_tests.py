@@ -343,8 +343,8 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
       No assertions: The test runs code but never checks results. Add
           expect() calls to verify behavior.
 
-    Re-validate:
-      ./sm validate deceptiveness:js-bogus-tests --verbose
+    Re-check:
+      ./sm swab -g deceptiveness:js-bogus-tests --verbose
     """
 
     @property

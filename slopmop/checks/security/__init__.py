@@ -24,6 +24,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    GateLevel,
     PythonCheckMixin,
     ToolContext,
 )
@@ -76,8 +77,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
       detect-secrets: Rotate the leaked secret, then add to
           .secrets.baseline if it's a false positive.
 
-    Re-validate:
-      ./scripts/sm validate myopia:security-scan --verbose
+    Re-check:
+      ./sm swab -g myopia:security-scan --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
@@ -332,7 +333,7 @@ class SecurityCheck(SecurityLocalCheck):
     vulnerability checking. Requires network access to query
     the OSV vulnerability database.
 
-    Profiles: pr
+    Level: scour (full audit with network access)
 
     Configuration:
       Same as security:local, plus pip-audit runs automatically.
@@ -344,9 +345,11 @@ class SecurityCheck(SecurityLocalCheck):
           consider alternatives.
       pip-audit not available: pip install pip-audit
 
-    Re-validate:
-      ./scripts/sm validate myopia:security-audit --verbose
+    Re-check:
+      sm scour -g myopia:security-audit --verbose
     """
+
+    level = GateLevel.SCOUR
 
     @property
     def name(self) -> str:

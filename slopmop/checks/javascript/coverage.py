@@ -50,8 +50,8 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
       Coverage data unavailable: Ensure Jest is configured to
           produce coverage reports.
 
-    Re-validate:
-      ./sm validate deceptiveness:js-coverage --verbose
+    Re-check:
+      ./sm swab -g deceptiveness:js-coverage --verbose
     """
 
     tool_context = ToolContext.NODE

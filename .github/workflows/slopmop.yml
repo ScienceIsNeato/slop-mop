@@ -45,7 +45,7 @@ jobs:
           npx tsc
 
       - name: Run slop-mop on itself
-        run: python -m slopmop.sm validate --self
+        run: python -m slopmop.sm scour --self
 
   wait-for-bots:
     name: ⏳ Wait for External Bots
@@ -118,7 +118,7 @@ jobs:
       - name: Check for unresolved PR comments
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python -m slopmop.sm validate pr:comments
+        run: python -m slopmop.sm scour -g pr:comments
 
   integration:
     name: 🪣 Integration Tests

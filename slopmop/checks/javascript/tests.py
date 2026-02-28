@@ -34,8 +34,8 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
           or slow async operations.
       npm install failed: Check package.json syntax.
 
-    Re-validate:
-      ./sm validate overconfidence:js-tests --verbose
+    Re-check:
+      ./sm swab -g overconfidence:js-tests --verbose
     """
 
     tool_context = ToolContext.NODE

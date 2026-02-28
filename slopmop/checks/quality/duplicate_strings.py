@@ -41,8 +41,8 @@ class StringDuplicationCheck(BaseCheck):
       Tool not found: Requires Node.js. The tool is vendored
           in tools/find-duplicate-strings/.
 
-    Re-validate:
-      ./sm validate quality:string-duplication --verbose
+    Re-check:
+      ./sm swab -g quality:string-duplication --verbose
     """
 
     tool_context = ToolContext.NODE

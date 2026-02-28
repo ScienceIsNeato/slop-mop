@@ -8,7 +8,7 @@ import os
 from typing import Optional
 
 from slopmop.constants import STATUS_EMOJI, format_duration_suffix
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, SkipReason
 
 
 class ConsoleReporter:
@@ -116,12 +116,21 @@ class ConsoleReporter:
 
     @staticmethod
     def _skip_reason_code(result: CheckResult) -> str:
-        """Return a short reason code for a skipped check."""
+        """Return a short reason code for a skipped check.
+
+        Uses the structured SkipReason enum when available, falling
+        back to string matching on output for legacy results.
+        """
+        if result.skip_reason is not None:
+            return result.skip_reason.value
+        # Legacy fallback — results created without skip_reason
         output = (result.output or "").lower()
         if "fail-fast" in output or "fail fast" in output:
-            return "ff"
-        if "disabled" in output or "dependency" in output:
-            return "dep"
+            return SkipReason.FAIL_FAST.value
+        if "dependency" in output:
+            return SkipReason.FAILED_DEPENDENCY.value
+        if "disabled" in output:
+            return SkipReason.DISABLED.value
         return "skip"
 
     @staticmethod
@@ -353,8 +362,8 @@ class ConsoleReporter:
         if not first_failure:
             return
 
-        profile = self.profile or "commit"
+        profile = self.profile or "swab"
         gate_name = first_failure.name
 
-        print(f"Next: ./sm validate {gate_name} --verbose")
-        print(f"      ./sm validate {profile}")
+        print(f"Next: ./sm swab -g {gate_name} --verbose")
+        print(f"      ./sm {profile}")

@@ -17,6 +17,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    GateLevel,
     PythonCheckMixin,
     ToolContext,
 )
@@ -87,8 +88,8 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
       coverage.xml not found: The overconfidence:py-tests gate must run first
           to generate coverage data.
 
-    Re-validate:
-      ./sm validate deceptiveness:py-coverage --verbose
+    Re-check:
+      ./sm swab -g deceptiveness:py-coverage --verbose
     """
 
     tool_context = ToolContext.PROJECT
@@ -297,7 +298,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
     compare branch. Ensures new/modified code is tested even when
     overall project coverage is acceptable.
 
-    Profiles: pr
+    Level: scour (needs PR diff context)
 
     Configuration:
       Compare branch is resolved from: COMPARE_BRANCH env var,
@@ -310,10 +311,11 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
       No diff: This is fine — no changed files means nothing to
           check. Gate passes automatically.
 
-    Re-validate:
-      ./sm validate deceptiveness:py-diff-coverage --verbose
+    Re-check:
+      sm scour -g deceptiveness:py-diff-coverage --verbose
     """
 
+    level = GateLevel.SCOUR
     tool_context = ToolContext.PROJECT
 
     @property

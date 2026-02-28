@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from slopmop.checks.base import BaseCheck, Flaw, GateCategory
 from slopmop.core.executor import CheckExecutor, run_quality_checks
 from slopmop.core.registry import CheckRegistry
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, SkipReason
 
 
 class MockCheck(BaseCheck):
@@ -169,6 +169,11 @@ class TestCheckExecutor:
         assert summary.not_applicable == 1
         assert check_class1.run_count == 1
         assert check_class2.run_count == 0
+        # Verify skip_reason enum is set
+        na_result = next(
+            r for r in summary.results if r.status == CheckStatus.NOT_APPLICABLE
+        )
+        assert na_result.skip_reason == SkipReason.NOT_APPLICABLE
 
     def test_respects_dependencies(self, tmp_path):
         """Test that dependencies are respected."""
@@ -226,6 +231,11 @@ class TestCheckExecutor:
         assert summary.failed == 1
         assert summary.skipped == 1
         assert check_class2.run_count == 0
+        # Verify skip_reason enum is set
+        skipped_result = next(
+            r for r in summary.results if r.status == CheckStatus.SKIPPED
+        )
+        assert skipped_result.skip_reason == SkipReason.FAILED_DEPENDENCY
 
     def test_progress_callback(self, tmp_path):
         """Test progress callback is called."""

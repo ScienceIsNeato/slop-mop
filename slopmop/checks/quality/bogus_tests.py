@@ -406,8 +406,8 @@ class BogusTestsCheck(BaseCheck):
           tests that fail are legitimate, consider lowering
           ``min_test_statements`` or setting it to 0.
 
-    Re-validate:
-      ./sm validate deceptiveness:bogus-tests --verbose
+    Re-check:
+      ./sm swab -g deceptiveness:bogus-tests --verbose
     """
 
     @property

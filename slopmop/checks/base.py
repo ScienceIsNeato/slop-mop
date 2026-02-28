@@ -21,6 +21,28 @@ from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_ru
 logger = logging.getLogger(__name__)
 
 
+class GateLevel(Enum):
+    """Gate execution level — controls which commands include this gate.
+
+    Every gate has a level that determines when it runs:
+
+    SWAB — Runs on every commit.  Fast, local, no network or PR context
+           required.  ``sm swab`` runs all SWAB-level gates.
+           This is the default for all gates.
+
+    SCOUR — Runs during thorough validation (PR readiness, CI).
+            May require network access, PR context (e.g. unresolved
+            comments), or expensive dependency auditing.
+            ``sm scour`` runs ALL gates (SWAB + SCOUR).
+
+    The naming comes from cleaning: a swab is a quick daily pass,
+    a scour is the deep clean before inspection.
+    """
+
+    SWAB = "swab"
+    SCOUR = "scour"
+
+
 class ToolContext(Enum):
     """How a gate resolves the external tools it needs.
 
@@ -329,6 +351,10 @@ class BaseCheck(ABC):
     # Default tool context — subclasses SHOULD override.  PURE is the safest
     # default because it makes no assumptions about tool availability.
     tool_context: ClassVar[ToolContext] = ToolContext.PURE
+
+    # Default gate level — subclasses override to SCOUR for gates that
+    # only run during thorough validation (PR readiness, CI).
+    level: ClassVar[GateLevel] = GateLevel.SWAB
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
