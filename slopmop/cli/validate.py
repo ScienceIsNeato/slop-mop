@@ -20,7 +20,7 @@ from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
-from slopmop.reporting.timings import clear_timings, load_timings
+from slopmop.reporting.timings import clear_timings, load_timing_averages
 
 
 def _setup_self_validation(project_root: Path) -> str:
@@ -247,7 +247,7 @@ def _run_validation(
     # Load timing history for budget filtering
     timings: Optional[dict[str, float]] = None
     if swabbing_time is not None and swabbing_time > 0:
-        timings = load_timings(str(project_root))
+        timings = load_timing_averages(str(project_root))
         if not args.quiet:
             print(f"⏱️  Time budget: {swabbing_time}s")
             print()

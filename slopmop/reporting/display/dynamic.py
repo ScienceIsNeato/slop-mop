@@ -35,7 +35,7 @@ from slopmop.reporting.display.renderer import (
     truncate_to_width,
 )
 from slopmop.reporting.display.state import CheckDisplayInfo, DisplayState
-from slopmop.reporting.timings import load_timings, save_timings
+from slopmop.reporting.timings import TimingStats, load_timings, save_timings
 
 
 class DynamicDisplay:
@@ -93,9 +93,8 @@ class DynamicDisplay:
         self._total_checks_expected: int = 0  # Set via set_total_checks()
         self._completion_counter: int = 0  # Tracks order of completion
 
-        # Historical timing data for ETAs and sparklines
-        self._historical_timings: Dict[str, float] = {}
-        self._historical_timing_lists: Dict[str, List[float]] = {}  # For sparklines
+        # Historical timing data for ETAs and overrun detection
+        self._historical_timings: Dict[str, TimingStats] = {}
 
     def load_historical_timings(self, project_root: str) -> None:
         """Load historical timing data from disk.
@@ -157,9 +156,9 @@ class DynamicDisplay:
             for name, category in checks:
                 if name not in self._checks:
                     info = CheckDisplayInfo(name=name, category=category)
-                    # Populate expected duration from historical data
+                    # Populate timing stats from historical data
                     if name in self._historical_timings:
-                        info.expected_duration = self._historical_timings[name]
+                        info.timing_stats = self._historical_timings[name]
                     self._checks[name] = info
                     self._check_order.append(name)
 
@@ -199,9 +198,9 @@ class DynamicDisplay:
             self._checks[name].state = DisplayState.RUNNING
             self._checks[name].start_time = time.time()
 
-            # Populate expected duration from historical data
+            # Populate timing stats from historical data
             if name in self._historical_timings:
-                self._checks[name].expected_duration = self._historical_timings[name]
+                self._checks[name].timing_stats = self._historical_timings[name]
 
         if not self._is_tty and not self.quiet:
             # Static mode: print start message
@@ -563,17 +562,21 @@ class DynamicDisplay:
         left = f"{config.CHECK_INDENT}{spinner} {padded_name}"
         time_str = format_time(elapsed)
 
-        if info.expected_duration and info.expected_duration > 0:
-            ratio = elapsed / info.expected_duration
+        stats = info.timing_stats
+        if stats and stats.mean > 0:
+            ratio = elapsed / stats.mean
             category = info.name.split(":")[0] if ":" in info.name else ""
             cat_color = category_header_color(category, self._colors_enabled) or None
 
             if ratio > 1.0:
-                # Overrunning — show how far past the expected time
-                overrun_pct = (ratio - 1.0) * 100
-                oc = overrun_color(overrun_pct, self._colors_enabled)
+                # Overrunning — compute sigma distance and escalate color
+                sigma = stats.sigma_over(elapsed)
+                oc = overrun_color(sigma, self._colors_enabled)
                 rc = reset_color(self._colors_enabled)
-                label = f"|+{int(overrun_pct)}%"
+                # Show actual/expected, e.g. "3.2s/1.1s"
+                actual_str = format_time(elapsed)
+                expected_str = format_time(stats.mean)
+                label = f"|{actual_str}/{expected_str}"
                 pct_label = f"{oc}{label}{rc}" if oc else label
                 bar_color = oc if oc else cat_color
                 right = align_columns(time_str, "")
@@ -587,7 +590,7 @@ class DynamicDisplay:
                     pct_label=pct_label,
                 )
 
-            remaining = max(0.0, info.expected_duration - elapsed)
+            remaining = max(0.0, stats.mean - elapsed)
             eta_str = format_time(remaining)
             pct = min(ratio, 0.99)
             right = align_columns(time_str, eta_str)

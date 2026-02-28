@@ -55,12 +55,21 @@ HEADER_DASH = "─"
 # Indent for check lines under category headers
 CHECK_INDENT = "   "  # 3 spaces
 
-# Overrun severity thresholds (percentage over expected duration)
-# When a check exceeds its historical average by these amounts,
-# the progress indicator escalates color to signal unusual delays.
-OVERRUN_WARN_PCT = 15  # Yellow — taking notably longer
-OVERRUN_CAUTION_PCT = 30  # Orange — something may be wrong
-OVERRUN_ALERT_PCT = 50  # Red — significantly over expected time
+# Overrun severity thresholds (standard deviations above mean).
+# When a check's elapsed time rises above mean + Nσ the progress
+# indicator escalates colour.
+#   0-1σ: normal       — within expected variance
+#   1-2σ: yellow       — taking notably longer
+#   2-3σ: orange/amber — something may be wrong
+#   ≥ 3σ: red          — significantly over expected time
+OVERRUN_WARN_SIGMA = 1.0  # Yellow
+OVERRUN_CAUTION_SIGMA = 2.0  # Orange
+OVERRUN_ALERT_SIGMA = 3.0  # Red
+
+# Minimum number of samples before standard-deviation-based
+# thresholds kick in.  With fewer samples the std dev is unreliable
+# so we fall back to a simple "over 2× mean" heuristic.
+MIN_SAMPLES_FOR_SIGMA = 3
 
 # Column widths for status word (passed/failed/etc.)
 STATUS_COLUMN_WIDTH = 8  # "passed" = 6, "failed" = 6, "skipped" = 7, padding

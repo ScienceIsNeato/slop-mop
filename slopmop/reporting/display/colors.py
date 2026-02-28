@@ -200,21 +200,21 @@ def bold(text: str, colors_enabled: Optional[bool] = None) -> str:
     return colorize(text, Color.BOLD, colors_enabled)
 
 
-def overrun_color(overrun_pct: float, colors_enabled: Optional[bool] = None) -> str:
-    """Get ANSI color code for a time-overrun percentage.
+def overrun_color(sigma: float, colors_enabled: Optional[bool] = None) -> str:
+    """Get ANSI color code for a time-overrun expressed in standard deviations.
 
     Escalates through yellow → orange → red as the overrun grows,
     giving immediate visual feedback when a gate is running long.
 
-    Thresholds (from display config):
-      < 15%:  no color (normal text)
-      15-29%: yellow  — taking notably longer than usual
-      30-49%: orange  — something may be wrong
-      >= 50%: red     — significantly over expected time
+    Thresholds (from display config, measured in σ above mean):
+      < 1σ:  no color (within expected variance)
+      1-2σ:  yellow  — taking notably longer than usual
+      2-3σ:  orange  — something may be wrong
+      ≥ 3σ:  red     — significantly over expected time
 
     Args:
-        overrun_pct: How far over expected duration, as a percentage
-            (e.g. 13.0 means +13% over).
+        sigma: Number of standard deviations above the mean
+            (e.g. 1.5 means +1.5σ over mean).
         colors_enabled: Override color detection (for testing).
 
     Returns:
@@ -225,11 +225,11 @@ def overrun_color(overrun_pct: float, colors_enabled: Optional[bool] = None) -> 
 
     if colors_enabled is None:
         colors_enabled = supports_color()
-    if not colors_enabled or overrun_pct < display_config.OVERRUN_WARN_PCT:
+    if not colors_enabled or sigma < display_config.OVERRUN_WARN_SIGMA:
         return ""
-    if overrun_pct < display_config.OVERRUN_CAUTION_PCT:
+    if sigma < display_config.OVERRUN_CAUTION_SIGMA:
         return Color.YELLOW.value
-    if overrun_pct < display_config.OVERRUN_ALERT_PCT:
+    if sigma < display_config.OVERRUN_ALERT_SIGMA:
         # Dark orange via true-color, yellow fallback on 16-color terminals
         return ansi_rgb("#FF8C00", Color.YELLOW)
     return Color.RED.value

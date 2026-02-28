@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.dynamic import CheckDisplayInfo, DisplayState, DynamicDisplay
+from slopmop.reporting.timings import TimingStats
 
 
 class TestCheckDisplayInfo:
@@ -533,9 +534,11 @@ class TestDynamicDisplay:
         assert display._checks["test:new-check"].expected_duration is None
 
     def test_historical_timing_populates_expected_duration(self) -> None:
-        """Test that loading historical timings populates expected_duration."""
+        """Test that loading historical timings populates timing_stats."""
         display = DynamicDisplay(quiet=True)
-        display._historical_timings = {"test:check": 2.5}
+        display._historical_timings = {
+            "test:check": TimingStats(mean=2.5, std_dev=0.5, sample_count=10)
+        }
 
         display.on_check_start("test:check")
 
@@ -548,7 +551,7 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.0,
-            expected_duration=3.5,
+            timing_stats=TimingStats(mean=3.5, std_dev=0.5, sample_count=10),
         )
 
         line = display._format_check_line(info)
@@ -583,7 +586,7 @@ class TestDynamicDisplay:
                 duration=2.0,
             ),
             duration=2.0,
-            expected_duration=2.5,
+            timing_stats=TimingStats(mean=2.5, std_dev=0.3, sample_count=5),
         )
 
         line = display._format_check_line(info)
@@ -614,7 +617,7 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.5,
-            expected_duration=3.0,
+            timing_stats=TimingStats(mean=3.0, std_dev=0.5, sample_count=10),
         )
 
         line = display._format_check_line(info)
@@ -634,7 +637,7 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.0,
-            expected_duration=None,
+            timing_stats=None,
         )
 
         line = display._format_check_line(info)
@@ -648,18 +651,19 @@ class TestDynamicDisplay:
     def test_progress_bar_percentage_caps_at_99(self) -> None:
         """Test progress bar shows overrun indicator when over estimate."""
         display = DynamicDisplay(quiet=True)
-        # Elapsed 5s but estimated 2s — running 150% overtime
+        # Elapsed 5s but mean 2s — running well over expected time
+        # std_dev=0.5 so sigma_over = (5-2)/0.5 = 6σ
         info = CheckDisplayInfo(
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 5.0,
-            expected_duration=2.0,
+            timing_stats=TimingStats(mean=2.0, std_dev=0.5, sample_count=10),
         )
 
         line = display._format_check_line(info)
 
-        # Should show overrun indicator instead of 99%
-        assert "|+" in line
+        # Should show overrun indicator (actual/expected) instead of 99%
+        assert "|" in line
         assert "99%" not in line
 
     def test_active_checks_sorted_by_estimate(self) -> None:
@@ -670,9 +674,9 @@ class TestDynamicDisplay:
 
         # Start checks with mixed estimates
         display._historical_timings = {
-            "test:short": 1.0,
-            "test:long": 10.0,
-            "test:medium": 5.0,
+            "test:short": TimingStats(mean=1.0, std_dev=0.1, sample_count=5),
+            "test:long": TimingStats(mean=10.0, std_dev=1.0, sample_count=5),
+            "test:medium": TimingStats(mean=5.0, std_dev=0.5, sample_count=5),
         }
 
         display.on_check_start("test:short")
@@ -707,7 +711,9 @@ class TestDynamicDisplay:
         display = DynamicDisplay(quiet=True)
         display._overall_start_time = time.time()
         display.set_total_checks(3)
-        display._historical_timings = {"test:b": 5.0}
+        display._historical_timings = {
+            "test:b": TimingStats(mean=5.0, std_dev=0.5, sample_count=5)
+        }
 
         display.on_check_start("test:a")
         display.on_check_start("test:b")
@@ -858,13 +864,27 @@ class TestDynamicDisplay:
 
     def test_load_historical_timings(self, tmp_path) -> None:
         """Test load_historical_timings loads timing data."""
-        # Create a timings file with correct format: {"name": {"avg": float, "count": int}}
+        # Create a timings file with v2 (sample-based) format
         timings_dir = tmp_path / ".slopmop"
         timings_dir.mkdir(parents=True)
         timings_file = timings_dir / "timings.json"
-        timings_file.write_text('{"test:check": {"avg": 3.5, "count": 5}}')
+        import json
+        import time as time_mod
+
+        timings_file.write_text(
+            json.dumps(
+                {
+                    "test:check": {
+                        "samples": [3.0, 4.0],
+                        "last_updated": time_mod.time(),
+                    }
+                }
+            )
+        )
 
         display = DynamicDisplay(quiet=True)
         display.load_historical_timings(str(tmp_path))
 
-        assert display._historical_timings == {"test:check": 3.5}
+        assert "test:check" in display._historical_timings
+        assert display._historical_timings["test:check"].mean == 3.5
+        assert display._historical_timings["test:check"].sample_count == 2
