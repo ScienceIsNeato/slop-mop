@@ -3,14 +3,11 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from slopmop.checks.base import Flaw, GateCategory
 from slopmop.checks.quality.config_debt import (
     ConfigDebtCheck,
     _load_config,
     check_disabled_gates,
-    check_scope_drift,
     check_stale_applicability,
 )
 from slopmop.core.result import CheckStatus
@@ -267,135 +264,6 @@ class TestDisabledGates:
 
 
 # ---------------------------------------------------------------------------
-# check_scope_drift
-# ---------------------------------------------------------------------------
-
-
-class TestScopeDrift:
-    """Scenario 3: include/exclude dirs differ from generated baseline."""
-
-    def test_extra_excludes_flagged(self):
-        """Excludes in current but not baseline → finding."""
-        config = {
-            "laziness": {"exclude_dirs": ["slop-mop", "vendor", "legacy"]},
-        }
-        baseline = {
-            "laziness": {"exclude_dirs": ["slop-mop"]},
-        }
-        findings = check_scope_drift(config, baseline)
-        assert len(findings) == 1
-        assert "2 extra exclude_dirs" in findings[0]
-        assert "legacy" in findings[0]
-        assert "vendor" in findings[0]
-
-    def test_no_finding_when_excludes_match(self):
-        """Excludes identical to baseline → no finding."""
-        config = {
-            "laziness": {"exclude_dirs": ["slop-mop"]},
-        }
-        baseline = {
-            "laziness": {"exclude_dirs": ["slop-mop"]},
-        }
-        findings = check_scope_drift(config, baseline)
-        assert findings == []
-
-    def test_missing_includes_flagged(self):
-        """Includes in baseline but missing from current → finding."""
-        config = {
-            "laziness": {"include_dirs": []},
-        }
-        baseline = {
-            "laziness": {"include_dirs": ["src", "lib"]},
-        }
-        findings = check_scope_drift(config, baseline)
-        assert len(findings) == 1
-        assert "2 include_dirs removed" in findings[0]
-        assert "src" in findings[0]
-        assert "lib" in findings[0]
-
-    def test_no_finding_when_includes_match(self):
-        """Includes identical to baseline → no finding."""
-        config = {
-            "laziness": {"include_dirs": ["src"]},
-        }
-        baseline = {
-            "laziness": {"include_dirs": ["src"]},
-        }
-        findings = check_scope_drift(config, baseline)
-        assert findings == []
-
-    def test_extra_includes_not_flagged(self):
-        """More includes than baseline is fine (not narrowing scope)."""
-        config = {
-            "laziness": {"include_dirs": ["src", "lib", "extra"]},
-        }
-        baseline = {
-            "laziness": {"include_dirs": ["src"]},
-        }
-        findings = check_scope_drift(config, baseline)
-        assert findings == []
-
-    def test_fewer_excludes_not_flagged(self):
-        """Fewer excludes than baseline is fine (widening scope)."""
-        config = {
-            "laziness": {"exclude_dirs": []},
-        }
-        baseline = {
-            "laziness": {"exclude_dirs": ["slop-mop"]},
-        }
-        findings = check_scope_drift(config, baseline)
-        assert findings == []
-
-    def test_multiple_categories(self):
-        """Drift in multiple categories → separate findings."""
-        config = {
-            "laziness": {"exclude_dirs": ["slop-mop", "vendor"]},
-            "myopia": {"exclude_dirs": ["slop-mop", "old_code"]},
-        }
-        baseline = {
-            "laziness": {"exclude_dirs": ["slop-mop"]},
-            "myopia": {"exclude_dirs": ["slop-mop"]},
-        }
-        findings = check_scope_drift(config, baseline)
-        assert len(findings) == 2
-
-    def test_category_missing_from_baseline(self):
-        """Category in current but not baseline → skipped."""
-        config = {
-            "laziness": {"exclude_dirs": ["slop-mop", "vendor"]},
-        }
-        baseline = {}  # no laziness category
-        findings = check_scope_drift(config, baseline)
-        assert findings == []
-
-    def test_category_missing_from_current(self):
-        """Category in baseline but not current → skipped."""
-        config = {}
-        baseline = {
-            "laziness": {"include_dirs": ["src"]},
-        }
-        findings = check_scope_drift(config, baseline)
-        assert findings == []
-
-    def test_both_excludes_and_includes_drift(self):
-        """Both extra excludes and missing includes in same category."""
-        config = {
-            "laziness": {
-                "exclude_dirs": ["slop-mop", "vendor"],
-                "include_dirs": [],
-            },
-        }
-        baseline = {
-            "laziness": {
-                "exclude_dirs": ["slop-mop"],
-                "include_dirs": ["src"],
-            },
-        }
-        findings = check_scope_drift(config, baseline)
-        assert len(findings) == 2
-
-
-# ---------------------------------------------------------------------------
 # Full run() integration
 # ---------------------------------------------------------------------------
 
@@ -451,26 +319,7 @@ class TestConfigDebtRun:
         assert result.status == CheckStatus.WARNED
         assert "laziness:complexity" in result.output
 
-    def test_scope_drift_warns(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Extra excludes beyond baseline → WARNED."""
-        _write_config(
-            tmp_path,
-            {
-                "laziness": {"exclude_dirs": ["slop-mop", "vendor"]},
-            },
-        )
-        monkeypatch.setattr(
-            "slopmop.utils.generate_base_config.generate_base_config",
-            lambda: {"laziness": {"exclude_dirs": ["slop-mop"]}},
-        )
-        check = ConfigDebtCheck({})
-        result = check.run(str(tmp_path))
-        assert result.status == CheckStatus.WARNED
-        assert "vendor" in result.output
-
-    def test_multiple_findings_combined(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_multiple_findings_combined(self, tmp_path: Path):
         """Multiple debt items → single WARNED with count."""
         _make_python_project(tmp_path)
         _write_config(
@@ -479,22 +328,17 @@ class TestConfigDebtRun:
                 "disabled_gates": ["myopia:security-scan"],
                 "laziness": {
                     "enabled": True,
-                    "exclude_dirs": ["slop-mop", "vendor"],
                     "gates": {"py-lint": {"enabled": False}},
                 },
             },
         )
-        monkeypatch.setattr(
-            "slopmop.utils.generate_base_config.generate_base_config",
-            lambda: {"laziness": {"exclude_dirs": ["slop-mop"]}},
-        )
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.WARNED
-        # Should have 3 findings: stale, disabled, scope drift
-        assert "3 config debt item(s)" in result.output
+        # Should have 2 findings: stale + disabled
+        assert "2 config debt item(s)" in result.output
 
-    def test_never_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_never_fails(self, tmp_path: Path):
         """Even with lots of debt, status is WARNED not FAILED."""
         _make_python_project(tmp_path)
         _make_javascript_project(tmp_path)
@@ -504,17 +348,12 @@ class TestConfigDebtRun:
                 "disabled_gates": ["a:b", "c:d", "e:f"],
                 "laziness": {
                     "enabled": True,
-                    "exclude_dirs": ["slop-mop", "hidden_code"],
                     "gates": {
                         "py-lint": {"enabled": False},
                         "js-lint": {"enabled": False},
                     },
                 },
             },
-        )
-        monkeypatch.setattr(
-            "slopmop.utils.generate_base_config.generate_base_config",
-            lambda: {"laziness": {"exclude_dirs": ["slop-mop"]}},
         )
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))

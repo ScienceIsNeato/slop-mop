@@ -67,10 +67,6 @@ def generate_gate_config(check: BaseCheck) -> Dict[str, Any]:
     return config
 
 
-# Always exclude slop-mop from its own checks when used as a submodule
-DEFAULT_EXCLUDE_DIRS = ["slop-mop"]
-
-
 def generate_language_config(
     checks: List[BaseCheck],
     category: GateCategory,
@@ -84,12 +80,10 @@ def generate_language_config(
         all_enabled: If True, set category and all gates to enabled
 
     Returns:
-        Dict with language-level and gate-level config
+        Dict with category-level and gate-level config
     """
     language_config: Dict[str, Any] = {
         "enabled": all_enabled,
-        "include_dirs": [],
-        "exclude_dirs": DEFAULT_EXCLUDE_DIRS.copy(),
         "gates": {},
     }
 

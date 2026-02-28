@@ -94,9 +94,6 @@ class CheckRegistry:
     ) -> Dict[str, Any]:
         """Extract gate-specific config from full config.
 
-        Merges category-level include_dirs/exclude_dirs into the gate config
-        if not already specified at the gate level.
-
         Args:
             name: Check name in format 'category:check-name'
             full_config: Full configuration dictionary
@@ -117,11 +114,6 @@ class CheckRegistry:
 
         # Get specific gate config
         gate_config = gates.get(gate_name, {}).copy()
-
-        # Merge category-level include_dirs/exclude_dirs if not specified at gate level
-        for key in ("include_dirs", "exclude_dirs"):
-            if key not in gate_config and key in cat_config:
-                gate_config[key] = cat_config[key]
 
         return gate_config
 

@@ -1,9 +1,9 @@
-"""Config debt detection — surfaces stale, disabled, or scoped-out config.
+"""Config debt detection — surfaces stale or disabled config.
 
 LLM agents commonly adjust configuration to make gates pass rather than
 fixing the underlying issues, or run ``sm init`` once and never revisit
 the config as the project evolves.  This check audits the current
-``.sb_config.json`` for three classes of configuration debt:
+``.sb_config.json`` for two classes of configuration debt:
 
 1. **Stale applicability** — Language-specific gates (``py-*``, ``js-*``)
    are disabled but the project now contains markers for that language.
@@ -14,11 +14,6 @@ the config as the project evolves.  This check audits the current
    ``sm config --disable`` (the top-level ``disabled_gates`` list).
    Disabling is legitimate short-term, but the intent should be to
    re-enable once the underlying debt is addressed.
-
-3. **Scope drift** — The current config's ``include_dirs`` /
-   ``exclude_dirs`` differ from the baseline that ``sm init`` would
-   generate.  Extra excludes or missing includes suggest someone
-   narrowed the scope to make gates pass rather than fixing issues.
 
 The check always returns WARNED (never FAILED).  Its purpose is to
 nudge toward addressing config debt over time, not to block work.
@@ -146,79 +141,18 @@ def check_disabled_gates(explicitly_disabled: Set[str]) -> List[str]:
     ]
 
 
-def check_scope_drift(
-    config: Dict[str, Any],
-    baseline: Dict[str, Any],
-) -> List[str]:
-    """Compare include/exclude dirs against the generated baseline.
-
-    Flags two forms of drift:
-
-    * **Extra excludes** — entries in ``exclude_dirs`` that are not in
-      the baseline (someone added dirs to hide from gates).
-    * **Missing includes** — entries in the baseline ``include_dirs``
-      that are absent from the current config (someone narrowed scope).
-
-    *baseline* is the config that ``generate_base_config()`` would
-    produce for this project right now.
-    """
-    findings: List[str] = []
-    flaw_keys = {cat.key for cat in GateCategory}
-
-    for cat_key in flaw_keys:
-        cur_raw = config.get(cat_key)
-        base_raw = baseline.get(cat_key)
-        if not isinstance(cur_raw, dict) or not isinstance(base_raw, dict):
-            continue
-        cur_cat: Dict[str, Any] = cast(Dict[str, Any], cur_raw)
-        base_cat: Dict[str, Any] = cast(Dict[str, Any], base_raw)
-
-        # --- Extra excludes ------------------------------------------------
-        cur_excludes: Set[str] = _str_set(cur_cat.get("exclude_dirs", []))
-        base_excludes: Set[str] = _str_set(base_cat.get("exclude_dirs", []))
-        added_excludes = sorted(cur_excludes - base_excludes)
-        if added_excludes:
-            dirs = ", ".join(added_excludes)
-            findings.append(
-                f"{cat_key}: {len(added_excludes)} extra exclude_dirs "
-                f"beyond baseline — {dirs}"
-            )
-
-        # --- Missing includes ----------------------------------------------
-        cur_includes: Set[str] = _str_set(cur_cat.get("include_dirs", []))
-        base_includes: Set[str] = _str_set(base_cat.get("include_dirs", []))
-        missing_includes = sorted(base_includes - cur_includes)
-        if missing_includes:
-            dirs = ", ".join(missing_includes)
-            findings.append(
-                f"{cat_key}: {len(missing_includes)} include_dirs removed "
-                f"from baseline — {dirs}"
-            )
-
-    return findings
-
-
-def _str_set(val: object) -> Set[str]:
-    """Coerce an unknown value to a set of strings."""
-    if not isinstance(val, list):
-        return set()
-    return {str(item) for item in cast(List[object], val) if isinstance(item, str)}
-
-
 # ── Check class ───────────────────────────────────────────────────────
 
 
 class ConfigDebtCheck(BaseCheck):
-    """Config debt detection — surfaces stale, disabled, or scoped-out config.
+    """Config debt detection — surfaces stale or disabled config.
 
-    Detects three forms of configuration debt:
+    Detects two forms of configuration debt:
 
     1. **Stale applicability** — Language-specific gates (``py-*``,
        ``js-*``) disabled but the project now has that language.
     2. **Disabled gates** — Gates in the ``disabled_gates`` top-level
        list (set via ``sm config --disable``).
-    3. **Scope drift** — ``include_dirs`` / ``exclude_dirs`` differ
-       from the generated baseline (extra excludes or missing includes).
 
     Always returns WARNED (never FAILED) — this is a nudge, not a
     blocker.
@@ -275,10 +209,6 @@ class ConfigDebtCheck(BaseCheck):
         findings: List[str] = []
         findings.extend(check_stale_applicability(root, config, explicitly_disabled))
         findings.extend(check_disabled_gates(explicitly_disabled))
-        from slopmop.utils.generate_base_config import generate_base_config
-
-        baseline = generate_base_config()
-        findings.extend(check_scope_drift(config, baseline))
 
         duration = time.time() - start
 

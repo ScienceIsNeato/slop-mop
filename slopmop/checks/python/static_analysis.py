@@ -86,6 +86,17 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                 ),
                 permissiveness="true_is_stricter",
             ),
+            ConfigField(
+                name="include_dirs",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Directories to type-check (relative to project root). "
+                    "When empty, falls back to heuristic detection (src/, "
+                    "slopmop/, lib/, or packages with __init__.py)."
+                ),
+                permissiveness="fewer_is_stricter",
+            ),
         ]
 
     @property

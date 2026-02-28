@@ -6,7 +6,7 @@
 
 ### Summary
 
-Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`swab`/`scour`). New top-level commands `sm swab` (fast, every commit) and `sm scour` (thorough, PR-level). `sm validate` removed — no backward compatibility. `--swabbing-time` flag fully implemented with pre-run budget filtering and mid-run termination. `SkipReason` enum added for structured skip metadata. All `validate` terminology scrubbed from source and docs.
+Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`swab`/`scour`). New top-level commands `sm swab` (fast, every commit) and `sm scour` (thorough, PR-level). `sm validate` removed — no backward compatibility. `--swabbing-time` flag fully implemented with pre-run budget filtering. `SkipReason` enum added for structured skip metadata. All `validate` terminology scrubbed from source and docs. "Not run" summary section added to output — every skipped check is listed with its reason.
 
 ### Core Changes
 
@@ -25,6 +25,9 @@ Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`
 13. **SkipReason enum** — 6 structured skip reasons: FAIL_FAST, NOT_APPLICABLE, DISABLED, DEPENDENCY_FAILED, SUPERSEDED, TIME_BUDGET
 14. **CheckResult.skip_reason** — `Optional[SkipReason]` field set by executor on all SKIPPED/NOT_APPLICABLE results
 15. **Terminology cleanup** — all `validate` references removed from sm.py docstring, help.py, README
+16. **"Not run" summary section** — `ConsoleReporter._print_not_run_section()` lists all skipped/N/A checks with human-readable reasons (disabled, not applicable, time budget w/ est. duration, fail-fast, dependency failed, superseded); appears in both success and failure paths
+17. **Executor records disabled/superseded checks** — previously filtered silently, now recorded as SKIPPED results with appropriate SkipReason so they appear in the summary
+18. **laziness:config-debt gate** — `ConfigDebtCheck` detects three forms of config debt: (1) stale applicability — language gates disabled but language present, (2) disabled gates — items in `disabled_gates` top-level list, (3) exclude drift — `exclude_dirs` with source files. Always WARNED, never FAILED. Enabled in self-validation. 40 unit tests.
 
 ### Swabbing-Time Implementation
 
@@ -39,15 +42,15 @@ Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`
 
 - test_sm_cli.py — swab/scour parser tests, `--swabbing-time` tests (parser, config set, config disable), hook format tests, routing tests
 - test_cli.py — `_print_next_steps` assertions updated
-- test_console_reporter.py — next-step string updated, SkipReason-based skip code tests
-- test_executor.py — SkipReason assertions for dependency-skip and inapplicable results; 9 `TestSwabbingTimeBudget` tests (pre-run filtering, accumulation, no-history baseline, zero/negative disable)
+- test_console_reporter.py — next-step string updated, SkipReason-based skip code tests, 10 `TestNotRunSection` tests (disabled/N/A/time-budget/fail-fast labels, sort order, omit-when-empty, failure path)
+- test_executor.py — SkipReason assertions for dependency-skip and inapplicable results; 9 `TestSwabbingTimeBudget` tests; disabled gate tests updated for SKIPPED result recording; fixed pre-existing bug in `test_disabled_gate_propagates_to_dependents` (mismatched mock names)
 - test_generate_config.py — `default_profile` assertion removed
 - test_status.py — fully updated (imports, parser, helpers, inventory, remediation)
 - Integration tests — docker_manager default command, docstrings
 
 ### Validation
 
-- 1067 unit tests pass
-- 11 self-validation gates green (sm swab --self)
+- 1116 unit tests pass
+- 14 self-validation gates green (sm swab --self), including new config-debt
 - CI workflows updated (sm scour --self, sm scour -g pr:comments)
 - README fully updated (zero `validate` references remain)
