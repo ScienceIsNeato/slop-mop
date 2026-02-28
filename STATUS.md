@@ -6,7 +6,7 @@
 
 ### Summary
 
-Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`swab`/`scour`). New top-level commands `sm swab` (fast, every commit) and `sm scour` (thorough, PR-level). `sm validate` retained as deprecated shim. `--swabbing-time` flag added as preview (accepted but not enforced). `SkipReason` enum added for structured skip metadata. All `validate` terminology scrubbed from source and docs.
+Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`swab`/`scour`). New top-level commands `sm swab` (fast, every commit) and `sm scour` (thorough, PR-level). `sm validate` removed — no backward compatibility. `--swabbing-time` flag added as preview (accepted but not enforced). `SkipReason` enum added for structured skip metadata. All `validate` terminology scrubbed from source and docs.
 
 ### Core Changes
 
@@ -19,7 +19,7 @@ Replacing the `commit`/`pr` profile system with intrinsic gate-level metadata (`
 7. **hooks.py** — maps legacy profiles to verbs, new `# Command: sm {verb}` format
 8. **init.py** — `_print_next_steps()` references swab/scour
 9. **console.py** — next-step remediation uses `./sm swab -g <gate>`, skip reason codes use `SkipReason` enum
-10. **All check docstrings** — `./sm validate <gate>` → `./sm swab -g <gate>`, `Re-validate:` → `Re-check:`
+10. **All check docstrings** — `./sm swab -g <gate>`, `Re-check:`
 11. **`_register_aliases` refactored** — split into `_register_legacy_aliases` + `_register_aliases` to fix LOC lock
 12. **`generate_base_config`** — removed `default_profile`
 13. **SkipReason enum** — 6 structured skip reasons: FAIL_FAST, NOT_APPLICABLE, DISABLED, DEPENDENCY_FAILED, SUPERSEDED, TIME_BUDGET
