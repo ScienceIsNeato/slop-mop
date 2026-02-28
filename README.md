@@ -20,7 +20,7 @@ Slop-mop runs a set of quality gates organized around these four failure modes. 
 - **Swab** (`sm swab`) — routine maintenance, every commit. Quick checks that keep things from getting worse.
 - **Scour** (`sm scour`) — deep inspection before opening a PR. Catches what routine swabbing misses.
 
-The mop finds the slop. You (or your agent) clean it up. The ship stays seaworthy.
+The mop finds the slop. The agent cleans it up. The ship stays seaworthy.
 
 ---
 
@@ -31,7 +31,7 @@ The mop finds the slop. You (or your agent) clean it up. The ship stays seaworth
 pipx install slopmop          # recommended — isolated, no dep conflicts
 # or: pip install slopmop
 
-# Set up your project
+# Set up the project
 sm init                       # auto-detects languages, writes .sb_config.json
 
 # Run quality gates
@@ -51,7 +51,7 @@ Development with slop-mop follows a single repeated cycle:
 sm swab → see what fails → fix it → repeat → commit
 ```
 
-When a gate fails, the output tells you exactly what to do next:
+When a gate fails, the output tells the agent exactly what to do next:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -148,7 +148,7 @@ The LLM has a 200k-token context window and still manages tunnel vision. It dupl
 
 ## Levels
 
-Every gate has an intrinsic **level** — the point in your workflow where it belongs:
+Every gate has an intrinsic **level** — the point in the workflow where it belongs:
 
 | Level | Command | Gates | When to Use |
 |-------|---------|-------|-------------|
@@ -159,7 +159,7 @@ Scour is a strict superset of swab — it runs everything swab does, plus contex
 
 ### Aliases
 
-For convenience, named aliases let you run a subset with `-g`:
+For convenience, named aliases run a subset with `-g`:
 
 | Alias | Gates | Purpose |
 |-------|-------|---------|
@@ -197,14 +197,14 @@ Most projects won't pass all gates on day one. That's expected. Here's the ramp:
 sm init                       # auto-detects everything, writes .sb_config.json
 ```
 
-### 2. See Where You Stand
+### 2. See What Fails
 
 ```bash
 sm swab                       # run swab-level gates, see what fails
 sm status                     # full report card
 ```
 
-### 3. Disable What You're Not Ready For
+### 3. Disable What's Not Ready Yet
 
 ```bash
 sm config --disable laziness:complexity        # too many complex functions right now
@@ -214,7 +214,7 @@ sm swab                                        # get the rest green first
 
 ### 4. Fix Everything That's Left
 
-Iterate: run `sm swab`, fix a failure, run again. The iteration guidance tells you exactly what to do after each failure.
+Iterate: run `sm swab`, fix a failure, run again. The iteration guidance tells the agent exactly what to do after each failure.
 
 ### 5. Install Hooks
 
@@ -320,16 +320,16 @@ sm ci --watch        # poll until CI completes
 
 ## Architecture
 
-Slop-mop installs as a normal package and is configured per-project via `.sb_config.json`. The `sm` command is on your PATH once and works in any repo.
+Slop-mop installs as a normal package and is configured per-project via `.sb_config.json`. The `sm` command goes on PATH once and works in any repo.
 
-**Tool resolution order** — sm uses your project's tools when available:
+**Tool resolution order** — sm uses the project's tools when available:
 1. `<project_root>/venv/bin/<tool>` or `.venv/bin/<tool>` — project-local venv (highest priority)
 2. `$VIRTUAL_ENV/bin/<tool>` — currently activated venv
 3. System PATH — sm's own bundled tools (via pipx)
 
-This means if your project has its own `pytest` (with plugins like `pytest-django`), sm uses it. Otherwise, sm falls back to its own.
+This means if the project has its own `pytest` (with plugins like `pytest-django`), sm uses it. Otherwise, sm falls back to its own.
 
-**Submodule alternative**: If you need strict version pinning, add `slop-mop` as a git submodule and invoke `python -m slopmop.sm` directly. Supported but not recommended for most projects.
+**Submodule alternative**: For strict version pinning, add `slop-mop` as a git submodule and invoke `python -m slopmop.sm` directly. Supported but not recommended for most projects.
 
 ---
 
