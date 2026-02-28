@@ -141,14 +141,6 @@ class CategoryConfig:
             if isinstance(gate_data, dict):
                 gates[gate_name] = GateConfig.from_dict(cast(Dict[str, Any], gate_data))
 
-        # Warn about deprecated category-level include/exclude dirs
-        for deprecated_key in ("include_dirs", "exclude_dirs"):
-            if deprecated_key in data:
-                logger.debug(
-                    f"Ignoring category-level '{deprecated_key}' — "
-                    f"use per-gate ConfigField instead"
-                )
-
         return cls(
             enabled=data.get("enabled", False),
             gates=gates,

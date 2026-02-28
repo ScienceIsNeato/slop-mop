@@ -55,5 +55,12 @@ HEADER_DASH = "─"
 # Indent for check lines under category headers
 CHECK_INDENT = "   "  # 3 spaces
 
+# Overrun severity thresholds (percentage over expected duration)
+# When a check exceeds its historical average by these amounts,
+# the progress indicator escalates color to signal unusual delays.
+OVERRUN_WARN_PCT = 15  # Yellow — taking notably longer
+OVERRUN_CAUTION_PCT = 30  # Orange — something may be wrong
+OVERRUN_ALERT_PCT = 50  # Red — significantly over expected time
+
 # Column widths for status word (passed/failed/etc.)
 STATUS_COLUMN_WIDTH = 8  # "passed" = 6, "failed" = 6, "skipped" = 7, padding

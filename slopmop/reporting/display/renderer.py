@@ -216,6 +216,7 @@ def build_progress_bar(
     pct: float,
     colors_enabled: Optional[bool] = None,
     bar_color: Optional[str] = None,
+    pct_label: Optional[str] = None,
 ) -> str:
     """Build a line with a progress bar between left and right.
 
@@ -229,6 +230,8 @@ def build_progress_bar(
         colors_enabled: Whether to colorize the filled portion
         bar_color: ANSI color code to use for the filled portion (e.g. "\033[32m").
             Defaults to cyan if None.
+        pct_label: Override the percentage label (e.g. "|+13%" for overrun).
+            May contain ANSI codes; display width is measured correctly.
 
     Returns:
         Formatted line with progress bar
@@ -240,8 +243,10 @@ def build_progress_bar(
     if gap < config.MIN_PROGRESS_BAR_WIDTH:
         return right_justify(left, right, term_width)
 
-    pct_label = f"{int(pct * 100):>3}%"
-    bar_width = gap - len(pct_label) - 3  # [] + space before pct
+    if pct_label is None:
+        pct_label = f"{int(pct * 100):>3}%"
+    pct_label_width = display_width(pct_label)
+    bar_width = gap - pct_label_width - 3  # [] + space before pct
     if bar_width < config.MIN_BAR_CONTENT_WIDTH:
         return right_justify(left, right, term_width)
 

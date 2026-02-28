@@ -200,6 +200,41 @@ def bold(text: str, colors_enabled: Optional[bool] = None) -> str:
     return colorize(text, Color.BOLD, colors_enabled)
 
 
+def overrun_color(overrun_pct: float, colors_enabled: Optional[bool] = None) -> str:
+    """Get ANSI color code for a time-overrun percentage.
+
+    Escalates through yellow → orange → red as the overrun grows,
+    giving immediate visual feedback when a gate is running long.
+
+    Thresholds (from display config):
+      < 15%:  no color (normal text)
+      15-29%: yellow  — taking notably longer than usual
+      30-49%: orange  — something may be wrong
+      >= 50%: red     — significantly over expected time
+
+    Args:
+        overrun_pct: How far over expected duration, as a percentage
+            (e.g. 13.0 means +13% over).
+        colors_enabled: Override color detection (for testing).
+
+    Returns:
+        ANSI color code prefix, or empty string if below threshold
+        or colors disabled.
+    """
+    from slopmop.reporting.display import config as display_config
+
+    if colors_enabled is None:
+        colors_enabled = supports_color()
+    if not colors_enabled or overrun_pct < display_config.OVERRUN_WARN_PCT:
+        return ""
+    if overrun_pct < display_config.OVERRUN_CAUTION_PCT:
+        return Color.YELLOW.value
+    if overrun_pct < display_config.OVERRUN_ALERT_PCT:
+        # Dark orange via true-color, yellow fallback on 16-color terminals
+        return ansi_rgb("#FF8C00", Color.YELLOW)
+    return Color.RED.value
+
+
 def category_header_color(category: str, colors_enabled: Optional[bool] = None) -> str:
     """Get ANSI color code for a category header.
 

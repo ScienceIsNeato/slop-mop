@@ -646,9 +646,9 @@ class TestDynamicDisplay:
         assert "%" not in line
 
     def test_progress_bar_percentage_caps_at_99(self) -> None:
-        """Test progress bar caps at 99% even when over estimate."""
+        """Test progress bar shows overrun indicator when over estimate."""
         display = DynamicDisplay(quiet=True)
-        # Elapsed 5s but estimated 2s — running overtime
+        # Elapsed 5s but estimated 2s — running 150% overtime
         info = CheckDisplayInfo(
             name="test:check",
             state=DisplayState.RUNNING,
@@ -658,9 +658,9 @@ class TestDynamicDisplay:
 
         line = display._format_check_line(info)
 
-        assert "99%" in line
-        # Should not show 100% or >100%
-        assert "100%" not in line
+        # Should show overrun indicator instead of 99%
+        assert "|+" in line
+        assert "99%" not in line
 
     def test_active_checks_sorted_by_estimate(self) -> None:
         """Test running checks sorted: estimated DESC first, then unknown alpha."""

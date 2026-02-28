@@ -16,6 +16,7 @@ from slopmop.reporting.display import config
 from slopmop.reporting.display.colors import (
     Color,
     category_header_color,
+    overrun_color,
     reset_color,
     status_color,
     supports_color,
@@ -563,19 +564,40 @@ class DynamicDisplay:
         time_str = format_time(elapsed)
 
         if info.expected_duration and info.expected_duration > 0:
+            ratio = elapsed / info.expected_duration
+            category = info.name.split(":")[0] if ":" in info.name else ""
+            cat_color = category_header_color(category, self._colors_enabled) or None
+
+            if ratio > 1.0:
+                # Overrunning — show how far past the expected time
+                overrun_pct = (ratio - 1.0) * 100
+                oc = overrun_color(overrun_pct, self._colors_enabled)
+                rc = reset_color(self._colors_enabled)
+                label = f"|+{int(overrun_pct)}%"
+                pct_label = f"{oc}{label}{rc}" if oc else label
+                bar_color = oc if oc else cat_color
+                right = align_columns(time_str, "")
+                return build_progress_bar(
+                    left,
+                    right,
+                    width,
+                    1.0,
+                    colors_enabled=self._colors_enabled,
+                    bar_color=bar_color,
+                    pct_label=pct_label,
+                )
+
             remaining = max(0.0, info.expected_duration - elapsed)
             eta_str = format_time(remaining)
-            pct = min(elapsed / info.expected_duration, 0.99)
+            pct = min(ratio, 0.99)
             right = align_columns(time_str, eta_str)
-            category = info.name.split(":")[0] if ":" in info.name else ""
-            bar_color = category_header_color(category, self._colors_enabled) or None
             return build_progress_bar(
                 left,
                 right,
                 width,
                 pct,
                 colors_enabled=self._colors_enabled,
-                bar_color=bar_color,
+                bar_color=cat_color,
             )
         else:
             right = align_columns(time_str, "N/A")
