@@ -164,19 +164,26 @@ sm swab -g deceptiveness:py-coverage    # re-check just coverage
 sm swab -g laziness:complexity          # re-check just complexity
 ```
 
-### Time Budget (Preview)
+### Time Budget
 
-Use `--swabbing-time` to set a time budget in seconds. Gates are ordered by
-historical runtime and skipped once the budget would be exceeded:
+Use `--swabbing-time` to set a time budget in seconds. Gates with historical
+runtime data are sorted fastest-first and skipped once the accumulated
+estimate would exceed the budget. Gates without timing history always run
+(to establish a baseline). If wall-clock time exceeds the budget mid-run,
+in-flight gates with timing data are terminated.
 
 ```bash
 sm swab --swabbing-time 30    # only run gates that fit in ~30 seconds
-sm scour --swabbing-time 120  # thorough pass, but cap at 2 minutes
 ```
 
-> **Note:** `--swabbing-time` is a preview feature — the flag is accepted but
-> budget enforcement is not yet active. Full implementation is coming in a
-> future release.
+`sm init` sets a default of 20 seconds. Change it any time:
+
+```bash
+sm config --swabbing-time 45  # raise the budget
+sm config --swabbing-time 0   # disable the limit entirely
+```
+
+Time budgets only apply to swab. Scour runs always execute every gate.
 
 ---
 

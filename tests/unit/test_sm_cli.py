@@ -125,7 +125,7 @@ class TestCreateParser:
         assert args.self_validate is True
 
     def test_swabbing_time_flag(self):
-        """--swabbing-time flag parses correctly."""
+        """--swabbing-time flag parses correctly on swab."""
         parser = create_parser()
         args = parser.parse_args(["swab", "--swabbing-time", "30"])
         assert args.verb == "swab"
@@ -136,6 +136,12 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["scour"])
         assert args.swabbing_time is None
+
+    def test_swabbing_time_zero_disables(self):
+        """--swabbing-time 0 parses and signals 'no limit'."""
+        parser = create_parser()
+        args = parser.parse_args(["swab", "--swabbing-time", "0"])
+        assert args.swabbing_time == 0
 
     def test_config_subcommand(self):
         """Config subcommand parses correctly."""
@@ -315,6 +321,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
+            swabbing_time=None,
         )
 
         with patch("slopmop.checks.ensure_checks_registered"):
@@ -347,6 +354,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
+            swabbing_time=None,
         )
 
         with patch("slopmop.checks.ensure_checks_registered"):
@@ -355,6 +363,59 @@ class TestCmdConfig:
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
         assert "myopia:security-scan" not in config.get("disabled_gates", [])
+
+    def test_config_swabbing_time_parser(self):
+        """config --swabbing-time flag parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["config", "--swabbing-time", "45"])
+        assert args.verb == "config"
+        assert args.swabbing_time == 45
+
+    def test_set_swabbing_time(self, tmp_path):
+        """--swabbing-time updates config file."""
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=30,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert config["swabbing_time"] == 30
+
+    def test_disable_swabbing_time(self, tmp_path):
+        """--swabbing-time 0 removes swabbing_time from config."""
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps({"version": "1.0", "swabbing_time": 20})
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=0,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert "swabbing_time" not in config
 
 
 class TestCmdHelp:

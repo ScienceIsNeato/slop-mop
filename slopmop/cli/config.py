@@ -204,6 +204,14 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
     print(f"📄 Config file: {config_file}")
     print()
 
+    # Show swabbing-time setting
+    swabbing_time = config.get("swabbing_time")
+    if isinstance(swabbing_time, (int, float)) and swabbing_time > 0:
+        print(f"⏱️  Swabbing-time budget: {int(swabbing_time)}s")
+    else:
+        print("⏱️  Swabbing-time budget: no limit")
+    print()
+
     registry = get_registry()
 
     # Show all available gates
@@ -225,6 +233,19 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         print(f"  {alias}: {', '.join(gates)}")
 
     print()
+    return 0
+
+
+def _set_swabbing_time(config_file: Path, config: dict[str, Any], seconds: int) -> int:
+    """Set or disable the swabbing-time budget."""
+    if seconds <= 0:
+        config.pop("swabbing_time", None)
+        config_file.write_text(json.dumps(config, indent=2))
+        print("✅ Swabbing-time budget disabled (no limit)")
+    else:
+        config["swabbing_time"] = seconds
+        config_file.write_text(json.dumps(config, indent=2))
+        print(f"✅ Swabbing-time budget set to {seconds}s")
     return 0
 
 
@@ -257,6 +278,9 @@ def cmd_config(args: argparse.Namespace) -> int:
 
     if args.exclude_dir:
         return _add_exclude_dir(config_file, config, args.exclude_dir)
+
+    if getattr(args, "swabbing_time", None) is not None:
+        return _set_swabbing_time(config_file, config, args.swabbing_time)
 
     # Default: show config
     return _show_config(project_root, config_file, config)

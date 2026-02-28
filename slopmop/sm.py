@@ -129,7 +129,11 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         type=int,
         metavar="SECONDS",
         default=None,
-        help="Time budget in seconds — skip gates that won't fit (preview)",
+        help=(
+            "Time budget in seconds for swab runs. Gates with historical "
+            "timing data are skipped when the budget would be exceeded. "
+            "Overrides the config-file default. Set to 0 to disable."
+        ),
     )
 
 
@@ -203,6 +207,12 @@ def _add_config_parser(
         "--json",
         metavar="FILE",
         help="Update configuration from JSON file",
+    )
+    config_parser.add_argument(
+        "--swabbing-time",
+        type=int,
+        metavar="SECONDS",
+        help="Set the swabbing-time budget (seconds). 0 or negative disables the limit.",
     )
     config_parser.add_argument(
         "--project-root",

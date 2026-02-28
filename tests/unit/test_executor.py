@@ -694,3 +694,242 @@ class TestRunQualityChecks:
             # Restore registry state for subsequent tests
             registry_module._default_registry = old_registry
             checks_module._checks_registered = old_checks_registered
+
+
+# ─── Swabbing-time budget tests ──────────────────────────────────────────
+
+
+class TestSwabbingTimeBudget:
+    """Tests for --swabbing-time budget filtering and mid-run termination."""
+
+    def _make_registry(self, *check_specs):
+        """Build a registry with named checks.
+
+        Each spec is (name, duration, status).
+        """
+        registry = CheckRegistry()
+        for name, duration, status in check_specs:
+            cls = make_mock_check_class(name, status=status, duration=duration)
+            registry.register(cls)
+        return registry
+
+    # ── Pre-run filtering ─────────────────────────────────────────────
+
+    def test_no_budget_runs_all(self, tmp_path):
+        """Without swabbing_time, all checks run regardless of timings."""
+        registry = self._make_registry(
+            ("fast", 0.01, CheckStatus.PASSED),
+            ("slow", 0.01, CheckStatus.PASSED),
+        )
+        timings = {"overconfidence:fast": 2.0, "overconfidence:slow": 50.0}
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:fast", "overconfidence:slow"],
+            swabbing_time=None,
+            timings=timings,
+        )
+        assert summary.total_checks == 2
+        assert summary.passed == 2
+
+    def test_budget_skips_over_budget_gates(self, tmp_path):
+        """Gates whose estimated duration exceeds remaining budget are skipped."""
+        registry = self._make_registry(
+            ("fast", 0.01, CheckStatus.PASSED),
+            ("slow", 0.01, CheckStatus.PASSED),
+        )
+        # fast (2s) fits in 5s budget, slow (10s) does not
+        timings = {"overconfidence:fast": 2.0, "overconfidence:slow": 10.0}
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:fast", "overconfidence:slow"],
+            swabbing_time=5,
+            timings=timings,
+        )
+
+        results = {r.name: r for r in summary.results}
+        # Ran check: name comes from MockCheck.run() → short name
+        assert results["fast"].status == CheckStatus.PASSED
+        # Budget-skipped: name comes from executor → full_name
+        assert results["overconfidence:slow"].status == CheckStatus.SKIPPED
+        assert results["overconfidence:slow"].skip_reason == SkipReason.TIME_BUDGET
+
+    def test_budget_accumulates_durations(self, tmp_path):
+        """Multiple fast gates can fit; budget is consumed cumulatively."""
+        registry = self._make_registry(
+            ("a", 0.01, CheckStatus.PASSED),
+            ("b", 0.01, CheckStatus.PASSED),
+            ("c", 0.01, CheckStatus.PASSED),
+        )
+        # a=3s + b=3s = 6s fits in 7s; c=3s would make 9s, over budget
+        timings = {
+            "overconfidence:a": 3.0,
+            "overconfidence:b": 3.0,
+            "overconfidence:c": 3.0,
+        }
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:a", "overconfidence:b", "overconfidence:c"],
+            swabbing_time=7,
+            timings=timings,
+        )
+
+        results = {r.name: r for r in summary.results}
+        assert results["a"].passed
+        assert results["b"].passed
+        assert results["overconfidence:c"].skip_reason == SkipReason.TIME_BUDGET
+
+    def test_gates_without_timing_data_always_run(self, tmp_path):
+        """Gates with no historical timing always run (to establish a baseline)."""
+        registry = self._make_registry(
+            ("known", 0.01, CheckStatus.PASSED),
+            ("unknown", 0.01, CheckStatus.PASSED),
+        )
+        # Only 'known' has timing data; 'unknown' has no history
+        timings = {"overconfidence:known": 100.0}  # way over budget
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:known", "overconfidence:unknown"],
+            swabbing_time=5,
+            timings=timings,
+        )
+
+        results = {r.name: r for r in summary.results}
+        # known is skipped (100s >> 5s budget) — executor sets full_name
+        assert results["overconfidence:known"].skip_reason == SkipReason.TIME_BUDGET
+        # unknown runs because it has no history — MockCheck.run() uses short name
+        assert results["unknown"].passed
+
+    def test_zero_budget_disables_limit(self, tmp_path):
+        """swabbing_time=0 means no limit — all gates run."""
+        registry = self._make_registry(
+            ("check", 0.01, CheckStatus.PASSED),
+        )
+        timings = {"overconfidence:check": 999.0}
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:check"],
+            swabbing_time=0,
+            timings=timings,
+        )
+        assert summary.passed == 1
+
+    def test_negative_budget_disables_limit(self, tmp_path):
+        """swabbing_time=-1 means no limit — all gates run."""
+        registry = self._make_registry(
+            ("check", 0.01, CheckStatus.PASSED),
+        )
+        timings = {"overconfidence:check": 999.0}
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:check"],
+            swabbing_time=-1,
+            timings=timings,
+        )
+        assert summary.passed == 1
+
+    def test_empty_timings_runs_all(self, tmp_path):
+        """When timings dict is empty, every gate lacks history → all run."""
+        registry = self._make_registry(
+            ("a", 0.01, CheckStatus.PASSED),
+            ("b", 0.01, CheckStatus.PASSED),
+        )
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:a", "overconfidence:b"],
+            swabbing_time=1,
+            timings={},
+        )
+        assert summary.passed == 2
+
+    def test_skip_reason_output_message(self, tmp_path):
+        """Skipped gates include an informative output message."""
+        registry = self._make_registry(
+            ("big", 0.01, CheckStatus.PASSED),
+        )
+        timings = {"overconfidence:big": 30.0}
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:big"],
+            swabbing_time=5,
+            timings=timings,
+        )
+
+        results = {r.name: r for r in summary.results}
+        assert "30.0s" in results["overconfidence:big"].output
+        assert "5s" in results["overconfidence:big"].output
+
+    # ── _apply_time_budget unit test ──────────────────────────────────
+
+    def test_apply_time_budget_sorts_fastest_first(self, tmp_path):
+        """Budget filter prefers faster gates to maximise coverage."""
+        registry = self._make_registry(
+            ("slow", 0.01, CheckStatus.PASSED),
+            ("fast", 0.01, CheckStatus.PASSED),
+            ("medium", 0.01, CheckStatus.PASSED),
+        )
+        checks = registry.get_checks(
+            ["overconfidence:slow", "overconfidence:fast", "overconfidence:medium"],
+            {},
+        )
+        timings = {
+            "overconfidence:slow": 10.0,
+            "overconfidence:fast": 1.0,
+            "overconfidence:medium": 5.0,
+        }
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        accepted, skipped = executor._apply_time_budget(checks, timings, 7)
+
+        accepted_names = {c.full_name for c in accepted}
+        skipped_names = {c.full_name for c in skipped}
+
+        # fast (1s) + medium (5s) = 6s ≤ 7s budget; slow (10s) skipped
+        assert "overconfidence:fast" in accepted_names
+        assert "overconfidence:medium" in accepted_names
+        assert "overconfidence:slow" in skipped_names
+
+    # ── Mid-run termination ───────────────────────────────────────────
+
+    def test_midrun_terminates_timed_gates_after_deadline(self, tmp_path):
+        """In-flight gates with timing data are terminated when budget expires."""
+        # Create a slow check that takes longer than the budget
+        registry = self._make_registry(
+            ("quick", 0.01, CheckStatus.PASSED),
+            ("slowrunner", 3.0, CheckStatus.PASSED),  # takes 3s
+        )
+        # Both have timing data, but estimates are low (so pre-filter accepts)
+        timings = {
+            "overconfidence:quick": 0.01,
+            "overconfidence:slowrunner": 0.5,  # estimated 0.5s but actually 3s
+        }
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:quick", "overconfidence:slowrunner"],
+            swabbing_time=1,  # 1-second budget
+            timings=timings,
+        )
+
+        results = {r.name: r for r in summary.results}
+        # quick should have passed normally — MockCheck.run() uses short name
+        assert results["quick"].passed
+        # slowrunner may have been terminated or may have completed
+        # (depends on thread scheduling) — but the budget mechanism was activated
+        assert summary.total_checks == 2

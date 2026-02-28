@@ -125,6 +125,7 @@ def generate_base_config(
 
     config: Dict[str, Any] = {
         "version": "1.0",
+        "swabbing_time": 20,
     }
 
     # Group checks by category

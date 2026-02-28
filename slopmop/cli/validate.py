@@ -20,7 +20,7 @@ from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
-from slopmop.reporting.timings import clear_timings
+from slopmop.reporting.timings import clear_timings, load_timings
 
 
 def _setup_self_validation(project_root: Path) -> str:
@@ -216,6 +216,9 @@ def _run_validation(
         project_root=str(project_root),
     )
 
+    # Load configuration (must happen early — swabbing-time default lives here)
+    config = load_config(project_root)
+
     # Determine if we should use dynamic display
     use_dynamic = (
         sys.stdout.isatty()
@@ -228,11 +231,26 @@ def _run_validation(
     if not args.quiet:
         _print_header(project_root, gates, args)
 
-    # Handle time budget (preview feature)
-    swabbing_time = getattr(args, "swabbing_time", None)
-    if swabbing_time is not None and not args.quiet:
-        print(f"⏱️  Time budget: {swabbing_time}s (preview — not yet enforced)")
-        print()
+    # Handle time budget (swabbing-time).
+    # Only applies to swab, not scour.  Read from CLI flag first,
+    # fall back to config value.  <= 0 means no limit.
+    swabbing_time: Optional[int] = getattr(args, "swabbing_time", None)
+    if swabbing_time is None:
+        config_val = config.get("swabbing_time")
+        if isinstance(config_val, (int, float)) and config_val > 0:
+            swabbing_time = int(config_val)
+
+    # Only enforce for swab runs
+    if profile_name != "swab":
+        swabbing_time = None
+
+    # Load timing history for budget filtering
+    timings: Optional[dict[str, float]] = None
+    if swabbing_time is not None and swabbing_time > 0:
+        timings = load_timings(str(project_root))
+        if not args.quiet:
+            print(f"⏱️  Time budget: {swabbing_time}s")
+            print()
 
     # Set up dynamic display if appropriate
     dynamic_display: Optional[DynamicDisplay] = None
@@ -244,9 +262,6 @@ def _run_validation(
         # Fall back to traditional reporter
         executor.set_progress_callback(reporter.on_check_complete)
 
-    # Load configuration
-    config = load_config(project_root)
-
     try:
         # Run checks
         summary = executor.run_checks(
@@ -254,6 +269,8 @@ def _run_validation(
             check_names=gates,
             config=config,
             auto_fix=not args.no_auto_fix,
+            swabbing_time=swabbing_time,
+            timings=timings,
         )
 
         # Stop dynamic display before printing summary
