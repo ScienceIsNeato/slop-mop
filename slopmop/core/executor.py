@@ -531,11 +531,6 @@ class CheckExecutor:
                     if name in pending:
                         check = check_map[name]
 
-                        # Notify start callback before submitting
-                        if self._on_check_start:
-                            category = check.category.key if check.category else None
-                            self._on_check_start(name, category)
-
                         future = executor.submit(
                             self._run_single_check,
                             check,
@@ -660,6 +655,15 @@ class CheckExecutor:
                 output=_SKIP_FAIL_FAST,
                 skip_reason=SkipReason.FAIL_FAST,
             )
+
+        # Notify start callback NOW — when the thread pool worker
+        # actually picks up this task, not when it was submitted.
+        # This ensures start_time aligns with actual execution time,
+        # so progress estimates compare apples to apples with the
+        # historical durations stored in timings.json.
+        if self._on_check_start:
+            category = check.category.key if check.category else None
+            self._on_check_start(check.full_name, category)
 
         logger.debug(f"Running {check.display_name}")
 
