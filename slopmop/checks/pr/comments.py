@@ -39,18 +39,22 @@ class PRCommentsCheck(BaseCheck):
           https://cli.github.com/
 
     Re-check:
-      sm scour -g pr:comments --verbose
+      sm scour -g pr:ignored-feedback --verbose
     """
 
     level = GateLevel.SCOUR
 
     @property
     def name(self) -> str:
-        return "comments"
+        return "ignored-feedback"
 
     @property
     def display_name(self) -> str:
         return "💬 PR Comments"
+
+    @property
+    def gate_description(self) -> str:
+        return "💬 Checks for unresolved PR review threads"
 
     @property
     def category(self) -> GateCategory:
@@ -568,7 +572,7 @@ class PRCommentsCheck(BaseCheck):
         )
         lines.append("")
         lines.append("# Re-run this check:")
-        lines.append("./sm scour -g pr:comments")
+        lines.append("./sm scour -g pr:ignored-feedback")
         lines.append("")
         lines.append("━" * 80)
         lines.append(
@@ -689,7 +693,7 @@ class PRCommentsCheck(BaseCheck):
         lines.append("  1. Read the full report above")
         lines.append("  2. Address comments by category (most complex first)")
         lines.append("  3. Use provided commands to resolve each thread")
-        lines.append("  4. Re-run: ./sm scour -g pr:comments")
+        lines.append("  4. Re-run: ./sm scour -g pr:ignored-feedback")
 
         return "\n".join(lines)
 

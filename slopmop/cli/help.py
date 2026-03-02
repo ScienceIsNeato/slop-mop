@@ -35,7 +35,7 @@ def _show_gate_help(gate_name: str) -> int:
     if not definition:
         # Check if it's an alias
         if registry.is_alias(gate_name):
-            print(f"\n📦 Profile: {gate_name}")
+            print(f"\n📦 Alias: {gate_name}")
             print("=" * 60)
             print(f"Expands to: {', '.join(registry.expand_alias(gate_name))}")
             print()
@@ -96,7 +96,7 @@ def _show_all_gates() -> int:
         if check:
             gates_by_category[check.category].append(name)
         else:
-            # Fallback: parse category from gate name prefix (e.g. "laziness:py-lint")
+            # Fallback: parse category from gate name prefix (e.g. "laziness:sloppy-formatting.py")
             cat_key = name.split(":")[0] if ":" in name else "general"
             cat = GateCategory.from_key(cat_key)
             if cat:
@@ -106,7 +106,7 @@ def _show_all_gates() -> int:
         gates = gates_by_category.get(category, [])
         _print_gate_group(f"{category.emoji} {category.display_name}", gates)
 
-    print("📦 Profiles:")
+    print("📦 Aliases:")
     for alias, gates in sorted(registry.list_aliases().items()):
         print(f"    {alias:<30} {len(gates)} gates")
 

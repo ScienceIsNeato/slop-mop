@@ -11,8 +11,8 @@ Config structure (.sb_config.json):
   "overconfidence": {
     "enabled": true,
     "gates": {
-      "py-tests": { "enabled": true },
-      "py-types": { "enabled": true }
+      "untested-code.py": { "enabled": true },
+      "type-blindness.py": { "enabled": true }
     }
   }
 }
@@ -182,12 +182,8 @@ class SlopmopConfig:
     """
 
     version: str = "1.0"
-    default_profile: str = "commit"
     categories: Dict[str, CategoryConfig] = field(
         default_factory=lambda: cast(Dict[str, CategoryConfig], {})
-    )
-    profiles: Dict[str, List[str]] = field(
-        default_factory=lambda: cast(Dict[str, List[str]], {})
     )
 
     @classmethod
@@ -218,8 +214,8 @@ class SlopmopConfig:
         """Create config from dictionary.
 
         Any key that matches a GateCategory key is loaded as a
-        CategoryConfig.  Non-category keys (version, default_profile,
-        profiles, disabled_gates, etc.) are handled separately.
+        CategoryConfig.  Non-category keys (version, disabled_gates,
+        etc.) are handled separately.
         """
         category_keys = {cat.key for cat in GateCategory}
         categories: Dict[str, CategoryConfig] = {}
@@ -230,22 +226,17 @@ class SlopmopConfig:
 
         return cls(
             version=data.get("version", "1.0"),
-            default_profile=data.get("default_profile", "commit"),
             categories=categories,
-            profiles=data.get("profiles", {}),
         )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result: Dict[str, Any] = {
             "version": self.version,
-            "default_profile": self.default_profile,
         }
         for key, cat_config in self.categories.items():
             if cat_config.enabled or cat_config.gates:
                 result[key] = cat_config.to_dict()
-        if self.profiles:
-            result["profiles"] = self.profiles
         return result
 
     def save(self, project_root: str) -> None:

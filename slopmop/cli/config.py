@@ -13,10 +13,10 @@ from slopmop.core.registry import get_registry
 def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize flat 'category:gate' keys into hierarchical config.
 
-    Converts flat keys like ``{"laziness:dead-code": {"whitelist_file": "w.py"}}``
+    Converts flat keys like ``{"laziness:dead-code.py": {"whitelist_file": "w.py"}}``
     into the nested structure the runtime expects::
 
-        {"laziness": {"gates": {"dead-code": {"whitelist_file": "w.py"}}}}
+        {"laziness": {"gates": {"dead-code.py": {"whitelist_file": "w.py"}}}}
 
     Keys that are NOT in ``category:gate`` format are passed through unchanged.
     If a key matches a GateCategory but has no colon, it's also passed through
@@ -40,7 +40,7 @@ def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
                 continue
         # Pass through non-flat keys — deep-merge if both sides are dicts
         # (avoids overwriting flat-key data already accumulated for the
-        # same category, e.g. "laziness:dead-code" followed by "laziness")
+        # same category, e.g. "laziness:dead-code.py" followed by "laziness")
         if (
             key in normalized
             and isinstance(normalized[key], dict)
@@ -157,7 +157,7 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         print(f"  {status}  {display}")
 
     print()
-    print("📦 Profiles (Aliases):")
+    print("📦 Aliases:")
     print("-" * 40)
     for alias, gates in sorted(registry.list_aliases().items()):
         print(f"  {alias}: {', '.join(gates)}")

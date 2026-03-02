@@ -247,22 +247,22 @@ class TestDetectLoosenedGates:
 
     def test_detects_threshold_lowered(self):
         """Lowering a higher_is_stricter threshold is more permissive."""
-        base = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 80}}}}
-        curr = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 60}}}}
+        base = {"overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 80}}}}
+        curr = {"overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 60}}}}
         schema = self._make_schema(
-            "deceptiveness:py-coverage", "threshold", "higher_is_stricter"
+            "overconfidence:coverage-gaps.py", "threshold", "higher_is_stricter"
         )
         changes = _detect_loosened_gates(base, curr, schema)
         assert len(changes) == 1
-        assert changes[0].gate == "deceptiveness:py-coverage"
+        assert changes[0].gate == "overconfidence:coverage-gaps.py"
         assert changes[0].field == "threshold"
 
     def test_no_false_positive_on_tightened(self):
         """Raising a higher_is_stricter threshold is tighter, not looser."""
-        base = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 60}}}}
-        curr = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 80}}}}
+        base = {"overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 60}}}}
+        curr = {"overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 80}}}}
         schema = self._make_schema(
-            "deceptiveness:py-coverage", "threshold", "higher_is_stricter"
+            "overconfidence:coverage-gaps.py", "threshold", "higher_is_stricter"
         )
         changes = _detect_loosened_gates(base, curr, schema)
         assert len(changes) == 0
@@ -279,24 +279,30 @@ class TestDetectLoosenedGates:
 
     def test_detects_complexity_raised(self):
         """Raising max_complexity (lower_is_stricter) is more permissive."""
-        base = {"laziness": {"gates": {"complexity": {"max_complexity": 10}}}}
-        curr = {"laziness": {"gates": {"complexity": {"max_complexity": 20}}}}
+        base = {"laziness": {"gates": {"complexity-creep.py": {"max_complexity": 10}}}}
+        curr = {"laziness": {"gates": {"complexity-creep.py": {"max_complexity": 20}}}}
         schema = self._make_schema(
-            "laziness:complexity", "max_complexity", "lower_is_stricter"
+            "laziness:complexity-creep.py", "max_complexity", "lower_is_stricter"
         )
         changes = _detect_loosened_gates(base, curr, schema)
         assert len(changes) == 1
 
     def test_detects_exclusion_added(self):
         """Adding an exclude pattern (fewer_is_stricter) is more permissive."""
-        base = {"myopia": {"gates": {"security-scan": {"exclude_dirs": ["vendor"]}}}}
+        base = {
+            "myopia": {
+                "gates": {"vulnerability-blindness.py": {"exclude_dirs": ["vendor"]}}
+            }
+        }
         curr = {
             "myopia": {
-                "gates": {"security-scan": {"exclude_dirs": ["vendor", "legacy"]}}
+                "gates": {
+                    "vulnerability-blindness.py": {"exclude_dirs": ["vendor", "legacy"]}
+                }
             }
         }
         schema = self._make_schema(
-            "myopia:security-scan", "exclude_dirs", "fewer_is_stricter"
+            "myopia:vulnerability-blindness.py", "exclude_dirs", "fewer_is_stricter"
         )
         changes = _detect_loosened_gates(base, curr, schema)
         assert len(changes) == 1
@@ -304,22 +310,28 @@ class TestDetectLoosenedGates:
     def test_detects_severity_downgraded(self):
         """Downgrading from fail to warn (fail_is_stricter) is more permissive."""
         base = {
-            "deceptiveness": {"gates": {"bogus-tests": {"short_test_severity": "fail"}}}
+            "deceptiveness": {
+                "gates": {"bogus-tests.py": {"short_test_severity": "fail"}}
+            }
         }
         curr = {
-            "deceptiveness": {"gates": {"bogus-tests": {"short_test_severity": "warn"}}}
+            "deceptiveness": {
+                "gates": {"bogus-tests.py": {"short_test_severity": "warn"}}
+            }
         }
         schema = self._make_schema(
-            "deceptiveness:bogus-tests", "short_test_severity", "fail_is_stricter"
+            "deceptiveness:bogus-tests.py", "short_test_severity", "fail_is_stricter"
         )
         changes = _detect_loosened_gates(base, curr, schema)
         assert len(changes) == 1
 
     def test_no_change_passes(self):
         """Identical configs produce no changes."""
-        config = {"laziness": {"gates": {"complexity": {"max_complexity": 10}}}}
+        config = {
+            "laziness": {"gates": {"complexity-creep.py": {"max_complexity": 10}}}
+        }
         schema = self._make_schema(
-            "laziness:complexity", "max_complexity", "lower_is_stricter"
+            "laziness:complexity-creep.py", "max_complexity", "lower_is_stricter"
         )
         changes = _detect_loosened_gates(config, config, schema)
         assert len(changes) == 0
@@ -334,10 +346,10 @@ class TestDetectLoosenedGates:
 
     def test_field_without_permissiveness_ignored(self):
         """Fields whose ConfigField has no permissiveness are skipped."""
-        base = {"laziness": {"gates": {"complexity": {"max_complexity": 10}}}}
-        curr = {"laziness": {"gates": {"complexity": {"max_complexity": 20}}}}
+        base = {"laziness": {"gates": {"complexity-creep.py": {"max_complexity": 10}}}}
+        curr = {"laziness": {"gates": {"complexity-creep.py": {"max_complexity": 20}}}}
         schema = {
-            "laziness:complexity": {
+            "laziness:complexity-creep.py": {
                 "max_complexity": ConfigField(
                     name="max_complexity",
                     field_type="int",
@@ -361,29 +373,29 @@ class TestDetectLoosenedGates:
         base = {
             "laziness": {
                 "gates": {
-                    "complexity": {"max_complexity": 10},
+                    "complexity-creep.py": {"max_complexity": 10},
                 }
             },
-            "deceptiveness": {
+            "overconfidence": {
                 "gates": {
-                    "py-coverage": {"threshold": 80},
+                    "coverage-gaps.py": {"threshold": 80},
                 }
             },
         }
         curr = {
             "laziness": {
                 "gates": {
-                    "complexity": {"max_complexity": 20},
+                    "complexity-creep.py": {"max_complexity": 20},
                 }
             },
-            "deceptiveness": {
+            "overconfidence": {
                 "gates": {
-                    "py-coverage": {"threshold": 50},
+                    "coverage-gaps.py": {"threshold": 50},
                 }
             },
         }
         schema = {
-            "laziness:complexity": {
+            "laziness:complexity-creep.py": {
                 "max_complexity": ConfigField(
                     name="max_complexity",
                     field_type="int",
@@ -391,7 +403,7 @@ class TestDetectLoosenedGates:
                     permissiveness="lower_is_stricter",
                 )
             },
-            "deceptiveness:py-coverage": {
+            "overconfidence:coverage-gaps.py": {
                 "threshold": ConfigField(
                     name="threshold",
                     field_type="float",
@@ -493,7 +505,9 @@ class TestRunIntegration:
 
     def test_passes_when_no_loosening(self, tmp_path):
         """Identical config on both sides → PASSED."""
-        config = {"laziness": {"gates": {"complexity": {"max_complexity": 10}}}}
+        config = {
+            "laziness": {"gates": {"complexity-creep.py": {"max_complexity": 10}}}
+        }
         self._write_config(tmp_path, config)
         check = self._make_check()
 
@@ -516,13 +530,17 @@ class TestRunIntegration:
 
     def test_warns_when_gate_loosened(self, tmp_path):
         """Loosened threshold → WARNED with helpful output."""
-        base_config = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 80}}}}
-        curr_config = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 50}}}}
+        base_config = {
+            "overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 80}}}
+        }
+        curr_config = {
+            "overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 50}}}
+        }
         self._write_config(tmp_path, curr_config)
         check = self._make_check()
 
         schema_lookup = {
-            "deceptiveness:py-coverage": {
+            "overconfidence:coverage-gaps.py": {
                 "threshold": ConfigField(
                     name="threshold",
                     field_type="float",
@@ -558,13 +576,17 @@ class TestRunIntegration:
 
     def test_passes_with_justification_comment(self, tmp_path):
         """Loosened gate + justification comment → PASSED."""
-        base_config = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 80}}}}
-        curr_config = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 50}}}}
+        base_config = {
+            "overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 80}}}
+        }
+        curr_config = {
+            "overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 50}}}
+        }
         self._write_config(tmp_path, curr_config)
         check = self._make_check()
 
         schema_lookup = {
-            "deceptiveness:py-coverage": {
+            "overconfidence:coverage-gaps.py": {
                 "threshold": ConfigField(
                     name="threshold",
                     field_type="float",
@@ -603,13 +625,17 @@ class TestRunIntegration:
 
     def test_warns_without_justification_comment(self, tmp_path):
         """Loosened gate + PR but no justification → WARNED."""
-        base_config = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 80}}}}
-        curr_config = {"deceptiveness": {"gates": {"py-coverage": {"threshold": 50}}}}
+        base_config = {
+            "overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 80}}}
+        }
+        curr_config = {
+            "overconfidence": {"gates": {"coverage-gaps.py": {"threshold": 50}}}
+        }
         self._write_config(tmp_path, curr_config)
         check = self._make_check()
 
         schema_lookup = {
-            "deceptiveness:py-coverage": {
+            "overconfidence:coverage-gaps.py": {
                 "threshold": ConfigField(
                     name="threshold",
                     field_type="float",

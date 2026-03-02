@@ -13,7 +13,7 @@ class TestPRCommentsCheck:
     def test_name(self):
         """Test check name."""
         check = PRCommentsCheck({})
-        assert check.name == "comments"
+        assert check.name == "ignored-feedback"
 
     def test_display_name(self):
         """Test check display name."""

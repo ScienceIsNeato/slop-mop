@@ -24,7 +24,7 @@ class TestTemplateValidationCheck:
     def test_name(self):
         """Test check name."""
         check = TemplateValidationCheck({})
-        assert check.name == "template-syntax"
+        assert check.name == "broken-templates.py"
 
     def test_display_name(self):
         """Test display name."""
@@ -35,7 +35,7 @@ class TestTemplateValidationCheck:
     def test_full_name(self):
         """Test full name includes category."""
         check = TemplateValidationCheck({})
-        assert check.full_name == "laziness:template-syntax"
+        assert check.full_name == "laziness:broken-templates.py"
 
     def test_config_schema(self):
         """Test config schema defines templates_dir."""

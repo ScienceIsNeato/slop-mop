@@ -211,7 +211,7 @@ def generate_template_config(
 
     This is the canonical starting point for init. Everything is enabled
     by default, and the init process selectively disables gates based on
-    project detection (no JS? disable JS. Missing vulture? disable dead-code).
+    project detection (no JS? disable JS. Missing vulture? disable dead-code.py).
 
     This ensures:
     - New checks are automatically picked up on re-init

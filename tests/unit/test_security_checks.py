@@ -36,12 +36,12 @@ class TestSecurityLocalCheck:
     def test_name(self):
         """Test check name."""
         check = SecurityLocalCheck({})
-        assert check.name == "security-scan"
+        assert check.name == "vulnerability-blindness.py"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = SecurityLocalCheck({})
-        assert check.full_name == "myopia:security-scan"
+        assert check.full_name == "myopia:vulnerability-blindness.py"
 
     def test_display_name(self):
         """Test display name."""
@@ -213,7 +213,7 @@ class TestSecurityLocalCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
-        assert "myopia:security-scan" in result.name
+        assert "myopia:vulnerability-blindness.py" in result.name
 
     def test_run_with_failures(self, tmp_path):
         """Test run() when one check fails."""
@@ -462,12 +462,12 @@ class TestSecurityCheck:
     def test_name(self):
         """Test check name."""
         check = SecurityCheck({})
-        assert check.name == "security-audit"
+        assert check.name == "dependency-risk.py"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = SecurityCheck({})
-        assert check.full_name == "myopia:security-audit"
+        assert check.full_name == "myopia:dependency-risk.py"
 
     def test_display_name(self):
         """Test display name includes dependency scanning."""
@@ -498,7 +498,7 @@ class TestSecurityCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
-        assert "myopia:security-audit" in result.name
+        assert "myopia:dependency-risk.py" in result.name
 
     def test_run_pip_audit_failure(self, tmp_path):
         """Test run() when pip-audit check fails."""

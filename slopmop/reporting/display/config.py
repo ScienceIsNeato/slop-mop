@@ -73,3 +73,26 @@ MIN_SAMPLES_FOR_SIGMA = 3
 
 # Column widths for status word (passed/failed/etc.)
 STATUS_COLUMN_WIDTH = 5  # "done" = 4 + 1 padding (status word is now neutral)
+
+# ── Two-panel column layout ─────────────────────────────────────
+# The completed-check and header lines use two horizontal sections:
+#   LEFT:   icon + name + status
+#   RIGHT:  timing data (actual time, history sparkline)
+# Scope metrics (files, LOC) are shown only in the final summary line.
+
+# Timing columns (right panel)
+TIMING_AVG_WIDTH = 6  # historical average    e.g. "  0.2s"  (was "exp.")
+TIMING_TIME_WIDTH = 6  # this-run duration     e.g. "  0.5s"  (was "act.")
+TIMING_SPARK_WIDTH = 8  # sparkline history    e.g. "█▅▅▄▁▆▁▁"
+TIMING_SEP = "  "  # gap between timing sub-columns
+
+# Column header labels — built from the same width constants as data
+# rows so columns align vertically.  Kept as module-level strings for
+# convenience; referenced by build_column_header_line().
+TIMING_HEADER = (
+    "avg".rjust(TIMING_AVG_WIDTH)
+    + TIMING_SEP
+    + "time".rjust(TIMING_TIME_WIDTH)
+    + TIMING_SEP
+    + "history".ljust(TIMING_SPARK_WIDTH)
+)

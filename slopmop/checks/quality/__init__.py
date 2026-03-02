@@ -6,6 +6,7 @@ Cross-cutting quality gates that apply to any project:
 - ConfigDebtCheck: Stale, disabled, or scoped-out config detection
 - DeadCodeCheck: Unused code detection via vulture
 - SourceDuplicationCheck: Copy-paste code detection (jscpd)
+- StaleDocsCheck: Detect stale README gate tables
 - StringDuplicationCheck: Duplicate string literal detection
 - LocLockCheck: Lines of code enforcement
 """
@@ -18,6 +19,7 @@ from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
 from slopmop.checks.quality.duplication import SourceDuplicationCheck
 from slopmop.checks.quality.gate_dodging import GateDodgingCheck
 from slopmop.checks.quality.loc_lock import LocLockCheck
+from slopmop.checks.quality.stale_docs import StaleDocsCheck
 
 __all__ = [
     "BogusTestsCheck",
@@ -26,6 +28,7 @@ __all__ = [
     "DeadCodeCheck",
     "GateDodgingCheck",
     "SourceDuplicationCheck",
+    "StaleDocsCheck",
     "StringDuplicationCheck",
     "LocLockCheck",
 ]

@@ -109,20 +109,18 @@ class TestCreateParser:
         """Swab with --quality-gates parses correctly."""
         parser = create_parser()
         args = parser.parse_args(
-            ["swab", "-g", "overconfidence:py-tests", "deceptiveness:py-coverage"]
+            [
+                "swab",
+                "-g",
+                "overconfidence:untested-code.py",
+                "overconfidence:coverage-gaps.py",
+            ]
         )
         assert args.verb == "swab"
         assert args.quality_gates == [
-            "overconfidence:py-tests",
-            "deceptiveness:py-coverage",
+            "overconfidence:untested-code.py",
+            "overconfidence:coverage-gaps.py",
         ]
-
-    def test_swab_self_flag(self):
-        """Swab --self flag parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["swab", "--self"])
-        assert args.verb == "swab"
-        assert args.self_validate is True
 
     def test_swabbing_time_flag(self):
         """--swabbing-time flag parses correctly on swab."""
@@ -153,16 +151,18 @@ class TestCreateParser:
     def test_config_enable(self):
         """Config --enable parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["config", "--enable", "myopia:security-scan"])
+        args = parser.parse_args(
+            ["config", "--enable", "myopia:vulnerability-blindness.py"]
+        )
         assert args.verb == "config"
-        assert args.enable == "myopia:security-scan"
+        assert args.enable == "myopia:vulnerability-blindness.py"
 
     def test_help_subcommand(self):
         """Help subcommand parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["help", "laziness:py-lint"])
+        args = parser.parse_args(["help", "laziness:sloppy-formatting.py"])
         assert args.verb == "help"
-        assert args.gate == "laziness:py-lint"
+        assert args.gate == "laziness:sloppy-formatting.py"
 
     def test_init_subcommand(self):
         """Init subcommand parses correctly."""
@@ -184,7 +184,7 @@ class TestCreateParser:
         args = parser.parse_args(["commit-hooks", "install", "swab"])
         assert args.verb == "commit-hooks"
         assert args.hooks_action == "install"
-        assert args.profile == "swab"
+        assert args.hook_verb == "swab"
 
     def test_commit_hooks_uninstall(self):
         """Commit-hooks uninstall parses correctly."""
@@ -230,18 +230,18 @@ class TestDetectProjectType:
         assert result["has_tests_dir"] is True
         assert "tests" in result["test_dirs"]
 
-    def test_recommends_python_profile(self, tmp_path):
-        """Recommends python profile for Python-only projects."""
+    def test_recommends_gates_for_python(self, tmp_path):
+        """Recommends appropriate gates for Python-only projects."""
         (tmp_path / "setup.py").write_text("")
         result = detect_project_type(tmp_path)
-        assert result["recommended_profile"] == "python"
+        assert "recommended_gates" in result
 
-    def test_recommends_pr_profile_for_mixed(self, tmp_path):
-        """Recommends pr profile for mixed Python/JS projects."""
+    def test_recommends_gates_for_mixed(self, tmp_path):
+        """Recommends appropriate gates for mixed Python/JS projects."""
         (tmp_path / "setup.py").write_text("")
         (tmp_path / "package.json").write_text("{}")
         result = detect_project_type(tmp_path)
-        assert result["recommended_profile"] == "pr"
+        assert "recommended_gates" in result
 
     def test_detects_typescript_from_tsconfig(self, tmp_path):
         """Detects TypeScript from tsconfig.json."""
@@ -258,11 +258,11 @@ class TestDetectProjectType:
         assert result["has_typescript"] is True
 
     def test_typescript_recommends_types_gate(self, tmp_path):
-        """TypeScript projects recommend js-types gate."""
+        """TypeScript projects recommend type-blindness.js gate."""
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
         result = detect_project_type(tmp_path)
-        assert "overconfidence:js-types" in result["recommended_gates"]
+        assert "overconfidence:type-blindness.js" in result["recommended_gates"]
 
 
 class TestPromptFunctions:
@@ -327,10 +327,10 @@ class TestCmdConfig:
         with patch("slopmop.checks.ensure_checks_registered"):
             with patch("slopmop.cli.config.get_registry") as mock_registry:
                 mock_reg = MagicMock()
-                mock_reg.list_checks.return_value = ["overconfidence:py-tests"]
+                mock_reg.list_checks.return_value = ["overconfidence:untested-code.py"]
                 mock_reg.get_definition.return_value = MagicMock(name="Python Tests")
                 mock_reg.list_aliases.return_value = {
-                    "commit": ["overconfidence:py-tests"]
+                    "commit": ["overconfidence:untested-code.py"]
                 }
                 mock_registry.return_value = mock_reg
 
@@ -343,13 +343,13 @@ class TestCmdConfig:
     def test_enable_gate(self, tmp_path):
         """--enable adds gate to enabled list."""
         (tmp_path / ".sb_config.json").write_text(
-            json.dumps({"disabled_gates": ["myopia:security-scan"]})
+            json.dumps({"disabled_gates": ["myopia:vulnerability-blindness.py"]})
         )
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
             show=False,
-            enable="myopia:security-scan",
+            enable="myopia:vulnerability-blindness.py",
             disable=None,
             include_dir=None,
             exclude_dir=None,
@@ -362,7 +362,9 @@ class TestCmdConfig:
 
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert "myopia:security-scan" not in config.get("disabled_gates", [])
+        assert "myopia:vulnerability-blindness.py" not in config.get(
+            "disabled_gates", []
+        )
 
     def test_config_swabbing_time_parser(self):
         """config --swabbing-time flag parses correctly."""
@@ -429,14 +431,14 @@ class TestCmdHelp:
             with patch("slopmop.cli.config.get_registry") as mock_registry:
                 mock_reg = MagicMock()
                 mock_reg.list_checks.return_value = [
-                    "overconfidence:py-tests",
-                    "deceptiveness:py-coverage",
+                    "overconfidence:untested-code.py",
+                    "overconfidence:coverage-gaps.py",
                 ]
                 mock_reg.get_definition.return_value = MagicMock(
                     name="Test", auto_fix=False
                 )
                 mock_reg.list_aliases.return_value = {
-                    "commit": ["overconfidence:py-tests"]
+                    "commit": ["overconfidence:untested-code.py"]
                 }
                 mock_registry.return_value = mock_reg
 
@@ -448,7 +450,7 @@ class TestCmdHelp:
 
     def test_help_specific_gate(self, capsys):
         """Help for specific gate shows details."""
-        args = argparse.Namespace(gate="overconfidence:py-tests")
+        args = argparse.Namespace(gate="overconfidence:untested-code.py")
 
         mock_check = MagicMock()
         mock_check.__doc__ = "Test documentation"
@@ -481,8 +483,8 @@ class TestCmdHelp:
                 mock_reg.get_definition.return_value = None
                 mock_reg.is_alias.return_value = True
                 mock_reg.expand_alias.return_value = [
-                    "overconfidence:py-tests",
-                    "deceptiveness:py-coverage",
+                    "overconfidence:untested-code.py",
+                    "overconfidence:coverage-gaps.py",
                 ]
                 mock_registry.return_value = mock_reg
 
@@ -490,7 +492,7 @@ class TestCmdHelp:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "Profile: commit" in captured.out
+        assert "Alias: commit" in captured.out
 
 
 class TestGitHooksFunctions:
@@ -530,7 +532,7 @@ sm swab
 """
         result = _parse_hook_info(content)
         assert result is not None
-        assert result["profile"] == "swab"
+        assert result["verb"] == "swab"
         assert result["managed"] is True
 
     def test_parse_hook_info_not_managed(self):
@@ -578,7 +580,7 @@ class TestCmdCommitHooks:
         args = argparse.Namespace(
             project_root=str(tmp_path),
             hooks_action="install",
-            profile="swab",
+            hook_verb="swab",
         )
 
         result = cmd_commit_hooks(args)

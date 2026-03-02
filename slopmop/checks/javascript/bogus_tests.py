@@ -329,7 +329,7 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
     These patterns are common when AI agents try to satisfy coverage
     requirements without actually testing anything.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       max_allowed: 0 — Maximum bogus tests before failure (default: 0)
@@ -344,16 +344,20 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
           expect() calls to verify behavior.
 
     Re-check:
-      ./sm swab -g deceptiveness:js-bogus-tests --verbose
+      ./sm swab -g deceptiveness:bogus-tests.js --verbose
     """
 
     @property
     def name(self) -> str:
-        return "js-bogus-tests"
+        return "bogus-tests.js"
 
     @property
     def display_name(self) -> str:
         return "🎭 Bogus Tests (JS/TS)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🎭 Bogus test detection for JS/TS"
 
     @property
     def category(self) -> GateCategory:

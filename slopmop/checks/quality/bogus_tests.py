@@ -378,7 +378,7 @@ class BogusTestsCheck(BaseCheck):
     names via ``from pytest import raises``).  Tests using any of
     these are never flagged as suspiciously short.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       test_dirs: ["tests"] — directories to scan for test files.
@@ -407,16 +407,20 @@ class BogusTestsCheck(BaseCheck):
           ``min_test_statements`` or setting it to 0.
 
     Re-check:
-      ./sm swab -g deceptiveness:bogus-tests --verbose
+      ./sm swab -g deceptiveness:bogus-tests.py --verbose
     """
 
     @property
     def name(self) -> str:
-        return "bogus-tests"
+        return "bogus-tests.py"
 
     @property
     def display_name(self) -> str:
         return "🧟 Bogus Tests"
+
+    @property
+    def gate_description(self) -> str:
+        return "🧟 AST analysis for tests that assert nothing"
 
     @property
     def description(self) -> str:

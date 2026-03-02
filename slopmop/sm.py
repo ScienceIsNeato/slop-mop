@@ -1,8 +1,8 @@
 """sm - Slop-Mop CLI with verb-based interface.
 
 Usage:
-    sm swab [--quality-gates GATES] [--self] [--verbose] [--quiet]
-    sm scour [--quality-gates GATES] [--self] [--verbose] [--quiet]
+    sm swab [--quality-gates GATES] [--verbose] [--quiet]
+    sm scour [--quality-gates GATES] [--verbose] [--quiet]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
     sm commit-hooks status
@@ -79,12 +79,6 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         nargs="+",
         metavar="GATE",
         help="Specific quality gates to run (comma-separated or space-separated)",
-    )
-    parser.add_argument(
-        "--self",
-        action="store_true",
-        dest="self_validate",
-        help="Run validation on slopmop itself",
     )
     parser.add_argument(
         "--project-root",
@@ -289,7 +283,7 @@ def _add_hooks_parser(
         help="Install a pre-commit hook that runs sm swab",
     )
     hooks_install.add_argument(
-        "profile",
+        "hook_verb",
         nargs="?",
         default="swab",
         help="Command to run on commit: swab (default) or scour",
@@ -356,14 +350,12 @@ def _add_status_parser(
     """Add the status subcommand parser."""
     status_parser = subparsers.add_parser(
         "status",
-        help="Run all gates and show full report card",
-        description="Run all gates without fail-fast and print a report card.",
-    )
-    status_parser.add_argument(
-        "profile",
-        nargs="?",
-        default="scour",
-        help="Level or alias to report on (default: scour). Accepts swab, scour, or any alias.",
+        help="Show project dashboard (config, gates, hooks)",
+        description=(
+            "Display project dashboard with configuration summary, "
+            "gate inventory (with historical results), and hook "
+            "installation status.  Does not run any gates."
+        ),
     )
     status_parser.add_argument(
         "--project-root",
@@ -375,18 +367,13 @@ def _add_status_parser(
         "--verbose",
         "-v",
         action="store_true",
-        help="Enable verbose output",
+        help="Show additional detail (e.g. per-gate timing stats)",
     )
     status_parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",
-        help="Minimal output (report card only)",
-    )
-    status_parser.add_argument(
-        "--static",
-        action="store_true",
-        help="Disable dynamic display (use static line-by-line output)",
+        help="Minimal output",
     )
 
 
@@ -416,7 +403,6 @@ Quick Start:
 Examples:
   ./sm swab                               Quick validation (every commit)
   ./sm scour                              Thorough validation (PR readiness)
-  ./sm scour --self                       Validate slopmop itself
   ./sm swab -g python,quality             Run specific gate groups
   ./sm scour --verbose                    Thorough with details
   ./sm config --show                      Show current configuration

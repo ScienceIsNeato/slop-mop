@@ -35,7 +35,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
     indicates a function that is too branchy for humans or LLMs to
     reason about reliably.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       max_rank: "C" — ranks A-C are acceptable. D+ means the function
@@ -52,18 +52,22 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
       radon not available: pip install radon
 
     Re-check:
-      ./sm swab -g laziness:complexity --verbose
+      ./sm swab -g laziness:complexity-creep.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
-        return "complexity"
+        return "complexity-creep.py"
 
     @property
     def display_name(self) -> str:
         return f"🌀 Complexity (max rank {MAX_RANK})"
+
+    @property
+    def gate_description(self) -> str:
+        return "🌀 Cyclomatic complexity (max rank C)"
 
     @property
     def category(self) -> GateCategory:

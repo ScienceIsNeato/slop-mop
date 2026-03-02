@@ -14,12 +14,12 @@ class TestComplexityCheck:
     def test_name(self):
         """Test check name."""
         check = ComplexityCheck({})
-        assert check.name == "complexity"
+        assert check.name == "complexity-creep.py"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = ComplexityCheck({})
-        assert check.full_name == "laziness:complexity"
+        assert check.full_name == "laziness:complexity-creep.py"
 
     def test_display_name(self):
         """Test display name."""

@@ -14,12 +14,12 @@ class TestBogusTestsCheckProperties:
     def test_name(self):
         """Test check name."""
         check = BogusTestsCheck({})
-        assert check.name == "bogus-tests"
+        assert check.name == "bogus-tests.py"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = BogusTestsCheck({})
-        assert check.full_name == "deceptiveness:bogus-tests"
+        assert check.full_name == "deceptiveness:bogus-tests.py"
 
     def test_display_name(self):
         """Test display name."""

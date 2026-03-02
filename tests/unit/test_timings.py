@@ -142,7 +142,7 @@ class TestLoadTimings:
         (timings_dir / TIMINGS_FILE).write_text(
             json.dumps(
                 {
-                    "overconfidence:py-tests": {
+                    "overconfidence:untested-code.py": {
                         "samples": [3.0, 4.0],
                         "last_updated": time.time(),
                     },
@@ -156,10 +156,10 @@ class TestLoadTimings:
 
         result = load_timings(str(tmp_path))
 
-        assert "overconfidence:py-tests" in result
+        assert "overconfidence:untested-code.py" in result
         assert "python:lint" in result
-        assert result["overconfidence:py-tests"].mean == 3.5
-        assert result["overconfidence:py-tests"].sample_count == 2
+        assert result["overconfidence:untested-code.py"].mean == 3.5
+        assert result["overconfidence:untested-code.py"].sample_count == 2
         assert result["python:lint"].mean == 0.8
 
     def test_auto_migrates_v1_ema_format(self, tmp_path: Path) -> None:
@@ -254,14 +254,14 @@ class TestSaveTimings:
     def test_saves_new_timings(self, tmp_path: Path) -> None:
         """Saves timings to new file with sample-based format."""
         save_timings(
-            str(tmp_path), {"overconfidence:py-tests": 2.5, "python:lint": 0.6}
+            str(tmp_path), {"overconfidence:untested-code.py": 2.5, "python:lint": 0.6}
         )
 
         path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
         assert path.exists()
 
         data = json.loads(path.read_text())
-        assert data["overconfidence:py-tests"]["samples"] == [2.5]
+        assert data["overconfidence:untested-code.py"]["samples"] == [2.5]
         assert data["python:lint"]["samples"] == [0.6]
 
     def test_appends_to_existing_samples(self, tmp_path: Path) -> None:
@@ -512,62 +512,59 @@ class TestLoadTimingsWithAge:
         assert result["new_check"].mean == 2.0
 
 
-class TestResultTrendline:
-    """Tests for result history trendline rendering."""
+class TestSparklineWithColors:
+    """Tests for sparkline with result-status coloring."""
 
-    def test_result_trendline_empty_when_no_results(self) -> None:
-        """Empty string when no results recorded."""
-        stats = TimingStats(mean=1.0, std_dev=0.1, sample_count=3)
-        assert stats.result_trendline() == ""
-
-    def test_result_trendline_renders_dots(self) -> None:
-        """Renders colored dots for each result."""
+    def test_sparkline_colors_bars_by_result(self) -> None:
+        """When colors_enabled, bars get ANSI color from result status."""
         stats = TimingStats(
             mean=1.0,
             std_dev=0.1,
             sample_count=3,
+            samples=(1.0, 1.1, 0.9),
             results=("passed", "failed", "passed"),
         )
-        trend = stats.result_trendline(colors_enabled=False)
-        assert trend == "●●●"
+        spark = stats.sparkline(max_width=3, colors_enabled=True)
+        assert "\033[32m" in spark  # green for passed
+        assert "\033[31m" in spark  # red for failed
 
-    def test_result_trendline_with_colors(self) -> None:
-        """Each dot gets ANSI color when colors enabled."""
+    def test_sparkline_no_color_when_disabled(self) -> None:
+        """Without colors_enabled, bars are plain text."""
         stats = TimingStats(
             mean=1.0,
             std_dev=0.1,
-            sample_count=2,
-            results=("passed", "failed"),
+            sample_count=3,
+            samples=(1.0, 1.1, 0.9),
+            results=("passed", "failed", "passed"),
         )
-        trend = stats.result_trendline(colors_enabled=True)
-        assert "\033[32m" in trend  # green for passed
-        assert "\033[31m" in trend  # red for failed
-        assert "●" in trend
+        spark = stats.sparkline(max_width=3, colors_enabled=False)
+        assert "\033[" not in spark
 
-    def test_result_trendline_respects_max_width(self) -> None:
-        """Only last N results shown when max_width constrains."""
+    def test_sparkline_fewer_results_than_samples(self) -> None:
+        """When results shorter than samples, oldest bars are uncolored."""
         stats = TimingStats(
             mean=1.0,
             std_dev=0.1,
             sample_count=5,
-            results=("passed", "passed", "passed", "failed", "passed"),
+            samples=(1.0, 1.1, 0.9, 1.2, 0.8),
+            results=("passed", "failed"),  # only last 2
         )
-        trend = stats.result_trendline(max_width=3, colors_enabled=False)
-        assert trend == "●●●"
+        spark = stats.sparkline(max_width=5, colors_enabled=True)
+        # Should still produce 5 characters
+        from slopmop.reporting.display.renderer import strip_ansi
 
-    def test_result_trendline_all_statuses(self) -> None:
-        """All status types render as dots."""
+        assert len(strip_ansi(spark)) == 5
+
+    def test_sparkline_no_results_no_color(self) -> None:
+        """Empty results tuple produces plain sparkline even with colors."""
         stats = TimingStats(
             mean=1.0,
             std_dev=0.1,
-            sample_count=4,
-            results=("passed", "failed", "warned", "skipped"),
+            sample_count=3,
+            samples=(1.0, 1.1, 0.9),
         )
-        trend = stats.result_trendline(colors_enabled=True)
-        assert "\033[32m" in trend  # green passed
-        assert "\033[31m" in trend  # red failed
-        assert "\033[33m" in trend  # yellow warned
-        assert "\033[90m" in trend  # gray skipped
+        spark = stats.sparkline(max_width=3, colors_enabled=True)
+        assert "\033[" not in spark
 
 
 class TestComputeStatsWithResults:

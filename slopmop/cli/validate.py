@@ -5,11 +5,8 @@ top-level commands.
 """
 
 import argparse
-import json
 import os
-import shutil
 import sys
-import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -21,79 +18,6 @@ from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.timings import clear_timings, load_timing_averages
-
-
-def _setup_self_validation(project_root: Path) -> str:
-    """Set up isolated config for self-validation.
-
-    Returns the temp directory path.
-    """
-    from slopmop.utils.generate_base_config import generate_base_config
-
-    temp_config_dir = tempfile.mkdtemp(prefix="sb_self_validate_")
-    temp_config_file = Path(temp_config_dir) / ".sb_config.json"
-
-    # Generate config with auto-detection
-    base_config = generate_base_config()
-
-    # Enable all gates that match the commit profile for slopmop itself.
-    # Organized by flaw category — each gate listed explicitly so drift
-    # between this config and the commit profile alias is obvious.
-
-    # laziness: py-lint, complexity, dead-code, config-debt
-    if "laziness" in base_config:
-        base_config["laziness"]["enabled"] = True
-        gates = base_config["laziness"].get("gates", {})
-        for gate in ["py-lint", "complexity", "dead-code", "config-debt"]:
-            if gate in gates:
-                gates[gate]["enabled"] = True
-
-    # overconfidence: py-static-analysis, py-types, py-tests
-    if "overconfidence" in base_config:
-        base_config["overconfidence"]["enabled"] = True
-        gates = base_config["overconfidence"].get("gates", {})
-        for gate in ["py-tests", "py-static-analysis", "py-types"]:
-            if gate in gates:
-                gates[gate]["enabled"] = True
-        if "py-tests" in gates:
-            gates["py-tests"]["test_dirs"] = ["tests"]
-
-    # deceptiveness: py-coverage, bogus-tests, gate-dodging
-    if "deceptiveness" in base_config:
-        base_config["deceptiveness"]["enabled"] = True
-        gates = base_config["deceptiveness"].get("gates", {})
-        for gate in ["py-coverage", "bogus-tests", "gate-dodging"]:
-            if gate in gates:
-                gates[gate]["enabled"] = True
-        if "py-coverage" in gates:
-            gates["py-coverage"]["threshold"] = 80
-
-    # myopia: security-scan, source-duplication, string-duplication, loc-lock
-    if "myopia" in base_config:
-        base_config["myopia"]["enabled"] = True
-        gates = base_config["myopia"].get("gates", {})
-        for gate in [
-            "security-scan",
-            "source-duplication",
-            "string-duplication",
-            "loc-lock",
-        ]:
-            if gate in gates:
-                gates[gate]["enabled"] = True
-
-    # Write temp config
-    temp_config_file.write_text(json.dumps(base_config, indent=2) + "\n")
-
-    # Use the temp config for validation
-    os.environ["SB_CONFIG_FILE"] = str(temp_config_file)
-
-    return temp_config_dir
-
-
-def _cleanup_self_validation(temp_config_dir: str) -> None:
-    """Clean up self-validation temp directory."""
-    os.environ.pop("SB_CONFIG_FILE", None)
-    shutil.rmtree(temp_config_dir, ignore_errors=True)
 
 
 def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
@@ -164,16 +88,16 @@ def _setup_dynamic_display(
 def _run_validation(
     args: argparse.Namespace,
     gates: List[str],
-    profile_name: Optional[str],
+    level_name: Optional[str],
 ) -> int:
     """Core validation pipeline shared by swab and scour.
 
     Args:
-        args: Parsed CLI arguments (must have project_root, self_validate,
+        args: Parsed CLI arguments (must have project_root,
               quiet, verbose, no_fail_fast, no_auto_fix, static,
               clear_history flags).
         gates: List of gate names or aliases to run.
-        profile_name: Display label (e.g. "swab", "scour").
+        level_name: Display label (e.g. "swab", "scour").
 
     Returns:
         Exit code (0 = all passed, 1 = failures).
@@ -181,10 +105,7 @@ def _run_validation(
     from slopmop.sm import load_config
 
     # Determine project root
-    if args.self_validate:
-        project_root = Path(__file__).parent.parent.parent.resolve()
-    else:
-        project_root = Path(args.project_root).resolve()
+    project_root = Path(args.project_root).resolve()
 
     if not project_root.is_dir():
         print(f"❌ Project root not found: {project_root}")
@@ -195,11 +116,6 @@ def _run_validation(
         if clear_timings(str(project_root)):
             if not args.quiet:
                 print("🗑️  Timing history cleared")
-
-    # Set up self-validation if needed
-    temp_config_dir = None
-    if args.self_validate:
-        temp_config_dir = _setup_self_validation(project_root)
 
     # Create executor
     registry = get_registry()
@@ -212,7 +128,7 @@ def _run_validation(
     reporter = ConsoleReporter(
         quiet=args.quiet,
         verbose=args.verbose,
-        profile=profile_name,
+        verb=level_name,
         project_root=str(project_root),
     )
 
@@ -241,7 +157,7 @@ def _run_validation(
             swabbing_time = int(config_val)
 
     # Only enforce for swab runs
-    if profile_name != "swab":
+    if level_name != "swab":
         swabbing_time = None
 
     # Load timing history for budget filtering
@@ -285,8 +201,6 @@ def _run_validation(
         # Ensure display is stopped on any exit
         if dynamic_display:
             dynamic_display.stop()
-        if temp_config_dir:
-            _cleanup_self_validation(temp_config_dir)
 
 
 # ─── Top-level commands ──────────────────────────────────────────────────

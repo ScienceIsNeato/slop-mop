@@ -20,11 +20,11 @@ class TestStringDuplicationCheck:
 
     def test_name(self, check):
         """Test check name."""
-        assert check.name == "string-duplication"
+        assert check.name == "string-duplication.py"
 
     def test_full_name(self, check):
         """Test full check name with category."""
-        assert check.full_name == "myopia:string-duplication"
+        assert check.full_name == "myopia:string-duplication.py"
 
     def test_display_name(self, check):
         """Test display name includes identifier."""

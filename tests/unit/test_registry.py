@@ -166,20 +166,24 @@ class TestCheckRegistry:
         full_config = {
             "overconfidence": {
                 "enabled": True,
-                "gates": {"py-tests": {"timeout": 300}},
+                "gates": {
+                    "untested-code.py": {"timeout": 300},
+                    "coverage-gaps.py": {"threshold": 80},
+                },
             },
-            "deceptiveness": {
-                "gates": {"py-coverage": {"threshold": 80}},
-            },
-            "laziness": {"gates": {"js-lint": {"auto_fix": True}}},
+            "laziness": {"gates": {"sloppy-formatting.js": {"auto_fix": True}}},
         }
 
-        # Extract deceptiveness:py-coverage config
-        config = registry._extract_gate_config("deceptiveness:py-coverage", full_config)
+        # Extract overconfidence:coverage-gaps.py config
+        config = registry._extract_gate_config(
+            "overconfidence:coverage-gaps.py", full_config
+        )
         assert config == {"threshold": 80}
 
-        # Extract laziness:js-lint config
-        config = registry._extract_gate_config("laziness:js-lint", full_config)
+        # Extract laziness:sloppy-formatting.js config
+        config = registry._extract_gate_config(
+            "laziness:sloppy-formatting.js", full_config
+        )
         assert config == {"auto_fix": True}
 
         # Extract nonexistent gate returns empty dict

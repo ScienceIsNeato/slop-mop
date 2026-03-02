@@ -106,21 +106,38 @@ class TestBuildCategoryHeader:
         assert "🐍 Python" in header
         assert "[2/4]" in header
 
+    def test_header_with_elapsed_time(self):
+        """Header includes aggregate elapsed time when provided."""
+        header = build_category_header("Python", 3, 3, term_width=60, elapsed=6.8)
+        assert "[3/3]" in header
+        assert "6.8s" in header
+        assert "·" in header
+
+    def test_header_without_elapsed_time(self):
+        """Header omits time section when elapsed is None or zero."""
+        header = build_category_header("Python", 0, 3, term_width=60, elapsed=None)
+        assert "·" not in header
+        header_zero = build_category_header("Python", 3, 3, term_width=60, elapsed=0)
+        assert "·" not in header_zero
+
 
 class TestStripCategoryPrefix:
     """Tests for strip_category_prefix function."""
 
     def test_strip_python_prefix(self):
         """Strips category prefix from py-prefixed check."""
-        assert strip_category_prefix("laziness:py-lint") == "py-lint"
+        assert (
+            strip_category_prefix("laziness:sloppy-formatting.py")
+            == "sloppy-formatting.py"
+        )
 
     def test_strip_myopia_prefix(self):
         """Strips myopia: prefix."""
-        assert strip_category_prefix("myopia:loc-lock") == "loc-lock"
+        assert strip_category_prefix("myopia:code-sprawl") == "code-sprawl"
 
     def test_strip_deceptiveness_prefix(self):
         """Strips deceptiveness: prefix."""
-        assert strip_category_prefix("deceptiveness:bogus-tests") == "bogus-tests"
+        assert strip_category_prefix("deceptiveness:bogus-tests.py") == "bogus-tests.py"
 
     def test_no_prefix_unchanged(self):
         """Name without colon returned unchanged."""

@@ -27,7 +27,7 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
     for critical errors (no-undef, no-unused-vars) rather than
     full lint.
 
-    Profiles: javascript
+    Level: swab
 
     Configuration:
       frontend_dirs: [] (required) — directories containing
@@ -42,18 +42,22 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
           for syntax errors.
 
     Re-check:
-      ./sm swab -g laziness:js-frontend --verbose
+      ./sm swab -g laziness:sloppy-frontend.js --verbose
     """
 
     tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:
-        return "js-frontend"
+        return "sloppy-frontend.js"
 
     @property
     def display_name(self) -> str:
         return "⚡ Frontend Check (quick ESLint)"
+
+    @property
+    def gate_description(self) -> str:
+        return "⚡ Quick ESLint frontend check"
 
     @property
     def category(self) -> GateCategory:
@@ -80,6 +84,12 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
             return False
         # Only applicable if frontend_dirs is configured
         return bool(self._get_configured_dirs(project_root))
+
+    def skip_reason(self, project_root: str) -> str:
+        """Return reason for skipping."""
+        if not self.is_javascript_project(project_root):
+            return JavaScriptCheckMixin.skip_reason(self, project_root)
+        return "No frontend_dirs configured in .sb_config.json"
 
     def _get_configured_dirs(self, project_root: str) -> List[str]:
         """Get frontend directories from config.

@@ -27,7 +27,7 @@ class ConsoleReporter:
         self,
         quiet: bool = False,
         verbose: bool = False,
-        profile: Optional[str] = None,
+        verb: Optional[str] = None,
         project_root: Optional[str] = None,
     ):
         """Initialize reporter.
@@ -35,12 +35,12 @@ class ConsoleReporter:
         Args:
             quiet: Minimal output mode (only failures)
             verbose: Verbose output mode (include all output)
-            profile: The profile being run (commit, pr, etc.) for iteration guidance
+            verb: The verb being run (swab, scour, etc.) for iteration guidance
             project_root: Project root for writing failure logs
         """
         self.quiet = quiet
         self.verbose = verbose
-        self.profile = profile
+        self.verb = verb
         self.project_root = project_root
 
     def on_check_complete(self, result: CheckResult) -> None:
@@ -365,11 +365,11 @@ class ConsoleReporter:
         if not first_failure:
             return
 
-        profile = self.profile or "swab"
+        verb = self.verb or "swab"
         gate_name = first_failure.name
 
         print(f"Next: ./sm swab -g {gate_name} --verbose")
-        print(f"      ./sm {profile}")
+        print(f"      ./sm {verb}")
 
     # ── Skip reason display order ────────────────────────────────────
     _SKIP_REASON_ORDER = [
@@ -409,10 +409,10 @@ class ConsoleReporter:
 
     @staticmethod
     def _print_not_run_section(results: list[CheckResult]) -> None:
-        """Print a compact section listing every check that was not run.
+        """Print a compact one-line summary of checks that were not run.
 
-        Checks are grouped by skip reason in a fixed display order so the
-        output is deterministic and easy to scan.
+        Instead of listing every check individually, groups by skip reason
+        and shows counts, e.g.: ``⏭️  Not run (9): 3 disabled · 4 n/a · 2 time budget``
         """
         not_run = [
             r
@@ -422,19 +422,30 @@ class ConsoleReporter:
         if not not_run:
             return
 
-        # Sort by defined reason order, then alphabetically by name
-        def _sort_key(r: CheckResult) -> tuple[int, str]:
-            reason = r.skip_reason
-            if reason is not None and reason in ConsoleReporter._SKIP_REASON_ORDER:
-                idx = ConsoleReporter._SKIP_REASON_ORDER.index(reason)
-            else:
-                idx = len(ConsoleReporter._SKIP_REASON_ORDER)
-            return (idx, r.name)
+        # Count checks by skip reason
+        from collections import Counter
 
-        not_run.sort(key=_sort_key)
+        reason_counts: Counter[Optional[SkipReason]] = Counter()
+        for r in not_run:
+            reason_counts[r.skip_reason] += 1
+
+        # Build summary parts in display order
+        parts: list[str] = []
+        for reason in ConsoleReporter._SKIP_REASON_ORDER:
+            count = reason_counts.pop(reason, 0)
+            if count > 0:
+                label = ConsoleReporter._SKIP_REASON_LABEL.get(reason, reason.value)
+                parts.append(f"{count} {label}")
+
+        # Any remaining reasons not in the defined order
+        for reason, count in reason_counts.items():
+            if count > 0:
+                label = (
+                    ConsoleReporter._SKIP_REASON_LABEL.get(reason, reason.value)
+                    if reason
+                    else "skipped"
+                )
+                parts.append(f"{count} {label}")
 
         print()
-        print(f"⏭️  Not run ({len(not_run)}):")
-        for r in not_run:
-            label = ConsoleReporter._not_run_label(r)
-            print(f"   {r.name} — {label}")
+        print(f"⏭️  Not run ({len(not_run)}): {' · '.join(parts)}")

@@ -21,7 +21,7 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
     Wraps Jest with --coverage and --passWithNoTests. Installs
     npm dependencies automatically if missing.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       test_command: "npm test" — command to run tests. Override
@@ -35,18 +35,22 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: Check package.json syntax.
 
     Re-check:
-      ./sm swab -g overconfidence:js-tests --verbose
+      ./sm swab -g overconfidence:untested-code.js --verbose
     """
 
     tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:
-        return "js-tests"
+        return "untested-code.js"
 
     @property
     def display_name(self) -> str:
         return "🧪 Tests (Jest)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🧪 Jest test execution"
 
     @property
     def category(self) -> GateCategory:
@@ -58,7 +62,7 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["laziness:js-lint"]
+        return ["laziness:sloppy-formatting.js"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

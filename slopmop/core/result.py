@@ -62,6 +62,20 @@ class ScopeInfo:
     def __add__(self, other: "ScopeInfo") -> "ScopeInfo":
         return ScopeInfo(self.files + other.files, self.lines + other.lines)
 
+    def format_files_compact(self) -> str:
+        """Format file count compactly: '104' or '1.2k'."""
+        if self.files >= 10_000:
+            return f"{self.files / 1000:.1f}k"
+        return str(self.files) if self.files > 0 else ""
+
+    def format_loc_compact(self) -> str:
+        """Format LOC compactly: '33.4k' or '3,200'."""
+        if self.lines >= 10_000:
+            return f"{self.lines / 1000:.1f}k"
+        if self.lines > 0:
+            return f"{self.lines:,}"
+        return ""
+
     def format_compact(self) -> str:
         """Format scope as a compact string like '47 files · 3.2k LOC'."""
         parts: List[str] = []

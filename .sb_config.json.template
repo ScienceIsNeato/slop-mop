@@ -1,14 +1,10 @@
 {
   "version": "1.0",
-  "default_profile": "commit",
+  "swabbing_time": 20,
   "overconfidence": {
     "enabled": true,
-    "include_dirs": [],
-    "exclude_dirs": [
-      "slop-mop"
-    ],
     "gates": {
-      "py-tests": {
+      "untested-code.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -17,70 +13,64 @@
         ],
         "timeout": 300
       },
-      "py-static-analysis": {
+      "coverage-gaps.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
-        "strict_typing": true
+        "threshold": 80
       },
-      "py-types": {
+      "missing-annotations.py": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "strict_typing": true,
+        "include_dirs": []
+      },
+      "type-blindness.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "strict": true
       },
-      "js-tests": {
+      "untested-code.js": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "test_command": "npm test"
       },
-      "js-types": {
+      "coverage-gaps.js": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "threshold": 80
+      },
+      "type-blindness.js": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "tsconfig": "tsconfig.json"
-      },
-      "deploy-script-tests": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null,
-        "test_script": "scripts/__tests__/deploy_app.test.sh"
       }
     }
   },
   "deceptiveness": {
     "enabled": true,
-    "include_dirs": [],
-    "exclude_dirs": [
-      "slop-mop"
-    ],
     "gates": {
-      "py-coverage": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null,
-        "threshold": 80
-      },
-      "py-diff-coverage": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null
-      },
-      "js-coverage": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null,
-        "threshold": 80
-      },
-      "js-bogus-tests": {
+      "bogus-tests.js": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "max_allowed": 0,
         "exclude_dirs": []
       },
-      "bogus-tests": {
+      "hand-wavy-tests.js": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "additional_assert_functions": [],
+        "exclude_dirs": [],
+        "max_violations": 0
+      },
+      "bogus-tests.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -89,36 +79,40 @@
         ],
         "exclude_patterns": [
           "conftest.py"
-        ]
+        ],
+        "min_test_statements": 1,
+        "short_test_severity": "fail"
+      },
+      "gate-dodging": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null,
+        "base_ref": ""
       }
     }
   },
   "laziness": {
     "enabled": true,
-    "include_dirs": [],
-    "exclude_dirs": [
-      "slop-mop"
-    ],
     "gates": {
-      "py-lint": {
+      "sloppy-formatting.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "line_length": 88
       },
-      "js-lint": {
+      "sloppy-formatting.js": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "npm_install_flags": []
       },
-      "js-frontend": {
+      "sloppy-frontend.js": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
         "frontend_dirs": []
       },
-      "complexity": {
+      "complexity-creep.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -126,7 +120,7 @@
         "max_complexity": 15,
         "src_dirs": []
       },
-      "dead-code": {
+      "dead-code.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -148,7 +142,17 @@
         ],
         "whitelist_file": ""
       },
-      "template-syntax": {
+      "silenced-gates": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null
+      },
+      "stale-docs": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null
+      },
+      "broken-templates.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -158,12 +162,13 @@
   },
   "myopia": {
     "enabled": true,
-    "include_dirs": [],
-    "exclude_dirs": [
-      "slop-mop"
-    ],
     "gates": {
-      "security-audit": {
+      "just-this-once.py": {
+        "enabled": true,
+        "auto_fix": false,
+        "config_file_path": null
+      },
+      "dependency-risk.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -185,7 +190,7 @@
         ],
         "bandit_config_file": null
       },
-      "security-scan": {
+      "vulnerability-blindness.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -219,7 +224,7 @@
         "min_lines": 5,
         "exclude_dirs": []
       },
-      "string-duplication": {
+      "string-duplication.py": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -242,7 +247,7 @@
           "**/conftest.py"
         ]
       },
-      "loc-lock": {
+      "code-sprawl": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
@@ -258,12 +263,8 @@
   },
   "pr": {
     "enabled": true,
-    "include_dirs": [],
-    "exclude_dirs": [
-      "slop-mop"
-    ],
     "gates": {
-      "comments": {
+      "ignored-feedback": {
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,

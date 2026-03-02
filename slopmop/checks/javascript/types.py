@@ -46,7 +46,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
     flag performs full type checking without producing output files,
     making it faster than a full build and safe to run in parallel.
 
-    Profiles: javascript
+    Level: swab
 
     Configuration:
       tsconfig: "tsconfig.json" — path to tsconfig relative to
@@ -61,18 +61,22 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: TypeScript must be in devDependencies.
 
     Re-check:
-      ./sm swab -g overconfidence:js-types --verbose
+      ./sm swab -g overconfidence:type-blindness.js --verbose
     """
 
     tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:
-        return "js-types"
+        return "type-blindness.js"
 
     @property
     def display_name(self) -> str:
         return "🏗️ TypeScript Types (tsc --noEmit)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🏗️ TypeScript type checking (tsc)"
 
     @property
     def category(self) -> GateCategory:
@@ -84,7 +88,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["laziness:js-lint"]
+        return ["laziness:sloppy-formatting.js"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

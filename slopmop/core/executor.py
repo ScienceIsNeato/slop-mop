@@ -43,7 +43,7 @@ def _is_gate_enabled_in_config(
         return False, f"{check.full_name} is in disabled_gates list"
 
     category_key = check.category.key  # e.g., "overconfidence", "laziness", "myopia"
-    gate_name = check.name  # e.g., "lint-format", "dead-code"
+    gate_name = check.name  # e.g., "lint-format", "dead-code.py"
 
     # Check if language/category is enabled
     category_val: object = config.get(category_key)
@@ -203,8 +203,8 @@ class CheckExecutor:
 
         # Filter superseded checks: if a check's superseded_by target is
         # also in the run set, skip the weaker check.  This happens during
-        # scour runs where both security-scan (swab) and security-audit
-        # (scour) would otherwise both execute.
+        # scour runs where both vulnerability-blindness.py (swab) and
+        # dependency-risk.py (scour) would otherwise both execute.
         requested_names = {c.full_name for c in checks}
         superseded: Set[str] = set()
         for check in checks:

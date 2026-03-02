@@ -300,7 +300,7 @@ class TestTemplateConfig:
         assert "deceptiveness" in config
         assert "laziness" in config
         assert "myopia" in config
-        # general category is legacy — deploy/template checks moved to overconfidence/laziness
+        # general category has no registered checks currently
         assert "general" not in config
 
     def test_generate_template_config_all_gates_enabled(self):

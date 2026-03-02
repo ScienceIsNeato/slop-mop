@@ -11,27 +11,43 @@ from slopmop.checks.base import find_tool
 # find_tool() resolves these via project venv → .venv → VIRTUAL_ENV → PATH.
 # When sm is installed via pipx, most tools are bundled and found via PATH.
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
-    # Lint & format (py-lint gate)
-    ("black", "laziness:py-lint", "pip install black  # in your venv"),
-    ("isort", "laziness:py-lint", "pip install isort  # in your venv"),
-    ("autoflake", "laziness:py-lint", "pip install autoflake  # in your venv"),
-    ("flake8", "laziness:py-lint", "pip install flake8  # in your venv"),
+    # Lint & format (sloppy-formatting.py gate)
+    ("black", "laziness:sloppy-formatting.py", "pip install black  # in your venv"),
+    ("isort", "laziness:sloppy-formatting.py", "pip install isort  # in your venv"),
+    (
+        "autoflake",
+        "laziness:sloppy-formatting.py",
+        "pip install autoflake  # in your venv",
+    ),
+    ("flake8", "laziness:sloppy-formatting.py", "pip install flake8  # in your venv"),
     # Static analysis & types
-    ("vulture", "laziness:dead-code", "pip install vulture  # in your venv"),
-    ("pyright", "overconfidence:py-types", "pip install pyright  # in your venv"),
+    ("vulture", "laziness:dead-code.py", "pip install vulture  # in your venv"),
+    (
+        "pyright",
+        "overconfidence:type-blindness.py",
+        "pip install pyright  # in your venv",
+    ),
     # Security scanning
-    ("bandit", "myopia:security-scan", "pip install bandit  # in your venv"),
-    ("semgrep", "myopia:security-scan", "pip install semgrep  # in your venv"),
+    (
+        "bandit",
+        "myopia:vulnerability-blindness.py",
+        "pip install bandit  # in your venv",
+    ),
+    (
+        "semgrep",
+        "myopia:vulnerability-blindness.py",
+        "pip install semgrep  # in your venv",
+    ),
     (
         "detect-secrets",
-        "myopia:security-scan",
+        "myopia:vulnerability-blindness.py",
         "pip install detect-secrets  # in your venv",
     ),
-    ("pip-audit", "myopia:security-audit", "pip install pip-audit  # in your venv"),
+    ("pip-audit", "myopia:dependency-risk.py", "pip install pip-audit  # in your venv"),
     # Complexity scanning (not bundled — install system-wide or in venv)
     (
         "radon",
-        "laziness:complexity",
+        "laziness:complexity-creep.py",
         "pip install radon  # in your venv or: brew install radon",
     ),
 ]
@@ -142,33 +158,24 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     if detected["has_python"]:
         recommended.extend(
             [
-                "laziness:py-lint",
-                "overconfidence:py-tests",
-                "overconfidence:py-static-analysis",
+                "laziness:sloppy-formatting.py",
+                "overconfidence:untested-code.py",
+                "overconfidence:missing-annotations.py",
             ]
         )
         if detected["has_pytest"]:
-            recommended.append("deceptiveness:py-coverage")
+            recommended.append("overconfidence:coverage-gaps.py")
 
     if detected["has_javascript"]:
-        recommended.extend(["laziness:js-lint", "overconfidence:js-tests"])
+        recommended.extend(
+            ["laziness:sloppy-formatting.js", "overconfidence:untested-code.js"]
+        )
         if detected["has_jest"]:
-            recommended.append("deceptiveness:js-coverage")
+            recommended.append("overconfidence:coverage-gaps.js")
         if detected["has_typescript"]:
-            recommended.append("overconfidence:js-types")
+            recommended.append("overconfidence:type-blindness.js")
 
     return recommended
-
-
-def _recommend_profile(detected: Dict[str, Any]) -> str:
-    """Determine recommended profile based on detection."""
-    if detected["has_python"] and detected["has_javascript"]:
-        return "pr"
-    elif detected["has_python"]:
-        return "python"
-    elif detected["has_javascript"]:
-        return "javascript"
-    return "commit"
 
 
 def detect_project_type(project_root: Path) -> Dict[str, Any]:
@@ -182,7 +189,6 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - has_pytest: bool
     - has_jest: bool
     - test_dirs: list of test directory paths
-    - recommended_profile: str
     - recommended_gates: list of str
     - available_tools: list of str
     - missing_tools: list of (tool_name, check_name, install_command)
@@ -198,7 +204,6 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
 
     detected["has_tests_dir"] = bool(detected["test_dirs"])
     detected["recommended_gates"] = _recommend_gates(detected)
-    detected["recommended_profile"] = _recommend_profile(detected)
 
     # Detect tool availability
     tool_info = _detect_tools(project_root)

@@ -337,7 +337,7 @@ class TestConsoleReporter:
         """Test failure log is written and path cited in output."""
         results = [
             CheckResult(
-                "laziness:py-lint",
+                "laziness:sloppy-formatting.py",
                 CheckStatus.FAILED,
                 1.0,
                 output="Black: Formatting OK\nIsort: Import order issues\nFlake8: OK",
@@ -352,14 +352,14 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # Log path shown in output
-        assert ".slopmop/logs/laziness_py-lint.log" in captured.out
+        assert ".slopmop/logs/laziness_sloppy-formatting.py.log" in captured.out
         # Output preview shown
         assert "Black: Formatting OK" in captured.out
         assert "Isort: Import order issues" in captured.out
         # Fix suggestion now shown in compact summary
         assert "Run: black" in captured.out
         # Log file actually created with full content
-        log_file = tmp_path / ".slopmop" / "logs" / "laziness_py-lint.log"
+        log_file = tmp_path / ".slopmop" / "logs" / "laziness_sloppy-formatting.py.log"
         assert log_file.exists()
         log_content = log_file.read_text()
         assert "Run: black . && isort ." in log_content
@@ -370,7 +370,7 @@ class TestConsoleReporter:
         long_output = "\n".join([f"Error line {i}" for i in range(20)])
         results = [
             CheckResult(
-                "overconfidence:py-tests",
+                "overconfidence:untested-code.py",
                 CheckStatus.FAILED,
                 5.0,
                 output=long_output,
@@ -391,7 +391,9 @@ class TestConsoleReporter:
         # Overflow indicator shown
         assert "more lines in log" in captured.out
         # Full output in log file
-        log_file = tmp_path / ".slopmop" / "logs" / "overconfidence_py-tests.log"
+        log_file = (
+            tmp_path / ".slopmop" / "logs" / "overconfidence_untested-code.py.log"
+        )
         log_content = log_file.read_text()
         assert "Error line 19" in log_content
 
@@ -605,7 +607,7 @@ class TestConsoleReporter:
         """Test next steps uses errors when no failures exist."""
         results = [
             CheckResult(
-                "laziness:py-lint",
+                "laziness:sloppy-formatting.py",
                 CheckStatus.ERROR,
                 1.0,
                 error="Tool crashed",
@@ -618,7 +620,9 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # Next step points to the error check
-        assert "Next: ./sm swab -g laziness:py-lint --verbose" in captured.out
+        assert (
+            "Next: ./sm swab -g laziness:sloppy-formatting.py --verbose" in captured.out
+        )
 
     def test_error_output_filters_passing_lines(self, capsys, tmp_path):
         """Test error output filters out ✅ lines like failures do."""
@@ -722,11 +726,11 @@ class TestNotRunSection:
     """Tests for the 'Not run' summary section."""
 
     def test_not_run_section_disabled(self, capsys):
-        """Disabled checks appear in not-run section."""
+        """Disabled checks appear in not-run summary count."""
         results = [
             CheckResult("check1", CheckStatus.PASSED, 1.0),
             CheckResult(
-                "myopia:security-scan",
+                "myopia:vulnerability-blindness.py",
                 CheckStatus.SKIPPED,
                 0,
                 output="Disabled in config",
@@ -739,14 +743,14 @@ class TestNotRunSection:
 
         captured = capsys.readouterr()
         assert "Not run (1):" in captured.out
-        assert "myopia:security-scan — disabled" in captured.out
+        assert "1 disabled" in captured.out
 
     def test_not_run_section_not_applicable(self, capsys):
-        """N/A checks appear in not-run section."""
+        """N/A checks appear in not-run summary count."""
         results = [
             CheckResult("check1", CheckStatus.PASSED, 1.0),
             CheckResult(
-                "overconfidence:js-tests",
+                "overconfidence:untested-code.js",
                 CheckStatus.NOT_APPLICABLE,
                 0,
                 output="No JavaScript files",
@@ -759,10 +763,10 @@ class TestNotRunSection:
 
         captured = capsys.readouterr()
         assert "Not run (1):" in captured.out
-        assert "overconfidence:js-tests — not applicable" in captured.out
+        assert "1 not applicable" in captured.out
 
     def test_not_run_section_time_budget(self, capsys):
-        """Time-budget skips include estimated duration."""
+        """Time-budget skips appear in count summary."""
         results = [
             CheckResult("check1", CheckStatus.PASSED, 1.0),
             CheckResult(
@@ -779,10 +783,10 @@ class TestNotRunSection:
 
         captured = capsys.readouterr()
         assert "Not run (1):" in captured.out
-        assert "myopia:source-duplication — time budget (est. 15.2s)" in captured.out
+        assert "1 time budget" in captured.out
 
     def test_not_run_section_fail_fast(self, capsys):
-        """Fail-fast skips appear in not-run section."""
+        """Fail-fast skips appear in count summary."""
         results = [
             CheckResult("check1", CheckStatus.FAILED, 1.0, error="broke"),
             CheckResult(
@@ -799,21 +803,21 @@ class TestNotRunSection:
 
         captured = capsys.readouterr()
         assert "Not run (1):" in captured.out
-        assert "check2 — fail-fast" in captured.out
+        assert "1 fail-fast" in captured.out
 
     def test_not_run_section_multiple_reasons(self, capsys):
-        """Multiple skip reasons are grouped and sorted."""
+        """Multiple skip reasons appear as counts in display order."""
         results = [
             CheckResult("check1", CheckStatus.PASSED, 1.0),
             CheckResult(
-                "laziness:complexity",
+                "laziness:complexity-creep.py",
                 CheckStatus.SKIPPED,
                 0,
                 output="Disabled in config",
                 skip_reason=SkipReason.DISABLED,
             ),
             CheckResult(
-                "overconfidence:js-tests",
+                "overconfidence:untested-code.js",
                 CheckStatus.NOT_APPLICABLE,
                 0,
                 output="No JS files",
@@ -833,10 +837,14 @@ class TestNotRunSection:
 
         captured = capsys.readouterr()
         assert "Not run (3):" in captured.out
-        # Disabled comes before N/A, N/A before time budget
-        disabled_pos = captured.out.index("complexity — disabled")
-        na_pos = captured.out.index("js-tests — not applicable")
-        time_pos = captured.out.index("source-duplication — time budget")
+        # All reasons shown as counts in display order
+        assert "1 disabled" in captured.out
+        assert "1 not applicable" in captured.out
+        assert "1 time budget" in captured.out
+        # Disabled comes first in display order
+        disabled_pos = captured.out.index("1 disabled")
+        na_pos = captured.out.index("1 not applicable")
+        time_pos = captured.out.index("1 time budget")
         assert disabled_pos < na_pos < time_pos
 
     def test_not_run_section_omitted_when_all_ran(self, capsys):
@@ -889,4 +897,4 @@ class TestNotRunSection:
         captured = capsys.readouterr()
         assert "SLOP DETECTED" in captured.out
         assert "Not run (1):" in captured.out
-        assert "check2 — disabled" in captured.out
+        assert "1 disabled" in captured.out

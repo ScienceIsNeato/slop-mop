@@ -99,9 +99,9 @@ def _parse_hook_info(hook_content: str) -> Optional[dict[str, Any]]:
     # Try to extract the command verb
     match = re.search(r"# Command: sm (\w+)", hook_content)
     if match:
-        return {"profile": match.group(1), "managed": True}
+        return {"verb": match.group(1), "managed": True}
 
-    return {"profile": "unknown", "managed": True}
+    return {"verb": "unknown", "managed": True}
 
 
 def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
@@ -117,7 +117,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
 
     if not hooks_dir.exists():
         print("ℹ️  No hooks directory found")
-        print("   Install a hook: ./sm commit-hooks install <profile>")
+        print("   Install a hook: ./sm commit-hooks install <verb>")
         return 0
 
     hook_types = ["pre-commit", "pre-push", "commit-msg"]
@@ -137,7 +137,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     if found_sb_hooks:
         print("🪣 Slop-Mop-managed hooks:")
         for hook_type, info in found_sb_hooks:
-            print(f"   ✅ {hook_type}: {info['profile']}")
+            print(f"   ✅ {hook_type}: {info['verb']}")
         print()
 
     if found_other_hooks:
@@ -157,7 +157,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     return 0
 
 
-def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
+def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
     """Install a pre-commit hook."""
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hook_file = hooks_dir / "pre-commit"
@@ -176,7 +176,7 @@ def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
             print()
             return 1
 
-    hook_content = _generate_hook_script(profile)
+    hook_content = _generate_hook_script(verb)
     hook_file.write_text(hook_content)
     hook_file.chmod(
         hook_file.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
@@ -189,9 +189,9 @@ def _hooks_install(project_root: Path, hooks_dir: Path, profile: str) -> int:
 
     print_project_header(str(project_root))
     print(f"📄 Hook: {hook_file}")
-    print(f"🎯 Command: sm {profile}")
+    print(f"🎯 Command: sm {verb}")
     print()
-    print(f"The hook will run './sm {profile}' before each commit.")
+    print(f"The hook will run './sm {verb}' before each commit.")
     print("Commits will be blocked if quality gates fail.")
     print()
     print("To remove: ./sm commit-hooks uninstall")
@@ -244,7 +244,7 @@ def cmd_commit_hooks(args: argparse.Namespace) -> int:
     if args.hooks_action == "status":
         return _hooks_status(project_root, hooks_dir)
     elif args.hooks_action == "install":
-        return _hooks_install(project_root, hooks_dir, args.profile)
+        return _hooks_install(project_root, hooks_dir, args.hook_verb)
     elif args.hooks_action == "uninstall":
         return _hooks_uninstall(project_root, hooks_dir)
     else:

@@ -99,16 +99,26 @@ class TimingStats:
             return 0.0
         return (elapsed - self.mean) / self.std_dev
 
-    def sparkline(self, max_width: int = 10) -> str:
+    def sparkline(
+        self,
+        max_width: int = 10,
+        colors_enabled: bool = False,
+    ) -> str:
         """Render recent samples as a Unicode sparkline.
 
         Maps each value to one of 8 block characters (▁▂▃▄▅▆▇█)
         scaled between the min and max of the displayed window.
         The newest sample is on the right.
 
+        When *colors_enabled* is True and ``self.results`` is populated,
+        each bar is colored by the corresponding result status (green for
+        passed, red for failed, etc.), merging timing + outcome into one
+        visual.
+
         Args:
             max_width: Maximum number of characters to render.
                        Uses the last *max_width* samples.
+            colors_enabled: Whether to color bars by result status.
 
         Returns:
             Sparkline string, or empty string if < 2 samples.
@@ -120,36 +130,31 @@ class TimingStats:
         hi = max(window)
         span = hi - lo
         if span < 0.001:
-            # All values are effectively identical — flat line
-            return _SPARK_BLOCKS[3] * len(window)
-        return "".join(_SPARK_BLOCKS[min(int((v - lo) / span * 7), 7)] for v in window)
+            bar = _SPARK_BLOCKS[3]
+            bars = [bar] * len(window)
+        else:
+            bars = [_SPARK_BLOCKS[min(int((v - lo) / span * 7), 7)] for v in window]
 
-    def result_trendline(self, max_width: int = 8, colors_enabled: bool = True) -> str:
-        """Render recent check outcomes as colored dots.
+        # Apply per-bar result coloring when available
+        if colors_enabled and self.results:
+            result_window = self.results[-max_width:]
+            # Align: results may be shorter than samples (legacy data)
+            offset = len(bars) - len(result_window)
+            reset = "\033[0m"
+            colored: list[str] = []
+            for i, bar in enumerate(bars):
+                ri = i - offset
+                if ri >= 0 and ri < len(result_window):
+                    color = _RESULT_STATUS_COLORS.get(result_window[ri], "")
+                    if color:
+                        colored.append(f"{color}{bar}{reset}")
+                    else:
+                        colored.append(bar)
+                else:
+                    colored.append(bar)
+            return "".join(colored)
 
-        Each dot represents one historical run, colored by result:
-        green = passed, red = failed, yellow = warned, gray = skipped.
-        Newest result is on the right.
-
-        Args:
-            max_width: Maximum number of dots to render.
-            colors_enabled: Whether to emit ANSI color codes.
-
-        Returns:
-            Colored dot string, or empty string if no results.
-        """
-        if not self.results:
-            return ""
-        window = self.results[-max_width:]
-        reset = "\033[0m"
-        parts: list[str] = []
-        for status in window:
-            color = _RESULT_STATUS_COLORS.get(status, "") if colors_enabled else ""
-            if color:
-                parts.append(f"{color}{_RESULT_DOT}{reset}")
-            else:
-                parts.append(_RESULT_DOT)
-        return "".join(parts)
+        return "".join(bars)
 
     def format_delta(self, elapsed: float) -> str:
         """Format delta from mean as '+/-Xs (+/-X%)'.

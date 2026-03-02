@@ -546,16 +546,16 @@ class TestCheckExecutor:
     def test_na_callback_fires_for_inapplicable_checks(self, tmp_path):
         """Test set_na_callback fires when a check is not applicable."""
         registry = CheckRegistry()
-        check_class = make_mock_check_class("js-types", applicable=False)
+        check_class = make_mock_check_class("type-blindness.js", applicable=False)
         registry.register(check_class)
 
         na_names = []
         executor = CheckExecutor(registry=registry)
         executor.set_na_callback(na_names.append)
 
-        executor.run_checks(str(tmp_path), ["overconfidence:js-types"])
+        executor.run_checks(str(tmp_path), ["overconfidence:type-blindness.js"])
 
-        assert na_names == ["overconfidence:js-types"]
+        assert na_names == ["overconfidence:type-blindness.js"]
 
     def test_na_callback_not_called_for_applicable_checks(self, tmp_path):
         """Test set_na_callback is NOT called when check is applicable."""

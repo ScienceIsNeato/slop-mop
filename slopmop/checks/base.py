@@ -53,7 +53,7 @@ class ToolContext(Enum):
     Categories:
 
     PURE — No external tools.  Pure Python analysis (AST, regex, file
-           scanning).  Always runnable.  Examples: bogus-tests, loc-lock,
+           scanning).  Always runnable.  Examples: bogus-tests.py, code-sprawl,
            gate-dodging.
 
     SM_TOOL — Tool ships with slop-mop (bundled via pipx / pip dependency).
@@ -404,11 +404,23 @@ class BaseCheck(ABC):
         """
 
     @property
+    def gate_description(self) -> str:
+        """One-line description of what this gate does, for README tables.
+
+        This is the single source of truth for the "What It Does" column
+        in auto-generated gate tables.  Override in each check to provide
+        a concise, emoji-prefixed summary.
+
+        Defaults to ``display_name`` if not overridden.
+        """
+        return self.display_name
+
+    @property
     def full_name(self) -> str:
         """Full name including category prefix.
 
         Returns:
-            String like 'laziness:py-lint'
+            String like 'laziness:sloppy-formatting.py'
         """
         return f"{self.category.key}:{self.name}"
 
@@ -480,9 +492,8 @@ class BaseCheck(ABC):
         Returns:
             Human-readable skip reason
         """
-        # Default implementation tries to provide helpful context
-        category = self.category.display_name if self.category else "Unknown"
-        return f"No {category} code detected in project"
+        # Default implementation provides a generic message
+        return "Not applicable to this project"
 
     @abstractmethod
     def run(self, project_root: str) -> CheckResult:
@@ -918,3 +929,18 @@ class JavaScriptCheckMixin:
                 pass  # Ignore .npmrc read errors
 
         return cmd
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Measure scope for JavaScript checks — counts JS/TS files and LOC.
+
+        Uses include_dirs from config if available, otherwise scans
+        the entire project root.
+        """
+        config = getattr(self, "config", {})
+        include_dirs = config.get("include_dirs") or config.get("src_dirs")
+        include_list = list(include_dirs) if include_dirs else None
+        return count_source_scope(
+            project_root,
+            include_dirs=include_list,
+            extensions={".js", ".ts", ".jsx", ".tsx"},
+        )

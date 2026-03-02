@@ -1,4 +1,4 @@
-"""Tests for laziness:config-debt check."""
+"""Tests for laziness:silenced-gates check."""
 
 import json
 from pathlib import Path
@@ -40,11 +40,11 @@ class TestConfigDebtCheckProperties:
 
     def test_name(self):
         check = ConfigDebtCheck({})
-        assert check.name == "config-debt"
+        assert check.name == "silenced-gates"
 
     def test_full_name(self):
         check = ConfigDebtCheck({})
-        assert check.full_name == "laziness:config-debt"
+        assert check.full_name == "laziness:silenced-gates"
 
     def test_display_name(self):
         check = ConfigDebtCheck({})
@@ -118,13 +118,13 @@ class TestStaleApplicability:
         config = {
             "laziness": {
                 "enabled": True,
-                "gates": {"py-lint": {"enabled": False}},
+                "gates": {"sloppy-formatting.py": {"enabled": False}},
             },
         }
         findings = check_stale_applicability(tmp_path, config, set())
         assert len(findings) == 1
         assert "python" in findings[0].lower()
-        assert "py-lint" in findings[0]
+        assert "sloppy-formatting.py" in findings[0]
 
     def test_js_gates_disabled_js_present(self, tmp_path: Path):
         """JavaScript gates disabled but package.json exists → findings."""
@@ -133,8 +133,8 @@ class TestStaleApplicability:
             "overconfidence": {
                 "enabled": True,
                 "gates": {
-                    "js-tests": {"enabled": False},
-                    "js-types": {"enabled": False},
+                    "untested-code.js": {"enabled": False},
+                    "type-blindness.js": {"enabled": False},
                 },
             },
         }
@@ -148,7 +148,7 @@ class TestStaleApplicability:
         config = {
             "laziness": {
                 "enabled": True,
-                "gates": {"js-lint": {"enabled": False}},
+                "gates": {"sloppy-formatting.js": {"enabled": False}},
             },
         }
         findings = check_stale_applicability(tmp_path, config, set())
@@ -160,7 +160,7 @@ class TestStaleApplicability:
         config = {
             "laziness": {
                 "enabled": True,
-                "gates": {"py-lint": {"enabled": True}},
+                "gates": {"sloppy-formatting.py": {"enabled": True}},
             },
         }
         findings = check_stale_applicability(tmp_path, config, set())
@@ -172,12 +172,12 @@ class TestStaleApplicability:
         config = {
             "laziness": {
                 "enabled": False,
-                "gates": {"py-lint": {"enabled": True}},
+                "gates": {"sloppy-formatting.py": {"enabled": True}},
             },
         }
         findings = check_stale_applicability(tmp_path, config, set())
         assert len(findings) == 1
-        assert "py-lint" in findings[0]
+        assert "sloppy-formatting.py" in findings[0]
 
     def test_skips_explicitly_disabled_gates(self, tmp_path: Path):
         """Gates in disabled_gates set are not double-counted."""
@@ -185,21 +185,28 @@ class TestStaleApplicability:
         config = {
             "laziness": {
                 "enabled": True,
-                "gates": {"py-lint": {"enabled": False}},
+                "gates": {"sloppy-formatting.py": {"enabled": False}},
             },
         }
-        findings = check_stale_applicability(tmp_path, config, {"laziness:py-lint"})
+        findings = check_stale_applicability(
+            tmp_path, config, {"laziness:sloppy-formatting.py"}
+        )
         assert findings == []
 
     def test_non_language_gates_ignored(self, tmp_path: Path):
-        """Gates without a language prefix are not flagged here."""
+        """Gates without a language suffix are not flagged here."""
         _make_python_project(tmp_path)
         config = {
             "laziness": {
                 "enabled": True,
                 "gates": {
-                    "complexity": {"enabled": False},
-                    "dead-code": {"enabled": False},
+                    "silenced-gates": {"enabled": False},
+                },
+            },
+            "myopia": {
+                "enabled": True,
+                "gates": {
+                    "source-duplication": {"enabled": False},
                 },
             },
         }
@@ -212,11 +219,11 @@ class TestStaleApplicability:
         config = {
             "laziness": {
                 "enabled": True,
-                "gates": {"py-lint": {"enabled": False}},
+                "gates": {"sloppy-formatting.py": {"enabled": False}},
             },
             "overconfidence": {
                 "enabled": True,
-                "gates": {"py-tests": {"enabled": False}},
+                "gates": {"untested-code.py": {"enabled": False}},
             },
         }
         findings = check_stale_applicability(tmp_path, config, set())
@@ -231,8 +238,8 @@ class TestStaleApplicability:
             "laziness": {
                 "enabled": True,
                 "gates": {
-                    "py-lint": {"enabled": False},
-                    "js-lint": {"enabled": False},
+                    "sloppy-formatting.py": {"enabled": False},
+                    "sloppy-formatting.js": {"enabled": False},
                 },
             },
         }
@@ -252,11 +259,13 @@ class TestDisabledGates:
     """Scenario 2: gates in the disabled_gates top-level list."""
 
     def test_reports_disabled_gates(self):
-        findings = check_disabled_gates({"laziness:complexity", "myopia:security-scan"})
+        findings = check_disabled_gates(
+            {"laziness:complexity-creep.py", "myopia:vulnerability-blindness.py"}
+        )
         assert len(findings) == 2
         # Sorted alphabetically
-        assert "laziness:complexity" in findings[0]
-        assert "myopia:security-scan" in findings[1]
+        assert "laziness:complexity-creep.py" in findings[0]
+        assert "myopia:vulnerability-blindness.py" in findings[1]
         assert "explicitly disabled" in findings[0]
 
     def test_empty_set_no_findings(self):
@@ -279,7 +288,7 @@ class TestConfigDebtRun:
                 "version": "1.0",
                 "laziness": {
                     "enabled": True,
-                    "gates": {"py-lint": {"enabled": True}},
+                    "gates": {"sloppy-formatting.py": {"enabled": True}},
                 },
             },
         )
@@ -296,14 +305,14 @@ class TestConfigDebtRun:
             {
                 "laziness": {
                     "enabled": True,
-                    "gates": {"py-lint": {"enabled": False}},
+                    "gates": {"sloppy-formatting.py": {"enabled": False}},
                 },
             },
         )
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.WARNED
-        assert "py-lint" in result.output
+        assert "sloppy-formatting.py" in result.output
 
     def test_disabled_gate_warns(self, tmp_path: Path):
         """Explicit disabled_gates → WARNED."""
@@ -311,13 +320,13 @@ class TestConfigDebtRun:
             tmp_path,
             {
                 "version": "1.0",
-                "disabled_gates": ["laziness:complexity"],
+                "disabled_gates": ["laziness:complexity-creep.py"],
             },
         )
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.WARNED
-        assert "laziness:complexity" in result.output
+        assert "laziness:complexity-creep.py" in result.output
 
     def test_multiple_findings_combined(self, tmp_path: Path):
         """Multiple debt items → single WARNED with count."""
@@ -325,10 +334,10 @@ class TestConfigDebtRun:
         _write_config(
             tmp_path,
             {
-                "disabled_gates": ["myopia:security-scan"],
+                "disabled_gates": ["myopia:vulnerability-blindness.py"],
                 "laziness": {
                     "enabled": True,
-                    "gates": {"py-lint": {"enabled": False}},
+                    "gates": {"sloppy-formatting.py": {"enabled": False}},
                 },
             },
         )
@@ -349,8 +358,8 @@ class TestConfigDebtRun:
                 "laziness": {
                     "enabled": True,
                     "gates": {
-                        "py-lint": {"enabled": False},
-                        "js-lint": {"enabled": False},
+                        "sloppy-formatting.py": {"enabled": False},
+                        "sloppy-formatting.js": {"enabled": False},
                     },
                 },
             },
@@ -378,7 +387,7 @@ class TestConfigDebtRun:
         """WARNED result populates the error field for display."""
         _write_config(
             tmp_path,
-            {"disabled_gates": ["laziness:complexity"]},
+            {"disabled_gates": ["laziness:complexity-creep.py"]},
         )
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))

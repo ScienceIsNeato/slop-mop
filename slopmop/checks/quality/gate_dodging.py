@@ -10,7 +10,7 @@ An escape hatch exists for intentional changes: if a PR comment
 (resolved or unresolved) contains the prefix ``[gate-change-justified]``
 the warning is suppressed and the check passes.
 
-On the ``commit`` profile (no PR context) the check simply warns
+At the ``swab`` level (no PR context) the check simply warns
 without the escape hatch option.
 """
 
@@ -48,7 +48,7 @@ def _to_str_set(values: object) -> set[str]:
 class PermissivenessChange:
     """A single config field that became more permissive."""
 
-    gate: str  # e.g. "laziness:complexity"
+    gate: str  # e.g. "laziness:complexity-creep.py"
     field: str  # e.g. "max_complexity"
     old_value: Any
     new_value: Any
@@ -220,7 +220,7 @@ def _detect_loosened_gates(
     # Collect all category keys present in either config
     all_categories: set[str] = set(base_config.keys()) | set(current_config.keys())
     # Skip non-category keys
-    skip_keys: set[str] = {"version", "default_profile"}
+    skip_keys: set[str] = {"version"}
 
     for cat_key in sorted(all_categories - skip_keys):
         base_cat_raw: object = base_config.get(cat_key, {})
@@ -432,7 +432,7 @@ class GateDodgingCheck(BaseCheck):
     exclusion patterns to make checks pass instead of addressing the
     root cause. This check catches that pattern early.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       base_ref: "" — branch to compare against. Empty string
@@ -461,6 +461,10 @@ class GateDodgingCheck(BaseCheck):
     @property
     def display_name(self) -> str:
         return "🎭 Gate Dodging"
+
+    @property
+    def gate_description(self) -> str:
+        return "🎭 Detects loosened quality thresholds"
 
     @property
     def category(self) -> GateCategory:

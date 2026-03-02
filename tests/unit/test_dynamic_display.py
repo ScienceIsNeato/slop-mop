@@ -5,8 +5,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 from slopmop.constants import STATUS_EMOJI
-from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
-from slopmop.reporting.display.renderer import strip_ansi
+from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.dynamic import CheckDisplayInfo, DisplayState, DynamicDisplay
 from slopmop.reporting.timings import TimingStats
 
@@ -343,12 +342,12 @@ class TestDynamicDisplay:
         """Test on_check_disabled collects disabled check names."""
         display = DynamicDisplay(quiet=False)
 
-        display.on_check_disabled("laziness:js-lint")
-        display.on_check_disabled("overconfidence:js-types")
+        display.on_check_disabled("laziness:sloppy-formatting.js")
+        display.on_check_disabled("overconfidence:type-blindness.js")
 
         assert display._disabled_names == [
-            "laziness:js-lint",
-            "overconfidence:js-types",
+            "laziness:sloppy-formatting.js",
+            "overconfidence:type-blindness.js",
         ]
 
     def test_on_check_disabled_quiet(self) -> None:
@@ -359,16 +358,17 @@ class TestDynamicDisplay:
         assert display._disabled_names == ["test:check"]
 
     def test_disabled_shown_in_display(self) -> None:
-        """Test disabled summary line appears in build_display output."""
+        """Test disabled count appears in skip summary while checks run."""
         display = DynamicDisplay(quiet=False)
-        display.on_check_disabled("laziness:js-lint")
-        display.on_check_disabled("myopia:security-scan")
+        display.on_check_disabled("laziness:sloppy-formatting.js")
+        display.on_check_disabled("myopia:vulnerability-blindness.py")
+        # Skip summary only shows while checks are still active
+        display.on_check_start("test:running", category="quality")
 
         lines = display._build_display()
-        disabled_lines = [line for line in lines if line.startswith("Disabled:")]
-        assert len(disabled_lines) == 1
-        assert "js-lint" in disabled_lines[0]
-        assert "security-scan" in disabled_lines[0]
+        skip_lines = [line for line in lines if "disabled" in line]
+        assert len(skip_lines) == 1
+        assert "2 disabled" in skip_lines[0]
 
     def test_thread_safety(self) -> None:
         """Test display is thread safe."""
@@ -510,13 +510,14 @@ class TestDynamicDisplay:
 
         lines = display._build_display()
 
-        # Filter check lines (skip progress, headers, disabled, summary)
+        # Filter check lines (skip progress, headers, column header, disabled, summary)
         check_lines = [
             line
             for line in lines
             if line.strip()
             and "Progress" not in line
             and "─" not in line
+            and "history" not in line
             and not line.strip().startswith("Disabled")
             and not line.strip().startswith("🔄")
         ]
@@ -688,13 +689,14 @@ class TestDynamicDisplay:
 
         lines = display._build_display()
 
-        # Filter check lines (skip progress, headers, disabled, summary)
+        # Filter check lines (skip progress, headers, column header, disabled, summary)
         check_lines = [
             line
             for line in lines
             if line.strip()
             and "Progress" not in line
             and "─" not in line
+            and "history" not in line
             and not line.strip().startswith("Disabled")
             and not line.strip().startswith("🔄")
         ]
@@ -726,13 +728,14 @@ class TestDynamicDisplay:
         )
 
         lines = display._build_display()
-        # Filter check lines (skip progress, headers, disabled, summary)
+        # Filter check lines (skip progress, headers, column header, disabled, summary)
         check_lines = [
             line
             for line in lines
             if line.strip()
             and "Progress" not in line
             and "─" not in line
+            and "history" not in line
             and not line.strip().startswith("Disabled")
             and not line.strip().startswith("🔄")
         ]
@@ -820,12 +823,12 @@ class TestDynamicDisplay:
         """Test on_check_not_applicable collects N/A check names."""
         display = DynamicDisplay(quiet=True)
 
-        display.on_check_not_applicable("overconfidence:js-types")
-        display.on_check_not_applicable("laziness:js-lint")
+        display.on_check_not_applicable("overconfidence:type-blindness.js")
+        display.on_check_not_applicable("laziness:sloppy-formatting.js")
 
         assert display._na_names == [
-            "overconfidence:js-types",
-            "laziness:js-lint",
+            "overconfidence:type-blindness.js",
+            "laziness:sloppy-formatting.js",
         ]
 
     def test_on_check_not_applicable_deduplicates(self) -> None:
@@ -838,30 +841,45 @@ class TestDynamicDisplay:
         assert display._na_names == ["test:js"]
 
     def test_na_shown_in_footer(self) -> None:
-        """Test N/A checks appear in 'Not applicable:' footer line."""
+        """Test N/A checks appear as count in skip summary while running."""
         display = DynamicDisplay(quiet=True)
-        display.on_check_not_applicable("overconfidence:js-types")
-        display.on_check_not_applicable("laziness:js-lint")
+        display.on_check_not_applicable("overconfidence:type-blindness.js")
+        display.on_check_not_applicable("laziness:sloppy-formatting.js")
+        # Skip summary only shows while checks are still active
+        display.on_check_start("test:running", category="quality")
 
         lines = display._build_display()
-        na_lines = [line for line in lines if line.startswith("Not applicable:")]
-        assert len(na_lines) == 1
-        assert "js-types" in na_lines[0]
-        assert "js-lint" in na_lines[0]
+        skip_lines = [line for line in lines if "n/a" in line]
+        assert len(skip_lines) == 1
+        assert "2 n/a" in skip_lines[0]
 
-    def test_na_and_disabled_shown_separately(self) -> None:
-        """Test N/A and disabled checks render as separate footer lines."""
+    def test_skip_summary_hidden_when_all_done(self) -> None:
+        """Skip summary is omitted once all checks complete (console handles it)."""
         display = DynamicDisplay(quiet=True)
-        display.on_check_not_applicable("overconfidence:js-types")
-        display.on_check_disabled("myopia:security-scan")
+        display.on_check_not_applicable("overconfidence:type-blindness.js")
+        display.on_check_disabled("laziness:sloppy-formatting.js")
+        display.on_check_start("test:check", category="quality")
+        display.on_check_complete(
+            CheckResult(name="test:check", status=CheckStatus.PASSED, duration=0.1)
+        )
 
         lines = display._build_display()
-        na_lines = [line for line in lines if line.startswith("Not applicable:")]
-        disabled_lines = [line for line in lines if line.startswith("Disabled:")]
-        assert len(na_lines) == 1
-        assert len(disabled_lines) == 1
-        assert "js-types" in na_lines[0]
-        assert "security-scan" in disabled_lines[0]
+        assert not any("n/a" in line for line in lines)
+        assert not any("disabled" in line for line in lines)
+
+    def test_na_and_disabled_shown_in_combined_summary(self) -> None:
+        """Test N/A and disabled counts both appear in skip line while running."""
+        display = DynamicDisplay(quiet=True)
+        display.on_check_not_applicable("overconfidence:type-blindness.js")
+        display.on_check_disabled("myopia:vulnerability-blindness.py")
+        # Skip summary only shows while checks are still active
+        display.on_check_start("test:running", category="quality")
+
+        lines = display._build_display()
+        skip_lines = [line for line in lines if "disabled" in line or "n/a" in line]
+        assert len(skip_lines) == 1
+        assert "1 disabled" in skip_lines[0]
+        assert "1 n/a" in skip_lines[0]
 
     def test_load_historical_timings(self, tmp_path) -> None:
         """Test load_historical_timings loads timing data."""
@@ -889,106 +907,3 @@ class TestDynamicDisplay:
         assert "test:check" in display._historical_timings
         assert display._historical_timings["test:check"].mean == 3.5
         assert display._historical_timings["test:check"].sample_count == 2
-
-    def test_completed_line_shows_done_for_all_statuses(self) -> None:
-        """All completed checks show 'done' regardless of status."""
-        display = DynamicDisplay(quiet=True)
-
-        for status in (CheckStatus.PASSED, CheckStatus.FAILED, CheckStatus.WARNED):
-            info = CheckDisplayInfo(
-                name="test:check",
-                state=DisplayState.COMPLETED,
-                result=CheckResult(name="test:check", status=status, duration=1.0),
-                duration=1.0,
-            )
-            line = display._format_check_line(info)
-            assert "done" in line
-
-    def test_completed_line_shows_scope_info(self) -> None:
-        """Per-check scope info appears on the completed line."""
-        display = DynamicDisplay(quiet=True)
-
-        info = CheckDisplayInfo(
-            name="test:check",
-            state=DisplayState.COMPLETED,
-            result=CheckResult(
-                name="test:check",
-                status=CheckStatus.PASSED,
-                duration=1.0,
-                scope=ScopeInfo(files=47, lines=3200),
-            ),
-            duration=1.0,
-        )
-        line = display._format_check_line(info)
-        plain = strip_ansi(line)
-        assert "47 files" in plain
-        assert "3,200 LOC" in plain
-
-    def test_completed_line_shows_result_trendline(self) -> None:
-        """Result history trendline appears on completed line."""
-        display = DynamicDisplay(quiet=True)
-
-        info = CheckDisplayInfo(
-            name="test:check",
-            state=DisplayState.COMPLETED,
-            result=CheckResult(
-                name="test:check", status=CheckStatus.PASSED, duration=1.0
-            ),
-            duration=1.0,
-            timing_stats=TimingStats(
-                mean=1.0,
-                std_dev=0.1,
-                sample_count=3,
-                samples=(1.0, 1.1, 0.9),
-                results=("passed", "failed", "passed"),
-            ),
-        )
-        line = display._format_check_line(info)
-        assert "●" in line
-
-    def test_timing_adornments_after_elapsed(self) -> None:
-        """Delta and sparkline appear after the elapsed time."""
-        display = DynamicDisplay(quiet=True)
-
-        info = CheckDisplayInfo(
-            name="test:check",
-            state=DisplayState.COMPLETED,
-            result=CheckResult(
-                name="test:check", status=CheckStatus.PASSED, duration=1.5
-            ),
-            duration=1.5,
-            timing_stats=TimingStats(
-                mean=1.0,
-                std_dev=0.1,
-                sample_count=5,
-                samples=(1.0, 1.0, 1.0, 1.0, 1.5),
-            ),
-        )
-        line = display._format_check_line(info)
-        plain = strip_ansi(line)
-        # The time (1.5s) should appear before the delta (+0.5s)
-        time_pos = plain.find("1.5s")
-        delta_pos = plain.find("+0.5s")
-        assert time_pos >= 0
-        assert delta_pos >= 0
-        assert time_pos < delta_pos
-
-    def test_save_historical_timings_includes_results(self, tmp_path) -> None:
-        """save_historical_timings persists result status alongside duration."""
-        display = DynamicDisplay(quiet=True)
-        display._overall_start_time = time.time()
-
-        display.on_check_start("test:check")
-        display.on_check_complete(
-            CheckResult(name="test:check", status=CheckStatus.PASSED, duration=2.5)
-        )
-
-        display.save_historical_timings(str(tmp_path))
-
-        # Verify result was saved
-        import json
-
-        timings_file = tmp_path / ".slopmop" / "timings.json"
-        data = json.loads(timings_file.read_text())
-        assert "test:check" in data
-        assert data["test:check"].get("results") == ["passed"]

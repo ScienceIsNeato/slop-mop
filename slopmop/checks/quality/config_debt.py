@@ -5,7 +5,7 @@ fixing the underlying issues, or run ``sm init`` once and never revisit
 the config as the project evolves.  This check audits the current
 ``.sb_config.json`` for two classes of configuration debt:
 
-1. **Stale applicability** — Language-specific gates (``py-*``, ``js-*``)
+1. **Stale applicability** — Language-specific gates (``*.py``, ``*.js``)
    are disabled but the project now contains markers for that language.
    This typically happens when ``sm init`` ran before the language was
    added.
@@ -32,10 +32,10 @@ logger = logging.getLogger(__name__)
 
 CONFIG_FILE = ".sb_config.json"
 
-# Gate-name prefixes that imply a specific language.
-_LANGUAGE_PREFIXES: Dict[str, str] = {
-    "py-": "python",
-    "js-": "javascript",
+# Gate-name suffixes that imply a specific language.
+_LANGUAGE_SUFFIXES: Dict[str, str] = {
+    ".py": "python",
+    ".js": "javascript",
 }
 
 
@@ -115,8 +115,8 @@ def check_stale_applicability(
                 continue  # Gate is active — no debt
 
             # Does it match a language present in the project?
-            for prefix, lang in _LANGUAGE_PREFIXES.items():
-                if gate_name.startswith(prefix) and lang in detected:
+            for suffix, lang in _LANGUAGE_SUFFIXES.items():
+                if gate_name.endswith(suffix) and lang in detected:
                     stale_by_lang.setdefault(lang, []).append(full_name)
                     break
 
@@ -158,18 +158,22 @@ class ConfigDebtCheck(BaseCheck):
     blocker.
 
     Re-check:
-      ./sm swab -g laziness:config-debt
+      ./sm swab -g laziness:silenced-gates
     """
 
     tool_context = ToolContext.PURE
 
     @property
     def name(self) -> str:
-        return "config-debt"
+        return "silenced-gates"
 
     @property
     def display_name(self) -> str:
         return "🧹 Config Debt"
+
+    @property
+    def gate_description(self) -> str:
+        return "🔇 Detects disabled gates when language tooling exists"
 
     @property
     def category(self) -> GateCategory:

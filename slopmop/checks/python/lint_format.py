@@ -30,14 +30,14 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     unused imports), black (formatting), and isort (import order)
     before checking with flake8.
 
-    Profiles: commit, pr, quick
+    Level: swab
 
     Configuration:
       line_length: 88 — black's default; wide enough for modern
           screens, narrow enough to diff side-by-side.
 
     Common failures:
-      Formatting drift: Run `sm swab -g laziness:py-lint` with
+      Formatting drift: Run `sm swab -g laziness:sloppy-formatting.py` with
           auto-fix enabled. Black and isort will fix in place.
       Unused imports: autoflake removes them automatically during
           auto-fix. If you need to keep one, add `# noqa: F401`.
@@ -45,18 +45,22 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
           assertion on tuples, undefined names). Fix the code.
 
     Re-check:
-      ./sm swab -g laziness:py-lint --verbose
+      ./sm swab -g laziness:sloppy-formatting.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
-        return "py-lint"
+        return "sloppy-formatting.py"
 
     @property
     def display_name(self) -> str:
         return "🎨 Lint & Format (autoflake, black, isort, flake8)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧)"
 
     @property
     def category(self) -> GateCategory:

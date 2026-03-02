@@ -53,11 +53,11 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
     tests that have no assertions. The rule uses full AST analysis, making
     it more reliable than regex matching for detecting assertion-free tests.
 
-    This check complements the regex-based js-bogus-tests check:
-    - js-bogus-tests: Catches tautologies and empty bodies (no AST needed)
-    - js-expect-assert: Catches assertion-free tests via AST (more accurate)
+    This check complements the regex-based bogus-tests.js check:
+    - bogus-tests.js: Catches tautologies and empty bodies (no AST needed)
+    - hand-wavy-tests.js: Catches assertion-free tests via AST (more accurate)
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       additional_assert_functions: [] — Custom assertion function names to
@@ -76,18 +76,22 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
           assertion helper.
 
     Re-check:
-      ./sm swab -g deceptiveness:js-expect-assert --verbose
+      ./sm swab -g deceptiveness:hand-wavy-tests.js --verbose
     """
 
     tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:
-        return "js-expect-assert"
+        return "hand-wavy-tests.js"
 
     @property
     def display_name(self) -> str:
         return "🔍 Expect Assertions (ESLint jest/expect-expect)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🔍 ESLint expect-expect assertion enforcement"
 
     @property
     def category(self) -> GateCategory:
@@ -279,7 +283,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 status=CheckStatus.ERROR,
                 duration=duration,
                 error="ESLint timed out (120s). Project may need npm install first.",
-                fix_suggestion="Run: npm install && sm swab -g deceptiveness:js-expect-assert",
+                fix_suggestion="Run: npm install && sm swab -g deceptiveness:hand-wavy-tests.js",
             )
 
         # ESLint returns exit code 1 for lint errors, 2 for config errors

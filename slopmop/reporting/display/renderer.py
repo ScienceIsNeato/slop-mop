@@ -358,24 +358,52 @@ def truncate_for_inline(text: str, max_width: int) -> str:
     return "".join(result) + "…"
 
 
+def build_column_header_line(term_width: Optional[int] = None) -> str:
+    """Build a single column-header line for the report.
+
+    Uses the same width constants and separators as the data rows so
+    column edges align vertically.
+
+    Layout::
+
+        <padding>     avg    time  history
+
+    Args:
+        term_width: Terminal width (auto-detected if None)
+
+    Returns:
+        Right-justified header-label line
+    """
+    if term_width is None:
+        term_width = get_terminal_width()
+
+    right = config.TIMING_HEADER
+    # Pad to right edge
+    padding = max(0, term_width - display_width(right))
+    return " " * padding + right
+
+
 def build_category_header(
     label: str,
     completed: int,
     total: int,
     term_width: Optional[int] = None,
     scope: Optional[ScopeInfo] = None,
+    elapsed: Optional[float] = None,
 ) -> str:
-    """Build a minimal category header line.
+    """Build a category header line filled with dashes.
 
-    Produces a line like: ── Python [3/6] ──────────────────
-    Or with scope:        ── Python [3/6] · 23 files · 1.2k LOC ──
+    Produces a line like::
+
+        ── Python [3/6] · 6.8s ──────────────────────
 
     Args:
         label: Category display label (e.g. "🐍 Python")
         completed: Completed checks in this category
         total: Total checks in this category
         term_width: Terminal width (auto-detected if None)
-        scope: Optional scope metrics for files/LOC scanned
+        scope: Optional scope metrics (unused; kept for API compat)
+        elapsed: Optional aggregate time for the category
 
     Returns:
         Formatted header line
@@ -385,22 +413,22 @@ def build_category_header(
 
     dash = config.HEADER_DASH
     progress = f"[{completed}/{total}]"
-    scope_suffix = f" · {scope.format_compact()}" if scope else ""
-    inner = f" {label} {progress}{scope_suffix} "
+    if elapsed is not None and elapsed > 0:
+        time_str = format_time(elapsed)
+        left_part = f"{dash * 2} {label} {progress} · {time_str} "
+    else:
+        left_part = f"{dash * 2} {label} {progress} "
 
-    # Calculate remaining dashes to fill the line
-    inner_width = display_width(inner)
-    prefix_width = 2  # "── " leading dashes
-    remaining = max(0, term_width - prefix_width - inner_width)
-
-    return f"{dash * prefix_width}{inner}{dash * remaining}"
+    left_w = display_width(left_part)
+    fill = max(0, term_width - left_w)
+    return f"{left_part}{dash * fill}"
 
 
 def strip_category_prefix(check_name: str) -> str:
     """Strip the category prefix from a check name.
 
-    'laziness:py-lint' → 'lint-format'
-    'myopia:loc-lock'    → 'loc-lock'
+    'laziness:sloppy-formatting.py' → 'lint-format'
+    'myopia:code-sprawl'    → 'code-sprawl'
     'some-check'         → 'some-check' (no prefix)
 
     Args:

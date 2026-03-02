@@ -27,7 +27,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     runtime. Uses Jinja2's own compiler or delegates to a
     dedicated template smoke test if one exists.
 
-    Profiles: (not in commit/pr by default — add manually)
+    Level: swab (not included by default — add manually)
 
     Configuration:
       templates_dir: None (required) — directory containing
@@ -42,18 +42,22 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
       Jinja2 not installed: pip install jinja2
 
     Re-check:
-      ./sm swab -g laziness:template-syntax --verbose
+      ./sm swab -g laziness:broken-templates.py --verbose
     """
 
     tool_context = ToolContext.PROJECT
 
     @property
     def name(self) -> str:
-        return "template-syntax"
+        return "broken-templates.py"
 
     @property
     def display_name(self) -> str:
         return "📄 Template Syntax Validation (Jinja2)"
+
+    @property
+    def gate_description(self) -> str:
+        return "📄 Jinja2 template validation"
 
     @property
     def category(self) -> GateCategory:

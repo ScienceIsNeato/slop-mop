@@ -65,8 +65,8 @@ class TestDeepMerge:
             "overconfidence": {
                 "enabled": False,
                 "gates": {
-                    "py-tests": {"enabled": True},
-                    "py-types": {"enabled": True},
+                    "untested-code.py": {"enabled": True},
+                    "type-blindness.py": {"enabled": True},
                 },
             },
         }
@@ -74,8 +74,8 @@ class TestDeepMerge:
             "overconfidence": {
                 "enabled": True,
                 "gates": {
-                    "py-tests": {"test_dirs": ["tests", "spec"]},
-                    "py-static-analysis": {"enabled": True, "threshold": 80},
+                    "untested-code.py": {"test_dirs": ["tests", "spec"]},
+                    "missing-annotations.py": {"enabled": True, "threshold": 80},
                 },
             }
         }
@@ -83,12 +83,14 @@ class TestDeepMerge:
 
         assert result["version"] == "1.0"
         assert result["overconfidence"]["enabled"] is True
-        assert result["overconfidence"]["gates"]["py-types"] == {"enabled": True}
-        assert result["overconfidence"]["gates"]["py-tests"] == {
+        assert result["overconfidence"]["gates"]["type-blindness.py"] == {
+            "enabled": True
+        }
+        assert result["overconfidence"]["gates"]["untested-code.py"] == {
             "enabled": True,
             "test_dirs": ["tests", "spec"],
         }
-        assert result["overconfidence"]["gates"]["py-static-analysis"] == {
+        assert result["overconfidence"]["gates"]["missing-annotations.py"] == {
             "enabled": True,
             "threshold": 80,
         }
@@ -102,24 +104,24 @@ class TestNormalizeFlatKeys:
 
     def test_flat_key_normalized_to_hierarchical(self):
         """Flat 'category:gate' becomes nested {category: {gates: {gate: ...}}}."""
-        flat = {"laziness:dead-code": {"whitelist_file": "w.py"}}
+        flat = {"laziness:dead-code.py": {"whitelist_file": "w.py"}}
         result = _normalize_flat_keys(flat)
         assert result == {
-            "laziness": {"gates": {"dead-code": {"whitelist_file": "w.py"}}}
+            "laziness": {"gates": {"dead-code.py": {"whitelist_file": "w.py"}}}
         }
 
     def test_multiple_flat_keys_same_category(self):
         """Multiple gates in the same category merge correctly."""
         flat = {
             "myopia:source-duplication": {"threshold": 6},
-            "myopia:string-duplication": {"threshold": 3},
+            "myopia:string-duplication.py": {"threshold": 3},
         }
         result = _normalize_flat_keys(flat)
         assert result == {
             "myopia": {
                 "gates": {
                     "source-duplication": {"threshold": 6},
-                    "string-duplication": {"threshold": 3},
+                    "string-duplication.py": {"threshold": 3},
                 }
             }
         }
@@ -128,17 +130,17 @@ class TestNormalizeFlatKeys:
         """Non-flat keys pass through alongside normalized flat keys."""
         data = {
             "version": "1.0",
-            "laziness:complexity": {"max_rank": "D"},
+            "laziness:complexity-creep.py": {"max_rank": "D"},
         }
         result = _normalize_flat_keys(data)
         assert result["version"] == "1.0"
-        assert result["laziness"]["gates"]["complexity"]["max_rank"] == "D"
+        assert result["laziness"]["gates"]["complexity-creep.py"]["max_rank"] == "D"
 
     def test_already_hierarchical_passes_through(self):
         """Already-hierarchical config passes through unchanged."""
         hierarchical = {
             "version": "1.0",
-            "laziness": {"gates": {"dead-code": {"whitelist_file": "w.py"}}},
+            "laziness": {"gates": {"dead-code.py": {"whitelist_file": "w.py"}}},
         }
         result = _normalize_flat_keys(hierarchical)
         assert result == hierarchical
@@ -160,12 +162,12 @@ class TestNormalizeFlatKeys:
         overwrote previously accumulated flat-key data instead of merging.
         """
         data = {
-            "laziness:dead-code": {"whitelist_file": "w.py"},
+            "laziness:dead-code.py": {"whitelist_file": "w.py"},
             "laziness": {"enabled": True},
         }
         result = _normalize_flat_keys(data)
         # Both the gate config AND the top-level category key must survive
-        assert result["laziness"]["gates"]["dead-code"]["whitelist_file"] == "w.py"
+        assert result["laziness"]["gates"]["dead-code.py"]["whitelist_file"] == "w.py"
         assert result["laziness"]["enabled"] is True
 
 
@@ -272,101 +274,3 @@ class TestPrintNextSteps:
         assert "sm config --disable" in out
         assert "sm status" in out
         assert "sm config --show" in out
-
-
-class TestCmdSwabSelf:
-    """Tests for --self validation behavior via cmd_swab."""
-
-    def test_self_validate_creates_temp_config(self):
-        """Test that --self validation uses a temp config, not the real one."""
-        import argparse
-        import os
-        from unittest.mock import MagicMock, patch
-
-        # Verify that SB_CONFIG_FILE env var is set during --self
-        args = argparse.Namespace(
-            self_validate=True,
-            project_root=".",
-            quality_gates=None,
-            no_fail_fast=False,
-            no_auto_fix=False,
-            verbose=False,
-            quiet=True,
-            clear_history=False,
-            static=False,
-            swabbing_time=None,
-        )
-
-        # Mock the executor to avoid actually running checks
-        with patch("slopmop.cli.validate.CheckExecutor") as mock_executor_class:
-            mock_executor = MagicMock()
-            mock_summary = MagicMock()
-            mock_summary.all_passed = True
-            mock_executor.run_checks.return_value = mock_summary
-            mock_executor_class.return_value = mock_executor
-
-            with patch("slopmop.cli.validate.ConsoleReporter"):
-                from slopmop.cli.validate import cmd_swab
-
-                # Store original env
-                original_env = os.environ.get("SB_CONFIG_FILE")
-
-                try:
-                    result = cmd_swab(args)
-
-                    # After cmd_swab completes, env var should be cleaned up
-                    assert os.environ.get("SB_CONFIG_FILE") is None
-                    assert result == 0
-                finally:
-                    # Restore original env
-                    if original_env:
-                        os.environ["SB_CONFIG_FILE"] = original_env
-                    elif "SB_CONFIG_FILE" in os.environ:
-                        del os.environ["SB_CONFIG_FILE"]
-
-    def test_self_validate_cleans_up_temp_dir(self):
-        """Test that temp config dir is cleaned up after --self validation."""
-        import argparse
-        from pathlib import Path
-        from unittest.mock import MagicMock, patch
-
-        args = argparse.Namespace(
-            self_validate=True,
-            project_root=".",
-            quality_gates=None,
-            no_fail_fast=False,
-            no_auto_fix=False,
-            verbose=False,
-            quiet=True,
-            clear_history=False,
-            static=False,
-            swabbing_time=None,
-        )
-
-        captured_temp_dir = []
-
-        original_mkdtemp = __import__("tempfile").mkdtemp
-
-        def capture_mkdtemp(*args, **kwargs):
-            result = original_mkdtemp(*args, **kwargs)
-            if "sb_self_validate_" in kwargs.get("prefix", ""):
-                captured_temp_dir.append(result)
-            return result
-
-        with patch("slopmop.cli.validate.CheckExecutor") as mock_executor_class:
-            mock_executor = MagicMock()
-            mock_summary = MagicMock()
-            mock_summary.all_passed = True
-            mock_executor.run_checks.return_value = mock_summary
-            mock_executor_class.return_value = mock_executor
-
-            with patch("slopmop.cli.validate.ConsoleReporter"):
-                with patch("tempfile.mkdtemp", capture_mkdtemp):
-                    from slopmop.cli.validate import cmd_swab
-
-                    cmd_swab(args)
-
-                    # Temp dir should have been created
-                    assert len(captured_temp_dir) == 1
-                    # And should be cleaned up (not exist)
-                    assert not Path(captured_temp_dir[0]).exists()
