@@ -28,7 +28,7 @@ Branch fixture summary
 ----------------------
   main      — all gates pass (Python + JS)
   all-fail  — every gate uniquely broken (Python + JS)
-  mixed     — security + dead-code + bogus-tests fail; source-duplication disabled; JS passes
+  mixed     — security + dead-code.py + bogus-tests.py fail; source-duplication disabled; JS passes
 
 Run integration tests::
 
@@ -88,8 +88,8 @@ def _assert_gate_not_passing(result: RunResult, gate_name: str) -> None:
 
     Weaker than ``_assert_gate_failed`` — accepts both FAILING and SKIPPED
     as valid outcomes.  Use this for gates whose dependency chain means
-    they may be legitimately skipped (e.g., py-tests depends on py-lint;
-    when py-lint fails, py-tests is auto-skipped).
+    they may be legitimately skipped (e.g., untested-code.py depends on sloppy-formatting.py;
+    when sloppy-formatting.py fails, untested-code.py is auto-skipped).
     """
     lines = result.output.splitlines()
     gate_lines = [l for l in lines if gate_name in l]
@@ -188,15 +188,15 @@ class TestHappyPath:
 
     def test_key_gates_run(self, result_main: RunResult) -> None:
         result_main.assert_prerequisites()
-        for gate in ("py-lint", "py-tests", "security"):
+        for gate in ("sloppy-formatting.py", "untested-code.py", "security"):
             assert (
                 gate in result_main.output
             ), f"Expected gate '{gate}' in output.\n{result_main}"
 
     def test_js_expect_gate_passes(self, result_main: RunResult) -> None:
-        """js-expect-assert should pass — all JS tests have proper assertions."""
+        """hand-wavy-tests.js should pass — all JS tests have proper assertions."""
         result_main.assert_prerequisites()
-        _assert_gate_passed(result_main, "js-expect-assert")
+        _assert_gate_passed(result_main, "hand-wavy-tests.js")
 
 
 class TestAllFail:
@@ -210,38 +210,38 @@ class TestAllFail:
 
     def test_lint_gate_fails(self, result_all_fail: RunResult) -> None:
         result_all_fail.assert_prerequisites()
-        _assert_gate_failed(result_all_fail, "py-lint")
+        _assert_gate_failed(result_all_fail, "sloppy-formatting.py")
 
     def test_security_gate_fails(self, result_all_fail: RunResult) -> None:
         result_all_fail.assert_prerequisites()
-        _assert_gate_failed(result_all_fail, "security-audit")
+        _assert_gate_failed(result_all_fail, "dependency-risk.py")
 
     def test_pytest_gate_fails(self, result_all_fail: RunResult) -> None:
-        """py-tests should not pass.
+        """untested-code.py should not pass.
 
-        Note: py-tests depends on laziness:py-lint.  When py-lint fails
-        (as it does on all-fail), py-tests is auto-skipped.  We verify
+        Note: untested-code.py depends on laziness:sloppy-formatting.py.  When sloppy-formatting.py fails
+        (as it does on all-fail), untested-code.py is auto-skipped.  We verify
         it is NOT passing rather than asserting it explicitly FAILED.
         """
         result_all_fail.assert_prerequisites()
-        _assert_gate_not_passing(result_all_fail, "py-tests")
+        _assert_gate_not_passing(result_all_fail, "untested-code.py")
 
     def test_dead_code_gate_fails(self, result_all_fail: RunResult) -> None:
         result_all_fail.assert_prerequisites()
-        _assert_gate_failed(result_all_fail, "dead-code")
+        _assert_gate_failed(result_all_fail, "dead-code.py")
 
     def test_bogus_tests_gate_fails(self, result_all_fail: RunResult) -> None:
         result_all_fail.assert_prerequisites()
-        _assert_gate_failed(result_all_fail, "bogus-tests")
+        _assert_gate_failed(result_all_fail, "bogus-tests.py")
 
     def test_js_expect_gate_fails(self, result_all_fail: RunResult) -> None:
-        """js-expect-assert should fail — JS tests have zero assertions."""
+        """hand-wavy-tests.js should fail — JS tests have zero assertions."""
         result_all_fail.assert_prerequisites()
-        _assert_gate_failed(result_all_fail, "js-expect-assert")
+        _assert_gate_failed(result_all_fail, "hand-wavy-tests.js")
 
 
 class TestMixed:
-    """Branch mixed: security + dead-code + bogus-tests fail; source-duplication skipped."""
+    """Branch mixed: security + dead-code.py + bogus-tests.py fail; source-duplication skipped."""
 
     def test_exit_code_is_one(self, result_mixed: RunResult) -> None:
         result_mixed.assert_prerequisites()
@@ -251,22 +251,22 @@ class TestMixed:
 
     def test_security_gate_fails(self, result_mixed: RunResult) -> None:
         result_mixed.assert_prerequisites()
-        _assert_gate_failed(result_mixed, "security-audit")
+        _assert_gate_failed(result_mixed, "dependency-risk.py")
 
     def test_dead_code_gate_fails(self, result_mixed: RunResult) -> None:
         result_mixed.assert_prerequisites()
-        _assert_gate_failed(result_mixed, "dead-code")
+        _assert_gate_failed(result_mixed, "dead-code.py")
 
     def test_bogus_tests_gate_fails(self, result_mixed: RunResult) -> None:
         result_mixed.assert_prerequisites()
-        _assert_gate_failed(result_mixed, "bogus-tests")
+        _assert_gate_failed(result_mixed, "bogus-tests.py")
 
     def test_pytest_gate_passes(self, result_mixed: RunResult) -> None:
         """Real pytest tests still pass; only the bogus tautology is flagged."""
         result_mixed.assert_prerequisites()
         assert (
-            "py-tests" in result_mixed.output
-        ), f"py-tests gate output not found.\n{result_mixed}"
+            "untested-code.py" in result_mixed.output
+        ), f"untested-code.py gate output not found.\n{result_mixed}"
 
     def test_source_duplication_not_failed(self, result_mixed: RunResult) -> None:
         """source-duplication is disabled in config -> must not appear as FAILED."""
@@ -282,6 +282,6 @@ class TestMixed:
         )
 
     def test_js_expect_gate_passes(self, result_mixed: RunResult) -> None:
-        """js-expect-assert should pass — JS tests on mixed have proper assertions."""
+        """hand-wavy-tests.js should pass — JS tests on mixed have proper assertions."""
         result_mixed.assert_prerequisites()
-        _assert_gate_passed(result_mixed, "js-expect-assert")
+        _assert_gate_passed(result_mixed, "hand-wavy-tests.js")

@@ -58,12 +58,12 @@ When a gate fails, the output tells the agent exactly what to do next:
 │ 🤖 AI AGENT ITERATION GUIDANCE                           │
 ├──────────────────────────────────────────────────────────┤
 │ Level: swab                                              │
-│ Failed Gate: deceptiveness:py-coverage                   │
+│ Failed Gate: overconfidence:coverage-gaps.py             │
 ├──────────────────────────────────────────────────────────┤
 │ NEXT STEPS:                                              │
 │                                                          │
 │ 1. Fix the issue described above                         │
-│ 2. Re-check: sm swab -g deceptiveness:py-coverage        │
+│ 2. Re-check: sm swab -g overconfidence:coverage-gaps.py  │
 │ 3. Resume:   sm swab                                     │
 │                                                          │
 │ Keep iterating until all the slop is mopped.             │
@@ -80,69 +80,76 @@ Use `sm status` for a report card of all gates at once.
 
 Gates aren't organized by language — they're organized by **the failure mode they catch**. These are the four ways LLMs reliably degrade a codebase:
 
+<!-- BEGIN GATE TABLES -->
+
 ### 🔴 Overconfidence
 
 > *"It compiles, therefore it's correct and will work perfectly in production"*
-
-The LLM generates code that looks right, passes a syntax check, and silently breaks at runtime. These gates verify that the code actually works.
+>
+> The LLM generates code that looks right, passes a syntax check, and silently breaks at runtime. These gates verify that the code actually works.
 
 | Gate | What It Does |
 |------|--------------|
-| `overconfidence:py-tests` | 🧪 Runs pytest — code must actually pass its tests |
-| `overconfidence:py-static-analysis` | 🔍 mypy strict — types must check out |
-| `overconfidence:py-types` | 🔬 pyright strict — second opinion on types |
-| `overconfidence:js-tests` | 🧪 Jest test execution |
-| `overconfidence:js-types` | 🏗️ TypeScript type checking (tsc) |
-| `overconfidence:deploy-script-tests` | 🚀 Validates deploy scripts |
+| `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis |
+| `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) |
+| `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out |
+| `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) |
+| `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types |
+| `overconfidence:untested-code.js` | 🧪 Jest test execution |
+| `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests |
 
 ### 🟡 Deceptiveness
 
 > *"These tests are in the way of closing the ticket - how can I get around them?"*
-
-The LLM writes tests that assert nothing, mock everything, or cover the happy path and call it done. Coverage numbers look great. The code is still broken.
+>
+> The LLM writes tests that assert nothing, mock everything, or cover the happy path and call it done. Coverage numbers look great. The code is still broken.
 
 | Gate | What It Does |
 |------|--------------|
-| `deceptiveness:py-coverage` | 📊 Whole-repo coverage (80% default threshold) |
-| `deceptiveness:py-diff-coverage` | 📈 Coverage on changed lines only (diff-cover) |
-| `deceptiveness:bogus-tests` | 🧟 AST analysis for tests that assert nothing |
-| `deceptiveness:js-coverage` | 📊 JavaScript coverage analysis |
-| `deceptiveness:js-bogus-tests` | 🎭 Bogus test detection for JS/TS |
+| `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS |
+| `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing |
+| `deceptiveness:gate-dodging` | 🎭 Detects loosened quality thresholds |
+| `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement |
 
 ### 🟠 Laziness
 
 > *"When I ran mypy, it returned errors unrelated to my code changes..."*
-
-The LLM solves the immediate problem and moves on. Formatting is inconsistent, dead code accumulates, complexity creeps upward, and nobody notices until the codebase is incomprehensible.
+>
+> The LLM solves the immediate problem and moves on. Formatting is inconsistent, dead code accumulates, complexity creeps upward, and nobody notices until the codebase is incomprehensible.
 
 | Gate | What It Does |
 |------|--------------|
-| `laziness:py-lint` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) |
-| `laziness:js-lint` | 🎨 ESLint + Prettier (supports auto-fix 🔧) |
-| `laziness:complexity` | 🌀 Cyclomatic complexity (max rank C) |
-| `laziness:dead-code` | 💀 Dead code detection via vulture (≥80% confidence) |
-| `laziness:template-syntax` | 📄 Jinja2 template validation |
-| `laziness:js-frontend` | ⚡ Quick ESLint frontend check |
+| `laziness:broken-templates.py` | 📄 Jinja2 template validation |
+| `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) |
+| `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) |
+| `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists |
+| `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) |
+| `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) |
+| `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check |
+| `laziness:stale-docs` | 📖 Detects stale README gate tables |
 
 ### 🔵 Myopia
 
 > *"Updrading to the newest dependency would slow us down - this deprecated version is fine for now"*
-
-The LLM has a 200k-token context window and still manages tunnel vision. It duplicates code across files, ignores security implications, and lets functions grow unbounded because it can't see the pattern.
+>
+> The LLM has a 200k-token context window and still manages tunnel vision. It duplicates code across files, ignores security implications, and lets functions grow unbounded because it can't see the pattern.
 
 | Gate | What It Does |
 |------|--------------|
-| `myopia:loc-lock` | 📏 File and function length limits |
+| `myopia:code-sprawl` | 📏 File and function length limits |
+| `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) |
+| `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) |
 | `myopia:source-duplication` | 📋 Code clone detection (jscpd) |
-| `myopia:string-duplication` | 🔤 Duplicate string literal detection |
-| `myopia:security-scan` | 🔐 bandit + semgrep + detect-secrets |
-| `myopia:security-audit` | 🔒 Full security audit (code + pip-audit) |
+| `myopia:string-duplication.py` | 🔤 Duplicate string literal detection |
+| `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets |
 
 ### PR Gates
 
 | Gate | What It Does |
 |------|--------------|
-| `pr:comments` | 💬 Checks for unresolved PR review threads |
+| `pr:ignored-feedback` | 💬 Checks for unresolved PR review threads |
+
+<!-- END GATE TABLES -->
 
 ---
 
@@ -160,8 +167,8 @@ Scour is a strict superset of swab — it runs everything swab does, plus contex
 Individual gates can be run directly with `-g`:
 
 ```bash
-sm swab -g deceptiveness:py-coverage    # re-check just coverage
-sm swab -g laziness:complexity          # re-check just complexity
+sm swab -g overconfidence:coverage-gaps.py     # re-check just coverage
+sm swab -g laziness:complexity-creep.py        # re-check just complexity
 ```
 
 ### Time Budget
@@ -206,8 +213,8 @@ sm status                     # full report card
 ### 3. Disable What's Not Ready Yet
 
 ```bash
-sm config --disable laziness:complexity        # too many complex functions right now
-sm config --disable deceptiveness:py-coverage  # coverage is at 30%, not 80%
+sm config --disable laziness:complexity-creep.py     # too many complex functions right now
+sm config --disable overconfidence:coverage-gaps.py  # coverage is at 30%, not 80%
 sm swab                                        # get the rest green first
 ```
 
@@ -227,8 +234,8 @@ Now every `git commit` runs slop-mop. Failed gates block the commit.
 ### 6. Re-enable Gates Over Time
 
 ```bash
-sm config --enable laziness:complexity         # refactored enough, turn it on
-sm config --enable deceptiveness:py-coverage   # coverage is at 75%, set threshold to 70
+sm config --enable laziness:complexity-creep.py      # refactored enough, turn it on
+sm config --enable overconfidence:coverage-gaps.py   # coverage is at 75%, set threshold to 70
 ```
 
 With hooks in place, every commit runs through slop-mop. Gates that aren't ready yet stay disabled until the codebase catches up.
@@ -335,7 +342,7 @@ This means if the project has its own `pytest` (with plugins like `pytest-django
 ```bash
 # Working on slop-mop itself
 pip install -e .
-sm scour --self               # dogfooding — sm validates its own code
+sm scour                   # dogfooding — sm validates its own code
 pytest
 ```
 

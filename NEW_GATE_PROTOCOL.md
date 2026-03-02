@@ -214,7 +214,7 @@ If your check calls an external executable via `_run_command()`:
 ```bash
 pytest tests/unit/test_<name>_check.py -v   # Your tests pass
 pytest tests/ -x -q                          # No regressions
-sm swab --self                           # Full self-validation
+sm swab                              # Full self-validation
 ```
 
 ---
@@ -253,7 +253,7 @@ Run the gate against a project where it would fail. Capture the output. This ser
 ### 4.1 Final Validation
 
 ```bash
-sm swab --self                       # All gates pass
+sm swab                          # All gates pass
 sm help <category>:<name>            # Help text looks right
 sm swab -g <category>:<name>         # Gate runs independently
 sm swab                              # Swab includes the gate
@@ -289,7 +289,7 @@ Copy into your commit message or PR description:
 - [ ] README gate table updated
 - [ ] README profiles table updated (if applicable)
 - [ ] Example failure output captured
-- [ ] sm swab --self passes
+- [ ] sm swab passes
 - [ ] Report shown to user
 ```
 

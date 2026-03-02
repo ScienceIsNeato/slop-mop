@@ -45,7 +45,7 @@ jobs:
           npx tsc
 
       - name: Run slop-mop on itself
-        run: python -m slopmop.sm scour --self
+        run: python -m slopmop.sm scour
 
   wait-for-bots:
     name: ⏳ Wait for External Bots
