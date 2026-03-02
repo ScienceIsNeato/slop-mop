@@ -1,27 +1,22 @@
 """Status command for slop-mop CLI.
 
-Runs all gates and prints a gate inventory showing what's registered,
-what's applicable, what's passing, and what needs fixing.  Unlike
-swab/scour, there is no per-gate progress output — just a quiet run
-followed by a full report.
+Project dashboard — shows configuration, gate inventory with
+historical results, and hook installation status.  Does NOT run any
+gates; use ``sm swab`` or ``sm scour`` for that.
 """
 
 import argparse
-import json
-import os
 import sys
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory, GateLevel
-from slopmop.constants import format_duration_suffix
-from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
-from slopmop.reporting.dynamic import DynamicDisplay
+from slopmop.reporting.timings import TimingStats, load_timings
+
+# ── Helpers ──────────────────────────────────────────────────────
 
 # Category display order — controls section ordering in the inventory
 _CATEGORY_ORDER = [
@@ -32,6 +27,9 @@ _CATEGORY_ORDER = [
     "pr",
     "general",
 ]
+
+# Marker written into slop-mop-managed git hooks.
+_SB_HOOK_MARKER = "# SM_MANAGED_HOOK"
 
 
 def _get_category_display(category_key: str) -> Tuple[str, str]:
@@ -53,20 +51,108 @@ def _find_other_aliases(
     ]
 
 
+# ── Section: Config Summary ─────────────────────────────────────
+
+
+def _print_config_summary(
+    root: Path,
+    config: Dict[str, Any],
+    swab_count: int,
+    scour_count: int,
+    disabled: List[str],
+) -> None:
+    """Print project configuration overview."""
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(root))
+
+    config_file = root / ".sb_config.json"
+    if config_file.exists():
+        print(f"📄 Config: {config_file}")
+    else:
+        print("📄 Config: none (using defaults)")
+
+    swabbing_time = config.get("swabbing_time")
+    if isinstance(swabbing_time, (int, float)) and swabbing_time > 0:
+        print(f"⏱️  Time budget: {int(swabbing_time)}s")
+
+    print(f"🔍 Gates: {swab_count} swab · {scour_count} scour-only")
+
+    if disabled:
+        print(f"🚫 Disabled: {len(disabled)} gate(s)")
+        for name in sorted(disabled):
+            print(f"      {name}")
+
+
+# ── Section: Gate Inventory ──────────────────────────────────────
+
+
+RECENT_HISTORY_HEADER = "📊 RECENT HISTORY"
+
+
+def _format_gate_line(
+    gate_name: str,
+    *,
+    in_swab: bool,
+    in_scour: bool,
+    is_applicable: bool,
+    skip_reason: str,
+    history: Optional[TimingStats],
+    colors_enabled: bool,
+) -> str:
+    """Format a single gate line for the inventory.
+
+    Shows applicability, level membership, and last-known result from
+    historical timing data (no live execution).
+    """
+    # Level badge
+    if in_swab:
+        level_tag = "swab"
+    elif in_scour:
+        level_tag = "scour"
+    else:
+        level_tag = "     "
+
+    # Applicability / history-based status
+    if not is_applicable:
+        icon = "⊘"
+        suffix = f"n/a ({skip_reason})"
+    elif history and history.results:
+        last_result = history.results[-1]
+        _RESULT_ICONS = {
+            "passed": "✅",
+            "failed": "❌",
+            "error": "💥",
+            "warned": "⚠️",
+            "skipped": "⏭️",
+            "not_applicable": "⊘",
+        }
+        icon = _RESULT_ICONS.get(last_result, "?")
+        sparkline = history.sparkline(max_width=10, colors_enabled=colors_enabled)
+        # Build suffix from last result + sparkline
+        suffix = last_result
+        if sparkline:
+            suffix = f"{last_result}  {sparkline}"
+    else:
+        icon = "·"
+        suffix = "no history"
+
+    return f"   {icon}  {gate_name:<28} [{level_tag}] {suffix}"
+
+
 def _print_gate_inventory(
     all_gates: List[str],
-    profile_gates: Set[str],
-    results_map: Dict[str, CheckResult],
+    swab_gates: Set[str],
+    scour_gates: Set[str],
     applicability: Dict[str, Tuple[bool, str]],
-    aliases: Dict[str, List[str]],
-    profile: str,
+    history: Dict[str, TimingStats],
+    colors_enabled: bool,
 ) -> None:
     """Print the full gate inventory grouped by category.
 
-    Shows every registered gate with its status relative to the
-    current level and run results.
+    Shows every registered gate with level membership, applicability,
+    and last-known result from historical timing data.
     """
-    # Group gates by category key
     by_category: Dict[str, List[str]] = defaultdict(list)
     for gate in all_gates:
         cat_key = gate.split(":")[0]
@@ -89,297 +175,135 @@ def _print_gate_inventory(
 
         for gate in gates:
             gate_name = gate.split(":", 1)[1]
+            is_app, reason = applicability.get(gate, (True, ""))
 
-            if gate in profile_gates:
-                line = _format_active_gate(gate_name, results_map.get(gate))
-            else:
-                line = _format_inactive_gate(
-                    gate, gate_name, applicability, aliases, profile
-                )
-
+            line = _format_gate_line(
+                gate_name,
+                in_swab=gate in swab_gates,
+                in_scour=gate in scour_gates and gate not in swab_gates,
+                is_applicable=is_app,
+                skip_reason=reason,
+                history=history.get(gate),
+                colors_enabled=colors_enabled,
+            )
             print(line)
 
 
-def _format_active_gate(gate_name: str, result: Optional[CheckResult]) -> str:
-    """Format a gate that's in the active level."""
-    _STATUS_DISPLAY = {
-        CheckStatus.PASSED: ("✅", "passing"),
-        CheckStatus.FAILED: ("❌", "FAILING"),
-        CheckStatus.ERROR: ("💥", "ERROR"),
-        CheckStatus.WARNED: ("⚠️", "WARNED"),
-    }
-
-    if result is None:
-        return f"   ?  {gate_name:<28} — included, no result"
-
-    if result.status in _STATUS_DISPLAY:
-        icon, label = _STATUS_DISPLAY[result.status]
-        return f"   {icon} {gate_name:<28} — {label}"
-
-    if result.status == CheckStatus.NOT_APPLICABLE:
-        reason = result.output or "not applicable"
-        return f"   ⊘  {gate_name:<28} — n/a ({reason})"
-
-    if result.status == CheckStatus.SKIPPED:
-        reason = result.output or "skipped"
-        return f"   ⏭️  {gate_name:<28} — skipped ({reason})"
-
-    return f"   ?  {gate_name:<28} — unknown status"
+# ── Section: Hook Status ────────────────────────────────────────
 
 
-def _format_inactive_gate(
-    gate: str,
-    gate_name: str,
-    applicability: Dict[str, Tuple[bool, str]],
-    aliases: Dict[str, List[str]],
-    level: str,
-) -> str:
-    """Format a gate that's not in the active level."""
-    is_applicable, skip_reason = applicability.get(gate, (True, ""))
-    if not is_applicable:
-        return f"   ⊘  {gate_name:<28} — n/a ({skip_reason})"
-
-    other = _find_other_aliases(gate, aliases, level)
-    if other:
-        aliases_str = ", ".join(sorted(other))
-        return f"   ·  {gate_name:<28}" f" — not included (in: {aliases_str})"
-    return f"   ·  {gate_name:<28} — not included"
-
-
-def _print_remediation(results_map: Dict[str, CheckResult]) -> None:
-    """Print remediation guidance for failing gates."""
-    failing = [
-        r
-        for r in results_map.values()
-        if r.status in (CheckStatus.FAILED, CheckStatus.ERROR)
-    ]
-    warned = [r for r in results_map.values() if r.status == CheckStatus.WARNED]
-    if not failing and not warned:
-        return
-
-    if failing:
-        print()
-        print("🪣 REMEDIATION NEEDED")
-        print("─" * 60)
-
-        for r in failing:
-            emoji = "❌" if r.status == CheckStatus.FAILED else "💥"
-            print()
-            print(f"{emoji} {r.name}")
-            if r.error:
-                print(f"   {r.error}")
-            if r.output:
-                lines = [
-                    line
-                    for line in r.output.strip().split("\n")
-                    if "\u2705" not in line and line.strip()
-                ]
-                preview = lines[:15]
-                for line in preview:
-                    print(f"   {line}")
-                if len(lines) > 15:
-                    print(f"   ... ({len(lines) - 15} more lines — run with --verbose)")
-            if r.fix_suggestion:
-                print(f"   Fix: {r.fix_suggestion}")
-            print(f"   Verify: sm scour -g {r.name}")
-
-    if warned:
-        print()
-        print("⚠️  WARNINGS (non-blocking)")
-        print("─" * 60)
-
-        for r in warned:
-            print()
-            print(f"⚠️  {r.name}")
-            if r.error:
-                print(f"   {r.error}")
-            if r.fix_suggestion:
-                print(f"   Fix: {r.fix_suggestion}")
-
-
-def _print_verdict(summary: ExecutionSummary) -> None:
-    """Print the bottom-line verdict."""
-    print()
-    print("═" * 60)
-
-    ran = [
-        r
-        for r in summary.results
-        if r.status not in (CheckStatus.SKIPPED, CheckStatus.NOT_APPLICABLE)
-    ]
-    failing = [r for r in ran if r.status in (CheckStatus.FAILED, CheckStatus.ERROR)]
-    warned = [r for r in ran if r.status == CheckStatus.WARNED]
-
-    warn_suffix = f", {len(warned)} warned" if warned else ""
-
-    if not failing:
-        print(
-            "✨ All applicable gates pass — "
-            f"no AI slop detected in repo"
-            f"{warn_suffix}"
-            f"{format_duration_suffix(summary.total_duration)}"
-        )
-    else:
-        passed_count = len([r for r in ran if r.status == CheckStatus.PASSED])
-        print(
-            f"🪣 {passed_count}/{len(ran)} gates passing, "
-            f"{len(failing)} failing"
-            f"{warn_suffix}"
-            f"{format_duration_suffix(summary.total_duration)}"
-        )
-    print("═" * 60)
-
-
-def _print_recommendations(
-    all_gates: List[str],
-    profile_gates: Set[str],
-    applicability: Dict[str, Tuple[bool, str]],
-    registry: Any,
-    config: Dict[str, Any],
-) -> None:
-    """Print recommendations for expanding gate coverage.
-
-    Suggests applicable gates that aren't in the current profile,
-    giving users a clear path to increase strictness.
-
-    Filters out checks that are superseded by checks already in the profile
-    (e.g., don't recommend security:local when security:full is running).
-    """
-    # Find applicable gates NOT in current profile
-    recommended: List[str] = []
-    for gate in all_gates:
-        if gate not in profile_gates:
-            is_applicable, _ = applicability.get(gate, (True, ""))
-            if is_applicable:
-                # Check if this gate is superseded by something in the profile
-                check = registry.get_check(gate, config)
-                if check and check.superseded_by:
-                    if check.superseded_by in profile_gates:
-                        continue  # Skip - superseding check is already running
-                recommended.append(gate)
-
-    if not recommended:
-        return
+def _print_hooks_status(root: Path) -> None:
+    """Print git hook installation status."""
+    git_dir = root / ".git"
+    hooks_dir = git_dir / "hooks"
 
     print()
-    print("💡 RECOMMENDATIONS")
+    print("🪝 HOOKS")
     print("─" * 60)
-    print("These gates are applicable but not included at this level:")
-    print()
 
-    for gate in sorted(recommended):
-        print(f"   sm scour -g {gate:<30}  # try it out")
+    if not hooks_dir.exists():
+        print("   No hooks directory found")
+        print("   Install: sm commit-hooks install")
+        return
 
-    print()
-    print("Run individually to see results, then enable in your config.")
-    print()
+    hook_types = ["pre-commit", "pre-push", "commit-msg"]
+    sm_hooks: List[Tuple[str, str]] = []
+    other_hooks: List[str] = []
+
+    for hook_type in hook_types:
+        hook_file = hooks_dir / hook_type
+        if hook_file.exists():
+            content = hook_file.read_text()
+            if _SB_HOOK_MARKER in content:
+                # Extract the verb from the hook script
+                verb = "unknown"
+                for line in content.splitlines():
+                    if "sm " in line and "swab" in line:
+                        verb = "swab"
+                        break
+                    elif "sm " in line and "scour" in line:
+                        verb = "scour"
+                        break
+                sm_hooks.append((hook_type, verb))
+            else:
+                other_hooks.append(hook_type)
+
+    if sm_hooks:
+        for hook_type, verb in sm_hooks:
+            print(f"   ✅ {hook_type}: {verb}")
+    if other_hooks:
+        for hook_type in other_hooks:
+            print(f"   •  {hook_type}: non-sm hook")
+    if not sm_hooks and not other_hooks:
+        print("   No hooks installed")
+        print("   Install: sm commit-hooks install")
 
 
-def _write_verbose_json(
-    root: Path,
-    profile: str,
-    all_gates: List[str],
-    profile_gates: Set[str],
-    results_map: Dict[str, CheckResult],
-    applicability: Dict[str, Tuple[bool, str]],
-    summary: ExecutionSummary,
-) -> str:
-    """Write verbose JSON report to file.
+# ── Section: Recent History ──────────────────────────────────────
 
-    Returns:
-        Path to the generated JSON file.
-    """
-    # Build gate details
-    gate_details: List[Dict[str, Any]] = []
-    for gate in sorted(all_gates):
-        in_profile = gate in profile_gates
-        result = results_map.get(gate)
 
-        detail: Dict[str, Any] = {
-            "name": gate,
-            "in_profile": in_profile,
-        }
+def _print_recent_history(history: Dict[str, TimingStats]) -> None:
+    """Print a compact summary of recent gate runs."""
+    if not history:
+        print()
+        print(RECENT_HISTORY_HEADER)
+        print("─" * 60)
+        print("   No gate run history found. Run `sm swab` to populate.")
+        return
 
-        if result:
-            detail["status"] = result.status.name
-            detail["duration"] = round(result.duration, 2)
-            if result.output:
-                detail["output"] = result.output
-            if result.error:
-                detail["error"] = result.error
-            if result.fix_suggestion:
-                detail["fix_suggestion"] = result.fix_suggestion
-        else:
-            is_applicable, reason = applicability.get(gate, (True, ""))
-            detail["status"] = "NOT_IN_PROFILE"
-            detail["applicable"] = is_applicable
-            if reason:
-                detail["skip_reason"] = reason
-
-        gate_details.append(detail)
-
-    report: Dict[str, Any] = {
-        "generated_at": datetime.now().isoformat(),
-        "project_root": str(root),
-        "profile": profile,
-        "summary": {
-            "total_gates": len(all_gates),
-            "gates_in_profile": len(profile_gates),
-            "passed": len(
-                [r for r in summary.results if r.status == CheckStatus.PASSED]
-            ),
-            "failed": len(
-                [r for r in summary.results if r.status == CheckStatus.FAILED]
-            ),
-            "errors": len(
-                [r for r in summary.results if r.status == CheckStatus.ERROR]
-            ),
-            "skipped": len(
-                [r for r in summary.results if r.status == CheckStatus.SKIPPED]
-            ),
-            "not_applicable": len(
-                [r for r in summary.results if r.status == CheckStatus.NOT_APPLICABLE]
-            ),
-            "duration": summary.total_duration,
-            "all_passed": summary.all_passed,
-        },
-        "gates": gate_details,
+    # Find most recent gate run across all checks
+    # (TimingStats doesn't expose last_updated directly, but we
+    #  can infer activity from sample counts)
+    gates_with_results = {
+        name: stats for name, stats in history.items() if stats.results
     }
 
-    # Write to timestamped file
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = root / f"sm_status_{timestamp}.json"
-    output_file.write_text(json.dumps(report, indent=2) + "\n")
-    return str(output_file)
+    if not gates_with_results:
+        print()
+        print(RECENT_HISTORY_HEADER)
+        print("─" * 60)
+        print("   No result history yet. Run `sm swab` to populate.")
+        return
+
+    # Count last-known statuses
+    last_results: Dict[str, int] = {}
+    for stats in gates_with_results.values():
+        last = stats.results[-1]
+        last_results[last] = last_results.get(last, 0) + 1
+
+    total = sum(last_results.values())
+
+    print()
+    print(RECENT_HISTORY_HEADER)
+    print("─" * 60)
+
+    parts: List[str] = []
+    for status, count in sorted(last_results.items()):
+        parts.append(f"{count} {status}")
+    print(f"   Last known: {', '.join(parts)} ({total} gates tracked)")
+
+
+# ── Main ─────────────────────────────────────────────────────────
 
 
 def run_status(
     project_root: str,
-    profile: str = "scour",
     quiet: bool = False,
     verbose: bool = False,
-    static: bool = False,
 ) -> int:
-    """Run all gates and print a gate inventory report.
+    """Show project dashboard without running any gates.
 
-    This is the shared implementation used by both ``sm status``
-    and the post-init report.  It can be called directly without
-    constructing an argparse.Namespace.
-
-    The default level is "scour" (all gates) because status is an
-    observatory, not an iterative validation loop.
+    Displays configuration summary, gate inventory with historical
+    results, and hook installation status.  This is an observatory,
+    not a validation command.
 
     Args:
         project_root: Absolute path to the project root.
-        profile: Level or alias to run (default: "scour"). Accepts
-                 "swab", "scour", or any registered alias for backward
-                 compatibility.
-        quiet: Suppress header and progress indicator.
-        verbose: Write full JSON report to sm_status_<timestamp>.json.
-        static: Disable dynamic display (use static line-by-line output).
+        quiet: Suppress header.
+        verbose: Show additional detail (e.g. per-gate timing stats).
 
     Returns:
-        0 if all gates pass, 1 otherwise.
+        Always 0 (observatory — no pass/fail).
     """
     from slopmop.sm import load_config
 
@@ -393,139 +317,68 @@ def run_status(
     registry = get_registry()
     config = load_config(root)
 
-    # ── Resolve gate list ─────────────────────────────────────────
-    # Try level-based discovery first, then fall through to alias
-    level_map = {"swab": GateLevel.SWAB, "scour": GateLevel.SCOUR}
-    if profile in level_map:
-        profile_gate_list = registry.get_gate_names_for_level(level_map[profile])
-    elif registry.is_alias(profile):
-        profile_gate_list = registry.expand_alias(profile)
-    else:
-        profile_gate_list = [profile]
-    profile_gates = set(profile_gate_list)
-
-    # Enumerate all registered gates
+    # ── Gate lists ────────────────────────────────────────────────
     all_gates = registry.list_checks()
-    aliases = registry.list_aliases()
+    swab_gates = set(registry.get_gate_names_for_level(GateLevel.SWAB))
+    scour_only_gates = (
+        set(registry.get_gate_names_for_level(GateLevel.SCOUR)) - swab_gates
+    )
+    disabled = config.get("disabled_gates", [])
 
-    # Check applicability for gates NOT in the profile
+    # ── Applicability (no execution — just is_applicable check) ──
     applicability: Dict[str, Tuple[bool, str]] = {}
     for gate_name in all_gates:
-        if gate_name not in profile_gates:
-            check = registry.get_check(gate_name, config)
-            if check:
-                is_app = check.is_applicable(str(root))
-                reason = check.skip_reason(str(root)) if not is_app else ""
-                applicability[gate_name] = (is_app, reason)
-            else:
-                applicability[gate_name] = (False, "check class not found")
+        check = registry.get_check(gate_name, config)
+        if check:
+            is_app = check.is_applicable(str(root))
+            reason = check.skip_reason(str(root)) if not is_app else ""
+            applicability[gate_name] = (is_app, reason)
+        else:
+            applicability[gate_name] = (False, "check class not found")
 
-    # Set up executor (status never uses fail-fast or auto-fix)
-    executor = CheckExecutor(
-        registry=registry,
-        fail_fast=False,
-    )
+    # ── Historical timing data ────────────────────────────────────
+    history = load_timings(str(root))
+    colors_enabled = sys.stdout.isatty()
 
-    # Determine if we should use dynamic display
-    use_dynamic = (
-        sys.stdout.isatty()
-        and not os.environ.get("NO_COLOR")
-        and not quiet
-        and not static
-    )
-
-    # Set up dynamic display if appropriate
-    dynamic_display: Optional[DynamicDisplay] = None
-
-    # Print header before starting the animation thread to avoid
-    # blank newlines being interleaved with header output (mirrors the
-    # validation commands)
+    # ── Print dashboard ───────────────────────────────────────────
     if not quiet:
-        print("🪣 slop-mop · sweeping your code clean")
         print()
+        print("🪣 slop-mop · project dashboard")
+        print("═" * 60)
 
-    if use_dynamic:
-        dynamic_display = DynamicDisplay(quiet=quiet)
-        dynamic_display.load_historical_timings(str(root))
-        executor.set_start_callback(dynamic_display.on_check_start)
-        executor.set_progress_callback(dynamic_display.on_check_complete)
-        executor.set_disabled_callback(dynamic_display.on_check_disabled)
-        executor.set_na_callback(dynamic_display.on_check_not_applicable)
-        executor.set_total_callback(dynamic_display.set_total_checks)
-        executor.set_pending_callback(dynamic_display.register_pending_checks)
-        dynamic_display.start()  # Start animation AFTER header is printed
+    _print_config_summary(
+        root=root,
+        config=config,
+        swab_count=len(swab_gates),
+        scour_count=len(scour_only_gates),
+        disabled=disabled,
+    )
 
-    try:
-        summary = executor.run_checks(
-            project_root=str(root),
-            check_names=profile_gate_list,
-            config=config,
-            auto_fix=False,
-        )
-
-        # Stop dynamic display before printing reports
-        if dynamic_display:
-            dynamic_display.stop()
-            dynamic_display.save_historical_timings(str(root))
-    finally:
-        if dynamic_display:
-            dynamic_display.stop()
-
-    # Build results map
-    results_map: Dict[str, CheckResult] = {r.name: r for r in summary.results}
-
-    # Print inventory
     _print_gate_inventory(
         all_gates=all_gates,
-        profile_gates=profile_gates,
-        results_map=results_map,
+        swab_gates=swab_gates,
+        scour_gates=set(registry.get_gate_names_for_level(GateLevel.SCOUR)),
         applicability=applicability,
-        aliases=aliases,
-        profile=profile,
+        history=history,
+        colors_enabled=colors_enabled,
     )
 
-    # Print remediation for failures
-    _print_remediation(results_map)
+    _print_recent_history(history)
 
-    # Print verdict
-    _print_verdict(summary)
+    _print_hooks_status(root)
 
-    # Print recommendations for expanding coverage
-    _print_recommendations(
-        all_gates=all_gates,
-        profile_gates=profile_gates,
-        applicability=applicability,
-        registry=registry,
-        config=config,
-    )
+    print()
+    print("═" * 60)
+    print("Run `sm swab` to validate or `sm scour` for thorough check.")
+    print()
 
-    # Write verbose JSON report
-    if verbose:
-        output_file = _write_verbose_json(
-            root=root,
-            profile=profile,
-            all_gates=all_gates,
-            profile_gates=profile_gates,
-            results_map=results_map,
-            applicability=applicability,
-            summary=summary,
-        )
-        print(f"📄 Verbose report written to: {output_file}")
-        print()
-
-    return 0 if summary.all_passed else 1
+    return 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    """Handle the status command.
-
-    Runs the specified level (default: scour) with no per-gate
-    progress, then prints a full gate inventory and remediation report.
-    """
+    """Handle the status command from argparse."""
     return run_status(
         project_root=args.project_root,
-        profile=getattr(args, "profile", None) or "scour",
         quiet=args.quiet,
         verbose=args.verbose,
-        static=getattr(args, "static", False),
     )
