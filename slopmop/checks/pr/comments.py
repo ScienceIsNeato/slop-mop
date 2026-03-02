@@ -7,6 +7,7 @@ clear guidance on the strategic process for addressing them.
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -222,7 +223,21 @@ class PRCommentsCheck(BaseCheck):
         return None
 
     def _get_repo_info(self, project_root: str) -> Tuple[str, str]:
-        """Get repository owner and name."""
+        """Get repository owner and name.
+
+        Checks (in order):
+        1. GITHUB_REPOSITORY env var (always set in GitHub Actions, no auth needed)
+        2. gh repo view CLI (requires gh auth, works locally)
+        3. Git remote URL parsing (works for any cloned repo, no auth needed)
+        """
+        # Check GITHUB_REPOSITORY env var first (format: "owner/repo")
+        github_repo = os.environ.get("GITHUB_REPOSITORY", "")
+        if "/" in github_repo:
+            parts = github_repo.split("/", 1)
+            if len(parts) == 2 and parts[0] and parts[1]:
+                return parts[0], parts[1]
+
+        # Try gh CLI (works when user has gh auth configured)
         try:
             result = subprocess.run(
                 ["gh", "repo", "view", "--json", "owner,name"],
@@ -235,8 +250,40 @@ class PRCommentsCheck(BaseCheck):
                 data = json.loads(result.stdout)
                 owner = data.get("owner", {}).get("login", "")
                 name = data.get("name", "")
-                return owner, name
+                if owner and name:
+                    return owner, name
         except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+            pass
+
+        # Fall back to parsing git remote URL (works for public repos, no auth)
+        return self._parse_repo_from_git_remote(project_root)
+
+    @staticmethod
+    def _parse_repo_from_git_remote(project_root: str) -> Tuple[str, str]:
+        """Extract owner/repo from the git remote 'origin' URL.
+
+        Handles both HTTPS and SSH formats:
+          https://github.com/owner/repo.git
+          git@github.com:owner/repo.git
+        """
+        try:
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=project_root,
+            )
+            if result.returncode != 0:
+                return "", ""
+
+            url = result.stdout.strip()
+            # Match HTTPS: https://github.com/owner/repo(.git)
+            # Match SSH:   git@github.com:owner/repo(.git)
+            match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$", url)
+            if match:
+                return match.group(1), match.group(2)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         return "", ""
 
