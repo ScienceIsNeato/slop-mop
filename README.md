@@ -7,7 +7,7 @@
   <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Attribution-blue.svg" alt="License"/></a>
 </p>
 
-**Quality gates for AI-assisted codebases.** Not a silver bullet — just a mop.
+**Automated steering for AI-generated code "shipping" to production.** Leverage the very behavior that results in slop to clean it up. Give your AI a mop and weaponize it in an attempt to keep your repos seaworthy
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop" width="300" align="right"/>
 
@@ -18,7 +18,7 @@ The useful thing is that every AI agent makes the same kinds of mistakes. They'r
 Slop-mop runs a set of quality gates organized around these four failure modes. Each gate targets a specific pattern — bogus tests, dead code, duplicated strings, complexity creep, missing coverage — and when one fails, it tells the agent exactly what's wrong and how to fix it. Two levels:
 
 - **Swab** (`sm swab`) — routine maintenance, every commit. Quick checks that keep things from getting worse.
-- **Scour** (`sm scour`) — deep inspection before opening a PR. Catches what routine swabbing misses.
+- **Scour** (`sm scour`) — deep inspection before opening a PR, or coming into port. Catches what routine swabbing misses and gives you a chance to clear the barnacles from the hull
 
 The mop finds the slop. The agent cleans it up. The ship stays seaworthy.
 
@@ -130,7 +130,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 ### 🔵 Myopia
 
-> *"Updrading to the newest dependency would slow us down - this deprecated version is fine for now"*
+> *"This file is fine in isolation — I don't need to see what it duplicates three directories away"*
 >
 > The LLM has a 200k-token context window and still manages tunnel vision. It duplicates code across files, ignores security implications, and lets functions grow unbounded because it can't see the pattern.
 

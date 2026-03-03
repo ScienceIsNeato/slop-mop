@@ -110,16 +110,25 @@ def truncate_to_width(text: str, max_width: int) -> str:
 
 
 def format_time(seconds: float) -> str:
-    """Format seconds as human-readable time.
+    """Format seconds as fixed-width, right-aligned time string.
+
+    Produces consistent-width output so timing columns align
+    vertically in the display.  Sub-60s values are formatted as
+    ``Xs`` or ``X.Xs`` (always includes one decimal for < 100s).
+    Near-zero values (< 0.05s) are shown as ``" fast"`` to avoid
+    the meaningless ``"  0.0s"`` label.
 
     Args:
         seconds: Time in seconds
 
     Returns:
-        Formatted string like "5.2s", "1m 30s", or "1h 23m 12s"
+        Formatted string like "  5.2s", " 42.1s", "1m 30s", " fast" etc.
+        Width is 6 characters for sub-60s values.
     """
+    if seconds < 0.05:
+        return "  fast"
     if seconds < 60:
-        return f"{seconds:.1f}s"
+        return f"{seconds:5.1f}s"
     elif seconds < 3600:
         mins = int(seconds // 60)
         secs = seconds % 60
@@ -274,8 +283,15 @@ def build_overall_progress(
     elapsed: float,
     term_width: Optional[int] = None,
     colors_enabled: Optional[bool] = None,
+    category_sequence: Optional[List[str]] = None,
 ) -> str:
     """Build the overall progress line with bar and stats.
+
+    When *category_sequence* is provided, the filled portion of the
+    bar becomes a domino-line of category colors — each completed
+    check is one segment, colored by its category, in the order
+    checks finished.  This gives a striped barber-pole effect rather
+    than grouping like categories together.
 
     Args:
         completed: Number of completed checks
@@ -283,6 +299,9 @@ def build_overall_progress(
         elapsed: Elapsed time in seconds
         term_width: Terminal width (auto-detected if None)
         colors_enabled: Whether to colorize the filled portion
+        category_sequence: Ordered list of category keys, one per
+            completed check, in completion order.  Falls back to
+            solid green if omitted.
 
     Returns:
         Formatted progress line
@@ -301,16 +320,44 @@ def build_overall_progress(
 
     pct = completed / total if total > 0 else 0
     filled = int(pct * bar_width)
-    filled_str = config.PROGRESS_FILL * filled
     empty_str = config.PROGRESS_EMPTY * (bar_width - filled)
 
-    # Colorize filled portion in green when colors are enabled
+    # Colorize filled portion
     if colors_enabled is None:
         from slopmop.reporting.display.colors import supports_color
 
         colors_enabled = supports_color()
-    if colors_enabled and filled > 0:
-        filled_str = f"\033[32m{filled_str}\033[0m"  # green
+
+    if colors_enabled and filled > 0 and category_sequence:
+        # Domino-line: each check gets proportional width in completion order
+        from slopmop.reporting.display.colors import category_header_color
+
+        n = len(category_sequence)
+        reset = "\033[0m"
+        segments: List[str] = []
+        chars_used = 0
+
+        for i, cat in enumerate(category_sequence):
+            # Distribute bar chars proportionally; last segment absorbs rounding
+            if i == n - 1:
+                seg_w = filled - chars_used
+            else:
+                seg_w = max(1, round(filled * (i + 1) / n) - chars_used)
+            if seg_w <= 0:
+                continue
+            color = category_header_color(cat, True)
+            seg_str = config.PROGRESS_FILL * seg_w
+            if color:
+                segments.append(f"{color}{seg_str}{reset}")
+            else:
+                segments.append(seg_str)
+            chars_used += seg_w
+
+        filled_str = "".join(segments)
+    elif colors_enabled and filled > 0:
+        filled_str = f"\033[32m{config.PROGRESS_FILL * filled}\033[0m"  # green
+    else:
+        filled_str = config.PROGRESS_FILL * filled
 
     left_side = f"Progress: [{filled_str}{empty_str}]"
     return right_justify(left_side, right_side, term_width)

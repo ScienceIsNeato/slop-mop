@@ -55,11 +55,24 @@ def _stats(
     """Build a TimingStats with defaults."""
     import statistics
 
-    mean = statistics.mean(samples)
-    std = statistics.pstdev(samples) if len(samples) > 1 else 0.0
+    sorted_s = sorted(samples)
+    med = statistics.median(sorted_s)
+    n = len(sorted_s)
+    if n < 2:
+        q1_val = med
+        q3_val = med
+    else:
+        mid = n // 2
+        lower = sorted_s[:mid]
+        upper = sorted_s[mid:] if n % 2 == 0 else sorted_s[mid + 1 :]
+        q1_val = statistics.median(lower) if lower else med
+        q3_val = statistics.median(upper) if upper else med
     return TimingStats(
-        mean=mean,
-        std_dev=std,
+        median=med,
+        q1=q1_val,
+        q3=q3_val,
+        iqr=q3_val - q1_val,
+        historical_max=max(samples),
         sample_count=len(samples),
         samples=tuple(samples),
         results=tuple(results),
@@ -469,7 +482,7 @@ class TestPrintHooksStatus:
         hooks_dir = tmp_path / ".git" / "hooks"
         hooks_dir.mkdir(parents=True)
         hook = hooks_dir / "pre-commit"
-        hook.write_text("#!/bin/sh\n# SM_MANAGED_HOOK\nsm swab\n")
+        hook.write_text("#!/bin/sh\n# MANAGED BY SLOP-MOP\nsm swab\n")
         _print_hooks_status(tmp_path)
         out = capsys.readouterr().out
         assert "pre-commit" in out

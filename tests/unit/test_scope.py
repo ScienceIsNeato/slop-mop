@@ -299,7 +299,8 @@ class TestBuildCategoryHeaderScope:
         assert "# files" not in header
         assert "LOC" not in header
         assert "avg" not in header
-        assert "time" not in header  # as a column label
+        assert "exp duration" not in header  # column labels belong in header line
+        assert "act duration" not in header
         # Should still contain category name and progress
         assert "Python" in header
         assert "[3/3]" in header
@@ -314,9 +315,9 @@ class TestBuildCategoryHeaderScope:
         """Standalone column-header line contains timing labels."""
         from slopmop.reporting.display.renderer import build_column_header_line
 
-        line = build_column_header_line(term_width=100)
-        assert "avg" in line
-        assert "time" in line
+        line = build_column_header_line(term_width=120)
+        assert "exp duration" in line
+        assert "act duration" in line
         assert "history" in line
         # Scope labels should NOT appear (moved to summary only)
         assert "# files" not in line
@@ -326,16 +327,17 @@ class TestBuildCategoryHeaderScope:
         """The timing columns in the header align with data rows."""
         from slopmop.reporting.display.renderer import build_column_header_line
 
-        line = build_column_header_line(term_width=100)
+        tw = 120
+        line = build_column_header_line(term_width=tw)
         # Build a fake data row with same constants as _format_completed_line
         timing = (
-            "0.2s".rjust(config.TIMING_AVG_WIDTH)
+            "  0.2s".rjust(config.TIMING_AVG_WIDTH)
             + config.TIMING_SEP
-            + "0.3s".rjust(config.TIMING_TIME_WIDTH)
+            + "  0.3s".rjust(config.TIMING_TIME_WIDTH)
             + config.TIMING_SEP
             + "█" * config.TIMING_SPARK_WIDTH
         )
-        data_line = " " * (100 - len(timing)) + timing
+        data_line = " " * (tw - len(timing)) + timing
         # "history" label in header should start at same column as sparkline
         header_hist = line.index("history")
         # Find the first █ in data

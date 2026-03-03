@@ -33,7 +33,7 @@ class CheckDisplayInfo:
     result: Optional[CheckResult] = None
     start_time: float = 0.0
     duration: float = 0.0
-    timing_stats: Optional[TimingStats] = None  # Historical stats (mean, std_dev)
+    timing_stats: Optional[TimingStats] = None  # Historical stats (median, IQR)
     completion_order: int = 0  # Order in which check completed (0 = not yet)
     category: Optional[str] = (
         None  # Category key (overconfidence, laziness, myopia, etc.)
@@ -41,5 +41,5 @@ class CheckDisplayInfo:
 
     @property
     def expected_duration(self) -> Optional[float]:
-        """Mean duration from historical data, or None if no data."""
-        return self.timing_stats.mean if self.timing_stats else None
+        """Median duration from historical data, or None if no data."""
+        return self.timing_stats.median if self.timing_stats else None

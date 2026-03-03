@@ -1,7 +1,6 @@
 """Tests for timing persistence module."""
 
 import json
-import math
 import time
 from pathlib import Path
 
@@ -25,42 +24,76 @@ class TestTimingStats:
     """Tests for TimingStats dataclass and helpers."""
 
     def test_compute_stats_single_sample(self) -> None:
-        """Single sample has std_dev of 0."""
+        """Single sample has IQR of 0."""
         stats = _compute_stats([2.0])
-        assert stats.mean == 2.0
-        assert stats.std_dev == 0.0
+        assert stats.median == 2.0
+        assert stats.iqr == 0.0
+        assert stats.q1 == 2.0
+        assert stats.q3 == 2.0
+        assert stats.historical_max == 2.0
         assert stats.sample_count == 1
 
     def test_compute_stats_multiple_samples(self) -> None:
-        """Mean and population std dev are computed correctly."""
+        """Median and IQR are computed correctly."""
         samples = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
         stats = _compute_stats(samples)
-        assert stats.mean == 5.0
-        assert stats.std_dev == round(math.sqrt(4.0), 3)  # 2.0
+        # Sorted: [2, 4, 4, 4, 5, 5, 7, 9]
+        # n=8, mid=4, lower=[2,4,4,4], upper=[5,5,7,9]
+        # median = (4+5)/2 = 4.5
+        # Q1 = median([2,4,4,4]) = 4.0
+        # Q3 = median([5,5,7,9]) = 6.0
+        assert stats.median == 4.5
+        assert stats.q1 == 4.0
+        assert stats.q3 == 6.0
+        assert stats.iqr == 2.0
+        assert stats.historical_max == 9.0
         assert stats.sample_count == 8
 
     def test_compute_stats_rounds_to_3_decimals(self) -> None:
-        """Mean and std_dev are rounded to 3 decimal places."""
+        """Median and quartiles are rounded to 3 decimal places."""
         stats = _compute_stats([1.11111, 2.22222, 3.33333])
-        # Mean = 2.22222, std_dev = ~0.8607
-        assert stats.mean == round(sum([1.11111, 2.22222, 3.33333]) / 3, 3)
+        # Sorted: [1.11111, 2.22222, 3.33333], median = 2.22222
+        assert stats.median == 2.222
 
-    def test_sigma_over_below_mean(self) -> None:
-        """sigma_over returns 0 when elapsed <= mean."""
-        stats = TimingStats(mean=5.0, std_dev=1.0, sample_count=10)
-        assert stats.sigma_over(3.0) == 0.0
-        assert stats.sigma_over(5.0) == 0.0
+    def test_iqr_over_within_fence(self) -> None:
+        """iqr_over returns 0 when elapsed is within the Tukey fence."""
+        # Q3=6, IQR=2 => fence = 6 + 1.5*2 = 9.0
+        stats = TimingStats(
+            median=4.5,
+            q1=4.0,
+            q3=6.0,
+            iqr=2.0,
+            historical_max=9.0,
+            sample_count=10,
+        )
+        assert stats.iqr_over(3.0) == 0.0
+        assert stats.iqr_over(9.0) == 0.0  # exactly at fence
 
-    def test_sigma_over_above_mean(self) -> None:
-        """sigma_over returns correct number of std devs."""
-        stats = TimingStats(mean=5.0, std_dev=1.0, sample_count=10)
-        assert stats.sigma_over(6.0) == 1.0
-        assert stats.sigma_over(7.5) == 2.5
+    def test_iqr_over_above_fence(self) -> None:
+        """iqr_over returns correct IQR distance above the fence."""
+        # Q3=6, IQR=2 => fence = 9.0
+        stats = TimingStats(
+            median=4.5,
+            q1=4.0,
+            q3=6.0,
+            iqr=2.0,
+            historical_max=9.0,
+            sample_count=10,
+        )
+        assert stats.iqr_over(11.0) == 1.0  # (11-9)/2 = 1.0
+        assert stats.iqr_over(14.0) == 2.5  # (14-9)/2 = 2.5
 
-    def test_sigma_over_tiny_std_dev(self) -> None:
-        """sigma_over returns 0 when std_dev is negligible (< 0.01)."""
-        stats = TimingStats(mean=1.0, std_dev=0.005, sample_count=10)
-        assert stats.sigma_over(1.5) == 0.0
+    def test_iqr_over_tiny_iqr(self) -> None:
+        """iqr_over returns 0 when IQR is negligible (< 0.01)."""
+        stats = TimingStats(
+            median=1.0,
+            q1=1.0,
+            q3=1.005,
+            iqr=0.005,
+            historical_max=1.1,
+            sample_count=10,
+        )
+        assert stats.iqr_over(1.5) == 0.0
 
     def test_compute_stats_stores_samples_tuple(self) -> None:
         """_compute_stats stores samples as a rounded tuple."""
@@ -70,60 +103,108 @@ class TestTimingStats:
 
     def test_sparkline_returns_empty_for_single_sample(self) -> None:
         """sparkline needs at least 2 samples."""
-        stats = TimingStats(mean=1.0, std_dev=0.0, sample_count=1, samples=(1.0,))
+        stats = TimingStats(
+            median=1.0,
+            q1=1.0,
+            q3=1.0,
+            iqr=0.0,
+            historical_max=1.0,
+            sample_count=1,
+            samples=(1.0,),
+        )
         assert stats.sparkline() == ""
 
     def test_sparkline_renders_block_chars(self) -> None:
-        """sparkline maps values to 8-level block characters."""
+        """sparkline maps values to 8-level block characters with padding."""
         stats = TimingStats(
-            mean=5.0,
-            std_dev=1.0,
+            median=5.0,
+            q1=3.0,
+            q3=7.0,
+            iqr=4.0,
+            historical_max=9.0,
             sample_count=5,
             samples=(1.0, 3.0, 5.0, 7.0, 9.0),
         )
-        spark = stats.sparkline()
-        assert len(spark) == 5
-        # Should be ascending: lowest block → highest block
-        assert spark[0] == "▁"
+        spark = stats.sparkline(max_width=8)
+        # Always exactly max_width chars: 3 placeholders + 5 data bars
+        assert len(spark) == 8
+        # Leading placeholders
+        assert spark[:3] == "⸱⸱⸱"
+        # Absolute scaling 0→9.0: 1.0→low, 9.0→highest
+        assert spark[3] == "▁"
         assert spark[-1] == "█"
 
     def test_sparkline_flat_line(self) -> None:
-        """sparkline renders flat line when all values are identical."""
+        """sparkline renders flat line with placeholder padding."""
         stats = TimingStats(
-            mean=2.0,
-            std_dev=0.0,
+            median=2.0,
+            q1=2.0,
+            q3=2.0,
+            iqr=0.0,
+            historical_max=2.0,
             sample_count=3,
             samples=(2.0, 2.0, 2.0),
         )
-        spark = stats.sparkline()
-        assert len(spark) == 3
-        # All same block char (middle)
-        assert len(set(spark)) == 1
+        spark = stats.sparkline(max_width=6)
+        # 3 placeholders + 3 identical bars = 6 chars
+        assert len(spark) == 6
+        assert spark[:3] == "⸱⸱⸱"
+        # Data portion: all same block char
+        assert len(set(spark[3:])) == 1
 
     def test_sparkline_respects_max_width(self) -> None:
         """sparkline truncates to last max_width samples."""
         samples = tuple(float(i) for i in range(20))
-        stats = TimingStats(mean=9.5, std_dev=5.0, sample_count=20, samples=samples)
+        stats = TimingStats(
+            median=9.5,
+            q1=4.5,
+            q3=14.5,
+            iqr=10.0,
+            historical_max=19.0,
+            sample_count=20,
+            samples=samples,
+        )
         spark = stats.sparkline(max_width=5)
         assert len(spark) == 5
 
     def test_format_delta_positive(self) -> None:
         """format_delta shows +Xs (+X%) for overruns."""
-        stats = TimingStats(mean=2.0, std_dev=0.5, sample_count=10)
+        stats = TimingStats(
+            median=2.0,
+            q1=1.8,
+            q3=2.2,
+            iqr=0.4,
+            historical_max=3.0,
+            sample_count=10,
+        )
         delta = stats.format_delta(2.4)
         assert "+0.4s" in delta
         assert "+20%" in delta
 
     def test_format_delta_negative(self) -> None:
         """format_delta shows -Xs (-X%) for underruns."""
-        stats = TimingStats(mean=2.0, std_dev=0.5, sample_count=10)
+        stats = TimingStats(
+            median=2.0,
+            q1=1.8,
+            q3=2.2,
+            iqr=0.4,
+            historical_max=3.0,
+            sample_count=10,
+        )
         delta = stats.format_delta(1.6)
         assert "-0.4s" in delta
         assert "-20%" in delta
 
-    def test_format_delta_zero_mean(self) -> None:
-        """format_delta returns empty string when mean is ~0."""
-        stats = TimingStats(mean=0.0, std_dev=0.0, sample_count=1)
+    def test_format_delta_zero_median(self) -> None:
+        """format_delta returns empty string when median is ~0."""
+        stats = TimingStats(
+            median=0.0,
+            q1=0.0,
+            q3=0.0,
+            iqr=0.0,
+            historical_max=0.0,
+            sample_count=1,
+        )
         assert stats.format_delta(1.0) == ""
 
 
@@ -158,9 +239,9 @@ class TestLoadTimings:
 
         assert "overconfidence:untested-code.py" in result
         assert "python:lint" in result
-        assert result["overconfidence:untested-code.py"].mean == 3.5
+        assert result["overconfidence:untested-code.py"].median == 3.5
         assert result["overconfidence:untested-code.py"].sample_count == 2
-        assert result["python:lint"].mean == 0.8
+        assert result["python:lint"].median == 0.8
 
     def test_auto_migrates_v1_ema_format(self, tmp_path: Path) -> None:
         """Legacy v1 (EMA) entries are auto-migrated on load."""
@@ -181,10 +262,10 @@ class TestLoadTimings:
         result = load_timings(str(tmp_path))
 
         assert "check:legacy" in result
-        # Migrated avg becomes a single sample → mean equals the avg
-        assert result["check:legacy"].mean == 2.5
+        # Migrated avg becomes a single sample → median equals the avg
+        assert result["check:legacy"].median == 2.5
         assert result["check:legacy"].sample_count == 1
-        assert result["check:legacy"].std_dev == 0.0
+        assert result["check:legacy"].iqr == 0.0
 
     def test_handles_corrupt_json(self, tmp_path: Path) -> None:
         """Handles corrupt JSON gracefully."""
@@ -509,7 +590,7 @@ class TestLoadTimingsWithAge:
 
         assert "old_check" not in result
         assert "new_check" in result
-        assert result["new_check"].mean == 2.0
+        assert result["new_check"].median == 2.0
 
 
 class TestSparklineWithColors:
@@ -518,8 +599,11 @@ class TestSparklineWithColors:
     def test_sparkline_colors_bars_by_result(self) -> None:
         """When colors_enabled, bars get ANSI color from result status."""
         stats = TimingStats(
-            mean=1.0,
-            std_dev=0.1,
+            median=1.0,
+            q1=0.9,
+            q3=1.1,
+            iqr=0.2,
+            historical_max=1.1,
             sample_count=3,
             samples=(1.0, 1.1, 0.9),
             results=("passed", "failed", "passed"),
@@ -531,8 +615,11 @@ class TestSparklineWithColors:
     def test_sparkline_no_color_when_disabled(self) -> None:
         """Without colors_enabled, bars are plain text."""
         stats = TimingStats(
-            mean=1.0,
-            std_dev=0.1,
+            median=1.0,
+            q1=0.9,
+            q3=1.1,
+            iqr=0.2,
+            historical_max=1.1,
             sample_count=3,
             samples=(1.0, 1.1, 0.9),
             results=("passed", "failed", "passed"),
@@ -543,8 +630,11 @@ class TestSparklineWithColors:
     def test_sparkline_fewer_results_than_samples(self) -> None:
         """When results shorter than samples, oldest bars are uncolored."""
         stats = TimingStats(
-            mean=1.0,
-            std_dev=0.1,
+            median=1.0,
+            q1=0.9,
+            q3=1.1,
+            iqr=0.2,
+            historical_max=1.2,
             sample_count=5,
             samples=(1.0, 1.1, 0.9, 1.2, 0.8),
             results=("passed", "failed"),  # only last 2
@@ -558,13 +648,36 @@ class TestSparklineWithColors:
     def test_sparkline_no_results_no_color(self) -> None:
         """Empty results tuple produces plain sparkline even with colors."""
         stats = TimingStats(
-            mean=1.0,
-            std_dev=0.1,
+            median=1.0,
+            q1=0.9,
+            q3=1.1,
+            iqr=0.2,
+            historical_max=1.1,
             sample_count=3,
             samples=(1.0, 1.1, 0.9),
         )
         spark = stats.sparkline(max_width=3, colors_enabled=True)
         assert "\033[" not in spark
+
+    def test_sparkline_colored_with_padding(self) -> None:
+        """Colored sparkline pads to max_width with dim placeholders."""
+        stats = TimingStats(
+            median=1.0,
+            q1=0.9,
+            q3=1.1,
+            iqr=0.2,
+            historical_max=1.1,
+            sample_count=3,
+            samples=(1.0, 1.1, 0.9),
+            results=("passed", "passed", "passed"),
+        )
+        from slopmop.reporting.display.renderer import strip_ansi
+
+        spark = stats.sparkline(max_width=6, colors_enabled=True)
+        # 3 dim placeholders + 3 colored bars = 6 visible chars
+        assert len(strip_ansi(spark)) == 6
+        # Should contain dim (gray) for placeholders
+        assert "\033[90m" in spark
 
 
 class TestComputeStatsWithResults:
@@ -626,4 +739,4 @@ class TestSaveTimingsWithResults:
 
         stats = load_timings(str(tmp_path))
         assert stats["check:a"].results == ()
-        assert stats["check:a"].mean == 1.0
+        assert stats["check:a"].median == 1.0

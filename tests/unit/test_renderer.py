@@ -211,3 +211,23 @@ class TestBuildOverallProgress:
         """0 completed with colors enabled has no escape (no filled chars)."""
         result = build_overall_progress(0, 10, 1.0, term_width=80, colors_enabled=True)
         assert "\033[32m" not in result
+
+    def test_category_sequence_domino_colors(self):
+        """category_sequence produces domino-line striped coloring."""
+        seq = ["overconfidence", "laziness", "overconfidence", "myopia", "laziness"]
+        result = build_overall_progress(
+            5, 10, 2.0, term_width=80, colors_enabled=True, category_sequence=seq
+        )
+        # Should NOT contain the old solid-green code
+        assert "\033[32m" not in result
+        # Should contain reset codes for colored segments
+        assert "\033[0m" in result
+        # Progress info still present
+        assert "5/10" in result
+
+    def test_category_sequence_none_falls_back_to_green(self):
+        """Without category_sequence, progress bar is solid green."""
+        result = build_overall_progress(
+            5, 10, 2.0, term_width=80, colors_enabled=True, category_sequence=None
+        )
+        assert "\033[32m" in result

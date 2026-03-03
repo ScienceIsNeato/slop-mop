@@ -200,21 +200,21 @@ def bold(text: str, colors_enabled: Optional[bool] = None) -> str:
     return colorize(text, Color.BOLD, colors_enabled)
 
 
-def overrun_color(sigma: float, colors_enabled: Optional[bool] = None) -> str:
-    """Get ANSI color code for a time-overrun expressed in standard deviations.
+def overrun_color(iqr_distance: float, colors_enabled: Optional[bool] = None) -> str:
+    """Get ANSI color code for a time-overrun expressed in IQR units.
 
     Escalates through yellow → orange → red as the overrun grows,
     giving immediate visual feedback when a gate is running long.
 
-    Thresholds (from display config, measured in σ above mean):
-      < 1σ:  no color (within expected variance)
-      1-2σ:  yellow  — taking notably longer than usual
-      2-3σ:  orange  — something may be wrong
-      ≥ 3σ:  red     — significantly over expected time
+    Thresholds (from display config, measured in IQR above Tukey fence):
+      below fence: no color (within expected statistical range)
+      0–1 IQR:     yellow  — mild outlier
+      1–2.5 IQR:   orange  — moderate outlier
+      ≥ 2.5 IQR:  red     — extreme outlier
 
     Args:
-        sigma: Number of standard deviations above the mean
-            (e.g. 1.5 means +1.5σ over mean).
+        iqr_distance: IQR units above the Tukey fence
+            (e.g. 1.5 means 1.5 IQR past Q3+1.5×IQR).
         colors_enabled: Override color detection (for testing).
 
     Returns:
@@ -225,11 +225,11 @@ def overrun_color(sigma: float, colors_enabled: Optional[bool] = None) -> str:
 
     if colors_enabled is None:
         colors_enabled = supports_color()
-    if not colors_enabled or sigma < display_config.OVERRUN_WARN_SIGMA:
+    if not colors_enabled or iqr_distance < display_config.OVERRUN_WARN_IQR:
         return ""
-    if sigma < display_config.OVERRUN_CAUTION_SIGMA:
+    if iqr_distance < display_config.OVERRUN_CAUTION_IQR:
         return Color.YELLOW.value
-    if sigma < display_config.OVERRUN_ALERT_SIGMA:
+    if iqr_distance < display_config.OVERRUN_ALERT_IQR:
         # Dark orange via true-color, yellow fallback on 16-color terminals
         return ansi_rgb("#FF8C00", Color.YELLOW)
     return Color.RED.value

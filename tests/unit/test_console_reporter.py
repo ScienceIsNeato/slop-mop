@@ -766,14 +766,14 @@ class TestNotRunSection:
         assert "1 not applicable" in captured.out
 
     def test_not_run_section_time_budget(self, capsys):
-        """Time-budget skips appear in count summary."""
+        """Time-budget skips appear in count summary with itemised gates."""
         results = [
             CheckResult("check1", CheckStatus.PASSED, 1.0),
             CheckResult(
                 "myopia:source-duplication",
                 CheckStatus.SKIPPED,
                 0,
-                output="Skipped — estimated 15.2s would exceed 10s time budget",
+                output="Skipped — estimated 15.2s (budget 10s expired after 12.3s wall-clock)",
                 skip_reason=SkipReason.TIME_BUDGET,
             ),
         ]
@@ -784,6 +784,45 @@ class TestNotRunSection:
         captured = capsys.readouterr()
         assert "Not run (1):" in captured.out
         assert "1 time budget" in captured.out
+        # Itemised sub-list with wall-clock budget context
+        assert "Budget 10s" in captured.out
+        assert "expired after 12.3s wall-clock" in captured.out
+        assert "myopia:source-duplication" in captured.out
+        assert "est. 15.2s" in captured.out
+
+    def test_not_run_section_time_budget_multiple_sorted(self, capsys):
+        """Multiple time-budget skips are itemised, heaviest first."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "overconfidence:coverage-gaps",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped — estimated 2.3s (budget 5s expired after 6.1s wall-clock)",
+                skip_reason=SkipReason.TIME_BUDGET,
+            ),
+            CheckResult(
+                "myopia:source-duplication",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped — estimated 8.7s (budget 5s expired after 6.1s wall-clock)",
+                skip_reason=SkipReason.TIME_BUDGET,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "2 time budget" in captured.out
+        assert "Budget 5s" in captured.out
+        # Both gates listed
+        assert "myopia:source-duplication" in captured.out
+        assert "overconfidence:coverage-gaps" in captured.out
+        # Heaviest first
+        dup_pos = captured.out.index("myopia:source-duplication")
+        cov_pos = captured.out.index("overconfidence:coverage-gaps")
+        assert dup_pos < cov_pos
 
     def test_not_run_section_fail_fast(self, capsys):
         """Fail-fast skips appear in count summary."""
@@ -827,7 +866,7 @@ class TestNotRunSection:
                 "myopia:source-duplication",
                 CheckStatus.SKIPPED,
                 0,
-                output="Skipped — estimated 12.0s would exceed 10s time budget",
+                output="Skipped — estimated 12.0s (budget 10s expired after 11.5s wall-clock)",
                 skip_reason=SkipReason.TIME_BUDGET,
             ),
         ]
@@ -846,6 +885,10 @@ class TestNotRunSection:
         na_pos = captured.out.index("1 not applicable")
         time_pos = captured.out.index("1 time budget")
         assert disabled_pos < na_pos < time_pos
+        # Time-budget skip is itemised even in mixed-reason output
+        assert "Budget 10s" in captured.out
+        assert "myopia:source-duplication" in captured.out
+        assert "est. 12.0s" in captured.out
 
     def test_not_run_section_omitted_when_all_ran(self, capsys):
         """No 'Not run' section when every check executed."""

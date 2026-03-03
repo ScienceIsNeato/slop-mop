@@ -29,7 +29,8 @@ _CATEGORY_ORDER = [
 ]
 
 # Marker written into slop-mop-managed git hooks.
-_SB_HOOK_MARKER = "# SM_MANAGED_HOOK"
+# Import the canonical marker from hooks.py to keep in sync.
+from slopmop.cli.hooks import SB_HOOK_MARKER as _SB_HOOK_MARKER
 
 
 def _get_category_display(category_key: str) -> Tuple[str, str]:

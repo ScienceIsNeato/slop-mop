@@ -134,18 +134,14 @@ def _disable_non_applicable(
     not by language. When a project doesn't have Python or JavaScript, we
     disable the language-specific gates within each category rather than
     disabling whole categories.
-    """
-    # Gate short-name prefixes that indicate language specificity
-    py_prefixes = ("py-",)
-    js_prefixes = ("js-",)
 
-    # Python-only gates that don't use the py- prefix
-    py_only_gates = {
-        "bogus-tests.py",
-        "complexity-creep.py",
-        "dead-code.py",
-        "broken-templates.py",
-    }
+    Gate names use a suffix convention to indicate language specificity:
+      .py  → Python-specific gate
+      .js  → JavaScript-specific gate
+    """
+    # Gate-name suffixes that indicate language specificity
+    py_suffix = ".py"
+    js_suffix = ".js"
 
     for category_key in list(base_config.keys()):
         section = base_config.get(category_key)
@@ -159,16 +155,12 @@ def _disable_non_applicable(
                 continue
 
             # Disable Python-specific gates if no Python detected
-            if not detected["has_python"]:
-                if any(gate_name.startswith(p) for p in py_prefixes):
-                    gate_config["enabled"] = False
-                elif gate_name in py_only_gates:
-                    gate_config["enabled"] = False
+            if not detected["has_python"] and gate_name.endswith(py_suffix):
+                gate_config["enabled"] = False
 
             # Disable JavaScript-specific gates if no JavaScript detected
-            if not detected["has_javascript"]:
-                if any(gate_name.startswith(p) for p in js_prefixes):
-                    gate_config["enabled"] = False
+            if not detected["has_javascript"] and gate_name.endswith(js_suffix):
+                gate_config["enabled"] = False
 
     # Apply detected test dirs to untested-code.py gate
     if detected["has_python"] and detected["test_dirs"]:
@@ -216,7 +208,7 @@ def _disable_checks_with_missing_tools(
         return
 
     for _tool_name, check_name, _install_cmd in missing_tools:
-        # Parse check name: "quality:dead-code.py" -> category="quality", gate="dead-code.py"
+        # Parse check name: "laziness:dead-code.py" -> category="laziness", gate="dead-code.py"
         if ":" not in check_name:
             continue
         category, gate = check_name.split(":", 1)

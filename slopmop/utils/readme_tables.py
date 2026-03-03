@@ -71,8 +71,8 @@ CATEGORY_INFO: Dict[GateCategory, CategoryInfo] = {
         heading_emoji="🔵",
         heading_color="Myopia",
         quote=(
-            '*"Updrading to the newest dependency would slow us '
-            'down - this deprecated version is fine for now"*\n\n'
+            "*\"This file is fine in isolation — I don't need to see "
+            'what it duplicates three directories away"*\n\n'
             "The LLM has a 200k-token context window and still manages "
             "tunnel vision. It duplicates code across files, ignores "
             "security implications, and lets functions grow unbounded "

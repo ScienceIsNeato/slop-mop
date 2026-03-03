@@ -808,6 +808,103 @@ class TestCmdCi:
         assert "gh" in captured.out.lower()
 
 
+class TestScourDisablesFailFast:
+    """Scour must never use fail-fast so every gate runs to completion."""
+
+    def _make_args(self, tmp_path, no_fail_fast=False):
+        return argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=no_fail_fast,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+        )
+
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_scour_forces_fail_fast_off(
+        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+    ):
+        """Scour always creates executor with fail_fast=False."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        _run_validation(self._make_args(tmp_path), ["gate1"], "scour")
+
+        mock_executor_cls.assert_called_once()
+        _, kwargs = mock_executor_cls.call_args
+        assert kwargs["fail_fast"] is False
+
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_scour_ignores_no_fail_fast_flag(
+        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+    ):
+        """Even with --no-fail-fast omitted, scour still disables fail-fast."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        # no_fail_fast=False means the user did NOT pass --no-fail-fast,
+        # which normally means fail_fast=True. Scour overrides this.
+        _run_validation(
+            self._make_args(tmp_path, no_fail_fast=False), ["gate1"], "scour"
+        )
+
+        _, kwargs = mock_executor_cls.call_args
+        assert kwargs["fail_fast"] is False
+
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_swab_defaults_to_fail_fast(
+        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+    ):
+        """Swab defaults to fail_fast=True."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        _run_validation(self._make_args(tmp_path), ["gate1"], "swab")
+
+        _, kwargs = mock_executor_cls.call_args
+        assert kwargs["fail_fast"] is True
+
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_swab_respects_no_fail_fast_flag(
+        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+    ):
+        """Swab with --no-fail-fast creates executor with fail_fast=False."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        _run_validation(self._make_args(tmp_path, no_fail_fast=True), ["gate1"], "swab")
+
+        _, kwargs = mock_executor_cls.call_args
+        assert kwargs["fail_fast"] is False
+
+
 class TestSetupDynamicDisplay:
     """Tests for _setup_dynamic_display helper in validate.py."""
 
@@ -826,11 +923,12 @@ class TestSetupDynamicDisplay:
             mock_display = MagicMock()
             MockDisplay.return_value = mock_display
 
-            result = _setup_dynamic_display(
+            result, deferred = _setup_dynamic_display(
                 executor, reporter, quiet=True, project_root=tmp_path
             )
 
         assert result is mock_display
+        assert deferred == []  # empty list initially
         mock_display.start.assert_called_once()
         executor.set_start_callback.assert_called_once()
         executor.set_disabled_callback.assert_called_once()
@@ -854,7 +952,7 @@ class TestSetupDynamicDisplay:
         with patch("slopmop.cli.validate.DynamicDisplay") as MockDisplay:
             mock_display = MagicMock()
             MockDisplay.return_value = mock_display
-            _setup_dynamic_display(
+            _, deferred = _setup_dynamic_display(
                 executor, reporter, quiet=True, project_root=tmp_path
             )
 
@@ -869,5 +967,7 @@ class TestSetupDynamicDisplay:
 
         # Display receives all results
         assert mock_display.on_check_complete.call_count == 2
-        # Reporter only receives failures
-        reporter.on_check_complete.assert_called_once_with(failed)
+        # Failures are deferred (not sent to reporter immediately)
+        reporter.on_check_complete.assert_not_called()
+        assert len(deferred) == 1
+        assert deferred[0] is failed

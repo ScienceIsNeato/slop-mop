@@ -55,7 +55,7 @@ class SourceDuplicationCheck(BaseCheck):
       jscpd not available: npm install -g jscpd
 
     Re-check:
-      ./sm swab -g quality:source-duplication --verbose
+      ./sm swab -g myopia:source-duplication --verbose
     """
 
     tool_context = ToolContext.NODE

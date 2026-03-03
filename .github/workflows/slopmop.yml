@@ -45,6 +45,8 @@ jobs:
           npx tsc
 
       - name: Run slop-mop on itself
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python -m slopmop.sm scour
 
   wait-for-bots:

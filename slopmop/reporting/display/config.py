@@ -55,24 +55,26 @@ HEADER_DASH = "─"
 # Indent for check lines under category headers
 CHECK_INDENT = "   "  # 3 spaces
 
-# Overrun severity thresholds (standard deviations above mean).
-# When a check's elapsed time rises above mean + Nσ the progress
-# indicator escalates colour.
-#   0-1σ: normal       — within expected variance
-#   1-2σ: yellow       — taking notably longer
-#   2-3σ: orange/amber — something may be wrong
-#   ≥ 3σ: red          — significantly over expected time
-OVERRUN_WARN_SIGMA = 1.0  # Yellow
-OVERRUN_CAUTION_SIGMA = 2.0  # Orange
-OVERRUN_ALERT_SIGMA = 3.0  # Red
+# Overrun severity thresholds (IQR units above Tukey fence).
+# The Tukey fence is Q3 + 1.5 × IQR — the textbook outlier boundary.
+# iqr_over() returns 0 at the fence, so these thresholds measure how
+# far *past* it the elapsed time has gone, in multiples of IQR.
+#
+#   below fence:  no color   — within expected statistical range
+#   0 – 1 IQR:    yellow     — mild outlier (Q3+1.5×IQR to Q3+2.5×IQR)
+#   1 – 2.5 IQR:  orange     — moderate outlier
+#   ≥ 2.5 IQR:   red        — extreme outlier (Q3+4.0×IQR)
+OVERRUN_WARN_IQR = 0.0  # Yellow (any amount past Tukey fence)
+OVERRUN_CAUTION_IQR = 1.0  # Orange (Q3 + 2.5×IQR)
+OVERRUN_ALERT_IQR = 2.5  # Red (Q3 + 4.0×IQR)
 
-# Minimum number of samples before standard-deviation-based
-# thresholds kick in.  With fewer samples the std dev is unreliable
-# so we fall back to a simple "over 2× mean" heuristic.
-MIN_SAMPLES_FOR_SIGMA = 3
+# Minimum number of samples before IQR-based thresholds kick in.
+# Quartiles need at least 5 data points to be meaningful; with
+# fewer we fall back to a simple "over 2× median" heuristic.
+MIN_SAMPLES_FOR_IQR = 5
 
-# Column widths for status word (passed/failed/etc.)
-STATUS_COLUMN_WIDTH = 5  # "done" = 4 + 1 padding (status word is now neutral)
+# Column widths for status word (done/skipped)
+STATUS_COLUMN_WIDTH = 8  # "skipped" = 7 + 1 padding
 
 # ── Two-panel column layout ─────────────────────────────────────
 # The completed-check and header lines use two horizontal sections:
@@ -81,18 +83,22 @@ STATUS_COLUMN_WIDTH = 5  # "done" = 4 + 1 padding (status word is now neutral)
 # Scope metrics (files, LOC) are shown only in the final summary line.
 
 # Timing columns (right panel)
-TIMING_AVG_WIDTH = 6  # historical average    e.g. "  0.2s"  (was "exp.")
-TIMING_TIME_WIDTH = 6  # this-run duration     e.g. "  0.5s"  (was "act.")
-TIMING_SPARK_WIDTH = 8  # sparkline history    e.g. "█▅▅▄▁▆▁▁"
+TIMING_TIME_WIDTH = (
+    12  # this-run duration     e.g. "      0.5s"  (header: "act duration")
+)
+TIMING_AVG_WIDTH = (
+    12  # expected duration     e.g. "      0.2s"  (header: "exp duration")
+)
+TIMING_SPARK_WIDTH = 8  # sparkline history    e.g. "⸱⸱⸱█▅▅▄▁"
 TIMING_SEP = "  "  # gap between timing sub-columns
 
 # Column header labels — built from the same width constants as data
 # rows so columns align vertically.  Kept as module-level strings for
 # convenience; referenced by build_column_header_line().
 TIMING_HEADER = (
-    "avg".rjust(TIMING_AVG_WIDTH)
+    "act duration".rjust(TIMING_TIME_WIDTH)
     + TIMING_SEP
-    + "time".rjust(TIMING_TIME_WIDTH)
+    + "exp duration".rjust(TIMING_AVG_WIDTH)
     + TIMING_SEP
     + "history".ljust(TIMING_SPARK_WIDTH)
 )

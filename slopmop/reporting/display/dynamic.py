@@ -28,6 +28,7 @@ from slopmop.reporting.display.renderer import (
     build_dot_leader,
     build_overall_progress,
     build_progress_bar,
+    display_width,
     format_time,
     get_terminal_width,
     right_justify,
@@ -347,10 +348,24 @@ class DynamicDisplay:
                 if self._overall_start_time
                 else 0.0
             )
+            # Build domino-line: categories in completion order
+            done = [
+                c
+                for c in self._checks.values()
+                if c.state == DisplayState.COMPLETED and c.category
+            ]
+            done.sort(key=lambda c: c.completion_order)
+            cat_seq = (
+                [c.category for c in done if c.category is not None] if done else None
+            )
             lines.append("")
             lines.append(
                 build_overall_progress(
-                    completed, total, elapsed, colors_enabled=self._colors_enabled
+                    completed,
+                    total,
+                    elapsed,
+                    colors_enabled=self._colors_enabled,
+                    category_sequence=cat_seq,
                 )
             )
 
@@ -565,8 +580,19 @@ class DynamicDisplay:
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
         icon = STATUS_EMOJI.get(info.result.status, "❓")
 
-        # Neutral "done" — emoji communicates pass/fail semantics
-        padded_status = f"{'done':<{config.STATUS_COLUMN_WIDTH}}"
+        # Normalise icon to 2 display columns — most emoji are W/F (width 2)
+        # but ⊘ is Neutral (width 1).  Pad narrow icons so columns align.
+        icon_w = display_width(icon)
+        if icon_w < 2:
+            icon = icon + " " * (2 - icon_w)
+
+        # Status word — "skipped" for not-applicable/skipped, "done" otherwise
+        status_word = (
+            "skipped"
+            if info.result.status in (CheckStatus.NOT_APPLICABLE, CheckStatus.SKIPPED)
+            else "done"
+        )
+        padded_status = f"{status_word:<{config.STATUS_COLUMN_WIDTH}}"
         sc = status_color(info.result.status, ce)
         rc = reset_color(ce)
         colored_status = f"{sc}{padded_status}{rc}"
@@ -581,21 +607,21 @@ class DynamicDisplay:
                 if preview:
                     left += f" — {preview}"
 
-        # ── Right section: timing columns ──
+        # ── Right section: timing columns (act | exp | history) ──
         stats = info.timing_stats
         time_str = format_time(info.duration)
 
         if stats and stats.sample_count >= 2:
-            avg_str = format_time(stats.mean).rjust(config.TIMING_AVG_WIDTH)
             act_str = time_str.rjust(config.TIMING_TIME_WIDTH)
+            avg_str = format_time(stats.median).rjust(config.TIMING_AVG_WIDTH)
 
             # Sparkline colored by result status
             spark = stats.sparkline(
                 max_width=config.TIMING_SPARK_WIDTH, colors_enabled=ce
             )
             timing = (
-                f"{avg_str}{config.TIMING_SEP}"
                 f"{act_str}{config.TIMING_SEP}"
+                f"{avg_str}{config.TIMING_SEP}"
                 f"{spark}"
             )
         else:
@@ -604,8 +630,8 @@ class DynamicDisplay:
             blank_avg = " " * config.TIMING_AVG_WIDTH
             blank_spark = " " * config.TIMING_SPARK_WIDTH
             timing = (
-                f"{blank_avg}{config.TIMING_SEP}"
                 f"{act_str}{config.TIMING_SEP}"
+                f"{blank_avg}{config.TIMING_SEP}"
                 f"{blank_spark}"
             )
 
@@ -634,23 +660,31 @@ class DynamicDisplay:
         time_str = format_time(elapsed)
 
         stats = info.timing_stats
-        if stats and stats.mean > 0:
-            ratio = elapsed / stats.mean
+        if stats and stats.median > 0:
+            ratio = elapsed / stats.median
             category = info.name.split(":")[0] if ":" in info.name else ""
             cat_color = category_header_color(category, self._colors_enabled) or None
 
             if ratio > 1.0:
-                # Overrunning — compute sigma distance and escalate color
-                sigma = stats.sigma_over(elapsed)
-                oc = overrun_color(sigma, self._colors_enabled)
+                # Overrunning — compute IQR distance and escalate color
+                iqr_dist = stats.iqr_over(elapsed)
+                oc = overrun_color(iqr_dist, self._colors_enabled)
                 rc = reset_color(self._colors_enabled)
                 # Show actual/expected, e.g. "3.2s/1.1s"
                 actual_str = format_time(elapsed)
-                expected_str = format_time(stats.mean)
+                expected_str = format_time(stats.median)
                 label = f"|{actual_str}/{expected_str}"
                 pct_label = f"{oc}{label}{rc}" if oc else label
                 bar_color = oc if oc else cat_color
-                right = align_columns(time_str, "")
+                # Right section matches completed column layout (act | exp | history)
+                act_col = time_str.rjust(config.TIMING_TIME_WIDTH)
+                exp_col = " " * config.TIMING_AVG_WIDTH
+                spark_col = " " * config.TIMING_SPARK_WIDTH
+                right = (
+                    f"{act_col}{config.TIMING_SEP}"
+                    f"{exp_col}{config.TIMING_SEP}"
+                    f"{spark_col}"
+                )
                 return build_progress_bar(
                     left,
                     right,
@@ -661,10 +695,18 @@ class DynamicDisplay:
                     pct_label=pct_label,
                 )
 
-            remaining = max(0.0, stats.mean - elapsed)
+            remaining = max(0.0, stats.median - elapsed)
             eta_str = format_time(remaining)
             pct = min(ratio, 0.99)
-            right = align_columns(time_str, eta_str)
+            # Right section matches completed column layout (act | exp | history)
+            act_col = time_str.rjust(config.TIMING_TIME_WIDTH)
+            exp_col = eta_str.rjust(config.TIMING_AVG_WIDTH)
+            spark_col = " " * config.TIMING_SPARK_WIDTH
+            right = (
+                f"{act_col}{config.TIMING_SEP}"
+                f"{exp_col}{config.TIMING_SEP}"
+                f"{spark_col}"
+            )
             return build_progress_bar(
                 left,
                 right,
@@ -674,7 +716,15 @@ class DynamicDisplay:
                 bar_color=cat_color,
             )
         else:
-            right = align_columns(time_str, "N/A")
+            # No timing data — act column only, rest blank
+            act_col = time_str.rjust(config.TIMING_TIME_WIDTH)
+            exp_col = " " * config.TIMING_AVG_WIDTH
+            spark_col = " " * config.TIMING_SPARK_WIDTH
+            right = (
+                f"{act_col}{config.TIMING_SEP}"
+                f"{exp_col}{config.TIMING_SEP}"
+                f"{spark_col}"
+            )
             return build_dot_leader(left, right, width, self._animation_tick)
 
     def _format_pending_line(
@@ -702,8 +752,19 @@ class DynamicDisplay:
         rc = reset_color(self._colors_enabled)
 
         left = f"{config.CHECK_INDENT}{dim}{indicator} {padded_name}: waiting{rc}"
-        eta_str = format_time(info.expected_duration) if info.expected_duration else ""
-        right = align_columns("", eta_str)
+        # Right section matches completed column layout (act | exp | history)
+        act_col = " " * config.TIMING_TIME_WIDTH
+        exp_col = (
+            format_time(info.expected_duration).rjust(config.TIMING_AVG_WIDTH)
+            if info.expected_duration
+            else " " * config.TIMING_AVG_WIDTH
+        )
+        spark_col = " " * config.TIMING_SPARK_WIDTH
+        right = (
+            f"{act_col}{config.TIMING_SEP}"
+            f"{exp_col}{config.TIMING_SEP}"
+            f"{spark_col}"
+        )
         return right_justify(left, right, width)
 
     def _format_check_line(self, info: CheckDisplayInfo, name_width: int = 0) -> str:

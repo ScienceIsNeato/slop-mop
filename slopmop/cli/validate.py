@@ -46,11 +46,11 @@ def _setup_dynamic_display(
     reporter: "ConsoleReporter",
     quiet: bool,
     project_root: Path,
-) -> "DynamicDisplay":
+) -> tuple["DynamicDisplay", List[CheckResult]]:
     """Configure and start the dynamic display, wiring all executor callbacks.
 
-    Also adds a combined progress callback so failure details are printed via
-    the console reporter even when the dynamic display is active.
+    Failure details are buffered during the live animation and returned
+    so the caller can print them after ``display.stop()``.
 
     Args:
         executor: The check executor to wire callbacks onto.
@@ -59,7 +59,8 @@ def _setup_dynamic_display(
         project_root: Project root for loading historical timings.
 
     Returns:
-        The started DynamicDisplay instance.
+        Tuple of (started DynamicDisplay, list to be filled with deferred
+        failure CheckResults).
     """
     display = DynamicDisplay(quiet=quiet)
     display.load_historical_timings(str(project_root))
@@ -70,16 +71,17 @@ def _setup_dynamic_display(
     executor.set_total_callback(display.set_total_checks)
     executor.set_pending_callback(display.register_pending_checks)
 
-    # Combined callback: update display AND print failure details via reporter
-    _reporter_cb = reporter.on_check_complete
+    # Buffer failures/errors — printing during the live animation corrupts
+    # cursor tracking.  The caller drains this list after display.stop().
+    deferred_failures: List[CheckResult] = []
 
     def _combined(result: CheckResult) -> None:
         display.on_check_complete(result)
         if result.failed or result.status == CheckStatus.ERROR:
-            _reporter_cb(result)
+            deferred_failures.append(result)
 
     executor.set_progress_callback(_combined)
-    return display
+    return display, deferred_failures
 
 
 # ─── Shared execution pipeline ───────────────────────────────────────────
@@ -118,10 +120,13 @@ def _run_validation(
                 print("🗑️  Timing history cleared")
 
     # Create executor
+    # Scour never uses fail-fast — it runs every gate to give the full picture.
+    # Swab respects the --no-fail-fast flag (default: fail-fast ON).
     registry = get_registry()
+    use_fail_fast = False if level_name == "scour" else not args.no_fail_fast
     executor = CheckExecutor(
         registry=registry,
-        fail_fast=not args.no_fail_fast,
+        fail_fast=use_fail_fast,
     )
 
     # Set up progress reporting
@@ -170,8 +175,9 @@ def _run_validation(
 
     # Set up dynamic display if appropriate
     dynamic_display: Optional[DynamicDisplay] = None
+    deferred_failures: List[CheckResult] = []
     if use_dynamic:
-        dynamic_display = _setup_dynamic_display(
+        dynamic_display, deferred_failures = _setup_dynamic_display(
             executor, reporter, args.quiet, project_root
         )
     else:
@@ -193,6 +199,11 @@ def _run_validation(
         if dynamic_display:
             dynamic_display.stop()
             dynamic_display.save_historical_timings(str(project_root))
+
+            # Now it's safe to print failure details that were buffered
+            # during the live animation.
+            for result in deferred_failures:
+                reporter.on_check_complete(result)
 
         # Print summary
         reporter.print_summary(summary)

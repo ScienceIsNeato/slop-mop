@@ -208,8 +208,7 @@ class TestDynamicDisplay:
         assert "check" in line
         # Shows elapsed time
         assert "1." in line or "2." in line
-        # Shows N/A for estimated time remaining (no prior data)
-        assert "N/A" in line
+        # No timing data — columns are blank (no "N/A" text)
 
     def test_format_check_line_completed_passed(self) -> None:
         """Test formatting completed (passed) check line."""
@@ -405,12 +404,14 @@ class TestDynamicDisplay:
         assert display._total_checks_expected == 15
 
     def test_format_time_seconds(self) -> None:
-        """Test _format_time formats seconds correctly."""
+        """Test _format_time formats seconds with fixed width."""
         display = DynamicDisplay(quiet=True)
 
-        assert display._format_time(5.2) == "5.2s"
-        assert display._format_time(0.0) == "0.0s"
-        assert display._format_time(59.9) == "59.9s"
+        assert display._format_time(5.2) == "  5.2s"
+        assert display._format_time(0.0) == "  fast"  # near-zero → "fast"
+        assert display._format_time(0.04) == "  fast"  # below 0.05 threshold
+        assert display._format_time(0.05) == "  0.1s"  # at threshold → numeric
+        assert display._format_time(59.9) == " 59.9s"
 
     def test_format_time_minutes(self) -> None:
         """Test _format_time formats minutes correctly."""
@@ -539,7 +540,14 @@ class TestDynamicDisplay:
         """Test that loading historical timings populates timing_stats."""
         display = DynamicDisplay(quiet=True)
         display._historical_timings = {
-            "test:check": TimingStats(mean=2.5, std_dev=0.5, sample_count=10)
+            "test:check": TimingStats(
+                median=2.5,
+                q1=2.0,
+                q3=3.0,
+                iqr=1.0,
+                historical_max=4.0,
+                sample_count=10,
+            )
         }
 
         display.on_check_start("test:check")
@@ -553,7 +561,14 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.0,
-            timing_stats=TimingStats(mean=3.5, std_dev=0.5, sample_count=10),
+            timing_stats=TimingStats(
+                median=3.5,
+                q1=3.0,
+                q3=4.0,
+                iqr=1.0,
+                historical_max=5.0,
+                sample_count=10,
+            ),
         )
 
         line = display._format_check_line(info)
@@ -588,7 +603,14 @@ class TestDynamicDisplay:
                 duration=2.0,
             ),
             duration=2.0,
-            timing_stats=TimingStats(mean=2.5, std_dev=0.3, sample_count=5),
+            timing_stats=TimingStats(
+                median=2.5,
+                q1=2.0,
+                q3=3.0,
+                iqr=1.0,
+                historical_max=4.0,
+                sample_count=5,
+            ),
         )
 
         line = display._format_check_line(info)
@@ -619,7 +641,14 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.5,
-            timing_stats=TimingStats(mean=3.0, std_dev=0.5, sample_count=10),
+            timing_stats=TimingStats(
+                median=3.0,
+                q1=2.5,
+                q3=3.5,
+                iqr=1.0,
+                historical_max=5.0,
+                sample_count=10,
+            ),
         )
 
         line = display._format_check_line(info)
@@ -653,13 +682,20 @@ class TestDynamicDisplay:
     def test_progress_bar_percentage_caps_at_99(self) -> None:
         """Test progress bar shows overrun indicator when over estimate."""
         display = DynamicDisplay(quiet=True)
-        # Elapsed 5s but mean 2s — running well over expected time
-        # std_dev=0.5 so sigma_over = (5-2)/0.5 = 6σ
+        # Elapsed 5s but median 2s — running well over expected time
+        # Q3=2.2, IQR=0.4 => fence = 2.2 + 0.6 = 2.8, iqr_over = (5-2.8)/0.4 = 5.5
         info = CheckDisplayInfo(
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 5.0,
-            timing_stats=TimingStats(mean=2.0, std_dev=0.5, sample_count=10),
+            timing_stats=TimingStats(
+                median=2.0,
+                q1=1.8,
+                q3=2.2,
+                iqr=0.4,
+                historical_max=3.0,
+                sample_count=10,
+            ),
         )
 
         line = display._format_check_line(info)
@@ -676,9 +712,30 @@ class TestDynamicDisplay:
 
         # Start checks with mixed estimates
         display._historical_timings = {
-            "test:short": TimingStats(mean=1.0, std_dev=0.1, sample_count=5),
-            "test:long": TimingStats(mean=10.0, std_dev=1.0, sample_count=5),
-            "test:medium": TimingStats(mean=5.0, std_dev=0.5, sample_count=5),
+            "test:short": TimingStats(
+                median=1.0,
+                q1=0.9,
+                q3=1.1,
+                iqr=0.2,
+                historical_max=1.5,
+                sample_count=5,
+            ),
+            "test:long": TimingStats(
+                median=10.0,
+                q1=9.0,
+                q3=11.0,
+                iqr=2.0,
+                historical_max=15.0,
+                sample_count=5,
+            ),
+            "test:medium": TimingStats(
+                median=5.0,
+                q1=4.5,
+                q3=5.5,
+                iqr=1.0,
+                historical_max=7.0,
+                sample_count=5,
+            ),
         }
 
         display.on_check_start("test:short")
@@ -715,7 +772,14 @@ class TestDynamicDisplay:
         display._overall_start_time = time.time()
         display.set_total_checks(3)
         display._historical_timings = {
-            "test:b": TimingStats(mean=5.0, std_dev=0.5, sample_count=5)
+            "test:b": TimingStats(
+                median=5.0,
+                q1=4.5,
+                q3=5.5,
+                iqr=1.0,
+                historical_max=7.0,
+                sample_count=5,
+            )
         }
 
         display.on_check_start("test:a")
@@ -905,5 +969,5 @@ class TestDynamicDisplay:
         display.load_historical_timings(str(tmp_path))
 
         assert "test:check" in display._historical_timings
-        assert display._historical_timings["test:check"].mean == 3.5
+        assert display._historical_timings["test:check"].median == 3.5
         assert display._historical_timings["test:check"].sample_count == 2

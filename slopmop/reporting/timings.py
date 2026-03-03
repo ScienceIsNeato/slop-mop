@@ -23,7 +23,7 @@ Legacy format (v1 — EMA) is auto-migrated on first save:
 
 import json
 import logging
-import math
+import statistics
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,6 +52,9 @@ TIMINGS_FILE = "timings.json"
 # Unicode block characters for sparkline rendering (8 levels).
 _SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
 
+# Placeholder character for empty sparkline slots (missing data points).
+_SPARK_PLACEHOLDER = "⸱"
+
 # Dot character for result trendline.
 _RESULT_DOT = "●"
 
@@ -73,42 +76,51 @@ class TimingStats:
     """Statistical summary of historical check timings.
 
     Computed from the last N raw samples stored on disk.
-    Used by the display layer to compute ETA progress bars
-    and standard-deviation-based overrun thresholds.
+    Uses median and IQR (interquartile range) for robust anomaly
+    detection that is insensitive to outliers and skewed tails.
     """
 
-    mean: float  # Average duration in seconds
-    std_dev: float  # Population standard deviation
+    median: float  # Median duration in seconds
+    q1: float  # First quartile (25th percentile)
+    q3: float  # Third quartile (75th percentile)
+    iqr: float  # Interquartile range (q3 - q1)
+    historical_max: float  # Maximum observed duration across all samples
     sample_count: int  # Number of samples behind these stats
     samples: tuple[float, ...] = ()  # Raw durations (chronological, newest last)
     results: tuple[str, ...] = ()  # Check outcomes ("passed", "failed", etc.)
 
-    def sigma_over(self, elapsed: float) -> float:
-        """How many standard deviations *elapsed* is above the mean.
+    def iqr_over(self, elapsed: float) -> float:
+        """How far *elapsed* exceeds the upper Tukey fence, in IQR units.
 
-        Returns 0.0 when elapsed <= mean, or when std_dev is too
-        small to be meaningful (< 0.01s — sub-10ms jitter).
+        The upper fence is Q3 + 1.5 × IQR — the textbook threshold for
+        statistical outliers.  Returns 0.0 when elapsed is within the
+        fence, or when IQR is too small to be meaningful (< 0.01s).
+
+        A return value of 1.0 means elapsed is at Q3 + 2.5 × IQR;
+        2.5 means Q3 + 4.0 × IQR (extreme outlier).
 
         Args:
             elapsed: Observed duration in seconds.
 
         Returns:
-            Number of std deviations above the mean (>= 0.0).
+            IQR units above the Tukey fence (>= 0.0).
         """
-        if elapsed <= self.mean or self.std_dev < 0.01:
+        fence = self.q3 + 1.5 * self.iqr
+        if elapsed <= fence or self.iqr < 0.01:
             return 0.0
-        return (elapsed - self.mean) / self.std_dev
+        return (elapsed - fence) / self.iqr
 
     def sparkline(
         self,
         max_width: int = 10,
         colors_enabled: bool = False,
     ) -> str:
-        """Render recent samples as a Unicode sparkline.
+        """Render recent samples as a constant-width Unicode sparkline.
 
-        Maps each value to one of 8 block characters (▁▂▃▄▅▆▇█)
-        scaled between the min and max of the displayed window.
-        The newest sample is on the right.
+        Always produces exactly *max_width* visible characters.  Actual
+        data points are rendered as block characters (▁▂▃▄▅▆▇█) scaled
+        absolutely from 0 to historical_max, and any remaining slots
+        are filled with a dim placeholder (⸱) so the column never shifts.
 
         When *colors_enabled* is True and ``self.results`` is populated,
         each bar is colored by the corresponding result status (green for
@@ -116,18 +128,22 @@ class TimingStats:
         visual.
 
         Args:
-            max_width: Maximum number of characters to render.
-                       Uses the last *max_width* samples.
+            max_width: Exact number of visible characters to produce.
+                       Uses the last *max_width* samples; pads with
+                       placeholders if fewer samples exist.
             colors_enabled: Whether to color bars by result status.
 
         Returns:
-            Sparkline string, or empty string if < 2 samples.
+            Sparkline string of exactly *max_width* display characters,
+            or empty string if < 2 samples.
         """
         if len(self.samples) < 2:
             return ""
         window = self.samples[-max_width:]
-        lo = min(window)
-        hi = max(window)
+        # Absolute scaling: 0 → historical_max (floor 0.1s to avoid
+        # division-by-zero on sub-100ms checks).
+        lo = 0.0
+        hi = max(self.historical_max, 0.1)
         span = hi - lo
         if span < 0.001:
             bar = _SPARK_BLOCKS[3]
@@ -135,13 +151,20 @@ class TimingStats:
         else:
             bars = [_SPARK_BLOCKS[min(int((v - lo) / span * 7), 7)] for v in window]
 
+        # Pad with placeholders so output is always max_width chars
+        pad_count = max_width - len(bars)
+
         # Apply per-bar result coloring when available
         if colors_enabled and self.results:
             result_window = self.results[-max_width:]
             # Align: results may be shorter than samples (legacy data)
             offset = len(bars) - len(result_window)
             reset = "\033[0m"
+            dim = "\033[90m"  # dim gray for placeholders
             colored: list[str] = []
+            # Leading placeholders (dim)
+            for _ in range(pad_count):
+                colored.append(f"{dim}{_SPARK_PLACEHOLDER}{reset}")
             for i, bar in enumerate(bars):
                 ri = i - offset
                 if ri >= 0 and ri < len(result_window):
@@ -154,22 +177,24 @@ class TimingStats:
                     colored.append(bar)
             return "".join(colored)
 
-        return "".join(bars)
+        # No coloring — plain text with placeholders
+        padding = _SPARK_PLACEHOLDER * pad_count
+        return padding + "".join(bars)
 
     def format_delta(self, elapsed: float) -> str:
-        """Format delta from mean as '+/-Xs (+/-X%)'.
+        """Format delta from median as '+/-Xs (+/-X%)'.
 
         Args:
             elapsed: Observed duration in seconds.
 
         Returns:
             Delta string like '+0.3s (+15%)' or '-0.2s (-10%)'.
-            Empty string if mean is 0.
+            Empty string if median is ~0.
         """
-        if self.mean < 0.001:
+        if self.median < 0.001:
             return ""
-        delta = elapsed - self.mean
-        pct = (delta / self.mean) * 100
+        delta = elapsed - self.median
+        pct = (delta / self.median) * 100
         sign = "+" if delta >= 0 else ""
 
         # Format the delta value compactly
@@ -192,21 +217,42 @@ def _compute_stats(
     samples: List[float],
     results: Optional[List[str]] = None,
 ) -> TimingStats:
-    """Compute mean and population std dev from a list of durations.
+    """Compute median, quartiles, and IQR from a list of durations.
+
+    Uses the lower/upper-half median-split method for quartiles,
+    which works well for small sample sizes (N ≤ 50).  This avoids
+    numpy dependencies and interpolation quirks in statistics.quantiles().
 
     Args:
         samples: List of duration values (must not be empty).
         results: Optional parallel list of status strings.
 
     Returns:
-        TimingStats with mean, std_dev, sample_count, samples, and results.
+        TimingStats with median, q1, q3, iqr, historical_max, etc.
     """
     n = len(samples)
-    mean = sum(samples) / n
-    variance = sum((s - mean) ** 2 for s in samples) / n
+    sorted_s = sorted(samples)
+    med = statistics.median(sorted_s)
+
+    if n < 2:
+        q1_val = med
+        q3_val = med
+    else:
+        mid = n // 2
+        lower = sorted_s[:mid]
+        upper = sorted_s[mid:] if n % 2 == 0 else sorted_s[mid + 1 :]
+        q1_val = statistics.median(lower) if lower else med
+        q3_val = statistics.median(upper) if upper else med
+
+    iqr_val = q3_val - q1_val
+    hist_max = max(samples)
+
     return TimingStats(
-        mean=round(mean, 3),
-        std_dev=round(math.sqrt(variance), 3),
+        median=round(med, 3),
+        q1=round(q1_val, 3),
+        q3=round(q3_val, 3),
+        iqr=round(iqr_val, 3),
+        historical_max=round(hist_max, 3),
         sample_count=n,
         samples=tuple(round(s, 3) for s in samples),
         results=tuple(results) if results else (),
@@ -309,7 +355,7 @@ def load_timing_averages(project_root: str) -> Dict[str, float]:
         Empty dict if no history exists.
     """
     stats = load_timings(project_root)
-    return {name: ts.mean for name, ts in stats.items()}
+    return {name: ts.median for name, ts in stats.items()}
 
 
 def _prune_timings(raw: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:

@@ -409,10 +409,18 @@ class ConsoleReporter:
 
     @staticmethod
     def _print_not_run_section(results: list[CheckResult]) -> None:
-        """Print a compact one-line summary of checks that were not run.
+        """Print a compact summary of checks that were not run.
 
-        Instead of listing every check individually, groups by skip reason
-        and shows counts, e.g.: ``⏭️  Not run (9): 3 disabled · 4 n/a · 2 time budget``
+        Groups by skip reason and shows counts.  Time-budget skips are
+        expanded into an itemised sub-list showing each gate and its
+        estimated duration so the user can see what was dropped.
+
+        Example output::
+
+            ⏭️  Not run (11): 8 not applicable · 3 time budget
+                 ⏱️  Budget 20s (expired after 18.2s wall-clock) — skipped gates:
+                     myopia:source-duplication  est. 3.5s
+                     myopia:code-sprawl         est. 1.7s
         """
         not_run = [
             r
@@ -449,3 +457,62 @@ class ConsoleReporter:
 
         print()
         print(f"⏭️  Not run ({len(not_run)}): {' · '.join(parts)}")
+
+        # Itemise time-budget skips (if any)
+        budget_skips = [r for r in not_run if r.skip_reason == SkipReason.TIME_BUDGET]
+        if budget_skips:
+            ConsoleReporter._print_budget_skip_details(budget_skips)
+
+    @staticmethod
+    def _print_budget_skip_details(budget_skips: list[CheckResult]) -> None:
+        """Print itemised breakdown of gates skipped by the time budget.
+
+        Parses each gate's estimated duration and the overall budget
+        from the result output field, then prints a sorted list.
+
+        Output format (wall-clock model)::
+
+            Skipped — estimated 15.2s (budget 20s expired after 18.2s wall-clock)
+
+        Args:
+            budget_skips: Results with skip_reason == TIME_BUDGET
+        """
+        # Parse budget limit, elapsed time, and per-gate estimates
+        budget_limit: Optional[str] = None
+        elapsed_str: Optional[str] = None
+        gate_estimates: list[tuple[str, float]] = []
+        for r in budget_skips:
+            est: Optional[float] = None
+            if r.output:
+                m_est = re.search(r"estimated (\d+\.?\d*)s", r.output)
+                if m_est:
+                    est = float(m_est.group(1))
+                if budget_limit is None:
+                    # Wall-clock format: "budget 20s expired after 18.2s wall-clock"
+                    m_wc = re.search(
+                        r"budget (\d+)s expired after (\d+\.?\d*)s",
+                        r.output,
+                    )
+                    if m_wc:
+                        budget_limit = m_wc.group(1)
+                        elapsed_str = m_wc.group(2)
+            gate_estimates.append((r.name, est if est is not None else 0.0))
+
+        # Sort heaviest first so the most impactful gates are at the top
+        gate_estimates.sort(key=lambda t: t[1], reverse=True)
+
+        # Header
+        budget_str = f"{budget_limit}s" if budget_limit else "?"
+        if elapsed_str:
+            print(
+                f"     ⏱️  Budget {budget_str} "
+                f"(expired after {elapsed_str}s wall-clock) "
+                f"— skipped gates:"
+            )
+        else:
+            print(f"     ⏱️  Budget {budget_str} — skipped gates:")
+
+        # Itemised list
+        max_name = max(len(name) for name, _ in gate_estimates) if gate_estimates else 0
+        for name, est in gate_estimates:
+            print(f"         {name:<{max_name}}  est. {est:.1f}s")
