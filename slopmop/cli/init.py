@@ -138,10 +138,22 @@ def _disable_non_applicable(
     Gate names use a suffix convention to indicate language specificity:
       .py  → Python-specific gate
       .js  → JavaScript-specific gate
+
+    Cross-cutting gates (e.g. security scanners that check multiple
+    languages) are excluded from suffix-based disabling — they rely
+    on their own ``is_applicable`` to determine relevance at runtime.
     """
     # Gate-name suffixes that indicate language specificity
     py_suffix = ".py"
     js_suffix = ".js"
+
+    # Cross-cutting gates whose is_applicable checks for Python *or* JS/TS.
+    # These must NOT be disabled by suffix alone — a JS-only project still
+    # benefits from semgrep, detect-secrets, and bandit JS rules.
+    cross_cutting_gates = {
+        "vulnerability-blindness.py",
+        "dependency-risk.py",
+    }
 
     for category_key in list(base_config.keys()):
         section = base_config.get(category_key)
@@ -152,6 +164,10 @@ def _disable_non_applicable(
         gates = cast(Dict[str, Any], section.get("gates", {}))
         for gate_name, gate_config in gates.items():
             if not isinstance(gate_config, dict):
+                continue
+
+            # Skip cross-cutting gates — they handle applicability themselves
+            if gate_name in cross_cutting_gates:
                 continue
 
             # Disable Python-specific gates if no Python detected
