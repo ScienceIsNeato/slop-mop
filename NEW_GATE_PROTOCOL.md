@@ -8,6 +8,18 @@ Strict protocol for adding a new quality gate to slop-mop. Follow sequentially â
 
 Before writing any code, answer these questions honestly.
 
+### Consider a Custom Gate First
+
+If you're not sure the gate belongs in slop-mop permanently, **start by running it as a custom gate**. Define it as a shell command in `.sb_config.json`, use it on a real project for a few weeks, and evaluate:
+
+- Does it catch real problems consistently?
+- Is the output actionable without manual interpretation?
+- Would it be useful across *multiple* projects, not just yours?
+
+If the answer to all three is yes, that's a strong signal to promote it to a built-in gate. Open a feature request or PR with evidence from your custom gate usage â€” what it caught, what the false-positive rate was, how agents responded to its output.
+
+See the [Custom Gates section in the README](README.md#custom-gates) for the config format.
+
 ### Selection Criteria
 
 | Criterion                                                                                        | Must Pass |

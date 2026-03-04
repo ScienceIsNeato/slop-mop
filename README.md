@@ -301,7 +301,12 @@ Edit directly for per-gate configuration. Gates are organized by flaw category:
 
 ### Custom Gates
 
-For languages without built-in gates (Go, Rust, C, etc.), define custom gates as shell commands:
+Custom gates let you plug repo-specific checks into the slop-mop pipeline as shell commands — no Python required. They serve two purposes:
+
+1. **Repo-specific checks** — things that only make sense in *your* project (migration validation, config linting, proprietary build steps) but benefit from slop-mop's reporting, time-budgeting, and LLM-readable output.
+2. **Gate prototyping** — when you think a check might belong in slop-mop permanently, run it as a custom gate first. If it proves useful across projects, that's a natural signal to promote it to a built-in gate via a feature request or PR.
+
+Custom gates are an escape hatch and a proving ground, not a replacement for `make` or `just`. The value is integration with the slop-mop framework — taxonomy, fail-fast, time budget, structured JSON output — not task execution.
 
 ```json
 {
@@ -327,6 +332,16 @@ For languages without built-in gates (Go, Rust, C, etc.), define custom gates as
 ```
 
 Custom gates run alongside built-in gates and respect the same enable/disable, timeout, and time-budget mechanics. Exit code 0 means pass, anything else is a failure. `sm init` auto-scaffolds appropriate custom gates when it detects Go, Rust, or C/C++ projects.
+
+### Why Wrapper Gates?
+
+Some built-in gates wrap well-known tools — `coverage-gaps.py` runs `pytest --cov`, `sloppy-formatting.py` runs `black --check`. Why not just run those tools directly?
+
+**They establish a floor.** Without them, an AI agent can commit code with no tests, no type checking, and no formatting — and the "interesting" gates like complexity analysis have nothing to anchor to. The wrappers ensure the absolute minimum is in place for sane development.
+
+**They provide behavioral conditioning.** When an LLM sees slop-mop consistently enforce formatting and test coverage across runs, it starts pre-emptively formatting and testing. The wrappers aren't just gates — they're training signal that encourages models to be good citizens.
+
+**They unify the interface.** `sm swab` gives you formatting + type-checking + test coverage + complexity analysis + dead code + duplicate detection + vulnerability scanning in one command, with zero per-tool configuration. The wrapper gates make that possible.
 
 ---
 
