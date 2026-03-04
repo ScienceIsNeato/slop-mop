@@ -40,7 +40,7 @@ sm swab                       # fix what it finds, commit when green
 sm scour                      # thorough check before opening a PR
 ```
 
-`sm init` auto-detects Python, JavaScript, or both and writes a `.sb_config.json` with applicable gates enabled.
+`sm init` auto-detects Python, JavaScript/TypeScript, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. For Go, Rust, and C/C++ projects it scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) since built-in gates focus on Python and JS.
 
 ### Installation Options
 
@@ -83,7 +83,7 @@ When a gate fails, the output tells the agent exactly what to do next:
 └──────────────────────────────────────────────────────────┘
 ```
 
-This is purpose-built for AI agents. The guidance is token-optimized and machine-readable, the iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
+This is purpose-built for AI agents. The iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
 
 Use `sm status` for a report card of all gates at once.
 
@@ -172,10 +172,10 @@ Every gate has an intrinsic **level** — the point in the workflow where it bel
 
 | Level | Command | Gates | When to Use |
 |-------|---------|-------|-------------|
-| **Swab** | `sm swab` | All overconfidence, deceptiveness, laziness, myopia checks | Before every commit |
-| **Scour** | `sm scour` | Everything in swab + PR comments, diff-coverage, full security audit | Before opening or updating a PR |
+| **Swab** | `sm swab` | Most gates across all categories | Before every commit |
+| **Scour** | `sm scour` | Everything in swab + scour-only gates | Before opening or updating a PR |
 
-Scour is a strict superset of swab — it runs everything swab does, plus context-dependent gates that need a PR, deeper analysis, or more execution time.
+Scour is a strict superset of swab — it runs everything swab does, plus gates that need more time or PR context. Scour-only gates include `dependency-risk.py` (full security audit), `just-this-once.py` (diff-coverage), `pr:ignored-feedback`, and any custom gates marked `"level": "scour"`.
 
 Individual gates can be run directly with `-g`:
 
@@ -276,22 +276,56 @@ sm config --include-dir overconfidence:src      # only check src/
 
 ### .sb_config.json
 
-Edit directly for per-gate configuration:
+Edit directly for per-gate configuration. Gates are organized by flaw category:
 
 ```json
 {
   "version": "1.0",
-  "python": {
+  "swabbing_time": 20,
+  "overconfidence": {
+    "enabled": true,
     "gates": {
-      "coverage": { "threshold": 80 },
-      "tests": { "test_dirs": ["tests"] }
+      "coverage-gaps.py": { "enabled": true, "threshold": 80 },
+      "untested-code.py": { "enabled": true, "test_dirs": ["tests"], "timeout": 300 }
     }
   },
-  "quality": {
-    "exclude_dirs": ["generated", "vendor"]
+  "laziness": {
+    "enabled": true,
+    "gates": {
+      "dead-code.py": { "enabled": true, "min_confidence": 80, "exclude_patterns": ["**/vendor/**"] }
+    }
   }
 }
 ```
+
+### Custom Gates
+
+For languages without built-in gates (Go, Rust, C, etc.), define custom gates as shell commands:
+
+```json
+{
+  "custom_gates": [
+    {
+      "name": "cargo-clippy",
+      "description": "Run clippy lints",
+      "category": "laziness",
+      "command": "cargo clippy -- -D warnings 2>&1",
+      "level": "swab",
+      "timeout": 300
+    },
+    {
+      "name": "go-test",
+      "description": "Run Go tests",
+      "category": "overconfidence",
+      "command": "go test ./...",
+      "level": "swab",
+      "timeout": 300
+    }
+  ]
+}
+```
+
+Custom gates run alongside built-in gates and respect the same enable/disable, timeout, and time-budget mechanics. Exit code 0 means pass, anything else is a failure. `sm init` auto-scaffolds appropriate custom gates when it detects Go, Rust, or C/C++ projects.
 
 ---
 
