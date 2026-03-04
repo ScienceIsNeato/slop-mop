@@ -182,9 +182,7 @@ def _print_gate_inventory(
 
             # ⚙ badge for user-defined gates so they're visually distinct
             # from the built-in catalogue.
-            display_gate = (
-                f"⚙ {gate_name}" if gate in custom_gates else gate_name
-            )
+            display_gate = f"⚙ {gate_name}" if gate in custom_gates else gate_name
 
             line = _format_gate_line(
                 display_gate,

@@ -376,7 +376,7 @@ SCAFFOLD_GO: List[Dict[str, Any]] = [
         # ``test -z "$(gofmt -l .)"`` swallowed the list, leaving the
         # user with "exit 1" and nothing to act on.
         "command": 'out="$(gofmt -l .)"; '
-                   'if [ -n "$out" ]; then echo "$out"; exit 1; fi',
+        'if [ -n "$out" ]; then echo "$out"; exit 1; fi',
         "level": "swab",
         "timeout": 60,
     },

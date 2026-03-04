@@ -65,11 +65,18 @@ _ALL_EXTS = frozenset(ext for exts, _, _ in _PATTERNS for ext in exts)
 
 # Paths that legitimately contain debugger references (tests, examples,
 # docs, third-party vendored code).
-_DEFAULT_EXCLUDE = (
-    SCOPE_EXCLUDED_DIRS
-    | {"test", "tests", "spec", "__tests__", "testdata", "examples",
-       "example", "docs", "vendor", "third_party"}
-)
+_DEFAULT_EXCLUDE = SCOPE_EXCLUDED_DIRS | {
+    "test",
+    "tests",
+    "spec",
+    "__tests__",
+    "testdata",
+    "examples",
+    "example",
+    "docs",
+    "vendor",
+    "third_party",
+}
 
 
 class DebuggerArtifactsCheck(BaseCheck):
@@ -173,9 +180,7 @@ class DebuggerArtifactsCheck(BaseCheck):
 
             patterns = [p for exts, p, _ in _PATTERNS if path.suffix in exts]
             labels = {
-                p.pattern: lbl
-                for exts, p, lbl in _PATTERNS
-                if path.suffix in exts
+                p.pattern: lbl for exts, p, lbl in _PATTERNS if path.suffix in exts
             }
             if not patterns:
                 continue
@@ -191,9 +196,7 @@ class DebuggerArtifactsCheck(BaseCheck):
                         continue
                     for pat in patterns:
                         if pat.search(line):
-                            hits.append(
-                                f"{rel}:{lineno}: {labels[pat.pattern]}"
-                            )
+                            hits.append(f"{rel}:{lineno}: {labels[pat.pattern]}")
                             break
             except (OSError, UnicodeDecodeError):
                 continue

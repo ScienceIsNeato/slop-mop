@@ -16,13 +16,17 @@ from slopmop.checks.custom import (
 )
 from slopmop.core.result import CheckStatus
 
-
 # ── Spec validation ─────────────────────────────────────────────
 
 
 class TestValidateSpec:
     def test_minimal_valid(self):
-        _validate_spec({"name": "x", "command": "true"}, 0)
+        # ``_validate_spec`` is raise-or-return-None.  Assert the
+        # None so the test body isn't just a bare call that passes
+        # by accident.  (Caught by bogus-tests.py during dogfooding,
+        # which doesn't count ``pytest.fail`` inside ``except`` as
+        # an assertion — and it shouldn't have to.)
+        assert _validate_spec({"name": "x", "command": "true"}, 0) is None
 
     def test_missing_name(self):
         with pytest.raises(CustomGateError, match="missing required field 'name'"):
@@ -50,39 +54,27 @@ class TestValidateSpec:
 
     def test_bad_category(self):
         with pytest.raises(CustomGateError, match="unknown category"):
-            _validate_spec(
-                {"name": "x", "command": "true", "category": "nope"}, 0
-            )
+            _validate_spec({"name": "x", "command": "true", "category": "nope"}, 0)
 
     def test_bad_level(self):
         with pytest.raises(CustomGateError, match="'level' must be"):
-            _validate_spec(
-                {"name": "x", "command": "true", "level": "both"}, 0
-            )
+            _validate_spec({"name": "x", "command": "true", "level": "both"}, 0)
 
     def test_bad_timeout_negative(self):
         with pytest.raises(CustomGateError, match="'timeout' must be"):
-            _validate_spec(
-                {"name": "x", "command": "true", "timeout": -1}, 0
-            )
+            _validate_spec({"name": "x", "command": "true", "timeout": -1}, 0)
 
     def test_bad_timeout_zero(self):
         with pytest.raises(CustomGateError, match="'timeout' must be"):
-            _validate_spec(
-                {"name": "x", "command": "true", "timeout": 0}, 0
-            )
+            _validate_spec({"name": "x", "command": "true", "timeout": 0}, 0)
 
     def test_bad_timeout_type(self):
         with pytest.raises(CustomGateError, match="'timeout' must be"):
-            _validate_spec(
-                {"name": "x", "command": "true", "timeout": "fast"}, 0
-            )
+            _validate_spec({"name": "x", "command": "true", "timeout": "fast"}, 0)
 
     def test_error_message_includes_index_and_name(self):
         with pytest.raises(CustomGateError, match=r"custom_gates\[3\].*mygate"):
-            _validate_spec(
-                {"name": "mygate", "command": "true", "category": "bad"}, 3
-            )
+            _validate_spec({"name": "mygate", "command": "true", "category": "bad"}, 3)
 
 
 # ── Class factory ──────────────────────────────────────────────
@@ -116,9 +108,7 @@ class TestMakeCustomGateClass:
         assert cls.level is GateLevel.SWAB
 
     def test_scour_level(self):
-        cls = make_custom_gate_class(
-            {"name": "x", "command": "true", "level": "scour"}
-        )
+        cls = make_custom_gate_class({"name": "x", "command": "true", "level": "scour"})
         assert cls.level is GateLevel.SCOUR
 
     def test_is_applicable_always_true(self, tmp_path):
@@ -137,16 +127,12 @@ class TestMakeCustomGateClass:
         assert cls({}).flaw is Flaw.LAZINESS
 
     def test_pr_maps_to_myopia_flaw(self):
-        cls = make_custom_gate_class(
-            {"name": "x", "command": "true", "category": "pr"}
-        )
+        cls = make_custom_gate_class({"name": "x", "command": "true", "category": "pr"})
         assert cls({}).flaw is Flaw.MYOPIA
 
     def test_timeout_capped(self):
         # Should not explode on huge timeout values — cap silently.
-        cls = make_custom_gate_class(
-            {"name": "x", "command": "true", "timeout": 99999}
-        )
+        cls = make_custom_gate_class({"name": "x", "command": "true", "timeout": 99999})
         # Just verify it constructs; cap is internal.
         assert cls({}).name == "x"
 
@@ -220,9 +206,7 @@ class TestCustomGateRun:
 
     def test_runs_in_project_root(self, tmp_path):
         (tmp_path / "sentinel.txt").write_text("here")
-        cls = make_custom_gate_class(
-            {"name": "cwd", "command": "test -f sentinel.txt"}
-        )
+        cls = make_custom_gate_class({"name": "cwd", "command": "test -f sentinel.txt"})
         result = cls({}).run(str(tmp_path))
         assert result.status is CheckStatus.PASSED
 
@@ -320,7 +304,11 @@ class TestRegisterCustomGates:
         self._reset()
         _write_config(
             tmp_path,
-            {"custom_gates": [{"name": "foo", "command": "true", "category": "laziness"}]},
+            {
+                "custom_gates": [
+                    {"name": "foo", "command": "true", "category": "laziness"}
+                ]
+            },
         )
         names = register_custom_gates(str(tmp_path))
         assert names == ["laziness:foo"]
@@ -350,9 +338,7 @@ class TestRegisterCustomGates:
 
     def test_idempotent(self, tmp_path):
         self._reset()
-        _write_config(
-            tmp_path, {"custom_gates": [{"name": "x", "command": "true"}]}
-        )
+        _write_config(tmp_path, {"custom_gates": [{"name": "x", "command": "true"}]})
         first = register_custom_gates(str(tmp_path))
         second = register_custom_gates(str(tmp_path))
         assert first == second  # Same names, no crash, no dup registration
@@ -423,9 +409,7 @@ class TestScaffoldForDetected:
 
     def test_every_scaffold_gate_is_valid(self):
         # Dogfood: every gate we scaffold must pass our own validator.
-        out = scaffold_for_detected(
-            {"has_go": True, "has_rust": True, "has_c": True}
-        )
+        out = scaffold_for_detected({"has_go": True, "has_rust": True, "has_c": True})
         for i, spec in enumerate(out):
             _validate_spec(spec, i)  # Should not raise
 
