@@ -532,6 +532,7 @@ class BaseCheck(ABC):
         error: Optional[str] = None,
         fix_suggestion: Optional[str] = None,
         auto_fixed: bool = False,
+        status_detail: Optional[str] = None,
     ) -> CheckResult:
         """Helper to create a CheckResult for this check.
 
@@ -555,6 +556,7 @@ class BaseCheck(ABC):
             fix_suggestion=fix_suggestion,
             auto_fixed=auto_fixed,
             category=self.category.key if self.category else None,
+            status_detail=status_detail,
         )
 
     def _run_command(

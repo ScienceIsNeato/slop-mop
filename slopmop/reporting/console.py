@@ -46,6 +46,10 @@ class ConsoleReporter:
     def on_check_complete(self, result: CheckResult) -> None:
         """Called when a check completes.
 
+        Prints a one-line status indicator.  Failure and warning details
+        are deferred to ``print_summary()`` to avoid double-printing —
+        the summary already shows compact failure sections with log paths.
+
         Args:
             result: The check result
         """
@@ -55,12 +59,9 @@ class ConsoleReporter:
         emoji = STATUS_EMOJI.get(result.status, "❓")
         print(f"{emoji} {result.name}: {result.status.value} ({result.duration:.2f}s)")
 
-        # Show output for failures or in verbose mode
-        if result.failed or result.status == CheckStatus.ERROR:
-            self._print_failure_details(result)
-        elif result.status == CheckStatus.WARNED:
-            self._print_warning_details(result)
-        elif self.verbose and result.output:
+        # Only expand output in verbose mode — otherwise print_summary
+        # handles failure/warning details to prevent duplication.
+        if self.verbose and result.output:
             print(f"   Output: {result.output[:200]}...")
 
     def _print_failure_details(self, result: CheckResult) -> None:
@@ -150,7 +151,7 @@ class ConsoleReporter:
         parts = [f"{count} skipped ({code})" for code, count in codes.items()]
         return " · ".join(parts)
 
-    def _write_failure_log(self, result: CheckResult) -> Optional[str]:
+    def write_failure_log(self, result: CheckResult) -> Optional[str]:
         """Write check output to a log file for detailed review.
 
         Returns relative path to the log file, or None if no project_root.
@@ -246,7 +247,7 @@ class ConsoleReporter:
                     )
             if r.fix_suggestion:
                 print(f"   💡 {r.fix_suggestion}")
-            log_path = self._write_failure_log(r)
+            log_path = self.write_failure_log(r)
             if log_path:
                 print(f"   📄 {log_path}")
 
@@ -268,7 +269,7 @@ class ConsoleReporter:
                     )
             if r.fix_suggestion:
                 print(f"   💡 {r.fix_suggestion}")
-            log_path = self._write_failure_log(r)
+            log_path = self.write_failure_log(r)
             if log_path:
                 print(f"   📄 {log_path}")
 
@@ -304,10 +305,8 @@ class ConsoleReporter:
             passed_label = f"{summary.passed} checks passed"
             if warned:
                 passed_label += f", {len(warned)} warned"
-            scope = summary.total_scope()
-            scope_suffix = f" · {scope.format_compact()}" if scope else ""
             print(
-                f"✨ NO SLOP DETECTED · {passed_label}{scope_suffix}"
+                f"✨ NO SLOP DETECTED · {passed_label}"
                 f" in {summary.total_duration:.1f}s"
             )
             print("═" * 60)
@@ -332,10 +331,8 @@ class ConsoleReporter:
         if skipped:
             counts.append(f"⏭️  {self._format_skipped_line(skipped)}")
 
-        scope = summary.total_scope()
-        scope_suffix = f" · {scope.format_compact()}" if scope else ""
         print(
-            f"🪣 SLOP DETECTED · {' · '.join(counts)}{scope_suffix}"
+            f"🪣 SLOP DETECTED · {' · '.join(counts)}"
             f"{format_duration_suffix(summary.total_duration)}"
         )
         print("─" * 60)

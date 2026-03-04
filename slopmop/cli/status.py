@@ -64,6 +64,7 @@ def _print_config_summary(
     disabled: List[str],
 ) -> None:
     """Print project configuration overview."""
+    from slopmop.checks.base import count_source_scope
     from slopmop.reporting import print_project_header
 
     print_project_header(str(root))
@@ -79,6 +80,11 @@ def _print_config_summary(
         print(f"⏱️  Time budget: {int(swabbing_time)}s")
 
     print(f"🔍 Gates: {swab_count} swab · {scour_count} scour-only")
+
+    # Project scope — lightweight file/LOC count
+    scope = count_source_scope(str(root))
+    if scope.files > 0:
+        print(f"📏 Scope: {scope.format_compact()}")
 
     if disabled:
         print(f"🚫 Disabled: {len(disabled)} gate(s)")
@@ -316,7 +322,7 @@ def _build_status_dict(
             entry["history"] = hist.results[-10:]
         gate_list.append(entry)
 
-    return {
+    result: Dict[str, Any] = {
         "project_root": str(root),
         "config_file": str(root / ".sb_config.json"),
         "swabbing_time": config.get("swabbing_time"),
@@ -327,6 +333,15 @@ def _build_status_dict(
             "inventory": gate_list,
         },
     }
+
+    # Project scope — same lightweight scan as the human output
+    from slopmop.checks.base import count_source_scope
+
+    scope = count_source_scope(str(root))
+    if scope.files > 0:
+        result["scope"] = scope.to_dict()
+
+    return result
 
 
 def run_status(

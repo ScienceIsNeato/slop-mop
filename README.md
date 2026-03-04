@@ -121,6 +121,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 |------|--------------|
 | `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS |
 | `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing |
+| `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C |
 | `deceptiveness:gate-dodging` | 🎭 Detects loosened quality thresholds |
 | `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement |
 

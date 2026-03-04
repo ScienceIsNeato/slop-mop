@@ -350,8 +350,8 @@ class TestBuildCategoryHeaderScope:
 class TestConsoleSummaryScope:
     """Tests for scope in console summary output."""
 
-    def test_summary_all_passed_with_scope(self, capsys):
-        """Summary line includes scope when all checks pass."""
+    def test_summary_all_passed_no_scope_in_summary(self, capsys):
+        """Scope is NOT shown in swab/scour summary (moved to sm status)."""
         from slopmop.reporting.console import ConsoleReporter
 
         scope = ScopeInfo(files=47, lines=3200)
@@ -370,8 +370,9 @@ class TestConsoleSummaryScope:
 
         captured = capsys.readouterr()
         assert "NO SLOP DETECTED" in captured.out
-        assert "47 files" in captured.out
-        assert "3,200 LOC" in captured.out
+        # Scope should NOT be in the validation summary
+        assert "47 files" not in captured.out
+        assert "3,200 LOC" not in captured.out
 
     def test_summary_all_passed_no_scope(self, capsys):
         """Summary line omits scope when no checks report it."""
@@ -388,8 +389,8 @@ class TestConsoleSummaryScope:
         assert "NO SLOP DETECTED" in captured.out
         assert "files" not in captured.out
 
-    def test_summary_failure_with_scope(self, capsys):
-        """Failure summary line includes scope."""
+    def test_summary_failure_no_scope_in_summary(self, capsys):
+        """Scope is NOT shown in failure summary (moved to sm status)."""
         from slopmop.reporting.console import ConsoleReporter
 
         scope = ScopeInfo(files=148, lines=27800)
@@ -409,5 +410,6 @@ class TestConsoleSummaryScope:
 
         captured = capsys.readouterr()
         assert "SLOP DETECTED" in captured.out
-        assert "148 files" in captured.out
-        assert "27.8k LOC" in captured.out
+        # Scope should NOT be in the validation summary
+        assert "148 files" not in captured.out
+        assert "27.8k LOC" not in captured.out

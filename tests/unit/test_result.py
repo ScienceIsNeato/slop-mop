@@ -5,6 +5,8 @@ from slopmop.core.result import (
     CheckResult,
     CheckStatus,
     ExecutionSummary,
+    ScopeInfo,
+    SkipReason,
 )
 
 
@@ -204,3 +206,137 @@ class TestExecutionSummary:
 
         summary = ExecutionSummary.from_results(results, 2.0)
         assert summary.all_passed is False
+
+
+class TestCompactJsonSchema:
+    """Tests for the compact JSON serialisation (ExecutionSummary.to_dict).
+
+    The compact format is designed for LLM consumption:
+    - Passing checks are collapsed to a name list (``passed_gates``)
+    - Non-passing results carry full detail
+    - Null optional fields are omitted
+    """
+
+    def test_passed_gates_collapsed(self):
+        """Passing results become a flat name list, not full objects."""
+        results = [
+            CheckResult("gate-a", CheckStatus.PASSED, 1.0, output="ok"),
+            CheckResult("gate-b", CheckStatus.PASSED, 0.5),
+            CheckResult("gate-c", CheckStatus.FAILED, 2.0, error="bad"),
+        ]
+        summary = ExecutionSummary.from_results(results, 3.5)
+        d = summary.to_dict()
+
+        assert d["passed_gates"] == ["gate-a", "gate-b"]
+        # Non-passing results only
+        assert len(d["results"]) == 1
+        assert d["results"][0]["name"] == "gate-c"
+
+    def test_all_passed_no_results_key(self):
+        """When everything passes, ``results`` is absent (no empty list)."""
+        results = [
+            CheckResult("gate-a", CheckStatus.PASSED, 1.0),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        d = summary.to_dict()
+
+        assert d["passed_gates"] == ["gate-a"]
+        assert "results" not in d
+
+    def test_no_passed_no_passed_gates_key(self):
+        """When nothing passes, ``passed_gates`` is absent."""
+        results = [
+            CheckResult("gate-a", CheckStatus.FAILED, 1.0, error="nope"),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        d = summary.to_dict()
+
+        assert "passed_gates" not in d
+        assert len(d["results"]) == 1
+
+    def test_scope_omitted_when_none(self):
+        """Scope field is absent in summary when no checks report scope."""
+        results = [CheckResult("gate-a", CheckStatus.PASSED, 1.0)]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        d = summary.to_dict()
+
+        assert "scope" not in d["summary"]
+
+    def test_scope_present_when_available(self):
+        """Scope appears in summary when checks report it."""
+        r = CheckResult("gate-a", CheckStatus.PASSED, 1.0, category="py")
+        r.scope = ScopeInfo(files=10, lines=500)
+        summary = ExecutionSummary.from_results([r], 1.0)
+        d = summary.to_dict()
+
+        assert d["summary"]["scope"] == {"files": 10, "lines": 500}
+
+    def test_skip_reasons_omitted_when_empty(self):
+        """skip_reasons absent when no checks are skipped."""
+        results = [CheckResult("gate-a", CheckStatus.PASSED, 1.0)]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        d = summary.to_dict()
+
+        assert "skip_reasons" not in d["summary"]
+
+    def test_skip_reasons_present_when_populated(self):
+        """skip_reasons dict present with reason codes and counts."""
+        results = [
+            CheckResult("gate-a", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "gate-b", CheckStatus.SKIPPED, 0.0,
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
+            CheckResult(
+                "gate-c", CheckStatus.SKIPPED, 0.0,
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
+            CheckResult(
+                "gate-d", CheckStatus.NOT_APPLICABLE, 0.0,
+                skip_reason=SkipReason.NOT_APPLICABLE,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        d = summary.to_dict()
+
+        assert d["summary"]["skip_reasons"] == {"ff": 2, "n/a": 1}
+
+    def test_check_result_to_dict_omits_null_fields(self):
+        """CheckResult.to_dict() omits None/empty optional fields."""
+        r = CheckResult("gate-a", CheckStatus.FAILED, 1.0, error="bad")
+        d = r.to_dict()
+
+        assert "error" in d
+        # These should all be absent, not null
+        assert "fix_suggestion" not in d
+        assert "auto_fixed" not in d
+        assert "category" not in d
+        assert "scope" not in d
+        assert "skip_reason" not in d
+        assert "status_detail" not in d
+        # output is empty string — also omitted
+        assert "output" not in d
+
+    def test_summary_counts_correct(self):
+        """Summary counts match standard fields."""
+        results = [
+            CheckResult("a", CheckStatus.PASSED, 1.0),
+            CheckResult("b", CheckStatus.FAILED, 1.0),
+            CheckResult("c", CheckStatus.WARNED, 0.5),
+            CheckResult("d", CheckStatus.SKIPPED, 0.0),
+            CheckResult("e", CheckStatus.NOT_APPLICABLE, 0.0),
+            CheckResult("f", CheckStatus.ERROR, 0.3),
+        ]
+        summary = ExecutionSummary.from_results(results, 2.8)
+        d = summary.to_dict()
+        s = d["summary"]
+
+        assert s["total_checks"] == 6
+        assert s["passed"] == 1
+        assert s["failed"] == 1
+        assert s["warned"] == 1
+        assert s["skipped"] == 1
+        assert s["not_applicable"] == 1
+        assert s["errors"] == 1
+        assert s["all_passed"] is False
+        assert s["total_duration"] == 2.8

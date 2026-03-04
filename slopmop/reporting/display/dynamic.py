@@ -599,6 +599,11 @@ class DynamicDisplay:
 
         left = f"{config.CHECK_INDENT}{icon} {padded_name}: {colored_status}"
 
+        # Inline detail for warned checks (e.g. "3 unresolved")
+        if info.result.status == CheckStatus.WARNED and info.result.status_detail:
+            detail_sc = status_color(CheckStatus.WARNED, ce)
+            left += f" {detail_sc}{info.result.status_detail}{rc}"
+
         # Inline failure preview for failed/error checks
         if info.result.status in (CheckStatus.FAILED, CheckStatus.ERROR):
             preview_text = info.result.error or info.result.output

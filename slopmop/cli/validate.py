@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
@@ -231,14 +231,63 @@ def _run_validation(
             dynamic_display.stop()
             dynamic_display.save_historical_timings(str(project_root))
 
-            # Now it's safe to print failure details that were buffered
-            # during the live animation.
-            for result in deferred_failures:
-                reporter.on_check_complete(result)
+            # Deferred failures are NOT printed here — print_summary()
+            # already shows failure details via _print_failure_sections.
+            # Printing them individually via on_check_complete() too
+            # caused double-reported failures (token sink #1).
 
         if json_mode:
-            # Single JSON object — compact, machine-readable
-            print(json.dumps(summary.to_dict(), separators=(",", ":")))
+            # Write failure/error logs the same way the human path does,
+            # so JSON consumers can reference the same log files.
+            log_files: dict[str, str] = {}
+            for result in summary.results:
+                if result.failed or result.status == CheckStatus.ERROR:
+                    log_path = reporter.write_failure_log(result)
+                    if log_path:
+                        log_files[result.name] = log_path
+
+            # Build enriched JSON — everything the human display shows,
+            # structured for machine consumption.
+            output = summary.to_dict()
+
+            # Schema version — lets consumers look up field semantics
+            # without the JSON needing to self-document every key.
+            output["schema"] = "slopmop/v1"
+
+            # Add run context
+            if level_name:
+                output["level"] = level_name
+
+            # Attach log file paths to individual results
+            # (results only contains non-passing checks in compact mode)
+            if log_files and isinstance(output.get("results"), list):
+                for entry in cast(
+                    List[dict[str, object]], output["results"]
+                ):
+                    gate_name = str(entry.get("name", ""))
+                    if gate_name in log_files:
+                        entry["log_file"] = log_files[gate_name]
+
+            # Add next-steps guidance (same commands the human display shows)
+            failed_results = [
+                r for r in summary.results if r.status == CheckStatus.FAILED
+            ]
+            error_results = [
+                r for r in summary.results if r.status == CheckStatus.ERROR
+            ]
+            first_failure = (
+                failed_results[0]
+                if failed_results
+                else (error_results[0] if error_results else None)
+            )
+            if first_failure:
+                verb = level_name or "swab"
+                output["next_steps"] = [
+                    f"sm swab -g {first_failure.name} --verbose",
+                    f"sm {verb}",
+                ]
+
+            print(json.dumps(output, separators=(",", ":")))
         else:
             reporter.print_summary(summary)
 

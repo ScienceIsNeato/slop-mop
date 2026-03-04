@@ -674,20 +674,25 @@ class PRCommentsCheck(BaseCheck):
         # Create concise summary for gate output
         summary = self._format_summary(threads, pr_number, report_file)
 
+        count = len(threads)
+        detail = f"{count} unresolved"
+
         if fail_on_unresolved:
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=summary,
-                error=f"{len(threads)} unresolved PR comment(s)",
+                error=f"{count} unresolved PR comment(s)",
                 fix_suggestion=f"Read full report: cat {report_file}",
+                status_detail=detail,
             )
         else:
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=duration,
-                output=f"⚠️ {len(threads)} unresolved comment(s) — "
+                output=f"⚠️ {count} unresolved comment(s) — "
                 f"set fail_on_unresolved: true to block on this\n\n" + summary,
+                status_detail=detail,
             )
 
     def _save_report_to_file(self, report: str, pr_number: int) -> str:

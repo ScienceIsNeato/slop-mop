@@ -46,7 +46,11 @@ class TestConsoleReporter:
         assert "1.50s" in captured.out
 
     def test_on_check_complete_failed(self, capsys):
-        """Test reporting a failed check."""
+        """Test reporting a failed check shows one-line status only.
+
+        Failure details are deferred to print_summary() to avoid
+        double-printing.
+        """
         reporter = ConsoleReporter()
         result = CheckResult(
             name="test-check",
@@ -61,7 +65,8 @@ class TestConsoleReporter:
         captured = capsys.readouterr()
         assert "test-check" in captured.out
         assert "failed" in captured.out.lower()
-        assert "Something went wrong" in captured.out
+        # Details are NOT shown inline — deferred to print_summary
+        assert "Something went wrong" not in captured.out
 
     def test_on_check_complete_quiet_passed(self, capsys):
         """Test that passed checks are not reported in quiet mode."""
@@ -109,7 +114,10 @@ class TestConsoleReporter:
         assert "Some verbose output" in captured.out
 
     def test_on_check_complete_error(self, capsys):
-        """Test reporting a check with error status."""
+        """Test reporting a check with error status shows one-line only.
+
+        Error details are deferred to print_summary().
+        """
         reporter = ConsoleReporter()
         result = CheckResult(
             name="test-check",
@@ -123,7 +131,8 @@ class TestConsoleReporter:
         captured = capsys.readouterr()
         assert "test-check" in captured.out
         assert "error" in captured.out.lower()
-        assert "Exception occurred" in captured.out
+        # Details are NOT shown inline — deferred to print_summary
+        assert "Exception occurred" not in captured.out
 
     def test_on_check_complete_skipped(self, capsys):
         """Test reporting a skipped check."""
@@ -142,7 +151,11 @@ class TestConsoleReporter:
         assert "skipped" in captured.out.lower()
 
     def test_on_check_complete_with_fix_suggestion(self, capsys):
-        """Test reporting a failed check with fix suggestion."""
+        """Test that fix suggestions are NOT shown inline.
+
+        Fix suggestions are deferred to print_summary() where they
+        appear alongside the compact failure section.
+        """
         reporter = ConsoleReporter()
         result = CheckResult(
             name="test-check",
@@ -156,7 +169,10 @@ class TestConsoleReporter:
         reporter.on_check_complete(result)
 
         captured = capsys.readouterr()
-        assert "Run: black . to fix formatting" in captured.out
+        assert "test-check" in captured.out
+        assert "failed" in captured.out.lower()
+        # Fix suggestion deferred to print_summary
+        assert "Run: black . to fix formatting" not in captured.out
 
     def test_print_summary_all_passed(self, capsys):
         """Test printing summary when all checks pass."""
@@ -241,7 +257,10 @@ class TestConsoleReporter:
         assert "pip install vulture" in captured.out
 
     def test_on_check_complete_warned(self, capsys):
-        """Test on_check_complete for warned status."""
+        """Test on_check_complete for warned status shows one-line only.
+
+        Warning details are deferred to print_summary().
+        """
         reporter = ConsoleReporter()
         result = CheckResult(
             "check1",
@@ -254,7 +273,9 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         assert "⚠️" in captured.out
-        assert "tool not found" in captured.out
+        assert "check1" in captured.out
+        # Details deferred to print_summary
+        assert "tool not found" not in captured.out
 
     def test_print_summary_with_skipped(self, capsys):
         """Test printing summary shows skipped in counts."""
@@ -317,9 +338,9 @@ class TestConsoleReporter:
         for status in CheckStatus:
             assert status in STATUS_EMOJI
 
-    def test_print_failure_details_long_output(self, capsys):
-        """Test that long output is truncated."""
-        reporter = ConsoleReporter()
+    def test_print_failure_details_long_output(self, capsys, tmp_path):
+        """Test that long output is truncated in print_summary."""
+        reporter = ConsoleReporter(project_root=str(tmp_path))
         long_output = "\n".join([f"Line {i}" for i in range(30)])
         result = CheckResult(
             name="test-check",
@@ -327,11 +348,12 @@ class TestConsoleReporter:
             duration=1.0,
             output=long_output,
         )
+        summary = ExecutionSummary.from_results([result], 1.0)
 
-        reporter.on_check_complete(result)
+        reporter.print_summary(summary)
 
         captured = capsys.readouterr()
-        assert "truncated" in captured.out
+        assert "more lines in log" in captured.out
 
     def test_failure_log_written_when_project_root(self, capsys, tmp_path):
         """Test failure log is written and path cited in output."""
@@ -713,11 +735,11 @@ class TestConsoleReporter:
         assert "1 warned" in captured.out
 
     def test_write_failure_log_returns_none_without_project_root(self):
-        """Test _write_failure_log returns None without project_root."""
+        """Test write_failure_log returns None without project_root."""
         reporter = ConsoleReporter()  # No project_root
         result = CheckResult("check1", CheckStatus.FAILED, 1.0, output="error")
 
-        log_path = reporter._write_failure_log(result)
+        log_path = reporter.write_failure_log(result)
 
         assert log_path is None
 

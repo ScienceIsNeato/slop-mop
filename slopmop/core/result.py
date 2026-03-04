@@ -4,6 +4,7 @@ This module defines the fundamental data structures used throughout slopmop
 to represent check definitions, statuses, and results.
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Dict, List, Optional, cast
@@ -119,6 +120,7 @@ class CheckResult:
     category: Optional[str] = None
     scope: Optional[ScopeInfo] = None
     skip_reason: Optional["SkipReason"] = None
+    status_detail: Optional[str] = None
 
     def to_dict(self) -> Dict[str, object]:
         """Serialize to a plain dict for JSON output."""
@@ -141,6 +143,8 @@ class CheckResult:
             d["scope"] = self.scope.to_dict()
         if self.skip_reason:
             d["skip_reason"] = self.skip_reason.value
+        if self.status_detail:
+            d["status_detail"] = self.status_detail
         return d
 
     @property
@@ -265,24 +269,74 @@ class ExecutionSummary:
             lines=max(s.lines for s in by_cat.values()),
         )
 
+    def skip_reason_summary(self) -> Dict[str, int]:
+        """Count checks by skip reason.
+
+        Returns:
+            Dict mapping reason code to count, e.g.
+            {"n/a": 8, "time": 3}
+        """
+        counts: Counter[str] = Counter()
+        for r in self.results:
+            if r.status in (CheckStatus.SKIPPED, CheckStatus.NOT_APPLICABLE):
+                label = r.skip_reason.value if r.skip_reason else "skipped"
+                counts[label] += 1
+        return dict(counts)
+
     def to_dict(self) -> Dict[str, object]:
-        """Serialize to a plain dict for JSON output."""
+        """Serialize to a compact dict optimised for LLM consumption.
+
+        Token-saving measures:
+        * Passing checks are collapsed to a name list (``passed_gates``)
+          instead of full result objects — an LLM only needs to know they
+          passed.
+        * Only non-passing results carry full detail (output, errors, etc.).
+        * Null / empty optional summary fields (``scope``, ``skip_reasons``)
+          are omitted rather than serialised as ``null``.
+        """
         scope = self.total_scope()
-        return {
-            "summary": {
-                "total_checks": self.total_checks,
-                "passed": self.passed,
-                "failed": self.failed,
-                "warned": self.warned,
-                "skipped": self.skipped,
-                "not_applicable": self.not_applicable,
-                "errors": self.errors,
-                "all_passed": self.all_passed,
-                "total_duration": round(self.total_duration, 3),
-                "scope": scope.to_dict() if scope else None,
-            },
-            "results": [r.to_dict() for r in self.results],
+        skip_reasons = self.skip_reason_summary()
+
+        summary: Dict[str, object] = {
+            "total_checks": self.total_checks,
+            "passed": self.passed,
+            "failed": self.failed,
+            "warned": self.warned,
+            "skipped": self.skipped,
+            "not_applicable": self.not_applicable,
+            "errors": self.errors,
+            "all_passed": self.all_passed,
+            "total_duration": round(self.total_duration, 3),
         }
+        if scope:
+            summary["scope"] = scope.to_dict()
+        if skip_reasons:
+            summary["skip_reasons"] = skip_reasons
+
+        # Collapse passing checks to just names.
+        # Only include actionable results (failed / warned / error).
+        # Skipped and n/a results carry no actionable info for an
+        # LLM agent — the summary counts + skip_reasons dict are
+        # sufficient.
+        passed_names = [
+            r.name for r in self.results if r.status == CheckStatus.PASSED
+        ]
+        actionable = [
+            r.to_dict()
+            for r in self.results
+            if r.status in (
+                CheckStatus.FAILED,
+                CheckStatus.WARNED,
+                CheckStatus.ERROR,
+            )
+        ]
+
+        out: Dict[str, object] = {"summary": summary}
+        if passed_names:
+            out["passed_gates"] = passed_names
+        if actionable:
+            out["results"] = actionable
+        return out
 
     @classmethod
     def from_results(

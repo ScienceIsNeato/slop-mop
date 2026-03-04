@@ -251,6 +251,27 @@ class TestDynamicDisplay:
         assert "check" in line
         assert "done" in line
 
+    def test_format_check_line_warned_with_status_detail(self) -> None:
+        """Test formatting warned check shows status_detail inline."""
+        display = DynamicDisplay(quiet=True)
+        info = CheckDisplayInfo(
+            name="pr:ignored-feedback",
+            state=DisplayState.COMPLETED,
+            result=CheckResult(
+                name="pr:ignored-feedback",
+                status=CheckStatus.WARNED,
+                duration=1.1,
+                status_detail="3 unresolved",
+            ),
+            duration=1.1,
+        )
+
+        line = display._format_check_line(info)
+
+        assert "⚠" in line
+        assert "done" in line
+        assert "3 unresolved" in line
+
     def test_build_display_empty(self) -> None:
         """Test build_display with no checks shows empty."""
         display = DynamicDisplay(quiet=True)
