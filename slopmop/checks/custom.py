@@ -25,15 +25,44 @@ See issue #53 for design rationale.
 
 import logging
 import time
-from typing import Any, ClassVar, Dict, List, Type, cast
+from typing import Any, ClassVar, Dict, List, Optional, Type, cast
 
 from slopmop.checks.base import BaseCheck, GateCategory, GateLevel
 from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.subprocess.runner import SubprocessRunner
+from slopmop.subprocess.validator import CommandValidator
 
 logger = logging.getLogger(__name__)
 
 # Default timeout for custom gates (seconds)
 DEFAULT_CUSTOM_TIMEOUT = 60
+
+
+class _TrustedCommandValidator(CommandValidator):
+    """Permissive validator for user-defined custom gate commands.
+
+    Custom gate commands are defined by the repo owner in .sb_config.json,
+    not from external input.  They deliberately use shell features (pipes,
+    redirects, sub-shells) and must not be blocked by injection checks.
+
+    The executable whitelist is still enforced — only the argument-level
+    pattern scan is relaxed.
+    """
+
+    def _validate_argument(self, arg: str, position: int) -> None:
+        """Skip argument validation for trusted user commands."""
+
+
+# Module-level runner for custom gates (lazy-initialised)
+_custom_runner: Optional[SubprocessRunner] = None
+
+
+def _get_custom_runner() -> SubprocessRunner:
+    """Return a SubprocessRunner that uses the trusted validator."""
+    global _custom_runner
+    if _custom_runner is None:
+        _custom_runner = SubprocessRunner(validator=_TrustedCommandValidator())
+    return _custom_runner
 
 
 def _resolve_category(key: str) -> GateCategory:
@@ -54,10 +83,6 @@ def _resolve_level(key: str) -> GateLevel:
     if key_lower == "scour":
         return GateLevel.SCOUR
     return GateLevel.SWAB
-
-
-class Flaw:
-    """Minimal flaw stub for custom gates — reuses the category's flaw."""
 
 
 def make_custom_check_class(
@@ -113,6 +138,16 @@ def make_custom_check_class(
         _flaw: ClassVar[Any] = resolved_flaw
 
         level: ClassVar[GateLevel] = resolved_level
+
+        def __init__(
+            self,
+            config: Dict[str, Any],
+            runner: Optional[SubprocessRunner] = None,
+        ):
+            # Use the trusted runner by default so user-defined commands
+            # containing shell metacharacters (pipes, redirects, etc.)
+            # are not rejected by the strict CommandValidator.
+            super().__init__(config, runner=runner or _get_custom_runner())
 
         @property
         def name(self) -> str:

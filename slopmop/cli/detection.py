@@ -11,33 +11,36 @@ from slopmop.checks.base import find_tool
 # find_tool() resolves these via project venv → .venv → VIRTUAL_ENV → PATH.
 #
 # Install commands reference pyproject.toml optional-dependency groups:
-#   lint      — black, isort, autoflake, flake8
+#   lint      — black, isort, autoflake, flake8, ruff
 #   typing    — mypy, pyright
 #   analysis  — vulture, radon
 #   security  — bandit, semgrep, detect-secrets, pip-audit
 #   testing   — pytest, pytest-cov, diff-cover
 #   all       — everything above
+
+# Install-command constants (one source of truth for each extra group)
+_INSTALL_LINT = "pipx install slopmop[lint]"
+_INSTALL_TYPING = "pipx install slopmop[typing]"
+_INSTALL_ANALYSIS = "pipx install slopmop[analysis]"
+_INSTALL_SECURITY = "pipx install slopmop[security]"
+
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     # Lint & format (sloppy-formatting.py gate) → [lint] extra
-    ("black", "laziness:sloppy-formatting.py", "pipx install slopmop[lint]"),
-    ("isort", "laziness:sloppy-formatting.py", "pipx install slopmop[lint]"),
-    ("autoflake", "laziness:sloppy-formatting.py", "pipx install slopmop[lint]"),
-    ("flake8", "laziness:sloppy-formatting.py", "pipx install slopmop[lint]"),
+    ("black", "laziness:sloppy-formatting.py", _INSTALL_LINT),
+    ("isort", "laziness:sloppy-formatting.py", _INSTALL_LINT),
+    ("autoflake", "laziness:sloppy-formatting.py", _INSTALL_LINT),
+    ("flake8", "laziness:sloppy-formatting.py", _INSTALL_LINT),
     # Static analysis → [analysis] extra
-    ("vulture", "laziness:dead-code.py", "pipx install slopmop[analysis]"),
+    ("vulture", "laziness:dead-code.py", _INSTALL_ANALYSIS),
     # Type checking → [typing] extra
-    ("pyright", "overconfidence:type-blindness.py", "pipx install slopmop[typing]"),
+    ("pyright", "overconfidence:type-blindness.py", _INSTALL_TYPING),
     # Security scanning → [security] extra
-    ("bandit", "myopia:vulnerability-blindness.py", "pipx install slopmop[security]"),
-    ("semgrep", "myopia:vulnerability-blindness.py", "pipx install slopmop[security]"),
-    (
-        "detect-secrets",
-        "myopia:vulnerability-blindness.py",
-        "pipx install slopmop[security]",
-    ),
-    ("pip-audit", "myopia:dependency-risk.py", "pipx install slopmop[security]"),
+    ("bandit", "myopia:vulnerability-blindness.py", _INSTALL_SECURITY),
+    ("semgrep", "myopia:vulnerability-blindness.py", _INSTALL_SECURITY),
+    ("detect-secrets", "myopia:vulnerability-blindness.py", _INSTALL_SECURITY),
+    ("pip-audit", "myopia:dependency-risk.py", _INSTALL_SECURITY),
     # Complexity scanning → [analysis] extra
-    ("radon", "laziness:complexity-creep.py", "pipx install slopmop[analysis]"),
+    ("radon", "laziness:complexity-creep.py", _INSTALL_ANALYSIS),
 ]
 
 
@@ -131,6 +134,10 @@ def _detect_package_manager(project_root: Path) -> str:
     """Detect which package manager the JS project uses.
 
     Returns "pnpm", "yarn", or "npm" (default).
+
+    NOTE: A near-identical helper lives in ``base.JavaScriptCheckMixin``.
+    Both should converge on a shared utility (see slopmop/utils/) in a
+    follow-up PR to avoid drift.
     """
     if (project_root / "pnpm-lock.yaml").exists():
         return "pnpm"
@@ -210,7 +217,9 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     return recommended
 
 
-def _suggest_custom_gates(detected: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _suggest_custom_gates(
+    detected: Dict[str, Any], project_root: Path
+) -> List[Dict[str, Any]]:
     """Suggest custom gates for detected non-Python/JS languages."""
     gates: List[Dict[str, Any]] = []
 
@@ -282,8 +291,9 @@ def _suggest_custom_gates(detected: Dict[str, Any]) -> List[Dict[str, Any]]:
             ]
         )
 
-    if detected.get("has_c_cpp"):
-        # Only suggest make-based gates if Makefile exists
+    if detected.get("has_c_cpp") and (project_root / "Makefile").exists():
+        # Only suggest make-based gates when a Makefile is actually present;
+        # without one the command will just fail with "No targets specified".
         gates.append(
             {
                 "name": "build-check",
@@ -333,7 +343,7 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
 
     detected["has_tests_dir"] = bool(detected["test_dirs"])
     detected["recommended_gates"] = _recommend_gates(detected)
-    detected["suggested_custom_gates"] = _suggest_custom_gates(detected)
+    detected["suggested_custom_gates"] = _suggest_custom_gates(detected, project_root)
 
     # Detect tool availability
     tool_info = _detect_tools(project_root)

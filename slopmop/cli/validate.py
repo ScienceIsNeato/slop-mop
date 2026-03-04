@@ -161,7 +161,13 @@ def _run_validation(
     # Register user-defined custom gates from config
     from slopmop.checks.custom import register_custom_gates
 
-    register_custom_gates(config)
+    custom_names = register_custom_gates(config)
+
+    # Custom gates are registered AFTER the initial gate_names list was
+    # computed by cmd_swab/cmd_scour.  Append any newly registered names
+    # so they actually run.  (Explicit -g lists are left untouched.)
+    if level_name is not None and custom_names:
+        gates = list(gates) + custom_names
 
     # Determine if we should use dynamic display
     # JSON mode suppresses all interactive output

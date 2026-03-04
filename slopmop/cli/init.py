@@ -394,6 +394,6 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     from slopmop.cli.status import run_status
 
-    run_status(project_root=str(project_root))
+    run_status(project_root=str(project_root), json_output=False)
 
     return 0
