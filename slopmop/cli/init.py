@@ -286,6 +286,45 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print()
 
 
+def _inject_custom_gate_scaffolds(
+    base_config: Dict[str, Any], detected: Dict[str, Any]
+) -> None:
+    """Scaffold custom gates for detected-but-not-built-in languages.
+
+    Mutates ``base_config`` in place.  Extracted from ``cmd_init`` when
+    the Go/Rust/C detection work pushed it over the 100-line sprawl
+    threshold.  This is the whole reason issue #53 exists — without it,
+    ``sm init`` on a Go repo produces a config with every gate disabled
+    and zero value.
+    """
+    from slopmop.checks.custom import scaffold_for_detected
+
+    scaffolded = scaffold_for_detected(detected)
+    if scaffolded:
+        base_config["custom_gates"] = scaffolded
+        print(
+            f"⚙️  Scaffolded {len(scaffolded)} custom gate(s) for "
+            f"detected language(s)"
+        )
+    elif not detected["has_python"] and not detected["has_javascript"]:
+        # No built-in support AND no scaffold available — give the user
+        # a starting point so the config file isn't a dead end.
+        base_config["custom_gates"] = [
+            {
+                "name": "example-gate",
+                "description": "Replace with a project-appropriate check",
+                "category": "general",
+                "command": "echo 'Replace me in .sb_config.json' && false",
+                "level": "swab",
+                "timeout": 60,
+            }
+        ]
+        print(
+            "⚙️  No supported language detected — added a placeholder "
+            "custom_gates entry. Edit .sb_config.json to add real checks."
+        )
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Handle the init command - interactive project setup."""
     project_root = Path(args.project_root).resolve()
@@ -359,37 +398,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     _apply_user_config(base_config, config)
     _disable_checks_with_missing_tools(base_config, detected)
     _set_bogus_tests_defaults(base_config, detected)
-
-    # Scaffold custom gates for languages we detected but don't ship
-    # built-in gates for (Go/Rust/C).  This is the whole reason issue
-    # #53 exists — without it, init on a Go repo produces a config with
-    # every gate disabled and zero value.
-    from slopmop.checks.custom import scaffold_for_detected
-
-    scaffolded = scaffold_for_detected(detected)
-    if scaffolded:
-        base_config["custom_gates"] = scaffolded
-        print(
-            f"⚙️  Scaffolded {len(scaffolded)} custom gate(s) for "
-            f"detected language(s)"
-        )
-    elif not detected["has_python"] and not detected["has_javascript"]:
-        # No built-in support AND no scaffold available — give the user
-        # a starting point so the config file isn't a dead end.
-        base_config["custom_gates"] = [
-            {
-                "name": "example-gate",
-                "description": "Replace with a project-appropriate check",
-                "category": "general",
-                "command": "echo 'Replace me in .sb_config.json' && false",
-                "level": "swab",
-                "timeout": 60,
-            }
-        ]
-        print(
-            "⚙️  No supported language detected — added a placeholder "
-            "custom_gates entry. Edit .sb_config.json to add real checks."
-        )
+    _inject_custom_gate_scaffolds(base_config, detected)
 
     # Merge with existing config if present
     if config_file.exists():

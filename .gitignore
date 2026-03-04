@@ -39,6 +39,11 @@ logs/
 # cursor files
 cursor-rules/
 
+# Claude Code session scaffolding — leaked into 6fa8a4d during the
+# beta run and tripped code-sprawl on CI.  The ``leaked-agent-artifacts``
+# gate (issue TBD) would have caught this at swab time.
+.claude/
+
 # Slopbucket config (user-specific, not template)
 .sb_config.json
 .sb_config.json.backup.*

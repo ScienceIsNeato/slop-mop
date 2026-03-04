@@ -38,7 +38,7 @@ import logging
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Set, Type
+from typing import Any, Dict, List, Set, Type, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -124,6 +124,82 @@ def _validate_spec(spec: Dict[str, Any], index: int) -> None:
         )
 
 
+def _run_custom_command(
+    check: BaseCheck,
+    project_root: str,
+    command: str,
+    gate_name: str,
+    timeout_s: float,
+) -> CheckResult:
+    """Execute a user-authored shell command as a gate.
+
+    Pulled out of the generated class so ``make_custom_gate_class``
+    stays under the 100-line sprawl threshold — closures are cheap,
+    135-line factories are not.
+
+    IMPORTANT: bypasses the validated runner.  The validator rejects
+    ``|``, ``&&``, ``;`` etc., but shell idioms are the whole point of
+    custom gates.  The user wrote this command into a file they own —
+    same trust level as a Makefile target or an npm script.
+    """
+    start = time.perf_counter()
+    try:
+        completed = subprocess.run(
+            ["/bin/sh", "-c", command],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        return check._create_result(
+            status=CheckStatus.FAILED,
+            duration=time.perf_counter() - start,
+            output=f"Command: {command}",
+            error=(
+                f"Custom gate timed out after {timeout_s:.0f}s.\n"
+                f"Bump 'timeout' in .sb_config.json if this is "
+                f"expected for a repo of this size."
+            ),
+            fix_suggestion=(
+                f"Increase custom_gates[].timeout for "
+                f"'{gate_name}' in .sb_config.json"
+            ),
+        )
+    except FileNotFoundError as e:
+        # /bin/sh itself missing — exotic, but give a clear error
+        # rather than a raw traceback.
+        return check._create_result(
+            status=CheckStatus.ERROR,
+            duration=time.perf_counter() - start,
+            error=f"Shell unavailable for custom gate: {e}",
+        )
+
+    elapsed = time.perf_counter() - start
+    stdout = completed.stdout or ""
+    stderr = completed.stderr or ""
+    combined = (stdout + ("\n" + stderr if stderr else "")).strip()
+
+    if completed.returncode == 0:
+        return check._create_result(
+            status=CheckStatus.PASSED,
+            duration=elapsed,
+            output=combined or f"`{command}` exited 0",
+        )
+
+    return check._create_result(
+        status=CheckStatus.FAILED,
+        duration=elapsed,
+        output=f"$ {command}\n{combined}" if combined else f"$ {command}",
+        error=(f"Custom gate '{gate_name}' failed " f"(exit {completed.returncode})"),
+        fix_suggestion=(
+            f"Run `{command}` manually in the repo root to "
+            f"reproduce. Disable via disabled_gates if this gate "
+            f"is noise for this branch."
+        ),
+    )
+
+
 def make_custom_gate_class(spec: Dict[str, Any]) -> Type[BaseCheck]:
     """Manufacture a ``BaseCheck`` subclass for a single custom-gate spec.
 
@@ -185,72 +261,8 @@ def make_custom_gate_class(spec: Dict[str, Any]) -> Type[BaseCheck]:
             return "custom gate never auto-skips"
 
         def run(self, project_root: str) -> CheckResult:
-            start = time.perf_counter()
-
-            # IMPORTANT: bypass the validated runner.  The validator
-            # rejects '|', '&&', ';' etc., but shell idioms are the
-            # whole point of custom gates.  The user wrote this
-            # command into a file they own — same trust level as a
-            # Makefile target or an npm script.
-            try:
-                completed = subprocess.run(
-                    ["/bin/sh", "-c", command],
-                    cwd=project_root,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_s,
-                )
-            except subprocess.TimeoutExpired:
-                elapsed = time.perf_counter() - start
-                return self._create_result(
-                    status=CheckStatus.FAILED,
-                    duration=elapsed,
-                    output=f"Command: {command}",
-                    error=(
-                        f"Custom gate timed out after {timeout_s:.0f}s.\n"
-                        f"Bump 'timeout' in .sb_config.json if this is "
-                        f"expected for a repo of this size."
-                    ),
-                    fix_suggestion=(
-                        f"Increase custom_gates[].timeout for "
-                        f"'{gate_name}' in .sb_config.json"
-                    ),
-                )
-            except FileNotFoundError as e:
-                # /bin/sh itself missing — exotic, but give a clear error
-                # rather than a raw traceback.
-                elapsed = time.perf_counter() - start
-                return self._create_result(
-                    status=CheckStatus.ERROR,
-                    duration=elapsed,
-                    error=f"Shell unavailable for custom gate: {e}",
-                )
-
-            elapsed = time.perf_counter() - start
-            stdout = completed.stdout or ""
-            stderr = completed.stderr or ""
-            combined = (stdout + ("\n" + stderr if stderr else "")).strip()
-
-            if completed.returncode == 0:
-                return self._create_result(
-                    status=CheckStatus.PASSED,
-                    duration=elapsed,
-                    output=combined or f"`{command}` exited 0",
-                )
-
-            return self._create_result(
-                status=CheckStatus.FAILED,
-                duration=elapsed,
-                output=f"$ {command}\n{combined}" if combined else f"$ {command}",
-                error=(
-                    f"Custom gate '{gate_name}' failed "
-                    f"(exit {completed.returncode})"
-                ),
-                fix_suggestion=(
-                    f"Run `{command}` manually in the repo root to "
-                    f"reproduce. Disable via disabled_gates if this gate "
-                    f"is noise for this branch."
-                ),
+            return _run_custom_command(
+                self, project_root, command, gate_name, timeout_s
             )
 
     # Give the generated class a stable, debuggable name.
@@ -284,15 +296,19 @@ def load_custom_gate_specs(project_root: str) -> List[Dict[str, Any]]:
         raise CustomGateError(
             f"'custom_gates' must be a list, got {type(raw).__name__}"
         )
-
+    # ``isinstance(raw, list)`` narrows to ``list[Unknown]`` under
+    # pyright strict; cast to List[Any] so the loop variable and the
+    # inner dict-guard both narrow cleanly instead of poisoning every
+    # downstream arg with Unknown.
     validated: List[Dict[str, Any]] = []
-    for i, spec in enumerate(raw):
+    for i, spec in enumerate(cast(List[Any], raw)):
         if not isinstance(spec, dict):
             raise CustomGateError(
                 f"custom_gates[{i}] must be an object, got {type(spec).__name__}"
             )
-        _validate_spec(spec, i)
-        validated.append(spec)
+        spec_d = cast(Dict[str, Any], spec)
+        _validate_spec(spec_d, i)
+        validated.append(spec_d)
 
     return validated
 
