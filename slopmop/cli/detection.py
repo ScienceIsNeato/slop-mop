@@ -81,30 +81,43 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
 
 
 def _detect_python(project_root: Path) -> bool:
-    """Check for Python project indicators."""
+    """Check for Python project indicators.
+
+    Manifest-only.  We do NOT glob ``**/*.py`` because real-world
+    polyglot repos routinely ship stray Python utility scripts:
+
+    * curl/             — test-case generators in tests/*.py
+    * pocketbase/       — doc-build scripts
+    * zoxide/           — benchmark harness
+
+    Globbing those causes ``sm init`` to light up the whole Python gate
+    tree, and then every Python gate sits at n/a (no-applicable-source)
+    forever.  That's noise, not signal.  If somebody's running a Python
+    project with zero manifest files in 2025 they can flip the gates on
+    by hand.
+    """
     py_indicators = ["setup.py", "pyproject.toml", "requirements.txt", "Pipfile"]
-    for indicator in py_indicators:
-        if (project_root / indicator).exists():
-            return True
-    return any(project_root.glob("**/*.py"))
+    return any((project_root / p).exists() for p in py_indicators)
 
 
 def _detect_javascript(project_root: Path) -> bool:
-    """Check for JavaScript project indicators."""
+    """Check for JavaScript project indicators.
+
+    Manifest-only — same reasoning as ``_detect_python``.  Go repos
+    (pocketbase) vendor an admin UI; Rust repos (zoxide) ship shell
+    completion templates with ``.js`` extensions.  A ``**/*.js`` glob
+    turns both into "JavaScript projects" and every JS gate then
+    reports ``n/a (No package.json found)`` — which is the symptom
+    telling you the detection was wrong in the first place.
+    """
     js_indicators = ["package.json", "tsconfig.json"]
-    for indicator in js_indicators:
-        if (project_root / indicator).exists():
-            return True
-    return any(project_root.glob("**/*.js")) or any(project_root.glob("**/*.ts"))
+    return any((project_root / p).exists() for p in js_indicators)
 
 
 def _detect_typescript(project_root: Path) -> bool:
-    """Check specifically for TypeScript."""
+    """Check specifically for TypeScript (manifest-only)."""
     ts_indicators = ["tsconfig.json", "tsconfig.ci.json"]
-    for indicator in ts_indicators:
-        if (project_root / indicator).exists():
-            return True
-    return any(project_root.glob("**/*.ts"))
+    return any((project_root / p).exists() for p in ts_indicators)
 
 
 def _detect_go(project_root: Path) -> bool:

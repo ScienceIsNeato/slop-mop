@@ -186,13 +186,32 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         except (json.JSONDecodeError, IOError):
             return None
 
+    @staticmethod
+    def _as_pct(v: Any) -> float:
+        """Coerce Jest's ``pct`` field into a comparable float.
+
+        Jest emits ``"pct": "Unknown"`` (a string) in
+        ``coverage-summary.json`` when a file has zero executable
+        statements — typically type-only modules or empty barrel
+        files.  Comparing that against an int threshold raises
+        ``TypeError: '>=' not supported between 'str' and 'int'``
+        and the gate ERRORS instead of reporting.  Treat anything
+        non-numeric as 0.0: it'll show up in the low-coverage list
+        where a human can decide if the file needs tests or an
+        exclusion.
+        """
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
     def _evaluate_coverage(
         self, data: Dict[str, Any], output: str, duration: float
     ) -> CheckResult:
         """Evaluate coverage from parsed JSON data."""
         total = data.get("total", {})
         lines = total.get("lines", {})
-        pct = lines.get("pct", 0)
+        pct = self._as_pct(lines.get("pct", 0))
 
         if pct >= self.threshold:
             return self._create_result(
@@ -206,7 +225,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         for path, stats in data.items():
             if path == "total":
                 continue
-            file_pct = stats.get("lines", {}).get("pct", 100)
+            file_pct = self._as_pct(stats.get("lines", {}).get("pct", 100))
             if file_pct < self.threshold:
                 low_files.append((path, file_pct))
 

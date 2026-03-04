@@ -370,7 +370,13 @@ SCAFFOLD_GO: List[Dict[str, Any]] = [
         "name": "gofmt-drift",
         "description": "Unformatted Go source",
         "category": "laziness",
-        "command": 'test -z "$(gofmt -l . 2>/dev/null)"',
+        # ``gofmt -l`` lists offending files on stdout and exits 0 even
+        # when files need formatting.  We want BOTH a non-zero exit AND
+        # the file list in the failure output — the earlier
+        # ``test -z "$(gofmt -l .)"`` swallowed the list, leaving the
+        # user with "exit 1" and nothing to act on.
+        "command": 'out="$(gofmt -l .)"; '
+                   'if [ -n "$out" ]; then echo "$out"; exit 1; fi',
         "level": "swab",
         "timeout": 60,
     },

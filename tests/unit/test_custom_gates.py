@@ -480,3 +480,70 @@ class TestLanguageDetection:
         (tmp_path / "example.go").write_text("package main\n")
         d = detect_project_type(tmp_path)
         assert d["has_go"] is False
+
+    def test_python_not_triggered_by_stray_scripts(self, tmp_path):
+        """Regression: curl/ has test-generator .py scripts, no manifest.
+
+        Before this fix, ``**/*.py`` glob → has_python=True → every
+        Python gate enabled → every Python gate reports n/a forever.
+        The n/a is the symptom telling you detection lied.
+        """
+        from slopmop.cli.detection import detect_project_type
+
+        (tmp_path / "scripts").mkdir()
+        (tmp_path / "scripts" / "gen_tests.py").write_text("print('hi')\n")
+        d = detect_project_type(tmp_path)
+        assert d["has_python"] is False
+
+    def test_python_still_triggered_by_pyproject(self, tmp_path):
+        from slopmop.cli.detection import detect_project_type
+
+        (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+        d = detect_project_type(tmp_path)
+        assert d["has_python"] is True
+
+    def test_js_not_triggered_by_vendored_admin_ui(self, tmp_path):
+        """Regression: pocketbase/ vendors a JS admin UI, no root package.json.
+
+        Same failure mode as the Python case — glob-matching a
+        vendored subtree misclassifies the whole repo.
+        """
+        from slopmop.cli.detection import detect_project_type
+
+        (tmp_path / "ui").mkdir()
+        (tmp_path / "ui" / "app.js").write_text("console.log(1)\n")
+        d = detect_project_type(tmp_path)
+        assert d["has_javascript"] is False
+
+    def test_js_still_triggered_by_package_json(self, tmp_path):
+        from slopmop.cli.detection import detect_project_type
+
+        (tmp_path / "package.json").write_text('{"name":"x"}')
+        d = detect_project_type(tmp_path)
+        assert d["has_javascript"] is True
+
+    def test_gofmt_scaffold_shows_files_on_failure(self, tmp_path):
+        """Regression: old scaffold swallowed gofmt's file list.
+
+        ``test -z "$(gofmt -l .)"`` exits 1 on drift but emits nothing,
+        leaving the user with no clue which files to fix.  Verify the
+        new scaffold command actually surfaces the offending filename.
+        """
+        import shutil
+
+        if shutil.which("gofmt") is None:
+            pytest.skip("gofmt not on PATH")
+
+        from slopmop.checks.custom import SCAFFOLD_GO
+
+        (tmp_path / "bad.go").write_text(
+            # Intentionally misformatted: go wants tab indent, not spaces.
+            "package main\nfunc main(){\nx:=1\n_=x\n}\n"
+        )
+        gate_spec = next(g for g in SCAFFOLD_GO if g["name"] == "gofmt-drift")
+        cls = make_custom_gate_class(gate_spec)
+        result = cls({}).run(str(tmp_path))
+
+        assert result.status is CheckStatus.FAILED
+        # The whole point: filename must be in the output.
+        assert "bad.go" in result.output
