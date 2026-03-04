@@ -188,7 +188,11 @@ class TestHappyPath:
 
     def test_key_gates_run(self, result_main: RunResult) -> None:
         result_main.assert_prerequisites()
-        for gate in ("sloppy-formatting.py", "untested-code.py", "security"):
+        for gate in (
+            "sloppy-formatting.py",
+            "untested-code.py",
+            "vulnerability-blindness.py",
+        ):
             assert (
                 gate in result_main.output
             ), f"Expected gate '{gate}' in output.\n{result_main}"
@@ -208,13 +212,23 @@ class TestAllFail:
             result_all_fail.exit_code == 1
         ), f"Expected exit 1 (validate failures) on all-fail branch:\n{result_all_fail}"
 
-    def test_lint_gate_fails(self, result_all_fail: RunResult) -> None:
+    def test_js_lint_gate_fails(self, result_all_fail: RunResult) -> None:
+        """sloppy-formatting.js should fail — JS code has ESLint issues.
+
+        Note: sloppy-formatting.py PASSES because auto-fix (black, isort,
+        autoflake) repairs the formatting drift before flake8 checks.
+        """
         result_all_fail.assert_prerequisites()
-        _assert_gate_failed(result_all_fail, "sloppy-formatting.py")
+        _assert_gate_failed(result_all_fail, "sloppy-formatting.js")
 
     def test_security_gate_fails(self, result_all_fail: RunResult) -> None:
+        """vulnerability-blindness.py should fail — hardcoded DB_PASSWORD triggers bandit B105.
+
+        Note: dependency-risk.py is scour-level and does not run during ``sm swab``.
+        vulnerability-blindness.py is the swab-level security gate.
+        """
         result_all_fail.assert_prerequisites()
-        _assert_gate_failed(result_all_fail, "dependency-risk.py")
+        _assert_gate_failed(result_all_fail, "vulnerability-blindness.py")
 
     def test_pytest_gate_fails(self, result_all_fail: RunResult) -> None:
         """untested-code.py should not pass.
@@ -250,8 +264,12 @@ class TestMixed:
         ), f"Expected exit 1 (some validate failures) on mixed branch:\n{result_mixed}"
 
     def test_security_gate_fails(self, result_mixed: RunResult) -> None:
+        """vulnerability-blindness.py should fail — hardcoded INTERNAL_API_KEY triggers bandit.
+
+        Note: dependency-risk.py is scour-level and does not run during ``sm swab``.
+        """
         result_mixed.assert_prerequisites()
-        _assert_gate_failed(result_mixed, "dependency-risk.py")
+        _assert_gate_failed(result_mixed, "vulnerability-blindness.py")
 
     def test_dead_code_gate_fails(self, result_mixed: RunResult) -> None:
         result_mixed.assert_prerequisites()
