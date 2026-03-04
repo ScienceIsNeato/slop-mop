@@ -39,6 +39,14 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
     print("-" * 40)
     print(f"  Python project:      {'✅' if detected['has_python'] else '❌'}")
     print(f"  JavaScript project:  {'✅' if detected['has_javascript'] else '❌'}")
+    if detected.get("has_go"):
+        print(f"  Go project:          ✅")
+    if detected.get("has_rust"):
+        print(f"  Rust project:        ✅")
+    if detected.get("has_c_cpp"):
+        print(f"  C/C++ project:       ✅")
+    if detected.get("package_manager") and detected.get("package_manager") != "npm":
+        print(f"  Package manager:     {detected['package_manager']}")
     print(f"  Has test directory:  {'✅' if detected['has_tests_dir'] else '❌'}")
     if detected["test_dirs"]:
         print(f"  Test directories:    {', '.join(detected['test_dirs'])}")
@@ -278,6 +286,39 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print()
 
 
+def _write_config(
+    config_file: Path,
+    base_config: Dict[str, Any],
+    detected: Dict[str, Any],
+    config: Dict[str, Any],
+) -> None:
+    """Build final config, merge with existing, and write to disk."""
+    from slopmop.utils.generate_base_config import backup_config
+
+    # Add suggested custom gates for non-Python/JS languages
+    suggested_custom = detected.get("suggested_custom_gates", [])
+    if suggested_custom:
+        base_config["custom_gates"] = suggested_custom
+        print(
+            f"🔧 Added {len(suggested_custom)} custom gate(s) for detected language(s)"
+        )
+
+    # Merge with existing config if present
+    if config_file.exists():
+        try:
+            existing = json.loads(config_file.read_text())
+            backup_path = backup_config(config_file)
+            if backup_path:
+                print(f"📦 Backed up existing config to: {backup_path}")
+            base_config = _deep_merge(base_config, existing)
+        except json.JSONDecodeError:
+            pass
+
+    config_file.write_text(json.dumps(base_config, indent=2) + "\n")
+    print(f"✅ Configuration saved to: {config_file}")
+    _print_next_steps(config)
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Handle the init command - interactive project setup."""
     project_root = Path(args.project_root).resolve()
@@ -304,9 +345,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     print("🔍 Detecting project type...")
     detected = detect_project_type(project_root)
 
-    # Build configuration
     # Auto-detect non-interactive terminal (e.g. AI agent, piped stdin, CI).
-    # input() blocks forever in these contexts, so fall back gracefully.
     non_interactive = args.non_interactive
     if not non_interactive and not sys.stdin.isatty():
         non_interactive = True
@@ -317,8 +356,6 @@ def cmd_init(args: argparse.Namespace) -> int:
             "To silence this message, pass --non-interactive.)"
         )
 
-    # Print mode-appropriate banner first, then detection details,
-    # so the user sees the title heading before the wall of results.
     if non_interactive:
         print("\n🪣 Slop-Mop Setup (non-interactive mode)")
     else:
@@ -333,11 +370,9 @@ def cmd_init(args: argparse.Namespace) -> int:
     else:
         config = _build_interactive_config(detected, preconfig)
 
-    # Write configuration
     print("💾 Writing configuration...")
 
     from slopmop.utils.generate_base_config import (
-        backup_config,
         generate_template_config,
         write_template_config,
     )
@@ -345,28 +380,13 @@ def cmd_init(args: argparse.Namespace) -> int:
     template_path = write_template_config(project_root)
     print(f"📄 Template saved to: {template_path}")
 
-    # Start from all-enabled template, then selectively disable
     base_config = generate_template_config()
     _disable_non_applicable(base_config, detected)
     _apply_user_config(base_config, config)
     _disable_checks_with_missing_tools(base_config, detected)
     _set_bogus_tests_defaults(base_config, detected)
 
-    # Merge with existing config if present
-    if config_file.exists():
-        try:
-            existing = json.loads(config_file.read_text())
-            backup_path = backup_config(config_file)
-            if backup_path:
-                print(f"📦 Backed up existing config to: {backup_path}")
-            base_config = _deep_merge(base_config, existing)
-        except json.JSONDecodeError:
-            pass
-
-    config_file.write_text(json.dumps(base_config, indent=2) + "\n")
-    print(f"✅ Configuration saved to: {config_file}")
-
-    _print_next_steps(config)
+    _write_config(config_file, base_config, detected, config)
 
     # Show project dashboard so the user sees current state
     print("─" * 60)

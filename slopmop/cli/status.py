@@ -318,6 +318,11 @@ def run_status(
     registry = get_registry()
     config = load_config(root)
 
+    # Register user-defined custom gates from config
+    from slopmop.checks.custom import register_custom_gates
+
+    register_custom_gates(config)
+
     # ── Gate lists ────────────────────────────────────────────────
     all_gates = registry.list_checks()
     swab_gates = set(registry.get_gate_names_for_level(GateLevel.SWAB))

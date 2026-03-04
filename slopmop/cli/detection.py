@@ -107,6 +107,37 @@ def _detect_typescript(project_root: Path) -> bool:
     return any(project_root.glob("**/*.ts"))
 
 
+def _detect_go(project_root: Path) -> bool:
+    """Check for Go project indicators."""
+    return (project_root / "go.mod").exists()
+
+
+def _detect_rust(project_root: Path) -> bool:
+    """Check for Rust project indicators."""
+    return (project_root / "Cargo.toml").exists()
+
+
+def _detect_c_cpp(project_root: Path) -> bool:
+    """Check for C/C++ project indicators."""
+    c_indicators = ["CMakeLists.txt", "Makefile", "configure.ac", "meson.build"]
+    for indicator in c_indicators:
+        if (project_root / indicator).exists():
+            return True
+    return False
+
+
+def _detect_package_manager(project_root: Path) -> str:
+    """Detect which package manager the JS project uses.
+
+    Returns "pnpm", "yarn", or "npm" (default).
+    """
+    if (project_root / "pnpm-lock.yaml").exists():
+        return "pnpm"
+    if (project_root / "yarn.lock").exists():
+        return "yarn"
+    return "npm"
+
+
 def _detect_test_dirs(project_root: Path) -> list[str]:
     """Find test directories."""
     test_dirs: list[str] = []
@@ -178,6 +209,94 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     return recommended
 
 
+def _suggest_custom_gates(detected: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggest custom gates for detected non-Python/JS languages."""
+    gates: List[Dict[str, Any]] = []
+
+    if detected.get("has_go"):
+        gates.extend(
+            [
+                {
+                    "name": "go-vet",
+                    "description": "Run go vet for suspicious constructs",
+                    "category": "laziness",
+                    "command": "go vet ./...",
+                    "level": "swab",
+                    "timeout": 120,
+                },
+                {
+                    "name": "go-test",
+                    "description": "Run Go tests",
+                    "category": "overconfidence",
+                    "command": "go test ./...",
+                    "level": "swab",
+                    "timeout": 300,
+                },
+                {
+                    "name": "go-fmt-check",
+                    "description": "Check Go formatting (gofmt)",
+                    "category": "laziness",
+                    "command": 'test -z "$(gofmt -l .)"',
+                    "level": "swab",
+                    "timeout": 30,
+                },
+            ]
+        )
+
+    if detected.get("has_rust"):
+        gates.extend(
+            [
+                {
+                    "name": "cargo-check",
+                    "description": "Run cargo check for compilation errors",
+                    "category": "overconfidence",
+                    "command": "cargo check 2>&1",
+                    "level": "swab",
+                    "timeout": 300,
+                },
+                {
+                    "name": "cargo-clippy",
+                    "description": "Run clippy lints",
+                    "category": "laziness",
+                    "command": "cargo clippy -- -D warnings 2>&1",
+                    "level": "swab",
+                    "timeout": 300,
+                },
+                {
+                    "name": "cargo-test",
+                    "description": "Run Rust tests",
+                    "category": "overconfidence",
+                    "command": "cargo test 2>&1",
+                    "level": "scour",
+                    "timeout": 600,
+                },
+                {
+                    "name": "cargo-fmt-check",
+                    "description": "Check Rust formatting",
+                    "category": "laziness",
+                    "command": "cargo fmt -- --check 2>&1",
+                    "level": "swab",
+                    "timeout": 30,
+                },
+            ]
+        )
+
+    if detected.get("has_c_cpp"):
+        # Only suggest make-based gates if Makefile exists
+        gates.append(
+            {
+                "name": "build-check",
+                "description": "Verify project builds cleanly",
+                "category": "overconfidence",
+                "command": "make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) 2>&1",
+                "level": "scour",
+                "timeout": 600,
+            }
+        )
+
+    return gates
+
+
 def detect_project_type(project_root: Path) -> Dict[str, Any]:
     """Auto-detect project type and characteristics.
 
@@ -185,6 +304,9 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - has_python: bool
     - has_javascript: bool
     - has_typescript: bool
+    - has_go: bool
+    - has_rust: bool
+    - has_c_cpp: bool
     - has_tests_dir: bool
     - has_pytest: bool
     - has_jest: bool
@@ -192,18 +314,25 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - recommended_gates: list of str
     - available_tools: list of str
     - missing_tools: list of (tool_name, check_name, install_command)
+    - package_manager: str ("npm", "pnpm", or "yarn")
+    - suggested_custom_gates: list of custom gate defs
     """
     detected: Dict[str, Any] = {
         "has_python": _detect_python(project_root),
         "has_javascript": _detect_javascript(project_root),
         "has_typescript": _detect_typescript(project_root),
+        "has_go": _detect_go(project_root),
+        "has_rust": _detect_rust(project_root),
+        "has_c_cpp": _detect_c_cpp(project_root),
         "has_pytest": _detect_pytest(project_root),
         "has_jest": _detect_jest(project_root),
         "test_dirs": _detect_test_dirs(project_root),
+        "package_manager": _detect_package_manager(project_root),
     }
 
     detected["has_tests_dir"] = bool(detected["test_dirs"])
     detected["recommended_gates"] = _recommend_gates(detected)
+    detected["suggested_custom_gates"] = _suggest_custom_gates(detected)
 
     # Detect tool availability
     tool_info = _detect_tools(project_root)

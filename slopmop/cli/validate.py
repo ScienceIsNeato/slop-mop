@@ -140,6 +140,11 @@ def _run_validation(
     # Load configuration (must happen early — swabbing-time default lives here)
     config = load_config(project_root)
 
+    # Register user-defined custom gates from config
+    from slopmop.checks.custom import register_custom_gates
+
+    register_custom_gates(config)
+
     # Determine if we should use dynamic display
     use_dynamic = (
         sys.stdout.isatty()
