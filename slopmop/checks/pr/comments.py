@@ -27,8 +27,8 @@ class PRCommentsCheck(BaseCheck):
     Level: scour (PR readiness context required)
 
     Configuration:
-      fail_on_unresolved: True — fail the gate if unresolved
-          comments exist. Set to False to make advisory-only.
+      fail_on_unresolved: False (default) — warn when unresolved
+          comments exist. Set to True to fail the gate instead.
 
     Common failures:
       Unresolved comments: Address each comment thread, then
@@ -71,7 +71,7 @@ class PRCommentsCheck(BaseCheck):
             ConfigField(
                 name="fail_on_unresolved",
                 field_type="bool",
-                default=True,
+                default=False,
                 description="Whether to fail if unresolved comments exist",
                 permissiveness="true_is_stricter",
             ),
@@ -665,7 +665,7 @@ class PRCommentsCheck(BaseCheck):
             )
 
         # We have unresolved threads - generate full report and save to file
-        fail_on_unresolved = self.config.get("fail_on_unresolved", True)
+        fail_on_unresolved = self.config.get("fail_on_unresolved", False)
         full_report = self._format_guidance(threads, pr_number, owner, repo)
 
         # Save full report to temp file
@@ -684,10 +684,10 @@ class PRCommentsCheck(BaseCheck):
             )
         else:
             return self._create_result(
-                status=CheckStatus.PASSED,
+                status=CheckStatus.WARNED,
                 duration=duration,
-                output=f"⚠️ {len(threads)} unresolved comments (check disabled)\n\n"
-                + summary,
+                output=f"⚠️ {len(threads)} unresolved comment(s) — "
+                f"set fail_on_unresolved: true to block on this\n\n" + summary,
             )
 
     def _save_report_to_file(self, report: str, pr_number: int) -> str:

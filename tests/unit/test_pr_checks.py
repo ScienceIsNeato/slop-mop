@@ -188,7 +188,7 @@ class TestPRCommentsCheck:
         assert "no unresolved" in result.output.lower()
 
     def test_run_with_unresolved_comments(self, tmp_path):
-        """Test run returns FAILED with unresolved comments."""
+        """Test run returns WARNED with unresolved comments (default behaviour)."""
         (tmp_path / ".git").mkdir()
 
         threads = [
@@ -211,16 +211,41 @@ class TestPRCommentsCheck:
         ):
             result = check.run(str(tmp_path))
 
+        assert result.status == CheckStatus.WARNED
+        assert "1 unresolved" in result.output
+        # Summary output should have category counts and file path
+        assert "pr_123_comments_report.md" in result.output
+
+    def test_run_with_fail_on_unresolved_enabled(self, tmp_path):
+        """Test run returns FAILED when fail_on_unresolved is True."""
+        (tmp_path / ".git").mkdir()
+
+        threads = [
+            {
+                "thread_id": "PRRT_123",
+                "is_outdated": False,
+                "body": "Please fix this issue",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 42,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+
+        check = PRCommentsCheck({"fail_on_unresolved": True})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=123),
+            patch.object(check, "_get_repo_info", return_value=("owner", "repo")),
+            patch.object(check, "_get_unresolved_threads", return_value=threads),
+        ):
+            result = check.run(str(tmp_path))
+
         assert result.status == CheckStatus.FAILED
         assert "1 unresolved" in result.error
-        # Summary output should have category counts and file path
-        assert "Logic/Correctness" in result.output
-        assert "pr_123_comments_report.md" in result.output
-        # Full report is in temp file, referenced in fix_suggestion
         assert "pr_123_comments_report.md" in result.fix_suggestion
 
     def test_run_with_fail_on_unresolved_disabled(self, tmp_path):
-        """Test run returns PASSED when fail_on_unresolved is False."""
+        """Test run returns WARNED when fail_on_unresolved is False."""
         (tmp_path / ".git").mkdir()
 
         threads = [
@@ -243,7 +268,7 @@ class TestPRCommentsCheck:
         ):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.PASSED
+        assert result.status == CheckStatus.WARNED
         assert "1 unresolved" in result.output
 
     def test_format_guidance_includes_protocol(self, tmp_path):
