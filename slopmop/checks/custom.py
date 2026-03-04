@@ -25,7 +25,7 @@ See issue #53 for design rationale.
 
 import logging
 import time
-from typing import Any, ClassVar, Dict, List, Type
+from typing import Any, ClassVar, Dict, List, Type, cast
 
 from slopmop.checks.base import BaseCheck, GateCategory, GateLevel
 from slopmop.core.result import CheckResult, CheckStatus
@@ -58,8 +58,6 @@ def _resolve_level(key: str) -> GateLevel:
 
 class Flaw:
     """Minimal flaw stub for custom gates — reuses the category's flaw."""
-
-    pass
 
 
 def make_custom_check_class(
@@ -210,56 +208,61 @@ def register_custom_gates(config: Dict[str, Any]) -> List[str]:
     """
     from slopmop.core.registry import get_registry
 
-    custom_defs = config.get("custom_gates", [])
+    custom_defs: Any = config.get("custom_gates", [])
     if not isinstance(custom_defs, list):
         logger.warning("custom_gates must be a list, ignoring")
         return []
 
+    gate_list: List[Any] = cast(List[Any], custom_defs)
     registry = get_registry()
     registered: List[str] = []
 
-    for i, gate_def in enumerate(custom_defs):
-        if not isinstance(gate_def, dict):
+    for i, raw_def in enumerate(gate_list):
+        if not isinstance(raw_def, dict):
             logger.warning(
-                f"custom_gates[{i}]: expected object, got {type(gate_def).__name__}"
+                f"custom_gates[{i}]: expected object, got {type(raw_def).__name__}"
             )
             continue
+        gate_def: Dict[str, Any] = cast(Dict[str, Any], raw_def)
 
         # Required fields
-        name = gate_def.get("name")
-        command = gate_def.get("command")
+        name: str = str(gate_def.get("name", ""))
+        command: str = str(gate_def.get("command", ""))
         if not name or not command:
             logger.warning(
                 f"custom_gates[{i}]: 'name' and 'command' are required, skipping"
             )
             continue
 
-        description = gate_def.get("description", name)
-        category_key = gate_def.get("category", "general")
-        level_str = gate_def.get("level", "swab")
-        timeout = gate_def.get("timeout", DEFAULT_CUSTOM_TIMEOUT)
+        description: str = str(gate_def.get("description", name))
+        category_key: str = str(gate_def.get("category", "general"))
+        level_str: str = str(gate_def.get("level", "swab"))
+        raw_timeout: Any = gate_def.get("timeout", DEFAULT_CUSTOM_TIMEOUT)
 
         # Validate timeout
-        if not isinstance(timeout, (int, float)) or timeout <= 0:
+        timeout_val: int = DEFAULT_CUSTOM_TIMEOUT
+        if isinstance(raw_timeout, (int, float)) and raw_timeout > 0:
+            timeout_val = int(raw_timeout)
+        else:
             logger.warning(
-                f"custom_gates[{i}] ({name}): invalid timeout {timeout}, using default"
+                f"custom_gates[{i}] ({name}): invalid timeout {raw_timeout}, "
+                "using default"
             )
-            timeout = DEFAULT_CUSTOM_TIMEOUT
 
         try:
-            check_class = make_custom_check_class(
+            check_class: Type[BaseCheck] = make_custom_check_class(
                 gate_name=name,
                 description=description,
                 category_key=category_key,
                 command=command,
                 level_str=level_str,
-                timeout=int(timeout),
+                timeout=timeout_val,
             )
             registry.register(check_class)
 
             # Determine the full name for logging
-            temp = check_class({})
-            full_name = temp.full_name
+            temp: BaseCheck = check_class({})
+            full_name: str = temp.full_name
             registered.append(full_name)
             logger.debug(f"Registered custom gate: {full_name}")
         except Exception as e:

@@ -234,7 +234,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             ]
 
             env = {**os.environ, "ESLINT_USE_FLAT_CONFIG": "false"}
-            result = self._runner.run(cmd, cwd=project_root, timeout=120, env=env)
+            result = self._run_command(cmd, cwd=project_root, timeout=120, env=env)
             duration = time.time() - start_time
 
             # Parse ESLint JSON output

@@ -562,6 +562,7 @@ class BaseCheck(ABC):
         command: List[str],
         cwd: Optional[str] = None,
         timeout: Optional[int] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> SubprocessResult:
         """Run a command using the subprocess runner.
 
@@ -576,6 +577,7 @@ class BaseCheck(ABC):
             command: Command to run
             cwd: Working directory (also used as project root for tool lookup)
             timeout: Timeout in seconds
+            env: Optional environment variables for the subprocess
 
         Returns:
             SubprocessResult
@@ -584,7 +586,7 @@ class BaseCheck(ABC):
             resolved = find_tool(command[0], cwd)
             if resolved:
                 command = [resolved, *command[1:]]
-        return self._runner.run(command, cwd=cwd, timeout=timeout)
+        return self._runner.run(command, cwd=cwd, timeout=timeout, env=env)
 
 
 class PythonCheckMixin:
