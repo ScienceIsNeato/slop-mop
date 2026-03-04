@@ -61,6 +61,7 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
             print(f"     • {tool_name} → {check_name}")
             print(f"       Install: {install_cmd}")
         print()
+        print("   💡 Install everything at once: pipx install slopmop[all]")
         print("   After installing, re-run: sm init")
         print()
 

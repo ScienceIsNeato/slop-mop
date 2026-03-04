@@ -28,30 +28,59 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 
-# All dependencies - both runtime tools and development/testing
+# Core runtime — only what the sm framework actually imports at the Python level.
+# All check tools (black, bandit, etc.) are invoked via subprocess and are optional.
+# Install extras for the tools you need: pipx install slopmop[all]
 dependencies = [
-    # Tools slop-mop checks rely on
-    "vulture>=2.14",
-    "ruff>=0.1.0",
-    # Testing
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "diff-cover>=7.0.0",
-    # Code quality
+    "jinja2>=3.0.0",
+]
+
+[project.optional-dependencies]
+# Formatting & linting
+lint = [
     "black>=25.11.0",
     "isort>=5.12.0",
     "autoflake>=2.0.0",
+    "flake8>=6.0.0",
+]
+# Type checking
+typing = [
     "mypy>=1.17.0",
     "pyright>=1.1.0",
-    "flake8>=6.0.0",
-    # Security
+]
+# Static analysis (dead code, complexity)
+analysis = [
+    "vulture>=2.14",
+    "radon>=5.1.0",
+]
+# Security scanning
+security = [
     "bandit>=1.7.0",
     "detect-secrets>=1.4.0",
+    "cryptography>=46.0.5",  # CVE GHSA-r6ph-v2qm-q3c2
     "semgrep>=1.140.0",
     "pip-audit>=2.0.0",
-    "cryptography>=46.0.5",  # CVE GHSA-r6ph-v2qm-q3c2
-    # Templating
-    "jinja2>=3.0.0",
+]
+# Testing frameworks (for sm's own tests & PROJECT-context checks)
+testing = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "diff-cover>=7.0.0",
+]
+# All tools — batteries-included experience
+tools = [
+    "slopmop[lint]",
+    "slopmop[typing]",
+    "slopmop[analysis]",
+    "slopmop[security]",
+    "slopmop[testing]",
+]
+all = [
+    "slopmop[tools]",
+]
+# Developer setup (hacking on slopmop itself)
+dev = [
+    "slopmop[all]",
 ]
 
 [project.scripts]

@@ -28,8 +28,9 @@ The mop finds the slop. The agent cleans it up. The ship stays seaworthy.
 
 ```bash
 # Install (once per machine)
-pipx install slopmop          # recommended — isolated, no dep conflicts
-# or: pip install slopmop
+pipx install slopmop[all]     # recommended — all tools bundled, isolated
+# or: pipx install slopmop    # minimal — just the framework, add tools later
+# or: pip install slopmop[all]
 
 # Set up the project
 sm init                       # auto-detects languages, writes .sb_config.json
@@ -40,6 +41,18 @@ sm scour                      # thorough check before opening a PR
 ```
 
 `sm init` auto-detects Python, JavaScript, or both and writes a `.sb_config.json` with applicable gates enabled.
+
+### Installation Options
+
+| Command | What You Get |
+|---------|-------------|
+| `pipx install slopmop` | Framework only — `sm init` shows what's missing |
+| `pipx install slopmop[lint]` | + black, isort, autoflake, flake8 |
+| `pipx install slopmop[typing]` | + mypy, pyright |
+| `pipx install slopmop[security]` | + bandit, semgrep, detect-secrets, pip-audit |
+| `pipx install slopmop[analysis]` | + vulture, radon |
+| `pipx install slopmop[testing]` | + pytest, pytest-cov, diff-cover |
+| `pipx install slopmop[all]` | Everything above |
 
 ---
 
@@ -304,7 +317,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install slopmop
+      - run: pip install slopmop[all]
       - run: sm swab
       - if: github.event_name == 'pull_request'
         env:
@@ -341,7 +354,7 @@ This means if the project has its own `pytest` (with plugins like `pytest-django
 
 ```bash
 # Working on slop-mop itself
-pip install -e .
+pip install -e ".[dev]"
 sm scour                   # dogfooding — sm validates its own code
 pytest
 ```

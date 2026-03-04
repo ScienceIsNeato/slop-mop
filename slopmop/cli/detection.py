@@ -9,47 +9,35 @@ from slopmop.checks.base import find_tool
 # Tools required by specific checks: (tool_name, check_name, install_command)
 # Used during `sm init` to auto-disable checks whose tools aren't available.
 # find_tool() resolves these via project venv → .venv → VIRTUAL_ENV → PATH.
-# When sm is installed via pipx, most tools are bundled and found via PATH.
+#
+# Install commands reference pyproject.toml optional-dependency groups:
+#   lint      — black, isort, autoflake, flake8
+#   typing    — mypy, pyright
+#   analysis  — vulture, radon
+#   security  — bandit, semgrep, detect-secrets, pip-audit
+#   testing   — pytest, pytest-cov, diff-cover
+#   all       — everything above
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
-    # Lint & format (sloppy-formatting.py gate)
-    ("black", "laziness:sloppy-formatting.py", "pip install black  # in your venv"),
-    ("isort", "laziness:sloppy-formatting.py", "pip install isort  # in your venv"),
-    (
-        "autoflake",
-        "laziness:sloppy-formatting.py",
-        "pip install autoflake  # in your venv",
-    ),
-    ("flake8", "laziness:sloppy-formatting.py", "pip install flake8  # in your venv"),
-    # Static analysis & types
-    ("vulture", "laziness:dead-code.py", "pip install vulture  # in your venv"),
-    (
-        "pyright",
-        "overconfidence:type-blindness.py",
-        "pip install pyright  # in your venv",
-    ),
-    # Security scanning
-    (
-        "bandit",
-        "myopia:vulnerability-blindness.py",
-        "pip install bandit  # in your venv",
-    ),
-    (
-        "semgrep",
-        "myopia:vulnerability-blindness.py",
-        "pip install semgrep  # in your venv",
-    ),
+    # Lint & format (sloppy-formatting.py gate) → [lint] extra
+    ("black", "laziness:sloppy-formatting.py", "pipx install slopmop[lint]"),
+    ("isort", "laziness:sloppy-formatting.py", "pipx install slopmop[lint]"),
+    ("autoflake", "laziness:sloppy-formatting.py", "pipx install slopmop[lint]"),
+    ("flake8", "laziness:sloppy-formatting.py", "pipx install slopmop[lint]"),
+    # Static analysis → [analysis] extra
+    ("vulture", "laziness:dead-code.py", "pipx install slopmop[analysis]"),
+    # Type checking → [typing] extra
+    ("pyright", "overconfidence:type-blindness.py", "pipx install slopmop[typing]"),
+    # Security scanning → [security] extra
+    ("bandit", "myopia:vulnerability-blindness.py", "pipx install slopmop[security]"),
+    ("semgrep", "myopia:vulnerability-blindness.py", "pipx install slopmop[security]"),
     (
         "detect-secrets",
         "myopia:vulnerability-blindness.py",
-        "pip install detect-secrets  # in your venv",
+        "pipx install slopmop[security]",
     ),
-    ("pip-audit", "myopia:dependency-risk.py", "pip install pip-audit  # in your venv"),
-    # Complexity scanning (not bundled — install system-wide or in venv)
-    (
-        "radon",
-        "laziness:complexity-creep.py",
-        "pip install radon  # in your venv or: brew install radon",
-    ),
+    ("pip-audit", "myopia:dependency-risk.py", "pipx install slopmop[security]"),
+    # Complexity scanning → [analysis] extra
+    ("radon", "laziness:complexity-creep.py", "pipx install slopmop[analysis]"),
 ]
 
 
