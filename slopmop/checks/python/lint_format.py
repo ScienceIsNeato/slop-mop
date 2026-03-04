@@ -133,6 +133,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "--skip=.venv",
                 "--skip=build",
                 "--skip=dist",
+                "--skip=node_modules",
                 "--skip-glob=.*",
                 ".",
             ],
@@ -262,6 +263,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "--skip=.venv",
                 "--skip=build",
                 "--skip=dist",
+                "--skip=node_modules",
                 # Skip hidden directories (e.g. .claude/, .git/) that contain
                 # tool infrastructure rather than project source code.
                 "--skip-glob=.*",
