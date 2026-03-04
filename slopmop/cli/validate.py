@@ -5,6 +5,7 @@ top-level commands.
 """
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -18,6 +19,21 @@ from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.timings import clear_timings, load_timing_averages
+
+
+def _is_json_mode(args: argparse.Namespace) -> bool:
+    """Determine whether output should be JSON.
+
+    Resolution order:
+    1. Explicit --json → True
+    2. Explicit --no-json → False
+    3. Auto-detect: not a TTY → True (piped to AI agent)
+    4. Default: False (interactive terminal)
+    """
+    explicit = getattr(args, "json_output", None)
+    if explicit is not None:
+        return explicit
+    return not sys.stdout.isatty()
 
 
 def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
@@ -113,10 +129,12 @@ def _run_validation(
         print(f"❌ Project root not found: {project_root}")
         return 1
 
+    json_mode = _is_json_mode(args)
+
     # Clear timing history if requested
     if getattr(args, "clear_history", False):
         if clear_timings(str(project_root)):
-            if not args.quiet:
+            if not args.quiet and not json_mode:
                 print("🗑️  Timing history cleared")
 
     # Create executor
@@ -146,15 +164,17 @@ def _run_validation(
     register_custom_gates(config)
 
     # Determine if we should use dynamic display
+    # JSON mode suppresses all interactive output
     use_dynamic = (
-        sys.stdout.isatty()
+        not json_mode
+        and sys.stdout.isatty()
         and not os.environ.get("NO_COLOR")
         and not args.quiet
         and not getattr(args, "static", False)
     )
 
     # Print header BEFORE starting dynamic display
-    if not args.quiet:
+    if not args.quiet and not json_mode:
         _print_header(project_root, gates, args)
 
     # Handle time budget (swabbing-time).
@@ -174,7 +194,7 @@ def _run_validation(
     timings: Optional[dict[str, float]] = None
     if swabbing_time is not None and swabbing_time > 0:
         timings = load_timing_averages(str(project_root))
-        if not args.quiet:
+        if not args.quiet and not json_mode:
             print(f"⏱️  Time budget: {swabbing_time}s")
             print()
 
@@ -185,8 +205,8 @@ def _run_validation(
         dynamic_display, deferred_failures = _setup_dynamic_display(
             executor, reporter, args.quiet, project_root
         )
-    else:
-        # Fall back to traditional reporter
+    elif not json_mode:
+        # Fall back to traditional reporter (no progress in JSON mode)
         executor.set_progress_callback(reporter.on_check_complete)
 
     try:
@@ -210,8 +230,12 @@ def _run_validation(
             for result in deferred_failures:
                 reporter.on_check_complete(result)
 
-        # Print summary
-        reporter.print_summary(summary)
+        if json_mode:
+            # Single JSON object — compact, machine-readable
+            print(json.dumps(summary.to_dict(), separators=(",", ":")))
+        else:
+            reporter.print_summary(summary)
+
         return 0 if summary.all_passed else 1
     finally:
         # Ensure display is stopped on any exit

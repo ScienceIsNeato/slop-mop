@@ -59,6 +59,10 @@ class ScopeInfo:
     files: int = 0
     lines: int = 0
 
+    def to_dict(self) -> Dict[str, int]:
+        """Serialize to a plain dict for JSON output."""
+        return {"files": self.files, "lines": self.lines}
+
     def __add__(self, other: "ScopeInfo") -> "ScopeInfo":
         return ScopeInfo(self.files + other.files, self.lines + other.lines)
 
@@ -115,6 +119,29 @@ class CheckResult:
     category: Optional[str] = None
     scope: Optional[ScopeInfo] = None
     skip_reason: Optional["SkipReason"] = None
+
+    def to_dict(self) -> Dict[str, object]:
+        """Serialize to a plain dict for JSON output."""
+        d: Dict[str, object] = {
+            "name": self.name,
+            "status": self.status.value,
+            "duration": round(self.duration, 3),
+        }
+        if self.output:
+            d["output"] = self.output
+        if self.error:
+            d["error"] = self.error
+        if self.fix_suggestion:
+            d["fix_suggestion"] = self.fix_suggestion
+        if self.auto_fixed:
+            d["auto_fixed"] = True
+        if self.category:
+            d["category"] = self.category
+        if self.scope:
+            d["scope"] = self.scope.to_dict()
+        if self.skip_reason:
+            d["skip_reason"] = self.skip_reason.value
+        return d
 
     @property
     def passed(self) -> bool:
@@ -237,6 +264,25 @@ class ExecutionSummary:
             files=max(s.files for s in by_cat.values()),
             lines=max(s.lines for s in by_cat.values()),
         )
+
+    def to_dict(self) -> Dict[str, object]:
+        """Serialize to a plain dict for JSON output."""
+        scope = self.total_scope()
+        return {
+            "summary": {
+                "total_checks": self.total_checks,
+                "passed": self.passed,
+                "failed": self.failed,
+                "warned": self.warned,
+                "skipped": self.skipped,
+                "not_applicable": self.not_applicable,
+                "errors": self.errors,
+                "all_passed": self.all_passed,
+                "total_duration": round(self.total_duration, 3),
+                "scope": scope.to_dict() if scope else None,
+            },
+            "results": [r.to_dict() for r in self.results],
+        }
 
     @classmethod
     def from_results(

@@ -6,6 +6,7 @@ gates; use ``sm swab`` or ``sm scour`` for that.
 """
 
 import argparse
+import json
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -287,10 +288,52 @@ def _print_recent_history(history: Dict[str, TimingStats]) -> None:
 # ── Main ─────────────────────────────────────────────────────────
 
 
+def _build_status_dict(
+    root: Path,
+    config: Dict[str, Any],
+    all_gates: List[str],
+    swab_gates: Set[str],
+    scour_only_gates: Set[str],
+    disabled: List[str],
+    applicability: Dict[str, Tuple[bool, str]],
+    history: Dict[str, TimingStats],
+) -> Dict[str, Any]:
+    """Build a JSON-serializable dict of project status."""
+    gate_list: List[Dict[str, Any]] = []
+    for gate in all_gates:
+        is_app, reason = applicability.get(gate, (True, ""))
+        hist = history.get(gate)
+        entry: Dict[str, Any] = {
+            "name": gate,
+            "applicable": is_app,
+            "in_swab": gate in swab_gates,
+            "in_scour": gate in swab_gates or gate in scour_only_gates,
+        }
+        if not is_app:
+            entry["skip_reason"] = reason
+        if hist and hist.results:
+            entry["last_result"] = hist.results[-1]
+            entry["history"] = hist.results[-10:]
+        gate_list.append(entry)
+
+    return {
+        "project_root": str(root),
+        "config_file": str(root / ".sb_config.json"),
+        "swabbing_time": config.get("swabbing_time"),
+        "gates": {
+            "swab_count": len(swab_gates),
+            "scour_only_count": len(scour_only_gates),
+            "disabled": sorted(disabled),
+            "inventory": gate_list,
+        },
+    }
+
+
 def run_status(
     project_root: str,
     quiet: bool = False,
     verbose: bool = False,
+    json_output: Optional[bool] = None,
 ) -> int:
     """Show project dashboard without running any gates.
 
@@ -302,6 +345,7 @@ def run_status(
         project_root: Absolute path to the project root.
         quiet: Suppress header.
         verbose: Show additional detail (e.g. per-gate timing stats).
+        json_output: If True, emit JSON. If None, auto-detect from TTY.
 
     Returns:
         Always 0 (observatory — no pass/fail).
@@ -314,6 +358,12 @@ def run_status(
     if not root.is_dir():
         print(f"❌ Project root not found: {root}")
         return 1
+
+    # Resolve JSON mode: explicit flag > auto-detect (not TTY → JSON)
+    if json_output is None:
+        json_mode = not sys.stdout.isatty()
+    else:
+        json_mode = json_output
 
     registry = get_registry()
     config = load_config(root)
@@ -344,9 +394,25 @@ def run_status(
 
     # ── Historical timing data ────────────────────────────────────
     history = load_timings(str(root))
+
+    # ── JSON output ───────────────────────────────────────────────
+    if json_mode:
+        data = _build_status_dict(
+            root,
+            config,
+            all_gates,
+            swab_gates,
+            scour_only_gates,
+            disabled,
+            applicability,
+            history,
+        )
+        print(json.dumps(data, separators=(",", ":")))
+        return 0
+
+    # ── Pretty output ─────────────────────────────────────────────
     colors_enabled = sys.stdout.isatty()
 
-    # ── Print dashboard ───────────────────────────────────────────
     if not quiet:
         print()
         print("🪣 slop-mop · project dashboard")
@@ -387,4 +453,5 @@ def cmd_status(args: argparse.Namespace) -> int:
         project_root=args.project_root,
         quiet=args.quiet,
         verbose=args.verbose,
+        json_output=getattr(args, "json_output", None),
     )

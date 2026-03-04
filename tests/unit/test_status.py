@@ -550,7 +550,7 @@ class TestRunStatus:
             patch("slopmop.cli.status.get_registry", return_value=registry),
             patch("slopmop.cli.status.load_timings", return_value={}),
         ):
-            result = run_status(project_root=str(tmp_path))
+            result = run_status(project_root=str(tmp_path), json_output=False)
         return result, registry
 
     def test_always_returns_0(self, tmp_path):
@@ -560,7 +560,9 @@ class TestRunStatus:
 
     def test_invalid_project_root(self, tmp_path, capsys):
         """run_status returns 1 for non-existent path."""
-        result = run_status(project_root=str(tmp_path / "nonexistent"))
+        result = run_status(
+            project_root=str(tmp_path / "nonexistent"), json_output=False
+        )
         assert result == 1
         assert "not found" in capsys.readouterr().out
 
@@ -572,7 +574,7 @@ class TestRunStatus:
             patch("slopmop.cli.status.get_registry", return_value=registry),
             patch("slopmop.cli.status.load_timings", return_value={}),
         ):
-            run_status(project_root=str(tmp_path))
+            run_status(project_root=str(tmp_path), json_output=False)
         out = capsys.readouterr().out
         assert "project dashboard" in out
 
@@ -586,7 +588,7 @@ class TestRunStatus:
             patch("slopmop.core.executor.CheckExecutor", side_effect=AssertionError),
         ):
             # Should NOT raise — executor is never imported or used
-            result = run_status(project_root=str(tmp_path))
+            result = run_status(project_root=str(tmp_path), json_output=False)
             assert result == 0
 
 

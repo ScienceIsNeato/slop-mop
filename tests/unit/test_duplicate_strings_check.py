@@ -63,13 +63,11 @@ class TestStringDuplicationCheck:
         assert check.is_applicable(str(tmp_path)) is False
 
     def test_get_tool_path(self, check):
-        """Test tool path points to vendored find-duplicate-strings."""
+        """Test tool path points to find-duplicate-strings (vendored or global)."""
         tool_path = check._get_tool_path()
-        # In the dev checkout, should find the vendored tool
         if tool_path is not None:
-            assert "tools" in str(tool_path)
+            # Tool can be vendored (tools/.../index.js) or globally installed
             assert "find-duplicate-strings" in str(tool_path)
-            assert "index.js" in str(tool_path)
 
     def test_get_effective_config_defaults(self, check):
         """Test effective config has defaults."""
@@ -94,7 +92,9 @@ class TestStringDuplicationCheck:
         config = check._get_effective_config()
         cmd = check._build_command(config)
 
-        assert "node" in cmd
+        # Tool may be invoked via "node <path>/index.js" (vendored)
+        # or directly as a binary (global install) — both are valid
+        assert any("find-duplicate-strings" in c for c in cmd)
         assert "--threshold" in cmd
         assert "--json" in cmd
         assert "2" in cmd  # default threshold
