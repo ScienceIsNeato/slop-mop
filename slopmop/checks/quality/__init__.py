@@ -9,12 +9,14 @@ Cross-cutting quality gates that apply to any project:
 - StaleDocsCheck: Detect stale README gate tables
 - StringDuplicationCheck: Duplicate string literal detection
 - LocLockCheck: Lines of code enforcement
+- DebuggerArtifactsCheck: Cross-language debugger artifact detection
 """
 
 from slopmop.checks.quality.bogus_tests import BogusTestsCheck
 from slopmop.checks.quality.complexity import ComplexityCheck
 from slopmop.checks.quality.config_debt import ConfigDebtCheck
 from slopmop.checks.quality.dead_code import DeadCodeCheck
+from slopmop.checks.quality.debugger_artifacts import DebuggerArtifactsCheck
 from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
 from slopmop.checks.quality.duplication import SourceDuplicationCheck
 from slopmop.checks.quality.gate_dodging import GateDodgingCheck
@@ -26,6 +28,7 @@ __all__ = [
     "ComplexityCheck",
     "ConfigDebtCheck",
     "DeadCodeCheck",
+    "DebuggerArtifactsCheck",
     "GateDodgingCheck",
     "SourceDuplicationCheck",
     "StaleDocsCheck",
