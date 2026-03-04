@@ -16,6 +16,7 @@ from slopmop.reporting.display import config
 from slopmop.reporting.display.colors import (
     Color,
     category_header_color,
+    overrun_color,
     reset_color,
     status_color,
     supports_color,
@@ -23,9 +24,11 @@ from slopmop.reporting.display.colors import (
 from slopmop.reporting.display.renderer import (
     align_columns,
     build_category_header,
+    build_column_header_line,
     build_dot_leader,
     build_overall_progress,
     build_progress_bar,
+    display_width,
     format_time,
     get_terminal_width,
     right_justify,
@@ -34,7 +37,7 @@ from slopmop.reporting.display.renderer import (
     truncate_to_width,
 )
 from slopmop.reporting.display.state import CheckDisplayInfo, DisplayState
-from slopmop.reporting.timings import load_timings, save_timings
+from slopmop.reporting.timings import TimingStats, load_timings, save_timings
 
 
 class DynamicDisplay:
@@ -92,9 +95,8 @@ class DynamicDisplay:
         self._total_checks_expected: int = 0  # Set via set_total_checks()
         self._completion_counter: int = 0  # Tracks order of completion
 
-        # Historical timing data for ETAs and sparklines
-        self._historical_timings: Dict[str, float] = {}
-        self._historical_timing_lists: Dict[str, List[float]] = {}  # For sparklines
+        # Historical timing data for ETAs and overrun detection
+        self._historical_timings: Dict[str, TimingStats] = {}
 
     def load_historical_timings(self, project_root: str) -> None:
         """Load historical timing data from disk.
@@ -115,8 +117,15 @@ class DynamicDisplay:
             for name, info in self._checks.items()
             if info.state == DisplayState.COMPLETED and info.duration > 0
         }
+        results = {
+            name: info.result.status.value
+            for name, info in self._checks.items()
+            if info.state == DisplayState.COMPLETED
+            and info.duration > 0
+            and info.result is not None
+        }
         if durations:
-            save_timings(project_root, durations)
+            save_timings(project_root, durations, results=results)
 
     def start(self) -> None:
         """Start the display and animation thread."""
@@ -156,9 +165,9 @@ class DynamicDisplay:
             for name, category in checks:
                 if name not in self._checks:
                     info = CheckDisplayInfo(name=name, category=category)
-                    # Populate expected duration from historical data
+                    # Populate timing stats from historical data
                     if name in self._historical_timings:
-                        info.expected_duration = self._historical_timings[name]
+                        info.timing_stats = self._historical_timings[name]
                     self._checks[name] = info
                     self._check_order.append(name)
 
@@ -198,9 +207,9 @@ class DynamicDisplay:
             self._checks[name].state = DisplayState.RUNNING
             self._checks[name].start_time = time.time()
 
-            # Populate expected duration from historical data
+            # Populate timing stats from historical data
             if name in self._historical_timings:
-                self._checks[name].expected_duration = self._historical_timings[name]
+                self._checks[name].timing_stats = self._historical_timings[name]
 
         if not self._is_tty and not self.quiet:
             # Static mode: print start message
@@ -326,30 +335,67 @@ class DynamicDisplay:
             else len(self._checks)
         )
 
-        # Progress bar (only if we have checks)
+        # Category groups with checks
+        lines.extend(self._build_category_lines())
+
+        # Append footer sections (N/A, disabled, status summary)
+        self._append_footer(lines, completed, running)
+
+        # Progress bar at the bottom (anchored, always visible)
         if total > 0:
             elapsed = (
                 time.time() - self._overall_start_time
                 if self._overall_start_time
                 else 0.0
             )
-            lines.append(
-                build_overall_progress(
-                    completed, total, elapsed, colors_enabled=self._colors_enabled
-                )
+            # Build domino-line: categories in completion order
+            done = [
+                c
+                for c in self._checks.values()
+                if c.state == DisplayState.COMPLETED and c.category
+            ]
+            done.sort(key=lambda c: c.completion_order)
+            cat_seq = (
+                [c.category for c in done if c.category is not None] if done else None
             )
             lines.append("")
+            lines.append(
+                build_overall_progress(
+                    completed,
+                    total,
+                    elapsed,
+                    colors_enabled=self._colors_enabled,
+                    category_sequence=cat_seq,
+                )
+            )
 
-        # Group checks by category
+        return lines
+
+    def _build_category_lines(self) -> List[str]:
+        """Build category-grouped check lines with headers.
+
+        Each category gets a header with progress and aggregate
+        elapsed time, followed by individual check lines sorted
+        by actual duration (slowest first for completed checks).
+
+        Returns:
+            List of formatted lines for all categories and their checks
+        """
         groups = self._group_checks_by_category()
+        if not groups:
+            return []
+
         term_width = get_terminal_width()
+        lines: List[str] = []
 
         # Compute max short-name width across all checks for column alignment
-        all_checks_flat = [c for _, _, gc in groups for c in gc]
-        max_name_w = 0
-        for c in all_checks_flat:
-            sn = strip_category_prefix(c.name)
-            max_name_w = max(max_name_w, len(sn))
+        max_name_w = max(
+            (len(strip_category_prefix(c.name)) for _, _, gc in groups for c in gc),
+            default=0,
+        )
+
+        # Column headers — emitted once before the first category
+        lines.append(build_column_header_line(term_width))
 
         for category_key, category_label, group_checks in groups:
             cat_completed = sum(
@@ -358,12 +404,20 @@ class DynamicDisplay:
             cat_total = len(group_checks)
             cat_scope = self._aggregate_category_scope(group_checks)
 
+            # Aggregate elapsed time across completed checks in this category
+            cat_elapsed = sum(
+                c.duration
+                for c in group_checks
+                if c.state == DisplayState.COMPLETED and c.duration
+            )
+
             header = build_category_header(
                 category_label,
                 cat_completed,
                 cat_total,
                 term_width,
                 scope=cat_scope,
+                elapsed=cat_elapsed if cat_completed > 0 else None,
             )
             # Colorize the entire header line
             hdr_color = category_header_color(category_key, self._colors_enabled)
@@ -372,7 +426,8 @@ class DynamicDisplay:
                 header = f"{hdr_color}{header}{rc}"
             lines.append(header)
 
-            # Sort within group: completed by order, then running, then pending
+            # Sort within group: completed by actual time (slowest first),
+            # then running, then pending by expected duration desc
             group_checks.sort(
                 key=lambda c: (
                     (
@@ -380,7 +435,9 @@ class DynamicDisplay:
                         if c.state == DisplayState.COMPLETED
                         else 1 if c.state == DisplayState.RUNNING else 2
                     ),
-                    c.completion_order if c.state == DisplayState.COMPLETED else 0,
+                    # Completed: slowest first (negative duration)
+                    -(c.duration or 0) if c.state == DisplayState.COMPLETED else 0,
+                    # Pending: longest expected first
                     0 if c.expected_duration is not None else 1,
                     -(c.expected_duration or 0),
                     c.name,
@@ -390,15 +447,12 @@ class DynamicDisplay:
             for info in group_checks:
                 lines.append(self._format_check_line(info, name_width=max_name_w))
 
-        # Append footer sections (N/A, disabled, status summary)
-        self._append_footer(lines, completed, running)
-
         return lines
 
     def _append_footer(self, lines: List[str], completed: int, running: int) -> None:
         """Append footer sections to display output.
 
-        Adds N/A summary, disabled summary, and running/pending status
+        Adds a condensed skip summary and running/pending status
         to the bottom of the dynamic display.
 
         Args:
@@ -406,23 +460,24 @@ class DynamicDisplay:
             completed: Number of completed checks
             running: Number of running checks
         """
-        # N/A summary (not applicable — no matching project type)
-        if self._na_names:
-            lines.append("")
-            na_short = [strip_category_prefix(n) for n in self._na_names]
-            lines.append(f"Not applicable: {', '.join(na_short)}")
-
-        # Disabled summary (explicitly disabled in config)
+        # Condensed skip summary (one line for all skip reasons)
+        # Only shown while checks are still running — the console
+        # reporter prints a complete breakdown after the run finishes.
+        skip_parts: List[str] = []
         if self._disabled_names:
-            lines.append("")
-            disabled_short = [strip_category_prefix(n) for n in self._disabled_names]
-            lines.append(f"Disabled: {', '.join(disabled_short)}")
+            skip_parts.append(f"{len(self._disabled_names)} disabled")
+        if self._na_names:
+            skip_parts.append(f"{len(self._na_names)} n/a")
 
         # Status summary - only when checks still running or pending
         pending = sum(
             1 for c in self._checks.values() if c.state == DisplayState.PENDING
         )
         if running > 0 or pending > 0:
+            if skip_parts:
+                lines.append("")
+                lines.append(f"⏭️  {' · '.join(skip_parts)}")
+
             parts: List[str] = []
             if pending > 0:
                 parts.append(f"◌ {pending} waiting")
@@ -501,7 +556,14 @@ class DynamicDisplay:
     def _format_completed_line(
         self, info: CheckDisplayInfo, width: int, name_width: int = 0
     ) -> str:
-        """Format a completed check line.
+        """Format a completed check line with two-panel layout.
+
+        Layout (two horizontal sections):
+          LEFT:   {icon} {name}: done
+          RIGHT:  {avg}  {time}  {colored sparkline}
+
+        The right section is right-justified so column data aligns
+        with the column header labels.
 
         Args:
             info: Check display info (must be completed with result)
@@ -517,10 +579,20 @@ class DynamicDisplay:
         short_name = strip_category_prefix(info.name)
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
         icon = STATUS_EMOJI.get(info.result.status, "❓")
-        status_val = info.result.status.value
-        padded_status = f"{status_val:<{config.STATUS_COLUMN_WIDTH}}"
 
-        # Colorize status word
+        # Normalise icon to 2 display columns — most emoji are W/F (width 2)
+        # but ⊘ is Neutral (width 1).  Pad narrow icons so columns align.
+        icon_w = display_width(icon)
+        if icon_w < 2:
+            icon = icon + " " * (2 - icon_w)
+
+        # Status word — "skipped" for not-applicable/skipped, "done" otherwise
+        status_word = (
+            "skipped"
+            if info.result.status in (CheckStatus.NOT_APPLICABLE, CheckStatus.SKIPPED)
+            else "done"
+        )
+        padded_status = f"{status_word:<{config.STATUS_COLUMN_WIDTH}}"
         sc = status_color(info.result.status, ce)
         rc = reset_color(ce)
         colored_status = f"{sc}{padded_status}{rc}"
@@ -528,17 +600,42 @@ class DynamicDisplay:
         left = f"{config.CHECK_INDENT}{icon} {padded_name}: {colored_status}"
 
         # Inline failure preview for failed/error checks
-        preview = ""
         if info.result.status in (CheckStatus.FAILED, CheckStatus.ERROR):
             preview_text = info.result.error or info.result.output
             if preview_text:
                 preview = truncate_for_inline(preview_text, config.MAX_PREVIEW_WIDTH)
                 if preview:
-                    preview = f" — {preview}"
+                    left += f" — {preview}"
 
+        # ── Right section: timing columns (act | exp | history) ──
+        stats = info.timing_stats
         time_str = format_time(info.duration)
-        right = align_columns(time_str, "")
-        return right_justify(left + preview, right, width)
+
+        if stats and stats.sample_count >= 2:
+            act_str = time_str.rjust(config.TIMING_TIME_WIDTH)
+            avg_str = format_time(stats.median).rjust(config.TIMING_AVG_WIDTH)
+
+            # Sparkline colored by result status
+            spark = stats.sparkline(
+                max_width=config.TIMING_SPARK_WIDTH, colors_enabled=ce
+            )
+            timing = (
+                f"{act_str}{config.TIMING_SEP}"
+                f"{avg_str}{config.TIMING_SEP}"
+                f"{spark}"
+            )
+        else:
+            # No historical data — just show actual time, blank other cols
+            act_str = time_str.rjust(config.TIMING_TIME_WIDTH)
+            blank_avg = " " * config.TIMING_AVG_WIDTH
+            blank_spark = " " * config.TIMING_SPARK_WIDTH
+            timing = (
+                f"{act_str}{config.TIMING_SEP}"
+                f"{blank_avg}{config.TIMING_SEP}"
+                f"{blank_spark}"
+            )
+
+        return right_justify(left, timing, width)
 
     def _format_running_line(
         self, info: CheckDisplayInfo, width: int, name_width: int = 0
@@ -562,23 +659,72 @@ class DynamicDisplay:
         left = f"{config.CHECK_INDENT}{spinner} {padded_name}"
         time_str = format_time(elapsed)
 
-        if info.expected_duration and info.expected_duration > 0:
-            remaining = max(0.0, info.expected_duration - elapsed)
-            eta_str = format_time(remaining)
-            pct = min(elapsed / info.expected_duration, 0.99)
-            right = align_columns(time_str, eta_str)
+        stats = info.timing_stats
+        if stats and stats.median > 0:
+            ratio = elapsed / stats.median
             category = info.name.split(":")[0] if ":" in info.name else ""
-            bar_color = category_header_color(category, self._colors_enabled) or None
+            cat_color = category_header_color(category, self._colors_enabled) or None
+
+            if ratio > 1.0:
+                # Overrunning — compute IQR distance and escalate color
+                iqr_dist = stats.iqr_over(elapsed)
+                oc = overrun_color(iqr_dist, self._colors_enabled)
+                rc = reset_color(self._colors_enabled)
+                # Show actual/expected, e.g. "3.2s/1.1s"
+                actual_str = format_time(elapsed)
+                expected_str = format_time(stats.median)
+                label = f"|{actual_str}/{expected_str}"
+                pct_label = f"{oc}{label}{rc}" if oc else label
+                bar_color = oc if oc else cat_color
+                # Right section matches completed column layout (act | exp | history)
+                act_col = time_str.rjust(config.TIMING_TIME_WIDTH)
+                exp_col = " " * config.TIMING_AVG_WIDTH
+                spark_col = " " * config.TIMING_SPARK_WIDTH
+                right = (
+                    f"{act_col}{config.TIMING_SEP}"
+                    f"{exp_col}{config.TIMING_SEP}"
+                    f"{spark_col}"
+                )
+                return build_progress_bar(
+                    left,
+                    right,
+                    width,
+                    1.0,
+                    colors_enabled=self._colors_enabled,
+                    bar_color=bar_color,
+                    pct_label=pct_label,
+                )
+
+            remaining = max(0.0, stats.median - elapsed)
+            eta_str = format_time(remaining)
+            pct = min(ratio, 0.99)
+            # Right section matches completed column layout (act | exp | history)
+            act_col = time_str.rjust(config.TIMING_TIME_WIDTH)
+            exp_col = eta_str.rjust(config.TIMING_AVG_WIDTH)
+            spark_col = " " * config.TIMING_SPARK_WIDTH
+            right = (
+                f"{act_col}{config.TIMING_SEP}"
+                f"{exp_col}{config.TIMING_SEP}"
+                f"{spark_col}"
+            )
             return build_progress_bar(
                 left,
                 right,
                 width,
                 pct,
                 colors_enabled=self._colors_enabled,
-                bar_color=bar_color,
+                bar_color=cat_color,
             )
         else:
-            right = align_columns(time_str, "N/A")
+            # No timing data — act column only, rest blank
+            act_col = time_str.rjust(config.TIMING_TIME_WIDTH)
+            exp_col = " " * config.TIMING_AVG_WIDTH
+            spark_col = " " * config.TIMING_SPARK_WIDTH
+            right = (
+                f"{act_col}{config.TIMING_SEP}"
+                f"{exp_col}{config.TIMING_SEP}"
+                f"{spark_col}"
+            )
             return build_dot_leader(left, right, width, self._animation_tick)
 
     def _format_pending_line(
@@ -606,8 +752,19 @@ class DynamicDisplay:
         rc = reset_color(self._colors_enabled)
 
         left = f"{config.CHECK_INDENT}{dim}{indicator} {padded_name}: waiting{rc}"
-        eta_str = format_time(info.expected_duration) if info.expected_duration else ""
-        right = align_columns("", eta_str)
+        # Right section matches completed column layout (act | exp | history)
+        act_col = " " * config.TIMING_TIME_WIDTH
+        exp_col = (
+            format_time(info.expected_duration).rjust(config.TIMING_AVG_WIDTH)
+            if info.expected_duration
+            else " " * config.TIMING_AVG_WIDTH
+        )
+        spark_col = " " * config.TIMING_SPARK_WIDTH
+        right = (
+            f"{act_col}{config.TIMING_SEP}"
+            f"{exp_col}{config.TIMING_SEP}"
+            f"{spark_col}"
+        )
         return right_justify(left, right, width)
 
     def _format_check_line(self, info: CheckDisplayInfo, name_width: int = 0) -> str:

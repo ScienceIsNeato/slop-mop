@@ -104,10 +104,6 @@ class TestGenerateLanguageConfig:
 
         assert "enabled" in config
         assert config["enabled"] is False
-        assert "include_dirs" in config
-        assert config["include_dirs"] == []
-        assert "exclude_dirs" in config
-        assert config["exclude_dirs"] == ["slop-mop"]
         assert "gates" in config
         assert "mock-check" in config["gates"]
 
@@ -144,8 +140,6 @@ class TestGenerateBaseConfig:
 
         assert "version" in config
         assert config["version"] == "1.0"
-        assert "default_profile" in config
-        assert config["default_profile"] == "commit"
         assert "overconfidence" in config
 
     def test_base_config_all_disabled_by_default(self):
@@ -306,7 +300,7 @@ class TestTemplateConfig:
         assert "deceptiveness" in config
         assert "laziness" in config
         assert "myopia" in config
-        # general category is legacy — deploy/template checks moved to overconfidence/laziness
+        # general category has no registered checks currently
         assert "general" not in config
 
     def test_generate_template_config_all_gates_enabled(self):

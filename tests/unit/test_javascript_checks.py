@@ -18,12 +18,12 @@ class TestJavaScriptTestsCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptTestsCheck({})
-        assert check.name == "js-tests"
+        assert check.name == "untested-code.js"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptTestsCheck({})
-        assert check.full_name == "overconfidence:js-tests"
+        assert check.full_name == "overconfidence:untested-code.js"
 
     def test_display_name(self):
         """Test display name."""
@@ -34,7 +34,7 @@ class TestJavaScriptTestsCheck:
     def test_depends_on(self):
         """Test dependencies."""
         check = JavaScriptTestsCheck({})
-        assert "laziness:js-lint" in check.depends_on
+        assert "laziness:sloppy-formatting.js" in check.depends_on
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
@@ -128,12 +128,12 @@ class TestJavaScriptLintFormatCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptLintFormatCheck({})
-        assert check.name == "js-lint"
+        assert check.name == "sloppy-formatting.js"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptLintFormatCheck({})
-        assert check.full_name == "laziness:js-lint"
+        assert check.full_name == "laziness:sloppy-formatting.js"
 
     def test_display_name(self):
         """Test display name."""
@@ -275,12 +275,12 @@ class TestJavaScriptCoverageCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptCoverageCheck({})
-        assert check.name == "js-coverage"
+        assert check.name == "coverage-gaps.js"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptCoverageCheck({})
-        assert check.full_name == "deceptiveness:js-coverage"
+        assert check.full_name == "overconfidence:coverage-gaps.js"
 
     def test_display_name(self):
         """Test display name."""
@@ -290,7 +290,7 @@ class TestJavaScriptCoverageCheck:
     def test_depends_on(self):
         """Test dependencies."""
         check = JavaScriptCoverageCheck({})
-        assert "overconfidence:js-tests" in check.depends_on
+        assert "overconfidence:untested-code.js" in check.depends_on
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
@@ -312,12 +312,12 @@ class TestFrontendCheck:
     def test_name(self):
         """Test check name."""
         check = FrontendCheck({})
-        assert check.name == "js-frontend"
+        assert check.name == "sloppy-frontend.js"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = FrontendCheck({})
-        assert check.full_name == "laziness:js-frontend"
+        assert check.full_name == "laziness:sloppy-frontend.js"
 
     def test_display_name(self):
         """Test display name."""
@@ -382,12 +382,12 @@ class TestJavaScriptTypesCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptTypesCheck({})
-        assert check.name == "js-types"
+        assert check.name == "type-blindness.js"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptTypesCheck({})
-        assert check.full_name == "overconfidence:js-types"
+        assert check.full_name == "overconfidence:type-blindness.js"
 
     def test_display_name(self):
         """Test display name."""
@@ -397,7 +397,7 @@ class TestJavaScriptTypesCheck:
     def test_depends_on(self):
         """Test dependencies."""
         check = JavaScriptTypesCheck({})
-        assert "laziness:js-lint" in check.depends_on
+        assert "laziness:sloppy-formatting.js" in check.depends_on
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
@@ -575,12 +575,12 @@ class TestJavaScriptExpectCheck:
     def test_name(self):
         """Test check name."""
         check = JavaScriptExpectCheck({})
-        assert check.name == "js-expect-assert"
+        assert check.name == "hand-wavy-tests.js"
 
     def test_full_name(self):
         """Test full check name with category."""
         check = JavaScriptExpectCheck({})
-        assert check.full_name == "deceptiveness:js-expect-assert"
+        assert check.full_name == "deceptiveness:hand-wavy-tests.js"
 
     def test_display_name(self):
         """Test display name."""

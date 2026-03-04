@@ -24,6 +24,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    GateLevel,
     PythonCheckMixin,
     ToolContext,
 )
@@ -59,7 +60,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     Reports only HIGH/MEDIUM severity findings to reduce noise
     while catching real security issues.
 
-    Profiles: commit, pr, quick
+    Level: scour
 
     Configuration:
       scanners: ["bandit", "semgrep", "detect-secrets"] — all three
@@ -76,19 +77,23 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
       detect-secrets: Rotate the leaked secret, then add to
           .secrets.baseline if it's a false positive.
 
-    Re-validate:
-      ./scripts/sm validate myopia:security-scan --verbose
+    Re-check:
+      ./sm swab -g myopia:vulnerability-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
-        return "security-scan"
+        return "vulnerability-blindness.py"
 
     @property
     def display_name(self) -> str:
         return "🔐 Security Scan (code analysis)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🔐 bandit + semgrep + detect-secrets"
 
     @property
     def category(self) -> GateCategory:
@@ -100,7 +105,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def superseded_by(self) -> Optional[str]:
-        return "myopia:security-audit"
+        return "myopia:dependency-risk.py"
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -332,7 +337,7 @@ class SecurityCheck(SecurityLocalCheck):
     vulnerability checking. Requires network access to query
     the OSV vulnerability database.
 
-    Profiles: pr
+    Level: scour (full audit with network access)
 
     Configuration:
       Same as security:local, plus pip-audit runs automatically.
@@ -344,17 +349,23 @@ class SecurityCheck(SecurityLocalCheck):
           consider alternatives.
       pip-audit not available: pip install pip-audit
 
-    Re-validate:
-      ./scripts/sm validate myopia:security-audit --verbose
+    Re-check:
+      sm scour -g myopia:dependency-risk.py --verbose
     """
+
+    level = GateLevel.SCOUR
 
     @property
     def name(self) -> str:
-        return "security-audit"
+        return "dependency-risk.py"
 
     @property
     def display_name(self) -> str:
         return "🔒 Security Audit (code + dependencies)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🔒 Full security audit (code + pip-audit)"
 
     def run(self, project_root: str) -> CheckResult:
         """Run all security checks including dependency scanning."""

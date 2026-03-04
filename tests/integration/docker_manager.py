@@ -70,7 +70,7 @@ class RunResult:
     0. ``git clone bucket-o-slop``    (phase 0 — clone fixture repo)
     1. ``pip install /slopmop-src``   (phase A — install)
     2. ``sm init --non-interactive``  (phase B — init)
-    3. ``sm validate commit``         (phase C — validate)
+    3. ``sm swab``                    (phase C — validate)
 
     Each phase has a sentinel exit code so tests can identify which phase
     failed when the result is unexpected.
@@ -109,7 +109,7 @@ class RunResult:
 
     @property
     def validation_ran(self) -> bool:
-        """True when install + init both passed and sm validate actually ran."""
+        """True when install + init both passed and sm swab actually ran."""
         return self.exit_code in (0, 1)
 
     def assert_prerequisites(self) -> None:
@@ -132,7 +132,7 @@ class RunResult:
             f"branch {self.branch!r}.\n{self}"
         )
         assert self.validation_ran, (
-            f"sm validate never ran (exit {self.exit_code}) on "
+            f"sm swab never ran (exit {self.exit_code}) on "
             f"branch {self.branch!r}.\n{self}"
         )
 
@@ -267,14 +267,14 @@ class DockerManager:
             the checkout target.  Pin to a SHA for deterministic fixtures
             that don't drift when ``bucket-o-slop`` changes.
         command:
-            Override the default ``["sm", "validate", "commit"]``.
+            Override the default ``["sm", "swab"]``.
         extra_env:
             Extra ``-e KEY=VALUE`` flags passed to ``docker run``.
         """
         if not self._image_built:
             self.build_image()
 
-        sm_command = command or ["sm", "validate", "commit", "--no-fail-fast"]
+        sm_command = command or ["sm", "swab", "--no-fail-fast"]
 
         docker_cmd = [
             "docker",
@@ -300,7 +300,7 @@ class DockerManager:
         #  Phase 0 (exit 5): git clone bucket-o-slop
         #  Phase A (exit 2): pip install slopmop
         #  Phase B (exit 4): sm init --non-interactive
-        #  Phase C (exit 0 or 1): sm validate commit  ← becomes container exit
+        #  Phase C (exit 0 or 1): sm swab  ← becomes container exit
         #
         # Copy source to a writable location first: the read-only bind-mount
         # prevents pip from creating slopmop.egg-info inside /slopmop-src.

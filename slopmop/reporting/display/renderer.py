@@ -110,16 +110,25 @@ def truncate_to_width(text: str, max_width: int) -> str:
 
 
 def format_time(seconds: float) -> str:
-    """Format seconds as human-readable time.
+    """Format seconds as fixed-width, right-aligned time string.
+
+    Produces consistent-width output so timing columns align
+    vertically in the display.  Sub-60s values are formatted as
+    ``Xs`` or ``X.Xs`` (always includes one decimal for < 100s).
+    Near-zero values (< 0.05s) are shown as ``" fast"`` to avoid
+    the meaningless ``"  0.0s"`` label.
 
     Args:
         seconds: Time in seconds
 
     Returns:
-        Formatted string like "5.2s", "1m 30s", or "1h 23m 12s"
+        Formatted string like "  5.2s", " 42.1s", "1m 30s", " fast" etc.
+        Width is 6 characters for sub-60s values.
     """
+    if seconds < 0.05:
+        return "  fast"
     if seconds < 60:
-        return f"{seconds:.1f}s"
+        return f"{seconds:5.1f}s"
     elif seconds < 3600:
         mins = int(seconds // 60)
         secs = seconds % 60
@@ -216,6 +225,7 @@ def build_progress_bar(
     pct: float,
     colors_enabled: Optional[bool] = None,
     bar_color: Optional[str] = None,
+    pct_label: Optional[str] = None,
 ) -> str:
     """Build a line with a progress bar between left and right.
 
@@ -229,6 +239,8 @@ def build_progress_bar(
         colors_enabled: Whether to colorize the filled portion
         bar_color: ANSI color code to use for the filled portion (e.g. "\033[32m").
             Defaults to cyan if None.
+        pct_label: Override the percentage label (e.g. "|+13%" for overrun).
+            May contain ANSI codes; display width is measured correctly.
 
     Returns:
         Formatted line with progress bar
@@ -240,8 +252,10 @@ def build_progress_bar(
     if gap < config.MIN_PROGRESS_BAR_WIDTH:
         return right_justify(left, right, term_width)
 
-    pct_label = f"{int(pct * 100):>3}%"
-    bar_width = gap - len(pct_label) - 3  # [] + space before pct
+    if pct_label is None:
+        pct_label = f"{int(pct * 100):>3}%"
+    pct_label_width = display_width(pct_label)
+    bar_width = gap - pct_label_width - 3  # [] + space before pct
     if bar_width < config.MIN_BAR_CONTENT_WIDTH:
         return right_justify(left, right, term_width)
 
@@ -269,8 +283,15 @@ def build_overall_progress(
     elapsed: float,
     term_width: Optional[int] = None,
     colors_enabled: Optional[bool] = None,
+    category_sequence: Optional[List[str]] = None,
 ) -> str:
     """Build the overall progress line with bar and stats.
+
+    When *category_sequence* is provided, the filled portion of the
+    bar becomes a domino-line of category colors — each completed
+    check is one segment, colored by its category, in the order
+    checks finished.  This gives a striped barber-pole effect rather
+    than grouping like categories together.
 
     Args:
         completed: Number of completed checks
@@ -278,6 +299,9 @@ def build_overall_progress(
         elapsed: Elapsed time in seconds
         term_width: Terminal width (auto-detected if None)
         colors_enabled: Whether to colorize the filled portion
+        category_sequence: Ordered list of category keys, one per
+            completed check, in completion order.  Falls back to
+            solid green if omitted.
 
     Returns:
         Formatted progress line
@@ -296,16 +320,44 @@ def build_overall_progress(
 
     pct = completed / total if total > 0 else 0
     filled = int(pct * bar_width)
-    filled_str = config.PROGRESS_FILL * filled
     empty_str = config.PROGRESS_EMPTY * (bar_width - filled)
 
-    # Colorize filled portion in green when colors are enabled
+    # Colorize filled portion
     if colors_enabled is None:
         from slopmop.reporting.display.colors import supports_color
 
         colors_enabled = supports_color()
-    if colors_enabled and filled > 0:
-        filled_str = f"\033[32m{filled_str}\033[0m"  # green
+
+    if colors_enabled and filled > 0 and category_sequence:
+        # Domino-line: each check gets proportional width in completion order
+        from slopmop.reporting.display.colors import category_header_color
+
+        n = len(category_sequence)
+        reset = "\033[0m"
+        segments: List[str] = []
+        chars_used = 0
+
+        for i, cat in enumerate(category_sequence):
+            # Distribute bar chars proportionally; last segment absorbs rounding
+            if i == n - 1:
+                seg_w = filled - chars_used
+            else:
+                seg_w = max(1, round(filled * (i + 1) / n) - chars_used)
+            if seg_w <= 0:
+                continue
+            color = category_header_color(cat, True)
+            seg_str = config.PROGRESS_FILL * seg_w
+            if color:
+                segments.append(f"{color}{seg_str}{reset}")
+            else:
+                segments.append(seg_str)
+            chars_used += seg_w
+
+        filled_str = "".join(segments)
+    elif colors_enabled and filled > 0:
+        filled_str = f"\033[32m{config.PROGRESS_FILL * filled}\033[0m"  # green
+    else:
+        filled_str = config.PROGRESS_FILL * filled
 
     left_side = f"Progress: [{filled_str}{empty_str}]"
     return right_justify(left_side, right_side, term_width)
@@ -353,24 +405,52 @@ def truncate_for_inline(text: str, max_width: int) -> str:
     return "".join(result) + "…"
 
 
+def build_column_header_line(term_width: Optional[int] = None) -> str:
+    """Build a single column-header line for the report.
+
+    Uses the same width constants and separators as the data rows so
+    column edges align vertically.
+
+    Layout::
+
+        <padding>     avg    time  history
+
+    Args:
+        term_width: Terminal width (auto-detected if None)
+
+    Returns:
+        Right-justified header-label line
+    """
+    if term_width is None:
+        term_width = get_terminal_width()
+
+    right = config.TIMING_HEADER
+    # Pad to right edge
+    padding = max(0, term_width - display_width(right))
+    return " " * padding + right
+
+
 def build_category_header(
     label: str,
     completed: int,
     total: int,
     term_width: Optional[int] = None,
     scope: Optional[ScopeInfo] = None,
+    elapsed: Optional[float] = None,
 ) -> str:
-    """Build a minimal category header line.
+    """Build a category header line filled with dashes.
 
-    Produces a line like: ── Python [3/6] ──────────────────
-    Or with scope:        ── Python [3/6] · 23 files · 1.2k LOC ──
+    Produces a line like::
+
+        ── Python [3/6] · 6.8s ──────────────────────
 
     Args:
         label: Category display label (e.g. "🐍 Python")
         completed: Completed checks in this category
         total: Total checks in this category
         term_width: Terminal width (auto-detected if None)
-        scope: Optional scope metrics for files/LOC scanned
+        scope: Optional scope metrics (unused; kept for API compat)
+        elapsed: Optional aggregate time for the category
 
     Returns:
         Formatted header line
@@ -380,22 +460,22 @@ def build_category_header(
 
     dash = config.HEADER_DASH
     progress = f"[{completed}/{total}]"
-    scope_suffix = f" · {scope.format_compact()}" if scope else ""
-    inner = f" {label} {progress}{scope_suffix} "
+    if elapsed is not None and elapsed > 0:
+        time_str = format_time(elapsed)
+        left_part = f"{dash * 2} {label} {progress} · {time_str} "
+    else:
+        left_part = f"{dash * 2} {label} {progress} "
 
-    # Calculate remaining dashes to fill the line
-    inner_width = display_width(inner)
-    prefix_width = 2  # "── " leading dashes
-    remaining = max(0, term_width - prefix_width - inner_width)
-
-    return f"{dash * prefix_width}{inner}{dash * remaining}"
+    left_w = display_width(left_part)
+    fill = max(0, term_width - left_w)
+    return f"{left_part}{dash * fill}"
 
 
 def strip_category_prefix(check_name: str) -> str:
     """Strip the category prefix from a check name.
 
-    'laziness:py-lint' → 'lint-format'
-    'myopia:loc-lock'    → 'loc-lock'
+    'laziness:sloppy-formatting.py' → 'lint-format'
+    'myopia:code-sprawl'    → 'code-sprawl'
     'some-check'         → 'some-check' (no prefix)
 
     Args:

@@ -1,18 +1,19 @@
 """sm - Slop-Mop CLI with verb-based interface.
 
 Usage:
-    sm validate [--quality-gates GATES] [--self] [--verbose] [--quiet]
-    sm validate <profile> [--verbose] [--quiet]
+    sm swab [--quality-gates GATES] [--verbose] [--quiet]
+    sm scour [--quality-gates GATES] [--verbose] [--quiet]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
     sm commit-hooks status
-    sm commit-hooks install <profile>
+    sm commit-hooks install
     sm commit-hooks uninstall
     sm ci [PR_NUMBER] [--watch]
     sm help [GATE]
 
 Verbs:
-    validate      Run quality gate validation
+    swab          Quick validation (every commit)
+    scour         Thorough validation (PR readiness — superset of swab)
     config        View or update configuration
     init          Interactive setup and project configuration
     commit-hooks  Manage git pre-commit hooks
@@ -70,72 +71,96 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-def _add_validate_parser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-) -> None:
-    """Add the validate subcommand parser."""
-    validate_parser = subparsers.add_parser(
-        "validate",
-        help="Run quality gate validation",
-        description="Run quality gate validation on the target project.",
-    )
-    validate_parser.add_argument(
-        "profile",
-        nargs="?",
-        default=None,
-        help="Profile to run: commit, pr, quick, python, javascript, e2e",
-    )
-    validate_parser.add_argument(
+def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
+    """Add the common validation flags shared by swab, scour, and validate."""
+    parser.add_argument(
         "--quality-gates",
         "-g",
         nargs="+",
         metavar="GATE",
         help="Specific quality gates to run (comma-separated or space-separated)",
     )
-    validate_parser.add_argument(
-        "--self",
-        action="store_true",
-        dest="self_validate",
-        help="Run validation on slopmop itself",
-    )
-    validate_parser.add_argument(
+    parser.add_argument(
         "--project-root",
         type=str,
         default=".",
         help=PROJECT_ROOT_HELP,
     )
-    validate_parser.add_argument(
+    parser.add_argument(
         "--no-auto-fix",
         action="store_true",
         help="Disable automatic fixing of issues",
     )
-    validate_parser.add_argument(
+    parser.add_argument(
         "--no-fail-fast",
         action="store_true",
         help="Continue running checks even after failures",
     )
-    validate_parser.add_argument(
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
         help="Enable verbose output",
     )
-    validate_parser.add_argument(
+    parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",
         help="Minimal output (only show failures)",
     )
-    validate_parser.add_argument(
+    parser.add_argument(
         "--static",
         action="store_true",
         help="Disable dynamic display (use static line-by-line output)",
     )
-    validate_parser.add_argument(
+    parser.add_argument(
         "--clear-history",
         action="store_true",
         help="Clear all timing history before running",
     )
+    parser.add_argument(
+        "--swabbing-time",
+        type=int,
+        metavar="SECONDS",
+        default=None,
+        help=(
+            "Time budget in seconds for swab runs. Gates with historical "
+            "timing data are skipped when the budget would be exceeded. "
+            "Overrides the config-file default. Set to 0 to disable."
+        ),
+    )
+
+
+def _add_swab_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the swab subcommand parser (quick, every-commit validation)."""
+    swab_parser = subparsers.add_parser(
+        "swab",
+        help="Quick validation (every commit)",
+        description=(
+            "Run quick quality gate validation. Runs all swab-level gates — "
+            "the checks you want on every commit. Use -g to override with "
+            "specific gates."
+        ),
+    )
+    _add_validation_flags(swab_parser)
+
+
+def _add_scour_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the scour subcommand parser (thorough, PR-readiness validation)."""
+    scour_parser = subparsers.add_parser(
+        "scour",
+        help="Thorough validation (PR readiness)",
+        description=(
+            "Run thorough quality gate validation. Runs ALL gates (swab + "
+            "scour-level) — the full suite for PR readiness. Use -g to "
+            "override with specific gates."
+        ),
+    )
+    _add_validation_flags(scour_parser)
 
 
 def _add_config_parser(
@@ -163,19 +188,15 @@ def _add_config_parser(
         help="Disable a specific quality gate",
     )
     config_parser.add_argument(
-        "--include-dir",
-        metavar="CATEGORY:DIR",
-        help="Add directory to include list (e.g., python:src or quality:lib)",
-    )
-    config_parser.add_argument(
-        "--exclude-dir",
-        metavar="CATEGORY:DIR",
-        help="Add directory to exclude list (e.g., overconfidence:py-tests or quality:vendor)",
-    )
-    config_parser.add_argument(
         "--json",
         metavar="FILE",
         help="Update configuration from JSON file",
+    )
+    config_parser.add_argument(
+        "--swabbing-time",
+        type=int,
+        metavar="SECONDS",
+        help="Set the swabbing-time budget (seconds). 0 or negative disables the limit.",
     )
     config_parser.add_argument(
         "--project-root",
@@ -259,11 +280,13 @@ def _add_hooks_parser(
     # commit-hooks install
     hooks_install = hooks_subparsers.add_parser(
         "install",
-        help="Install a pre-commit hook that runs the specified profile",
+        help="Install a pre-commit hook that runs sm swab",
     )
     hooks_install.add_argument(
-        "profile",
-        help="Profile to run on commit (e.g., commit, quick, pr)",
+        "hook_verb",
+        nargs="?",
+        default="swab",
+        help="Command to run on commit: swab (default) or scour",
     )
     hooks_install.add_argument(
         "--project-root",
@@ -327,14 +350,12 @@ def _add_status_parser(
     """Add the status subcommand parser."""
     status_parser = subparsers.add_parser(
         "status",
-        help="Run all gates and show full report card",
-        description="Run all gates without fail-fast and print a report card.",
-    )
-    status_parser.add_argument(
-        "profile",
-        nargs="?",
-        default="pr",
-        help="Profile to report on (default: pr)",
+        help="Show project dashboard (config, gates, hooks)",
+        description=(
+            "Display project dashboard with configuration summary, "
+            "gate inventory (with historical results), and hook "
+            "installation status.  Does not run any gates."
+        ),
     )
     status_parser.add_argument(
         "--project-root",
@@ -346,18 +367,13 @@ def _add_status_parser(
         "--verbose",
         "-v",
         action="store_true",
-        help="Enable verbose output",
+        help="Show additional detail (e.g. per-gate timing stats)",
     )
     status_parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",
-        help="Minimal output (report card only)",
-    )
-    status_parser.add_argument(
-        "--static",
-        action="store_true",
-        help="Disable dynamic display (use static line-by-line output)",
+        help="Minimal output",
     )
 
 
@@ -373,7 +389,8 @@ slop before it lands in your codebase. Provides fast, actionable feedback for
 both human developers and AI coding assistants.
 
 Verbs:
-  validate    Run quality gate validation on target project
+  swab        Quick validation — runs on every commit
+  scour       Thorough validation — PR readiness (superset of swab)
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -381,14 +398,13 @@ Quick Start:
   1. Add slop-mop as a git submodule
   2. Run: ./slop-mop/scripts/setup.sh (creates venv, installs tools, adds ./sm)
   3. Run: ./sm init (auto-detect project, write config)
-  4. Run: ./sm validate commit (run quality gates)
+  4. Run: ./sm swab (run quick quality gates)
 
 Examples:
-  ./sm validate                           Run full validation suite
-  ./sm validate commit                    Run commit profile (fast)
-  ./sm validate pr --verbose              Run PR profile with details
-  ./sm validate --quality-gates python-tests,python-coverage
-  ./sm validate --self                    Validate slopmop itself
+  ./sm swab                               Quick validation (every commit)
+  ./sm scour                              Thorough validation (PR readiness)
+  ./sm swab -g python,quality             Run specific gate groups
+  ./sm scour --verbose                    Thorough with details
   ./sm config --show                      Show current configuration
   ./sm config --enable python-security    Enable a quality gate
   ./sm help python-lint-format            Show help for specific gate
@@ -398,7 +414,8 @@ Examples:
 
     subparsers = parser.add_subparsers(dest="verb", help="Command to run")
 
-    _add_validate_parser(subparsers)
+    _add_swab_parser(subparsers)
+    _add_scour_parser(subparsers)
     _add_status_parser(subparsers)
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
@@ -423,8 +440,9 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_config,
         cmd_help,
         cmd_init,
+        cmd_scour,
         cmd_status,
-        cmd_validate,
+        cmd_swab,
     )
 
     parser = create_parser()
@@ -437,8 +455,10 @@ def main(args: Optional[List[str]] = None) -> int:
         setup_logging(verbose=False)
 
     # Handle verbs
-    if parsed_args.verb == "validate":
-        return cmd_validate(parsed_args)
+    if parsed_args.verb == "swab":
+        return cmd_swab(parsed_args)
+    elif parsed_args.verb == "scour":
+        return cmd_scour(parsed_args)
     elif parsed_args.verb == "status":
         return cmd_status(parsed_args)
     elif parsed_args.verb == "config":

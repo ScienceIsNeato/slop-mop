@@ -30,7 +30,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     These catch root-cause annotations that prevent type checkers from
     cascading hundreds of "unknown type" errors downstream.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       strict_typing: True — enforces --disallow-untyped-defs and
@@ -46,21 +46,25 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
       attr-defined: Accessing an attribute that doesn't exist on the
           inferred type. Check your class hierarchy.
 
-    Re-validate:
-      ./sm validate overconfidence:py-static-analysis --verbose
+    Re-check:
+      ./sm swab -g overconfidence:missing-annotations.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
-        return "py-static-analysis"
+        return "missing-annotations.py"
 
     @property
     def display_name(self) -> str:
         strict = self._is_strict()
         label = "strict" if strict else "basic"
         return f"🔍 Static Analysis (mypy {label})"
+
+    @property
+    def gate_description(self) -> str:
+        return "🔍 mypy strict — types must check out"
 
     @property
     def category(self) -> GateCategory:
@@ -86,11 +90,22 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                 ),
                 permissiveness="true_is_stricter",
             ),
+            ConfigField(
+                name="include_dirs",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Directories to type-check (relative to project root). "
+                    "When empty, falls back to heuristic detection (src/, "
+                    "slopmop/, lib/, or packages with __init__.py)."
+                ),
+                permissiveness="fewer_is_stricter",
+            ),
         ]
 
     @property
     def depends_on(self) -> List[str]:
-        return ["laziness:py-lint"]
+        return ["laziness:sloppy-formatting.py"]
 
     def is_applicable(self, project_root: str) -> bool:
         """Applicable only if there are Python source directories to type-check."""

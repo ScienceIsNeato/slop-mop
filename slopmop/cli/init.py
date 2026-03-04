@@ -56,7 +56,6 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
         print("   After installing, re-run: sm init")
         print()
 
-    print(f"  Recommended profile: {detected['recommended_profile']}")
     if detected["recommended_gates"]:
         print(f"  Recommended gates:   {', '.join(detected['recommended_gates'])}")
     print()
@@ -71,9 +70,6 @@ def _build_non_interactive_config(
             "python"
             if detected["has_python"]
             else "javascript" if detected["has_javascript"] else "mixed"
-        ),
-        "default_profile": preconfig.get(
-            "default_profile", detected["recommended_profile"]
         ),
         "test_dirs": preconfig.get("test_dirs", detected["test_dirs"]),
         "disabled_gates": preconfig.get("disabled_gates", []),
@@ -92,12 +88,6 @@ def _build_interactive_config(
 
     config: Dict[str, Any] = {}
 
-    # Default profile
-    default_profile = preconfig.get("default_profile", detected["recommended_profile"])
-    config["default_profile"] = prompt_user(
-        "Default validation profile", default_profile
-    )
-
     # Test directories
     default_test_dirs = preconfig.get("test_dirs", detected["test_dirs"])
     test_dirs_str = prompt_user(
@@ -112,14 +102,14 @@ def _build_interactive_config(
     if detected["has_python"]:
         if not prompt_yes_no("Enable Python security scanning", True):
             config["disabled_gates"].extend(
-                ["myopia:security-scan", "myopia:security-audit"]
+                ["myopia:vulnerability-blindness.py", "myopia:dependency-risk.py"]
             )
         if not prompt_yes_no("Enable code complexity checks", True):
-            config["disabled_gates"].append("laziness:complexity")
+            config["disabled_gates"].append("laziness:complexity-creep.py")
 
     if detected["has_javascript"]:
         if not prompt_yes_no("Enable JavaScript linting", True):
-            config["disabled_gates"].append("laziness:js-lint")
+            config["disabled_gates"].append("laziness:sloppy-formatting.js")
 
     # Coverage threshold
     default_threshold = preconfig.get("coverage_threshold", 80)
@@ -144,17 +134,25 @@ def _disable_non_applicable(
     not by language. When a project doesn't have Python or JavaScript, we
     disable the language-specific gates within each category rather than
     disabling whole categories.
-    """
-    # Gate short-name prefixes that indicate language specificity
-    py_prefixes = ("py-",)
-    js_prefixes = ("js-",)
 
-    # Python-only gates that don't use the py- prefix
-    py_only_gates = {
-        "bogus-tests",
-        "complexity",
-        "dead-code",
-        "template-syntax",
+    Gate names use a suffix convention to indicate language specificity:
+      .py  → Python-specific gate
+      .js  → JavaScript-specific gate
+
+    Cross-cutting gates (e.g. security scanners that check multiple
+    languages) are excluded from suffix-based disabling — they rely
+    on their own ``is_applicable`` to determine relevance at runtime.
+    """
+    # Gate-name suffixes that indicate language specificity
+    py_suffix = ".py"
+    js_suffix = ".js"
+
+    # Cross-cutting gates whose is_applicable checks for Python *or* JS/TS.
+    # These must NOT be disabled by suffix alone — a JS-only project still
+    # benefits from semgrep, detect-secrets, and bandit JS rules.
+    cross_cutting_gates = {
+        "vulnerability-blindness.py",
+        "dependency-risk.py",
     }
 
     for category_key in list(base_config.keys()):
@@ -168,32 +166,32 @@ def _disable_non_applicable(
             if not isinstance(gate_config, dict):
                 continue
 
+            # Skip cross-cutting gates — they handle applicability themselves
+            if gate_name in cross_cutting_gates:
+                continue
+
             # Disable Python-specific gates if no Python detected
-            if not detected["has_python"]:
-                if any(gate_name.startswith(p) for p in py_prefixes):
-                    gate_config["enabled"] = False
-                elif gate_name in py_only_gates:
-                    gate_config["enabled"] = False
+            if not detected["has_python"] and gate_name.endswith(py_suffix):
+                gate_config["enabled"] = False
 
             # Disable JavaScript-specific gates if no JavaScript detected
-            if not detected["has_javascript"]:
-                if any(gate_name.startswith(p) for p in js_prefixes):
-                    gate_config["enabled"] = False
+            if not detected["has_javascript"] and gate_name.endswith(js_suffix):
+                gate_config["enabled"] = False
 
-    # Apply detected test dirs to py-tests gate
+    # Apply detected test dirs to untested-code.py gate
     if detected["has_python"] and detected["test_dirs"]:
         for cat_key in base_config:
             section = base_config.get(cat_key)
             if isinstance(section, dict) and "gates" in section:
-                if "py-tests" in section["gates"]:
-                    section["gates"]["py-tests"]["test_dirs"] = detected["test_dirs"]
+                if "untested-code.py" in section["gates"]:
+                    section["gates"]["untested-code.py"]["test_dirs"] = detected[
+                        "test_dirs"
+                    ]
 
 
 def _apply_user_config(base_config: Dict[str, Any], config: Dict[str, Any]) -> None:
     """Apply user config overrides to base config."""
-    base_config["default_profile"] = config.get("default_profile", "commit")
-
-    # Apply disabled gates — format is "category:gate" (e.g. "myopia:security-scan")
+    # Apply disabled gates — format is "category:gate" (e.g. "myopia:vulnerability-blindness.py")
     for gate_full_name in config.get("disabled_gates", []):
         if ":" in gate_full_name:
             category, gate = gate_full_name.split(":", 1)
@@ -226,7 +224,7 @@ def _disable_checks_with_missing_tools(
         return
 
     for _tool_name, check_name, _install_cmd in missing_tools:
-        # Parse check name: "quality:dead-code" -> category="quality", gate="dead-code"
+        # Parse check name: "laziness:dead-code.py" -> category="laziness", gate="dead-code.py"
         if ":" not in check_name:
             continue
         category, gate = check_name.split(":", 1)
@@ -239,7 +237,7 @@ def _disable_checks_with_missing_tools(
 def _set_bogus_tests_defaults(
     base_config: Dict[str, Any], detected: Dict[str, Any]
 ) -> None:
-    """Set sensible defaults for the bogus-tests gate.
+    """Set sensible defaults for the bogus-tests.py gate.
 
     Defaults ``min_test_statements`` to 1 — catches only the most
     egregious stubs (single return/print statement, no assertions)
@@ -253,7 +251,7 @@ def _set_bogus_tests_defaults(
 
     deceptiveness = base_config.get("deceptiveness", {})
     gates = deceptiveness.get("gates", {})
-    bogus_cfg = gates.get("bogus-tests")
+    bogus_cfg = gates.get("bogus-tests.py")
     if not bogus_cfg or not bogus_cfg.get("enabled", False):
         return
 
@@ -269,12 +267,12 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print("Next steps:")
     print("  1. Review the report card below to see where the repo stands")
     print("  2. Disable any gates you're not ready for: sm config --disable <gate>")
-    print("  3. Run 'sm validate commit' and fix what fails")
+    print("  3. Run 'sm swab' and fix what fails")
     print("  4. Gradually enable more gates and tighten thresholds over time")
     print()
     print("Quick reference:")
-    print("  sm validate commit   # Fast pre-commit validation")
-    print("  sm validate pr       # Full PR validation")
+    print("  sm swab              # Fast pre-commit validation")
+    print("  sm scour             # Full PR validation")
     print("  sm status            # Full report card (no fail-fast)")
     print("  sm config --show     # View current gate settings")
     print()
@@ -370,9 +368,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     _print_next_steps(config)
 
-    # Run status to show the user where the repo stands
-    print("─" * 60)
-    print("Running all gates to show current repo status...")
+    # Show project dashboard so the user sees current state
     print("─" * 60)
 
     from slopmop.cli.status import run_status

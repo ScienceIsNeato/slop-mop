@@ -179,25 +179,25 @@ class TestBuildSchemaLookup:
                 assert isinstance(cf, ConfigField)
 
     def test_contains_known_gate(self):
-        """Should contain at least the bogus-tests check we just worked on."""
+        """Should contain at least the bogus-tests.py check we just worked on."""
         lookup = _build_schema_lookup()
-        assert "deceptiveness:bogus-tests" in lookup
+        assert "deceptiveness:bogus-tests.py" in lookup
         assert "deceptiveness:gate-dodging" in lookup
 
     def test_dead_code_min_confidence_is_lower_is_stricter(self):
         """min_confidence should be lower_is_stricter (lower = more findings = stricter)."""
         lookup = _build_schema_lookup()
-        dead_code_fields = lookup.get("laziness:dead-code", {})
+        dead_code_fields = lookup.get("laziness:dead-code.py", {})
         mc = dead_code_fields.get("min_confidence")
-        assert mc is not None, "min_confidence field not found in dead-code schema"
+        assert mc is not None, "min_confidence field not found in dead-code.py schema"
         assert mc.permissiveness == "lower_is_stricter"
 
     def test_complexity_max_rank_string_comparison_works(self):
         """max_rank loosening ('C' → 'F') should be detected as more permissive."""
         lookup = _build_schema_lookup()
-        complexity_fields = lookup.get("laziness:complexity", {})
+        complexity_fields = lookup.get("laziness:complexity-creep.py", {})
         mr = complexity_fields.get("max_rank")
-        assert mr is not None, "max_rank field not found in complexity schema"
+        assert mr is not None, "max_rank field not found in complexity-creep.py schema"
         assert mr.permissiveness == "lower_is_stricter"
         # Verify the comparison actually works for string values
         assert _is_more_permissive("lower_is_stricter", "C", "F") is True
@@ -224,7 +224,7 @@ class TestDetectLoosenedGatesEdgeCases:
         }
 
     def test_non_dict_category_value_skipped(self):
-        """Non-dict category value (not version/default_profile) is skipped."""
+        """Non-dict category value (not version) is skipped."""
         base = {"laziness": "not_a_dict"}
         curr = {"laziness": "also_not_a_dict"}
         changes = _detect_loosened_gates(base, curr, {})
@@ -232,8 +232,8 @@ class TestDetectLoosenedGatesEdgeCases:
 
     def test_non_dict_gate_values_skipped(self):
         """Non-dict entries within gates are skipped."""
-        base = {"laziness": {"gates": {"complexity": "not_a_dict"}}}
-        curr = {"laziness": {"gates": {"complexity": "also_not_a_dict"}}}
+        base = {"laziness": {"gates": {"complexity-creep.py": "not_a_dict"}}}
+        curr = {"laziness": {"gates": {"complexity-creep.py": "also_not_a_dict"}}}
         changes = _detect_loosened_gates(base, curr, {})
         assert len(changes) == 0
 
@@ -246,30 +246,30 @@ class TestDetectLoosenedGatesEdgeCases:
 
     def test_field_added_non_enabled_skipped(self):
         """New field that didn't exist on base (not 'enabled') is skipped."""
-        base = {"laziness": {"gates": {"complexity": {}}}}
-        curr = {"laziness": {"gates": {"complexity": {"max_complexity": 20}}}}
+        base = {"laziness": {"gates": {"complexity-creep.py": {}}}}
+        curr = {"laziness": {"gates": {"complexity-creep.py": {"max_complexity": 20}}}}
         schema = self._make_schema(
-            "laziness:complexity", "max_complexity", "lower_is_stricter"
+            "laziness:complexity-creep.py", "max_complexity", "lower_is_stricter"
         )
         changes = _detect_loosened_gates(base, curr, schema)
         assert len(changes) == 0
 
     def test_field_removed_non_enabled_skipped(self):
         """Field removed (new=None, not 'enabled') is skipped."""
-        base = {"laziness": {"gates": {"complexity": {"max_complexity": 20}}}}
-        curr = {"laziness": {"gates": {"complexity": {}}}}
+        base = {"laziness": {"gates": {"complexity-creep.py": {"max_complexity": 20}}}}
+        curr = {"laziness": {"gates": {"complexity-creep.py": {}}}}
         schema = self._make_schema(
-            "laziness:complexity", "max_complexity", "lower_is_stricter"
+            "laziness:complexity-creep.py", "max_complexity", "lower_is_stricter"
         )
         changes = _detect_loosened_gates(base, curr, schema)
         assert len(changes) == 0
 
     def test_enabled_field_loosened_within_gate(self):
         """Gate-level 'enabled' changed from True to False is detected."""
-        base = {"laziness": {"gates": {"complexity": {"enabled": True}}}}
-        curr = {"laziness": {"gates": {"complexity": {"enabled": False}}}}
+        base = {"laziness": {"gates": {"complexity-creep.py": {"enabled": True}}}}
+        curr = {"laziness": {"gates": {"complexity-creep.py": {"enabled": False}}}}
         schema = {
-            "laziness:complexity": {
+            "laziness:complexity-creep.py": {
                 "enabled": ConfigField(
                     name="enabled",
                     field_type="bool",
@@ -618,13 +618,17 @@ class TestRunAdditionalPaths:
 
     def test_run_with_changes_and_no_pr(self, tmp_path):
         """Loosened gates + no PR context → WARNED with fix suggestion."""
-        base_config = {"laziness": {"gates": {"complexity": {"max_complexity": 10}}}}
-        curr_config = {"laziness": {"gates": {"complexity": {"max_complexity": 30}}}}
+        base_config = {
+            "laziness": {"gates": {"complexity-creep.py": {"max_complexity": 10}}}
+        }
+        curr_config = {
+            "laziness": {"gates": {"complexity-creep.py": {"max_complexity": 30}}}
+        }
         self._write_config(tmp_path, curr_config)
         check = GateDodgingCheck({"base_ref": "origin/main"})
 
         schema_lookup = {
-            "laziness:complexity": {
+            "laziness:complexity-creep.py": {
                 "max_complexity": ConfigField(
                     name="max_complexity",
                     field_type="int",

@@ -40,7 +40,7 @@ git checkout main
 
 # Init and validate
 sm init --non-interactive
-sm validate commit
+sm swab
 ```
 
 ### 4. Branch expectations

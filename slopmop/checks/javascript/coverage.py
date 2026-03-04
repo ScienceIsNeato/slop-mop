@@ -38,7 +38,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
     line coverage. Falls back to parsing console output if the
     JSON summary isn't available.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       threshold: 80 — minimum line coverage percentage. Start
@@ -50,8 +50,8 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
       Coverage data unavailable: Ensure Jest is configured to
           produce coverage reports.
 
-    Re-validate:
-      ./sm validate deceptiveness:js-coverage --verbose
+    Re-check:
+      ./sm swab -g overconfidence:coverage-gaps.js --verbose
     """
 
     tool_context = ToolContext.NODE
@@ -62,23 +62,27 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def name(self) -> str:
-        return "js-coverage"
+        return "coverage-gaps.js"
 
     @property
     def display_name(self) -> str:
         return "📊 Coverage"
 
     @property
+    def gate_description(self) -> str:
+        return "📊 JavaScript coverage analysis"
+
+    @property
     def category(self) -> GateCategory:
-        return GateCategory.DECEPTIVENESS
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:
-        return Flaw.DECEPTIVENESS
+        return Flaw.OVERCONFIDENCE
 
     @property
     def depends_on(self) -> List[str]:
-        return ["overconfidence:js-tests"]
+        return ["overconfidence:untested-code.js"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

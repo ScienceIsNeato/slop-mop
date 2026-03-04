@@ -12,7 +12,13 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.registry import CheckRegistry, get_registry
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, ScopeInfo
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    ExecutionSummary,
+    ScopeInfo,
+    SkipReason,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +43,7 @@ def _is_gate_enabled_in_config(
         return False, f"{check.full_name} is in disabled_gates list"
 
     category_key = check.category.key  # e.g., "overconfidence", "laziness", "myopia"
-    gate_name = check.name  # e.g., "lint-format", "dead-code"
+    gate_name = check.name  # e.g., "lint-format", "dead-code.py"
 
     # Check if language/category is enabled
     category_val: object = config.get(category_key)
@@ -157,6 +163,8 @@ class CheckExecutor:
         check_names: List[str],
         config: Optional[Dict[str, Any]] = None,
         auto_fix: bool = True,
+        swabbing_time: Optional[int] = None,
+        timings: Optional[Dict[str, float]] = None,
     ) -> ExecutionSummary:
         """Run specified checks against a project.
 
@@ -165,6 +173,14 @@ class CheckExecutor:
             check_names: List of check names or aliases to run
             config: Configuration dictionary
             auto_fix: Whether to attempt auto-fixing issues
+            swabbing_time: Wall-clock time budget in seconds.  Gates
+                with historical timing data are scheduled using a
+                dual-lane strategy until budget expires, then skipped.
+                Gates without timing data always run (to establish a
+                baseline).  ``None`` or ``<= 0`` means no limit.
+            timings: Historical timing data mapping check full_name to
+                average duration in seconds.  Typically loaded via
+                ``slopmop.reporting.timings.load_timings()``.
 
         Returns:
             ExecutionSummary with all results
@@ -184,6 +200,32 @@ class CheckExecutor:
 
         # Auto-include dependencies that weren't explicitly requested
         checks = self._expand_dependencies(checks, config)
+
+        # Filter superseded checks: if a check's superseded_by target is
+        # also in the run set, skip the weaker check.  This happens during
+        # scour runs where both vulnerability-blindness.py (swab) and
+        # dependency-risk.py (scour) would otherwise both execute.
+        requested_names = {c.full_name for c in checks}
+        superseded: Set[str] = set()
+        for check in checks:
+            target = check.superseded_by
+            if target and target in requested_names:
+                superseded.add(check.full_name)
+                logger.debug(
+                    f"Superseded — {check.full_name}: "
+                    f"replaced by {target} in this run"
+                )
+        if superseded:
+            for check in checks:
+                if check.full_name in superseded:
+                    self._results[check.full_name] = CheckResult(
+                        name=check.full_name,
+                        status=CheckStatus.SKIPPED,
+                        duration=0,
+                        output=f"Superseded by {check.superseded_by} in this run",
+                        skip_reason=SkipReason.SUPERSEDED,
+                    )
+            checks = [c for c in checks if c.full_name not in superseded]
 
         # Filter out disabled checks (by config), including dependents
         disabled_gates: Set[str] = set()
@@ -215,6 +257,17 @@ class CheckExecutor:
                             changed = True
                             break
 
+        # Record disabled checks in results so they appear in the summary
+        for check in checks:
+            if check.full_name in disabled_gates:
+                self._results[check.full_name] = CheckResult(
+                    name=check.full_name,
+                    status=CheckStatus.SKIPPED,
+                    duration=0,
+                    output="Disabled in config",
+                    skip_reason=SkipReason.DISABLED,
+                )
+
         enabled_checks: List[BaseCheck] = [
             c for c in checks if c.full_name not in disabled_gates
         ]
@@ -237,6 +290,7 @@ class CheckExecutor:
                 status=CheckStatus.NOT_APPLICABLE,
                 duration=0,
                 output=reason,
+                skip_reason=SkipReason.NOT_APPLICABLE,
             )
             # Notify via dedicated N/A callback so display can label them
             # separately from config-disabled checks in the footer.
@@ -246,6 +300,13 @@ class CheckExecutor:
         if not applicable:
             duration = time.time() - start_time
             return ExecutionSummary.from_results(list(self._results.values()), duration)
+
+        # ── Time budget ───────────────────────────────────────────────
+        # Budget enforcement now happens at runtime inside
+        # _execute_with_dependencies() using wall-clock time, not as a
+        # pre-filter.  swabbing_time is passed through so the execution
+        # loop can stop scheduling timed gates once wall-clock time
+        # exceeds the budget.
 
         # Notify total checks determined
         if self._on_total_determined:
@@ -263,7 +324,14 @@ class CheckExecutor:
         dep_graph = self._build_dependency_graph(applicable)
 
         # Execute checks respecting dependencies
-        self._execute_with_dependencies(applicable, dep_graph, project_root, auto_fix)
+        self._execute_with_dependencies(
+            applicable,
+            dep_graph,
+            project_root,
+            auto_fix,
+            timings=timings,
+            swabbing_time=swabbing_time,
+        )
 
         duration = time.time() - start_time
         return ExecutionSummary.from_results(list(self._results.values()), duration)
@@ -334,20 +402,45 @@ class CheckExecutor:
         dep_graph: Dict[str, Set[str]],
         project_root: str,
         auto_fix: bool,
+        timings: Optional[Dict[str, float]] = None,
+        swabbing_time: Optional[int] = None,
     ) -> None:
-        """Execute checks respecting dependencies.
+        """Execute checks respecting dependencies with wall-clock budget.
 
-        Uses topological ordering to ensure dependencies run first.
+        Uses a **dual-lane** scheduling strategy when a time budget is
+        active.  Each scheduling round fills thread pool slots from two
+        ends of the ready queue:
+
+        * **Heavy lane** (``N − 1`` slots): longest-estimated gates
+          first, so expensive work starts early.
+        * **Light lane** (``1`` slot): shortest-estimated gate, making
+          forward progress on quick wins while the heavy work runs.
+
+        Wall-clock time determines when to stop: once elapsed time
+        exceeds the budget, no new *timed* gates are submitted.
+        Already-running gates finish naturally.  Gates without timing
+        history always run regardless of budget (to build a baseline).
+
+        Without a budget, all ready gates are submitted at once, sorted
+        longest-first (existing behaviour preserved).
 
         Args:
             checks: Checks to execute
             dep_graph: Dependency graph
             project_root: Project root path
             auto_fix: Whether to auto-fix
+            timings: Optional historical timing map (name → seconds)
+            swabbing_time: Time budget in seconds (None or ≤0 = no limit)
         """
         check_map = {c.full_name: c for c in checks}
         completed: Set[str] = set()
         pending = set(check_map.keys())
+        timings = timings or {}
+
+        budget_active = swabbing_time is not None and swabbing_time > 0
+        budget_start = time.time()
+        budget_expired = False
+        budget_elapsed: float = 0.0
 
         # Don't use `with` — we need to control shutdown behavior for fail-fast.
         # The context manager calls shutdown(wait=True) which blocks until all
@@ -383,6 +476,7 @@ class CheckExecutor:
                         status=CheckStatus.SKIPPED,
                         duration=0,
                         output="Skipped due to failed dependency",
+                        skip_reason=SkipReason.FAILED_DEPENDENCY,
                     )
                     self._results[name] = result
                     pending.discard(name)
@@ -391,15 +485,30 @@ class CheckExecutor:
                     if self._on_check_complete:
                         self._on_check_complete(result)
 
-                # Submit ready checks
-                for name in ready:
+                # ── Wall-clock budget check ────────────────────────
+                if budget_active and not budget_expired:
+                    budget_elapsed = time.time() - budget_start
+                    assert swabbing_time is not None  # for type checker
+                    if budget_elapsed >= swabbing_time:
+                        budget_expired = True
+
+                # ── Determine which gates to submit ────────────────
+                to_submit = self._select_gates_for_submission(
+                    ready,
+                    pending,
+                    completed,
+                    futures,
+                    timings,
+                    budget_active,
+                    budget_expired,
+                    budget_elapsed,
+                    swabbing_time,
+                )
+
+                # Submit selected gates
+                for name in to_submit:
                     if name in pending:
                         check = check_map[name]
-
-                        # Notify start callback before submitting
-                        if self._on_check_start:
-                            category = check.category.key if check.category else None
-                            self._on_check_start(name, category)
 
                         future = executor.submit(
                             self._run_single_check,
@@ -410,7 +519,7 @@ class CheckExecutor:
                         futures[future] = name
                         pending.discard(name)
 
-                # Wait for at least one check to complete
+                # Wait for at least one check to complete.
                 if futures:
                     done, _ = concurrent.futures.wait(
                         futures.keys(),
@@ -475,6 +584,7 @@ class CheckExecutor:
                     status=CheckStatus.SKIPPED,
                     duration=0,
                     output=_SKIP_FAIL_FAST,
+                    skip_reason=SkipReason.FAIL_FAST,
                 )
                 self._results[name] = result
                 if self._on_check_complete:
@@ -492,10 +602,143 @@ class CheckExecutor:
                         status=CheckStatus.SKIPPED,
                         duration=0,
                         output=_SKIP_FAIL_FAST,
+                        skip_reason=SkipReason.FAIL_FAST,
                     )
                 self._results[name] = result
                 if self._on_check_complete:
                     self._on_check_complete(result)
+
+    def _select_gates_for_submission(
+        self,
+        ready: List[str],
+        pending: Set[str],
+        completed: Set[str],
+        futures: Dict[concurrent.futures.Future[CheckResult], str],
+        timings: Dict[str, float],
+        budget_active: bool,
+        budget_expired: bool,
+        budget_elapsed: float,
+        swabbing_time: Optional[int],
+    ) -> List[str]:
+        """Choose which ready gates to submit this iteration.
+
+        Implements three strategies depending on budget state:
+
+        1. **No budget** — submit all ready gates, longest-first
+           (maximise parallelism by starting slow work early).
+        2. **Budget expired** — skip all timed ready gates
+           (record TIME_BUDGET results), submit only untimed gates.
+        3. **Budget active, not expired** — dual-lane slot-based
+           submission: ``N − 1`` slots from the heavy end, ``1`` from
+           the light end.  Untimed gates always get priority.
+
+        Gates without timing history are *always* submitted regardless
+        of budget state (they need to run to build a baseline).
+
+        Budget-skipped gates are added to ``completed`` so that their
+        dependents can be resolved (skipped via FAILED_DEPENDENCY).
+
+        Args:
+            ready: Names of checks whose dependencies are satisfied.
+            pending: Mutable set of not-yet-submitted check names.  This
+                method removes budget-skipped names from pending and adds
+                TIME_BUDGET results to ``self._results``.
+            completed: Mutable set of completed check names.  Budget-skipped
+                gates are added here so dependents proceed correctly.
+            futures: Currently in-flight futures (used to calculate
+                available thread pool slots).
+            timings: Historical timing map (name → seconds).
+            budget_active: Whether a positive budget was configured.
+            budget_expired: Whether wall-clock time exceeded the budget.
+            budget_elapsed: Seconds elapsed since execution started.
+            swabbing_time: The configured budget in seconds.
+
+        Returns:
+            List of check names to submit to the thread pool.
+        """
+        if not budget_active:
+            # No budget: submit all, longest-first (original behaviour)
+            if timings:
+                ready.sort(key=lambda n: timings.get(n, 0), reverse=True)
+            return ready
+
+        # Split ready gates into timed (have estimates) and untimed
+        timed = [n for n in ready if n in timings]
+        untimed = [n for n in ready if n not in timings]
+
+        if budget_expired:
+            # Budget expired: skip all timed gates, run only untimed.
+            # Add to completed so dependents get FAILED_DEPENDENCY.
+            self._record_budget_skips(timed, timings, budget_elapsed, swabbing_time)
+            for name in timed:
+                pending.discard(name)
+                completed.add(name)
+            return untimed
+
+        # Budget active, not yet expired — dual-lane slot-based submission.
+        # Only submit to available slots so we maintain control over what
+        # actually runs (vs queuing excess tasks in the thread pool).
+        available_slots = self._max_workers - len(futures)
+        if available_slots <= 0:
+            return []
+
+        # Untimed gates always submit first (they always run)
+        to_submit = untimed[:]
+        remaining_slots = max(0, available_slots - len(untimed))
+
+        if remaining_slots > 0 and timed:
+            # Sort timed gates: heaviest first for dual-lane selection
+            timed.sort(key=lambda n: timings.get(n, 0), reverse=True)
+
+            if remaining_slots >= 2 and len(timed) >= 2:
+                # Dual-lane: N-1 from heavy end, 1 from light end
+                heavy_count = min(remaining_slots - 1, len(timed) - 1)
+                heavy = timed[:heavy_count]
+                # Light lane: lightest gate not already in heavy set
+                light = [timed[-1]] if timed[-1] not in set(heavy) else []
+                to_submit.extend(heavy + light)
+            else:
+                # 1 slot or 1 timed gate: take the heaviest (start
+                # expensive work early — the core dual-lane insight)
+                to_submit.extend(timed[:remaining_slots])
+
+        return to_submit
+
+    def _record_budget_skips(
+        self,
+        names: List[str],
+        timings: Dict[str, float],
+        elapsed: float,
+        swabbing_time: Optional[int],
+    ) -> None:
+        """Record TIME_BUDGET skip results and fire callbacks.
+
+        Called when the wall-clock budget has expired and timed gates
+        can no longer be scheduled.
+
+        Args:
+            names: Gate names to mark as budget-skipped.
+            timings: Historical timing map (name → seconds).
+            elapsed: Wall-clock seconds elapsed when budget expired.
+            swabbing_time: Configured budget in seconds.
+        """
+        for name in names:
+            est = timings.get(name, 0)
+            result = CheckResult(
+                name=name,
+                status=CheckStatus.SKIPPED,
+                duration=0,
+                output=(
+                    f"Skipped — estimated {est:.1f}s "
+                    f"(budget {swabbing_time}s expired "
+                    f"after {elapsed:.1f}s wall-clock)"
+                ),
+                skip_reason=SkipReason.TIME_BUDGET,
+            )
+            self._results[name] = result
+            # Advance progress bar
+            if self._on_check_complete:
+                self._on_check_complete(result)
 
     def _run_single_check(
         self,
@@ -521,7 +764,17 @@ class CheckExecutor:
                 status=CheckStatus.SKIPPED,
                 duration=0,
                 output=_SKIP_FAIL_FAST,
+                skip_reason=SkipReason.FAIL_FAST,
             )
+
+        # Notify start callback NOW — when the thread pool worker
+        # actually picks up this task, not when it was submitted.
+        # This ensures start_time aligns with actual execution time,
+        # so progress estimates compare apples to apples with the
+        # historical durations stored in timings.json.
+        if self._on_check_start:
+            category = check.category.key if check.category else None
+            self._on_check_start(check.full_name, category)
 
         logger.debug(f"Running {check.display_name}")
 

@@ -3,7 +3,7 @@
 import pytest  # noqa: F401  # Required for fixtures
 
 from slopmop.constants import STATUS_EMOJI
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, SkipReason
 from slopmop.reporting.console import ConsoleReporter
 
 
@@ -337,7 +337,7 @@ class TestConsoleReporter:
         """Test failure log is written and path cited in output."""
         results = [
             CheckResult(
-                "laziness:py-lint",
+                "laziness:sloppy-formatting.py",
                 CheckStatus.FAILED,
                 1.0,
                 output="Black: Formatting OK\nIsort: Import order issues\nFlake8: OK",
@@ -352,14 +352,14 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # Log path shown in output
-        assert ".slopmop/logs/laziness_py-lint.log" in captured.out
+        assert ".slopmop/logs/laziness_sloppy-formatting.py.log" in captured.out
         # Output preview shown
         assert "Black: Formatting OK" in captured.out
         assert "Isort: Import order issues" in captured.out
         # Fix suggestion now shown in compact summary
         assert "Run: black" in captured.out
         # Log file actually created with full content
-        log_file = tmp_path / ".slopmop" / "logs" / "laziness_py-lint.log"
+        log_file = tmp_path / ".slopmop" / "logs" / "laziness_sloppy-formatting.py.log"
         assert log_file.exists()
         log_content = log_file.read_text()
         assert "Run: black . && isort ." in log_content
@@ -370,7 +370,7 @@ class TestConsoleReporter:
         long_output = "\n".join([f"Error line {i}" for i in range(20)])
         results = [
             CheckResult(
-                "overconfidence:py-tests",
+                "overconfidence:untested-code.py",
                 CheckStatus.FAILED,
                 5.0,
                 output=long_output,
@@ -391,23 +391,97 @@ class TestConsoleReporter:
         # Overflow indicator shown
         assert "more lines in log" in captured.out
         # Full output in log file
-        log_file = tmp_path / ".slopmop" / "logs" / "overconfidence_py-tests.log"
+        log_file = (
+            tmp_path / ".slopmop" / "logs" / "overconfidence_untested-code.py.log"
+        )
         log_content = log_file.read_text()
         assert "Error line 19" in log_content
 
     def test_skip_reason_code_fail_fast(self):
         """Test _skip_reason_code returns 'ff' for fail-fast skips."""
         result = CheckResult(
-            "check1", CheckStatus.SKIPPED, 0.0, output="Skipped: fail-fast triggered"
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            output="Skipped: fail-fast triggered",
+            skip_reason=SkipReason.FAIL_FAST,
         )
         assert ConsoleReporter._skip_reason_code(result) == "ff"
 
     def test_skip_reason_code_dependency(self):
         """Test _skip_reason_code returns 'dep' for dependency skips."""
         result = CheckResult(
-            "check1", CheckStatus.SKIPPED, 0.0, output="Skipped: disabled by config"
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            output="Skipped due to failed dependency",
+            skip_reason=SkipReason.FAILED_DEPENDENCY,
         )
         assert ConsoleReporter._skip_reason_code(result) == "dep"
+
+    def test_skip_reason_code_not_applicable(self):
+        """Test _skip_reason_code returns 'n/a' for not-applicable skips."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.NOT_APPLICABLE,
+            0.0,
+            skip_reason=SkipReason.NOT_APPLICABLE,
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "n/a"
+
+    def test_skip_reason_code_disabled(self):
+        """Test _skip_reason_code returns 'off' for disabled skips."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            skip_reason=SkipReason.DISABLED,
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "off"
+
+    def test_skip_reason_code_time_budget(self):
+        """Test _skip_reason_code returns 'time' for time budget skips."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            skip_reason=SkipReason.TIME_BUDGET,
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "time"
+
+    def test_skip_reason_code_superseded(self):
+        """Test _skip_reason_code returns 'sup' for superseded checks."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            skip_reason=SkipReason.SUPERSEDED,
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "sup"
+
+    def test_skip_reason_code_legacy_fallback_fail_fast(self):
+        """Test legacy fallback: string matching when skip_reason is None."""
+        result = CheckResult(
+            "check1", CheckStatus.SKIPPED, 0.0, output="Skipped: fail-fast triggered"
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "ff"
+
+    def test_skip_reason_code_legacy_fallback_dependency(self):
+        """Test legacy fallback: string matching for dependency."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0.0,
+            output="Skipped due to failed dependency",
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "dep"
+
+    def test_skip_reason_code_legacy_fallback_disabled(self):
+        """Test legacy fallback: string matching for disabled."""
+        result = CheckResult(
+            "check1", CheckStatus.SKIPPED, 0.0, output="Skipped: disabled by config"
+        )
+        assert ConsoleReporter._skip_reason_code(result) == "off"
 
     def test_skip_reason_code_default(self):
         """Test _skip_reason_code returns 'skip' for unknown reasons."""
@@ -423,8 +497,20 @@ class TestConsoleReporter:
     def test_format_skipped_line_single_reason(self):
         """Test _format_skipped_line with single reason code."""
         results = [
-            CheckResult("c1", CheckStatus.SKIPPED, 0.0, output="fail-fast"),
-            CheckResult("c2", CheckStatus.SKIPPED, 0.0, output="fail fast"),
+            CheckResult(
+                "c1",
+                CheckStatus.SKIPPED,
+                0.0,
+                output="fail-fast",
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
+            CheckResult(
+                "c2",
+                CheckStatus.SKIPPED,
+                0.0,
+                output="fail fast",
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
         ]
         line = ConsoleReporter._format_skipped_line(results)
         assert "2 skipped (ff)" in line
@@ -432,13 +518,28 @@ class TestConsoleReporter:
     def test_format_skipped_line_mixed_reasons(self):
         """Test _format_skipped_line with multiple reason codes."""
         results = [
-            CheckResult("c1", CheckStatus.SKIPPED, 0.0, output="fail-fast"),
-            CheckResult("c2", CheckStatus.SKIPPED, 0.0, output="disabled"),
-            CheckResult("c3", CheckStatus.SKIPPED, 0.0, output="something else"),
+            CheckResult(
+                "c1",
+                CheckStatus.SKIPPED,
+                0.0,
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
+            CheckResult(
+                "c2",
+                CheckStatus.SKIPPED,
+                0.0,
+                skip_reason=SkipReason.DISABLED,
+            ),
+            CheckResult(
+                "c3",
+                CheckStatus.SKIPPED,
+                0.0,
+                output="something else",
+            ),
         ]
         line = ConsoleReporter._format_skipped_line(results)
         assert "1 skipped (ff)" in line
-        assert "1 skipped (dep)" in line
+        assert "1 skipped (off)" in line
         assert "1 skipped (skip)" in line
 
     def test_print_summary_errors_with_output_and_logs(self, capsys, tmp_path):
@@ -506,7 +607,7 @@ class TestConsoleReporter:
         """Test next steps uses errors when no failures exist."""
         results = [
             CheckResult(
-                "laziness:py-lint",
+                "laziness:sloppy-formatting.py",
                 CheckStatus.ERROR,
                 1.0,
                 error="Tool crashed",
@@ -519,7 +620,9 @@ class TestConsoleReporter:
 
         captured = capsys.readouterr()
         # Next step points to the error check
-        assert "Next: ./sm validate laziness:py-lint --verbose" in captured.out
+        assert (
+            "Next: ./sm swab -g laziness:sloppy-formatting.py --verbose" in captured.out
+        )
 
     def test_error_output_filters_passing_lines(self, capsys, tmp_path):
         """Test error output filters out ✅ lines like failures do."""
@@ -617,3 +720,224 @@ class TestConsoleReporter:
         log_path = reporter._write_failure_log(result)
 
         assert log_path is None
+
+
+class TestNotRunSection:
+    """Tests for the 'Not run' summary section."""
+
+    def test_not_run_section_disabled(self, capsys):
+        """Disabled checks appear in not-run summary count."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "myopia:vulnerability-blindness.py",
+                CheckStatus.SKIPPED,
+                0,
+                output="Disabled in config",
+                skip_reason=SkipReason.DISABLED,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (1):" in captured.out
+        assert "1 disabled" in captured.out
+
+    def test_not_run_section_not_applicable(self, capsys):
+        """N/A checks appear in not-run summary count."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "overconfidence:untested-code.js",
+                CheckStatus.NOT_APPLICABLE,
+                0,
+                output="No JavaScript files",
+                skip_reason=SkipReason.NOT_APPLICABLE,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (1):" in captured.out
+        assert "1 not applicable" in captured.out
+
+    def test_not_run_section_time_budget(self, capsys):
+        """Time-budget skips appear in count summary with itemised gates."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "myopia:source-duplication",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped — estimated 15.2s (budget 10s expired after 12.3s wall-clock)",
+                skip_reason=SkipReason.TIME_BUDGET,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (1):" in captured.out
+        assert "1 time budget" in captured.out
+        # Itemised sub-list with wall-clock budget context
+        assert "Budget 10s" in captured.out
+        assert "expired after 12.3s wall-clock" in captured.out
+        assert "myopia:source-duplication" in captured.out
+        assert "est. 15.2s" in captured.out
+
+    def test_not_run_section_time_budget_multiple_sorted(self, capsys):
+        """Multiple time-budget skips are itemised, heaviest first."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "overconfidence:coverage-gaps",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped — estimated 2.3s (budget 5s expired after 6.1s wall-clock)",
+                skip_reason=SkipReason.TIME_BUDGET,
+            ),
+            CheckResult(
+                "myopia:source-duplication",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped — estimated 8.7s (budget 5s expired after 6.1s wall-clock)",
+                skip_reason=SkipReason.TIME_BUDGET,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "2 time budget" in captured.out
+        assert "Budget 5s" in captured.out
+        # Both gates listed
+        assert "myopia:source-duplication" in captured.out
+        assert "overconfidence:coverage-gaps" in captured.out
+        # Heaviest first
+        dup_pos = captured.out.index("myopia:source-duplication")
+        cov_pos = captured.out.index("overconfidence:coverage-gaps")
+        assert dup_pos < cov_pos
+
+    def test_not_run_section_fail_fast(self, capsys):
+        """Fail-fast skips appear in count summary."""
+        results = [
+            CheckResult("check1", CheckStatus.FAILED, 1.0, error="broke"),
+            CheckResult(
+                "check2",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped due to fail-fast",
+                skip_reason=SkipReason.FAIL_FAST,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (1):" in captured.out
+        assert "1 fail-fast" in captured.out
+
+    def test_not_run_section_multiple_reasons(self, capsys):
+        """Multiple skip reasons appear as counts in display order."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult(
+                "laziness:complexity-creep.py",
+                CheckStatus.SKIPPED,
+                0,
+                output="Disabled in config",
+                skip_reason=SkipReason.DISABLED,
+            ),
+            CheckResult(
+                "overconfidence:untested-code.js",
+                CheckStatus.NOT_APPLICABLE,
+                0,
+                output="No JS files",
+                skip_reason=SkipReason.NOT_APPLICABLE,
+            ),
+            CheckResult(
+                "myopia:source-duplication",
+                CheckStatus.SKIPPED,
+                0,
+                output="Skipped — estimated 12.0s (budget 10s expired after 11.5s wall-clock)",
+                skip_reason=SkipReason.TIME_BUDGET,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run (3):" in captured.out
+        # All reasons shown as counts in display order
+        assert "1 disabled" in captured.out
+        assert "1 not applicable" in captured.out
+        assert "1 time budget" in captured.out
+        # Disabled comes first in display order
+        disabled_pos = captured.out.index("1 disabled")
+        na_pos = captured.out.index("1 not applicable")
+        time_pos = captured.out.index("1 time budget")
+        assert disabled_pos < na_pos < time_pos
+        # Time-budget skip is itemised even in mixed-reason output
+        assert "Budget 10s" in captured.out
+        assert "myopia:source-duplication" in captured.out
+        assert "est. 12.0s" in captured.out
+
+    def test_not_run_section_omitted_when_all_ran(self, capsys):
+        """No 'Not run' section when every check executed."""
+        results = [
+            CheckResult("check1", CheckStatus.PASSED, 1.0),
+            CheckResult("check2", CheckStatus.PASSED, 2.0),
+        ]
+        summary = ExecutionSummary.from_results(results, 3.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "Not run" not in captured.out
+
+    def test_not_run_label_no_skip_reason(self):
+        """Fallback label when skip_reason is None."""
+        result = CheckResult("check1", CheckStatus.SKIPPED, 0)
+        label = ConsoleReporter._not_run_label(result)
+        assert label == "skipped"
+
+    def test_not_run_label_time_budget_without_estimate(self):
+        """Time budget label without parseable estimate in output."""
+        result = CheckResult(
+            "check1",
+            CheckStatus.SKIPPED,
+            0,
+            output="No estimate available",
+            skip_reason=SkipReason.TIME_BUDGET,
+        )
+        label = ConsoleReporter._not_run_label(result)
+        assert label == "time budget"
+
+    def test_not_run_section_in_failure_path(self, capsys):
+        """Not-run section appears in SLOP DETECTED output too."""
+        results = [
+            CheckResult("check1", CheckStatus.FAILED, 1.0, error="broke"),
+            CheckResult(
+                "check2",
+                CheckStatus.SKIPPED,
+                0,
+                output="Disabled in config",
+                skip_reason=SkipReason.DISABLED,
+            ),
+        ]
+        summary = ExecutionSummary.from_results(results, 1.0)
+        reporter = ConsoleReporter()
+        reporter.print_summary(summary)
+
+        captured = capsys.readouterr()
+        assert "SLOP DETECTED" in captured.out
+        assert "Not run (1):" in captured.out
+        assert "1 disabled" in captured.out

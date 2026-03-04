@@ -9,7 +9,7 @@ wasting context-window tokens on inference that could have been free.
 When it reads `results: List[Tuple[str, int, int, str]] = []`, the
 schema is self-documenting.
 
-mypy (overconfidence:py-static-analysis) enforces that function SIGNATURES are
+mypy (overconfidence:missing-annotations.py) enforces that function SIGNATURES are
 annotated. This gate enforces that every variable, argument, and
 member access resolves to a KNOWN type — not just at function
 boundaries but everywhere the code touches data.
@@ -144,7 +144,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
     waste context-window tokens guessing the element type. With
     `results: List[Tuple[str, int]] = []`, the schema is free.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       strict: True — enables the reportUnknown* family
@@ -161,21 +161,25 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
       reportUnknownArgumentType: You're passing an unknown-typed
           value to a function. Annotate the source variable.
 
-    Re-validate:
-      ./sm validate overconfidence:py-types --verbose
+    Re-check:
+      ./sm swab -g overconfidence:type-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
-        return "py-types"
+        return "type-blindness.py"
 
     @property
     def display_name(self) -> str:
         strict = self.config.get("strict", True)
         label = "strict" if strict else "basic"
         return f"🔬 Type Checking (pyright {label})"
+
+    @property
+    def gate_description(self) -> str:
+        return "🔬 pyright strict — second opinion on types"
 
     @property
     def category(self) -> GateCategory:
@@ -187,7 +191,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["overconfidence:py-static-analysis"]
+        return ["overconfidence:missing-annotations.py"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

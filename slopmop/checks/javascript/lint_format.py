@@ -22,7 +22,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     Prettier --write before checking. Installs npm dependencies
     automatically if node_modules/ is missing.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       Uses project's .eslintrc and .prettierrc. No additional
@@ -35,19 +35,23 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: Check package.json for syntax errors
           or missing registry access.
 
-    Re-validate:
-      ./sm validate laziness:js-lint --verbose
+    Re-check:
+      ./sm swab -g laziness:sloppy-formatting.js --verbose
     """
 
     tool_context = ToolContext.NODE
 
     @property
     def name(self) -> str:
-        return "js-lint"
+        return "sloppy-formatting.js"
 
     @property
     def display_name(self) -> str:
         return "🎨 Lint & Format (ESLint, Prettier)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🎨 ESLint + Prettier (supports auto-fix 🔧)"
 
     @property
     def category(self) -> GateCategory:

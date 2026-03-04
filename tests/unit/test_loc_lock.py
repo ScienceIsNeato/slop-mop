@@ -10,12 +10,12 @@ class TestLocLockCheck:
     def test_name(self):
         """Test check name."""
         check = LocLockCheck({})
-        assert check.name == "loc-lock"
+        assert check.name == "code-sprawl"
 
     def test_display_name(self):
         """Test display name."""
         check = LocLockCheck({})
-        assert "LOC" in check.display_name
+        assert "Sprawl" in check.display_name or "Code" in check.display_name
 
     def test_category(self):
         """Test check category."""

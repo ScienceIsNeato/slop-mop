@@ -9,7 +9,15 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, cast
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, ToolContext
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    ScopeInfo,
+    ToolContext,
+    count_source_scope,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -20,7 +28,7 @@ class StringDuplicationCheck(BaseCheck):
     literals repeated across multiple files. These are candidates
     for extraction to a constants module.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       threshold: 2 — minimum occurrences to flag a string.
@@ -41,8 +49,8 @@ class StringDuplicationCheck(BaseCheck):
       Tool not found: Requires Node.js. The tool is vendored
           in tools/find-duplicate-strings/.
 
-    Re-validate:
-      ./sm validate quality:string-duplication --verbose
+    Re-check:
+      ./sm swab -g myopia:string-duplication.py --verbose
     """
 
     tool_context = ToolContext.NODE
@@ -50,12 +58,16 @@ class StringDuplicationCheck(BaseCheck):
     @property
     def name(self) -> str:
         """Return check name."""
-        return "string-duplication"
+        return "string-duplication.py"
 
     @property
     def display_name(self) -> str:
         """Return human-readable display name."""
         return "🔤 String Duplication"
+
+    @property
+    def gate_description(self) -> str:
+        return "🔤 Duplicate string literal detection"
 
     @property
     def description(self) -> str:
@@ -143,6 +155,10 @@ class StringDuplicationCheck(BaseCheck):
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping - no Python source files."""
         return "No Python files found to scan for duplicate strings"
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Measure scope — counts Python files (default scan target)."""
+        return count_source_scope(project_root, extensions={".py"})
 
     def _get_tool_path(self, project_root: str = "") -> Optional[Path]:
         """Find the find-duplicate-strings tool.

@@ -21,6 +21,28 @@ from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_ru
 logger = logging.getLogger(__name__)
 
 
+class GateLevel(Enum):
+    """Gate execution level — controls which commands include this gate.
+
+    Every gate has a level that determines when it runs:
+
+    SWAB — Runs on every commit.  Fast, local, no network or PR context
+           required.  ``sm swab`` runs all SWAB-level gates.
+           This is the default for all gates.
+
+    SCOUR — Runs during thorough validation (PR readiness, CI).
+            May require network access, PR context (e.g. unresolved
+            comments), or expensive dependency auditing.
+            ``sm scour`` runs ALL gates (SWAB + SCOUR).
+
+    The naming comes from cleaning: a swab is a quick daily pass,
+    a scour is the deep clean before inspection.
+    """
+
+    SWAB = "swab"
+    SCOUR = "scour"
+
+
 class ToolContext(Enum):
     """How a gate resolves the external tools it needs.
 
@@ -31,7 +53,7 @@ class ToolContext(Enum):
     Categories:
 
     PURE — No external tools.  Pure Python analysis (AST, regex, file
-           scanning).  Always runnable.  Examples: bogus-tests, loc-lock,
+           scanning).  Always runnable.  Examples: bogus-tests.py, code-sprawl,
            gate-dodging.
 
     SM_TOOL — Tool ships with slop-mop (bundled via pipx / pip dependency).
@@ -330,6 +352,10 @@ class BaseCheck(ABC):
     # default because it makes no assumptions about tool availability.
     tool_context: ClassVar[ToolContext] = ToolContext.PURE
 
+    # Default gate level — subclasses override to SCOUR for gates that
+    # only run during thorough validation (PR readiness, CI).
+    level: ClassVar[GateLevel] = GateLevel.SWAB
+
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
     ):
@@ -378,11 +404,23 @@ class BaseCheck(ABC):
         """
 
     @property
+    def gate_description(self) -> str:
+        """One-line description of what this gate does, for README tables.
+
+        This is the single source of truth for the "What It Does" column
+        in auto-generated gate tables.  Override in each check to provide
+        a concise, emoji-prefixed summary.
+
+        Defaults to ``display_name`` if not overridden.
+        """
+        return self.display_name
+
+    @property
     def full_name(self) -> str:
         """Full name including category prefix.
 
         Returns:
-            String like 'laziness:py-lint'
+            String like 'laziness:sloppy-formatting.py'
         """
         return f"{self.category.key}:{self.name}"
 
@@ -454,9 +492,8 @@ class BaseCheck(ABC):
         Returns:
             Human-readable skip reason
         """
-        # Default implementation tries to provide helpful context
-        category = self.category.display_name if self.category else "Unknown"
-        return f"No {category} code detected in project"
+        # Default implementation provides a generic message
+        return "Not applicable to this project"
 
     @abstractmethod
     def run(self, project_root: str) -> CheckResult:
@@ -892,3 +929,18 @@ class JavaScriptCheckMixin:
                 pass  # Ignore .npmrc read errors
 
         return cmd
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Measure scope for JavaScript checks — counts JS/TS files and LOC.
+
+        Uses include_dirs from config if available, otherwise scans
+        the entire project root.
+        """
+        config = getattr(self, "config", {})
+        include_dirs = config.get("include_dirs") or config.get("src_dirs")
+        include_list = list(include_dirs) if include_dirs else None
+        return count_source_scope(
+            project_root,
+            include_dirs=include_list,
+            extensions={".js", ".ts", ".jsx", ".tsx"},
+        )

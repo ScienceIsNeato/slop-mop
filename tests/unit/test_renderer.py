@@ -106,21 +106,38 @@ class TestBuildCategoryHeader:
         assert "🐍 Python" in header
         assert "[2/4]" in header
 
+    def test_header_with_elapsed_time(self):
+        """Header includes aggregate elapsed time when provided."""
+        header = build_category_header("Python", 3, 3, term_width=60, elapsed=6.8)
+        assert "[3/3]" in header
+        assert "6.8s" in header
+        assert "·" in header
+
+    def test_header_without_elapsed_time(self):
+        """Header omits time section when elapsed is None or zero."""
+        header = build_category_header("Python", 0, 3, term_width=60, elapsed=None)
+        assert "·" not in header
+        header_zero = build_category_header("Python", 3, 3, term_width=60, elapsed=0)
+        assert "·" not in header_zero
+
 
 class TestStripCategoryPrefix:
     """Tests for strip_category_prefix function."""
 
     def test_strip_python_prefix(self):
         """Strips category prefix from py-prefixed check."""
-        assert strip_category_prefix("laziness:py-lint") == "py-lint"
+        assert (
+            strip_category_prefix("laziness:sloppy-formatting.py")
+            == "sloppy-formatting.py"
+        )
 
     def test_strip_myopia_prefix(self):
         """Strips myopia: prefix."""
-        assert strip_category_prefix("myopia:loc-lock") == "loc-lock"
+        assert strip_category_prefix("myopia:code-sprawl") == "code-sprawl"
 
     def test_strip_deceptiveness_prefix(self):
         """Strips deceptiveness: prefix."""
-        assert strip_category_prefix("deceptiveness:bogus-tests") == "bogus-tests"
+        assert strip_category_prefix("deceptiveness:bogus-tests.py") == "bogus-tests.py"
 
     def test_no_prefix_unchanged(self):
         """Name without colon returned unchanged."""
@@ -194,3 +211,23 @@ class TestBuildOverallProgress:
         """0 completed with colors enabled has no escape (no filled chars)."""
         result = build_overall_progress(0, 10, 1.0, term_width=80, colors_enabled=True)
         assert "\033[32m" not in result
+
+    def test_category_sequence_domino_colors(self):
+        """category_sequence produces domino-line striped coloring."""
+        seq = ["overconfidence", "laziness", "overconfidence", "myopia", "laziness"]
+        result = build_overall_progress(
+            5, 10, 2.0, term_width=80, colors_enabled=True, category_sequence=seq
+        )
+        # Should NOT contain the old solid-green code
+        assert "\033[32m" not in result
+        # Should contain reset codes for colored segments
+        assert "\033[0m" in result
+        # Progress info still present
+        assert "5/10" in result
+
+    def test_category_sequence_none_falls_back_to_green(self):
+        """Without category_sequence, progress bar is solid green."""
+        result = build_overall_progress(
+            5, 10, 2.0, term_width=80, colors_enabled=True, category_sequence=None
+        )
+        assert "\033[32m" in result

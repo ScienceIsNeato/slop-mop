@@ -20,11 +20,11 @@ class TestDeadCodeCheck:
 
     def test_name(self, check):
         """Test check name."""
-        assert check.name == "dead-code"
+        assert check.name == "dead-code.py"
 
     def test_full_name(self, check):
         """Test full check name with category."""
-        assert check.full_name == "laziness:dead-code"
+        assert check.full_name == "laziness:dead-code.py"
 
     def test_display_name(self, check):
         """Test display name contains Dead Code."""

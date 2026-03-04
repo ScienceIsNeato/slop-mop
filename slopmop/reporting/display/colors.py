@@ -200,6 +200,41 @@ def bold(text: str, colors_enabled: Optional[bool] = None) -> str:
     return colorize(text, Color.BOLD, colors_enabled)
 
 
+def overrun_color(iqr_distance: float, colors_enabled: Optional[bool] = None) -> str:
+    """Get ANSI color code for a time-overrun expressed in IQR units.
+
+    Escalates through yellow → orange → red as the overrun grows,
+    giving immediate visual feedback when a gate is running long.
+
+    Thresholds (from display config, measured in IQR above Tukey fence):
+      below fence: no color (within expected statistical range)
+      0–1 IQR:     yellow  — mild outlier
+      1–2.5 IQR:   orange  — moderate outlier
+      ≥ 2.5 IQR:  red     — extreme outlier
+
+    Args:
+        iqr_distance: IQR units above the Tukey fence
+            (e.g. 1.5 means 1.5 IQR past Q3+1.5×IQR).
+        colors_enabled: Override color detection (for testing).
+
+    Returns:
+        ANSI color code prefix, or empty string if below threshold
+        or colors disabled.
+    """
+    from slopmop.reporting.display import config as display_config
+
+    if colors_enabled is None:
+        colors_enabled = supports_color()
+    if not colors_enabled or iqr_distance < display_config.OVERRUN_WARN_IQR:
+        return ""
+    if iqr_distance < display_config.OVERRUN_CAUTION_IQR:
+        return Color.YELLOW.value
+    if iqr_distance < display_config.OVERRUN_ALERT_IQR:
+        # Dark orange via true-color, yellow fallback on 16-color terminals
+        return ansi_rgb("#FF8C00", Color.YELLOW)
+    return Color.RED.value
+
+
 def category_header_color(category: str, colors_enabled: Optional[bool] = None) -> str:
     """Get ANSI color code for a category header.
 

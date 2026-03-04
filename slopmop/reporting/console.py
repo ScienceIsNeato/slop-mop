@@ -1,14 +1,15 @@
 """Console output formatting for quality gate results.
 
 Provides clear, AI-friendly output with actionable error messages
-that guide iterative fix-validate-resume workflows.
+that guide iterative fix-and-resume workflows.
 """
 
 import os
+import re
 from typing import Optional
 
 from slopmop.constants import STATUS_EMOJI, format_duration_suffix
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, SkipReason
 
 
 class ConsoleReporter:
@@ -26,7 +27,7 @@ class ConsoleReporter:
         self,
         quiet: bool = False,
         verbose: bool = False,
-        profile: Optional[str] = None,
+        verb: Optional[str] = None,
         project_root: Optional[str] = None,
     ):
         """Initialize reporter.
@@ -34,12 +35,12 @@ class ConsoleReporter:
         Args:
             quiet: Minimal output mode (only failures)
             verbose: Verbose output mode (include all output)
-            profile: The profile being run (commit, pr, etc.) for iteration guidance
+            verb: The verb being run (swab, scour, etc.) for iteration guidance
             project_root: Project root for writing failure logs
         """
         self.quiet = quiet
         self.verbose = verbose
-        self.profile = profile
+        self.verb = verb
         self.project_root = project_root
 
     def on_check_complete(self, result: CheckResult) -> None:
@@ -116,12 +117,21 @@ class ConsoleReporter:
 
     @staticmethod
     def _skip_reason_code(result: CheckResult) -> str:
-        """Return a short reason code for a skipped check."""
+        """Return a short reason code for a skipped check.
+
+        Uses the structured SkipReason enum when available, falling
+        back to string matching on output for legacy results.
+        """
+        if result.skip_reason is not None:
+            return result.skip_reason.value
+        # Legacy fallback — results created without skip_reason
         output = (result.output or "").lower()
         if "fail-fast" in output or "fail fast" in output:
-            return "ff"
-        if "disabled" in output or "dependency" in output:
-            return "dep"
+            return SkipReason.FAIL_FAST.value
+        if "dependency" in output:
+            return SkipReason.FAILED_DEPENDENCY.value
+        if "disabled" in output:
+            return SkipReason.DISABLED.value
         return "skip"
 
     @staticmethod
@@ -303,6 +313,7 @@ class ConsoleReporter:
             print("═" * 60)
             if warned:
                 self._print_warning_sections(warned)
+            self._print_not_run_section(summary.results)
             print()
             return
 
@@ -340,6 +351,7 @@ class ConsoleReporter:
         # Next steps
         print("─" * 60)
         self._print_next_steps(failed, errors)
+        self._print_not_run_section(summary.results)
         print("═" * 60)
         print()
 
@@ -353,8 +365,154 @@ class ConsoleReporter:
         if not first_failure:
             return
 
-        profile = self.profile or "commit"
+        verb = self.verb or "swab"
         gate_name = first_failure.name
 
-        print(f"Next: ./sm validate {gate_name} --verbose")
-        print(f"      ./sm validate {profile}")
+        print(f"Next: ./sm swab -g {gate_name} --verbose")
+        print(f"      ./sm {verb}")
+
+    # ── Skip reason display order ────────────────────────────────────
+    _SKIP_REASON_ORDER = [
+        SkipReason.DISABLED,
+        SkipReason.NOT_APPLICABLE,
+        SkipReason.TIME_BUDGET,
+        SkipReason.FAIL_FAST,
+        SkipReason.FAILED_DEPENDENCY,
+        SkipReason.SUPERSEDED,
+    ]
+
+    _SKIP_REASON_LABEL = {
+        SkipReason.FAIL_FAST: "fail-fast",
+        SkipReason.FAILED_DEPENDENCY: "dependency failed",
+        SkipReason.NOT_APPLICABLE: "not applicable",
+        SkipReason.DISABLED: "disabled",
+        SkipReason.TIME_BUDGET: "time budget",
+        SkipReason.SUPERSEDED: "superseded",
+    }
+
+    @staticmethod
+    def _not_run_label(result: CheckResult) -> str:
+        """Return a human-readable label for why a check was not run.
+
+        For time-budget skips the estimated duration is appended when
+        available, e.g. ``time budget (est. 15.2s)``.
+        """
+        reason = result.skip_reason
+        if reason is None:
+            return "skipped"
+        label: str = ConsoleReporter._SKIP_REASON_LABEL.get(reason, reason.value)
+        if reason == SkipReason.TIME_BUDGET and result.output:
+            match = re.search(r"estimated (\d+\.\d+)s", result.output)
+            if match:
+                label += f" (est. {match.group(1)}s)"
+        return label
+
+    @staticmethod
+    def _print_not_run_section(results: list[CheckResult]) -> None:
+        """Print a compact summary of checks that were not run.
+
+        Groups by skip reason and shows counts.  Time-budget skips are
+        expanded into an itemised sub-list showing each gate and its
+        estimated duration so the user can see what was dropped.
+
+        Example output::
+
+            ⏭️  Not run (11): 8 not applicable · 3 time budget
+                 ⏱️  Budget 20s (expired after 18.2s wall-clock) — skipped gates:
+                     myopia:source-duplication  est. 3.5s
+                     myopia:code-sprawl         est. 1.7s
+        """
+        not_run = [
+            r
+            for r in results
+            if r.status in (CheckStatus.SKIPPED, CheckStatus.NOT_APPLICABLE)
+        ]
+        if not not_run:
+            return
+
+        # Count checks by skip reason
+        from collections import Counter
+
+        reason_counts: Counter[Optional[SkipReason]] = Counter()
+        for r in not_run:
+            reason_counts[r.skip_reason] += 1
+
+        # Build summary parts in display order
+        parts: list[str] = []
+        for reason in ConsoleReporter._SKIP_REASON_ORDER:
+            count = reason_counts.pop(reason, 0)
+            if count > 0:
+                label = ConsoleReporter._SKIP_REASON_LABEL.get(reason, reason.value)
+                parts.append(f"{count} {label}")
+
+        # Any remaining reasons not in the defined order
+        for reason, count in reason_counts.items():
+            if count > 0:
+                label = (
+                    ConsoleReporter._SKIP_REASON_LABEL.get(reason, reason.value)
+                    if reason
+                    else "skipped"
+                )
+                parts.append(f"{count} {label}")
+
+        print()
+        print(f"⏭️  Not run ({len(not_run)}): {' · '.join(parts)}")
+
+        # Itemise time-budget skips (if any)
+        budget_skips = [r for r in not_run if r.skip_reason == SkipReason.TIME_BUDGET]
+        if budget_skips:
+            ConsoleReporter._print_budget_skip_details(budget_skips)
+
+    @staticmethod
+    def _print_budget_skip_details(budget_skips: list[CheckResult]) -> None:
+        """Print itemised breakdown of gates skipped by the time budget.
+
+        Parses each gate's estimated duration and the overall budget
+        from the result output field, then prints a sorted list.
+
+        Output format (wall-clock model)::
+
+            Skipped — estimated 15.2s (budget 20s expired after 18.2s wall-clock)
+
+        Args:
+            budget_skips: Results with skip_reason == TIME_BUDGET
+        """
+        # Parse budget limit, elapsed time, and per-gate estimates
+        budget_limit: Optional[str] = None
+        elapsed_str: Optional[str] = None
+        gate_estimates: list[tuple[str, float]] = []
+        for r in budget_skips:
+            est: Optional[float] = None
+            if r.output:
+                m_est = re.search(r"estimated (\d+\.?\d*)s", r.output)
+                if m_est:
+                    est = float(m_est.group(1))
+                if budget_limit is None:
+                    # Wall-clock format: "budget 20s expired after 18.2s wall-clock"
+                    m_wc = re.search(
+                        r"budget (\d+)s expired after (\d+\.?\d*)s",
+                        r.output,
+                    )
+                    if m_wc:
+                        budget_limit = m_wc.group(1)
+                        elapsed_str = m_wc.group(2)
+            gate_estimates.append((r.name, est if est is not None else 0.0))
+
+        # Sort heaviest first so the most impactful gates are at the top
+        gate_estimates.sort(key=lambda t: t[1], reverse=True)
+
+        # Header
+        budget_str = f"{budget_limit}s" if budget_limit else "?"
+        if elapsed_str:
+            print(
+                f"     ⏱️  Budget {budget_str} "
+                f"(expired after {elapsed_str}s wall-clock) "
+                f"— skipped gates:"
+            )
+        else:
+            print(f"     ⏱️  Budget {budget_str} — skipped gates:")
+
+        # Itemised list
+        max_name = max(len(name) for name, _ in gate_estimates) if gate_estimates else 0
+        for name, est in gate_estimates:
+            print(f"         {name:<{max_name}}  est. {est:.1f}s")

@@ -13,7 +13,7 @@ class TestPRCommentsCheck:
     def test_name(self):
         """Test check name."""
         check = PRCommentsCheck({})
-        assert check.name == "comments"
+        assert check.name == "ignored-feedback"
 
     def test_display_name(self):
         """Test check display name."""
@@ -188,7 +188,7 @@ class TestPRCommentsCheck:
         assert "no unresolved" in result.output.lower()
 
     def test_run_with_unresolved_comments(self, tmp_path):
-        """Test run returns FAILED with unresolved comments."""
+        """Test run returns WARNED with unresolved comments (default behaviour)."""
         (tmp_path / ".git").mkdir()
 
         threads = [
@@ -211,16 +211,41 @@ class TestPRCommentsCheck:
         ):
             result = check.run(str(tmp_path))
 
+        assert result.status == CheckStatus.WARNED
+        assert "1 unresolved" in result.output
+        # Summary output should have category counts and file path
+        assert "pr_123_comments_report.md" in result.output
+
+    def test_run_with_fail_on_unresolved_enabled(self, tmp_path):
+        """Test run returns FAILED when fail_on_unresolved is True."""
+        (tmp_path / ".git").mkdir()
+
+        threads = [
+            {
+                "thread_id": "PRRT_123",
+                "is_outdated": False,
+                "body": "Please fix this issue",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 42,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+
+        check = PRCommentsCheck({"fail_on_unresolved": True})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=123),
+            patch.object(check, "_get_repo_info", return_value=("owner", "repo")),
+            patch.object(check, "_get_unresolved_threads", return_value=threads),
+        ):
+            result = check.run(str(tmp_path))
+
         assert result.status == CheckStatus.FAILED
         assert "1 unresolved" in result.error
-        # Summary output should have category counts and file path
-        assert "Logic/Correctness" in result.output
-        assert "pr_123_comments_report.md" in result.output
-        # Full report is in temp file, referenced in fix_suggestion
         assert "pr_123_comments_report.md" in result.fix_suggestion
 
     def test_run_with_fail_on_unresolved_disabled(self, tmp_path):
-        """Test run returns PASSED when fail_on_unresolved is False."""
+        """Test run returns WARNED when fail_on_unresolved is False."""
         (tmp_path / ".git").mkdir()
 
         threads = [
@@ -243,7 +268,7 @@ class TestPRCommentsCheck:
         ):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.PASSED
+        assert result.status == CheckStatus.WARNED
         assert "1 unresolved" in result.output
 
     def test_format_guidance_includes_protocol(self, tmp_path):
@@ -333,6 +358,90 @@ class TestPRCommentsCheck:
         assert threads[0]["thread_id"] == "PRRT_abc"
         assert threads[0]["body"] == "Fix this"
         assert threads[0]["author"] == "user1"
+
+    def test_get_repo_info_from_github_env(self, tmp_path):
+        """Test _get_repo_info picks up GITHUB_REPOSITORY env var."""
+        check = PRCommentsCheck({})
+        with patch.dict("os.environ", {"GITHUB_REPOSITORY": "ScienceIsNeato/slop-mop"}):
+            owner, repo = check._get_repo_info(str(tmp_path))
+        assert owner == "ScienceIsNeato"
+        assert repo == "slop-mop"
+
+    def test_get_repo_info_falls_through_to_git_remote(self, tmp_path):
+        """Test _get_repo_info falls back to git remote URL parsing."""
+        check = PRCommentsCheck({})
+
+        with (
+            patch.dict("os.environ", {"GITHUB_REPOSITORY": ""}, clear=False),
+            patch("subprocess.run") as mock_run,
+        ):
+            # gh repo view fails (no auth)
+            gh_fail = MagicMock(returncode=1, stdout="", stderr="auth required")
+            # git remote get-url origin succeeds
+            git_remote = MagicMock(
+                returncode=0,
+                stdout="https://github.com/ScienceIsNeato/slop-mop.git\n",
+            )
+            mock_run.side_effect = [gh_fail, git_remote]
+
+            owner, repo = check._get_repo_info(str(tmp_path))
+
+        assert owner == "ScienceIsNeato"
+        assert repo == "slop-mop"
+
+    def test_parse_repo_from_git_remote_https(self, tmp_path):
+        """Test parsing HTTPS remote URL."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="https://github.com/owner/repo-name.git\n",
+            )
+            owner, repo = PRCommentsCheck._parse_repo_from_git_remote(str(tmp_path))
+        assert owner == "owner"
+        assert repo == "repo-name"
+
+    def test_parse_repo_from_git_remote_https_no_suffix(self, tmp_path):
+        """Test parsing HTTPS remote URL without .git suffix."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="https://github.com/owner/repo-name\n",
+            )
+            owner, repo = PRCommentsCheck._parse_repo_from_git_remote(str(tmp_path))
+        assert owner == "owner"
+        assert repo == "repo-name"
+
+    def test_parse_repo_from_git_remote_ssh(self, tmp_path):
+        """Test parsing SSH remote URL."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="git@github.com:ScienceIsNeato/slop-mop.git\n",
+            )
+            owner, repo = PRCommentsCheck._parse_repo_from_git_remote(str(tmp_path))
+        assert owner == "ScienceIsNeato"
+        assert repo == "slop-mop"
+
+    def test_parse_repo_from_git_remote_non_github(self, tmp_path):
+        """Test parsing non-GitHub remote returns empty."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="https://gitlab.com/owner/repo.git\n",
+            )
+            owner, repo = PRCommentsCheck._parse_repo_from_git_remote(str(tmp_path))
+        assert owner == ""
+        assert repo == ""
+
+    def test_parse_repo_from_git_remote_command_fails(self, tmp_path):
+        """Test git remote failure returns empty."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=128, stdout="", stderr="not a git repo"
+            )
+            owner, repo = PRCommentsCheck._parse_repo_from_git_remote(str(tmp_path))
+        assert owner == ""
+        assert repo == ""
 
     def test_full_comment_in_report(self, tmp_path):
         """Test that full comments are included in the report file."""

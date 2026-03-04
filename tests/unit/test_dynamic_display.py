@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.dynamic import CheckDisplayInfo, DisplayState, DynamicDisplay
+from slopmop.reporting.timings import TimingStats
 
 
 class TestCheckDisplayInfo:
@@ -207,8 +208,7 @@ class TestDynamicDisplay:
         assert "check" in line
         # Shows elapsed time
         assert "1." in line or "2." in line
-        # Shows N/A for estimated time remaining (no prior data)
-        assert "N/A" in line
+        # No timing data — columns are blank (no "N/A" text)
 
     def test_format_check_line_completed_passed(self) -> None:
         """Test formatting completed (passed) check line."""
@@ -228,7 +228,7 @@ class TestDynamicDisplay:
 
         assert "✅" in line
         assert "check" in line
-        assert "passed" in line
+        assert "done" in line
         assert "1.2s" in line
 
     def test_format_check_line_completed_failed(self) -> None:
@@ -249,7 +249,7 @@ class TestDynamicDisplay:
 
         assert "❌" in line
         assert "check" in line
-        assert "failed" in line
+        assert "done" in line
 
     def test_build_display_empty(self) -> None:
         """Test build_display with no checks shows empty."""
@@ -341,12 +341,12 @@ class TestDynamicDisplay:
         """Test on_check_disabled collects disabled check names."""
         display = DynamicDisplay(quiet=False)
 
-        display.on_check_disabled("laziness:js-lint")
-        display.on_check_disabled("overconfidence:js-types")
+        display.on_check_disabled("laziness:sloppy-formatting.js")
+        display.on_check_disabled("overconfidence:type-blindness.js")
 
         assert display._disabled_names == [
-            "laziness:js-lint",
-            "overconfidence:js-types",
+            "laziness:sloppy-formatting.js",
+            "overconfidence:type-blindness.js",
         ]
 
     def test_on_check_disabled_quiet(self) -> None:
@@ -357,16 +357,17 @@ class TestDynamicDisplay:
         assert display._disabled_names == ["test:check"]
 
     def test_disabled_shown_in_display(self) -> None:
-        """Test disabled summary line appears in build_display output."""
+        """Test disabled count appears in skip summary while checks run."""
         display = DynamicDisplay(quiet=False)
-        display.on_check_disabled("laziness:js-lint")
-        display.on_check_disabled("myopia:security-scan")
+        display.on_check_disabled("laziness:sloppy-formatting.js")
+        display.on_check_disabled("myopia:vulnerability-blindness.py")
+        # Skip summary only shows while checks are still active
+        display.on_check_start("test:running", category="quality")
 
         lines = display._build_display()
-        disabled_lines = [line for line in lines if line.startswith("Disabled:")]
-        assert len(disabled_lines) == 1
-        assert "js-lint" in disabled_lines[0]
-        assert "security-scan" in disabled_lines[0]
+        skip_lines = [line for line in lines if "disabled" in line]
+        assert len(skip_lines) == 1
+        assert "2 disabled" in skip_lines[0]
 
     def test_thread_safety(self) -> None:
         """Test display is thread safe."""
@@ -403,12 +404,14 @@ class TestDynamicDisplay:
         assert display._total_checks_expected == 15
 
     def test_format_time_seconds(self) -> None:
-        """Test _format_time formats seconds correctly."""
+        """Test _format_time formats seconds with fixed width."""
         display = DynamicDisplay(quiet=True)
 
-        assert display._format_time(5.2) == "5.2s"
-        assert display._format_time(0.0) == "0.0s"
-        assert display._format_time(59.9) == "59.9s"
+        assert display._format_time(5.2) == "  5.2s"
+        assert display._format_time(0.0) == "  fast"  # near-zero → "fast"
+        assert display._format_time(0.04) == "  fast"  # below 0.05 threshold
+        assert display._format_time(0.05) == "  0.1s"  # at threshold → numeric
+        assert display._format_time(59.9) == " 59.9s"
 
     def test_format_time_minutes(self) -> None:
         """Test _format_time formats minutes correctly."""
@@ -508,20 +511,21 @@ class TestDynamicDisplay:
 
         lines = display._build_display()
 
-        # Filter check lines (skip progress, headers, disabled, summary)
+        # Filter check lines (skip progress, headers, column header, disabled, summary)
         check_lines = [
             line
             for line in lines
             if line.strip()
             and "Progress" not in line
             and "─" not in line
+            and "history" not in line
             and not line.strip().startswith("Disabled")
             and not line.strip().startswith("🔄")
         ]
 
         # Completed check (test:b) should be first
         assert "b" in check_lines[0]
-        assert "passed" in check_lines[0]
+        assert "done" in check_lines[0]
 
     def test_no_prior_data_shows_na(self) -> None:
         """Test that checks with no prior run data show N/A for ETA."""
@@ -533,9 +537,18 @@ class TestDynamicDisplay:
         assert display._checks["test:new-check"].expected_duration is None
 
     def test_historical_timing_populates_expected_duration(self) -> None:
-        """Test that loading historical timings populates expected_duration."""
+        """Test that loading historical timings populates timing_stats."""
         display = DynamicDisplay(quiet=True)
-        display._historical_timings = {"test:check": 2.5}
+        display._historical_timings = {
+            "test:check": TimingStats(
+                median=2.5,
+                q1=2.0,
+                q3=3.0,
+                iqr=1.0,
+                historical_max=4.0,
+                sample_count=10,
+            )
+        }
 
         display.on_check_start("test:check")
 
@@ -548,7 +561,14 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.0,
-            expected_duration=3.5,
+            timing_stats=TimingStats(
+                median=3.5,
+                q1=3.0,
+                q3=4.0,
+                iqr=1.0,
+                historical_max=5.0,
+                sample_count=10,
+            ),
         )
 
         line = display._format_check_line(info)
@@ -583,7 +603,14 @@ class TestDynamicDisplay:
                 duration=2.0,
             ),
             duration=2.0,
-            expected_duration=2.5,
+            timing_stats=TimingStats(
+                median=2.5,
+                q1=2.0,
+                q3=3.0,
+                iqr=1.0,
+                historical_max=4.0,
+                sample_count=5,
+            ),
         )
 
         line = display._format_check_line(info)
@@ -614,7 +641,14 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.5,
-            expected_duration=3.0,
+            timing_stats=TimingStats(
+                median=3.0,
+                q1=2.5,
+                q3=3.5,
+                iqr=1.0,
+                historical_max=5.0,
+                sample_count=10,
+            ),
         )
 
         line = display._format_check_line(info)
@@ -634,7 +668,7 @@ class TestDynamicDisplay:
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 1.0,
-            expected_duration=None,
+            timing_stats=None,
         )
 
         line = display._format_check_line(info)
@@ -646,21 +680,29 @@ class TestDynamicDisplay:
         assert "%" not in line
 
     def test_progress_bar_percentage_caps_at_99(self) -> None:
-        """Test progress bar caps at 99% even when over estimate."""
+        """Test progress bar shows overrun indicator when over estimate."""
         display = DynamicDisplay(quiet=True)
-        # Elapsed 5s but estimated 2s — running overtime
+        # Elapsed 5s but median 2s — running well over expected time
+        # Q3=2.2, IQR=0.4 => fence = 2.2 + 0.6 = 2.8, iqr_over = (5-2.8)/0.4 = 5.5
         info = CheckDisplayInfo(
             name="test:check",
             state=DisplayState.RUNNING,
             start_time=time.time() - 5.0,
-            expected_duration=2.0,
+            timing_stats=TimingStats(
+                median=2.0,
+                q1=1.8,
+                q3=2.2,
+                iqr=0.4,
+                historical_max=3.0,
+                sample_count=10,
+            ),
         )
 
         line = display._format_check_line(info)
 
-        assert "99%" in line
-        # Should not show 100% or >100%
-        assert "100%" not in line
+        # Should show overrun indicator (actual/expected) instead of 99%
+        assert "|" in line
+        assert "99%" not in line
 
     def test_active_checks_sorted_by_estimate(self) -> None:
         """Test running checks sorted: estimated DESC first, then unknown alpha."""
@@ -670,9 +712,30 @@ class TestDynamicDisplay:
 
         # Start checks with mixed estimates
         display._historical_timings = {
-            "test:short": 1.0,
-            "test:long": 10.0,
-            "test:medium": 5.0,
+            "test:short": TimingStats(
+                median=1.0,
+                q1=0.9,
+                q3=1.1,
+                iqr=0.2,
+                historical_max=1.5,
+                sample_count=5,
+            ),
+            "test:long": TimingStats(
+                median=10.0,
+                q1=9.0,
+                q3=11.0,
+                iqr=2.0,
+                historical_max=15.0,
+                sample_count=5,
+            ),
+            "test:medium": TimingStats(
+                median=5.0,
+                q1=4.5,
+                q3=5.5,
+                iqr=1.0,
+                historical_max=7.0,
+                sample_count=5,
+            ),
         }
 
         display.on_check_start("test:short")
@@ -683,13 +746,14 @@ class TestDynamicDisplay:
 
         lines = display._build_display()
 
-        # Filter check lines (skip progress, headers, disabled, summary)
+        # Filter check lines (skip progress, headers, column header, disabled, summary)
         check_lines = [
             line
             for line in lines
             if line.strip()
             and "Progress" not in line
             and "─" not in line
+            and "history" not in line
             and not line.strip().startswith("Disabled")
             and not line.strip().startswith("🔄")
         ]
@@ -707,7 +771,16 @@ class TestDynamicDisplay:
         display = DynamicDisplay(quiet=True)
         display._overall_start_time = time.time()
         display.set_total_checks(3)
-        display._historical_timings = {"test:b": 5.0}
+        display._historical_timings = {
+            "test:b": TimingStats(
+                median=5.0,
+                q1=4.5,
+                q3=5.5,
+                iqr=1.0,
+                historical_max=7.0,
+                sample_count=5,
+            )
+        }
 
         display.on_check_start("test:a")
         display.on_check_start("test:b")
@@ -719,20 +792,21 @@ class TestDynamicDisplay:
         )
 
         lines = display._build_display()
-        # Filter check lines (skip progress, headers, disabled, summary)
+        # Filter check lines (skip progress, headers, column header, disabled, summary)
         check_lines = [
             line
             for line in lines
             if line.strip()
             and "Progress" not in line
             and "─" not in line
+            and "history" not in line
             and not line.strip().startswith("Disabled")
             and not line.strip().startswith("🔄")
         ]
 
         # Completed check (test:a) should be first
         assert "a" in check_lines[0]
-        assert "passed" in check_lines[0]
+        assert "done" in check_lines[0]
 
     def test_save_historical_timings_saves_completed_checks(self, tmp_path) -> None:
         """Test save_historical_timings saves durations of completed checks."""
@@ -813,12 +887,12 @@ class TestDynamicDisplay:
         """Test on_check_not_applicable collects N/A check names."""
         display = DynamicDisplay(quiet=True)
 
-        display.on_check_not_applicable("overconfidence:js-types")
-        display.on_check_not_applicable("laziness:js-lint")
+        display.on_check_not_applicable("overconfidence:type-blindness.js")
+        display.on_check_not_applicable("laziness:sloppy-formatting.js")
 
         assert display._na_names == [
-            "overconfidence:js-types",
-            "laziness:js-lint",
+            "overconfidence:type-blindness.js",
+            "laziness:sloppy-formatting.js",
         ]
 
     def test_on_check_not_applicable_deduplicates(self) -> None:
@@ -831,40 +905,69 @@ class TestDynamicDisplay:
         assert display._na_names == ["test:js"]
 
     def test_na_shown_in_footer(self) -> None:
-        """Test N/A checks appear in 'Not applicable:' footer line."""
+        """Test N/A checks appear as count in skip summary while running."""
         display = DynamicDisplay(quiet=True)
-        display.on_check_not_applicable("overconfidence:js-types")
-        display.on_check_not_applicable("laziness:js-lint")
+        display.on_check_not_applicable("overconfidence:type-blindness.js")
+        display.on_check_not_applicable("laziness:sloppy-formatting.js")
+        # Skip summary only shows while checks are still active
+        display.on_check_start("test:running", category="quality")
 
         lines = display._build_display()
-        na_lines = [line for line in lines if line.startswith("Not applicable:")]
-        assert len(na_lines) == 1
-        assert "js-types" in na_lines[0]
-        assert "js-lint" in na_lines[0]
+        skip_lines = [line for line in lines if "n/a" in line]
+        assert len(skip_lines) == 1
+        assert "2 n/a" in skip_lines[0]
 
-    def test_na_and_disabled_shown_separately(self) -> None:
-        """Test N/A and disabled checks render as separate footer lines."""
+    def test_skip_summary_hidden_when_all_done(self) -> None:
+        """Skip summary is omitted once all checks complete (console handles it)."""
         display = DynamicDisplay(quiet=True)
-        display.on_check_not_applicable("overconfidence:js-types")
-        display.on_check_disabled("myopia:security-scan")
+        display.on_check_not_applicable("overconfidence:type-blindness.js")
+        display.on_check_disabled("laziness:sloppy-formatting.js")
+        display.on_check_start("test:check", category="quality")
+        display.on_check_complete(
+            CheckResult(name="test:check", status=CheckStatus.PASSED, duration=0.1)
+        )
 
         lines = display._build_display()
-        na_lines = [line for line in lines if line.startswith("Not applicable:")]
-        disabled_lines = [line for line in lines if line.startswith("Disabled:")]
-        assert len(na_lines) == 1
-        assert len(disabled_lines) == 1
-        assert "js-types" in na_lines[0]
-        assert "security-scan" in disabled_lines[0]
+        assert not any("n/a" in line for line in lines)
+        assert not any("disabled" in line for line in lines)
+
+    def test_na_and_disabled_shown_in_combined_summary(self) -> None:
+        """Test N/A and disabled counts both appear in skip line while running."""
+        display = DynamicDisplay(quiet=True)
+        display.on_check_not_applicable("overconfidence:type-blindness.js")
+        display.on_check_disabled("myopia:vulnerability-blindness.py")
+        # Skip summary only shows while checks are still active
+        display.on_check_start("test:running", category="quality")
+
+        lines = display._build_display()
+        skip_lines = [line for line in lines if "disabled" in line or "n/a" in line]
+        assert len(skip_lines) == 1
+        assert "1 disabled" in skip_lines[0]
+        assert "1 n/a" in skip_lines[0]
 
     def test_load_historical_timings(self, tmp_path) -> None:
         """Test load_historical_timings loads timing data."""
-        # Create a timings file with correct format: {"name": {"avg": float, "count": int}}
+        # Create a timings file with v2 (sample-based) format
         timings_dir = tmp_path / ".slopmop"
         timings_dir.mkdir(parents=True)
         timings_file = timings_dir / "timings.json"
-        timings_file.write_text('{"test:check": {"avg": 3.5, "count": 5}}')
+        import json
+        import time as time_mod
+
+        timings_file.write_text(
+            json.dumps(
+                {
+                    "test:check": {
+                        "samples": [3.0, 4.0],
+                        "last_updated": time_mod.time(),
+                    }
+                }
+            )
+        )
 
         display = DynamicDisplay(quiet=True)
         display.load_historical_timings(str(tmp_path))
 
-        assert display._historical_timings == {"test:check": 3.5}
+        assert "test:check" in display._historical_timings
+        assert display._historical_timings["test:check"].median == 3.5
+        assert display._historical_timings["test:check"].sample_count == 2

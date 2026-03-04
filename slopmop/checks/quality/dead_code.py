@@ -36,7 +36,7 @@ class DeadCodeCheck(BaseCheck):
     to filter false positives — vulture reports confidence based
     on how certain it is that code is truly unused.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       min_confidence: 80 — vulture's confidence score (60-100).
@@ -55,19 +55,23 @@ class DeadCodeCheck(BaseCheck):
       Unused import: Remove it or mark with # noqa if needed for
           side effects.
 
-    Re-validate:
-      ./sm validate quality:dead-code --verbose
+    Re-check:
+      ./sm swab -g laziness:dead-code.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
 
     @property
     def name(self) -> str:
-        return "dead-code"
+        return "dead-code.py"
 
     @property
     def display_name(self) -> str:
         return f"💀 Dead Code (≥{self._get_min_confidence()}% confidence)"
+
+    @property
+    def gate_description(self) -> str:
+        return "💀 Dead code detection via vulture (≥80% confidence)"
 
     @property
     def category(self) -> GateCategory:

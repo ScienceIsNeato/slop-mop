@@ -36,12 +36,12 @@ from tests.integration.docker_manager import DockerManager, RunResult
 # When bucket-o-slop PRs merge, update the SHA for each affected branch.
 # ---------------------------------------------------------------------------
 FIXTURE_REFS: dict[str, str] = {
-    # feat/add-js-slop-main — Python + JS tests with assertions (gate passes)
-    "main": "8454269500850cf744ab6a6c5408c7cd842b088f",  # pragma: allowlist secret
-    # feat/add-js-slop-all-fail — Python slop + JS tests without assertions (gate fails)
-    "all-fail": "37dc23351b3bc9f89bd8b4b94c014dbe3d37f1bb",  # pragma: allowlist secret
-    # feat/add-js-slop-mixed — Python slop + JS tests with assertions (gate passes)
-    "mixed": "386922908f3226653bbb47eb66277ad7c305ada2",  # pragma: allowlist secret
+    # main — Python + JS tests with assertions (gate passes)
+    "main": "fe7c32466d9985d92175c192a03a8a05603c8076",  # pragma: allowlist secret
+    # all-fail — Python slop + JS tests without assertions (gate fails)
+    "all-fail": "0816f6776a26d50ea052fa1cf1922dee6e783be0",  # pragma: allowlist secret
+    # mixed — Python slop + JS tests with assertions (gate passes)
+    "mixed": "a3d0675de0c59b59a7874ebb15860759ae3473f0",  # pragma: allowlist secret
 }
 
 

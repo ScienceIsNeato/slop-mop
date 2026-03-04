@@ -7,12 +7,13 @@ clear guidance on the strategic process for addressing them.
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, GateLevel
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -23,11 +24,11 @@ class PRCommentsCheck(BaseCheck):
     threads. Fails if any threads are still open, ensuring all
     reviewer feedback is addressed before merge.
 
-    Profiles: pr
+    Level: scour (PR readiness context required)
 
     Configuration:
-      fail_on_unresolved: True — fail the gate if unresolved
-          comments exist. Set to False to make advisory-only.
+      fail_on_unresolved: False (default) — warn when unresolved
+          comments exist. Set to True to fail the gate instead.
 
     Common failures:
       Unresolved comments: Address each comment thread, then
@@ -38,17 +39,23 @@ class PRCommentsCheck(BaseCheck):
       gh CLI not available: Install GitHub CLI:
           https://cli.github.com/
 
-    Re-validate:
-      ./sm validate pr:comments --verbose
+    Re-check:
+      sm scour -g pr:ignored-feedback --verbose
     """
+
+    level = GateLevel.SCOUR
 
     @property
     def name(self) -> str:
-        return "comments"
+        return "ignored-feedback"
 
     @property
     def display_name(self) -> str:
         return "💬 PR Comments"
+
+    @property
+    def gate_description(self) -> str:
+        return "💬 Checks for unresolved PR review threads"
 
     @property
     def category(self) -> GateCategory:
@@ -64,7 +71,7 @@ class PRCommentsCheck(BaseCheck):
             ConfigField(
                 name="fail_on_unresolved",
                 field_type="bool",
-                default=True,
+                default=False,
                 description="Whether to fail if unresolved comments exist",
                 permissiveness="true_is_stricter",
             ),
@@ -216,7 +223,21 @@ class PRCommentsCheck(BaseCheck):
         return None
 
     def _get_repo_info(self, project_root: str) -> Tuple[str, str]:
-        """Get repository owner and name."""
+        """Get repository owner and name.
+
+        Checks (in order):
+        1. GITHUB_REPOSITORY env var (always set in GitHub Actions, no auth needed)
+        2. gh repo view CLI (requires gh auth, works locally)
+        3. Git remote URL parsing (works for any cloned repo, no auth needed)
+        """
+        # Check GITHUB_REPOSITORY env var first (format: "owner/repo")
+        github_repo = os.environ.get("GITHUB_REPOSITORY", "")
+        if "/" in github_repo:
+            parts = github_repo.split("/", 1)
+            if len(parts) == 2 and parts[0] and parts[1]:
+                return parts[0], parts[1]
+
+        # Try gh CLI (works when user has gh auth configured)
         try:
             result = subprocess.run(
                 ["gh", "repo", "view", "--json", "owner,name"],
@@ -229,8 +250,40 @@ class PRCommentsCheck(BaseCheck):
                 data = json.loads(result.stdout)
                 owner = data.get("owner", {}).get("login", "")
                 name = data.get("name", "")
-                return owner, name
+                if owner and name:
+                    return owner, name
         except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+            pass
+
+        # Fall back to parsing git remote URL (works for public repos, no auth)
+        return self._parse_repo_from_git_remote(project_root)
+
+    @staticmethod
+    def _parse_repo_from_git_remote(project_root: str) -> Tuple[str, str]:
+        """Extract owner/repo from the git remote 'origin' URL.
+
+        Handles both HTTPS and SSH formats:
+          https://github.com/owner/repo.git
+          git@github.com:owner/repo.git
+        """
+        try:
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=project_root,
+            )
+            if result.returncode != 0:
+                return "", ""
+
+            url = result.stdout.strip()
+            # Match HTTPS: https://github.com/owner/repo(.git)
+            # Match SSH:   git@github.com:owner/repo(.git)
+            match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$", url)
+            if match:
+                return match.group(1), match.group(2)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
         return "", ""
 
@@ -566,7 +619,7 @@ class PRCommentsCheck(BaseCheck):
         )
         lines.append("")
         lines.append("# Re-run this check:")
-        lines.append("./sm validate pr:comments")
+        lines.append("./sm scour -g pr:ignored-feedback")
         lines.append("")
         lines.append("━" * 80)
         lines.append(
@@ -612,7 +665,7 @@ class PRCommentsCheck(BaseCheck):
             )
 
         # We have unresolved threads - generate full report and save to file
-        fail_on_unresolved = self.config.get("fail_on_unresolved", True)
+        fail_on_unresolved = self.config.get("fail_on_unresolved", False)
         full_report = self._format_guidance(threads, pr_number, owner, repo)
 
         # Save full report to temp file
@@ -631,10 +684,10 @@ class PRCommentsCheck(BaseCheck):
             )
         else:
             return self._create_result(
-                status=CheckStatus.PASSED,
+                status=CheckStatus.WARNED,
                 duration=duration,
-                output=f"⚠️ {len(threads)} unresolved comments (check disabled)\n\n"
-                + summary,
+                output=f"⚠️ {len(threads)} unresolved comment(s) — "
+                f"set fail_on_unresolved: true to block on this\n\n" + summary,
             )
 
     def _save_report_to_file(self, report: str, pr_number: int) -> str:
@@ -687,7 +740,7 @@ class PRCommentsCheck(BaseCheck):
         lines.append("  1. Read the full report above")
         lines.append("  2. Address comments by category (most complex first)")
         lines.append("  3. Use provided commands to resolve each thread")
-        lines.append("  4. Re-run: ./sm validate pr:comments")
+        lines.append("  4. Re-run: ./sm scour -g pr:ignored-feedback")
 
         return "\n".join(lines)
 

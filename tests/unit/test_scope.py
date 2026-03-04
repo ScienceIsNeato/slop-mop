@@ -12,6 +12,7 @@ from slopmop.checks.base import (
     count_source_scope,
 )
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, ScopeInfo
+from slopmop.reporting.display import config
 from slopmop.reporting.display.renderer import build_category_header
 
 
@@ -288,28 +289,62 @@ class TestPythonCheckMixinScope:
 
 
 class TestBuildCategoryHeaderScope:
-    """Tests for scope display in category headers."""
+    """Tests for column headers — now emitted separately, not in category headers."""
 
-    def test_header_with_scope(self):
-        """Category header includes scope info."""
+    def test_header_no_longer_embeds_column_labels(self):
+        """Category header is a plain dash line — no scope/timing labels."""
         scope = ScopeInfo(files=23, lines=1200)
         header = build_category_header("Python", 3, 3, term_width=80, scope=scope)
-        assert "23 files" in header
-        assert "1,200 LOC" in header
+        # Category header should NOT contain column labels any more
+        assert "# files" not in header
+        assert "LOC" not in header
+        assert "avg" not in header
+        assert "exp duration" not in header  # column labels belong in header line
+        assert "act duration" not in header
+        # Should still contain category name and progress
+        assert "Python" in header
+        assert "[3/3]" in header
 
     def test_header_without_scope(self):
         """Header works normally without scope."""
         header = build_category_header("Python", 3, 3, term_width=80, scope=None)
         assert "Python" in header
         assert "[3/3]" in header
-        assert "files" not in header
 
-    def test_header_with_large_scope(self):
-        """Scope renders k suffix for large LOC."""
-        scope = ScopeInfo(files=97, lines=26100)
-        header = build_category_header("Python", 3, 3, term_width=80, scope=scope)
-        assert "97 files" in header
-        assert "26.1k LOC" in header
+    def test_column_header_line_has_labels(self):
+        """Standalone column-header line contains timing labels."""
+        from slopmop.reporting.display.renderer import build_column_header_line
+
+        line = build_column_header_line(term_width=120)
+        assert "exp duration" in line
+        assert "act duration" in line
+        assert "history" in line
+        # Scope labels should NOT appear (moved to summary only)
+        assert "# files" not in line
+        assert "LOC" not in line
+
+    def test_column_header_line_pipes_align_with_data(self):
+        """The timing columns in the header align with data rows."""
+        from slopmop.reporting.display.renderer import build_column_header_line
+
+        tw = 120
+        line = build_column_header_line(term_width=tw)
+        # Build a fake data row with same constants as _format_completed_line
+        timing = (
+            "  0.2s".rjust(config.TIMING_AVG_WIDTH)
+            + config.TIMING_SEP
+            + "  0.3s".rjust(config.TIMING_TIME_WIDTH)
+            + config.TIMING_SEP
+            + "█" * config.TIMING_SPARK_WIDTH
+        )
+        data_line = " " * (tw - len(timing)) + timing
+        # "history" label in header should start at same column as sparkline
+        header_hist = line.index("history")
+        # Find the first █ in data
+        data_spark = data_line.index("█")
+        assert (
+            header_hist == data_spark
+        ), f"Header 'history' at col {header_hist}, data sparkline at col {data_spark}"
 
 
 class TestConsoleSummaryScope:

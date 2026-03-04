@@ -54,7 +54,7 @@ Design the error output to include:
 - **What failed** — specific files and line numbers
 - **Why it failed** — the rule and threshold that was violated
 - **How to fix it** — exact command, code change, or approach
-- **How to re-validate** — the `sm validate` command to re-run just this gate
+- **How to re-check** — the `sm swab -g` command to re-run just this gate
 
 ### 1.4 Decide on Profiles
 
@@ -214,7 +214,7 @@ If your check calls an external executable via `_run_command()`:
 ```bash
 pytest tests/unit/test_<name>_check.py -v   # Your tests pass
 pytest tests/ -x -q                          # No regressions
-sm validate --self                           # Full self-validation
+sm swab                              # Full self-validation
 ```
 
 ---
@@ -253,10 +253,10 @@ Run the gate against a project where it would fail. Capture the output. This ser
 ### 4.1 Final Validation
 
 ```bash
-sm validate --self                    # All gates pass
+sm swab                          # All gates pass
 sm help <category>:<name>            # Help text looks right
-sm validate <category>:<name>        # Gate runs independently
-sm validate commit                   # Profile includes the gate
+sm swab -g <category>:<name>         # Gate runs independently
+sm swab                              # Swab includes the gate
 ```
 
 ### 4.2 Report to User
@@ -289,7 +289,7 @@ Copy into your commit message or PR description:
 - [ ] README gate table updated
 - [ ] README profiles table updated (if applicable)
 - [ ] Example failure output captured
-- [ ] sm validate --self passes
+- [ ] sm swab passes
 - [ ] Report shown to user
 ```
 

@@ -46,16 +46,17 @@ def _register_javascript_checks(registry: CheckRegistry) -> None:
 
 def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     """Register security, quality, and general checks."""
-    from slopmop.checks.general.deploy_tests import DeployScriptTestsCheck
     from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
     from slopmop.checks.pr.comments import PRCommentsCheck
     from slopmop.checks.quality import (
         BogusTestsCheck,
         ComplexityCheck,
+        ConfigDebtCheck,
         DeadCodeCheck,
         GateDodgingCheck,
         LocLockCheck,
         SourceDuplicationCheck,
+        StaleDocsCheck,
         StringDuplicationCheck,
     )
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
@@ -69,100 +70,57 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(SourceDuplicationCheck)
     registry.register(StringDuplicationCheck)
     registry.register(LocLockCheck)
+    registry.register(ConfigDebtCheck)
+    registry.register(StaleDocsCheck)
     registry.register(TemplateValidationCheck)
-    registry.register(DeployScriptTestsCheck)
     registry.register(PRCommentsCheck)
 
 
 def _register_aliases(registry: CheckRegistry) -> None:
-    """Register all profile aliases."""
-    registry.register_alias(
-        "commit",
-        [
-            "laziness:py-lint",
-            "overconfidence:py-static-analysis",
-            "overconfidence:py-types",
-            "overconfidence:py-tests",
-            "deceptiveness:py-coverage",
-            "laziness:complexity",
-            "laziness:dead-code",
-            "myopia:source-duplication",
-            "myopia:string-duplication",
-            "deceptiveness:bogus-tests",
-            "deceptiveness:gate-dodging",
-            "myopia:loc-lock",
-            "myopia:security-scan",
-            "laziness:js-lint",
-            "overconfidence:js-types",
-            "overconfidence:js-tests",
-            "deceptiveness:js-coverage",
-            "deceptiveness:js-bogus-tests",
-            "deceptiveness:js-expect-assert",
-        ],
-    )
+    """Register convenience group aliases for -g flag.
 
+    Gate level (swab/scour) is intrinsic to each check class via the
+    ``level`` ClassVar.  Aliases here are convenience shortcuts for
+    ``-g`` when you want to run a subset of gates by topic.
+    """
+    # ── Convenience group aliases (for -g flag) ───────────────────────
     registry.register_alias(
-        "pr",
-        [
-            "pr:comments",
-            "laziness:py-lint",
-            "overconfidence:py-static-analysis",
-            "overconfidence:py-types",
-            "overconfidence:py-tests",
-            "deceptiveness:py-coverage",
-            "deceptiveness:py-diff-coverage",
-            "laziness:complexity",
-            "laziness:dead-code",
-            "myopia:source-duplication",
-            "myopia:string-duplication",
-            "deceptiveness:bogus-tests",
-            "deceptiveness:gate-dodging",
-            "myopia:loc-lock",
-            "myopia:security-audit",
-            "laziness:js-lint",
-            "overconfidence:js-types",
-            "overconfidence:js-tests",
-            "deceptiveness:js-coverage",
-            "deceptiveness:js-bogus-tests",
-            "deceptiveness:js-expect-assert",
-        ],
+        "quick", ["laziness:sloppy-formatting.py", "myopia:vulnerability-blindness.py"]
     )
-
-    registry.register_alias("quick", ["laziness:py-lint", "myopia:security-scan"])
 
     registry.register_alias(
         "python",
         [
-            "laziness:py-lint",
-            "overconfidence:py-static-analysis",
-            "overconfidence:py-types",
-            "overconfidence:py-tests",
-            "deceptiveness:py-coverage",
+            "laziness:sloppy-formatting.py",
+            "overconfidence:missing-annotations.py",
+            "overconfidence:type-blindness.py",
+            "overconfidence:untested-code.py",
+            "overconfidence:coverage-gaps.py",
         ],
     )
 
     registry.register_alias(
         "javascript",
         [
-            "laziness:js-lint",
-            "overconfidence:js-types",
-            "overconfidence:js-tests",
-            "deceptiveness:js-coverage",
-            "laziness:js-frontend",
+            "laziness:sloppy-formatting.js",
+            "overconfidence:type-blindness.js",
+            "overconfidence:untested-code.js",
+            "overconfidence:coverage-gaps.js",
+            "laziness:sloppy-frontend.js",
         ],
     )
 
-    registry.register_alias("security", ["myopia:security-audit"])
-    registry.register_alias("security-local", ["myopia:security-scan"])
+    registry.register_alias("security", ["myopia:dependency-risk.py"])
+    registry.register_alias("security-local", ["myopia:vulnerability-blindness.py"])
 
     registry.register_alias(
         "quality",
         [
-            "laziness:complexity",
+            "laziness:complexity-creep.py",
             "myopia:source-duplication",
-            "myopia:string-duplication",
-            "deceptiveness:bogus-tests",
-            "myopia:loc-lock",
+            "myopia:string-duplication.py",
+            "deceptiveness:bogus-tests.py",
+            "myopia:code-sprawl",
         ],
     )
 

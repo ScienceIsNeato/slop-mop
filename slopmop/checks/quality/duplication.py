@@ -13,7 +13,15 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, ToolContext
+from slopmop.checks.base import (
+    BaseCheck,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    ScopeInfo,
+    ToolContext,
+    count_source_scope,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
@@ -28,7 +36,7 @@ class SourceDuplicationCheck(BaseCheck):
     TypeScript, and other languages. Reports specific file pairs and
     line ranges so you know exactly what to deduplicate.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       threshold: 5 — maximum allowed duplication percentage. 5% is
@@ -46,8 +54,8 @@ class SourceDuplicationCheck(BaseCheck):
           specific file pairs and line ranges.
       jscpd not available: npm install -g jscpd
 
-    Re-validate:
-      ./sm validate quality:source-duplication --verbose
+    Re-check:
+      ./sm swab -g myopia:source-duplication --verbose
     """
 
     tool_context = ToolContext.NODE
@@ -63,6 +71,10 @@ class SourceDuplicationCheck(BaseCheck):
     @property
     def display_name(self) -> str:
         return "📋 Source Duplication"
+
+    @property
+    def gate_description(self) -> str:
+        return "📋 Code clone detection (jscpd)"
 
     @property
     def category(self) -> GateCategory:
@@ -288,6 +300,15 @@ class SourceDuplicationCheck(BaseCheck):
                 )
 
             return self._format_result(report, duration)
+
+    def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
+        """Measure scope — counts files across all supported languages."""
+        include_dirs = self.config.get("include_dirs") or ["."]
+        return count_source_scope(
+            project_root,
+            include_dirs=list(include_dirs),
+            extensions={".py", ".js", ".ts", ".jsx", ".tsx"},
+        )
 
     def _format_duplicates(self, duplicates: List[Dict[str, Any]]) -> List[str]:
         """Format duplicate entries for display."""

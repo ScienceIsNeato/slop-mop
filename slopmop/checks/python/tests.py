@@ -26,7 +26,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     generates coverage.xml for the coverage gate. If tests fail,
     reports the specific failing test names.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       test_dirs: ["tests"] — default pytest discovery directory.
@@ -41,19 +41,23 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
       Import errors: A test imports something that doesn't exist.
           Usually a missing dependency or renamed module.
 
-    Re-validate:
-      ./sm validate overconfidence:py-tests --verbose
+    Re-check:
+      ./sm swab -g overconfidence:untested-code.py --verbose
     """
 
     tool_context = ToolContext.PROJECT
 
     @property
     def name(self) -> str:
-        return "py-tests"
+        return "untested-code.py"
 
     @property
     def display_name(self) -> str:
         return "🧪 Tests (pytest)"
+
+    @property
+    def gate_description(self) -> str:
+        return "🧪 Runs pytest — code must actually pass its tests"
 
     @property
     def category(self) -> GateCategory:
@@ -65,7 +69,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def depends_on(self) -> List[str]:
-        return ["laziness:py-lint"]
+        return ["laziness:sloppy-formatting.py"]
 
     @property
     def config_schema(self) -> List[ConfigField]:

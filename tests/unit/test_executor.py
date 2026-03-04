@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from slopmop.checks.base import BaseCheck, Flaw, GateCategory
 from slopmop.core.executor import CheckExecutor, run_quality_checks
 from slopmop.core.registry import CheckRegistry
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, SkipReason
 
 
 class MockCheck(BaseCheck):
@@ -169,6 +169,11 @@ class TestCheckExecutor:
         assert summary.not_applicable == 1
         assert check_class1.run_count == 1
         assert check_class2.run_count == 0
+        # Verify skip_reason enum is set
+        na_result = next(
+            r for r in summary.results if r.status == CheckStatus.NOT_APPLICABLE
+        )
+        assert na_result.skip_reason == SkipReason.NOT_APPLICABLE
 
     def test_respects_dependencies(self, tmp_path):
         """Test that dependencies are respected."""
@@ -226,6 +231,11 @@ class TestCheckExecutor:
         assert summary.failed == 1
         assert summary.skipped == 1
         assert check_class2.run_count == 0
+        # Verify skip_reason enum is set
+        skipped_result = next(
+            r for r in summary.results if r.status == CheckStatus.SKIPPED
+        )
+        assert skipped_result.skip_reason == SkipReason.FAILED_DEPENDENCY
 
     def test_progress_callback(self, tmp_path):
         """Test progress callback is called."""
@@ -456,9 +466,13 @@ class TestCheckExecutor:
             str(tmp_path), ["overconfidence:disabled-check"], config=config
         )
 
-        # Disabled gate should not appear in results at all
+        # Disabled gate should appear in results as skipped
         assert check_class.run_count == 0
-        assert summary.total_checks == 0
+        assert summary.total_checks == 1
+        assert summary.skipped == 1
+        result = summary.results[0]
+        assert result.skip_reason == SkipReason.DISABLED
+        assert result.status == CheckStatus.SKIPPED
 
     def test_config_disables_gate_via_category_enabled_false(self, tmp_path):
         """Test that gates are skipped when their category is disabled."""
@@ -473,7 +487,8 @@ class TestCheckExecutor:
         )
 
         assert check_class.run_count == 0
-        assert summary.total_checks == 0
+        assert summary.total_checks == 1
+        assert summary.skipped == 1
 
     def test_config_disables_gate_via_gate_enabled_false(self, tmp_path):
         """Test that individual gates can be disabled via gates config."""
@@ -504,39 +519,43 @@ class TestCheckExecutor:
     def test_disabled_gate_propagates_to_dependents(self, tmp_path):
         """Test that disabling a gate also disables checks that depend on it."""
         registry = CheckRegistry()
-        dep_class = make_mock_check_class("tests")
+        dep_class = make_mock_check_class("dep-check")
         dependent_class = make_mock_check_class(
-            "coverage", depends_on=["overconfidence:py-tests"]
+            "child-check", depends_on=["overconfidence:dep-check"]
         )
         registry.register(dep_class)
         registry.register(dependent_class)
 
-        config = {"disabled_gates": ["overconfidence:py-tests"]}
+        config = {"disabled_gates": ["overconfidence:dep-check"]}
         executor = CheckExecutor(registry=registry, fail_fast=False)
         summary = executor.run_checks(
             str(tmp_path),
-            ["overconfidence:py-tests", "deceptiveness:py-coverage"],
+            ["overconfidence:dep-check", "overconfidence:child-check"],
             config=config,
         )
 
-        # Both should be disabled — tests explicitly, coverage by propagation
+        # Both should be disabled — dep-check explicitly, child-check by propagation
         assert dep_class.run_count == 0
         assert dependent_class.run_count == 0
-        assert summary.total_checks == 0
+        assert summary.total_checks == 2
+        assert summary.skipped == 2
+        reasons = {r.name: r.skip_reason for r in summary.results}
+        assert reasons["overconfidence:dep-check"] == SkipReason.DISABLED
+        assert reasons["overconfidence:child-check"] == SkipReason.DISABLED
 
     def test_na_callback_fires_for_inapplicable_checks(self, tmp_path):
         """Test set_na_callback fires when a check is not applicable."""
         registry = CheckRegistry()
-        check_class = make_mock_check_class("js-types", applicable=False)
+        check_class = make_mock_check_class("type-blindness.js", applicable=False)
         registry.register(check_class)
 
         na_names = []
         executor = CheckExecutor(registry=registry)
         executor.set_na_callback(na_names.append)
 
-        executor.run_checks(str(tmp_path), ["overconfidence:js-types"])
+        executor.run_checks(str(tmp_path), ["overconfidence:type-blindness.js"])
 
-        assert na_names == ["overconfidence:js-types"]
+        assert na_names == ["overconfidence:type-blindness.js"]
 
     def test_na_callback_not_called_for_applicable_checks(self, tmp_path):
         """Test set_na_callback is NOT called when check is applicable."""

@@ -6,7 +6,7 @@
 # ensuring each project uses its own isolated copy.
 #
 # Usage:
-#   ./slop-mop/scripts/sm validate commit
+#   ./slop-mop/scripts/sm swab
 #   ./slop-mop/scripts/sm init
 #   ./slop-mop/scripts/sm config --show
 

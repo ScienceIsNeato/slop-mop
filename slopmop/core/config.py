@@ -3,19 +3,16 @@
 This module provides:
 - Config loading and validation
 - Per-category configuration with sub-gates
-- Directory validation (include/exclude)
 - Threshold validation
 
 Config structure (.sb_config.json):
 {
   "version": "1.0",
-  "default_profile": "commit",
   "overconfidence": {
     "enabled": true,
-    "include_dirs": ["src"],
     "gates": {
-      "py-tests": { "enabled": true },
-      "py-types": { "enabled": true }
+      "untested-code.py": { "enabled": true },
+      "type-blindness.py": { "enabled": true }
     }
   }
 }
@@ -131,8 +128,6 @@ class CategoryConfig:
     """Configuration for a flaw category (overconfidence, laziness, etc.)."""
 
     enabled: bool = False
-    include_dirs: List[str] = field(default_factory=lambda: cast(List[str], []))
-    exclude_dirs: List[str] = field(default_factory=lambda: cast(List[str], []))
     gates: Dict[str, GateConfig] = field(
         default_factory=lambda: cast(Dict[str, GateConfig], {})
     )
@@ -146,13 +141,8 @@ class CategoryConfig:
             if isinstance(gate_data, dict):
                 gates[gate_name] = GateConfig.from_dict(cast(Dict[str, Any], gate_data))
 
-        include_dirs: List[str] = cast(List[str], data.get("include_dirs", []))
-        exclude_dirs: List[str] = cast(List[str], data.get("exclude_dirs", []))
-
         return cls(
             enabled=data.get("enabled", False),
-            include_dirs=include_dirs,
-            exclude_dirs=exclude_dirs,
             gates=gates,
         )
 
@@ -160,10 +150,7 @@ class CategoryConfig:
         """Convert to dictionary for JSON serialization."""
         result: Dict[str, Any] = {
             "enabled": self.enabled,
-            "include_dirs": self.include_dirs,
         }
-        if self.exclude_dirs:
-            result["exclude_dirs"] = self.exclude_dirs
         if self.gates:
             result["gates"] = {
                 name: gate.to_dict() for name, gate in self.gates.items()
@@ -195,12 +182,8 @@ class SlopmopConfig:
     """
 
     version: str = "1.0"
-    default_profile: str = "commit"
     categories: Dict[str, CategoryConfig] = field(
         default_factory=lambda: cast(Dict[str, CategoryConfig], {})
-    )
-    profiles: Dict[str, List[str]] = field(
-        default_factory=lambda: cast(Dict[str, List[str]], {})
     )
 
     @classmethod
@@ -231,8 +214,8 @@ class SlopmopConfig:
         """Create config from dictionary.
 
         Any key that matches a GateCategory key is loaded as a
-        CategoryConfig.  Non-category keys (version, default_profile,
-        profiles, disabled_gates, etc.) are handled separately.
+        CategoryConfig.  Non-category keys (version, disabled_gates,
+        etc.) are handled separately.
         """
         category_keys = {cat.key for cat in GateCategory}
         categories: Dict[str, CategoryConfig] = {}
@@ -243,22 +226,17 @@ class SlopmopConfig:
 
         return cls(
             version=data.get("version", "1.0"),
-            default_profile=data.get("default_profile", "commit"),
             categories=categories,
-            profiles=data.get("profiles", {}),
         )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result: Dict[str, Any] = {
             "version": self.version,
-            "default_profile": self.default_profile,
         }
         for key, cat_config in self.categories.items():
             if cat_config.enabled or cat_config.gates:
                 result[key] = cat_config.to_dict()
-        if self.profiles:
-            result["profiles"] = self.profiles
         return result
 
     def save(self, project_root: str) -> None:
@@ -280,106 +258,6 @@ class SlopmopConfig:
             category_key, gate_name = category_key.split(":", 1)
         cat_config = self.get_category_config(category_key)
         return cat_config.is_gate_enabled(gate_name)
-
-    def get_gate_include_dirs(self, category_key: str, gate_name: str) -> List[str]:
-        """Get include_dirs for a gate, with fallback to category level."""
-        cat_config = self.get_category_config(category_key)
-        gate_config = cat_config.get_gate_config(gate_name)
-        if gate_config.include_dirs:
-            return gate_config.include_dirs
-        return cat_config.include_dirs
-
-    def get_gate_exclude_dirs(self, category_key: str) -> List[str]:
-        """Get exclude_dirs for a category (merged with always-exclude)."""
-        cat_config = self.get_category_config(category_key)
-        return list(ALWAYS_EXCLUDE) + cat_config.exclude_dirs
-
-
-def validate_include_dirs(
-    gate_name: str,
-    include_dirs: List[str],
-    project_root: str,
-) -> List[str]:
-    """Validate and resolve include directories.
-
-    Args:
-        gate_name: Name of the gate in "language:gate" format
-        include_dirs: Configured include directories
-        project_root: Project root path
-
-    Returns:
-        List of validated, existing directories
-
-    Raises:
-        ConfigError: If include_dirs is empty
-    """
-    if not include_dirs:
-        # Parse category from gate_name (e.g., "laziness:py-lint" -> "laziness")
-        category = gate_name.split(":")[0] if ":" in gate_name else gate_name
-        raise ConfigError(
-            f"{gate_name}: No include_dirs configured",
-            fix_suggestion=(
-                f'Run "./sm init" to configure, or add to .sb_config.json:\n'
-                f'  "{category}": {{ "include_dirs": ["src"] }}'
-            ),
-        )
-
-    valid_dirs: List[str] = []
-    for dir_path in include_dirs:
-        full_path = Path(project_root) / dir_path
-        if full_path.is_dir():
-            valid_dirs.append(dir_path)
-        else:
-            logger.warning(f"{gate_name}: include_dir '{dir_path}' does not exist")
-
-    if not valid_dirs:
-        raise ConfigError(
-            f"{gate_name}: None of the configured include_dirs exist",
-            fix_suggestion=f"Configured dirs: {include_dirs}. Check paths in .sb_config.json.",
-        )
-
-    return valid_dirs
-
-
-def validate_exclude_dirs(
-    gate_name: str,
-    exclude_dirs: List[str],
-    include_dirs: List[str],
-    project_root: str,
-) -> List[str]:
-    """Validate exclude directories are subsets of include directories.
-
-    Args:
-        gate_name: Name of the gate (for warnings)
-        exclude_dirs: Configured exclude directories
-        include_dirs: Configured include directories
-        project_root: Project root path
-
-    Returns:
-        List of valid exclude patterns (with warnings for non-matching)
-    """
-    # Add always-excluded dirs
-    all_excludes = list(ALWAYS_EXCLUDE) + exclude_dirs
-
-    # Check if exclude dirs make sense relative to include dirs
-    for exclude in exclude_dirs:
-        found_match = False
-        for include in include_dirs:
-            # Check if exclude is under include or matches a pattern
-            include_path = Path(project_root) / include
-            exclude_path = Path(project_root) / exclude
-
-            if exclude_path.is_relative_to(include_path) or include == ".":
-                found_match = True
-                break
-
-        if not found_match:
-            logger.warning(
-                f"{gate_name}: exclude_dir '{exclude}' is not under any include_dir. "
-                f"Filter may have no effect."
-            )
-
-    return all_excludes
 
 
 def validate_threshold(

@@ -93,31 +93,53 @@ class TestCreateParser:
         assert parser is not None
         assert parser.prog == "./sm"
 
-    def test_validate_subcommand(self):
-        """Validate subcommand parses correctly."""
+    def test_swab_subcommand(self):
+        """Swab subcommand parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["validate", "commit"])
-        assert args.verb == "validate"
-        assert args.profile == "commit"
+        args = parser.parse_args(["swab"])
+        assert args.verb == "swab"
 
-    def test_validate_with_quality_gates(self):
-        """Validate with --quality-gates parses correctly."""
+    def test_scour_subcommand(self):
+        """Scour subcommand parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["scour"])
+        assert args.verb == "scour"
+
+    def test_swab_with_quality_gates(self):
+        """Swab with --quality-gates parses correctly."""
         parser = create_parser()
         args = parser.parse_args(
-            ["validate", "-g", "overconfidence:py-tests", "deceptiveness:py-coverage"]
+            [
+                "swab",
+                "-g",
+                "overconfidence:untested-code.py",
+                "overconfidence:coverage-gaps.py",
+            ]
         )
-        assert args.verb == "validate"
+        assert args.verb == "swab"
         assert args.quality_gates == [
-            "overconfidence:py-tests",
-            "deceptiveness:py-coverage",
+            "overconfidence:untested-code.py",
+            "overconfidence:coverage-gaps.py",
         ]
 
-    def test_validate_self_flag(self):
-        """Validate --self flag parses correctly."""
+    def test_swabbing_time_flag(self):
+        """--swabbing-time flag parses correctly on swab."""
         parser = create_parser()
-        args = parser.parse_args(["validate", "--self"])
-        assert args.verb == "validate"
-        assert args.self_validate is True
+        args = parser.parse_args(["swab", "--swabbing-time", "30"])
+        assert args.verb == "swab"
+        assert args.swabbing_time == 30
+
+    def test_swabbing_time_default_none(self):
+        """--swabbing-time defaults to None when not provided."""
+        parser = create_parser()
+        args = parser.parse_args(["scour"])
+        assert args.swabbing_time is None
+
+    def test_swabbing_time_zero_disables(self):
+        """--swabbing-time 0 parses and signals 'no limit'."""
+        parser = create_parser()
+        args = parser.parse_args(["swab", "--swabbing-time", "0"])
+        assert args.swabbing_time == 0
 
     def test_config_subcommand(self):
         """Config subcommand parses correctly."""
@@ -129,16 +151,18 @@ class TestCreateParser:
     def test_config_enable(self):
         """Config --enable parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["config", "--enable", "myopia:security-scan"])
+        args = parser.parse_args(
+            ["config", "--enable", "myopia:vulnerability-blindness.py"]
+        )
         assert args.verb == "config"
-        assert args.enable == "myopia:security-scan"
+        assert args.enable == "myopia:vulnerability-blindness.py"
 
     def test_help_subcommand(self):
         """Help subcommand parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["help", "laziness:py-lint"])
+        args = parser.parse_args(["help", "laziness:sloppy-formatting.py"])
         assert args.verb == "help"
-        assert args.gate == "laziness:py-lint"
+        assert args.gate == "laziness:sloppy-formatting.py"
 
     def test_init_subcommand(self):
         """Init subcommand parses correctly."""
@@ -157,10 +181,10 @@ class TestCreateParser:
     def test_commit_hooks_install(self):
         """Commit-hooks install parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["commit-hooks", "install", "commit"])
+        args = parser.parse_args(["commit-hooks", "install", "swab"])
         assert args.verb == "commit-hooks"
         assert args.hooks_action == "install"
-        assert args.profile == "commit"
+        assert args.hook_verb == "swab"
 
     def test_commit_hooks_uninstall(self):
         """Commit-hooks uninstall parses correctly."""
@@ -206,18 +230,18 @@ class TestDetectProjectType:
         assert result["has_tests_dir"] is True
         assert "tests" in result["test_dirs"]
 
-    def test_recommends_python_profile(self, tmp_path):
-        """Recommends python profile for Python-only projects."""
+    def test_recommends_gates_for_python(self, tmp_path):
+        """Recommends appropriate gates for Python-only projects."""
         (tmp_path / "setup.py").write_text("")
         result = detect_project_type(tmp_path)
-        assert result["recommended_profile"] == "python"
+        assert "recommended_gates" in result
 
-    def test_recommends_pr_profile_for_mixed(self, tmp_path):
-        """Recommends pr profile for mixed Python/JS projects."""
+    def test_recommends_gates_for_mixed(self, tmp_path):
+        """Recommends appropriate gates for mixed Python/JS projects."""
         (tmp_path / "setup.py").write_text("")
         (tmp_path / "package.json").write_text("{}")
         result = detect_project_type(tmp_path)
-        assert result["recommended_profile"] == "pr"
+        assert "recommended_gates" in result
 
     def test_detects_typescript_from_tsconfig(self, tmp_path):
         """Detects TypeScript from tsconfig.json."""
@@ -234,11 +258,11 @@ class TestDetectProjectType:
         assert result["has_typescript"] is True
 
     def test_typescript_recommends_types_gate(self, tmp_path):
-        """TypeScript projects recommend js-types gate."""
+        """TypeScript projects recommend type-blindness.js gate."""
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
         result = detect_project_type(tmp_path)
-        assert "overconfidence:js-types" in result["recommended_gates"]
+        assert "overconfidence:type-blindness.js" in result["recommended_gates"]
 
 
 class TestPromptFunctions:
@@ -297,15 +321,16 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
+            swabbing_time=None,
         )
 
         with patch("slopmop.checks.ensure_checks_registered"):
             with patch("slopmop.cli.config.get_registry") as mock_registry:
                 mock_reg = MagicMock()
-                mock_reg.list_checks.return_value = ["overconfidence:py-tests"]
+                mock_reg.list_checks.return_value = ["overconfidence:untested-code.py"]
                 mock_reg.get_definition.return_value = MagicMock(name="Python Tests")
                 mock_reg.list_aliases.return_value = {
-                    "commit": ["overconfidence:py-tests"]
+                    "commit": ["overconfidence:untested-code.py"]
                 }
                 mock_registry.return_value = mock_reg
 
@@ -318,17 +343,18 @@ class TestCmdConfig:
     def test_enable_gate(self, tmp_path):
         """--enable adds gate to enabled list."""
         (tmp_path / ".sb_config.json").write_text(
-            json.dumps({"disabled_gates": ["myopia:security-scan"]})
+            json.dumps({"disabled_gates": ["myopia:vulnerability-blindness.py"]})
         )
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
             show=False,
-            enable="myopia:security-scan",
+            enable="myopia:vulnerability-blindness.py",
             disable=None,
             include_dir=None,
             exclude_dir=None,
             json=None,
+            swabbing_time=None,
         )
 
         with patch("slopmop.checks.ensure_checks_registered"):
@@ -336,7 +362,62 @@ class TestCmdConfig:
 
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert "myopia:security-scan" not in config.get("disabled_gates", [])
+        assert "myopia:vulnerability-blindness.py" not in config.get(
+            "disabled_gates", []
+        )
+
+    def test_config_swabbing_time_parser(self):
+        """config --swabbing-time flag parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["config", "--swabbing-time", "45"])
+        assert args.verb == "config"
+        assert args.swabbing_time == 45
+
+    def test_set_swabbing_time(self, tmp_path):
+        """--swabbing-time updates config file."""
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=30,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert config["swabbing_time"] == 30
+
+    def test_disable_swabbing_time(self, tmp_path):
+        """--swabbing-time 0 removes swabbing_time from config."""
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps({"version": "1.0", "swabbing_time": 20})
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=0,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert "swabbing_time" not in config
 
 
 class TestCmdHelp:
@@ -350,14 +431,14 @@ class TestCmdHelp:
             with patch("slopmop.cli.config.get_registry") as mock_registry:
                 mock_reg = MagicMock()
                 mock_reg.list_checks.return_value = [
-                    "overconfidence:py-tests",
-                    "deceptiveness:py-coverage",
+                    "overconfidence:untested-code.py",
+                    "overconfidence:coverage-gaps.py",
                 ]
                 mock_reg.get_definition.return_value = MagicMock(
                     name="Test", auto_fix=False
                 )
                 mock_reg.list_aliases.return_value = {
-                    "commit": ["overconfidence:py-tests"]
+                    "commit": ["overconfidence:untested-code.py"]
                 }
                 mock_registry.return_value = mock_reg
 
@@ -369,7 +450,7 @@ class TestCmdHelp:
 
     def test_help_specific_gate(self, capsys):
         """Help for specific gate shows details."""
-        args = argparse.Namespace(gate="overconfidence:py-tests")
+        args = argparse.Namespace(gate="overconfidence:untested-code.py")
 
         mock_check = MagicMock()
         mock_check.__doc__ = "Test documentation"
@@ -402,8 +483,8 @@ class TestCmdHelp:
                 mock_reg.get_definition.return_value = None
                 mock_reg.is_alias.return_value = True
                 mock_reg.expand_alias.return_value = [
-                    "overconfidence:py-tests",
-                    "deceptiveness:py-coverage",
+                    "overconfidence:untested-code.py",
+                    "overconfidence:coverage-gaps.py",
                 ]
                 mock_registry.return_value = mock_reg
 
@@ -411,7 +492,7 @@ class TestCmdHelp:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "Profile: commit" in captured.out
+        assert "Alias: commit" in captured.out
 
 
 class TestGitHooksFunctions:
@@ -429,23 +510,29 @@ class TestGitHooksFunctions:
         assert result is None
 
     def test_generate_hook_script(self):
-        """Generates valid hook script."""
-        script = _generate_hook_script("commit")
-        assert "slopmop.sm validate commit" in script
+        """Generates valid hook script with swab verb."""
+        script = _generate_hook_script("swab")
+        assert "slopmop.sm swab" in script
         assert "MANAGED BY SLOP-MOP" in script
         # Should use python -m slopmop.sm for direct submodule execution
         assert "python" in script and "slopmop.sm" in script
 
-    def test_parse_hook_info_managed(self):
-        """Parses managed hook info."""
-        content = """# MANAGED BY SLOP-MOP - DO NOT EDIT
+    def test_generate_hook_script_direct_verb(self):
+        """Generates hook script when given a verb directly."""
+        script = _generate_hook_script("scour")
+        assert "slopmop.sm scour" in script
+        assert "# Command: sm scour" in script
+
+    def test_parse_hook_info_new_format(self):
+        """Parses new-format hook info (Command: sm verb)."""
+        content = """# MANAGED BY SLOP-MOP
 #!/bin/sh
-# Profile: commit
-sm validate commit
+# Command: sm swab
+sm swab
 """
         result = _parse_hook_info(content)
         assert result is not None
-        assert result["profile"] == "commit"
+        assert result["verb"] == "swab"
         assert result["managed"] is True
 
     def test_parse_hook_info_not_managed(self):
@@ -487,13 +574,13 @@ class TestCmdCommitHooks:
         assert "Git Hooks Status" in captured.out
 
     def test_install_hook(self, tmp_path, capsys):
-        """Install creates hook file."""
+        """Install creates hook file with swab verb."""
         (tmp_path / ".git").mkdir()
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
             hooks_action="install",
-            profile="commit",
+            hook_verb="swab",
         )
 
         result = cmd_commit_hooks(args)
@@ -501,13 +588,13 @@ class TestCmdCommitHooks:
         assert result == 0
         hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
         assert hook_file.exists()
-        assert "sm validate commit" in hook_file.read_text()
+        assert "sm swab" in hook_file.read_text()
 
     def test_uninstall_hook(self, tmp_path, capsys):
         """Uninstall removes managed hooks."""
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
         hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
-        hook_file.write_text("# MANAGED BY SLOP-MOP - DO NOT EDIT\nsm validate")
+        hook_file.write_text("# MANAGED BY SLOP-MOP\n# Command: sm swab\nsm swab")
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
@@ -534,11 +621,19 @@ class TestMain:
             main(["--version"])
         assert exc_info.value.code == 0
 
-    def test_main_validate_calls_cmd_validate(self):
-        """Main routes validate to cmd_validate."""
-        with patch("slopmop.cli.cmd_validate") as mock_cmd:
+    def test_main_swab_calls_cmd_swab(self):
+        """Main routes swab to cmd_swab."""
+        with patch("slopmop.cli.cmd_swab") as mock_cmd:
             mock_cmd.return_value = 0
-            result = main(["validate", "commit"])
+            result = main(["swab"])
+            mock_cmd.assert_called_once()
+            assert result == 0
+
+    def test_main_scour_calls_cmd_scour(self):
+        """Main routes scour to cmd_scour."""
+        with patch("slopmop.cli.cmd_scour") as mock_cmd:
+            mock_cmd.return_value = 0
+            result = main(["scour"])
             mock_cmd.assert_called_once()
             assert result == 0
 
@@ -713,6 +808,103 @@ class TestCmdCi:
         assert "gh" in captured.out.lower()
 
 
+class TestScourDisablesFailFast:
+    """Scour must never use fail-fast so every gate runs to completion."""
+
+    def _make_args(self, tmp_path, no_fail_fast=False):
+        return argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=no_fail_fast,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+        )
+
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_scour_forces_fail_fast_off(
+        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+    ):
+        """Scour always creates executor with fail_fast=False."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        _run_validation(self._make_args(tmp_path), ["gate1"], "scour")
+
+        mock_executor_cls.assert_called_once()
+        _, kwargs = mock_executor_cls.call_args
+        assert kwargs["fail_fast"] is False
+
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_scour_ignores_no_fail_fast_flag(
+        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+    ):
+        """Even with --no-fail-fast omitted, scour still disables fail-fast."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        # no_fail_fast=False means the user did NOT pass --no-fail-fast,
+        # which normally means fail_fast=True. Scour overrides this.
+        _run_validation(
+            self._make_args(tmp_path, no_fail_fast=False), ["gate1"], "scour"
+        )
+
+        _, kwargs = mock_executor_cls.call_args
+        assert kwargs["fail_fast"] is False
+
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_swab_defaults_to_fail_fast(
+        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+    ):
+        """Swab defaults to fail_fast=True."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        _run_validation(self._make_args(tmp_path), ["gate1"], "swab")
+
+        _, kwargs = mock_executor_cls.call_args
+        assert kwargs["fail_fast"] is True
+
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_swab_respects_no_fail_fast_flag(
+        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+    ):
+        """Swab with --no-fail-fast creates executor with fail_fast=False."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        _run_validation(self._make_args(tmp_path, no_fail_fast=True), ["gate1"], "swab")
+
+        _, kwargs = mock_executor_cls.call_args
+        assert kwargs["fail_fast"] is False
+
+
 class TestSetupDynamicDisplay:
     """Tests for _setup_dynamic_display helper in validate.py."""
 
@@ -731,11 +923,12 @@ class TestSetupDynamicDisplay:
             mock_display = MagicMock()
             MockDisplay.return_value = mock_display
 
-            result = _setup_dynamic_display(
+            result, deferred = _setup_dynamic_display(
                 executor, reporter, quiet=True, project_root=tmp_path
             )
 
         assert result is mock_display
+        assert deferred == []  # empty list initially
         mock_display.start.assert_called_once()
         executor.set_start_callback.assert_called_once()
         executor.set_disabled_callback.assert_called_once()
@@ -759,7 +952,7 @@ class TestSetupDynamicDisplay:
         with patch("slopmop.cli.validate.DynamicDisplay") as MockDisplay:
             mock_display = MagicMock()
             MockDisplay.return_value = mock_display
-            _setup_dynamic_display(
+            _, deferred = _setup_dynamic_display(
                 executor, reporter, quiet=True, project_root=tmp_path
             )
 
@@ -774,5 +967,7 @@ class TestSetupDynamicDisplay:
 
         # Display receives all results
         assert mock_display.on_check_complete.call_count == 2
-        # Reporter only receives failures
-        reporter.on_check_complete.assert_called_once_with(failed)
+        # Failures are deferred (not sent to reporter immediately)
+        reporter.on_check_complete.assert_not_called()
+        assert len(deferred) == 1
+        assert deferred[0] is failed

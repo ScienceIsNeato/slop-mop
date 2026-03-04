@@ -3,7 +3,7 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, cast
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
@@ -13,10 +13,10 @@ from slopmop.core.registry import get_registry
 def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize flat 'category:gate' keys into hierarchical config.
 
-    Converts flat keys like ``{"laziness:dead-code": {"whitelist_file": "w.py"}}``
+    Converts flat keys like ``{"laziness:dead-code.py": {"whitelist_file": "w.py"}}``
     into the nested structure the runtime expects::
 
-        {"laziness": {"gates": {"dead-code": {"whitelist_file": "w.py"}}}}
+        {"laziness": {"gates": {"dead-code.py": {"whitelist_file": "w.py"}}}}
 
     Keys that are NOT in ``category:gate`` format are passed through unchanged.
     If a key matches a GateCategory but has no colon, it's also passed through
@@ -40,7 +40,7 @@ def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
                 continue
         # Pass through non-flat keys — deep-merge if both sides are dicts
         # (avoids overwriting flat-key data already accumulated for the
-        # same category, e.g. "laziness:dead-code" followed by "laziness")
+        # same category, e.g. "laziness:dead-code.py" followed by "laziness")
         if (
             key in normalized
             and isinstance(normalized[key], dict)
@@ -124,76 +124,6 @@ def _disable_gate(config_file: Path, config: dict[str, Any], gate_name: str) -> 
     return 0
 
 
-VALID_CATEGORIES = {cat.key for cat in GateCategory}
-
-
-def _parse_category_dir(spec: str) -> Optional[Tuple[str, str]]:
-    """Parse CATEGORY:DIR specification.
-
-    Returns:
-        Tuple of (category, directory) or None if invalid.
-    """
-    if ":" not in spec:
-        return None
-    parts = spec.split(":", 1)
-    if len(parts) != 2:
-        return None
-    category, directory = parts[0].lower(), parts[1]
-    if category not in VALID_CATEGORIES:
-        return None
-    return category, directory
-
-
-def _add_include_dir(config_file: Path, config: dict[str, Any], spec: str) -> int:
-    """Add a directory to a category's include list."""
-    parsed = _parse_category_dir(spec)
-    if not parsed:
-        print(f"❌ Invalid format: {spec}")
-        print(f"   Expected: CATEGORY:DIR (e.g., overconfidence:src, laziness:lib)")
-        print(f"   Valid categories: {', '.join(sorted(VALID_CATEGORIES))}")
-        return 1
-
-    category, directory = parsed
-    if category not in config:
-        config[category] = {}
-    if "include_dirs" not in config[category]:
-        config[category]["include_dirs"] = []
-
-    if directory in config[category]["include_dirs"]:
-        print(f"ℹ️  {directory} is already in {category} include_dirs")
-    else:
-        config[category]["include_dirs"].append(directory)
-        config_file.write_text(json.dumps(config, indent=2))
-        print(f"✅ Added {directory} to {category} include_dirs")
-    return 0
-
-
-def _add_exclude_dir(config_file: Path, config: dict[str, Any], spec: str) -> int:
-    """Add a directory to a category's exclude list."""
-    parsed = _parse_category_dir(spec)
-    if not parsed:
-        print(f"❌ Invalid format: {spec}")
-        print(
-            f"   Expected: CATEGORY:DIR (e.g., overconfidence:py-tests, quality:vendor)"
-        )
-        print(f"   Valid categories: {', '.join(sorted(VALID_CATEGORIES))}")
-        return 1
-
-    category, directory = parsed
-    if category not in config:
-        config[category] = {}
-    if "exclude_dirs" not in config[category]:
-        config[category]["exclude_dirs"] = []
-
-    if directory in config[category]["exclude_dirs"]:
-        print(f"ℹ️  {directory} is already in {category} exclude_dirs")
-    else:
-        config[category]["exclude_dirs"].append(directory)
-        config_file.write_text(json.dumps(config, indent=2))
-        print(f"✅ Added {directory} to {category} exclude_dirs")
-    return 0
-
-
 def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) -> int:
     """Display current configuration."""
     print("\n📋 Slop-Mop Configuration")
@@ -202,6 +132,14 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
 
     print_project_header(str(project_root))
     print(f"📄 Config file: {config_file}")
+    print()
+
+    # Show swabbing-time setting
+    swabbing_time = config.get("swabbing_time")
+    if isinstance(swabbing_time, (int, float)) and swabbing_time > 0:
+        print(f"⏱️  Swabbing-time budget: {int(swabbing_time)}s")
+    else:
+        print("⏱️  Swabbing-time budget: no limit")
     print()
 
     registry = get_registry()
@@ -219,12 +157,25 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         print(f"  {status}  {display}")
 
     print()
-    print("📦 Profiles (Aliases):")
+    print("📦 Aliases:")
     print("-" * 40)
     for alias, gates in sorted(registry.list_aliases().items()):
         print(f"  {alias}: {', '.join(gates)}")
 
     print()
+    return 0
+
+
+def _set_swabbing_time(config_file: Path, config: dict[str, Any], seconds: int) -> int:
+    """Set or disable the swabbing-time budget."""
+    if seconds <= 0:
+        config.pop("swabbing_time", None)
+        config_file.write_text(json.dumps(config, indent=2))
+        print("✅ Swabbing-time budget disabled (no limit)")
+    else:
+        config["swabbing_time"] = seconds
+        config_file.write_text(json.dumps(config, indent=2))
+        print(f"✅ Swabbing-time budget set to {seconds}s")
     return 0
 
 
@@ -252,11 +203,8 @@ def cmd_config(args: argparse.Namespace) -> int:
     if args.disable:
         return _disable_gate(config_file, config, args.disable)
 
-    if args.include_dir:
-        return _add_include_dir(config_file, config, args.include_dir)
-
-    if args.exclude_dir:
-        return _add_exclude_dir(config_file, config, args.exclude_dir)
+    if getattr(args, "swabbing_time", None) is not None:
+        return _set_swabbing_time(config_file, config, args.swabbing_time)
 
     # Default: show config
     return _show_config(project_root, config_file, config)

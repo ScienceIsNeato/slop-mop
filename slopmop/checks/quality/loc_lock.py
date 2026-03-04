@@ -77,7 +77,7 @@ class LocLockCheck(BaseCheck):
     length violations. Large files and long functions are harder
     for both humans and LLMs to reason about.
 
-    Profiles: commit, pr
+    Level: swab
 
     Configuration:
       max_file_lines: 1000 — files above this are candidates for
@@ -97,17 +97,21 @@ class LocLockCheck(BaseCheck):
       Function too long: Extract helper functions for distinct
           concepts. Three 30-line functions > one 90-line function.
 
-    Re-validate:
-      ./sm validate quality:loc-lock --verbose
+    Re-check:
+      ./sm swab -g myopia:code-sprawl --verbose
     """
 
     @property
     def name(self) -> str:
-        return "loc-lock"
+        return "code-sprawl"
 
     @property
     def display_name(self) -> str:
-        return "📏 LOC Lock"
+        return "📏 Code Sprawl"
+
+    @property
+    def gate_description(self) -> str:
+        return "📏 File and function length limits"
 
     @property
     def category(self) -> GateCategory:
