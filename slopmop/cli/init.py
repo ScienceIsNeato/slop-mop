@@ -39,6 +39,14 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
     print("-" * 40)
     print(f"  Python project:      {'✅' if detected['has_python'] else '❌'}")
     print(f"  JavaScript project:  {'✅' if detected['has_javascript'] else '❌'}")
+    # Only surface the long-tail languages when found — keeps the
+    # common case (Python/JS) uncluttered.
+    if detected.get("has_go"):
+        print("  Go project:          ✅  (custom gates scaffolded)")
+    if detected.get("has_rust"):
+        print("  Rust project:        ✅  (custom gates scaffolded)")
+    if detected.get("has_c"):
+        print("  C/C++ project:       ✅  (custom gates scaffolded)")
     print(f"  Has test directory:  {'✅' if detected['has_tests_dir'] else '❌'}")
     if detected["test_dirs"]:
         print(f"  Test directories:    {', '.join(detected['test_dirs'])}")
@@ -351,6 +359,37 @@ def cmd_init(args: argparse.Namespace) -> int:
     _apply_user_config(base_config, config)
     _disable_checks_with_missing_tools(base_config, detected)
     _set_bogus_tests_defaults(base_config, detected)
+
+    # Scaffold custom gates for languages we detected but don't ship
+    # built-in gates for (Go/Rust/C).  This is the whole reason issue
+    # #53 exists — without it, init on a Go repo produces a config with
+    # every gate disabled and zero value.
+    from slopmop.checks.custom import scaffold_for_detected
+
+    scaffolded = scaffold_for_detected(detected)
+    if scaffolded:
+        base_config["custom_gates"] = scaffolded
+        print(
+            f"⚙️  Scaffolded {len(scaffolded)} custom gate(s) for "
+            f"detected language(s)"
+        )
+    elif not detected["has_python"] and not detected["has_javascript"]:
+        # No built-in support AND no scaffold available — give the user
+        # a starting point so the config file isn't a dead end.
+        base_config["custom_gates"] = [
+            {
+                "name": "example-gate",
+                "description": "Replace with a project-appropriate check",
+                "category": "general",
+                "command": "echo 'Replace me in .sb_config.json' && false",
+                "level": "swab",
+                "timeout": 60,
+            }
+        ]
+        print(
+            "⚙️  No supported language detected — added a placeholder "
+            "custom_gates entry. Edit .sb_config.json to add real checks."
+        )
 
     # Merge with existing config if present
     if config_file.exists():

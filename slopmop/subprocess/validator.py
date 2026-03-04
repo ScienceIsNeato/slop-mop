@@ -82,6 +82,13 @@ class CommandValidator:
             # Build tools
             "make",
             "cmake",
+            # Go/Rust toolchains — used by scaffolded custom gates and
+            # future built-in gates for those languages.
+            "go",
+            "gofmt",
+            "cargo",
+            "rustc",
+            "rustfmt",
             # General utilities (some can mutate files - use with caution)
             "timeout",
             "find",

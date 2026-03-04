@@ -148,12 +148,14 @@ def _print_gate_inventory(
     applicability: Dict[str, Tuple[bool, str]],
     history: Dict[str, TimingStats],
     colors_enabled: bool,
+    custom_gates: Optional[Set[str]] = None,
 ) -> None:
     """Print the full gate inventory grouped by category.
 
     Shows every registered gate with level membership, applicability,
     and last-known result from historical timing data.
     """
+    custom_gates = custom_gates or set()
     by_category: Dict[str, List[str]] = defaultdict(list)
     for gate in all_gates:
         cat_key = gate.split(":")[0]
@@ -178,8 +180,14 @@ def _print_gate_inventory(
             gate_name = gate.split(":", 1)[1]
             is_app, reason = applicability.get(gate, (True, ""))
 
+            # ⚙ badge for user-defined gates so they're visually distinct
+            # from the built-in catalogue.
+            display_gate = (
+                f"⚙ {gate_name}" if gate in custom_gates else gate_name
+            )
+
             line = _format_gate_line(
-                gate_name,
+                display_gate,
                 in_swab=gate in swab_gates,
                 in_scour=gate in scour_gates and gate not in swab_gates,
                 is_applicable=is_app,
@@ -315,6 +323,22 @@ def run_status(
         print(f"❌ Project root not found: {root}")
         return 1
 
+    # Pull in user-defined gates so they show up in the inventory.
+    # We tolerate a malformed spec here (status is an observatory, not
+    # a gatekeeper) — surface the problem but don't bail.
+    from slopmop.checks.custom import (
+        CustomGateError,
+        custom_gate_names,
+        register_custom_gates,
+    )
+
+    custom_names: Set[str] = set()
+    try:
+        register_custom_gates(str(root))
+        custom_names = custom_gate_names(str(root))
+    except CustomGateError as e:
+        print(f"⚠️  custom_gates in .sb_config.json is malformed: {e}")
+
     registry = get_registry()
     config = load_config(root)
 
@@ -362,6 +386,7 @@ def run_status(
         applicability=applicability,
         history=history,
         colors_enabled=colors_enabled,
+        custom_gates=custom_names,
     )
 
     _print_recent_history(history)

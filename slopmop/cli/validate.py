@@ -217,9 +217,29 @@ def _run_validation(
 # ─── Top-level commands ──────────────────────────────────────────────────
 
 
+def _register_custom_for(args: argparse.Namespace) -> None:
+    """Load user-defined gates from ``.sb_config.json`` into the registry.
+
+    Custom gates are project-scoped, so this must run *after* built-in
+    registration but *before* ``get_gate_names_for_level`` — otherwise
+    they're silently dropped from the run.  Malformed specs print a
+    clear error and abort (a bad gate config is a config bug, not a
+    soft failure).
+    """
+    from slopmop.checks.custom import CustomGateError, register_custom_gates
+
+    root = str(Path(args.project_root).resolve())
+    try:
+        register_custom_gates(root)
+    except CustomGateError as e:
+        print(f"❌ Invalid custom_gates in .sb_config.json: {e}")
+        raise SystemExit(1)
+
+
 def cmd_swab(args: argparse.Namespace) -> int:
     """Handle the swab command (quick, every-commit validation)."""
     ensure_checks_registered()
+    _register_custom_for(args)
 
     # Explicit -g overrides level-based discovery
     explicit = _parse_quality_gates(args)
@@ -234,6 +254,7 @@ def cmd_swab(args: argparse.Namespace) -> int:
 def cmd_scour(args: argparse.Namespace) -> int:
     """Handle the scour command (thorough, PR-readiness validation)."""
     ensure_checks_registered()
+    _register_custom_for(args)
 
     # Explicit -g overrides level-based discovery
     explicit = _parse_quality_gates(args)

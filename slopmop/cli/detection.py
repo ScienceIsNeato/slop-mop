@@ -107,6 +107,40 @@ def _detect_typescript(project_root: Path) -> bool:
     return any(project_root.glob("**/*.ts"))
 
 
+def _detect_go(project_root: Path) -> bool:
+    """Check for Go project indicators.
+
+    ``go.mod`` is definitive — every modern Go module has one at its
+    root.  We do NOT glob for ``*.go`` because many polyglot repos
+    (e.g. next.js) vendor Go snippets in example dirs.
+    """
+    return (project_root / "go.mod").exists()
+
+
+def _detect_rust(project_root: Path) -> bool:
+    """Check for Rust project indicators.
+
+    ``Cargo.toml`` at the root is definitive for a Rust crate/workspace.
+    """
+    return (project_root / "Cargo.toml").exists()
+
+
+def _detect_c(project_root: Path) -> bool:
+    """Check for C/C++ project indicators.
+
+    C projects are heterogeneous; look for the common build-system
+    anchors.  This will also catch C++ — that's fine for scaffolding
+    purposes (the scaffolded gate is ``make check`` either way).
+    """
+    anchors = ["configure.ac", "configure", "CMakeLists.txt", "meson.build"]
+    if any((project_root / a).exists() for a in anchors):
+        return True
+    # Plain-Makefile project with .c sources at top level
+    if (project_root / "Makefile").exists():
+        return any(project_root.glob("*.c")) or any(project_root.glob("src/*.c"))
+    return False
+
+
 def _detect_test_dirs(project_root: Path) -> list[str]:
     """Find test directories."""
     test_dirs: list[str] = []
@@ -197,6 +231,9 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
         "has_python": _detect_python(project_root),
         "has_javascript": _detect_javascript(project_root),
         "has_typescript": _detect_typescript(project_root),
+        "has_go": _detect_go(project_root),
+        "has_rust": _detect_rust(project_root),
+        "has_c": _detect_c(project_root),
         "has_pytest": _detect_pytest(project_root),
         "has_jest": _detect_jest(project_root),
         "test_dirs": _detect_test_dirs(project_root),
