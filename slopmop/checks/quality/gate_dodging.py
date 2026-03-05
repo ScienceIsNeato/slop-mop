@@ -590,8 +590,13 @@ class GateDodgingCheck(BaseCheck):
             ),
             findings=[
                 Finding(
-                    message=f"{len(changes)} gate setting(s) loosened vs {base_ref}",
+                    message=(
+                        f"{c.gate} [{c.field}]: "
+                        f"{c.old_value} → {c.new_value} — {c.description}"
+                    ),
+                    file=".sb_config.json",
                     level=FindingLevel.WARNING,
                 )
+                for c in changes
             ],
         )

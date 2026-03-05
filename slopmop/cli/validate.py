@@ -182,9 +182,8 @@ def _run_validation(
     # JSON mode suppresses all interactive output
     # SARIF-to-stdout mode also suppresses console output so the JSON
     # payload is not corrupted by progress/header text.
-    sarif_to_stdout = (
-        getattr(args, "sarif_output", False)
-        and not getattr(args, "output_file", None)
+    sarif_to_stdout = getattr(args, "sarif_output", False) and not getattr(
+        args, "output_file", None
     )
     use_dynamic = (
         not json_mode

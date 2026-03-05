@@ -170,47 +170,9 @@ class DebuggerArtifactsCheck(BaseCheck):
 
             files_scanned += 1
             if files_scanned > max_files:
-                return self._create_result(
-                    status=CheckStatus.WARNED,
-                    duration=time.perf_counter() - start,
-                    output=(
-                        f"Scanned {max_files} files and stopped — repo "
-                        f"exceeds max_files.  Narrow via exclude_dirs."
-                    ),
-                )
+                return self._max_files_warning(max_files, start)
 
-            patterns = [p for exts, p, _ in _PATTERNS if path.suffix in exts]
-            labels = {
-                p.pattern: lbl for exts, p, lbl in _PATTERNS if path.suffix in exts
-            }
-            if not patterns:
-                continue
-
-            try:
-                for lineno, line in enumerate(
-                    path.read_text(errors="replace").splitlines(), 1
-                ):
-                    # Cheap comment skip — not worth a full parser for
-                    # a pattern this narrow.
-                    stripped = line.lstrip()
-                    if stripped.startswith(("#", "//", "/*", "*")):
-                        continue
-                    for pat in patterns:
-                        if pat.search(line):
-                            label = labels[pat.pattern]
-                            hits.append(f"{rel}:{lineno}: {label}")
-                            findings.append(
-                                Finding(
-                                    message=label,
-                                    level=FindingLevel.ERROR,
-                                    file=str(rel),
-                                    line=lineno,
-                                    rule_id=label,
-                                )
-                            )
-                            break
-            except (OSError, UnicodeDecodeError):
-                continue
+            self._scan_file(path, rel, hits, findings)
 
         elapsed = time.perf_counter() - start
 
@@ -240,3 +202,60 @@ class DebuggerArtifactsCheck(BaseCheck):
                 ".sb_config.json."
             ),
         )
+
+    def _max_files_warning(self, max_files: int, start: float) -> CheckResult:
+        """Return a WARNED result when scan hits the file limit."""
+        return self._create_result(
+            status=CheckStatus.WARNED,
+            duration=time.perf_counter() - start,
+            output=(
+                f"Scanned {max_files} files and stopped — repo "
+                f"exceeds max_files.  Narrow via exclude_dirs."
+            ),
+            findings=[
+                Finding(
+                    message=(
+                        f"Scan stopped after {max_files} files "
+                        "— narrow via exclude_dirs"
+                    ),
+                    level=FindingLevel.WARNING,
+                )
+            ],
+        )
+
+    @staticmethod
+    def _scan_file(
+        path: Path,
+        rel: Path,
+        hits: List[str],
+        findings: List[Finding],
+    ) -> None:
+        """Scan a single file for debugger artifact patterns."""
+        patterns = [p for exts, p, _ in _PATTERNS if path.suffix in exts]
+        labels = {p.pattern: lbl for exts, p, lbl in _PATTERNS if path.suffix in exts}
+        if not patterns:
+            return
+
+        try:
+            for lineno, line in enumerate(
+                path.read_text(errors="replace").splitlines(), 1
+            ):
+                stripped = line.lstrip()
+                if stripped.startswith(("#", "//", "/*", "*")):
+                    continue
+                for pat in patterns:
+                    if pat.search(line):
+                        label = labels[pat.pattern]
+                        hits.append(f"{rel}:{lineno}: {label}")
+                        findings.append(
+                            Finding(
+                                message=label,
+                                level=FindingLevel.ERROR,
+                                file=str(rel),
+                                line=lineno,
+                                rule_id=label,
+                            )
+                        )
+                        break
+        except (OSError, UnicodeDecodeError):
+            pass

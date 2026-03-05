@@ -256,9 +256,11 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             fix_suggestion="Add tests to increase coverage.",
             findings=[
                 Finding(
-                    message=f"Coverage {pct:.1f}% below {self.threshold}%",
+                    message=f"Coverage {file_pct:.1f}% below {self.threshold}%",
+                    file=path,
                     level=FindingLevel.ERROR,
                 )
+                for path, file_pct in low_files
             ],
         )
 

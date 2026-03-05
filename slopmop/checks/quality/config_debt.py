@@ -234,9 +234,11 @@ class ConfigDebtCheck(BaseCheck):
             error=f"{len(findings)} config debt item(s)",
             findings=[
                 Finding(
-                    message=f"{len(findings)} config debt item(s) in {CONFIG_FILE}",
+                    message=item,
+                    file=CONFIG_FILE,
                     level=FindingLevel.WARNING,
                 )
+                for item in findings
             ],
         )
 

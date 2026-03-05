@@ -301,7 +301,9 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             if backup_path and backup_path.exists():
                 backup_path.rename(config_path)
 
-    def _process_output(self, raw_output: str, duration: float, project_root: str = "") -> CheckResult:
+    def _process_output(
+        self, raw_output: str, duration: float, project_root: str = ""
+    ) -> CheckResult:
         """Parse pyright JSON output and format prescriptive results."""
         try:
             data = json.loads(raw_output)
@@ -348,7 +350,9 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         )
 
     @staticmethod
-    def _build_findings(diagnostics: List[Dict[str, Any]], project_root: str = "") -> List[Finding]:
+    def _build_findings(
+        diagnostics: List[Dict[str, Any]], project_root: str = ""
+    ) -> List[Finding]:
         """Convert pyright JSON diagnostics to Finding objects.
 
         pyright's ``range.start.line`` / ``character`` are 0-based — add 1

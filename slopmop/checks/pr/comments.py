@@ -356,9 +356,7 @@ class PRCommentsCheck(BaseCheck):
                     comments = thread.get("comments", {}).get("nodes", [])
                     if comments:
                         first_comment = comments[0]
-                        author = first_comment.get("author", {}).get(
-                            "login", "unknown"
-                        )
+                        author = first_comment.get("author", {}).get("login", "unknown")
                         # github-advanced-security threads are Code
                         # Scanning alerts surfaced as PR comments.  Those
                         # are already tracked in the Security tab — and
