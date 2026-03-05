@@ -20,7 +20,7 @@ from slopmop.checks.base import (
     GateCategory,
     count_source_scope,
 )
-from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
+from slopmop.core.result import CheckResult, CheckStatus, Finding, ScopeInfo
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ EXCLUDED_DIRS = {
     "dist",
     "build",
     ".tox",
+    ".claude",
     "htmlcov",
     "cursor-rules",
     ".mypy_cache",
@@ -272,41 +273,77 @@ class LocLockCheck(BaseCheck):
                 f"{max_func_lines} lines/function)",
             )
 
-        # Build violation report
-        output_lines: List[str] = []
-
-        if file_violations:
-            output_lines.append(
-                f"📁 Files exceeding {max_file_lines} lines ({len(file_violations)}):"
-            )
-            for path, lines in sorted(file_violations, key=lambda x: -x[1])[:10]:
-                output_lines.append(f"  {path}: {lines} lines")
-            if len(file_violations) > 10:
-                output_lines.append(f"  ... and {len(file_violations) - 10} more")
-
-        if func_violations:
-            if output_lines:
-                output_lines.append("")
-            output_lines.append(
-                f"🔧 Functions exceeding {max_func_lines} lines ({len(func_violations)}):"
-            )
-            for path, func, line, lines in sorted(func_violations, key=lambda x: -x[3])[
-                :10
-            ]:
-                output_lines.append(f"  {path}:{line} {func}(): {lines} lines")
-            if len(func_violations) > 10:
-                output_lines.append(f"  ... and {len(func_violations) - 10} more")
-
         total = len(file_violations) + len(func_violations)
-
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
-            output="\n".join(output_lines),
+            output=self._format_report(
+                file_violations, func_violations, max_file_lines, max_func_lines
+            ),
             error=f"{total} LOC violation(s) found",
             fix_suggestion="Break large files into modules. "
             "Extract long functions into smaller, focused functions.",
+            findings=self._to_findings(
+                file_violations, func_violations, max_file_lines, max_func_lines
+            ),
         )
+
+    @staticmethod
+    def _format_report(
+        file_viol: List[Tuple[str, int]],
+        func_viol: List[Tuple[str, str, int, int]],
+        max_file: int,
+        max_func: int,
+    ) -> str:
+        """Render the human-facing violation summary.
+
+        Sorts worst-first and caps each section at ten entries so the
+        console output stays scannable even on a codebase with hundreds
+        of violations — the full list is available via SARIF/JSON.
+        """
+        out: List[str] = []
+        if file_viol:
+            out.append(f"📁 Files exceeding {max_file} lines ({len(file_viol)}):")
+            for path, n in sorted(file_viol, key=lambda x: -x[1])[:10]:
+                out.append(f"  {path}: {n} lines")
+            if len(file_viol) > 10:
+                out.append(f"  ... and {len(file_viol) - 10} more")
+        if func_viol:
+            if out:
+                out.append("")
+            out.append(f"🔧 Functions exceeding {max_func} lines ({len(func_viol)}):")
+            for path, fn, line, n in sorted(func_viol, key=lambda x: -x[3])[:10]:
+                out.append(f"  {path}:{line} {fn}(): {n} lines")
+            if len(func_viol) > 10:
+                out.append(f"  ... and {len(func_viol) - 10} more")
+        return "\n".join(out)
+
+    @staticmethod
+    def _to_findings(
+        file_viol: List[Tuple[str, int]],
+        func_viol: List[Tuple[str, str, int, int]],
+        max_file: int,
+        max_func: int,
+    ) -> List[Finding]:
+        """Map the two violation shapes to SARIF-ready Finding objects.
+
+        File-level violations have no line anchor (the whole file is
+        the problem).  Function violations anchor at the ``def`` line
+        so GitHub's inline annotation lands on the signature.
+        """
+        out = [
+            Finding(message=f"file has {n} lines (limit: {max_file})", file=p)
+            for p, n in file_viol
+        ]
+        out += [
+            Finding(
+                message=f"{fn}() has {n} lines (limit: {max_func})",
+                file=p,
+                line=start,
+            )
+            for p, fn, start, n in func_viol
+        ]
+        return out
 
     def _find_functions(
         self, content: str, extension: str

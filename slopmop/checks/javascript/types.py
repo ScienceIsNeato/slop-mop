@@ -24,6 +24,7 @@ The check respects tsconfig.json settings including:
 See: https://www.typescriptlang.org/tsconfig#noEmit
 """
 
+import re
 import time
 from typing import List
 
@@ -36,7 +37,10 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.constants import NPM_INSTALL_FAILED
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
+
+# tsc error format: src/foo.ts(42,10): error TS2322: message
+_TSC_ERROR_RE = re.compile(r"^(.+?)\((\d+),(\d+)\):\s*error\s+(TS\d+):\s*(.+)$")
 
 
 class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
@@ -185,12 +189,27 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
             error_lines = [line for line in lines if "error TS" in line]
             error_count = len(error_lines)
 
+            structured: List[Finding] = []
+            for line in error_lines:
+                m = _TSC_ERROR_RE.match(line.strip())
+                if m:
+                    structured.append(
+                        Finding(
+                            message=m.group(5),
+                            file=m.group(1),
+                            line=int(m.group(2)),
+                            column=int(m.group(3)),
+                            rule_id=m.group(4),
+                        )
+                    )
+
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
                 error=f"{error_count} TypeScript error(s) found",
                 fix_suggestion=f"Run: npx tsc --noEmit -p {tsconfig} to see detailed errors",
+                findings=structured,
             )
 
         return self._create_result(

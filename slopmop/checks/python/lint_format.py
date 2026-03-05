@@ -19,7 +19,7 @@ from slopmop.checks.base import (
     PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
@@ -188,7 +188,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             output_parts.append("Isort: ✅ Import order OK")
 
         # Check 3: Flake8 critical errors
-        flake8_result = self._check_flake8(project_root)
+        flake8_findings: List[Finding] = []
+        flake8_result = self._check_flake8(project_root, flake8_findings)
         if flake8_result:
             issues.append(flake8_result)
             output_parts.append(f"Flake8: {flake8_result}")
@@ -204,6 +205,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 output="\n".join(output_parts),
                 error=f"{len(issues)} issue(s) found",
                 fix_suggestion="Run: black . && isort . to auto-fix formatting",
+                findings=flake8_findings,
             )
 
         return self._create_result(
@@ -299,8 +301,16 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             return "Import order issues found"
         return None
 
-    def _check_flake8(self, project_root: str) -> Optional[str]:
+    def _check_flake8(
+        self, project_root: str, findings_out: List[Finding]
+    ) -> Optional[str]:
         """Check for critical flake8 errors.
+
+        Populates ``findings_out`` with structured per-line findings
+        parsed from flake8's ``file:line:col: CODE msg`` output, so
+        the caller can emit SARIF locations.  Returns the same
+        human-readable summary string as before.
+
 
         Scans only the configured include_dirs or auto-detected Python source
         directories.  Hidden directories (e.g. .claude/, .git/) are excluded
@@ -354,5 +364,20 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         if not result.success and result.output.strip():
             lines = result.output.strip().split("\n")
+            for line in lines:
+                # flake8: path:line:col: CODE message
+                parts = line.split(":", 3)
+                if len(parts) == 4 and parts[1].isdigit() and parts[2].isdigit():
+                    code_msg = parts[3].strip()
+                    code = code_msg.split(None, 1)[0] if code_msg else None
+                    findings_out.append(
+                        Finding(
+                            message=code_msg,
+                            file=parts[0],
+                            line=int(parts[1]),
+                            column=int(parts[2]),
+                            rule_id=code,
+                        )
+                    )
             return f"{len(lines)} critical error(s):\n" + "\n".join(lines[:5])
         return None

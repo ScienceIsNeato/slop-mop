@@ -22,7 +22,7 @@ from slopmop.checks.base import (
     count_source_scope,
     find_tool,
 )
-from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
+from slopmop.core.result import CheckResult, CheckStatus, Finding, ScopeInfo
 
 DEFAULT_MIN_CONFIDENCE = 80
 MAX_FINDINGS_TO_SHOW = 15
@@ -262,12 +262,17 @@ class DeadCodeCheck(BaseCheck):
             )
 
         output = self._format_findings(findings)
+        structured = [
+            Finding(message=f"{desc} ({conf}% confidence)", file=fp, line=ln)
+            for fp, ln, desc, conf in findings
+        ]
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=output,
             error=f"{len(findings)} dead code finding(s)",
             fix_suggestion="Remove unused code or add to vulture whitelist.",
+            findings=structured,
         )
 
     def _parse_findings(self, output: str) -> List[Tuple[str, int, str, int]]:

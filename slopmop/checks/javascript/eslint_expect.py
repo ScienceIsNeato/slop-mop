@@ -28,7 +28,7 @@ from slopmop.checks.base import (
     JavaScriptCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 # Shared constants for test file discovery — single source of truth so
 # is_applicable() and _find_test_files() can never silently diverge.
@@ -365,6 +365,14 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 "additional_assert_functions in .sb_config.json if "
                 "tests use custom assertion helpers."
             ),
+            findings=[
+                Finding(
+                    message=str(v.get("message", "")),
+                    file=str(v.get("file", "")) or None,
+                    line=v.get("line") or None,
+                )
+                for v in violations
+            ],
         )
 
     def _extract_violations(

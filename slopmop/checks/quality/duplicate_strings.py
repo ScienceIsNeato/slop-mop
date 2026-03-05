@@ -18,7 +18,24 @@ from slopmop.checks.base import (
     ToolContext,
     count_source_scope,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
+
+_PREVIEW_LEN = 60
+
+
+def _first_relpath(files: List[str]) -> Optional[str]:
+    """Pick the first file from a duplicate-string occurrence list.
+
+    The vendored tool emits absolute paths; reviewers want repo-relative.
+    ``relpath`` raises ``ValueError`` on Windows cross-drive paths, so
+    fall back to the raw path rather than dropping the location entirely.
+    """
+    if not files:
+        return None
+    try:
+        return os.path.relpath(files[0])
+    except ValueError:
+        return files[0]
 
 
 class StringDuplicationCheck(BaseCheck):
@@ -489,6 +506,26 @@ class StringDuplicationCheck(BaseCheck):
 
         return tmp_dir
 
+    @staticmethod
+    def _to_finding(entry: Dict[str, Any]) -> Finding:
+        """Convert one find-duplicate-strings JSON entry to a Finding.
+
+        Anchors at the first occurrence — SARIF only gets one
+        ``physicalLocation`` per result, and the first hit is where a
+        reviewer would start refactoring.  The literal itself goes in
+        the message (truncated) so the GitHub annotation is
+        self-explanatory without cross-referencing the full report.
+        """
+        key = str(entry.get("key", ""))
+        preview = key if len(key) <= _PREVIEW_LEN else key[: _PREVIEW_LEN - 3] + "..."
+        return Finding(
+            message=(
+                f'"{preview}" repeated {entry.get("count", 0)}× '
+                f'across {entry.get("fileCount", 0)} files'
+            ),
+            file=_first_relpath(cast(List[str], entry.get("files", []))),
+        )
+
     def run(self, project_root: str) -> CheckResult:
         """Run the string duplication check."""
         start_time = time.time()
@@ -566,6 +603,7 @@ class StringDuplicationCheck(BaseCheck):
                     "Extract duplicate strings to a constants.py module "
                     "to improve maintainability."
                 ),
+                findings=[self._to_finding(f) for f in filtered],
             )
 
         return self._create_result(

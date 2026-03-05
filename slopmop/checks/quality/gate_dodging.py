@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 logger = logging.getLogger(__name__)
 
@@ -588,4 +588,8 @@ class GateDodgingCheck(BaseCheck):
                 "or add a justification comment with the prefix: "
                 f"{JUSTIFICATION_PREFIX}"
             ),
+            findings=[
+                Finding(message=f"{c.gate}: {c.description}", file=".sb_config.json")
+                for c in changes
+            ],
         )

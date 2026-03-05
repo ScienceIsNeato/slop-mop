@@ -15,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
 
-from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
+from slopmop.core.result import CheckResult, CheckStatus, Finding, ScopeInfo
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
@@ -532,8 +532,14 @@ class BaseCheck(ABC):
         fix_suggestion: Optional[str] = None,
         auto_fixed: bool = False,
         status_detail: Optional[str] = None,
+        findings: Optional[List[Finding]] = None,
     ) -> CheckResult:
         """Helper to create a CheckResult for this check.
+
+        **The findings rail**: when ``findings`` is supplied and ``output``
+        is empty, ``output`` is auto-generated from the findings'
+        ``__str__`` representations.  A gate that hands over structured
+        findings gets console, JSON, *and* SARIF output from one call.
 
         Args:
             status: Check status
@@ -542,10 +548,14 @@ class BaseCheck(ABC):
             error: Error message if failed
             fix_suggestion: Suggested fix for failures
             auto_fixed: Whether issues were auto-fixed
+            findings: Structured per-issue findings (flow to SARIF)
 
         Returns:
             CheckResult instance
         """
+        findings = findings or []
+        if findings and not output:
+            output = "\n".join(str(f) for f in findings)
         return CheckResult(
             name=self.full_name,
             status=status,
@@ -556,6 +566,7 @@ class BaseCheck(ABC):
             auto_fixed=auto_fixed,
             category=self.category.key if self.category else None,
             status_detail=status_detail,
+            findings=findings,
         )
 
     def _run_command(
