@@ -252,7 +252,6 @@ class GateCategory(Enum):
 
     # Other categories
     GENERAL = ("general", "🔧", "General")
-    PR = ("pr", "🔀", "Pull Request")
 
     def __init__(self, key: str, emoji: str, display_name: str):
         self.key = key
@@ -532,6 +531,7 @@ class BaseCheck(ABC):
         error: Optional[str] = None,
         fix_suggestion: Optional[str] = None,
         auto_fixed: bool = False,
+        status_detail: Optional[str] = None,
     ) -> CheckResult:
         """Helper to create a CheckResult for this check.
 
@@ -555,6 +555,7 @@ class BaseCheck(ABC):
             fix_suggestion=fix_suggestion,
             auto_fixed=auto_fixed,
             category=self.category.key if self.category else None,
+            status_detail=status_detail,
         )
 
     def _run_command(
@@ -562,6 +563,7 @@ class BaseCheck(ABC):
         command: List[str],
         cwd: Optional[str] = None,
         timeout: Optional[int] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> SubprocessResult:
         """Run a command using the subprocess runner.
 
@@ -576,6 +578,7 @@ class BaseCheck(ABC):
             command: Command to run
             cwd: Working directory (also used as project root for tool lookup)
             timeout: Timeout in seconds
+            env: Optional environment variables for the subprocess
 
         Returns:
             SubprocessResult
@@ -584,7 +587,7 @@ class BaseCheck(ABC):
             resolved = find_tool(command[0], cwd)
             if resolved:
                 command = [resolved, *command[1:]]
-        return self._runner.run(command, cwd=cwd, timeout=timeout)
+        return self._runner.run(command, cwd=cwd, timeout=timeout, env=env)
 
 
 class PythonCheckMixin:
@@ -892,12 +895,33 @@ class JavaScriptCheckMixin:
             return "No JavaScript/TypeScript files found"
         return "JavaScript check not applicable"
 
-    def _get_npm_install_command(self, project_root: str) -> List[str]:
-        """Build npm install command with appropriate flags.
+    def _detect_package_manager(self, project_root: str) -> str:
+        """Detect which package manager the project uses.
 
-        Checks both config (npm_install_flags) and .npmrc (legacy-peer-deps).
+        Resolution order: pnpm-lock.yaml → yarn.lock → package-lock.json → npm
+        """
+        root = Path(project_root)
+        if (root / "pnpm-lock.yaml").exists():
+            return "pnpm"
+        if (root / "yarn.lock").exists():
+            return "yarn"
+        return "npm"
+
+    def _get_npm_install_command(self, project_root: str) -> List[str]:
+        """Build install command with the correct package manager.
+
+        Detects pnpm/yarn/npm from lockfiles and uses the appropriate
+        install command. Falls back to npm if no lockfile found.
         Available to all JavaScript checks via the mixin.
         """
+        pm = self._detect_package_manager(project_root)
+
+        if pm == "pnpm":
+            return ["pnpm", "install", "--no-frozen-lockfile"]
+        if pm == "yarn":
+            return ["yarn", "install", "--ignore-engines"]
+
+        # npm path
         cmd = ["npm", "install"]
 
         # Add flags from config (handle string or list)

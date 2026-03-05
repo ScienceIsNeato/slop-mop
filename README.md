@@ -28,8 +28,9 @@ The mop finds the slop. The agent cleans it up. The ship stays seaworthy.
 
 ```bash
 # Install (once per machine)
-pipx install slopmop          # recommended — isolated, no dep conflicts
-# or: pip install slopmop
+pipx install slopmop[all]     # recommended — all tools bundled, isolated
+# or: pipx install slopmop    # minimal — just the framework, add tools later
+# or: pip install slopmop[all]
 
 # Set up the project
 sm init                       # auto-detects languages, writes .sb_config.json
@@ -39,7 +40,19 @@ sm swab                       # fix what it finds, commit when green
 sm scour                      # thorough check before opening a PR
 ```
 
-`sm init` auto-detects Python, JavaScript, or both and writes a `.sb_config.json` with applicable gates enabled.
+`sm init` auto-detects Python, JavaScript/TypeScript, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. For Go, Rust, and C/C++ projects it scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) since built-in gates focus on Python and JS.
+
+### Installation Options
+
+| Command | What You Get |
+|---------|-------------|
+| `pipx install slopmop` | Framework only — `sm init` shows what's missing |
+| `pipx install slopmop[lint]` | + black, isort, autoflake, flake8 |
+| `pipx install slopmop[typing]` | + mypy, pyright |
+| `pipx install slopmop[security]` | + bandit, semgrep, detect-secrets, pip-audit |
+| `pipx install slopmop[analysis]` | + vulture, radon |
+| `pipx install slopmop[testing]` | + pytest, pytest-cov, diff-cover |
+| `pipx install slopmop[all]` | Everything above |
 
 ---
 
@@ -70,7 +83,7 @@ When a gate fails, the output tells the agent exactly what to do next:
 └──────────────────────────────────────────────────────────┘
 ```
 
-This is purpose-built for AI agents. The guidance is token-optimized and machine-readable, the iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
+This is purpose-built for AI agents. The iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
 
 Use `sm status` for a report card of all gates at once.
 
@@ -108,6 +121,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 |------|--------------|
 | `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS |
 | `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing |
+| `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C |
 | `deceptiveness:gate-dodging` | 🎭 Detects loosened quality thresholds |
 | `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement |
 
@@ -126,7 +140,6 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) |
 | `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) |
 | `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check |
-| `laziness:stale-docs` | 📖 Detects stale README gate tables |
 
 ### 🔵 Myopia
 
@@ -138,16 +151,11 @@ Gates aren't organized by language — they're organized by **the failure mode t
 |------|--------------|
 | `myopia:code-sprawl` | 📏 File and function length limits |
 | `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) |
+| `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads |
 | `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) |
 | `myopia:source-duplication` | 📋 Code clone detection (jscpd) |
 | `myopia:string-duplication.py` | 🔤 Duplicate string literal detection |
 | `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets |
-
-### PR Gates
-
-| Gate | What It Does |
-|------|--------------|
-| `pr:ignored-feedback` | 💬 Checks for unresolved PR review threads |
 
 <!-- END GATE TABLES -->
 
@@ -159,10 +167,10 @@ Every gate has an intrinsic **level** — the point in the workflow where it bel
 
 | Level | Command | Gates | When to Use |
 |-------|---------|-------|-------------|
-| **Swab** | `sm swab` | All overconfidence, deceptiveness, laziness, myopia checks | Before every commit |
-| **Scour** | `sm scour` | Everything in swab + PR comments, diff-coverage, full security audit | Before opening or updating a PR |
+| **Swab** | `sm swab` | Most gates across all categories | Before every commit |
+| **Scour** | `sm scour` | Everything in swab + scour-only gates | Before opening or updating a PR |
 
-Scour is a strict superset of swab — it runs everything swab does, plus context-dependent gates that need a PR, deeper analysis, or more execution time.
+Scour is a strict superset of swab — it runs everything swab does, plus gates that need more time or PR context. Scour-only gates include `dependency-risk.py` (full security audit), `just-this-once.py` (diff-coverage), `myopia:ignored-feedback`, and any custom gates marked `"level": "scour"`.
 
 Individual gates can be run directly with `-g`:
 
@@ -263,22 +271,71 @@ sm config --include-dir overconfidence:src      # only check src/
 
 ### .sb_config.json
 
-Edit directly for per-gate configuration:
+Edit directly for per-gate configuration. Gates are organized by flaw category:
 
 ```json
 {
   "version": "1.0",
-  "python": {
+  "swabbing_time": 20,
+  "overconfidence": {
+    "enabled": true,
     "gates": {
-      "coverage": { "threshold": 80 },
-      "tests": { "test_dirs": ["tests"] }
+      "coverage-gaps.py": { "enabled": true, "threshold": 80 },
+      "untested-code.py": { "enabled": true, "test_dirs": ["tests"], "timeout": 300 }
     }
   },
-  "quality": {
-    "exclude_dirs": ["generated", "vendor"]
+  "laziness": {
+    "enabled": true,
+    "gates": {
+      "dead-code.py": { "enabled": true, "min_confidence": 80, "exclude_patterns": ["**/vendor/**"] }
+    }
   }
 }
 ```
+
+### Custom Gates
+
+Custom gates let you plug repo-specific checks into the slop-mop pipeline as shell commands — no Python required. They serve two purposes:
+
+1. **Repo-specific checks** — things that only make sense in *your* project (migration validation, config linting, proprietary build steps) but benefit from slop-mop's reporting, time-budgeting, and LLM-readable output.
+2. **Gate prototyping** — when you think a check might belong in slop-mop permanently, run it as a custom gate first. If it proves useful across projects, that's a natural signal to promote it to a built-in gate via a feature request or PR.
+
+Custom gates are an escape hatch and a proving ground, not a replacement for `make` or `just`. The value is integration with the slop-mop framework — taxonomy, fail-fast, time budget, structured JSON output — not task execution.
+
+```json
+{
+  "custom_gates": [
+    {
+      "name": "cargo-clippy",
+      "description": "Run clippy lints",
+      "category": "laziness",
+      "command": "cargo clippy -- -D warnings 2>&1",
+      "level": "swab",
+      "timeout": 300
+    },
+    {
+      "name": "go-test",
+      "description": "Run Go tests",
+      "category": "overconfidence",
+      "command": "go test ./...",
+      "level": "swab",
+      "timeout": 300
+    }
+  ]
+}
+```
+
+Custom gates run alongside built-in gates and respect the same enable/disable, timeout, and time-budget mechanics. Exit code 0 means pass, anything else is a failure. `sm init` auto-scaffolds appropriate custom gates when it detects Go, Rust, or C/C++ projects.
+
+### Why Wrapper Gates?
+
+Some built-in gates wrap well-known tools — `coverage-gaps.py` runs `pytest --cov`, `sloppy-formatting.py` runs `black --check`. Why not just run those tools directly?
+
+**They establish a floor.** Without them, an AI agent can commit code with no tests, no type checking, and no formatting — and the "interesting" gates like complexity analysis have nothing to anchor to. The wrappers ensure the absolute minimum is in place for sane development.
+
+**They provide behavioral conditioning.** When an LLM sees slop-mop consistently enforce formatting and test coverage across runs, it starts pre-emptively formatting and testing. The wrappers aren't just gates — they're training signal that encourages models to be good citizens.
+
+**They unify the interface.** `sm swab` gives you formatting + type-checking + test coverage + complexity analysis + dead code + duplicate detection + vulnerability scanning in one command, with zero per-tool configuration. The wrapper gates make that possible.
 
 ---
 
@@ -304,7 +361,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install slopmop
+      - run: pip install slopmop[all]
       - run: sm swab
       - if: github.event_name == 'pull_request'
         env:
@@ -341,7 +398,7 @@ This means if the project has its own `pytest` (with plugins like `pytest-django
 
 ```bash
 # Working on slop-mop itself
-pip install -e .
+pip install -e ".[dev]"
 sm scour                   # dogfooding — sm validates its own code
 pytest
 ```

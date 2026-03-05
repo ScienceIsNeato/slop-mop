@@ -5,10 +5,11 @@ top-level commands.
 """
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
@@ -18,6 +19,21 @@ from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.timings import clear_timings, load_timing_averages
+
+
+def _is_json_mode(args: argparse.Namespace) -> bool:
+    """Determine whether output should be JSON.
+
+    Resolution order:
+    1. Explicit --json → True
+    2. Explicit --no-json → False
+    3. Auto-detect: not a TTY → True (piped to AI agent)
+    4. Default: False (interactive terminal)
+    """
+    explicit = getattr(args, "json_output", None)
+    if explicit is not None:
+        return explicit
+    return not sys.stdout.isatty()
 
 
 def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
@@ -34,10 +50,19 @@ def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
 
 
 def _print_header(
-    project_root: Path, gates: List[str], args: argparse.Namespace
+    project_root: Path,
+    gates: List[str],
+    args: argparse.Namespace,
+    swabbing_time: "Optional[int]" = None,
 ) -> None:
-    """Print validation header."""
-    print("\u2728 scanning the code for slop to mop")
+    """Print validation header.
+
+    Single-line banner with optional time budget appended.
+    """
+    parts = ["\u2728 scanning the code for slop to mop"]
+    if swabbing_time is not None and swabbing_time > 0:
+        parts.append(f"  \u23f1\ufe0f  Time budget: {swabbing_time}s")
+    print("".join(parts))
     print()
 
 
@@ -113,10 +138,12 @@ def _run_validation(
         print(f"❌ Project root not found: {project_root}")
         return 1
 
+    json_mode = _is_json_mode(args)
+
     # Clear timing history if requested
     if getattr(args, "clear_history", False):
         if clear_timings(str(project_root)):
-            if not args.quiet:
+            if not args.quiet and not json_mode:
                 print("🗑️  Timing history cleared")
 
     # Create executor
@@ -140,17 +167,26 @@ def _run_validation(
     # Load configuration (must happen early — swabbing-time default lives here)
     config = load_config(project_root)
 
+    # Register user-defined custom gates from config
+    from slopmop.checks.custom import register_custom_gates
+
+    custom_names = register_custom_gates(config)
+
+    # Custom gates are registered AFTER the initial gate_names list was
+    # computed by cmd_swab/cmd_scour.  Append any newly registered names
+    # so they actually run.  (Explicit -g lists are left untouched.)
+    if level_name is not None and custom_names:
+        gates = list(gates) + custom_names
+
     # Determine if we should use dynamic display
+    # JSON mode suppresses all interactive output
     use_dynamic = (
-        sys.stdout.isatty()
+        not json_mode
+        and sys.stdout.isatty()
         and not os.environ.get("NO_COLOR")
         and not args.quiet
         and not getattr(args, "static", False)
     )
-
-    # Print header BEFORE starting dynamic display
-    if not args.quiet:
-        _print_header(project_root, gates, args)
 
     # Handle time budget (swabbing-time).
     # Only applies to swab, not scour.  Read from CLI flag first,
@@ -165,13 +201,14 @@ def _run_validation(
     if level_name != "swab":
         swabbing_time = None
 
+    # Print header BEFORE starting dynamic display
+    if not args.quiet and not json_mode:
+        _print_header(project_root, gates, args, swabbing_time=swabbing_time)
+
     # Load timing history for budget filtering
     timings: Optional[dict[str, float]] = None
     if swabbing_time is not None and swabbing_time > 0:
         timings = load_timing_averages(str(project_root))
-        if not args.quiet:
-            print(f"⏱️  Time budget: {swabbing_time}s")
-            print()
 
     # Set up dynamic display if appropriate
     dynamic_display: Optional[DynamicDisplay] = None
@@ -180,8 +217,8 @@ def _run_validation(
         dynamic_display, deferred_failures = _setup_dynamic_display(
             executor, reporter, args.quiet, project_root
         )
-    else:
-        # Fall back to traditional reporter
+    elif not json_mode:
+        # Fall back to traditional reporter (no progress in JSON mode)
         executor.set_progress_callback(reporter.on_check_complete)
 
     try:
@@ -200,13 +237,62 @@ def _run_validation(
             dynamic_display.stop()
             dynamic_display.save_historical_timings(str(project_root))
 
-            # Now it's safe to print failure details that were buffered
-            # during the live animation.
-            for result in deferred_failures:
-                reporter.on_check_complete(result)
+            # Deferred failures are NOT printed here — print_summary()
+            # already shows failure details via _print_failure_sections.
+            # Printing them individually via on_check_complete() too
+            # caused double-reported failures (token sink #1).
 
-        # Print summary
-        reporter.print_summary(summary)
+        if json_mode:
+            # Write failure/error logs the same way the human path does,
+            # so JSON consumers can reference the same log files.
+            log_files: dict[str, str] = {}
+            for result in summary.results:
+                if result.failed or result.status == CheckStatus.ERROR:
+                    log_path = reporter.write_failure_log(result)
+                    if log_path:
+                        log_files[result.name] = log_path
+
+            # Build enriched JSON — everything the human display shows,
+            # structured for machine consumption.
+            output = summary.to_dict()
+
+            # Schema version — lets consumers look up field semantics
+            # without the JSON needing to self-document every key.
+            output["schema"] = "slopmop/v1"
+
+            # Add run context
+            if level_name:
+                output["level"] = level_name
+
+            # Attach log file paths to individual results
+            # (results only contains non-passing checks in compact mode)
+            if log_files and isinstance(output.get("results"), list):
+                for entry in cast(List[dict[str, object]], output["results"]):
+                    gate_name = str(entry.get("name", ""))
+                    if gate_name in log_files:
+                        entry["log_file"] = log_files[gate_name]
+
+            # Add next-steps guidance (same commands the human display shows)
+            failed_results = [
+                r for r in summary.results if r.status == CheckStatus.FAILED
+            ]
+            error_results = [
+                r for r in summary.results if r.status == CheckStatus.ERROR
+            ]
+            first_failure = (
+                failed_results[0]
+                if failed_results
+                else (error_results[0] if error_results else None)
+            )
+            if first_failure:
+                output["next_steps"] = [
+                    f"sm swab -g {first_failure.name} --verbose",
+                ]
+
+            print(json.dumps(output, separators=(",", ":")))
+        else:
+            reporter.print_summary(summary)
+
         return 0 if summary.all_passed else 1
     finally:
         # Ensure display is stopped on any exit

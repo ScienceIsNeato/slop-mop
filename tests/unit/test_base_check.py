@@ -121,6 +121,7 @@ class TestBaseCheck:
             [resolved_echo, "test"],
             cwd=str(tmp_path),
             timeout=None,
+            env=None,
         )
 
 

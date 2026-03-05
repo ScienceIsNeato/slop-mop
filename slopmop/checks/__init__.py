@@ -53,10 +53,10 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
         ComplexityCheck,
         ConfigDebtCheck,
         DeadCodeCheck,
+        DebuggerArtifactsCheck,
         GateDodgingCheck,
         LocLockCheck,
         SourceDuplicationCheck,
-        StaleDocsCheck,
         StringDuplicationCheck,
     )
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
@@ -66,12 +66,12 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(BogusTestsCheck)
     registry.register(ComplexityCheck)
     registry.register(DeadCodeCheck)
+    registry.register(DebuggerArtifactsCheck)
     registry.register(GateDodgingCheck)
     registry.register(SourceDuplicationCheck)
     registry.register(StringDuplicationCheck)
     registry.register(LocLockCheck)
     registry.register(ConfigDebtCheck)
-    registry.register(StaleDocsCheck)
     registry.register(TemplateValidationCheck)
     registry.register(PRCommentsCheck)
 

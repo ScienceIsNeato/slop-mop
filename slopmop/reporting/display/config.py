@@ -46,7 +46,6 @@ CATEGORY_ORDER = [
     "deceptiveness",
     "laziness",
     "myopia",
-    "pr",
 ]
 
 # Category header line character

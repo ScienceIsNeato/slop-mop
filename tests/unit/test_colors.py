@@ -224,7 +224,6 @@ class TestCategoryHeaderColor:
             "deceptiveness",
             "laziness",
             "myopia",
-            "pr",
             "general",
         ):
             assert category_header_color(cat, colors_enabled=True) != ""

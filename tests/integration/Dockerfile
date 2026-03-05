@@ -2,8 +2,12 @@ FROM python:3.12-slim
 
 # System dependencies required by slop-mop gates:
 #   git      — clone fixture repo + branch checkout inside the container
-#   Node.js  — jscpd (source-duplication gate)
-#   jscpd    — installed globally via npm
+#   Node.js  — jscpd (source-duplication gate), find-duplicate-strings
+#   jscpd    — installed globally via npm (source-duplication gate)
+#   find-duplicate-strings — installed globally via npm (string-duplication gate)
+#
+# Python analysis tools are pre-installed so that gates work immediately
+# after `pip install slopmop`.  This mirrors `pipx install slopmop[tools]`.
 #
 # slop-mop itself is NOT pre-installed here. Installing it is part of what
 # the integration tests are testing (phase A). The host source tree is
@@ -25,9 +29,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g jscpd \
+    && npm install -g jscpd find-duplicate-strings \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Python analysis tools — pre-installed in the image so each container
+# run only needs `pip install slopmop` (fast) and all gates have their
+# tools available.  Semgrep is excluded (huge download, CI-specific).
+RUN pip install --no-cache-dir \
+    black isort autoflake flake8 ruff \
+    vulture radon \
+    bandit detect-secrets \
+    mypy \
+    pytest pytest-cov diff-cover
 
 # Git identity so checkout / status operations don't complain
 RUN git config --global user.email "test@slop-mop.dev" \

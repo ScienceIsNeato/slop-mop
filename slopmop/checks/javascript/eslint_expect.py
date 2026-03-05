@@ -214,6 +214,10 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             # --parser-options=ecmaVersion:latest is required because
             # --no-eslintrc resets ecmaVersion to ES5, which can't parse
             # arrow functions, const/let, template literals, etc.
+            #
+            # ESLINT_USE_FLAT_CONFIG=false prevents ESLint 8.21+ from
+            # auto-discovering eslint.config.js in the project root and
+            # switching to flat config mode (where --no-eslintrc is invalid).
             cmd = [
                 eslint_bin,
                 "--no-eslintrc",
@@ -229,7 +233,8 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 *test_files,
             ]
 
-            result = self._run_command(cmd, cwd=project_root, timeout=120)
+            env = {**os.environ, "ESLINT_USE_FLAT_CONFIG": "false"}
+            result = self._run_command(cmd, cwd=project_root, timeout=120, env=env)
             duration = time.time() - start_time
 
             # Parse ESLint JSON output

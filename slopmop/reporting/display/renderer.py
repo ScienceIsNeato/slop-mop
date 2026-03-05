@@ -42,6 +42,10 @@ def display_width(text: str) -> int:
     stripped = _ANSI_RE.sub("", text)
     width = 0
     for ch in stripped:
+        cp = ord(ch)
+        # Zero-width characters: variation selectors, ZWJ, ZWSP, BOM/ZWNBSP
+        if cp in (0xFE0E, 0xFE0F, 0x200B, 0x200D, 0xFEFF):
+            continue
         cat = unicodedata.east_asian_width(ch)
         if cat in ("W", "F"):
             width += 2
@@ -109,23 +113,30 @@ def truncate_to_width(text: str, max_width: int) -> str:
     return out
 
 
-def format_time(seconds: float) -> str:
+def format_time(seconds: float, *, allow_fast_label: bool = True) -> str:
     """Format seconds as fixed-width, right-aligned time string.
 
     Produces consistent-width output so timing columns align
     vertically in the display.  Sub-60s values are formatted as
     ``Xs`` or ``X.Xs`` (always includes one decimal for < 100s).
     Near-zero values (< 0.05s) are shown as ``" fast"`` to avoid
-    the meaningless ``"  0.0s"`` label.
+    the meaningless ``"  0.0s"`` label — unless ``allow_fast_label``
+    is False, in which case the numeric value is always shown.
+
+    Use ``allow_fast_label=False`` for *actual* durations (the check
+    really did run, show how long it took) and the default ``True``
+    for *expected* / ETA durations where "fast" is more informative.
 
     Args:
         seconds: Time in seconds
+        allow_fast_label: If True (default), sub-0.05s values render
+            as ``" fast"``.  If False, they render as ``"  0.0s"``.
 
     Returns:
         Formatted string like "  5.2s", " 42.1s", "1m 30s", " fast" etc.
         Width is 6 characters for sub-60s values.
     """
-    if seconds < 0.05:
+    if seconds < 0.05 and allow_fast_label:
         return "  fast"
     if seconds < 60:
         return f"{seconds:5.1f}s"
@@ -310,7 +321,7 @@ def build_overall_progress(
         term_width = get_terminal_width()
 
     # Right side: count + elapsed
-    elapsed_str = format_time(elapsed)
+    elapsed_str = format_time(elapsed, allow_fast_label=False)
     right_side = f"{completed}/{total} · {elapsed_str} elapsed"
 
     # Calculate bar width from remaining space
@@ -461,7 +472,7 @@ def build_category_header(
     dash = config.HEADER_DASH
     progress = f"[{completed}/{total}]"
     if elapsed is not None and elapsed > 0:
-        time_str = format_time(elapsed)
+        time_str = format_time(elapsed, allow_fast_label=False)
         left_part = f"{dash * 2} {label} {progress} · {time_str} "
     else:
         left_part = f"{dash * 2} {label} {progress} "

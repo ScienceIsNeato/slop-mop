@@ -1,8 +1,8 @@
 """README gate table generation utilities.
 
 Generates Markdown tables from registered check class metadata.
-Used by both the ``stale-docs`` quality gate and the standalone
-``scripts/generate_readme_tables.py`` CLI tool.
+Used by the ``scripts/generate_readme_tables.py`` CLI tool, which is
+invoked by the ``stale-docs`` custom gate to verify table freshness.
 
 The registry is accepted as a parameter to avoid circular imports —
 this module does **not** call ``ensure_checks_registered()`` itself.
@@ -79,11 +79,6 @@ CATEGORY_INFO: Dict[GateCategory, CategoryInfo] = {
             "because it can't see the pattern."
         ),
     ),
-    GateCategory.PR: CategoryInfo(
-        heading_emoji="",
-        heading_color="PR Gates",
-        quote="",
-    ),
 }
 
 CATEGORY_ORDER = [
@@ -91,7 +86,6 @@ CATEGORY_ORDER = [
     GateCategory.DECEPTIVENESS,
     GateCategory.LAZINESS,
     GateCategory.MYOPIA,
-    GateCategory.PR,
 ]
 
 
@@ -136,10 +130,7 @@ def generate_tables(registry: "CheckRegistry") -> str:
             continue
 
         # Section header
-        if cat == GateCategory.PR:
-            sections.append(f"### {info.heading_color}")
-        else:
-            sections.append(f"### {info.heading_emoji} {info.heading_color}")
+        sections.append(f"### {info.heading_emoji} {info.heading_color}")
 
         # Blockquote
         if info.quote:

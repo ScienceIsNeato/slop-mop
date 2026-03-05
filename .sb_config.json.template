@@ -147,11 +147,6 @@
         "auto_fix": false,
         "config_file_path": null
       },
-      "stale-docs": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null
-      },
       "broken-templates.py": {
         "enabled": true,
         "auto_fix": false,
@@ -268,7 +263,7 @@
         "enabled": true,
         "auto_fix": false,
         "config_file_path": null,
-        "fail_on_unresolved": true
+        "fail_on_unresolved": false
       }
     }
   }

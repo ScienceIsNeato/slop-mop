@@ -274,7 +274,7 @@ class DockerManager:
         if not self._image_built:
             self.build_image()
 
-        sm_command = command or ["sm", "swab", "--no-fail-fast"]
+        sm_command = command or ["sm", "swab", "--no-fail-fast", "--no-json"]
 
         docker_cmd = [
             "docker",

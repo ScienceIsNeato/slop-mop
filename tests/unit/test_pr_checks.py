@@ -25,7 +25,7 @@ class TestPRCommentsCheck:
         from slopmop.checks.base import GateCategory
 
         check = PRCommentsCheck({})
-        assert check.category == GateCategory.PR
+        assert check.category == GateCategory.MYOPIA
 
     def test_is_applicable_no_git_dir(self, tmp_path):
         """Test is_applicable returns False without .git directory."""
@@ -213,6 +213,7 @@ class TestPRCommentsCheck:
 
         assert result.status == CheckStatus.WARNED
         assert "1 unresolved" in result.output
+        assert result.status_detail == "1 unresolved"
         # Summary output should have category counts and file path
         assert "pr_123_comments_report.md" in result.output
 
@@ -242,6 +243,7 @@ class TestPRCommentsCheck:
 
         assert result.status == CheckStatus.FAILED
         assert "1 unresolved" in result.error
+        assert result.status_detail == "1 unresolved"
         assert "pr_123_comments_report.md" in result.fix_suggestion
 
     def test_run_with_fail_on_unresolved_disabled(self, tmp_path):
@@ -270,8 +272,7 @@ class TestPRCommentsCheck:
 
         assert result.status == CheckStatus.WARNED
         assert "1 unresolved" in result.output
-
-    def test_format_guidance_includes_protocol(self, tmp_path):
+        assert result.status_detail == "1 unresolved"
         """Test format_guidance includes AI agent instructions."""
         threads = [
             {

@@ -821,6 +821,7 @@ class TestScourDisablesFailFast:
             static=True,
             clear_history=False,
             swabbing_time=None,
+            json_output=False,
         )
 
     @patch("slopmop.cli.validate.ConsoleReporter")

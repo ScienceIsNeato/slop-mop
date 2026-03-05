@@ -129,6 +129,22 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
             "Overrides the config-file default. Set to 0 to disable."
         ),
     )
+    parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=None,
+        help=(
+            "Output results as JSON. Auto-detected when stdout is not a TTY "
+            "(e.g. piped to an AI agent). Use --no-json to force pretty output."
+        ),
+    )
+    parser.add_argument(
+        "--no-json",
+        dest="json_output",
+        action="store_false",
+        help="Force pretty output even when stdout is not a TTY.",
+    )
 
 
 def _add_swab_parser(
@@ -374,6 +390,19 @@ def _add_status_parser(
         "-q",
         action="store_true",
         help="Minimal output",
+    )
+    status_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=None,
+        help=("Output results as JSON. Auto-detected when stdout is not a TTY."),
+    )
+    status_parser.add_argument(
+        "--no-json",
+        dest="json_output",
+        action="store_false",
+        help="Force pretty output even when stdout is not a TTY.",
     )
 
 
