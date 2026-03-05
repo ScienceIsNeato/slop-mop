@@ -33,6 +33,7 @@ REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     # Static analysis → [analysis] extra
     ("vulture", "laziness:dead-code.py", _INSTALL_ANALYSIS),
     # Type checking → [typing] extra
+    ("mypy", "overconfidence:missing-annotations.py", _INSTALL_TYPING),
     ("pyright", "overconfidence:type-blindness.py", _INSTALL_TYPING),
     # Security scanning → [security] extra
     ("bandit", "myopia:vulnerability-blindness.py", _INSTALL_SECURITY),

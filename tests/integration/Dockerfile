@@ -40,6 +40,7 @@ RUN pip install --no-cache-dir \
     black isort autoflake flake8 ruff \
     vulture radon \
     bandit detect-secrets \
+    mypy \
     pytest pytest-cov diff-cover
 
 # Git identity so checkout / status operations don't complain
