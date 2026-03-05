@@ -25,7 +25,7 @@ class TestPRCommentsCheck:
         from slopmop.checks.base import GateCategory
 
         check = PRCommentsCheck({})
-        assert check.category == GateCategory.PR
+        assert check.category == GateCategory.MYOPIA
 
     def test_is_applicable_no_git_dir(self, tmp_path):
         """Test is_applicable returns False without .git directory."""

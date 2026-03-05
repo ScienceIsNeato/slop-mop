@@ -152,19 +152,23 @@ class DynamicDisplay:
         with self._lock:
             self._total_checks_expected = total
 
-    def register_pending_checks(self, checks: List[tuple[str, Optional[str]]]) -> None:
+    def register_pending_checks(
+        self, checks: List[tuple[str, Optional[str], bool]]
+    ) -> None:
         """Register all checks as pending so they appear immediately.
 
         Called before execution begins so the full list is visible from
         the start — no more "items only appear when they start".
 
         Args:
-            checks: List of (full_name, category_key) tuples
+            checks: List of (full_name, category_key, is_custom) tuples
         """
         with self._lock:
-            for name, category in checks:
+            for name, category, is_custom in checks:
                 if name not in self._checks:
-                    info = CheckDisplayInfo(name=name, category=category)
+                    info = CheckDisplayInfo(
+                        name=name, category=category, is_custom=is_custom
+                    )
                     # Populate timing stats from historical data
                     if name in self._historical_timings:
                         info.timing_stats = self._historical_timings[name]
@@ -577,6 +581,9 @@ class DynamicDisplay:
         ce = self._colors_enabled
 
         short_name = strip_category_prefix(info.name)
+        # Prepend asterisk for custom gates (footnote-style indicator)
+        if info.is_custom:
+            short_name = "*" + short_name
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
         icon = STATUS_EMOJI.get(info.result.status, "❓")
 
@@ -608,13 +615,40 @@ class DynamicDisplay:
         if info.result.status in (CheckStatus.FAILED, CheckStatus.ERROR):
             preview_text = info.result.error or info.result.output
             if preview_text:
-                preview = truncate_for_inline(preview_text, config.MAX_PREVIEW_WIDTH)
-                if preview:
-                    left += f" — {preview}"
+                # Dynamically compute max preview width so sparkline stays visible
+                right_section_width = (
+                    config.TIMING_TIME_WIDTH
+                    + len(config.TIMING_SEP)
+                    + config.TIMING_AVG_WIDTH
+                    + len(config.TIMING_SEP)
+                    + config.TIMING_SPARK_WIDTH
+                )
+                base_left_width = (
+                    len(config.CHECK_INDENT)
+                    + 2
+                    + 1  # indent + icon + space
+                    + (name_width or len(short_name))  # name column
+                    + 2
+                    + config.STATUS_COLUMN_WIDTH  # ": " + status
+                )
+                separator_width = 3  # " — "
+                min_gap = 2
+                avail = (
+                    width
+                    - base_left_width
+                    - separator_width
+                    - right_section_width
+                    - min_gap
+                )
+                max_preview = min(config.MAX_PREVIEW_WIDTH, max(0, avail))
+                if max_preview > 0:
+                    preview = truncate_for_inline(preview_text, max_preview)
+                    if preview:
+                        left += f" — {preview}"
 
         # ── Right section: timing columns (act | exp | history) ──
         stats = info.timing_stats
-        time_str = format_time(info.duration)
+        time_str = format_time(info.duration, allow_fast_label=False)
 
         if stats and stats.sample_count >= 2:
             act_str = time_str.rjust(config.TIMING_TIME_WIDTH)
@@ -660,9 +694,11 @@ class DynamicDisplay:
 
         elapsed = time.time() - info.start_time
         short_name = strip_category_prefix(info.name)
+        if info.is_custom:
+            short_name = "*" + short_name
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
         left = f"{config.CHECK_INDENT}{spinner} {padded_name}"
-        time_str = format_time(elapsed)
+        time_str = format_time(elapsed, allow_fast_label=False)
 
         stats = info.timing_stats
         if stats and stats.median > 0:
@@ -676,7 +712,7 @@ class DynamicDisplay:
                 oc = overrun_color(iqr_dist, self._colors_enabled)
                 rc = reset_color(self._colors_enabled)
                 # Show actual/expected, e.g. "3.2s/1.1s"
-                actual_str = format_time(elapsed)
+                actual_str = format_time(elapsed, allow_fast_label=False)
                 expected_str = format_time(stats.median)
                 label = f"|{actual_str}/{expected_str}"
                 pct_label = f"{oc}{label}{rc}" if oc else label
@@ -684,7 +720,12 @@ class DynamicDisplay:
                 # Right section matches completed column layout (act | exp | history)
                 act_col = time_str.rjust(config.TIMING_TIME_WIDTH)
                 exp_col = " " * config.TIMING_AVG_WIDTH
-                spark_col = " " * config.TIMING_SPARK_WIDTH
+                spark_col = stats.sparkline(
+                    max_width=config.TIMING_SPARK_WIDTH,
+                    colors_enabled=self._colors_enabled,
+                )
+                if not spark_col:
+                    spark_col = " " * config.TIMING_SPARK_WIDTH
                 right = (
                     f"{act_col}{config.TIMING_SEP}"
                     f"{exp_col}{config.TIMING_SEP}"
@@ -706,7 +747,12 @@ class DynamicDisplay:
             # Right section matches completed column layout (act | exp | history)
             act_col = time_str.rjust(config.TIMING_TIME_WIDTH)
             exp_col = eta_str.rjust(config.TIMING_AVG_WIDTH)
-            spark_col = " " * config.TIMING_SPARK_WIDTH
+            spark_col = stats.sparkline(
+                max_width=config.TIMING_SPARK_WIDTH,
+                colors_enabled=self._colors_enabled,
+            )
+            if not spark_col:
+                spark_col = " " * config.TIMING_SPARK_WIDTH
             right = (
                 f"{act_col}{config.TIMING_SEP}"
                 f"{exp_col}{config.TIMING_SEP}"
@@ -750,6 +796,8 @@ class DynamicDisplay:
         indicator = config.WAITING_FRAMES[frame_idx]
 
         short_name = strip_category_prefix(info.name)
+        if info.is_custom:
+            short_name = "*" + short_name
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
 
         # Dim the text when colors are available
@@ -764,7 +812,17 @@ class DynamicDisplay:
             if info.expected_duration
             else " " * config.TIMING_AVG_WIDTH
         )
-        spark_col = " " * config.TIMING_SPARK_WIDTH
+        stats = info.timing_stats
+        spark_col = (
+            stats.sparkline(
+                max_width=config.TIMING_SPARK_WIDTH,
+                colors_enabled=self._colors_enabled,
+            )
+            if stats and stats.sample_count >= 2
+            else ""
+        )
+        if not spark_col:
+            spark_col = " " * config.TIMING_SPARK_WIDTH
         right = (
             f"{act_col}{config.TIMING_SEP}"
             f"{exp_col}{config.TIMING_SEP}"

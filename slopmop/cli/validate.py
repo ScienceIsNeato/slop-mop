@@ -50,10 +50,19 @@ def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
 
 
 def _print_header(
-    project_root: Path, gates: List[str], args: argparse.Namespace
+    project_root: Path,
+    gates: List[str],
+    args: argparse.Namespace,
+    swabbing_time: "Optional[int]" = None,
 ) -> None:
-    """Print validation header."""
-    print("\u2728 scanning the code for slop to mop")
+    """Print validation header.
+
+    Single-line banner with optional time budget appended.
+    """
+    parts = ["\u2728 scanning the code for slop to mop"]
+    if swabbing_time is not None and swabbing_time > 0:
+        parts.append(f"  \u23f1\ufe0f  Time budget: {swabbing_time}s")
+    print("".join(parts))
     print()
 
 
@@ -179,10 +188,6 @@ def _run_validation(
         and not getattr(args, "static", False)
     )
 
-    # Print header BEFORE starting dynamic display
-    if not args.quiet and not json_mode:
-        _print_header(project_root, gates, args)
-
     # Handle time budget (swabbing-time).
     # Only applies to swab, not scour.  Read from CLI flag first,
     # fall back to config value.  <= 0 means no limit.
@@ -196,13 +201,14 @@ def _run_validation(
     if level_name != "swab":
         swabbing_time = None
 
+    # Print header BEFORE starting dynamic display
+    if not args.quiet and not json_mode:
+        _print_header(project_root, gates, args, swabbing_time=swabbing_time)
+
     # Load timing history for budget filtering
     timings: Optional[dict[str, float]] = None
     if swabbing_time is not None and swabbing_time > 0:
         timings = load_timing_averages(str(project_root))
-        if not args.quiet and not json_mode:
-            print(f"⏱️  Time budget: {swabbing_time}s")
-            print()
 
     # Set up dynamic display if appropriate
     dynamic_display: Optional[DynamicDisplay] = None
@@ -261,9 +267,7 @@ def _run_validation(
             # Attach log file paths to individual results
             # (results only contains non-passing checks in compact mode)
             if log_files and isinstance(output.get("results"), list):
-                for entry in cast(
-                    List[dict[str, object]], output["results"]
-                ):
+                for entry in cast(List[dict[str, object]], output["results"]):
                     gate_name = str(entry.get("name", ""))
                     if gate_name in log_files:
                         entry["log_file"] = log_files[gate_name]
@@ -281,10 +285,8 @@ def _run_validation(
                 else (error_results[0] if error_results else None)
             )
             if first_failure:
-                verb = level_name or "swab"
                 output["next_steps"] = [
                     f"sm swab -g {first_failure.name} --verbose",
-                    f"sm {verb}",
                 ]
 
             print(json.dumps(output, separators=(",", ":")))

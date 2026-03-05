@@ -252,7 +252,6 @@ class GateCategory(Enum):
 
     # Other categories
     GENERAL = ("general", "🔧", "General")
-    PR = ("pr", "🔀", "Pull Request")
 
     def __init__(self, key: str, emoji: str, display_name: str):
         self.key = key

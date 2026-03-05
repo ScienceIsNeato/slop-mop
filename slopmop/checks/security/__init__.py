@@ -12,6 +12,7 @@ with code files, not just Python projects.
 """
 
 import json
+import shutil
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -30,6 +31,8 @@ from slopmop.checks.base import (
 )
 from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus
+
+_SCANNER_NOT_INSTALLED = "{name} (not installed)"
 
 EXCLUDED_DIRS = [
     "venv",
@@ -151,19 +154,70 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         """Return reason for skipping - no source files to scan."""
         return "No Python, JavaScript, or TypeScript files found to scan for security issues"
 
+    @staticmethod
+    def _is_scanner_available(name: str, importable: dict[str, str]) -> bool:
+        """Check if a scanner tool is available on this system.
+
+        For Python-based scanners (bandit, detect-secrets), checks
+        importability. For external binaries (semgrep), checks PATH.
+        """
+        if name in importable:
+            try:
+                import importlib
+
+                importlib.import_module(importable[name])
+                return True
+            except ImportError:
+                return False
+        # External binary (semgrep, etc.)
+        return shutil.which(name) is not None
+
     def run(self, project_root: str) -> CheckResult:
-        """Run all local security checks in parallel."""
+        """Run configured security checks in parallel.
+
+        Respects the ``scanners`` config to determine which tools to run.
+        Scanners that aren't installed are skipped with a warning rather
+        than counted as failures — this allows graceful degradation when
+        heavy tools like semgrep aren't available locally.
+        """
         start_time = time.time()
 
-        sub_checks: List[Callable[[str], SecuritySubResult]] = [
-            self._run_bandit,
-            self._run_semgrep,
-            self._run_detect_secrets,
-        ]
+        scanner_map: dict[str, Callable[[str], SecuritySubResult]] = {
+            "bandit": self._run_bandit,
+            "semgrep": self._run_semgrep,
+            "detect-secrets": self._run_detect_secrets,
+        }
+
+        configured = self.config.get("scanners", list(scanner_map.keys()))
+        # Filter to only configured scanners that we know about
+        sub_checks: List[Callable[[str], SecuritySubResult]] = []
+        skipped: List[str] = []
+        # Map scanner names to their Python module for importability check
+        _importable = {
+            "bandit": "bandit",
+            "detect-secrets": "detect_secrets",  # pragma: allowlist secret
+        }
+        for name in configured:
+            if name not in scanner_map:
+                continue
+            available = self._is_scanner_available(name, _importable)
+            if available:
+                sub_checks.append(scanner_map[name])
+            else:
+                skipped.append(_SCANNER_NOT_INSTALLED.format(name=name))
+
+        if not sub_checks:
+            duration = time.time() - start_time
+            skip_msg = ", ".join(skipped) if skipped else "none configured"
+            return self._create_result(
+                status=CheckStatus.SKIPPED,
+                duration=duration,
+                output=f"No security scanners available ({skip_msg})",
+            )
 
         results: List[SecuritySubResult] = []
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=len(sub_checks)) as executor:
             futures = {
                 executor.submit(fn, project_root): fn.__name__ for fn in sub_checks
             }
@@ -179,10 +233,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
         if not failures:
             tools = ", ".join(r.name for r in results)
+            skip_note = f" [skipped: {', '.join(skipped)}]" if skipped else ""
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
-                output=f"All security checks passed ({tools})",
+                output=f"All security checks passed ({tools}){skip_note}",
             )
 
         detail = "\n\n".join(f"[{f.name}]\n{f.findings}" for f in failures)

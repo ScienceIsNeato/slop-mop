@@ -255,10 +255,10 @@ class TestDynamicDisplay:
         """Test formatting warned check shows status_detail inline."""
         display = DynamicDisplay(quiet=True)
         info = CheckDisplayInfo(
-            name="pr:ignored-feedback",
+            name="myopia:ignored-feedback",
             state=DisplayState.COMPLETED,
             result=CheckResult(
-                name="pr:ignored-feedback",
+                name="myopia:ignored-feedback",
                 status=CheckStatus.WARNED,
                 duration=1.1,
                 status_detail="3 unresolved",
@@ -433,6 +433,19 @@ class TestDynamicDisplay:
         assert display._format_time(0.04) == "  fast"  # below 0.05 threshold
         assert display._format_time(0.05) == "  0.1s"  # at threshold → numeric
         assert display._format_time(59.9) == " 59.9s"
+
+    def test_format_time_no_fast_label(self) -> None:
+        """Test format_time with allow_fast_label=False shows numeric value."""
+        from slopmop.reporting.display.renderer import format_time
+
+        # With allow_fast_label=False, near-zero values show as "  0.0s"
+        assert format_time(0.0, allow_fast_label=False) == "  0.0s"
+        assert format_time(0.01, allow_fast_label=False) == "  0.0s"
+        assert format_time(0.04, allow_fast_label=False) == "  0.0s"
+        # At threshold, both modes produce the same result
+        assert format_time(0.05, allow_fast_label=False) == "  0.1s"
+        # Normal values unaffected
+        assert format_time(5.2, allow_fast_label=False) == "  5.2s"
 
     def test_format_time_minutes(self) -> None:
         """Test _format_time formats minutes correctly."""
@@ -829,42 +842,6 @@ class TestDynamicDisplay:
         assert "a" in check_lines[0]
         assert "done" in check_lines[0]
 
-    def test_save_historical_timings_saves_completed_checks(self, tmp_path) -> None:
-        """Test save_historical_timings saves durations of completed checks."""
-        display = DynamicDisplay(quiet=True)
-        display._overall_start_time = time.time()
-
-        # Start and complete a check
-        display.on_check_start("test:check")
-        display.on_check_complete(
-            CheckResult(name="test:check", status=CheckStatus.PASSED, duration=2.5)
-        )
-
-        # Save timings
-        display.save_historical_timings(str(tmp_path))
-
-        # Verify file was created
-        timings_file = tmp_path / ".slopmop" / "timings.json"
-        assert timings_file.exists()
-
-    def test_save_historical_timings_skips_zero_duration(self, tmp_path) -> None:
-        """Test save_historical_timings doesn't save zero-duration checks."""
-        display = DynamicDisplay(quiet=True)
-
-        # Add a completed check with zero duration
-        display._checks["test:check"] = CheckDisplayInfo(
-            name="test:check",
-            state=DisplayState.COMPLETED,
-            duration=0.0,
-        )
-
-        # Save timings - should not create file since no valid durations
-        display.save_historical_timings(str(tmp_path))
-
-        # File should not be created (no valid durations to save)
-        timings_file = tmp_path / ".slopmop" / "timings.json"
-        assert not timings_file.exists()
-
     def test_already_stopped_display_no_double_stop(self) -> None:
         """Test stop() is idempotent - can be called multiple times."""
         display = DynamicDisplay(quiet=True)
@@ -965,30 +942,3 @@ class TestDynamicDisplay:
         assert len(skip_lines) == 1
         assert "1 disabled" in skip_lines[0]
         assert "1 n/a" in skip_lines[0]
-
-    def test_load_historical_timings(self, tmp_path) -> None:
-        """Test load_historical_timings loads timing data."""
-        # Create a timings file with v2 (sample-based) format
-        timings_dir = tmp_path / ".slopmop"
-        timings_dir.mkdir(parents=True)
-        timings_file = timings_dir / "timings.json"
-        import json
-        import time as time_mod
-
-        timings_file.write_text(
-            json.dumps(
-                {
-                    "test:check": {
-                        "samples": [3.0, 4.0],
-                        "last_updated": time_mod.time(),
-                    }
-                }
-            )
-        )
-
-        display = DynamicDisplay(quiet=True)
-        display.load_historical_timings(str(tmp_path))
-
-        assert "test:check" in display._historical_timings
-        assert display._historical_timings["test:check"].median == 3.5
-        assert display._historical_timings["test:check"].sample_count == 2

@@ -140,7 +140,6 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) |
 | `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) |
 | `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check |
-| `laziness:stale-docs` | 📖 Detects stale README gate tables |
 
 ### 🔵 Myopia
 
@@ -152,16 +151,11 @@ Gates aren't organized by language — they're organized by **the failure mode t
 |------|--------------|
 | `myopia:code-sprawl` | 📏 File and function length limits |
 | `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) |
+| `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads |
 | `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) |
 | `myopia:source-duplication` | 📋 Code clone detection (jscpd) |
 | `myopia:string-duplication.py` | 🔤 Duplicate string literal detection |
 | `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets |
-
-### PR Gates
-
-| Gate | What It Does |
-|------|--------------|
-| `pr:ignored-feedback` | 💬 Checks for unresolved PR review threads |
 
 <!-- END GATE TABLES -->
 
@@ -176,7 +170,7 @@ Every gate has an intrinsic **level** — the point in the workflow where it bel
 | **Swab** | `sm swab` | Most gates across all categories | Before every commit |
 | **Scour** | `sm scour` | Everything in swab + scour-only gates | Before opening or updating a PR |
 
-Scour is a strict superset of swab — it runs everything swab does, plus gates that need more time or PR context. Scour-only gates include `dependency-risk.py` (full security audit), `just-this-once.py` (diff-coverage), `pr:ignored-feedback`, and any custom gates marked `"level": "scour"`.
+Scour is a strict superset of swab — it runs everything swab does, plus gates that need more time or PR context. Scour-only gates include `dependency-risk.py` (full security audit), `just-this-once.py` (diff-coverage), `myopia:ignored-feedback`, and any custom gates marked `"level": "scour"`.
 
 Individual gates can be run directly with `-g`:
 

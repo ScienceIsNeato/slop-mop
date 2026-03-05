@@ -130,6 +130,7 @@ def _detect_c_cpp(project_root: Path) -> bool:
     return False
 
 
+# this is a duplicate - need to keep just one version of this method
 def _detect_package_manager(project_root: Path) -> str:
     """Detect which package manager the JS project uses.
 

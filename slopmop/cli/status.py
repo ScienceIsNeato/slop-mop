@@ -25,7 +25,6 @@ _CATEGORY_ORDER = [
     "deceptiveness",
     "laziness",
     "myopia",
-    "pr",
     "general",
 ]
 

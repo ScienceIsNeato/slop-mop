@@ -318,13 +318,12 @@ class ExecutionSummary:
         # Skipped and n/a results carry no actionable info for an
         # LLM agent — the summary counts + skip_reasons dict are
         # sufficient.
-        passed_names = [
-            r.name for r in self.results if r.status == CheckStatus.PASSED
-        ]
+        passed_names = [r.name for r in self.results if r.status == CheckStatus.PASSED]
         actionable = [
             r.to_dict()
             for r in self.results
-            if r.status in (
+            if r.status
+            in (
                 CheckStatus.FAILED,
                 CheckStatus.WARNED,
                 CheckStatus.ERROR,

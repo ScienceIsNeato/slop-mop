@@ -270,7 +270,6 @@ def category_header_color(category: str, colors_enabled: Optional[bool] = None) 
         "deceptiveness": ("#913364", Color.BRIGHT_MAGENTA),
         "laziness": ("#22D3EE", Color.BRIGHT_CYAN),
         "myopia": ("#10B981", Color.BRIGHT_GREEN),
-        "pr": ("#22D3EE", Color.CYAN),
         "general": ("#6366F1", Color.BLUE),  # legacy
     }
 

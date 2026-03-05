@@ -284,15 +284,21 @@ class TestCompactJsonSchema:
         results = [
             CheckResult("gate-a", CheckStatus.PASSED, 1.0),
             CheckResult(
-                "gate-b", CheckStatus.SKIPPED, 0.0,
+                "gate-b",
+                CheckStatus.SKIPPED,
+                0.0,
                 skip_reason=SkipReason.FAIL_FAST,
             ),
             CheckResult(
-                "gate-c", CheckStatus.SKIPPED, 0.0,
+                "gate-c",
+                CheckStatus.SKIPPED,
+                0.0,
                 skip_reason=SkipReason.FAIL_FAST,
             ),
             CheckResult(
-                "gate-d", CheckStatus.NOT_APPLICABLE, 0.0,
+                "gate-d",
+                CheckStatus.NOT_APPLICABLE,
+                0.0,
                 skip_reason=SkipReason.NOT_APPLICABLE,
             ),
         ]

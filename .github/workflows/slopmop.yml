@@ -120,7 +120,7 @@ jobs:
       - name: Check for unresolved PR comments
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python -m slopmop.sm scour -g pr:ignored-feedback
+        run: python -m slopmop.sm scour -g myopia:ignored-feedback
 
   integration:
     name: 🪣 Integration Tests

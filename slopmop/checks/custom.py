@@ -136,6 +136,7 @@ def make_custom_check_class(
         _command: ClassVar[str] = command
         _timeout: ClassVar[int] = timeout
         _flaw: ClassVar[Any] = resolved_flaw
+        is_custom_gate: ClassVar[bool] = True
 
         level: ClassVar[GateLevel] = resolved_level
 
@@ -304,6 +305,6 @@ def register_custom_gates(config: Dict[str, Any]) -> List[str]:
             logger.warning(f"custom_gates[{i}] ({name}): registration failed: {e}")
 
     if registered:
-        logger.info(f"Registered {len(registered)} custom gate(s)")
+        logger.debug(f"Registered {len(registered)} custom gate(s)")
 
     return registered
