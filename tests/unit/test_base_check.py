@@ -8,10 +8,9 @@ from slopmop.checks.base import (
     BaseCheck,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
-    PythonCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import JavaScriptCheckMixin, PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus
 
 

@@ -8,7 +8,6 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     ToolContext,
 )
 from slopmop.checks.constants import (
@@ -16,6 +15,7 @@ from slopmop.checks.constants import (
     has_python_test_files,
     skip_reason_no_test_files,
 )
+from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 

@@ -83,11 +83,6 @@ def result_mixed(docker_manager: DockerManager) -> RunResult:
 # SARIF fixture — one extra container run, cached for all SARIF tests
 # ------------------------------------------------------------------
 
-# Delimiter printed between sm's console noise and the SARIF payload
-# so tests can extract clean JSON from stdout.  The leading newline
-# matters: swab's final "1 failed" summary line doesn't end with one.
-_SARIF_MARKER = "___SARIF_PAYLOAD_BELOW___"
-
 
 @pytest.fixture(scope="session")
 def sarif_all_fail(docker_manager: DockerManager) -> dict[str, object]:
@@ -109,12 +104,6 @@ def sarif_all_fail(docker_manager: DockerManager) -> dict[str, object]:
     """
     import json
 
-    # Write SARIF to a file inside the container, then cat it behind a
-    # marker.  swab's console output (progress lines, emoji, summary
-    # box) precedes the marker; the SARIF JSON follows it.  We can't
-    # use --sarif → stdout directly because the shell script in
-    # docker_manager.run_sm prepends git/pip/init noise to the same
-    # stream and there's no clean way to suppress that.
     result = docker_manager.run_sm(
         branch="all-fail",
         ref=FIXTURE_REFS["all-fail"],
@@ -126,32 +115,27 @@ def sarif_all_fail(docker_manager: DockerManager) -> dict[str, object]:
             "--sarif",
             "--output-file",
             "/tmp/out.sarif",
-            ";",
-            "echo",
-            f"'{_SARIF_MARKER}'",
-            ";",
-            "cat",
-            "/tmp/out.sarif",
         ],
+        extract_file="/tmp/out.sarif",
     )
 
-    # Prerequisites still apply — if clone/install/init failed, the
-    # SARIF file won't exist and the split below will break with an
-    # unhelpful error.  Fail loud and early with the real cause.
+    # Prerequisites first — if clone/install/init failed, extracted is
+    # None and the json.loads below would throw an unhelpful TypeError.
+    # This surfaces the real cause.
     result.assert_prerequisites()
 
-    if _SARIF_MARKER not in result.stdout:
+    if result.extracted is None:
         pytest.fail(
-            f"SARIF marker not found in container output — swab may "
-            f"have crashed before writing /tmp/out.sarif.\n{result}"
+            f"swab crashed before writing /tmp/out.sarif — "
+            f"extract_file marker never appeared in container output.\n"
+            f"{result}"
         )
 
-    _console, payload = result.stdout.split(_SARIF_MARKER, 1)
     try:
-        return json.loads(payload.strip())
+        return json.loads(result.extracted)
     except json.JSONDecodeError as e:
         pytest.fail(
             f"SARIF payload is not valid JSON: {e}\n"
-            f"--- payload (first 500 chars) ---\n{payload[:500]}\n"
+            f"--- payload (first 500 chars) ---\n{result.extracted[:500]}\n"
             f"--- full run ---\n{result}"
         )

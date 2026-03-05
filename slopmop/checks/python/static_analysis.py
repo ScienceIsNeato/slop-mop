@@ -12,9 +12,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # mypy error code pattern: file.py:10: error: message  [code]

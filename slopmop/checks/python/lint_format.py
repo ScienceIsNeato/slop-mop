@@ -17,9 +17,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # flake8 default format: path:line:col: CODE message

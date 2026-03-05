@@ -26,9 +26,9 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     GateLevel,
-    PythonCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 

@@ -15,9 +15,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
     COVERAGE_GUIDANCE_FOOTER,

@@ -14,9 +14,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # ESLint stylish format detail line:  line:col  error|warning  message  rule-id

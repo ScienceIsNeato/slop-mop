@@ -22,8 +22,8 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
 )
+from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # File patterns to scan

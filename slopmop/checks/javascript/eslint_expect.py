@@ -25,9 +25,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # Shared constants for test file discovery — single source of truth so

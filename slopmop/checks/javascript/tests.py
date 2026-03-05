@@ -8,9 +8,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 

@@ -18,7 +18,6 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     GateLevel,
-    PythonCheckMixin,
     ToolContext,
 )
 from slopmop.checks.constants import (
@@ -26,6 +25,7 @@ from slopmop.checks.constants import (
     has_python_test_files,
     skip_reason_no_test_files,
 )
+from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
     COVERAGE_GUIDANCE_FOOTER,
