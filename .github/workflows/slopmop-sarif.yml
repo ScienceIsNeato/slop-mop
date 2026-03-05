@@ -98,9 +98,12 @@ jobs:
         # slopmop it tests must be the slopmop in THIS commit — not
         # whatever stale version PyPI has.  `pip install .` installs
         # from the checkout.  On your repo you want PyPI's latest.
+        #
+        # The [lint] extra brings black/flake8/isort so the
+        # laziness:sloppy-formatting gate can actually run.
         # ────────────────────────────────────────────────────────────
         run: |
-          pip install .
+          pip install ".[lint]"
 
       - name: Run scour → SARIF
         id: scour

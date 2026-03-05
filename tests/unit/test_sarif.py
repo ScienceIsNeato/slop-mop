@@ -153,11 +153,11 @@ class TestSarifStructure:
         assert doc["runs"][0]["results"] == []
         assert doc["runs"][0]["tool"]["driver"]["rules"] == []
 
-    def test_error_status_emits_nothing(self) -> None:
-        """ERROR means infrastructure failure (tool missing, timeout),
-        not a code finding.  SARIF has toolExecutionNotifications for
-        this but GitHub doesn't render them — emitting a result would
-        show "pyright crashed" as if it were a lint error.  We skip.
+    def test_error_status_emits_repo_root_result(self) -> None:
+        """ERROR means infrastructure failure (tool missing, timeout).
+        These still deserve visibility in the Security tab — they indicate
+        a gate that can't run, which is a CI health issue.  The result is
+        anchored at the repo root since there's no file to point at.
         """
         errored = CheckResult(
             name="broken:gate",
@@ -166,7 +166,15 @@ class TestSarifStructure:
             error="tool not found",
         )
         doc = _emit(_make_summary(errored))
-        assert doc["runs"][0]["results"] == []
+        results = doc["runs"][0]["results"]
+        assert len(results) == 1
+        result = results[0]
+        assert result["ruleId"] == "broken:gate"
+        assert result["level"] == "error"
+        assert result["message"]["text"] == "tool not found"
+        # Locationless fallback anchors at repo root
+        loc = result["locations"][0]["physicalLocation"]
+        assert loc["artifactLocation"]["uri"] == "."
 
     def test_failed_gate_with_findings_emits_one_result_per_finding(
         self,
@@ -251,10 +259,9 @@ class TestSarifResultShape:
         rejects with ``locationFromSarifResult: expected at least one
         location`` and FAILS THE WORKFLOW.  We found out in CI.
 
-        So the reporter now drops file-less findings.  The gate still
-        fails (exit code, console output, --json) — it just doesn't
-        get a PR annotation.  A location-less annotation wouldn't be
-        clickable anyway, so the loss is small.
+        So the reporter now anchors file-less findings at the repo root
+        (".").  The alert lands in the Security tab without an inline
+        annotation, which is appropriate for aggregate/config-level issues.
         """
         r = CheckResult(
             name="cov:gate",
@@ -263,16 +270,17 @@ class TestSarifResultShape:
             findings=[Finding(message="coverage too low")],  # no file=
         )
         doc = _emit(_make_summary(r))
-        assert doc["runs"][0]["results"] == []
-        # No result → no rule either.  Rule entries only materialise
-        # when at least one result references them.
-        assert doc["runs"][0]["tool"]["driver"]["rules"] == []
+        results = doc["runs"][0]["results"]
+        assert len(results) == 1
+        result = results[0]
+        assert result["message"]["text"] == "coverage too low"
+        loc = result["locations"][0]["physicalLocation"]
+        assert loc["artifactLocation"]["uri"] == "."
 
-    def test_mixed_findings_only_located_ones_survive(self) -> None:
-        """A gate emitting three findings, one without a file — only
-        the two with files reach SARIF.  The drop is per-finding, not
-        per-gate: one aggregate summary finding doesn't sink the
-        gate's real located findings.
+    def test_mixed_findings_all_survive(self) -> None:
+        """A gate emitting three findings, one without a file — all
+        three reach SARIF.  The file-less finding gets anchored at
+        the repo root (\".\").
         """
         r = CheckResult(
             name="g",
@@ -280,15 +288,16 @@ class TestSarifResultShape:
             duration=0.1,
             findings=[
                 Finding(message="real problem A", file="a.py", line=1),
-                Finding(message="aggregate: 2 issues"),  # dropped
+                Finding(message="aggregate: 2 issues"),  # repo root
                 Finding(message="real problem B", file="b.py", line=5),
             ],
         )
         doc = _emit(_make_summary(r))
         results = doc["runs"][0]["results"]
-        assert len(results) == 2
+        assert len(results) == 3
         assert {r["message"]["text"] for r in results} == {
             "real problem A",
+            "aggregate: 2 issues",
             "real problem B",
         }
 
@@ -471,17 +480,14 @@ class TestFindingsRail:
 
 class TestUnmigratedGate:
     """Gates that haven't migrated to structured findings yet still
-    FAIL — they just don't have Finding objects.  The reporter
-    produces nothing for them.
+    FAIL — they just don't have Finding objects.  The reporter now
+    emits a single result anchored at the repo root (".") using
+    the gate's error or output text as the message.
 
-    An earlier design synthesised a location-less result here so the
-    failure would at least appear in GitHub's Security tab.  That
-    backfired: GitHub's upload-sarif action rejects location-less
-    results and fails the entire workflow.  So now: no findings with
-    a file → nothing in SARIF.  The gate's failure still surfaces
-    through the exit code and console output; it's only the inline
-    PR annotation that's missing, and an annotation with no file to
-    anchor on wouldn't have been clickable anyway.
+    This ensures every failing gate gets visibility in GitHub's
+    Security tab, even without file-level annotations.  The sentinel
+    location satisfies upload-sarif's requirement that every result
+    must have at least one location.
 
     The ``_create_result`` UserWarning rail (tested in
     ``TestFindingsRail`` below) is what catches this at development
@@ -489,7 +495,7 @@ class TestUnmigratedGate:
     lights up.
     """
 
-    def test_failed_gate_without_findings_produces_nothing(self) -> None:
+    def test_failed_gate_without_findings_emits_repo_root(self) -> None:
         r = CheckResult(
             name="legacy:gate",
             status=CheckStatus.FAILED,
@@ -497,14 +503,17 @@ class TestUnmigratedGate:
             error="something broke",
         )
         doc = _emit(_make_summary(r))
-        # No results, no rules — the gate is invisible to SARIF.
-        # It's NOT invisible to CI: exit code still non-zero.
-        assert doc["runs"][0]["results"] == []
-        assert doc["runs"][0]["tool"]["driver"]["rules"] == []
+        results = doc["runs"][0]["results"]
+        assert len(results) == 1
+        result = results[0]
+        assert result["ruleId"] == "legacy:gate"
+        assert result["message"]["text"] == "something broke"
+        loc = result["locations"][0]["physicalLocation"]
+        assert loc["artifactLocation"]["uri"] == "."
 
-    def test_warned_gate_without_findings_also_produces_nothing(self) -> None:
-        """Same drop for WARNED.  Status doesn't matter once there's
-        no file — GitHub would reject either way."""
+    def test_warned_gate_without_findings_emits_repo_root(self) -> None:
+        """Same fallback for WARNED.  The sentinel location satisfies
+        GitHub's requirement."""
         r = CheckResult(
             name="soft:gate",
             status=CheckStatus.WARNED,
@@ -512,12 +521,16 @@ class TestUnmigratedGate:
             error="mild concern",
         )
         doc = _emit(_make_summary(r))
-        assert doc["runs"][0]["results"] == []
+        results = doc["runs"][0]["results"]
+        assert len(results) == 1
+        assert results[0]["message"]["text"] == "mild concern"
+        loc = results[0]["locations"][0]["physicalLocation"]
+        assert loc["artifactLocation"]["uri"] == "."
 
     def test_every_emitted_result_has_locations(self) -> None:
         """The invariant GitHub enforces: if it's in results[], it has
-        locations[].  This is the guardrail — it'll catch any future
-        path that sneaks a file-less finding past the filter.
+        locations[].  All findings — with or without file — must carry
+        at least one location (file-less ones anchor at repo root).
         """
         mixed = CheckResult(
             name="g",
@@ -525,11 +538,12 @@ class TestUnmigratedGate:
             duration=0.1,
             findings=[
                 Finding(message="a", file="f.py", line=1),
-                Finding(message="b"),  # no file — filtered
+                Finding(message="b"),  # no file — anchored at "."
                 Finding(message="c", file="g.py"),  # file, no line — still OK
             ],
         )
         doc = _emit(_make_summary(mixed))
+        assert len(doc["runs"][0]["results"]) == 3
         for result in doc["runs"][0]["results"]:
             assert "locations" in result, (
                 f"Result without locations[] would be rejected by "
@@ -867,8 +881,8 @@ class TestSchemaValidation:
                     )
                 ],
             ),
-            # Legacy gate with no findings — contributes nothing
-            # (file-less → dropped; see TestUnmigratedGate)
+            # Legacy gate with no findings — emits a repo-root result
+            # using the error text (see TestUnmigratedGate)
             CheckResult(
                 name="legacy:old.py",
                 status=CheckStatus.FAILED,
@@ -881,9 +895,9 @@ class TestSchemaValidation:
         doc = _emit(_make_summary(*results), root=str(tmp_path))
         self._validate(doc, schema, validator_cls)
 
-        # 2 from lint + 1 coverage + 1 warned = 4.  Legacy gate
-        # (no findings) and passed gate both contribute zero.
-        assert len(doc["runs"][0]["results"]) == 4
+        # 2 from lint + 1 coverage + 1 warned + 1 legacy fallback = 5.
+        # Passed gate contributes zero.
+        assert len(doc["runs"][0]["results"]) == 5
         # Every result has locations[] — the GitHub invariant.
         for r in doc["runs"][0]["results"]:
             assert "locations" in r and r["locations"]

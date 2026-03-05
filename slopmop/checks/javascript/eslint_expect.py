@@ -369,7 +369,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 Finding(
                     message=v["message"],
                     level=FindingLevel.ERROR,
-                    file=v["file"],
+                    file=v["file"] or None,
                     line=v["line"] or None,
                     column=v.get("column"),
                     rule_id=v.get("ruleId"),

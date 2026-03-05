@@ -292,7 +292,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                     findings=[Finding(message=msg, level=FindingLevel.ERROR)],
                 )
 
-            return self._process_output(result.output, duration)
+            return self._process_output(result.output, duration, project_root)
 
         finally:
             # Cleanup: only remove the config we wrote, not a pre-existing one
@@ -301,7 +301,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             if backup_path and backup_path.exists():
                 backup_path.rename(config_path)
 
-    def _process_output(self, raw_output: str, duration: float) -> CheckResult:
+    def _process_output(self, raw_output: str, duration: float, project_root: str = "") -> CheckResult:
         """Parse pyright JSON output and format prescriptive results."""
         try:
             data = json.loads(raw_output)
@@ -333,9 +333,9 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             )
 
         # Group and format errors
-        output = self._format_prescriptive_output(diagnostics, summary)
+        output = self._format_prescriptive_output(diagnostics, summary, project_root)
         fix_suggestion = self._build_fix_suggestion(diagnostics)
-        findings = self._build_findings(diagnostics)
+        findings = self._build_findings(diagnostics, project_root)
 
         msg = f"{error_count} type-completeness error(s) found"
         return self._create_result(
@@ -348,14 +348,15 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         )
 
     @staticmethod
-    def _build_findings(diagnostics: List[Dict[str, Any]]) -> List[Finding]:
+    def _build_findings(diagnostics: List[Dict[str, Any]], project_root: str = "") -> List[Finding]:
         """Convert pyright JSON diagnostics to Finding objects.
 
         pyright's ``range.start.line`` / ``character`` are 0-based — add 1
         for SARIF's 1-based convention (the Finding docstring is explicit
         that ``startColumn: 0`` is rejected by the SARIF schema).
         """
-        cwd_prefix = os.getcwd() + "/"
+        root = project_root or os.getcwd()
+        cwd_prefix = root.rstrip("/") + "/"
         findings: List[Finding] = []
         for diag in diagnostics:
             if diag.get("severity") != "error":
@@ -383,12 +384,16 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         self,
         diagnostics: List[Dict[str, Any]],
         summary: Dict[str, Any],
+        project_root: str = "",
     ) -> str:
         """Format pyright output for AI agents.
 
         Groups errors by file, then by rule, showing exactly what needs
         fixing and where. Sorted by error count per file (biggest gaps first).
         """
+        root = project_root or os.getcwd()
+        root_prefix = root.rstrip("/") + "/"
+
         # Group by file
         by_file: Dict[str, List[Dict[str, Any]]] = {}
         rule_counts: Counter[str] = Counter()
@@ -398,7 +403,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             # Strip absolute path prefix
             if "/" in filepath:
                 # Try to make relative
-                for prefix in [os.getcwd() + "/", ""]:
+                for prefix in [root_prefix, ""]:
                     if filepath.startswith(prefix) and prefix:
                         filepath = filepath[len(prefix) :]
                         break

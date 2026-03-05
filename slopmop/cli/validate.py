@@ -180,8 +180,15 @@ def _run_validation(
 
     # Determine if we should use dynamic display
     # JSON mode suppresses all interactive output
+    # SARIF-to-stdout mode also suppresses console output so the JSON
+    # payload is not corrupted by progress/header text.
+    sarif_to_stdout = (
+        getattr(args, "sarif_output", False)
+        and not getattr(args, "output_file", None)
+    )
     use_dynamic = (
         not json_mode
+        and not sarif_to_stdout
         and sys.stdout.isatty()
         and not os.environ.get("NO_COLOR")
         and not args.quiet
@@ -202,7 +209,7 @@ def _run_validation(
         swabbing_time = None
 
     # Print header BEFORE starting dynamic display
-    if not args.quiet and not json_mode:
+    if not args.quiet and not json_mode and not sarif_to_stdout:
         _print_header(project_root, gates, args, swabbing_time=swabbing_time)
 
     # Load timing history for budget filtering
@@ -217,8 +224,9 @@ def _run_validation(
         dynamic_display, deferred_failures = _setup_dynamic_display(
             executor, reporter, args.quiet, project_root
         )
-    elif not json_mode:
-        # Fall back to traditional reporter (no progress in JSON mode)
+    elif not json_mode and not sarif_to_stdout:
+        # Fall back to traditional reporter (no progress in JSON mode
+        # or SARIF-to-stdout mode)
         executor.set_progress_callback(reporter.on_check_complete)
 
     try:

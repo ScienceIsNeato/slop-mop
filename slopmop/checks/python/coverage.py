@@ -223,9 +223,10 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             fix_suggestion="Add tests for the files and lines listed above.",
             findings=[
                 Finding(
-                    message=f"Coverage {coverage_pct:.1f}% below {threshold}%",
-                    level=FindingLevel.ERROR,
+                    message=f"{miss} uncovered lines: {ranges}",
+                    file=fp,
                 )
+                for fp, _stmts, miss, ranges in missing_files
             ],
         )
 

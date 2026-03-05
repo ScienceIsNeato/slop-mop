@@ -172,6 +172,23 @@ class Finding:
     end_column: Optional[int] = None
     rule_id: Optional[str] = None
 
+    def __str__(self) -> str:
+        """Human-readable ``file:line:col: message`` format.
+
+        Used by the auto-output rail in ``_create_result`` to synthesise
+        console output from structured findings when a gate didn't supply
+        free-form text.
+        """
+        loc = ""
+        if self.file:
+            loc = self.file
+            if self.line is not None:
+                loc += f":{self.line}"
+                if self.column is not None:
+                    loc += f":{self.column}"
+            loc += ": "
+        return f"{loc}{self.message}"
+
     def to_dict(self) -> Dict[str, object]:
         """Serialise for JSON output.  Omits ``None`` fields — matches
         the token-saving convention used throughout this module.

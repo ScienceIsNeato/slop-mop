@@ -571,6 +571,13 @@ class BaseCheck(ABC):
                 stacklevel=2,
             )
 
+        # Auto-generate output from structured findings when gate
+        # didn't supply free-form text.  Ensures console display shows
+        # the per-issue breakdown even for gates that only return
+        # Finding objects.
+        if findings and not output:
+            output = "\n".join(str(f) for f in findings)
+
         return CheckResult(
             name=self.full_name,
             status=status,

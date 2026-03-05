@@ -48,7 +48,7 @@ Columns are 1-based
 import hashlib
 import urllib.parse
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, cast
+from typing import Dict, List, Optional
 
 from slopmop.core.result import (
     CheckResult,
@@ -63,11 +63,24 @@ SARIF_SCHEMA_URI = "https://json.schemastore.org/sarif-2.1.0.json"
 SARIF_VERSION = "2.1.0"
 
 # Only results from gates in these states make it into the SARIF file.
-# PASSED means nothing to report.  ERROR is an infrastructure failure
-# (tool missing, timeout) — that's a SARIF "toolExecutionNotification",
-# not a ``result``, and GitHub doesn't render those anyway.  SKIPPED /
-# NOT_APPLICABLE similarly have no code findings.
-_EMITTING_STATUSES = frozenset([CheckStatus.FAILED, CheckStatus.WARNED])
+# PASSED means nothing to report.  SKIPPED / NOT_APPLICABLE similarly
+# have no code findings.  ERROR (infrastructure failure — tool missing,
+# timeout) is included because crashed gates still deserve visibility
+# in the Security tab.
+_EMITTING_STATUSES = frozenset(
+    [CheckStatus.FAILED, CheckStatus.ERROR, CheckStatus.WARNED]
+)
+
+
+def _pos(v: Optional[int]) -> Optional[int]:
+    """Return *v* if it is a valid SARIF position (>= 1), else ``None``.
+
+    SARIF mandates ``>= 1`` for every region coordinate.  ``Finding``
+    documents "1-based" but doesn't enforce it — if a gate forwards a
+    0-based index we drop that field rather than emit schema-invalid
+    output.
+    """
+    return v if v is not None and v >= 1 else None
 
 
 class SarifReporter:
@@ -83,6 +96,8 @@ class SarifReporter:
         self._root = Path(project_root).resolve()
         # file path (relative, POSIX) → list of line contents
         self._line_cache: Dict[str, List[str]] = {}
+        # fingerprint digest → occurrence count (for :N suffix dedup)
+        self._occurrence: Dict[str, int] = {}
 
     def generate(self, summary: ExecutionSummary) -> Dict[str, object]:
         """Build the full SARIF document.
@@ -121,21 +136,16 @@ class SarifReporter:
         ``(gate_name, rule_id)`` share one ``reportingDescriptor``.
         Results are a flat list, one per finding.
 
-        Only findings with a ``file`` make it in.  GitHub's
-        ``upload-sarif`` action rejects location-less results with
-        ``locationFromSarifResult: expected at least one location`` —
-        stricter than the schema, which permits absent ``locations``.
-        We learned this the hard way: an earlier version synthesised
-        a location-less result for gates that hadn't migrated to
-        structured findings, reasoning "a vague alert is better than
-        nothing".  GitHub disagreed — it failed the whole upload.
+        GitHub's ``upload-sarif`` action rejects any result without a
+        ``locations`` array.  We satisfy this universally:
 
-        So: no file, no SARIF result.  A gate that fails without any
-        file-anchored findings is still caught by the CI exit code
-        and slopmop's own console/JSON output; it just won't get a
-        PR annotation.  That's the best we can do without inventing
-        a fake location, and the ``_create_result`` UserWarning rail
-        in ``base.py`` already nudges gate authors to supply one.
+        * Findings **with** a ``file`` get a normal ``physicalLocation``
+          pointing at the file (with region if available).
+        * Findings **without** a file — or gates that fail with no
+          structured findings at all — get a sentinel location pointing
+          at ``"."`` (repo root).  The alert appears in the Security tab
+          without an inline annotation, which is appropriate for
+          config-level or crash-level issues.
         """
         rules_by_id: Dict[str, Dict[str, object]] = {}
         results: List[Dict[str, object]] = []
@@ -144,7 +154,16 @@ class SarifReporter:
             if check.status not in _EMITTING_STATUSES:
                 continue
 
-            findings = [f for f in (check.findings or ()) if f.file is not None]
+            findings = list(check.findings or ())
+
+            if not findings:
+                # Gate failed/warned but produced no structured findings
+                # (legacy text-only gates, custom shell gates, crashes).
+                # Emit a single result at the repo root.
+                msg = (
+                    check.error or check.output or f"{check.name} failed"
+                ).strip() or f"{check.name} failed"
+                findings = [Finding(message=msg)]
 
             for finding in findings:
                 rule_id = self._compose_rule_id(check.name, finding.rule_id)
@@ -226,14 +245,14 @@ class SarifReporter:
             physical: Dict[str, object] = {"artifactLocation": {"uri": uri}}
 
             region: Dict[str, int] = {}
-            if finding.line is not None:
-                region["startLine"] = finding.line
-            if finding.column is not None:
-                region["startColumn"] = finding.column
-            if finding.end_line is not None:
-                region["endLine"] = finding.end_line
-            if finding.end_column is not None:
-                region["endColumn"] = finding.end_column
+            if (n := _pos(finding.line)) is not None:
+                region["startLine"] = n
+            if (n := _pos(finding.column)) is not None:
+                region["startColumn"] = n
+            if (n := _pos(finding.end_line)) is not None:
+                region["endLine"] = n
+            if (n := _pos(finding.end_column)) is not None:
+                region["endColumn"] = n
             if region:
                 physical["region"] = region
 
@@ -242,6 +261,14 @@ class SarifReporter:
             fingerprint = self._fingerprint(check.name, finding, uri)
             if fingerprint is not None:
                 result["partialFingerprints"] = {"primaryLocationLineHash": fingerprint}
+        else:
+            # Project-scoped finding (no file).  Anchor at repo root
+            # so the result still carries a location — GitHub's ingester
+            # rejects results without one.  The alert lands in the
+            # Security tab without an inline annotation.
+            result["locations"] = [
+                {"physicalLocation": {"artifactLocation": {"uri": "."}}}
+            ]
 
         return result
 
@@ -307,21 +334,33 @@ class SarifReporter:
         if finding.line is None:
             return None
 
-        lines = self._line_cache.get(uri)
+        # Use the decoded (filesystem) path as cache key — avoids
+        # double-encoding mismatches when the same file is referenced
+        # via different URI encodings.
+        decoded_path = urllib.parse.unquote(uri)
+        lines = self._line_cache.get(decoded_path)
         if lines is None:
-            # Unquote to reverse what _normalise_uri did — we need the
-            # real filesystem path to open the file.
-            fs_path = self._root / urllib.parse.unquote(uri)
+            # We need the real filesystem path to open the file.
+            fs_path = (self._root / decoded_path).resolve()
             try:
-                lines = fs_path.read_text(
-                    encoding="utf-8", errors="replace"
-                ).splitlines()
-            except OSError:
-                # Cache the miss so we don't retry on every finding
-                # in the same file.  An empty list is distinguishable
-                # from "not yet read" because we set it explicitly.
+                # Ensure the resolved path stays within the project root
+                # to avoid reading files outside the repository (e.g. a
+                # gate emitting ``../../../etc/passwd``).
+                fs_path.relative_to(self._root)
+            except ValueError:
+                # Path escapes the project root; treat as unreadable.
                 lines = []
-            self._line_cache[uri] = lines
+            else:
+                try:
+                    lines = fs_path.read_text(
+                        encoding="utf-8", errors="replace"
+                    ).splitlines()
+                except OSError:
+                    # Cache the miss so we don't retry on every finding
+                    # in the same file.  An empty list is distinguishable
+                    # from "not yet read" because we set it explicitly.
+                    lines = []
+            self._line_cache[decoded_path] = lines
 
         # 1-based → 0-based index.  Guard both underflow (line 0, which
         # shouldn't happen per SARIF but defensive) and overflow (line
@@ -345,8 +384,6 @@ class SarifReporter:
         # from SARIF's perspective, and the :N suffix disambiguates.
         # The counter lives on the instance because one SarifReporter
         # instance handles one SARIF emission.
-        if not hasattr(self, "_occurrence"):
-            self._occurrence: Dict[str, int] = cast(Dict[str, int], {})
         count = self._occurrence.get(digest, 0) + 1
         self._occurrence[digest] = count
 

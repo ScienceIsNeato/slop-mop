@@ -153,7 +153,9 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         help=(
             "Emit SARIF 2.1.0 for GitHub Code Scanning. "
             "Writes to stdout unless --output-file is given. "
-            "Upload with github/codeql-action/upload-sarif."
+            "Upload with github/codeql-action/upload-sarif. "
+            "In CI, also pass --no-auto-fix so the report describes "
+            "the commit as-pushed, not as-would-be-after-formatting."
         ),
     )
     parser.add_argument(
@@ -164,7 +166,7 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "Write structured output (--json or --sarif) to a file "
-            "instead of stdout. Console progress still goes to stderr."
+            "instead of stdout."
         ),
     )
 
