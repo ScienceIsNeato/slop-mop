@@ -7,9 +7,12 @@ difficult for both humans and LLMs to reason about.
 This is a cross-cutting quality check that applies to all source files.
 """
 
+import ast
+import io
 import logging
 import re
 import time
+import tokenize
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
@@ -33,6 +36,192 @@ logger = logging.getLogger(__name__)
 # Default limits
 DEFAULT_MAX_FILE_LINES = 1000
 DEFAULT_MAX_FUNCTION_LINES = 100
+
+# Whole-line comment prefixes by extension.  Used by _count_code_lines
+# for everything that isn't Python.  Block comments (/* */) are NOT
+# handled — a line inside a block comment will be over-counted.  That's
+# the safe direction: over-counting means a sprawling file trips the
+# gate slightly early, never late.  And you can't squeeze by DELETING
+# block-comment lines because they were already counting.
+_COMMENT_PREFIXES: dict[str, str] = {
+    ".py": "#",
+    ".rb": "#",
+    ".sh": "#",
+    ".bash": "#",
+    ".js": "//",
+    ".ts": "//",
+    ".jsx": "//",
+    ".tsx": "//",
+    ".java": "//",
+    ".go": "//",
+    ".rs": "//",
+    ".c": "//",
+    ".cpp": "//",
+    ".h": "//",
+    ".hpp": "//",
+    ".cs": "//",
+    ".swift": "//",
+    ".kt": "//",
+    ".scala": "//",
+    ".php": "//",
+}
+
+
+# ---------------------------------------------------------------------------
+# Code-line counting — the anti-squeeze metric
+# ---------------------------------------------------------------------------
+#
+# The original check counted raw lines.  That's gameable: at 1003/1000
+# an agent will trim 3 comment lines and call it fixed.  The gate goes
+# green, the sprawl stays.  We watched this happen — an LLM compressed
+# an 8-line docstring to 5 lines to squeeze base.py under the limit.
+# Tests passed, gate passed, file still had two unrelated 200-line
+# classes squatting in it.
+#
+# The fix: count lines that have CODE on them.  Comments, blanks, and
+# docstrings become invisible to the metric.  Trimming them achieves
+# nothing.  The only way under is to move actual code out — which is
+# the whole point.
+#
+# Python gets the precise version (tokenize) because it's the primary
+# target and because docstring compression is the subtlest squeeze.
+# Other languages get prefix-stripped line counting, which defeats
+# blank-delete and comment-delete but not docstring-equivalents.  The
+# anti-pattern warning in fix_suggestion covers the remaining gap.
+
+
+def _count_code_lines(content: str, extension: str) -> int:
+    """Count lines that contain actual code.
+
+    For Python: a line counts iff it has at least one NAME, NUMBER, or
+    OP token.  Docstrings are STRING tokens — invisible.  A 10-line
+    docstring and a 1-line docstring contribute identically (zero).
+
+    For everything else: a line counts iff it's non-blank and doesn't
+    start with the language's line-comment prefix.  Cruder, but
+    cross-language and still defeats the cheap squeezes.
+    """
+    if extension == ".py":
+        count = _python_code_lines(content)
+        if count is not None:
+            return count
+        # Tokenize choked (syntax error) — fall through to prefix mode.
+    prefix = _COMMENT_PREFIXES.get(extension, "#")
+    return sum(
+        1
+        for line in content.splitlines()
+        if (stripped := line.strip()) and not stripped.startswith(prefix)
+    )
+
+
+def _python_code_lines(content: str) -> Optional[int]:
+    """Tokenize-based code-line count for Python.
+
+    Returns ``None`` if tokenization fails — the caller falls back to
+    prefix-stripped counting rather than crashing on a malformed file.
+
+    Why allowlist NAME/NUMBER/OP instead of blocklist STRING/COMMENT:
+    f-string tokenization changed in 3.12 (FSTRING_START etc).  An
+    allowlist of the three token types that are ALWAYS code is stable
+    across versions.  Everything else — strings, comments, structural
+    tokens — is either prose or scaffolding.
+    """
+    meaningful = {tokenize.NAME, tokenize.NUMBER, tokenize.OP}
+    code_lines: Set[int] = set()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(content).readline):
+            if tok.type in meaningful:
+                code_lines.add(tok.start[0])
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return None
+    return len(code_lines)
+
+
+def _file_action(target: Optional[Tuple[str, int, int]], over: int) -> str:
+    """Render the per-file instruction — the '#4' ultra-specific guidance.
+
+    This string is the payload.  It's what an agent reads at the moment
+    of deciding how to fix the violation, in both the console output
+    and the GitHub annotation.  It names a specific definition, a
+    specific line, and a specific action.  There is no interpretive
+    work left to do.
+
+    When ``target`` is None (unparseable file, or no definitions found)
+    we still emit SOMETHING directive — vaguer, but still an action and
+    still not trimming.
+    """
+    if target is None:
+        return (
+            f"Move at least {over} lines of code into a separate module. "
+            f"Comments and docstrings already don't count — trimming them "
+            f"won't help."
+        )
+    name, line, span = target
+    if span > over:
+        # Moving the biggest thing clears the limit with room to spare.
+        # Tell them exactly where it is and where it goes.
+        return (
+            f"Move {name} ({span} lines, starts line {line}) to its own "
+            f"file — that clears the limit by {span - over}."
+        )
+    # The biggest single definition isn't enough on its own.  Still
+    # point at it — it's the right FIRST move — but be honest that
+    # the gate will fire again.  Iterative guidance is fine; what
+    # matters is each step is a real refactor, not a trim.
+    return (
+        f"Move {name} ({span} lines, starts line {line}) to its own file. "
+        f"That won't fully clear the limit — re-run after for the next target."
+    )
+
+
+# The anti-pattern warning — '#3'.  One static string, shown once per
+# failing run via fix_suggestion.  The key line is "already don't
+# count": telling an agent WHY the squeeze won't work, BEFORE it
+# tries, is more effective than detecting the squeeze after.  The
+# specific per-violation instructions in the Finding messages do the
+# heavy lifting; this is the backstop for anyone who skims past them.
+_FIX_SUGGESTION = (
+    "Each violation above has a specific move-this instruction — do that.\n"
+    "\n"
+    "⚠️  DO NOT trim comments, compress docstrings, or join lines to "
+    "squeeze under the limit. This check counts CODE lines only — "
+    "comments, blanks, and docstrings already don't count, so trimming "
+    "them achieves nothing. If you're reaching for a squeeze, that's "
+    "the signal the file genuinely needs splitting."
+)
+
+
+def _find_biggest_python_definition(
+    content: str,
+) -> Optional[Tuple[str, int, int]]:
+    """Find the largest top-level class or function in a Python file.
+
+    Returns ``(name, start_line, raw_line_span)`` or ``None`` if the
+    file has no top-level definitions (or doesn't parse).
+
+    "Top-level" means module body — we're answering "what should I
+    move OUT of this file?", not "what should I break UP inside it?".
+    A 300-line class is the right target even if its biggest method
+    is only 40 lines.  Raw line span (not code-line count) is the
+    right size here because moving the class moves its docstrings
+    too — the caller's mental model is "delete these N lines from
+    the file", and that N includes prose.
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return None
+    defs = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    if not defs:
+        return None
+    biggest = max(defs, key=lambda n: (n.end_lineno or n.lineno) - n.lineno)
+    span = (biggest.end_lineno or biggest.lineno) - biggest.lineno + 1
+    return (biggest.name, biggest.lineno, span)
+
 
 # File extensions to check (source files only)
 SOURCE_EXTENSIONS = {
@@ -94,12 +283,14 @@ class LocLockCheck(BaseCheck):
     Level: swab
 
     Configuration:
-      max_file_lines: 1000 — files above this are candidates for
-          splitting into modules. 1000 is generous; most well-
-          structured files stay under 500.
-      max_function_lines: 100 — functions above this need
-          decomposition. Focus on logical separation ("what
-          concepts does this handle?") not line reduction.
+      max_file_lines: 1000 — CODE lines: comments, blanks, and (for
+          Python) docstrings don't count. Trimming prose won't help
+          you pass — only moving code will. 1000 is generous; most
+          well-structured files stay under 500.
+      max_function_lines: 100 — RAW lines: a 120-line function with
+          40 comment lines is still 120 lines to scroll through.
+          Focus on logical separation ("what concepts does this
+          handle?") not line reduction.
       include_dirs: ["."] — scan everything by default.
       exclude_dirs: [] — additional dirs to skip (node_modules,
           venv, etc. are always excluded).
@@ -235,7 +426,14 @@ class LocLockCheck(BaseCheck):
         excluded_dirs = self._get_excluded_dirs()
         extensions = self._get_extensions()
 
-        file_violations: List[Tuple[str, int]] = []
+        # File violations carry the "what to move" target alongside the
+        # count so _build_findings can emit an ultra-specific instruction
+        # without re-parsing.  ``target`` is None when we couldn't find
+        # one (non-Python file with no detectable functions, or parse
+        # error) — those violations fall back to a generic message.
+        #   (rel_path, code_line_count, target_or_None)
+        #   target = (name, start_line, raw_span)
+        file_violations: List[Tuple[str, int, Optional[Tuple[str, int, int]]]] = []
         func_violations: List[Tuple[str, str, int, int]] = []
 
         root = Path(project_root)
@@ -257,14 +455,20 @@ class LocLockCheck(BaseCheck):
 
                 try:
                     content = file_path.read_text(encoding="utf-8", errors="ignore")
-                    lines = content.splitlines()
-                    line_count = len(lines)
 
-                    # Check file length
+                    # Code-line count — comments, blanks, and (for
+                    # Python) docstrings don't count.  See the comment
+                    # block above _count_code_lines for why.
+                    line_count = _count_code_lines(content, file_path.suffix)
+
                     if line_count > max_file_lines:
-                        file_violations.append((rel_path, line_count))
+                        target = self._pick_move_target(content, file_path.suffix)
+                        file_violations.append((rel_path, line_count, target))
 
-                    # Check function lengths
+                    # Function-length still uses raw lines — a 120-line
+                    # function with 40 lines of comments is still a
+                    # 120-line wall to read.  The file-level metric is
+                    # about structure; this one is about readability.
                     funcs = self._find_functions(content, file_path.suffix)
                     for func_name, start_line, func_lines in funcs:
                         if func_lines > max_func_lines:
@@ -294,29 +498,61 @@ class LocLockCheck(BaseCheck):
                 file_violations, func_violations, max_file_lines, max_func_lines
             ),
             error=f"{total} LOC violation(s) found",
-            fix_suggestion="Break large files into modules. "
-            "Extract long functions into smaller, focused functions.",
+            fix_suggestion=_FIX_SUGGESTION,
             findings=self._build_findings(
                 file_violations, func_violations, max_file_lines, max_func_lines
             ),
         )
 
+    def _pick_move_target(
+        self, content: str, extension: str
+    ) -> Optional[Tuple[str, int, int]]:
+        """Find the thing to move OUT of an oversized file.
+
+        For Python: biggest top-level class or function via AST.
+        For everything else: biggest function via the existing regex
+        machinery — not as good (misses classes) but still actionable.
+
+        Returns ``(name, start_line, line_span)`` or ``None`` when
+        nothing identifiable was found.  ``None`` degrades gracefully
+        to a generic message; it doesn't hide the violation.
+        """
+        if extension == ".py":
+            hit = _find_biggest_python_definition(content)
+            if hit is not None:
+                return hit
+        funcs = self._find_functions(content, extension)
+        if not funcs:
+            return None
+        name, start, span = max(funcs, key=lambda f: f[2])
+        return (name, start, span)
+
     @staticmethod
     def _format_violations(
-        file_violations: List[Tuple[str, int]],
+        file_violations: List[Tuple[str, int, Optional[Tuple[str, int, int]]]],
         func_violations: List[Tuple[str, str, int, int]],
         max_file_lines: int,
         max_func_lines: int,
     ) -> str:
-        """Render violations for console output — top 10 each, sorted by size."""
+        """Render violations for console output — top 10 each, sorted by size.
+
+        Each violation gets its own action line.  This is where an agent
+        running ``sm swab`` locally reads what to do — the Finding
+        message covers the GitHub-annotation path, this covers the
+        terminal path.  Both say the same thing.
+        """
         out: List[str] = []
         if file_violations:
             out.append(
-                f"📁 Files exceeding {max_file_lines} lines "
+                f"📁 Files exceeding {max_file_lines} code lines "
                 f"({len(file_violations)}):"
             )
-            for path, lines in sorted(file_violations, key=lambda x: -x[1])[:10]:
-                out.append(f"  {path}: {lines} lines")
+            for path, lines, target in sorted(file_violations, key=lambda x: -x[1])[
+                :10
+            ]:
+                over = lines - max_file_lines
+                out.append(f"  {path}: {lines} code lines ({over} over)")
+                out.append(f"    → {_file_action(target, over)}")
             if len(file_violations) > 10:
                 out.append(f"  ... and {len(file_violations) - 10} more")
         if func_violations:
@@ -329,41 +565,63 @@ class LocLockCheck(BaseCheck):
             for path, func, line, lines in sorted(func_violations, key=lambda x: -x[3])[
                 :10
             ]:
-                out.append(f"  {path}:{line} {func}(): {lines} lines")
+                over = lines - max_func_lines
+                out.append(f"  {path}:{line} {func}(): {lines} lines ({over} over)")
+                out.append(
+                    f"    → Break at least {over} lines off {func}() into "
+                    f"a new function, or relocate to an existing one."
+                )
             if len(func_violations) > 10:
                 out.append(f"  ... and {len(func_violations) - 10} more")
         return "\n".join(out)
 
     @staticmethod
     def _build_findings(
-        file_violations: List[Tuple[str, int]],
+        file_violations: List[Tuple[str, int, Optional[Tuple[str, int, int]]]],
         func_violations: List[Tuple[str, str, int, int]],
         max_file_lines: int,
         max_func_lines: int,
     ) -> List[Finding]:
         """Build structured findings for SARIF — one per violation.
 
-        File-level violations anchor at the file with no line (the
-        whole file is the problem).  Function-level violations anchor
-        at the function's start line so GitHub's annotation lands on
-        the ``def`` line.
+        The Finding message becomes the GitHub annotation body, so it
+        carries the specific instruction.  An agent reading the
+        annotation inline on a PR sees exactly what to do, right where
+        the problem is.  File violations anchor at the move-target's
+        line (not line 1) so the annotation lands ON the thing to move.
         """
-        return [
-            Finding(
-                message=f"{loc} lines exceeds {max_file_lines}",
-                level=FindingLevel.ERROR,
-                file=path,
+        out: List[Finding] = []
+        for path, loc, target in file_violations:
+            over = loc - max_file_lines
+            out.append(
+                Finding(
+                    message=(
+                        f"{loc} code lines (limit {max_file_lines}, {over} over). "
+                        f"{_file_action(target, over)}"
+                    ),
+                    level=FindingLevel.ERROR,
+                    file=path,
+                    # Anchor at the target so GitHub's annotation lands
+                    # on the class/function header — the agent sees the
+                    # instruction right next to the thing it names.
+                    line=target[1] if target else None,
+                )
             )
-            for path, loc in file_violations
-        ] + [
-            Finding(
-                message=f"{func}(): {loc} lines exceeds {max_func_lines}",
-                level=FindingLevel.ERROR,
-                file=path,
-                line=start_line,
+        for path, func, start_line, loc in func_violations:
+            over = loc - max_func_lines
+            out.append(
+                Finding(
+                    message=(
+                        f"{func}(): {loc} lines (limit {max_func_lines}, {over} over). "
+                        f"Break at least {over} lines off into a new function, "
+                        f"or relocate to an existing one."
+                    ),
+                    level=FindingLevel.ERROR,
+                    file=path,
+                    line=start_line,
+                )
             )
-            for path, func, start_line, loc in func_violations
-        ]
+        return out
 
     def _find_functions(
         self, content: str, extension: str

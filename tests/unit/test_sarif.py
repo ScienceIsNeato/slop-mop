@@ -240,26 +240,64 @@ class TestSarifResultShape:
             "endColumn": 10,
         }
 
-    def test_locationless_finding_omits_locations_key(self) -> None:
-        """Aggregate findings (coverage %, test count) have no file.
-        SARIF permits locations to be absent entirely — GitHub shows
-        these in the Security tab under the rule name with no file
-        link.  Emitting locations: [] instead would be valid schema
-        but GitHub treats it differently (as "location unknown" vs
-        "location not applicable").  We omit.
+    def test_locationless_finding_dropped(self) -> None:
+        """A Finding with no file produces NO SARIF result at all.
+
+        The original design emitted a location-less result here,
+        reasoning that aggregate findings (coverage %, test count)
+        have no meaningful file anchor and the SARIF schema permits
+        ``locations`` to be absent.  True — but GitHub's
+        ``upload-sarif`` action is stricter than the schema.  It
+        rejects with ``locationFromSarifResult: expected at least one
+        location`` and FAILS THE WORKFLOW.  We found out in CI.
+
+        So the reporter now drops file-less findings.  The gate still
+        fails (exit code, console output, --json) — it just doesn't
+        get a PR annotation.  A location-less annotation wouldn't be
+        clickable anyway, so the loss is small.
         """
-        result = self._single_result(Finding(message="coverage too low"))
-        assert "locations" not in result
-        # Still has the essentials
-        assert result["message"]["text"] == "coverage too low"
-        assert result["level"] == "error"
+        r = CheckResult(
+            name="cov:gate",
+            status=CheckStatus.FAILED,
+            duration=0.1,
+            findings=[Finding(message="coverage too low")],  # no file=
+        )
+        doc = _emit(_make_summary(r))
+        assert doc["runs"][0]["results"] == []
+        # No result → no rule either.  Rule entries only materialise
+        # when at least one result references them.
+        assert doc["runs"][0]["tool"]["driver"]["rules"] == []
+
+    def test_mixed_findings_only_located_ones_survive(self) -> None:
+        """A gate emitting three findings, one without a file — only
+        the two with files reach SARIF.  The drop is per-finding, not
+        per-gate: one aggregate summary finding doesn't sink the
+        gate's real located findings.
+        """
+        r = CheckResult(
+            name="g",
+            status=CheckStatus.FAILED,
+            duration=0.1,
+            findings=[
+                Finding(message="real problem A", file="a.py", line=1),
+                Finding(message="aggregate: 2 issues"),  # dropped
+                Finding(message="real problem B", file="b.py", line=5),
+            ],
+        )
+        doc = _emit(_make_summary(r))
+        results = doc["runs"][0]["results"]
+        assert len(results) == 2
+        assert {r["message"]["text"] for r in results} == {
+            "real problem A",
+            "real problem B",
+        }
 
     def test_message_is_nested_under_text(self) -> None:
         """result.message is an object with a .text key, not a bare
         string.  Easy to get wrong; GitHub silently drops results
         where message is a string.
         """
-        result = self._single_result(Finding(message="hello"))
+        result = self._single_result(Finding(message="hello", file="x.py"))
         assert result["message"] == {"text": "hello"}
 
 
@@ -279,7 +317,7 @@ class TestRuleIdComposition:
             name="lint:py",
             status=CheckStatus.FAILED,
             duration=0.1,
-            findings=[Finding(message="m", rule_id="E501")],
+            findings=[Finding(message="m", file="x.py", rule_id="E501")],
         )
         doc = _emit(_make_summary(r))
         assert doc["runs"][0]["results"][0]["ruleId"] == "lint:py/E501"
@@ -290,7 +328,7 @@ class TestRuleIdComposition:
             name="cov:py",
             status=CheckStatus.FAILED,
             duration=0.1,
-            findings=[Finding(message="low")],
+            findings=[Finding(message="low", file="x.py")],
         )
         doc = _emit(_make_summary(r))
         assert doc["runs"][0]["results"][0]["ruleId"] == "cov:py"
@@ -304,7 +342,8 @@ class TestRuleIdComposition:
             status=CheckStatus.FAILED,
             duration=0.1,
             findings=[
-                Finding(message=f"unused {i}", rule_id="F401") for i in range(10)
+                Finding(message=f"unused {i}", file="x.py", rule_id="F401")
+                for i in range(10)
             ],
         )
         doc = _emit(_make_summary(r))
@@ -317,9 +356,9 @@ class TestRuleIdComposition:
             status=CheckStatus.FAILED,
             duration=0.1,
             findings=[
-                Finding(message="a", rule_id="E501"),
-                Finding(message="b", rule_id="W291"),
-                Finding(message="c", rule_id="E501"),
+                Finding(message="a", file="x.py", rule_id="E501"),
+                Finding(message="b", file="x.py", rule_id="W291"),
+                Finding(message="c", file="y.py", rule_id="E501"),
             ],
         )
         doc = _emit(_make_summary(r))
@@ -330,12 +369,14 @@ class TestRuleIdComposition:
 class TestFindingsRail:
     """``_create_result`` warns when you FAIL/WARN without findings.
 
-    The synthetic fallback in ``SarifReporter`` means forgetting
-    ``findings=`` is SILENT at the SARIF layer — you get a degraded
-    location-less alert instead of a crash.  That's good for end
-    users (an upgrade shouldn't break their CI because one gate
-    wasn't migrated) but bad for gate authors (you'd never know your
-    new gate is shipping worse UX than it could).
+    Forgetting ``findings=`` is SILENT at the SARIF layer — the
+    reporter drops file-less findings (GitHub's upload-sarif rejects
+    them), and no-findings-at-all just means the gate contributes
+    zero results.  No crash, no error, the gate just... isn't there.
+    That's good for end users (an upgrade shouldn't break their CI
+    because one gate wasn't migrated) but bad for gate authors —
+    your gate fails, the PR shows no annotation, and you'd never
+    know why without reading the SARIF JSON by hand.
 
     The rail is a ``UserWarning`` at result-construction time.  It
     surfaces during ``pytest`` (warnings-as-errors in strict mode)
@@ -428,14 +469,27 @@ class TestFindingsRail:
         )
 
 
-class TestSyntheticFinding:
+class TestUnmigratedGate:
     """Gates that haven't migrated to structured findings yet still
     FAIL — they just don't have Finding objects.  The reporter
-    fabricates one so the failure is visible in GitHub rather than
-    silently missing from the SARIF file.
+    produces nothing for them.
+
+    An earlier design synthesised a location-less result here so the
+    failure would at least appear in GitHub's Security tab.  That
+    backfired: GitHub's upload-sarif action rejects location-less
+    results and fails the entire workflow.  So now: no findings with
+    a file → nothing in SARIF.  The gate's failure still surfaces
+    through the exit code and console output; it's only the inline
+    PR annotation that's missing, and an annotation with no file to
+    anchor on wouldn't have been clickable anyway.
+
+    The ``_create_result`` UserWarning rail (tested in
+    ``TestFindingsRail`` below) is what catches this at development
+    time — fail without ``findings=`` and pytest's warnings-as-errors
+    lights up.
     """
 
-    def test_failed_gate_without_findings_gets_synthetic_result(self) -> None:
+    def test_failed_gate_without_findings_produces_nothing(self) -> None:
         r = CheckResult(
             name="legacy:gate",
             status=CheckStatus.FAILED,
@@ -443,20 +497,14 @@ class TestSyntheticFinding:
             error="something broke",
         )
         doc = _emit(_make_summary(r))
-        results = doc["runs"][0]["results"]
-        assert len(results) == 1
-        # Synthetic finding uses the error string as message — it's
-        # the one-line summary, not the multi-line output dump.
-        assert results[0]["message"]["text"] == "something broke"
-        assert results[0]["level"] == "error"
-        # No location for synthetic findings
-        assert "locations" not in results[0]
+        # No results, no rules — the gate is invisible to SARIF.
+        # It's NOT invisible to CI: exit code still non-zero.
+        assert doc["runs"][0]["results"] == []
+        assert doc["runs"][0]["tool"]["driver"]["rules"] == []
 
-    def test_warned_gate_synthetic_finding_is_warning_level(self) -> None:
-        """WARNED → warning, not error.  GitHub shows a yellow badge
-        instead of red.  A warning rendered as an error would make
-        people ignore the real errors.
-        """
+    def test_warned_gate_without_findings_also_produces_nothing(self) -> None:
+        """Same drop for WARNED.  Status doesn't matter once there's
+        no file — GitHub would reject either way."""
         r = CheckResult(
             name="soft:gate",
             status=CheckStatus.WARNED,
@@ -464,7 +512,30 @@ class TestSyntheticFinding:
             error="mild concern",
         )
         doc = _emit(_make_summary(r))
-        assert doc["runs"][0]["results"][0]["level"] == "warning"
+        assert doc["runs"][0]["results"] == []
+
+    def test_every_emitted_result_has_locations(self) -> None:
+        """The invariant GitHub enforces: if it's in results[], it has
+        locations[].  This is the guardrail — it'll catch any future
+        path that sneaks a file-less finding past the filter.
+        """
+        mixed = CheckResult(
+            name="g",
+            status=CheckStatus.FAILED,
+            duration=0.1,
+            findings=[
+                Finding(message="a", file="f.py", line=1),
+                Finding(message="b"),  # no file — filtered
+                Finding(message="c", file="g.py"),  # file, no line — still OK
+            ],
+        )
+        doc = _emit(_make_summary(mixed))
+        for result in doc["runs"][0]["results"]:
+            assert "locations" in result, (
+                f"Result without locations[] would be rejected by "
+                f"GitHub's upload-sarif:\n{result}"
+            )
+            assert len(result["locations"]) >= 1
 
 
 class TestUriNormalisation:
@@ -571,18 +642,29 @@ class TestFingerprints:
         assert len(digest) == 16
         assert occ == "1"
 
-    def test_fingerprint_absent_for_locationless_finding(self, project: Path) -> None:
-        """No file → nothing to hash.  Omit the fingerprint entirely;
+    def test_fingerprint_absent_without_line_number(self, project: Path) -> None:
+        """File but no line → nothing to hash.  The fingerprint is a
+        hash of the LINE CONTENT at ``finding.line`` — without a line
+        there's no content to read.  Omit the fingerprint entirely;
         upload-sarif will skip it too (it also can't hash nothing).
+
+        (File-less findings would also lack a fingerprint, but those
+        don't reach ``_build_result`` at all — the ``_collect`` filter
+        drops them.  File-without-line is the surviving case.)
         """
         r = CheckResult(
             name="g",
             status=CheckStatus.FAILED,
             duration=0.1,
-            findings=[Finding(message="coverage low")],
+            findings=[Finding(message="whole-file issue", file="a.py")],
         )
         doc = _emit(_make_summary(r), root=str(project))
-        assert "partialFingerprints" not in doc["runs"][0]["results"][0]
+        result = doc["runs"][0]["results"][0]
+        assert "partialFingerprints" not in result
+        # But it DOES get a location — GitHub accepts artifactLocation
+        # without a region.  The finding anchors to the file, just not
+        # to a specific line.
+        assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
 
     def test_fingerprint_stable_across_line_shift(self, project: Path) -> None:
         """The core property: same content at a different line number
@@ -720,10 +802,11 @@ class TestSchemaValidation:
         self, schema: Any, validator_cls: type, tmp_path: Path
     ) -> None:
         """Kitchen sink: every Finding field populated, multiple gates,
-        multiple rules, location-less aggregate alongside located
-        findings.  If this validates, the shape is right.
+        multiple rules, file-only alongside file+region findings.  If
+        this validates, the shape is right.
         """
         (tmp_path / "src.py").write_text("line1\nline2\nline3\n")
+        (tmp_path / "cov.py").write_text("uncovered\n")
 
         results = [
             # Linter gate with sub-rules and full regions
@@ -753,7 +836,9 @@ class TestSchemaValidation:
                     ),
                 ],
             ),
-            # Aggregate gate with location-less finding
+            # Gate with file but no line — artifactLocation without
+            # region.  Still valid: GitHub needs a file to anchor on,
+            # not necessarily a line.
             CheckResult(
                 name="overconfidence:coverage.py",
                 status=CheckStatus.FAILED,
@@ -763,10 +848,11 @@ class TestSchemaValidation:
                     Finding(
                         message="Coverage 72.0% below 80%",
                         level=FindingLevel.ERROR,
+                        file="cov.py",
                     )
                 ],
             ),
-            # Warned gate — soft failure
+            # Warned gate — soft failure, warning level
             CheckResult(
                 name="myopia:debt.py",
                 status=CheckStatus.WARNED,
@@ -776,22 +862,28 @@ class TestSchemaValidation:
                     Finding(
                         message="Gate threshold loosened",
                         level=FindingLevel.WARNING,
+                        file="src.py",
+                        line=3,
                     )
                 ],
             ),
-            # Legacy gate with no findings — triggers synthetic
+            # Legacy gate with no findings — contributes nothing
+            # (file-less → dropped; see TestUnmigratedGate)
             CheckResult(
                 name="legacy:old.py",
                 status=CheckStatus.FAILED,
                 duration=0.1,
                 error="old-style failure",
             ),
-            # Passed gate — should not appear
+            # Passed gate — contributes nothing
             CheckResult(name="ok:gate", status=CheckStatus.PASSED, duration=0.1),
         ]
         doc = _emit(_make_summary(*results), root=str(tmp_path))
         self._validate(doc, schema, validator_cls)
 
-        # Sanity check the content too — 4 results (2+1+1+synthetic),
-        # passed gate contributes nothing.
-        assert len(doc["runs"][0]["results"]) == 5
+        # 2 from lint + 1 coverage + 1 warned = 4.  Legacy gate
+        # (no findings) and passed gate both contribute zero.
+        assert len(doc["runs"][0]["results"]) == 4
+        # Every result has locations[] — the GitHub invariant.
+        for r in doc["runs"][0]["results"]:
+            assert "locations" in r and r["locations"]

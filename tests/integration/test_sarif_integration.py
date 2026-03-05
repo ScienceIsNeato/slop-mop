@@ -6,7 +6,8 @@ fixtures.  That's necessary but not sufficient — it doesn't catch the
 class of bug where a gate's parsing logic is wrong and it emits
 ``Finding(file=None)`` for something that SHOULD have a file, or the
 gate forgets to thread ``findings=`` through ``_create_result`` and
-the synthetic fallback papers over it.
+it silently vanishes from SARIF (the reporter drops file-less
+findings because GitHub's upload-sarif rejects them).
 
 These tests close that gap by running ``sm swab --sarif`` against
 ``bucket-o-slop:all-fail`` — a repo deliberately broken in ways that
@@ -116,7 +117,8 @@ class TestSchemaOnRealOutput:
     def test_has_content(self, sarif_all_fail: Any) -> None:
         """Empty SARIF is schema-valid but useless — all-fail MUST produce
         findings.  If this fails, either the fixture branch drifted or
-        gates stopped emitting findings and the synthetic fallback broke."""
+        gates stopped emitting file-anchored findings (file-less ones
+        are dropped at the reporter, so they wouldn't show up here)."""
         assert _results(sarif_all_fail), (
             "SARIF from all-fail has zero results — every gate should "
             "have failed and emitted at least one finding"
@@ -149,7 +151,7 @@ class TestPhysicalLocation:
         assert located, (
             f"None of the {len(_results(sarif_all_fail))} SARIF results "
             f"have a physicalLocation with uri+startLine.  Either every "
-            f"gate fell back to synthetic findings (check the UserWarning "
+            f"gate is emitting file-less findings (check the UserWarning "
             f"rail in base.py — it should have fired) or the reporter is "
             f"dropping location data.\n"
             f"Rule IDs present: {sorted(_rule_ids(sarif_all_fail))}"
@@ -221,10 +223,11 @@ class TestGateCoverage:
     """Every gate that fails shows up as a rule.
 
     Guards against the quiet failure mode: a gate forgets to pass
-    ``findings=`` to ``_create_result``, the UserWarning fires but
-    gets swallowed by subprocess capture, the synthetic fallback kicks
-    in with a vague message, and nobody notices until a user asks why
-    Code Scanning shows "gate X failed" with no detail.
+    ``findings=`` to ``_create_result`` (or emits findings with no
+    ``file=``), the UserWarning fires but gets swallowed by subprocess
+    capture, the reporter drops the file-less findings, and nobody
+    notices until a user asks why Code Scanning shows nothing for a
+    gate that's clearly failing in the console log.
 
     We can't enumerate the exact expected gate set because it drifts
     with ``bucket-o-slop`` (pinned SHA notwithstanding — the pin
@@ -245,35 +248,26 @@ class TestGateCoverage:
             f"flowing through the pipeline."
         )
 
-    def test_no_synthetic_fallback_messages(self, sarif_all_fail: Any) -> None:
-        """Synthetic findings use the gate's ``error`` string verbatim.
+    def test_every_result_has_locations(self, sarif_all_fail: Any) -> None:
+        """The GitHub invariant, verified on real gate output.
 
-        Real findings have specific messages ("unused function 'foo'",
-        "B105: hardcoded_password").  Synthetic ones are generic
-        ("3 dead code item(s) found").  We can't pattern-match every
-        possible real message, but we CAN check that no result's
-        message is exactly the ``_synthetic_finding`` giveaway: a
-        message that's identical to the result's rule name.
+        GitHub's ``upload-sarif`` action rejects results without
+        ``locations[]`` — ``locationFromSarifResult: expected at
+        least one location``.  The reporter filters these out at
+        source (``_collect`` drops findings with no ``file``).  This
+        test is the real-world confirmation: nothing slipped through.
 
-        A synthetic appearing here means a gate FAILED without
-        ``findings=`` and the rail warning was right to complain.
+        If this fails, some gate produced a Finding with a file path
+        that survived the filter but then ``_build_result`` failed to
+        turn it into a ``physicalLocation``.  Look at the reporter,
+        not the gate.
         """
-        # SarifReporter._synthetic_finding falls back to the CHECK
-        # NAME when error is also empty.  That's the one pattern we
-        # can reliably detect without false positives.
-        suspicious = [
-            r for r in _results(sarif_all_fail) if r["message"]["text"] == r["ruleId"]
-        ]
-        # Soft assertion — this could legitimately happen if a gate's
-        # error message happens to equal its name, so warn rather
-        # than fail.  The real guard is test_multiple_gates_represented.
-        if suspicious:
-            rule_ids = sorted({r["ruleId"] for r in suspicious})
+        missing = [r for r in _results(sarif_all_fail) if not r.get("locations")]
+        if missing:
+            rule_ids = sorted({r["ruleId"] for r in missing})
             pytest.fail(
-                f"Possible synthetic-fallback results (message == ruleId): "
-                f"{rule_ids}.  These gates may not be emitting structured "
-                f"findings — check for UserWarning in the container stderr "
-                f"and verify _create_result(..., findings=...) is threaded."
+                f"{len(missing)} result(s) without locations[] — GitHub's "
+                f"upload-sarif would reject the whole file.  Rules: {rule_ids}"
             )
 
 
@@ -283,7 +277,7 @@ class TestGateCoverage:
 
 
 class TestFingerprints:
-    """``partialFingerprints`` on real findings, not synthetic ones.
+    """``partialFingerprints`` on real findings with real source lines.
 
     Unit tests prove the hash is stable across line shifts using temp
     files.  This proves it's computed at all on real output — the

@@ -10,6 +10,7 @@ from slopmop.checks.base import (
     GateCategory,
     ToolContext,
 )
+from slopmop.checks.constants import TESTS_TIMED_OUT_MSG
 from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
@@ -112,12 +113,9 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error="Tests timed out after 5 minutes",
+                error=TESTS_TIMED_OUT_MSG,
                 findings=[
-                    Finding(
-                        message="Tests timed out after 5 minutes",
-                        level=FindingLevel.ERROR,
-                    )
+                    Finding(message=TESTS_TIMED_OUT_MSG, level=FindingLevel.ERROR)
                 ],
             )
 

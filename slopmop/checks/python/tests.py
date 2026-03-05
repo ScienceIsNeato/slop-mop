@@ -12,6 +12,7 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
+    TESTS_TIMED_OUT_MSG,
     has_python_test_files,
     skip_reason_no_test_files,
 )
@@ -135,13 +136,10 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error="Tests timed out after 5 minutes",
+                error=TESTS_TIMED_OUT_MSG,
                 fix_suggestion="Check for infinite loops or slow tests",
                 findings=[
-                    Finding(
-                        message="Tests timed out after 5 minutes",
-                        level=FindingLevel.ERROR,
-                    )
+                    Finding(message=TESTS_TIMED_OUT_MSG, level=FindingLevel.ERROR)
                 ],
             )
 

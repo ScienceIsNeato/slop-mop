@@ -121,11 +121,21 @@ class SarifReporter:
         ``(gate_name, rule_id)`` share one ``reportingDescriptor``.
         Results are a flat list, one per finding.
 
-        A gate with NO findings but a FAILED/WARNED status still gets
-        one synthetic location-less result so the failure shows up in
-        GitHub's Security tab.  Otherwise gates that haven't migrated
-        to structured findings yet would be invisible in SARIF, which
-        is a worse outcome than a vague "something failed" entry.
+        Only findings with a ``file`` make it in.  GitHub's
+        ``upload-sarif`` action rejects location-less results with
+        ``locationFromSarifResult: expected at least one location`` —
+        stricter than the schema, which permits absent ``locations``.
+        We learned this the hard way: an earlier version synthesised
+        a location-less result for gates that hadn't migrated to
+        structured findings, reasoning "a vague alert is better than
+        nothing".  GitHub disagreed — it failed the whole upload.
+
+        So: no file, no SARIF result.  A gate that fails without any
+        file-anchored findings is still caught by the CI exit code
+        and slopmop's own console/JSON output; it just won't get a
+        PR annotation.  That's the best we can do without inventing
+        a fake location, and the ``_create_result`` UserWarning rail
+        in ``base.py`` already nudges gate authors to supply one.
         """
         rules_by_id: Dict[str, Dict[str, object]] = {}
         results: List[Dict[str, object]] = []
@@ -134,7 +144,7 @@ class SarifReporter:
             if check.status not in _EMITTING_STATUSES:
                 continue
 
-            findings = check.findings or [self._synthetic_finding(check)]
+            findings = [f for f in (check.findings or ()) if f.file is not None]
 
             for finding in findings:
                 rule_id = self._compose_rule_id(check.name, finding.rule_id)
@@ -160,28 +170,6 @@ class SarifReporter:
         if sub_rule:
             return f"{gate_name}/{sub_rule}"
         return gate_name
-
-    @staticmethod
-    def _synthetic_finding(check: CheckResult) -> Finding:
-        """Fabricate a location-less finding for a gate that failed
-        without emitting structured findings.
-
-        This is the backstop for gates that haven't been migrated yet.
-        The message is the gate's ``error`` (short summary) rather than
-        ``output`` (full multi-line dump) because SARIF ``message.text``
-        is rendered inline and GitHub truncates aggressively — we want
-        the one-liner, not the wall of text.  The full output is still
-        available in slopmop's own ``--json`` mode and console logs.
-        """
-        from slopmop.core.result import FindingLevel
-
-        level = (
-            FindingLevel.WARNING
-            if check.status == CheckStatus.WARNED
-            else FindingLevel.ERROR
-        )
-        msg = check.error or check.status_detail or f"{check.name} failed"
-        return Finding(message=msg, level=level)
 
     def _build_rule(
         self, rule_id: str, check: CheckResult, finding: Finding
