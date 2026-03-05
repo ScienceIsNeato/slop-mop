@@ -56,11 +56,16 @@ jobs:
         # fails — which is exactly when the upload is most useful.  The
         # "Fail if issues found" step below re-raises the failure so the
         # job's red X is preserved.
+        #
+        # --no-auto-fix: without it, black/isort/prettier fix files on
+        # the ephemeral runner, the lint gates then PASS on the fixed
+        # state, and SARIF reports 0 findings for issues that are still
+        # in the PR.  The report must describe the commit as-pushed.
         id: slopmop
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python -m slopmop.sm scour --sarif --output-file slopmop.sarif
+        run: python -m slopmop.sm scour --sarif --output-file slopmop.sarif --no-auto-fix
 
       - name: Upload SARIF to GitHub Code Scanning
         # hashFiles() guard: if scour crashed before writing the file

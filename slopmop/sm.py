@@ -153,7 +153,9 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         help=(
             "Output results as SARIF 2.1.0 for GitHub Code Scanning "
             "integration. Pair with --output-file and upload via "
-            "github/codeql-action/upload-sarif."
+            "github/codeql-action/upload-sarif. In CI, also pass "
+            "--no-auto-fix so the report describes the commit as-pushed, "
+            "not as-would-be-after-formatting."
         ),
     )
     parser.add_argument(

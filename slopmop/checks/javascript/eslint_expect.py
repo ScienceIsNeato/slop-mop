@@ -365,11 +365,15 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 "additional_assert_functions in .sb_config.json if "
                 "tests use custom assertion helpers."
             ),
+            # _extract_violations() controls the dict shape — every entry
+            # has file/line/message as str/int/str.  No defensive str()
+            # wrapping; str(None) would produce the literal "None" as a
+            # file path, which SARIF would dutifully render.
             findings=[
                 Finding(
-                    message=str(v.get("message", "")),
-                    file=str(v.get("file", "")) or None,
-                    line=v.get("line") or None,
+                    message=v["message"],
+                    file=v["file"] or None,  # "" → None
+                    line=v["line"] or None,  # 0 → None (SARIF wants ≥1)
                 )
                 for v in violations
             ],
