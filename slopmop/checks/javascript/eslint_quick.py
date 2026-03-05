@@ -148,13 +148,14 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
             )
 
         findings = self._parse_stylish(result.output, project_root)
+        msg = "ESLint errors found"
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=result.output,
-            error="ESLint errors found",
+            error=msg,
             fix_suggestion="Fix ESLint errors above. Run: npx eslint --fix <file>",
-            findings=findings,
+            findings=findings or [Finding(message=msg, level=FindingLevel.ERROR)],
         )
 
     @staticmethod

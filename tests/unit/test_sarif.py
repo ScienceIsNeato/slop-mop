@@ -327,6 +327,107 @@ class TestRuleIdComposition:
         assert rule_ids == {"lint:py/E501", "lint:py/W291"}
 
 
+class TestFindingsRail:
+    """``_create_result`` warns when you FAIL/WARN without findings.
+
+    The synthetic fallback in ``SarifReporter`` means forgetting
+    ``findings=`` is SILENT at the SARIF layer — you get a degraded
+    location-less alert instead of a crash.  That's good for end
+    users (an upgrade shouldn't break their CI because one gate
+    wasn't migrated) but bad for gate authors (you'd never know your
+    new gate is shipping worse UX than it could).
+
+    The rail is a ``UserWarning`` at result-construction time.  It
+    surfaces during ``pytest`` (warnings-as-errors in strict mode)
+    and during ``sm swab`` development (warning printed to stderr).
+    Once you pass ``findings=[...]`` — even a single location-less
+    ``Finding(message=...)`` for aggregate gates — it goes quiet.
+
+    Tests use a real gate instance because ``BaseCheck`` is abstract
+    and the rail lives on ``self._create_result``, not a module
+    function.  Any concrete gate works; ``LocLockCheck`` is cheap
+    to construct (no external tools, no file I/O in ``__init__``).
+    """
+
+    @pytest.fixture
+    def gate(self) -> Any:
+        """A concrete BaseCheck just for calling _create_result on."""
+        from slopmop.checks.quality.loc_lock import LocLockCheck
+
+        return LocLockCheck(config={})
+
+    @pytest.mark.parametrize(
+        ("status", "findings", "should_warn"),
+        [
+            (CheckStatus.FAILED, None, True),
+            (CheckStatus.WARNED, None, True),
+            (CheckStatus.FAILED, [Finding(message="x")], False),
+            (CheckStatus.WARNED, [Finding(message="x")], False),
+            (CheckStatus.PASSED, None, False),
+            (CheckStatus.SKIPPED, None, False),
+            (CheckStatus.ERROR, None, False),
+            (CheckStatus.NOT_APPLICABLE, None, False),
+        ],
+        ids=[
+            "failed-bare",
+            "warned-bare",
+            "failed-with-findings",
+            "warned-with-findings",
+            "passed",
+            "skipped",
+            "error",
+            "n/a",
+        ],
+    )
+    def test_rail_fires_only_on_bare_fail_or_warn(
+        self,
+        gate: Any,
+        status: CheckStatus,
+        findings: Any,
+        should_warn: bool,
+        recwarn: Any,
+    ) -> None:
+        gate._create_result(status=status, duration=0.0, findings=findings)
+        got = [w for w in recwarn if issubclass(w.category, UserWarning)]
+        if should_warn:
+            assert len(got) == 1, (
+                f"{status.value}/findings={findings!r} should warn, "
+                f"got {len(got)} UserWarning(s)"
+            )
+            assert "findings" in str(got[0].message)
+            assert "_create_result" in str(got[0].message)
+        else:
+            assert not got, (
+                f"{status.value}/findings={findings!r} should NOT warn, "
+                f"got: {[str(w.message) for w in got]}"
+            )
+
+    def test_warning_names_the_gate(self, gate: Any, recwarn: Any) -> None:
+        """The warning should say WHICH gate forgot — you might have
+        20 gates running in parallel and a bare 'missing findings'
+        warning is useless for finding the offender."""
+        gate._create_result(status=CheckStatus.FAILED, duration=0.0)
+        warns = [w for w in recwarn if issubclass(w.category, UserWarning)]
+        assert warns, "rail did not fire"
+        # LocLockCheck's full_name is myopia:code-sprawl
+        assert "myopia:code-sprawl" in str(warns[0].message)
+
+    def test_rail_points_at_caller(self, gate: Any, recwarn: Any) -> None:
+        """``stacklevel=2`` means the warning's filename/lineno point
+        at the gate's ``run()`` method, not at ``base.py``.  Without
+        this, every warning says 'base.py:570' which is useless."""
+        gate._create_result(status=CheckStatus.FAILED, duration=0.0)
+        warns = [w for w in recwarn if issubclass(w.category, UserWarning)]
+        assert warns, "rail did not fire"
+        # With stacklevel=2, the warning is attributed to THIS file,
+        # not to base.py — we're the caller of _create_result here.
+        # A gate calling it would be attributed to the gate file.
+        assert "base.py" not in warns[0].filename, (
+            f"warning attributed to {warns[0].filename!r} — stacklevel "
+            f"is wrong, should point at the caller not _create_result"
+        )
+
+
 class TestSyntheticFinding:
     """Gates that haven't migrated to structured findings yet still
     FAIL — they just don't have Finding objects.  The reporter

@@ -22,6 +22,27 @@
 # runner workspace.  We ship our own so the SARIF file is useful
 # standalone (REST API upload, local inspection) but in this workflow
 # either would work.
+#
+# ──────────────────────────────────────────────────────────────────
+# Verifying this works (you can't see annotations on a clean repo)
+# ──────────────────────────────────────────────────────────────────
+# This workflow running on slop-mop itself produces an empty SARIF:
+# slop-mop's gates pass on slop-mop's code.  Code Scanning ingests a
+# valid document with zero results and shows nothing.  That proves
+# the plumbing but not the payload.
+#
+# To see inline annotations for real, drop this workflow into
+# bucket-o-slop (github.com/ScienceIsNeato/bucket-o-slop) — the
+# integration-test fixture repo whose all-fail branch is broken in
+# ways that trip every gate.  Open a PR from all-fail into main and
+# the diff lights up with dead-code, lint, type-error, and security
+# annotations.
+#
+# The integration tests in tests/integration/test_sarif_integration.py
+# run this same all-fail fixture inside Docker and assert the SARIF
+# is schema-valid with populated physicalLocation entries.  That
+# proves the payload.  Uploading it to a real bucket-o-slop PR proves
+# GitHub renders it.  Between the two, the whole pipeline is covered.
 
 name: slopmop → Code Scanning
 
@@ -63,12 +84,23 @@ jobs:
           cache: 'pip'
 
       - name: Install slopmop
+        # ────────────────────────────────────────────────────────────
+        # COPYING THIS TO YOUR REPO?  Change this line to:
+        #
+        #     pip install slopmop
+        #
+        # and also install whatever your project needs for gates to
+        # run (pytest for untested-code, mypy for missing-annotations):
+        #
+        #     pip install -e .[dev]
+        #
+        # This workflow runs on slop-mop's own CI, which means the
+        # slopmop it tests must be the slopmop in THIS commit — not
+        # whatever stale version PyPI has.  `pip install .` installs
+        # from the checkout.  On your repo you want PyPI's latest.
+        # ────────────────────────────────────────────────────────────
         run: |
-          pip install slopmop
-          # If your project has its own deps that gates need
-          # (pytest for untested-code, mypy for missing-annotations),
-          # install them here too:
-          # pip install -e .[dev]
+          pip install .
 
       - name: Run scour → SARIF
         id: scour

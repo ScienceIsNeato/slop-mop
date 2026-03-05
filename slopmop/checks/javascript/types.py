@@ -176,11 +176,13 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
         duration = time.time() - start_time
 
         if result.timed_out:
+            msg = "Type checking timed out after 3 minutes"
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error="Type checking timed out after 3 minutes",
+                error=msg,
+                findings=[Finding(message=msg, level=FindingLevel.ERROR)],
             )
 
         if not result.success:
@@ -204,13 +206,14 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                         )
                     )
 
+            msg = f"{error_count} TypeScript error(s) found"
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error=f"{error_count} TypeScript error(s) found",
+                error=msg,
                 fix_suggestion=f"Run: npx tsc --noEmit -p {tsconfig} to see detailed errors",
-                findings=findings,
+                findings=findings or [Finding(message=msg, level=FindingLevel.ERROR)],
             )
 
         return self._create_result(

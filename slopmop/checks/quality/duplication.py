@@ -288,6 +288,7 @@ class SourceDuplicationCheck(BaseCheck):
                 duration=time.time() - start_time,
                 error=error,
                 fix_suggestion="Install jscpd: npm install -g jscpd",
+                findings=[Finding(message=error, level=FindingLevel.WARNING)],
             )
 
         # Get config values

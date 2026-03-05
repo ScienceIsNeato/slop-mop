@@ -28,7 +28,7 @@ import time
 from typing import Any, ClassVar, Dict, List, Optional, Type, cast
 
 from slopmop.checks.base import BaseCheck, GateCategory, GateLevel
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 from slopmop.subprocess.runner import SubprocessRunner
 from slopmop.subprocess.validator import CommandValidator
 
@@ -196,14 +196,16 @@ def make_custom_check_class(
             duration = time.time() - start
 
             if result.timed_out:
+                msg = f"Custom gate timed out after {self._timeout}s"
                 return self._create_result(
                     status=CheckStatus.FAILED,
                     duration=duration,
-                    error=f"Custom gate timed out after {self._timeout}s",
+                    error=msg,
                     fix_suggestion=(
                         f"Increase timeout in .sb_config.json or optimise the command:\n"
                         f"  {self._command}"
                     ),
+                    findings=[Finding(message=msg, level=FindingLevel.ERROR)],
                 )
 
             combined_output = (result.stdout or "") + (result.stderr or "")
@@ -215,12 +217,14 @@ def make_custom_check_class(
                     output=combined_output.strip() or "Custom gate passed",
                 )
             else:
+                msg = f"Custom gate failed (exit code {result.returncode})"
                 return self._create_result(
                     status=CheckStatus.FAILED,
                     duration=duration,
                     output=combined_output.strip(),
-                    error=f"Custom gate failed (exit code {result.returncode})",
+                    error=msg,
                     fix_suggestion=f"Fix the issue reported by: {self._command}",
+                    findings=[Finding(message=msg, level=FindingLevel.ERROR)],
                 )
 
     # Give the class a meaningful __name__ for debugging

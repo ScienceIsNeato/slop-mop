@@ -248,11 +248,13 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         # Check pyright is installed
         pyright_path = _find_pyright(project_root)
         if not pyright_path:
+            msg = "pyright not found"
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
-                error="pyright not found",
+                error=msg,
                 fix_suggestion="Install pyright: pip install pyright",
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         # Generate pyrightconfig.json in project root
@@ -281,11 +283,13 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             duration = time.time() - start_time
 
             if result.timed_out:
+                msg = "Type checking timed out after 2 minutes"
                 return self._create_result(
                     status=CheckStatus.FAILED,
                     duration=duration,
                     output=result.output,
-                    error="Type checking timed out after 2 minutes",
+                    error=msg,
+                    findings=[Finding(message=msg, level=FindingLevel.ERROR)],
                 )
 
             return self._process_output(result.output, duration)
@@ -333,13 +337,14 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         fix_suggestion = self._build_fix_suggestion(diagnostics)
         findings = self._build_findings(diagnostics)
 
+        msg = f"{error_count} type-completeness error(s) found"
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=output,
-            error=f"{error_count} type-completeness error(s) found",
+            error=msg,
             fix_suggestion=fix_suggestion,
-            findings=findings,
+            findings=findings or [Finding(message=msg, level=FindingLevel.ERROR)],
         )
 
     @staticmethod

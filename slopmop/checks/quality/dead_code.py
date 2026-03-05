@@ -232,11 +232,13 @@ class DeadCodeCheck(BaseCheck):
         if result.returncode == 127 or (
             result.returncode == -1 and "Command not found" in result.stderr
         ):
+            msg = "vulture not available"
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=duration,
-                error="vulture not available",
+                error=msg,
                 fix_suggestion="Install vulture: pip install vulture",
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         # Handle timeout

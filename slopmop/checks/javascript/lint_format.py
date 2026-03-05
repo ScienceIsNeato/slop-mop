@@ -153,13 +153,15 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         duration = time.time() - start_time
 
         if issues:
+            msg = f"{len(issues)} issue(s) found"
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output="\n".join(output_parts),
-                error=f"{len(issues)} issue(s) found",
+                error=msg,
                 fix_suggestion="Run: npx eslint . --fix && npx prettier --write .",
-                findings=eslint_findings,
+                findings=eslint_findings
+                or [Finding(message=msg, level=FindingLevel.ERROR)],
             )
 
         return self._create_result(

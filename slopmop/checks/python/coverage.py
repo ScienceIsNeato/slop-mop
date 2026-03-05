@@ -169,6 +169,9 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 output="",
                 error=COVERAGE_XML_NOT_FOUND,
                 fix_suggestion="Run python-tests check first to generate coverage data",
+                findings=[
+                    Finding(message=COVERAGE_XML_NOT_FOUND, level=FindingLevel.ERROR)
+                ],
             )
 
         # Get coverage report with missing lines

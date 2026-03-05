@@ -530,15 +530,17 @@ class StringDuplicationCheck(BaseCheck):
         # Check if tool exists
         tool_path = self._get_tool_path(project_root)
         if tool_path is None:
+            msg = (
+                "find-duplicate-strings tool not installed locally. "
+                "Run: sm init (sets up tools/) or install globally: "
+                "npm install -g find-duplicate-strings"
+            )
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 output="",
-                error=(
-                    "find-duplicate-strings tool not installed locally. "
-                    "Run: sm init (sets up tools/) or install globally: "
-                    "npm install -g find-duplicate-strings"
-                ),
+                error=msg,
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         # Strip docstrings into a temp directory so the Node tool scans

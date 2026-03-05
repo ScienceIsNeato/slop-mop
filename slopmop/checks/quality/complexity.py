@@ -149,11 +149,13 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         if result.returncode == 127 or (
             result.returncode == -1 and "Command not found" in result.stderr
         ):
+            msg = "Radon not available"
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=duration,
-                error="Radon not available",
+                error=msg,
                 fix_suggestion="Install radon: pip install radon",
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         violations = self._parse_violations(result.output)

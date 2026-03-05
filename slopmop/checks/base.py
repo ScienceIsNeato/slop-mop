@@ -9,13 +9,20 @@ import logging
 import os
 import shutil
 import subprocess
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
 
-from slopmop.core.result import CheckResult, CheckStatus, Finding, ScopeInfo
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    Finding,
+    FindingLevel,
+    ScopeInfo,
+)
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
@@ -543,13 +550,29 @@ class BaseCheck(ABC):
             error: Error message if failed
             fix_suggestion: Suggested fix for failures
             auto_fixed: Whether issues were auto-fixed
-            findings: Structured findings for SARIF output.  ``None``
-                (the default) leaves the result with an empty list —
-                gates with only free-form output pass nothing here.
+            findings: Structured per-issue findings.  **Required** for
+                FAILED/WARNED — these become inline PR annotations in
+                GitHub Code Scanning.  Omitting them triggers a
+                UserWarning (see rail below).  PASSED/SKIPPED/ERROR
+                don't emit SARIF and can leave this at ``None``.
 
         Returns:
             CheckResult instance
         """
+        # Rail: catch missing findings during gate development instead
+        # of letting SarifReporter's synthetic fallback paper over it.
+        # No file to anchor to?  Pass Finding(message=...) anyway —
+        # that satisfies this AND labels the Security tab entry.
+        if not findings and status in (CheckStatus.FAILED, CheckStatus.WARNED):
+            warnings.warn(
+                f"{self.full_name!r} returned {status.value.upper()} without "
+                f"findings — SARIF output will use a synthetic location-less "
+                f"alert. Pass findings=[Finding(...)] to _create_result() "
+                f"for inline PR annotations in GitHub Code Scanning.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         return CheckResult(
             name=self.full_name,
             status=status,
@@ -695,14 +718,16 @@ class PythonCheckMixin:
         import time
 
         if not self.has_project_venv(project_root):
+            msg = "No project virtual environment found"
             return self._create_result(  # type: ignore[attr-defined]
                 status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
-                error="No project virtual environment found",
+                error=msg,
                 fix_suggestion=(
                     "Create a venv so this check can run against your project:\n"
                     f"  cd {project_root} && {self.suggest_venv_command(project_root)}"
                 ),
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
         return None
 

@@ -262,11 +262,13 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         duration = time.time() - start_time
 
         if result.timed_out:
+            msg = "Type checking timed out after 2 minutes"
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error="Type checking timed out after 2 minutes",
+                error=msg,
+                findings=[Finding(message=msg, level=FindingLevel.ERROR)],
             )
 
         if not result.success:
