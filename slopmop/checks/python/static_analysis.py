@@ -14,6 +14,7 @@ from slopmop.checks.base import (
     GateCategory,
     ToolContext,
 )
+from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -269,6 +270,19 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                 output=result.output,
                 error=msg,
                 findings=[Finding(message=msg, level=FindingLevel.ERROR)],
+            )
+
+        # Handle mypy not installed — warn but don't block
+        if result.returncode == 127 or (
+            result.returncode == -1 and COMMAND_NOT_FOUND in result.stderr
+        ):
+            msg = "mypy not available"
+            return self._create_result(
+                status=CheckStatus.WARNED,
+                duration=duration,
+                error=msg,
+                fix_suggestion="Install mypy: pip install mypy",
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         if not result.success:

@@ -13,6 +13,11 @@ SKIP_NO_PYTHON_FILES = "No Python files found"
 # Four occurrences before extraction tripped myopia:string-duplication.
 TESTS_TIMED_OUT_MSG = "Tests timed out after 5 minutes"
 
+# Sentinel substring returned by SubprocessRunner when a binary is not
+# found (FileNotFoundError → returncode -1, stderr "Command not found: …").
+# Used by dead_code, complexity, and static_analysis to detect missing tools.
+COMMAND_NOT_FOUND = "Command not found"
+
 
 def has_python_test_files(project_root: str, test_dirs: list[str]) -> bool:
     """Check whether any test_*.py files exist in the configured test dirs.

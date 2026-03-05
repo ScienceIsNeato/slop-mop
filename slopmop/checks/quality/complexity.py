@@ -20,6 +20,7 @@ from slopmop.checks.base import (
     GateCategory,
     ToolContext,
 )
+from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -147,7 +148,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         # returncode 127 = shell "command not found"
         # returncode -1 = FileNotFoundError from SubprocessRunner
         if result.returncode == 127 or (
-            result.returncode == -1 and "Command not found" in result.stderr
+            result.returncode == -1 and COMMAND_NOT_FOUND in result.stderr
         ):
             msg = "Radon not available"
             return self._create_result(

@@ -22,6 +22,7 @@ from slopmop.checks.base import (
     count_source_scope,
     find_tool,
 )
+from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -230,7 +231,7 @@ class DeadCodeCheck(BaseCheck):
 
         # Handle tool not installed — warn but don't block
         if result.returncode == 127 or (
-            result.returncode == -1 and "Command not found" in result.stderr
+            result.returncode == -1 and COMMAND_NOT_FOUND in result.stderr
         ):
             msg = "vulture not available"
             return self._create_result(

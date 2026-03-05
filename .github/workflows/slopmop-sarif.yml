@@ -101,9 +101,11 @@ jobs:
         #
         # The [lint] extra brings black/flake8/isort so the
         # laziness:sloppy-formatting gate can actually run.
+        # The [typing] extra brings mypy/pyright so the
+        # overconfidence:missing-annotations gate can run.
         # ────────────────────────────────────────────────────────────
         run: |
-          pip install ".[lint]"
+          pip install ".[lint,typing]"
 
       - name: Run scour → SARIF
         id: scour
