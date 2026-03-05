@@ -314,8 +314,8 @@ def _run_validation(
         #   - human summary → stdout only
         if machine_output is not None and output_file:
             Path(output_file).write_text(machine_output, encoding="utf-8")
-            reporter.print_summary(summary)
             if not args.quiet:
+                reporter.print_summary(summary)
                 print(f"\n📄 Report written to {output_file}")
         elif machine_output is not None:
             print(machine_output)

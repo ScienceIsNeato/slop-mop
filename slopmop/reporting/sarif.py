@@ -10,8 +10,21 @@ The mapping is:
 * Each gate becomes a ``reportingDescriptor`` in ``tool.driver.rules[]``.
 * Each :pyclass:`~slopmop.core.result.Finding` becomes a ``result`` with
   a ``physicalLocation``.
-* Gates that fail without structured findings emit a single locationless
-  result (the fallback path for custom shell gates).
+* Gates that fail without structured findings emit a single result
+  anchored at the repo root (the fallback path for custom shell gates).
+
+GitHub's SARIF ingester is stricter than the OASIS schema: every result
+MUST carry at least one location or the upload is rejected with
+``locationFromSarifResult: expected at least one location``.  For
+project-scoped findings (config debt, custom shell gates, crashed gates)
+we emit a sentinel location pointing at ``.`` — the repo root.  The
+finding still appears in the Security tab; it just doesn't get an inline
+file annotation.
+
+Path normalisation happens here, at the point of URI construction, not
+in each gate.  Gates emit whatever the underlying tool produced (often
+OS-native separators); we canonicalise to forward-slash once.  Future
+gates get this for free.
 
 ``partialFingerprints`` are computed from ``(ruleId, file, message)`` —
 deliberately excluding line number so a finding is recognised as the same
@@ -106,7 +119,10 @@ class SarifReporter:
             if check is not None:
                 rule["name"] = check.display_name
                 rule["shortDescription"] = {"text": check.gate_description}
-                rule["properties"] = {"category": check.category.key}
+                # Custom shell gates can exist in the registry with
+                # category=None — the same guard _create_result uses.
+                if check.category is not None:
+                    rule["properties"] = {"category": check.category.key}
             elif result.category:
                 rule["properties"] = {"category": result.category}
 
@@ -163,19 +179,11 @@ class SarifReporter:
             "ruleId": rule_id,
             "level": level,
             "message": {"text": finding.message},
+            "locations": [{"physicalLocation": self._build_location(finding)}],
             "partialFingerprints": {
                 "slopmopFingerprint/v1": self._fingerprint(rule_id, finding),
             },
         }
-
-        if finding.file:
-            loc: Dict[str, Any] = {
-                "artifactLocation": {"uri": finding.file},
-            }
-            region = self._build_region(finding)
-            if region:
-                loc["region"] = region
-            res["locations"] = [{"physicalLocation": loc}]
 
         if finding.rule_id:
             res.setdefault("properties", {})["subRule"] = finding.rule_id
@@ -183,17 +191,56 @@ class SarifReporter:
         return res
 
     @staticmethod
+    def _build_location(finding: Finding) -> Dict[str, Any]:
+        """Build ``physicalLocation`` — always present, even for project-scoped findings.
+
+        GitHub's ingester rejects any result missing ``locations``.  When
+        the finding has no file we anchor at ``.`` (repo root): the alert
+        lands in the Security tab without an inline annotation, which is
+        exactly right for config-level or crash-level issues.
+
+        URIs require forward-slash separators.  We normalise here rather
+        than asking every gate to remember — tools on Windows emit
+        backslashes, and a gate author shouldn't need to know about
+        SARIF URI rules.  Backslash replacement (not ``os.sep``) covers
+        the cross-platform case where a Windows-produced path is
+        serialised on a Linux CI runner.
+        """
+        if not finding.file:
+            return {"artifactLocation": {"uri": "."}}
+
+        loc: Dict[str, Any] = {
+            "artifactLocation": {"uri": finding.file.replace("\\", "/")},
+        }
+        region = SarifReporter._build_region(finding)
+        if region:
+            loc["region"] = region
+        return loc
+
+    @staticmethod
     def _build_region(finding: Finding) -> Optional[Dict[str, int]]:
-        """Build the ``region`` dict (1-based line/column ranges)."""
+        """Build the ``region`` dict (1-based line/column ranges).
+
+        SARIF mandates ≥1 for every region coordinate.  ``Finding`` says
+        "1-based" in its docstring but doesn't enforce it — if a gate
+        forwards a 0-based index from some tool's JSON, we drop that
+        field rather than emit schema-invalid output.  The result
+        degrades to file-level (still useful) instead of poisoning the
+        whole upload.
+        """
+
+        def _pos(v: Optional[int]) -> Optional[int]:
+            return v if v is not None and v >= 1 else None
+
         region: Dict[str, int] = {}
-        if finding.line is not None:
-            region["startLine"] = finding.line
-        if finding.end_line is not None:
-            region["endLine"] = finding.end_line
-        if finding.column is not None:
-            region["startColumn"] = finding.column
-        if finding.end_column is not None:
-            region["endColumn"] = finding.end_column
+        if (n := _pos(finding.line)) is not None:
+            region["startLine"] = n
+        if (n := _pos(finding.end_line)) is not None:
+            region["endLine"] = n
+        if (n := _pos(finding.column)) is not None:
+            region["startColumn"] = n
+        if (n := _pos(finding.end_column)) is not None:
+            region["endColumn"] = n
         return region or None
 
     @staticmethod

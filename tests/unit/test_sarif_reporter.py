@@ -126,8 +126,14 @@ class TestResults:
         )
         assert doc["runs"][0]["results"] == []
 
-    def test_locationless_fallback_uses_error_text(self):
-        """Gate FAILED with no findings → one locationless result."""
+    def test_fallback_uses_error_text(self):
+        """Gate FAILED with no findings → one result anchored at repo root.
+
+        GitHub rejects any result missing ``locations`` with
+        ``locationFromSarifResult: expected at least one location`` —
+        stricter than the OASIS schema.  The sentinel ``.`` lands the
+        alert in the Security tab without an inline file annotation.
+        """
         r = CheckResult(
             "legacy:gate", CheckStatus.FAILED, 1.0, error="things went wrong"
         )
@@ -135,18 +141,60 @@ class TestResults:
         results = doc["runs"][0]["results"]
         assert len(results) == 1
         assert results[0]["message"]["text"] == "things went wrong"
-        assert "locations" not in results[0]
+        loc = results[0]["locations"][0]["physicalLocation"]
+        assert loc["artifactLocation"]["uri"] == "."
+        assert "region" not in loc
 
-    def test_locationless_fallback_uses_output_when_no_error(self):
+    def test_fallback_uses_output_when_no_error(self):
         r = CheckResult("legacy:gate", CheckStatus.FAILED, 1.0, output="some output")
         doc = SarifReporter().build(_summary(r))
         assert doc["runs"][0]["results"][0]["message"]["text"] == "some output"
 
-    def test_locationless_fallback_never_empty_message(self):
+    def test_fallback_never_empty_message(self):
         """SARIF requires non-empty message text."""
         r = CheckResult("x:y", CheckStatus.FAILED, 1.0, output="", error="")
         doc = SarifReporter().build(_summary(r))
         assert doc["runs"][0]["results"][0]["message"]["text"]
+
+    def test_every_result_has_a_location(self):
+        """GitHub's ingester: ``locationFromSarifResult: expected at least one location``.
+
+        This is the contract we broke in the first PR push — every
+        possible status×finding combination must produce a result with
+        a non-empty ``locations`` array, or the whole upload is rejected.
+        """
+        doc = SarifReporter().build(
+            _summary(
+                # file+line
+                CheckResult(
+                    "a",
+                    CheckStatus.FAILED,
+                    1.0,
+                    findings=[Finding("x", file="a.py", line=1)],
+                ),
+                # file only
+                CheckResult(
+                    "b", CheckStatus.FAILED, 1.0, findings=[Finding("x", file="b.py")]
+                ),
+                # message only (project-scoped Finding)
+                CheckResult(
+                    "c", CheckStatus.FAILED, 1.0, findings=[Finding("config issue")]
+                ),
+                # legacy path — no findings, error text
+                CheckResult("d", CheckStatus.ERROR, 1.0, error="crashed"),
+                # legacy path — no findings, no error, no output
+                CheckResult("e", CheckStatus.FAILED, 1.0),
+                # warned
+                CheckResult(
+                    "f", CheckStatus.WARNED, 1.0, findings=[Finding("heads up")]
+                ),
+            )
+        )
+        results = doc["runs"][0]["results"]
+        assert len(results) == 6
+        for r in results:
+            assert r["locations"], f"result {r['ruleId']!r} has no location"
+            assert r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
 
 
 class TestPhysicalLocation:
@@ -170,12 +218,53 @@ class TestPhysicalLocation:
         assert loc["artifactLocation"]["uri"] == "src/foo.py"
         assert "region" not in loc
 
-    def test_no_file_no_locations(self):
-        """Message-only finding → no locations key."""
+    def test_no_file_repo_root_sentinel(self):
+        """Message-only finding → repo-root sentinel location (``.``)."""
         f = Finding("project-wide issue")
         r = CheckResult("g", CheckStatus.FAILED, 1.0, findings=[f])
         doc = SarifReporter().build(_summary(r))
-        assert "locations" not in doc["runs"][0]["results"][0]
+        loc = doc["runs"][0]["results"][0]["locations"][0]["physicalLocation"]
+        assert loc["artifactLocation"]["uri"] == "."
+        assert "region" not in loc  # no line to anchor
+
+    def test_backslash_paths_normalised_to_posix(self):
+        """Windows-native separators → forward slashes in the URI.
+
+        Gates don't have to remember to normalise — fix is at the
+        reporter waist, not scattered across 20+ producers.
+        """
+        f = Finding("bad", file="src\\checks\\quality\\foo.py", line=1)
+        r = CheckResult("g", CheckStatus.FAILED, 1.0, findings=[f])
+        doc = SarifReporter().build(_summary(r))
+        uri = doc["runs"][0]["results"][0]["locations"][0]["physicalLocation"][
+            "artifactLocation"
+        ]["uri"]
+        assert uri == "src/checks/quality/foo.py"
+        assert "\\" not in uri
+
+    def test_zero_based_coords_dropped_not_emitted(self):
+        """SARIF mandates ≥1; bad coord → drop field, not poison upload.
+
+        If a gate forwards a 0-based index from pyright/tsc JSON without
+        the +1, we degrade to file-level rather than emit schema-invalid
+        output that would reject the entire run.
+        """
+        f = Finding("bad", file="x.py", line=0, column=0)
+        r = CheckResult("g", CheckStatus.FAILED, 1.0, findings=[f])
+        doc = SarifReporter().build(_summary(r))
+        loc = doc["runs"][0]["results"][0]["locations"][0]["physicalLocation"]
+        assert loc["artifactLocation"]["uri"] == "x.py"
+        assert "region" not in loc  # both coords dropped → no region
+
+    def test_negative_coords_dropped(self):
+        f = Finding("bad", file="x.py", line=-1, end_line=5)
+        r = CheckResult("g", CheckStatus.FAILED, 1.0, findings=[f])
+        doc = SarifReporter().build(_summary(r))
+        region = doc["runs"][0]["results"][0]["locations"][0]["physicalLocation"][
+            "region"
+        ]
+        assert "startLine" not in region
+        assert region["endLine"] == 5  # the valid coord survives
 
     def test_multi_line_region(self):
         f = Finding("block", file="x.py", line=10, end_line=20, column=1, end_column=80)

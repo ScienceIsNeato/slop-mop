@@ -8,6 +8,7 @@ This check:
 """
 
 import os
+import re
 import time
 from typing import List, Optional
 
@@ -364,19 +365,22 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         if not result.success and result.output.strip():
             lines = result.output.strip().split("\n")
+            # Non-greedy path capture anchored by :digits:digits: — survives
+            # Windows drive-letter colons (``C:\foo.py:12:5: E501 msg``)
+            # because the regex backtracks past ``C:`` until it hits the
+            # numeric line:col boundary.  split(':', 3) would treat the
+            # drive letter as the whole path and drop the finding.
+            flake8_re = re.compile(r"^(.+?):(\d+):(\d+): (\S+)\s*(.*)$")
             for line in lines:
-                # flake8: path:line:col: CODE message
-                parts = line.split(":", 3)
-                if len(parts) == 4 and parts[1].isdigit() and parts[2].isdigit():
-                    code_msg = parts[3].strip()
-                    code = code_msg.split(None, 1)[0] if code_msg else None
+                m = flake8_re.match(line)
+                if m:
                     findings_out.append(
                         Finding(
-                            message=code_msg,
-                            file=parts[0],
-                            line=int(parts[1]),
-                            column=int(parts[2]),
-                            rule_id=code,
+                            message=f"{m.group(4)} {m.group(5)}".strip(),
+                            file=m.group(1),
+                            line=int(m.group(2)),
+                            column=int(m.group(3)),
+                            rule_id=m.group(4),
                         )
                     )
             return f"{len(lines)} critical error(s):\n" + "\n".join(lines[:5])
