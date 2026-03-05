@@ -21,7 +21,7 @@ from slopmop.checks.base import (
     PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_RANK = "C"
 MAX_COMPLEXITY = 20
@@ -173,6 +173,12 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
             output=detail,
             error=f"{len(violations)} function(s) exceed limit",
             fix_suggestion="Break complex functions into smaller helpers.",
+            findings=[
+                Finding(
+                    message=f"{len(violations)} function(s) exceed complexity limit",
+                    level=FindingLevel.ERROR,
+                )
+            ],
         )
 
     def _parse_violations(self, output: str) -> List[str]:

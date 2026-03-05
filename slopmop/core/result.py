@@ -94,6 +94,107 @@ class ScopeInfo:
         return " · ".join(parts)
 
 
+class FindingLevel(Enum):
+    """Severity level for a single finding — maps directly to SARIF ``result.level``.
+
+    Distinct from :class:`CheckStatus`: a gate FAILS or PASSES as a whole,
+    but individual findings inside that gate carry their own severity.  A
+    gate can FAIL because it found five warnings that exceeded a
+    ``max_warnings: 0`` threshold — those are still WARNING-level findings
+    in SARIF, and GitHub renders them with yellow badges, not red.
+
+    SARIF consumers (GitHub Code Scanning, IDE extensions) use THIS level
+    to decide annotation colour.  They don't see the gate's pass/fail.
+    """
+
+    ERROR = "error"
+    WARNING = "warning"
+    NOTE = "note"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+@dataclass(frozen=True)
+class Finding:
+    """A single structured issue discovered by a check.
+
+    Carries the minimum data needed to produce a SARIF ``result`` object
+    with a ``physicalLocation``.  All location fields are optional: some
+    gates are aggregate (coverage %, complexity score) and have no file
+    anchor — SARIF permits location-less results and GitHub renders them
+    under the rule name in the Security tab.
+
+    Gates are NOT required to emit findings.  The free-form
+    :attr:`CheckResult.output` remains the baseline for console display.
+    Findings are an additive layer for gates that HAVE file:line data —
+    when populated, the SARIF reporter emits one ``result`` per finding.
+
+    The design deliberately keeps gate identity OUT of this type.  A
+    Finding doesn't know which gate produced it; that's carried by the
+    enclosing :class:`CheckResult`.  This keeps construction sites clean
+    (no redundant ``gate_name=self.full_name`` at every call) and lets
+    the SARIF reporter compose ``ruleId`` from both pieces at emission
+    time, where it has the full picture.
+
+    Attributes:
+        message: Human-readable description.  First sentence should be
+            the TL;DR — GitHub truncates to the first sentence when
+            space is limited.  Maps to SARIF ``result.message.text``.
+        level: Severity of THIS finding.  Defaults to ERROR because the
+            common case is building findings in a failure path.
+        file: Path relative to project root, POSIX separators.  ``None``
+            for location-less aggregate findings.  Gates should pass
+            relative paths; the reporter normalises to POSIX and
+            percent-encodes.  Maps to SARIF ``artifactLocation.uri``.
+        line: 1-based start line.  Maps to SARIF ``region.startLine``.
+            Without this, GitHub won't render an inline PR annotation.
+        column: 1-based start column.  SARIF is strict: the schema
+            rejects ``startColumn: 0``.  If you have a 0-based column
+            from a tool, add 1 before passing it here.
+        end_line: 1-based end line for multi-line ranges.
+        end_column: 1-based exclusive end column (one past the last
+            character of the range).
+        rule_id: Tool-native sub-rule identifier, e.g. ``"F401"``
+            (flake8), ``"reportUnknownVariableType"`` (pyright),
+            ``"no-unused-vars"`` (eslint).  Distinct from the gate's
+            own name — one gate wraps many rules.  ``None`` when the
+            gate has a single rule; the SARIF reporter then uses the
+            gate's ``full_name`` as the ruleId.
+    """
+
+    message: str
+    level: FindingLevel = FindingLevel.ERROR
+    file: Optional[str] = None
+    line: Optional[int] = None
+    column: Optional[int] = None
+    end_line: Optional[int] = None
+    end_column: Optional[int] = None
+    rule_id: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, object]:
+        """Serialise for JSON output.  Omits ``None`` fields — matches
+        the token-saving convention used throughout this module.
+        """
+        d: Dict[str, object] = {
+            "message": self.message,
+            "level": self.level.value,
+        }
+        if self.file is not None:
+            d["file"] = self.file
+        if self.line is not None:
+            d["line"] = self.line
+        if self.column is not None:
+            d["column"] = self.column
+        if self.end_line is not None:
+            d["end_line"] = self.end_line
+        if self.end_column is not None:
+            d["end_column"] = self.end_column
+        if self.rule_id is not None:
+            d["rule_id"] = self.rule_id
+        return d
+
+
 @dataclass
 class CheckResult:
     """Result of executing a quality gate check.
@@ -108,6 +209,11 @@ class CheckResult:
         auto_fixed: Whether issues were automatically fixed
         category: Category key for grouping (python, quality, security, etc.)
         scope: Scope metrics (files/LOC examined), if available
+        findings: Structured per-issue findings for SARIF / IDE
+            annotations.  Empty by default — gates that only produce
+            free-form ``output`` need zero changes.  When populated,
+            the SARIF reporter emits one ``result`` per finding; the
+            console reporter ignores this and uses ``output`` as before.
     """
 
     name: str
@@ -121,6 +227,7 @@ class CheckResult:
     scope: Optional[ScopeInfo] = None
     skip_reason: Optional["SkipReason"] = None
     status_detail: Optional[str] = None
+    findings: List[Finding] = field(default_factory=lambda: cast(List[Finding], []))
 
     def to_dict(self) -> Dict[str, object]:
         """Serialize to a plain dict for JSON output."""
@@ -145,6 +252,8 @@ class CheckResult:
             d["skip_reason"] = self.skip_reason.value
         if self.status_detail:
             d["status_detail"] = self.status_detail
+        if self.findings:
+            d["findings"] = [f.to_dict() for f in self.findings]
         return d
 
     @property

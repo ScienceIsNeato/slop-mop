@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
 
@@ -588,4 +588,10 @@ class GateDodgingCheck(BaseCheck):
                 "or add a justification comment with the prefix: "
                 f"{JUSTIFICATION_PREFIX}"
             ),
+            findings=[
+                Finding(
+                    message=f"{len(changes)} gate setting(s) loosened vs {base_ref}",
+                    level=FindingLevel.WARNING,
+                )
+            ],
         )

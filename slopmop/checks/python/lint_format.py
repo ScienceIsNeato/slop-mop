@@ -8,6 +8,7 @@ This check:
 """
 
 import os
+import re
 import time
 from typing import List, Optional
 
@@ -19,7 +20,10 @@ from slopmop.checks.base import (
     PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+
+# flake8 default format: path:line:col: CODE message
+_FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
@@ -188,7 +192,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             output_parts.append("Isort: ✅ Import order OK")
 
         # Check 3: Flake8 critical errors
-        flake8_result = self._check_flake8(project_root)
+        flake8_result, flake8_findings = self._check_flake8(project_root)
         if flake8_result:
             issues.append(flake8_result)
             output_parts.append(f"Flake8: {flake8_result}")
@@ -204,6 +208,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 output="\n".join(output_parts),
                 error=f"{len(issues)} issue(s) found",
                 fix_suggestion="Run: black . && isort . to auto-fix formatting",
+                findings=flake8_findings,
             )
 
         return self._create_result(
@@ -299,7 +304,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             return "Import order issues found"
         return None
 
-    def _check_flake8(self, project_root: str) -> Optional[str]:
+    def _check_flake8(self, project_root: str) -> tuple[Optional[str], List[Finding]]:
         """Check for critical flake8 errors.
 
         Scans only the configured include_dirs or auto-detected Python source
@@ -318,7 +323,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             targets = self._get_python_targets(project_root)
 
         if not targets:
-            return None  # No Python source directories to check
+            return None, []  # No Python source directories to check
 
         # Build exclude list: base defaults + any configured exclude_dirs
         # Use --extend-exclude to preserve flake8's built-in defaults
@@ -354,5 +359,27 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         if not result.success and result.output.strip():
             lines = result.output.strip().split("\n")
-            return f"{len(lines)} critical error(s):\n" + "\n".join(lines[:5])
-        return None
+            findings: List[Finding] = []
+            for line in lines:
+                m = _FLAKE8_RE.match(line)
+                if m:
+                    code = m.group(4)
+                    findings.append(
+                        Finding(
+                            message=m.group(5),
+                            level=(
+                                FindingLevel.WARNING
+                                if code.startswith("W")
+                                else FindingLevel.ERROR
+                            ),
+                            file=m.group(1),
+                            line=int(m.group(2)),
+                            column=int(m.group(3)),
+                            rule_id=code,
+                        )
+                    )
+            return (
+                f"{len(lines)} critical error(s):\n" + "\n".join(lines[:5]),
+                findings,
+            )
+        return None, []

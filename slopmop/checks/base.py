@@ -15,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
 
-from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
+from slopmop.core.result import CheckResult, CheckStatus, Finding, ScopeInfo
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
 
 logger = logging.getLogger(__name__)
@@ -532,6 +532,7 @@ class BaseCheck(ABC):
         fix_suggestion: Optional[str] = None,
         auto_fixed: bool = False,
         status_detail: Optional[str] = None,
+        findings: Optional[List[Finding]] = None,
     ) -> CheckResult:
         """Helper to create a CheckResult for this check.
 
@@ -542,6 +543,9 @@ class BaseCheck(ABC):
             error: Error message if failed
             fix_suggestion: Suggested fix for failures
             auto_fixed: Whether issues were auto-fixed
+            findings: Structured findings for SARIF output.  ``None``
+                (the default) leaves the result with an empty list —
+                gates with only free-form output pass nothing here.
 
         Returns:
             CheckResult instance
@@ -556,6 +560,7 @@ class BaseCheck(ABC):
             auto_fixed=auto_fixed,
             category=self.category.key if self.category else None,
             status_detail=status_detail,
+            findings=findings or [],
         )
 
     def _run_command(

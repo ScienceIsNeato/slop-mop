@@ -14,7 +14,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, GateLevel
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 
 class PRCommentsCheck(BaseCheck):
@@ -685,6 +685,12 @@ class PRCommentsCheck(BaseCheck):
                 error=f"{count} unresolved PR comment(s)",
                 fix_suggestion=f"Read full report: cat {report_file}",
                 status_detail=detail,
+                findings=[
+                    Finding(
+                        message=f"{count} unresolved PR comment(s) on PR #{pr_number}",
+                        level=FindingLevel.ERROR,
+                    )
+                ],
             )
         else:
             return self._create_result(
@@ -693,6 +699,12 @@ class PRCommentsCheck(BaseCheck):
                 output=f"⚠️ {count} unresolved comment(s) — "
                 f"set fail_on_unresolved: true to block on this\n\n" + summary,
                 status_detail=detail,
+                findings=[
+                    Finding(
+                        message=f"{count} unresolved PR comment(s) on PR #{pr_number}",
+                        level=FindingLevel.WARNING,
+                    )
+                ],
             )
 
     def _save_report_to_file(self, report: str, pr_number: int) -> str:

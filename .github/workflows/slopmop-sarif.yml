@@ -1,0 +1,102 @@
+# Reference workflow: slopmop → GitHub Code Scanning
+#
+# Runs slopmop's scour gates, emits SARIF, and uploads it so failures
+# appear as inline PR annotations + entries in the Security tab.  The
+# upload-sarif action handles the GitHub API plumbing — no tokens, no
+# custom auth, works on any public repo out of the box.
+#
+# Why scour and not swab: scour is the PR-readiness gate set.  Swab is
+# the every-commit quick check — you could SARIF-upload that too, but
+# you'd be creating and resolving the same alerts many times per PR.
+# One scour-SARIF per PR push gives a stable alert surface.
+#
+# Why continue-on-error on the scour step: we want the SARIF upload to
+# happen whether gates pass or fail.  Failing gates are the POINT —
+# that's when there's something to annotate.  The overall job still
+# surfaces the exit code via the verdict step at the end, so branch
+# protection rules can still block merges on gate failures.
+#
+# Why we don't generate partialFingerprints ourselves in CI: slopmop
+# DOES generate them (see reporting/sarif.py), but upload-sarif would
+# compute them too if we didn't — it reads the source files from the
+# runner workspace.  We ship our own so the SARIF file is useful
+# standalone (REST API upload, local inspection) but in this workflow
+# either would work.
+
+name: slopmop → Code Scanning
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Weekly re-scan of the default branch — keeps the Security tab
+  # fresh even during quiet periods.  Without this, alerts can go
+  # stale when their underlying rules are updated.
+  schedule:
+    - cron: '0 6 * * 1'
+
+# upload-sarif needs security-events: write.  actions: read lets it
+# correlate the upload with the workflow run.  contents: read is the
+# bare minimum for checkout.
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # diff-cover and gate-dodging need history to compare
+          # against the base branch.  Shallow clone (the default)
+          # breaks both with cryptic "unknown revision" errors.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install slopmop
+        run: |
+          pip install slopmop
+          # If your project has its own deps that gates need
+          # (pytest for untested-code, mypy for missing-annotations),
+          # install them here too:
+          # pip install -e .[dev]
+
+      - name: Run scour → SARIF
+        id: scour
+        # Gates failing is EXPECTED — that's what produces findings.
+        # We still want to upload the SARIF and let Code Scanning
+        # render the annotations.  The verdict step below re-fails
+        # the job so branch protection isn't bypassed.
+        continue-on-error: true
+        run: |
+          sm scour --sarif --output-file slopmop.sarif --no-json
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slopmop.sarif
+          # Distinct category lets you run slopmop alongside other
+          # SARIF tools (CodeQL, semgrep) without them overwriting
+          # each other's alerts.  GitHub keys alert state on
+          # (category, ruleId, fingerprint).
+          category: slopmop
+
+      - name: Verdict
+        # Re-surface the scour exit code so branch protection rules
+        # that require this job to pass actually mean something.
+        # Without this, continue-on-error above would let everything
+        # through.  The SARIF is uploaded either way — this just
+        # controls the green/red check mark.
+        if: steps.scour.outcome == 'failure'
+        run: |
+          echo "::error::slopmop scour failed — see Code Scanning alerts"
+          exit 1

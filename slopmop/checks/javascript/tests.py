@@ -12,7 +12,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.constants import NPM_INSTALL_FAILED
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 
 class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
@@ -113,6 +113,12 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 duration=duration,
                 output=result.output,
                 error="Tests timed out after 5 minutes",
+                findings=[
+                    Finding(
+                        message="Tests timed out after 5 minutes",
+                        level=FindingLevel.ERROR,
+                    )
+                ],
             )
 
         if not result.success:
@@ -126,6 +132,12 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 output=result.output,
                 error=f"{len(failed)} test file(s) failed",
                 fix_suggestion="Run: npm test to see detailed failures",
+                findings=[
+                    Finding(
+                        message=f"{len(failed)} test file(s) failed",
+                        level=FindingLevel.ERROR,
+                    )
+                ],
             )
 
         return self._create_result(

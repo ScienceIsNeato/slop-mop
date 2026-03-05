@@ -20,7 +20,13 @@ from slopmop.checks.base import (
     GateCategory,
     count_source_scope,
 )
-from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    Finding,
+    FindingLevel,
+    ScopeInfo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +73,14 @@ EXCLUDED_DIRS = {
     "cursor-rules",
     ".mypy_cache",
     "logs",
+    # AI-assistant working directories — local tooling, not project
+    # source.  These showed up when users ran swab with an active
+    # Claude Code session: .claude/hooks/ contains long orchestration
+    # scripts that tripped the function-length limit despite being
+    # entirely outside the project's quality surface.
+    ".claude",
+    ".cursor",
+    ".aider",
 }
 
 
@@ -272,41 +286,84 @@ class LocLockCheck(BaseCheck):
                 f"{max_func_lines} lines/function)",
             )
 
-        # Build violation report
-        output_lines: List[str] = []
+        total = len(file_violations) + len(func_violations)
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output=self._format_violations(
+                file_violations, func_violations, max_file_lines, max_func_lines
+            ),
+            error=f"{total} LOC violation(s) found",
+            fix_suggestion="Break large files into modules. "
+            "Extract long functions into smaller, focused functions.",
+            findings=self._build_findings(
+                file_violations, func_violations, max_file_lines, max_func_lines
+            ),
+        )
 
+    @staticmethod
+    def _format_violations(
+        file_violations: List[Tuple[str, int]],
+        func_violations: List[Tuple[str, str, int, int]],
+        max_file_lines: int,
+        max_func_lines: int,
+    ) -> str:
+        """Render violations for console output — top 10 each, sorted by size."""
+        out: List[str] = []
         if file_violations:
-            output_lines.append(
-                f"📁 Files exceeding {max_file_lines} lines ({len(file_violations)}):"
+            out.append(
+                f"📁 Files exceeding {max_file_lines} lines "
+                f"({len(file_violations)}):"
             )
             for path, lines in sorted(file_violations, key=lambda x: -x[1])[:10]:
-                output_lines.append(f"  {path}: {lines} lines")
+                out.append(f"  {path}: {lines} lines")
             if len(file_violations) > 10:
-                output_lines.append(f"  ... and {len(file_violations) - 10} more")
-
+                out.append(f"  ... and {len(file_violations) - 10} more")
         if func_violations:
-            if output_lines:
-                output_lines.append("")
-            output_lines.append(
-                f"🔧 Functions exceeding {max_func_lines} lines ({len(func_violations)}):"
+            if out:
+                out.append("")
+            out.append(
+                f"🔧 Functions exceeding {max_func_lines} lines "
+                f"({len(func_violations)}):"
             )
             for path, func, line, lines in sorted(func_violations, key=lambda x: -x[3])[
                 :10
             ]:
-                output_lines.append(f"  {path}:{line} {func}(): {lines} lines")
+                out.append(f"  {path}:{line} {func}(): {lines} lines")
             if len(func_violations) > 10:
-                output_lines.append(f"  ... and {len(func_violations) - 10} more")
+                out.append(f"  ... and {len(func_violations) - 10} more")
+        return "\n".join(out)
 
-        total = len(file_violations) + len(func_violations)
+    @staticmethod
+    def _build_findings(
+        file_violations: List[Tuple[str, int]],
+        func_violations: List[Tuple[str, str, int, int]],
+        max_file_lines: int,
+        max_func_lines: int,
+    ) -> List[Finding]:
+        """Build structured findings for SARIF — one per violation.
 
-        return self._create_result(
-            status=CheckStatus.FAILED,
-            duration=duration,
-            output="\n".join(output_lines),
-            error=f"{total} LOC violation(s) found",
-            fix_suggestion="Break large files into modules. "
-            "Extract long functions into smaller, focused functions.",
-        )
+        File-level violations anchor at the file with no line (the
+        whole file is the problem).  Function-level violations anchor
+        at the function's start line so GitHub's annotation lands on
+        the ``def`` line.
+        """
+        return [
+            Finding(
+                message=f"{loc} lines exceeds {max_file_lines}",
+                level=FindingLevel.ERROR,
+                file=path,
+            )
+            for path, loc in file_violations
+        ] + [
+            Finding(
+                message=f"{func}(): {loc} lines exceeds {max_func_lines}",
+                level=FindingLevel.ERROR,
+                file=path,
+                line=start_line,
+            )
+            for path, func, start_line, loc in func_violations
+        ]
 
     def _find_functions(
         self, content: str, extension: str

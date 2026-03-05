@@ -1,7 +1,9 @@
 """JavaScript lint and format check using ESLint and Prettier."""
 
+import json
+import os
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -12,7 +14,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.constants import NPM_INSTALL_FAILED
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
@@ -133,7 +135,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 )
 
         # Check ESLint
-        eslint_result = self._check_eslint(project_root)
+        eslint_result, eslint_findings = self._check_eslint(project_root)
         if eslint_result:
             issues.append(eslint_result)
             output_parts.append(f"ESLint: {eslint_result}")
@@ -157,6 +159,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 output="\n".join(output_parts),
                 error=f"{len(issues)} issue(s) found",
                 fix_suggestion="Run: npx eslint . --fix && npx prettier --write .",
+                findings=eslint_findings,
             )
 
         return self._create_result(
@@ -165,18 +168,44 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             output="\n".join(output_parts),
         )
 
-    def _check_eslint(self, project_root: str) -> Optional[str]:
+    def _check_eslint(self, project_root: str) -> Tuple[Optional[str], List[Finding]]:
         """Check ESLint."""
         result = self._run_command(
-            ["npx", "eslint", "."],
+            ["npx", "eslint", ".", "--format", "json"],
             cwd=project_root,
             timeout=60,
         )
 
         if not result.success and result.output.strip():
-            lines = result.output.strip().split("\n")
-            return f"{len(lines)} lint issue(s)"
-        return None
+            findings: List[Finding] = []
+            try:
+                data = json.loads(result.stdout)
+                for file_result in data:
+                    filepath = file_result.get("filePath", "")
+                    if filepath.startswith(project_root):
+                        filepath = os.path.relpath(filepath, project_root)
+                    for msg in file_result.get("messages", []):
+                        findings.append(
+                            Finding(
+                                message=msg.get("message", ""),
+                                level=(
+                                    FindingLevel.ERROR
+                                    if msg.get("severity") == 2
+                                    else FindingLevel.WARNING
+                                ),
+                                file=filepath,
+                                line=msg.get("line"),
+                                column=msg.get("column"),
+                                rule_id=msg.get("ruleId"),
+                            )
+                        )
+            except (json.JSONDecodeError, TypeError):
+                pass
+            count = (
+                len(findings) if findings else len(result.output.strip().split("\n"))
+            )
+            return f"{count} lint issue(s)", findings
+        return None, []
 
     def _check_prettier(self, project_root: str) -> Optional[str]:
         """Check Prettier formatting."""

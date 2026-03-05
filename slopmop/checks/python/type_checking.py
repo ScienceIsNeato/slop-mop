@@ -38,7 +38,7 @@ from slopmop.checks.base import (
     PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # pyright rules we enforce for type completeness
 TYPE_COMPLETENESS_RULES: Dict[str, str] = {
@@ -331,6 +331,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         # Group and format errors
         output = self._format_prescriptive_output(diagnostics, summary)
         fix_suggestion = self._build_fix_suggestion(diagnostics)
+        findings = self._build_findings(diagnostics)
 
         return self._create_result(
             status=CheckStatus.FAILED,
@@ -338,7 +339,40 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             output=output,
             error=f"{error_count} type-completeness error(s) found",
             fix_suggestion=fix_suggestion,
+            findings=findings,
         )
+
+    @staticmethod
+    def _build_findings(diagnostics: List[Dict[str, Any]]) -> List[Finding]:
+        """Convert pyright JSON diagnostics to Finding objects.
+
+        pyright's ``range.start.line`` / ``character`` are 0-based — add 1
+        for SARIF's 1-based convention (the Finding docstring is explicit
+        that ``startColumn: 0`` is rejected by the SARIF schema).
+        """
+        cwd_prefix = os.getcwd() + "/"
+        findings: List[Finding] = []
+        for diag in diagnostics:
+            if diag.get("severity") != "error":
+                continue
+            filepath = diag.get("file", "")
+            if filepath.startswith(cwd_prefix):
+                filepath = filepath[len(cwd_prefix) :]
+            start = diag.get("range", {}).get("start", {})
+            line = start.get("line")
+            col = start.get("character")
+            msg = diag.get("message", "")
+            findings.append(
+                Finding(
+                    message=msg.split("\n")[0],
+                    level=FindingLevel.ERROR,
+                    file=filepath or None,
+                    line=line + 1 if isinstance(line, int) else None,
+                    column=col + 1 if isinstance(col, int) else None,
+                    rule_id=diag.get("rule"),
+                )
+            )
+        return findings
 
     def _format_prescriptive_output(
         self,

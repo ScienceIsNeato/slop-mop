@@ -16,9 +16,9 @@ import shutil
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -30,7 +30,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.constants import NO_ISSUES_FOUND
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
 
@@ -54,6 +54,9 @@ class SecuritySubResult:
     name: str
     passed: bool
     findings: str
+    sarif_findings: List[Finding] = field(
+        default_factory=lambda: cast(List[Finding], [])
+    )
 
 
 class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
@@ -241,12 +244,26 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             )
 
         detail = "\n\n".join(f"[{f.name}]\n{f.findings}" for f in failures)
+        # Flatten per-scanner structured findings; fall back to one
+        # aggregate per scanner if it didn't produce any
+        all_findings: List[Finding] = []
+        for f in failures:
+            if f.sarif_findings:
+                all_findings.extend(f.sarif_findings)
+            else:
+                all_findings.append(
+                    Finding(
+                        message=f"{f.name} found issues",
+                        level=FindingLevel.ERROR,
+                    )
+                )
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
             fix_suggestion="Address HIGH severity issues first. They block merge.",
+            findings=all_findings,
         )
 
     def _get_exclude_dirs(self) -> List[str]:
@@ -301,7 +318,20 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 f"- {r.get('filename', '')}:{r.get('line_number', '')}"
                 for r in issues[:10]
             )
-            return SecuritySubResult("bandit", False, detail)
+            # bandit has full file:line — emit per-issue Findings
+            sarif: List[Finding] = []
+            for r in issues:
+                line_no = r.get("line_number")
+                sarif.append(
+                    Finding(
+                        message=f"[{r['issue_severity']}] {r['issue_text']}",
+                        level=FindingLevel.ERROR,
+                        file=r.get("filename") or None,
+                        line=line_no if isinstance(line_no, int) else None,
+                        rule_id=r.get("test_id"),
+                    )
+                )
+            return SecuritySubResult("bandit", False, detail, sarif)
         except json.JSONDecodeError:
             # If JSON parsing fails, check stderr for actual errors
             if result.stderr and "error" in result.stderr.lower():
@@ -340,7 +370,20 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 f"- {f.get('path', '')}:{f.get('start', {}).get('line', '')}"
                 for f in critical[:10]
             )
-            return SecuritySubResult("semgrep", False, detail)
+            # semgrep has full file:line — emit per-issue Findings
+            sarif: List[Finding] = []
+            for f in critical:
+                line_no = f.get("start", {}).get("line")
+                sarif.append(
+                    Finding(
+                        message=f.get("extra", {}).get("message", "semgrep finding"),
+                        level=FindingLevel.ERROR,
+                        file=f.get("path") or None,
+                        line=line_no if isinstance(line_no, int) else None,
+                        rule_id=f.get("check_id"),
+                    )
+                )
+            return SecuritySubResult("semgrep", False, detail, sarif)
         except json.JSONDecodeError:
             if result.returncode == 1 and result.stderr:
                 return SecuritySubResult("semgrep", False, result.stderr[-300:])
@@ -374,7 +417,20 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                     f"{', '.join(str(s.get('type', '?')) for s in secrets)}"
                     for path, secrets in real_secrets.items()
                 )
-                return SecuritySubResult("detect-secrets", False, detail)
+                # detect-secrets: per-file Findings (line_number available)
+                sarif: List[Finding] = []
+                for path, secrets in real_secrets.items():
+                    for s in secrets:
+                        ln = s.get("line_number")
+                        sarif.append(
+                            Finding(
+                                message=f"Potential secret: {s.get('type', '?')}",
+                                level=FindingLevel.ERROR,
+                                file=path,
+                                line=ln if isinstance(ln, int) else None,
+                            )
+                        )
+                return SecuritySubResult("detect-secrets", False, detail, sarif)
             except json.JSONDecodeError:
                 return SecuritySubResult("detect-secrets", True, "Scan completed")
 
@@ -458,12 +514,24 @@ class SecurityCheck(SecurityLocalCheck):
             )
 
         detail = "\n\n".join(f"[{f.name}]\n{f.findings}" for f in failures)
+        all_findings: List[Finding] = []
+        for f in failures:
+            if f.sarif_findings:
+                all_findings.extend(f.sarif_findings)
+            else:
+                all_findings.append(
+                    Finding(
+                        message=f"{f.name} found issues",
+                        level=FindingLevel.ERROR,
+                    )
+                )
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
             fix_suggestion="Address HIGH severity issues first. They block merge.",
+            findings=all_findings,
         )
 
     def _run_pip_audit(self, project_root: str) -> SecuritySubResult:
@@ -504,7 +572,14 @@ class SecurityCheck(SecurityLocalCheck):
                 )
                 for d in vulnerable[:10]
             )
-            return SecuritySubResult("pip-audit", False, detail)
+            # pip-audit: no file anchor — one aggregate Finding
+            sarif = [
+                Finding(
+                    message=f"{len(vulnerable)} vulnerable dependency/dependencies",
+                    level=FindingLevel.ERROR,
+                )
+            ]
+            return SecuritySubResult("pip-audit", False, detail, sarif)
         except json.JSONDecodeError:
             if result.success:
                 return SecuritySubResult("pip-audit", True, "No vulnerabilities found")

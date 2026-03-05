@@ -5,6 +5,7 @@ frontend JavaScript sources. Requires 'frontend_dirs' in .sb_config.json.
 """
 
 import os
+import re
 import time
 from typing import List
 
@@ -16,7 +17,12 @@ from slopmop.checks.base import (
     JavaScriptCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+
+# ESLint stylish format detail line:  line:col  error|warning  message  rule-id
+_ESLINT_STYLISH_RE = re.compile(
+    r"^\s+(\d+):(\d+)\s+(error|warning)\s+(.+?)\s{2,}(\S+)\s*$"
+)
 
 
 class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
@@ -141,10 +147,49 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
                 fix_suggestion="Check .eslintrc or eslint.config.js for syntax errors.",
             )
 
+        findings = self._parse_stylish(result.output, project_root)
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=result.output,
             error="ESLint errors found",
             fix_suggestion="Fix ESLint errors above. Run: npx eslint --fix <file>",
+            findings=findings,
         )
+
+    @staticmethod
+    def _parse_stylish(output: str, project_root: str) -> List[Finding]:
+        """Parse ESLint stylish output into Findings.
+
+        Stylish format: unindented absolute file path on its own line,
+        followed by indented ``line:col  severity  message  rule`` lines.
+        """
+        findings: List[Finding] = []
+        current_file = ""
+        for line in output.splitlines():
+            if not line.strip():
+                continue
+            m = _ESLINT_STYLISH_RE.match(line)
+            if m is None and not line[0].isspace():
+                # Unindented non-empty line → file header
+                path = line.strip()
+                if path.startswith(project_root):
+                    path = os.path.relpath(path, project_root)
+                current_file = path
+                continue
+            if m and current_file:
+                findings.append(
+                    Finding(
+                        message=m.group(4).strip(),
+                        level=(
+                            FindingLevel.ERROR
+                            if m.group(3) == "error"
+                            else FindingLevel.WARNING
+                        ),
+                        file=current_file,
+                        line=int(m.group(1)),
+                        column=int(m.group(2)),
+                        rule_id=m.group(5),
+                    )
+                )
+        return findings

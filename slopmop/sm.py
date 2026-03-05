@@ -145,6 +145,28 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         action="store_false",
         help="Force pretty output even when stdout is not a TTY.",
     )
+    parser.add_argument(
+        "--sarif",
+        dest="sarif_output",
+        action="store_true",
+        default=False,
+        help=(
+            "Emit SARIF 2.1.0 for GitHub Code Scanning. "
+            "Writes to stdout unless --output-file is given. "
+            "Upload with github/codeql-action/upload-sarif."
+        ),
+    )
+    parser.add_argument(
+        "--output-file",
+        "-o",
+        dest="output_file",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Write structured output (--json or --sarif) to a file "
+            "instead of stdout. Console progress still goes to stderr."
+        ),
+    )
 
 
 def _add_swab_parser(

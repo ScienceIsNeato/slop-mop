@@ -18,7 +18,7 @@ from slopmop.checks.base import (
     ToolContext,
     count_source_scope,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 
 class StringDuplicationCheck(BaseCheck):
@@ -489,6 +489,39 @@ class StringDuplicationCheck(BaseCheck):
 
         return tmp_dir
 
+    @staticmethod
+    def _to_findings(
+        filtered: List[Dict[str, Any]], project_root: str
+    ) -> List[Finding]:
+        """One Finding per duplicate, anchored at the first occurrence's file.
+
+        The Node tool doesn't give line numbers, so SARIF consumers get a
+        file-level annotation rather than an inline one — still enough for
+        Code Scanning to open the right file in the diff view.
+        """
+        out: List[Finding] = []
+        for item in filtered:
+            key = item.get("key", "")
+            display = key if len(key) <= 50 else key[:47] + "..."
+            files: List[str] = cast(List[str], item.get("files", []))
+            first: Optional[str] = None
+            if files:
+                try:
+                    first = os.path.relpath(files[0], project_root)
+                except ValueError:
+                    first = files[0]
+            out.append(
+                Finding(
+                    message=(
+                        f'Duplicate string "{display}" '
+                        f'({item.get("count", 0)} occurrences)'
+                    ),
+                    level=FindingLevel.ERROR,
+                    file=first,
+                )
+            )
+        return out
+
     def run(self, project_root: str) -> CheckResult:
         """Run the string duplication check."""
         start_time = time.time()
@@ -566,6 +599,7 @@ class StringDuplicationCheck(BaseCheck):
                     "Extract duplicate strings to a constants.py module "
                     "to improve maintainability."
                 ),
+                findings=self._to_findings(filtered, project_root),
             )
 
         return self._create_result(
