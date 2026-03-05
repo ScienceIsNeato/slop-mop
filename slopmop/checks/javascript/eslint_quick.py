@@ -168,10 +168,12 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
         except (json.JSONDecodeError, TypeError):
             findings = [Finding(message=f"ESLint: {result.output.strip()[:200]}")]
 
+        # No explicit output= — the _create_result rail joins findings
+        # into ``file:line:col: message`` lines.  Passing result.output
+        # here would dump raw ESLint JSON into the console.
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
-            output=result.output,
             error=f"{len(findings)} ESLint error(s)",
             fix_suggestion="Fix ESLint errors above. Run: npx eslint --fix <file>",
             findings=findings,

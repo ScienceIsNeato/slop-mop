@@ -356,14 +356,24 @@ class PRCommentsCheck(BaseCheck):
                     comments = thread.get("comments", {}).get("nodes", [])
                     if comments:
                         first_comment = comments[0]
+                        author = first_comment.get("author", {}).get("login", "unknown")
+                        # github-advanced-security threads are Code
+                        # Scanning alerts surfaced as PR comments.  Those
+                        # are already tracked in the Security tab — and
+                        # when slop-mop's own SARIF output is the source,
+                        # re-flagging them here closes a loop: we flag the
+                        # comment → new SARIF alert → new gh-adv-sec
+                        # comment → next run flags that.  Observed on PR
+                        # #74 (threads yRScw/dB/dE re-flagging yQQFs/F0/F4
+                        # re-flagging the original Copilot threads).
+                        if author == "github-advanced-security":
+                            continue
                         unresolved.append(
                             {
                                 "thread_id": thread.get("id"),
                                 "is_outdated": thread.get("isOutdated", False),
                                 "body": first_comment.get("body", ""),
-                                "author": first_comment.get("author", {}).get(
-                                    "login", "unknown"
-                                ),
+                                "author": author,
                                 "path": first_comment.get("path"),
                                 "line": first_comment.get("line"),
                                 "created_at": first_comment.get("createdAt"),
