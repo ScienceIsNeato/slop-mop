@@ -473,6 +473,16 @@ class BaseCheck(ABC):
         return f"{self.category.key}:{self.name}"
 
     @property
+    def verify_command(self) -> str:
+        """Shell command to re-run just this gate.
+
+        Used in fix_suggestion text to tell agents exactly how to
+        verify their fix.  Centralised here to avoid string duplication
+        across every gate that wants the pattern.
+        """
+        return f"sm swab -g {self.full_name}"
+
+    @property
     def depends_on(self) -> List[str]:
         """List of check names this check depends on.
 

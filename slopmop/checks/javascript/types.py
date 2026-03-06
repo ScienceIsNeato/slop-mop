@@ -214,7 +214,11 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                 duration=duration,
                 output=result.output,
                 error=msg,
-                fix_suggestion=f"Run: npx tsc --noEmit -p {tsconfig} to see detailed errors",
+                fix_suggestion=(
+                    "Type errors shown above. Each TS error code has a "
+                    "standard fix \u2014 start with the first error (later "
+                    "errors often cascade). Verify with: " + self.verify_command
+                ),
                 findings=findings or [Finding(message=msg, level=FindingLevel.ERROR)],
             )
 

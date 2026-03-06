@@ -142,7 +142,10 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 duration=duration,
                 output=result.output,
                 error=f"{len(findings)} test file(s) failed",
-                fix_suggestion="Run: npm test to see detailed failures",
+                fix_suggestion=(
+                    "Test failures shown above. Fix the assertion "
+                    "errors, then verify with: " + self.verify_command
+                ),
                 findings=findings,
             )
 

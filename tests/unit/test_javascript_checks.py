@@ -466,8 +466,8 @@ class TestJavaScriptTypesCheck:
 
         assert result.status == CheckStatus.FAILED
         assert "2 TypeScript error(s)" in result.error
-        # Check fix_suggestion includes -p flag
-        assert "-p tsconfig.json" in result.fix_suggestion
+        # Check fix_suggestion includes verify command
+        assert "sm swab -g" in result.fix_suggestion
 
     def test_run_timeout(self, tmp_path):
         """Test run() when type checking times out."""

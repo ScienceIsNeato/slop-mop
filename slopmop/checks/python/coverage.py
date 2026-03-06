@@ -6,11 +6,12 @@ Output is designed to be prescriptive for AI agents:
 - Provides copy-paste-ready line references
 """
 
+import ast
 import os
 import re
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -211,7 +212,9 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 output=COVERAGE_MEETS_THRESHOLD,
             )
 
-        return self._build_failure(coverage_pct, threshold, result.output, duration)
+        return self._build_failure(
+            coverage_pct, threshold, result.output, duration, project_root
+        )
 
     def _build_failure(
         self,
@@ -219,6 +222,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         threshold: int,
         raw_output: str,
         duration: float,
+        project_root: str,
     ) -> CheckResult:
         """Construct the below-threshold failure result with per-file findings.
 
@@ -243,17 +247,23 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         per_file: List[Finding] = []
         for fp, _stmts, miss, ranges in missing_files:
             target = _test_file_for(fp)
+            # Try AST resolution first for richer fix_strategy
+            ast_strategy = _resolve_uncovered_range(project_root, fp, ranges)
             per_file.append(
                 Finding(
                     message=f"{miss} uncovered lines: {ranges}",
                     file=fp,
                     fix_strategy=(
-                        (
-                            f"Add tests in {target} that exercise "
-                            f"lines {ranges} of {fp}"
+                        ast_strategy
+                        if ast_strategy
+                        else (
+                            (
+                                f"Add tests in {target} that exercise "
+                                f"lines {ranges} of {fp}"
+                            )
+                            if target
+                            else None
                         )
-                        if target
-                        else None
                     ),
                 )
             )
@@ -274,8 +284,9 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             output=prescriptive_output,
             error=COVERAGE_BELOW_THRESHOLD,
             fix_suggestion=(
-                "Write tests exercising the uncovered line ranges above. "
-                "Each finding names its target test file."
+                "Each uncovered range above is resolved to its "
+                "enclosing function where possible. Write tests that "
+                "exercise those paths. Verify with: " + self.verify_command
             ),
             findings=per_file,
         )
@@ -534,3 +545,92 @@ def _test_file_for(source_path: str) -> Optional[str]:
     if not stem:
         return None
     return f"tests/test_{stem}.py"
+
+
+def _first_range(ranges: str) -> Optional[Tuple[int, int]]:
+    """Pick the first ``start-end`` (or single ``N``) chunk from a
+    coverage ``missing`` string like ``"12-18, 42, 90-101"``.
+
+    Returns ``None`` when nothing parses — never raises.  We use the
+    FIRST range rather than all of them because fix_strategy text is a
+    single sentence: pointing at one concrete block gives the agent a
+    starting handle, and the full range list is already in ``message``.
+    """
+    for chunk in ranges.split(","):
+        chunk = chunk.strip()
+        m = re.match(r"^(\d+)(?:-(\d+))?$", chunk)
+        if m:
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else start
+            return start, end
+    return None
+
+
+def _characterise_block(func: ast.AST, start: int, end: int) -> Optional[str]:
+    """Identify whether an uncovered range sits inside an ``except``
+    clause or an ``if`` body — the two block types where the testing
+    approach is obvious (trigger the exception / supply the branching
+    input).  Returns a hint sentence or ``None``.
+    """
+    for node in ast.walk(func):
+        lo = getattr(node, "lineno", None)
+        hi = getattr(node, "end_lineno", None)
+        if lo is None or hi is None:
+            continue
+        if lo <= start and end <= hi:
+            if isinstance(node, ast.ExceptHandler):
+                return " This is an except block — test by triggering " "the exception."
+            if isinstance(node, ast.If):
+                return (
+                    " This is a conditional branch — test with input "
+                    "that takes this path."
+                )
+    return None
+
+
+def _resolve_uncovered_range(
+    project_root: str, filepath: str, ranges: str
+) -> Optional[str]:
+    """Resolve an uncovered line range to its enclosing function name
+    and, where possible, characterise the block type.
+
+    Returns a fix_strategy string or ``None``.  ``None`` is honest:
+    it means we couldn't locate the range inside a function (module-
+    level code, unparseable file, file moved since coverage ran).
+    Never guesses — a wrong function name is worse than no name.
+    """
+    span = _first_range(ranges)
+    if span is None:
+        return None
+    start, end = span
+
+    source_path = Path(project_root) / filepath
+    try:
+        source = source_path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+    except (OSError, SyntaxError, ValueError):
+        return None
+
+    enclosing: Optional[Union[ast.FunctionDef, ast.AsyncFunctionDef]] = None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            lo = node.lineno
+            hi = getattr(node, "end_lineno", None)
+            if hi is None:
+                continue
+            if lo <= start and end <= hi:
+                if enclosing is None or lo > enclosing.lineno:
+                    enclosing = node
+
+    if enclosing is None:
+        return None
+
+    func_name = enclosing.name
+    strategy = (
+        f"Lines {start}-{end} in {func_name}() are uncovered. "
+        f"Write a test that exercises this path."
+    )
+    hint = _characterise_block(enclosing, start, end)
+    if hint:
+        strategy += hint
+    return strategy

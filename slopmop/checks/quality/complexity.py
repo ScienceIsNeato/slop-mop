@@ -11,7 +11,7 @@ Note: This is a cross-cutting quality check. While it uses radon
 import os
 import re
 import time
-from typing import List
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -172,16 +172,19 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         detail = "Functions exceeding complexity:\n" + "\n".join(
             f"  {v}" for v in violations
         )
+        limit = self.config.get("max_complexity", MAX_COMPLEXITY)
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(violations)} function(s) exceed limit",
             fix_suggestion=(
-                "Decompose each flagged function. The fix_strategy on "
-                "each finding names the specific function and its score."
+                "Each function above has a complexity delta to shed. "
+                "Extract the longest conditional branch (if/elif chain "
+                "or try/except cascade) into a named helper. Verify "
+                "with: " + self.verify_command
             ),
-            findings=[_to_finding(v) for v in violations],
+            findings=[_to_finding(v, limit) for v in violations],
         )
 
     def _parse_violations(self, output: str) -> List[str]:
@@ -215,19 +218,29 @@ _LOC_RE = re.compile(r"(\S+\.py)[:\s*]+(\d+)")
 _META_RE = re.compile(r"`?([\w.]+)`?\s*-\s*[A-F]\s*\((\d+)\)")
 
 
-def _to_finding(violation_line: str) -> Finding:
+def _to_finding(violation_line: str, limit: int = MAX_COMPLEXITY) -> Finding:
     """Convert one radon violation line into a structured Finding."""
     loc = _LOC_RE.search(violation_line)
     meta = _META_RE.search(violation_line)
 
-    strategy = None
+    strategy: Optional[str] = None
     if meta:
-        name, score = meta.group(1), meta.group(2)
-        strategy = (
-            f"Extract helpers from {name}() — complexity {score} "
-            f"exceeds limit {MAX_COMPLEXITY}. Identify the largest "
-            f"branch or loop and move it to a named function."
-        )
+        name, score_s = meta.group(1), meta.group(2)
+        score = int(score_s)
+        delta = score - limit
+        if delta > 0:
+            strategy = (
+                f"Complexity is {score}, limit is {limit} \u2014 "
+                f"shed at least {delta}. Each "
+                f"if/for/while/except/and/or adds 1. Extract "
+                f"the longest branch into a helper function."
+            )
+        else:
+            strategy = (
+                f"Extract helpers from {name}() \u2014 complexity {score} "
+                f"exceeds rank threshold. Identify the largest "
+                f"branch or loop and move it to a named function."
+            )
 
     if loc:
         return Finding(

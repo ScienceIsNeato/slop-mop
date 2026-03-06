@@ -302,7 +302,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
-            fix_suggestion="Address HIGH severity issues first. They block merge.",
+            fix_suggestion=(
+                "Each finding above has a rule-specific fix where known. "
+                "Bandit's HIGH severity findings are real vulnerabilities "
+                "\u2014 fix those first. Verify with: " + self.verify_command
+            ),
             findings=all_findings,
         )
 
@@ -576,7 +580,11 @@ class SecurityCheck(SecurityLocalCheck):
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
-            fix_suggestion="Address HIGH severity issues first. They block merge.",
+            fix_suggestion=(
+                "Each finding above has a rule-specific fix where known. "
+                "Bandit's HIGH severity findings are real vulnerabilities "
+                "\u2014 fix those first. Verify with: " + self.verify_command
+            ),
             findings=all_findings,
         )
 
