@@ -11,7 +11,7 @@ universal concern regardless of project type.
 import os
 import re
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -22,7 +22,14 @@ from slopmop.checks.base import (
     count_source_scope,
     find_tool,
 )
-from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
+from slopmop.checks.constants import COMMAND_NOT_FOUND
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    Finding,
+    FindingLevel,
+    ScopeInfo,
+)
 
 DEFAULT_MIN_CONFIDENCE = 80
 MAX_FINDINGS_TO_SHOW = 15
@@ -224,13 +231,15 @@ class DeadCodeCheck(BaseCheck):
 
         # Handle tool not installed — warn but don't block
         if result.returncode == 127 or (
-            result.returncode == -1 and "Command not found" in result.stderr
+            result.returncode == -1 and COMMAND_NOT_FOUND in result.stderr
         ):
+            msg = "vulture not available"
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=duration,
-                error="vulture not available",
+                error=msg,
                 fix_suggestion="Install vulture: pip install vulture",
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         # Handle timeout
@@ -268,15 +277,15 @@ class DeadCodeCheck(BaseCheck):
             output=output,
             error=f"{len(findings)} dead code finding(s)",
             fix_suggestion="Remove unused code or add to vulture whitelist.",
+            findings=findings,
         )
 
-    def _parse_findings(self, output: str) -> List[Tuple[str, int, str, int]]:
+    def _parse_findings(self, output: str) -> List[Finding]:
         """Parse vulture output lines into structured findings.
 
         Each line: file.py:42: unused function 'foo' (80% confidence)
-        Returns: [(file, line, description, confidence), ...]
         """
-        findings: List[Tuple[str, int, str, int]] = []
+        findings: List[Finding] = []
         pattern = re.compile(r"^(.+?):(\d+): (.+?) \((\d+)% confidence\)$")
         for line in output.splitlines():
             line = line.strip()
@@ -286,16 +295,21 @@ class DeadCodeCheck(BaseCheck):
                 lineno = int(match.group(2))
                 description = match.group(3)
                 confidence = int(match.group(4))
-                findings.append((filepath, lineno, description, confidence))
+                findings.append(
+                    Finding(
+                        message=f"{description} ({confidence}% confidence)",
+                        level=FindingLevel.ERROR,
+                        file=filepath,
+                        line=lineno,
+                    )
+                )
         return findings
 
-    def _format_findings(self, findings: List[Tuple[str, int, str, int]]) -> str:
+    def _format_findings(self, findings: List[Finding]) -> str:
         """Format findings into prescriptive output."""
         lines = [f"Found {len(findings)} dead code issue(s):", ""]
-        for filepath, lineno, description, confidence in findings[
-            :MAX_FINDINGS_TO_SHOW
-        ]:
-            lines.append(f"  {filepath}:{lineno}: {description} ({confidence}%)")
+        for f in findings[:MAX_FINDINGS_TO_SHOW]:
+            lines.append(f"  {f.file}:{f.line}: {f.message}")
 
         if len(findings) > MAX_FINDINGS_TO_SHOW:
             remaining = len(findings) - MAX_FINDINGS_TO_SHOW

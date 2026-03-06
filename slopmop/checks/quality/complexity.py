@@ -18,10 +18,11 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.checks.constants import COMMAND_NOT_FOUND
+from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_RANK = "C"
 MAX_COMPLEXITY = 20
@@ -147,13 +148,15 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         # returncode 127 = shell "command not found"
         # returncode -1 = FileNotFoundError from SubprocessRunner
         if result.returncode == 127 or (
-            result.returncode == -1 and "Command not found" in result.stderr
+            result.returncode == -1 and COMMAND_NOT_FOUND in result.stderr
         ):
+            msg = "Radon not available"
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=duration,
-                error="Radon not available",
+                error=msg,
                 fix_suggestion="Install radon: pip install radon",
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         violations = self._parse_violations(result.output)
@@ -167,12 +170,26 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         detail = "Functions exceeding complexity:\n" + "\n".join(
             f"  {v}" for v in violations
         )
+        # radon --md lines embed file:line inside markdown — try to recover
+        # them, but fall back to a message-only finding when the format
+        # doesn't match (still a separate SARIF result per function).
+        loc_re = re.compile(r"(\S+\.py)[:\s*]+(\d+)")
+        structured: List[Finding] = []
+        for v in violations:
+            m = loc_re.search(v)
+            if m:
+                structured.append(
+                    Finding(message=v, file=m.group(1), line=int(m.group(2)))
+                )
+            else:
+                structured.append(Finding(message=v))
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(violations)} function(s) exceed limit",
             fix_suggestion="Break complex functions into smaller helpers.",
+            findings=structured,
         )
 
     def _parse_violations(self, output: str) -> List[str]:

@@ -8,9 +8,9 @@ from slopmop.checks.base import (
     BaseCheck,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     count_source_scope,
 )
+from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, ScopeInfo
 from slopmop.reporting.display import config
 from slopmop.reporting.display.renderer import build_category_header

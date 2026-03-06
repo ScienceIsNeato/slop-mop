@@ -46,7 +46,13 @@ from slopmop.checks.base import (
     count_source_scope,
 )
 from slopmop.checks.constants import skip_reason_no_test_files
-from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    Finding,
+    FindingLevel,
+    ScopeInfo,
+)
 
 # Inline suppression comment: adding this to a test function's def line
 # or anywhere in the function body tells the checker to skip it.
@@ -611,6 +617,28 @@ class BogusTestsCheck(BaseCheck):
                 '"# overconfidence:short-test-ok" comment to suppress'
             )
 
+        findings = [
+            Finding(
+                message=f"{f.function}() — {f.reason}",
+                level=FindingLevel.ERROR,
+                file=f.file,
+                line=f.line,
+            )
+            for f in hard_findings
+        ] + [
+            Finding(
+                message=f"{f.function}() — {f.reason}",
+                level=(
+                    FindingLevel.ERROR
+                    if short_severity == "fail"
+                    else FindingLevel.WARNING
+                ),
+                file=f.file,
+                line=f.line,
+            )
+            for f in short_findings
+        ]
+
         if hard_fail or short_fail:
             return self._create_result(
                 status=CheckStatus.FAILED,
@@ -618,6 +646,7 @@ class BogusTestsCheck(BaseCheck):
                 output=f"Found {total} bogus test(s):\n\n{detail}",
                 error=f"{total} test(s) don't actually test anything",
                 fix_suggestion=fix_suggestion,
+                findings=findings,
             )
 
         # short_warn is True here
@@ -627,4 +656,5 @@ class BogusTestsCheck(BaseCheck):
             output=f"Found {total} suspicious test(s):\n\n{detail}",
             error=f"{total} suspiciously short test(s) found",
             fix_suggestion=fix_suggestion,
+            findings=findings,
         )

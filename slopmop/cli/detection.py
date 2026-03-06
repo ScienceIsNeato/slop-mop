@@ -137,7 +137,7 @@ def _detect_package_manager(project_root: Path) -> str:
 
     Returns "pnpm", "yarn", or "npm" (default).
 
-    NOTE: A near-identical helper lives in ``base.JavaScriptCheckMixin``.
+    NOTE: A near-identical helper lives in ``mixins.JavaScriptCheckMixin``.
     Both should converge on a shared utility (see slopmop/utils/) in a
     follow-up PR to avoid drift.
     """

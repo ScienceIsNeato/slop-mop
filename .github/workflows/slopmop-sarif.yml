@@ -1,0 +1,139 @@
+# Reference workflow: slopmop → GitHub Code Scanning
+#
+# Runs slopmop's scour gates, emits SARIF, and uploads it so failures
+# appear as inline PR annotations + entries in the Security tab.  The
+# upload-sarif action handles the GitHub API plumbing — no tokens, no
+# custom auth, works on any public repo out of the box.
+#
+# Why scour and not swab: scour is the PR-readiness gate set.  Swab is
+# the every-commit quick check — you could SARIF-upload that too, but
+# you'd be creating and resolving the same alerts many times per PR.
+# One scour-SARIF per PR push gives a stable alert surface.
+#
+# Why continue-on-error on the scour step: we want the SARIF upload to
+# happen whether gates pass or fail.  Failing gates are the POINT —
+# that's when there's something to annotate.  The overall job still
+# surfaces the exit code via the verdict step at the end, so branch
+# protection rules can still block merges on gate failures.
+#
+# Why we don't generate partialFingerprints ourselves in CI: slopmop
+# DOES generate them (see reporting/sarif.py), but upload-sarif would
+# compute them too if we didn't — it reads the source files from the
+# runner workspace.  We ship our own so the SARIF file is useful
+# standalone (REST API upload, local inspection) but in this workflow
+# either would work.
+#
+# ──────────────────────────────────────────────────────────────────
+# Verifying this works (you can't see annotations on a clean repo)
+# ──────────────────────────────────────────────────────────────────
+# This workflow running on slop-mop itself produces an empty SARIF:
+# slop-mop's gates pass on slop-mop's code.  Code Scanning ingests a
+# valid document with zero results and shows nothing.  That proves
+# the plumbing but not the payload.
+#
+# To see inline annotations for real, drop this workflow into
+# bucket-o-slop (github.com/ScienceIsNeato/bucket-o-slop) — the
+# integration-test fixture repo whose all-fail branch is broken in
+# ways that trip every gate.  Open a PR from all-fail into main and
+# the diff lights up with dead-code, lint, type-error, and security
+# annotations.
+#
+# The integration tests in tests/integration/test_sarif_integration.py
+# run this same all-fail fixture inside Docker and assert the SARIF
+# is schema-valid with populated physicalLocation entries.  That
+# proves the payload.  Uploading it to a real bucket-o-slop PR proves
+# GitHub renders it.  Between the two, the whole pipeline is covered.
+
+name: slopmop → Code Scanning
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Weekly re-scan of the default branch — keeps the Security tab
+  # fresh even during quiet periods.  Without this, alerts can go
+  # stale when their underlying rules are updated.
+  schedule:
+    - cron: '0 6 * * 1'
+
+# upload-sarif needs security-events: write.  actions: read lets it
+# correlate the upload with the workflow run.  contents: read is the
+# bare minimum for checkout.
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # diff-cover and gate-dodging need history to compare
+          # against the base branch.  Shallow clone (the default)
+          # breaks both with cryptic "unknown revision" errors.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install slopmop
+        # ────────────────────────────────────────────────────────────
+        # COPYING THIS TO YOUR REPO?  Change this line to:
+        #
+        #     pip install slopmop
+        #
+        # and also install whatever your project needs for gates to
+        # run (pytest for untested-code, mypy for missing-annotations):
+        #
+        #     pip install -e .[dev]
+        #
+        # This workflow runs on slop-mop's own CI, which means the
+        # slopmop it tests must be the slopmop in THIS commit — not
+        # whatever stale version PyPI has.  `pip install .` installs
+        # from the checkout.  On your repo you want PyPI's latest.
+        #
+        # The [lint] extra brings black/flake8/isort so the
+        # laziness:sloppy-formatting gate can actually run.
+        # The [typing] extra brings mypy/pyright so the
+        # overconfidence:missing-annotations gate can run.
+        # ────────────────────────────────────────────────────────────
+        run: |
+          pip install ".[lint,typing]"
+
+      - name: Run scour → SARIF
+        id: scour
+        # Gates failing is EXPECTED — that's what produces findings.
+        # We still want to upload the SARIF and let Code Scanning
+        # render the annotations.  The verdict step below re-fails
+        # the job so branch protection isn't bypassed.
+        continue-on-error: true
+        run: |
+          sm scour --sarif --output-file slopmop.sarif --no-json
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slopmop.sarif
+          # Distinct category lets you run slopmop alongside other
+          # SARIF tools (CodeQL, semgrep) without them overwriting
+          # each other's alerts.  GitHub keys alert state on
+          # (category, ruleId, fingerprint).
+          category: slopmop
+
+      - name: Verdict
+        # Re-surface the scour exit code so branch protection rules
+        # that require this job to pass actually mean something.
+        # Without this, continue-on-error above would let everything
+        # through.  The SARIF is uploaded either way — this just
+        # controls the green/red check mark.
+        if: steps.scour.outcome == 'failure'
+        run: |
+          echo "::error::slopmop scour failed — see Code Scanning alerts"
+          exit 1

@@ -8,11 +8,12 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
     ToolContext,
 )
+from slopmop.checks.constants import TESTS_TIMED_OUT_MSG
+from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import NPM_INSTALL_FAILED
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 
 class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
@@ -112,20 +113,35 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error="Tests timed out after 5 minutes",
+                error=TESTS_TIMED_OUT_MSG,
+                findings=[
+                    Finding(message=TESTS_TIMED_OUT_MSG, level=FindingLevel.ERROR)
+                ],
             )
 
         if not result.success:
-            # Parse failure info
-            lines = result.output.split("\n")
-            failed = [line for line in lines if "FAIL" in line]
+            # Jest's text reporter prefixes each failing suite with
+            # ``FAIL  <path>`` (two spaces).  Extract file paths for
+            # SARIF — file-level findings, no line numbers, since a
+            # failing test file is a file-level problem.
+            findings: List[Finding] = []
+            for line in result.output.split("\n"):
+                stripped = line.strip()
+                if stripped.startswith("FAIL "):
+                    # ``FAIL  js-tests/calc.test.js`` → second token
+                    parts = stripped.split(None, 1)
+                    if len(parts) == 2:
+                        findings.append(
+                            Finding(message="Test suite failed", file=parts[1])
+                        )
 
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error=f"{len(failed)} test file(s) failed",
+                error=f"{len(findings)} test file(s) failed",
                 fix_suggestion="Run: npm test to see detailed failures",
+                findings=findings,
             )
 
         return self._create_result(

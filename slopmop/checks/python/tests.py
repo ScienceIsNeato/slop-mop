@@ -8,15 +8,16 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     ToolContext,
 )
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
+    TESTS_TIMED_OUT_MSG,
     has_python_test_files,
     skip_reason_no_test_files,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 
 class PythonTestsCheck(BaseCheck, PythonCheckMixin):
@@ -135,8 +136,11 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error="Tests timed out after 5 minutes",
+                error=TESTS_TIMED_OUT_MSG,
                 fix_suggestion="Check for infinite loops or slow tests",
+                findings=[
+                    Finding(message=TESTS_TIMED_OUT_MSG, level=FindingLevel.ERROR)
+                ],
             )
 
         if not result.success:
@@ -164,12 +168,21 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
             if failed_tests:
                 error_msg += ":\n" + "\n".join(failed_tests[:5])
 
+            # pytest FAILED lines: "FAILED path/to/test.py::Test::name - reason"
+            structured: List[Finding] = []
+            for line in failed_tests:
+                rest = line.split("FAILED", 1)[-1].strip()
+                path = rest.split("::", 1)[0]
+                if path.endswith(".py"):
+                    structured.append(Finding(message=rest, file=path))
+
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
                 error=error_msg,
                 fix_suggestion="Run: pytest -v to see detailed test failures",
+                findings=structured,
             )
 
         return self._create_result(

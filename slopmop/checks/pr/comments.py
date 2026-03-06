@@ -14,7 +14,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, GateLevel
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 
 class PRCommentsCheck(BaseCheck):
@@ -356,14 +356,22 @@ class PRCommentsCheck(BaseCheck):
                     comments = thread.get("comments", {}).get("nodes", [])
                     if comments:
                         first_comment = comments[0]
+                        author = first_comment.get("author", {}).get("login", "unknown")
+                        # github-advanced-security threads are Code
+                        # Scanning alerts surfaced as PR comments.  Those
+                        # are already tracked in the Security tab — and
+                        # when slop-mop's own SARIF output is the source,
+                        # re-flagging them here creates a feedback loop:
+                        # we flag the comment → new SARIF alert → new
+                        # gh-adv-sec comment → next run flags that.
+                        if author == "github-advanced-security":
+                            continue
                         unresolved.append(
                             {
                                 "thread_id": thread.get("id"),
                                 "is_outdated": thread.get("isOutdated", False),
                                 "body": first_comment.get("body", ""),
-                                "author": first_comment.get("author", {}).get(
-                                    "login", "unknown"
-                                ),
+                                "author": author,
                                 "path": first_comment.get("path"),
                                 "line": first_comment.get("line"),
                                 "created_at": first_comment.get("createdAt"),
@@ -677,6 +685,20 @@ class PRCommentsCheck(BaseCheck):
         count = len(threads)
         detail = f"{count} unresolved"
 
+        # One SARIF finding per unresolved thread — anchored at the
+        # file/line the reviewer commented on (when the GraphQL API
+        # returned one; issue-level comments have neither).
+        structured: List[Finding] = []
+        for t in threads:
+            body = " ".join(str(t.get("body", "")).split())[:200]
+            structured.append(
+                Finding(
+                    message=f"unresolved comment from @{t.get('author', '?')}: {body}",
+                    file=t.get("path") or None,
+                    line=t.get("line") if isinstance(t.get("line"), int) else None,
+                )
+            )
+
         if fail_on_unresolved:
             return self._create_result(
                 status=CheckStatus.FAILED,
@@ -685,6 +707,7 @@ class PRCommentsCheck(BaseCheck):
                 error=f"{count} unresolved PR comment(s)",
                 fix_suggestion=f"Read full report: cat {report_file}",
                 status_detail=detail,
+                findings=structured,
             )
         else:
             return self._create_result(
@@ -693,6 +716,7 @@ class PRCommentsCheck(BaseCheck):
                 output=f"⚠️ {count} unresolved comment(s) — "
                 f"set fail_on_unresolved: true to block on this\n\n" + summary,
                 status_detail=detail,
+                findings=structured,
             )
 
     def _save_report_to_file(self, report: str, pr_number: int) -> str:

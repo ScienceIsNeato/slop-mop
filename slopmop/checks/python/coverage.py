@@ -18,7 +18,6 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     GateLevel,
-    PythonCheckMixin,
     ToolContext,
 )
 from slopmop.checks.constants import (
@@ -26,6 +25,7 @@ from slopmop.checks.constants import (
     has_python_test_files,
     skip_reason_no_test_files,
 )
+from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
     COVERAGE_GUIDANCE_FOOTER,
@@ -33,7 +33,7 @@ from slopmop.constants import (
     COVERAGE_STANDARDS_PREFIX,
     COVERAGE_XML_NOT_FOUND,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 COVERAGE_THRESHOLD = 80
 CI_BUFFER = 0.5  # CI environments get slight buffer for timing variance
@@ -169,6 +169,9 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 output="",
                 error=COVERAGE_XML_NOT_FOUND,
                 fix_suggestion="Run python-tests check first to generate coverage data",
+                findings=[
+                    Finding(message=COVERAGE_XML_NOT_FOUND, level=FindingLevel.ERROR)
+                ],
             )
 
         # Get coverage report with missing lines
@@ -212,12 +215,31 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             coverage_pct, threshold, missing_files
         )
 
+        per_file_findings = [
+            Finding(
+                message=f"{miss} uncovered lines: {ranges}",
+                file=fp,
+            )
+            for fp, _stmts, miss, ranges in missing_files
+        ]
+        # Fallback when per-file parsing yields nothing (e.g. minimal
+        # coverage output that only contains the TOTAL line).
+        if not per_file_findings:
+            per_file_findings = [
+                Finding(
+                    message=(
+                        f"Coverage {coverage_pct:.1f}% below " f"threshold {threshold}%"
+                    ),
+                )
+            ]
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=prescriptive_output,
             error=COVERAGE_BELOW_THRESHOLD,
             fix_suggestion="Add tests for the files and lines listed above.",
+            findings=per_file_findings,
         )
 
     def _parse_missing_lines(self, output: str) -> List[Tuple[str, int, int, str]]:
@@ -293,6 +315,31 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             return float(match.group(1))
 
         return None
+
+
+def _parse_diff_cover_files(output: str) -> List[Finding]:
+    """Parse diff-cover output for per-file coverage violations.
+
+    diff-cover prints lines like:
+        src/module.py (80.0%): Missing lines 12-15, 42
+    or
+        src/module.py (80.0%)
+
+    Returns one Finding per file that appears in the output.
+    """
+    findings: List[Finding] = []
+    # Pattern: indented filename followed by (NN.N%) and optional missing lines
+    pattern = re.compile(
+        r"^\s*(\S+\.py)\s+\((\d+(?:\.\d+)?)%\)(?::\s*Missing lines\s+(.+))?$",
+        re.MULTILINE,
+    )
+    for m in pattern.finditer(output):
+        filepath, pct, missing = m.group(1), m.group(2), m.group(3)
+        msg = f"Coverage {pct}% on changed lines"
+        if missing:
+            msg += f" — missing: {missing.strip()}"
+        findings.append(Finding(message=msg, file=filepath, level=FindingLevel.ERROR))
+    return findings
 
 
 class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
@@ -406,10 +453,20 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
                 output="No changed files to check coverage on",
             )
 
+        diff_findings = _parse_diff_cover_files(result.output)
+        if not diff_findings:
+            diff_findings = [
+                Finding(
+                    message=(f"Changed files have <{COVERAGE_THRESHOLD}% coverage"),
+                    level=FindingLevel.ERROR,
+                )
+            ]
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=result.output,
             error=f"Changed files have <{COVERAGE_THRESHOLD}% coverage",
             fix_suggestion="Add tests for the new code shown above.",
+            findings=diff_findings,
         )

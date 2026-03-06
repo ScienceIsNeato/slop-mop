@@ -22,9 +22,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.checks.mixins import JavaScriptCheckMixin
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # File patterns to scan
 TEST_FILE_PATTERNS = [
@@ -453,4 +453,13 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
             duration=duration,
             output="\n".join(output_lines),
             error=f"Found {len(findings)} bogus test(s) (max allowed: {max_allowed})",
+            findings=[
+                Finding(
+                    message=f"{f.test_name} — {f.reason}",
+                    level=FindingLevel.ERROR,
+                    file=f.file,
+                    line=f.line,
+                )
+                for f in findings
+            ],
         )

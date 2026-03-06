@@ -42,6 +42,13 @@ DEFAULT_IMAGE_NAME = "slop-mop-integration-test"
 # The fixture repo is cloned from GitHub inside each container.
 BUCKET_O_SLOP_REPO = "https://github.com/ScienceIsNeato/bucket-o-slop.git"
 
+# Delimiter for file-extraction.  The string is deliberately ugly —
+# it has to be something no gate, no tool, no git/pip/init line will
+# ever emit by accident.  Triple-underscore + screaming-snake covers
+# it; if something DOES collide, the json.loads in the consuming test
+# will fail noisily rather than silently truncating.
+_EXTRACT_MARKER = "___SLOPMOP_EXTRACT_FILE_BELOW___"
+
 
 # ---------------------------------------------------------------------------
 # Public data types
@@ -81,6 +88,15 @@ class RunResult:
     stderr: str
     branch: str
     command: list[str]
+    extracted: Optional[str] = None
+    """Contents of ``extract_file`` when ``run_sm(extract_file=...)`` was used.
+
+    ``None`` when no extraction was requested OR when the container
+    never reached phase C (the file never got written).  ``""`` when
+    the file was written but empty.  The distinction matters: a test
+    for "SARIF output exists" wants to fail loudly on ``None`` (setup
+    broken) and differently on ``""`` (feature broken).
+    """
 
     @property
     def output(self) -> str:
@@ -250,6 +266,7 @@ class DockerManager:
         ref: Optional[str] = None,
         command: Optional[list[str]] = None,
         extra_env: Optional[dict[str, str]] = None,
+        extract_file: Optional[str] = None,
     ) -> RunResult:
         """Run ``sm`` inside a fresh container with *branch* checked out.
 
@@ -270,6 +287,16 @@ class DockerManager:
             Override the default ``["sm", "swab"]``.
         extra_env:
             Extra ``-e KEY=VALUE`` flags passed to ``docker run``.
+        extract_file:
+            Path inside the container to a file you want back.  After
+            *command* runs, the file is catted to stdout behind a
+            delimiter and its contents land in ``RunResult.extracted``.
+            The delimiter is stripped from ``RunResult.stdout`` so
+            ``result.output`` stays readable.  Container is ``--rm`` so
+            there's no other way to get files out without a volume
+            mount — and volume mounts would taint the pristine-working-
+            tree guarantee.  Useful for SARIF, coverage XML, anything
+            your command writes and you need to inspect on the host.
         """
         if not self._image_built:
             self.build_image()
@@ -324,6 +351,20 @@ class DockerManager:
             f"[ -f /tmp/repo_config.json ] && cp /tmp/repo_config.json .sb_config.json; "
             + " ".join(sm_command)
         )
+
+        if extract_file:
+            # Preserve the sm command's exit code across the extraction
+            # appendix — without this, `cat` succeeding would turn every
+            # failing gate run into exit 0 and break assert_prerequisites.
+            # `cat` failing (file never written) is swallowed: the
+            # missing-marker case below handles it more informatively.
+            shell_script += (
+                f"; _SM_RC=$?"
+                f'; echo "{_EXTRACT_MARKER}"'
+                f'; cat "{extract_file}" 2>/dev/null || true'
+                f"; exit $_SM_RC"
+            )
+
         docker_cmd += [self.image_name, "bash", "-c", shell_script]
 
         proc = subprocess.run(
@@ -333,12 +374,25 @@ class DockerManager:
             timeout=self.timeout,
         )
 
+        stdout, extracted = proc.stdout, None
+        if extract_file and _EXTRACT_MARKER in stdout:
+            stdout, tail = stdout.split(_EXTRACT_MARKER, 1)
+            # Strip exactly ONE leading newline (echo adds it); leave the
+            # payload's own whitespace alone in case it's significant.
+            extracted = tail[1:] if tail.startswith("\n") else tail
+        # When extract_file was requested but marker is absent: the
+        # container died before phase C ran.  Leave extracted=None and
+        # stdout untouched — the caller's assert_prerequisites() will
+        # surface the real failure (clone/install/init) with a useful
+        # message.  Failing here would shadow that.
+
         return RunResult(
             exit_code=proc.returncode,
-            stdout=proc.stdout,
+            stdout=stdout,
             stderr=proc.stderr,
             branch=branch,
             command=sm_command,
+            extracted=extracted,
         )
 
     # ------------------------------------------------------------------

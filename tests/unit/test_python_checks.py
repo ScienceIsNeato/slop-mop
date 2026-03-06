@@ -544,7 +544,7 @@ class TestPythonStaticAnalysisCheck:
             "foo.py:10: note: Use -> None if function does not return\n"
             "Found 1 error in 1 file (checked 5 source files)\n"
         )
-        errors, codes = PythonStaticAnalysisCheck._dedup_output(raw)
+        errors, codes, _findings = PythonStaticAnalysisCheck._dedup_output(raw)
         assert len(errors) == 1
         assert "note:" not in errors[0]
         assert codes == {"no-untyped-def": 1}
@@ -556,7 +556,7 @@ class TestPythonStaticAnalysisCheck:
             "b.py:2: error: Missing type  [type-arg]\n"
             "c.py:3: error: Missing return  [no-untyped-def]\n"
         )
-        errors, codes = PythonStaticAnalysisCheck._dedup_output(raw)
+        errors, codes, _findings = PythonStaticAnalysisCheck._dedup_output(raw)
         assert len(errors) == 3
         assert codes == {"type-arg": 2, "no-untyped-def": 1}
 
@@ -566,7 +566,7 @@ class TestPythonStaticAnalysisCheck:
             "a.py:1: error: Bad  [type-arg]\n"
             "Found 1 error in 1 file (checked 5 source files)\n"
         )
-        errors, _ = PythonStaticAnalysisCheck._dedup_output(raw)
+        errors, _, _findings = PythonStaticAnalysisCheck._dedup_output(raw)
         assert len(errors) == 1
         assert not any("Found " in e for e in errors)
 

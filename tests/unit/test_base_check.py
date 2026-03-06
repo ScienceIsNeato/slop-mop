@@ -2,14 +2,15 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from slopmop.checks.base import (
     BaseCheck,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
-    PythonCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import JavaScriptCheckMixin, PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -88,8 +89,14 @@ class TestBaseCheck:
         assert result.duration == 1.5
         assert result.output == "Test output"
 
+    @pytest.mark.filterwarnings("ignore::UserWarning")
     def test_create_result_with_error(self):
-        """Test _create_result with error."""
+        """Test _create_result with error.
+
+        Suppresses the findings-rail UserWarning — this test predates
+        SARIF and is checking error/fix_suggestion plumbing, not
+        findings.  The rail itself is tested in test_sarif.py.
+        """
         check = ConcreteCheck({})
         result = check._create_result(
             status=CheckStatus.FAILED,

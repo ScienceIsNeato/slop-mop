@@ -180,8 +180,14 @@ def _run_validation(
 
     # Determine if we should use dynamic display
     # JSON mode suppresses all interactive output
+    # SARIF-to-stdout mode also suppresses console output so the JSON
+    # payload is not corrupted by progress/header text.
+    sarif_to_stdout = getattr(args, "sarif_output", False) and not getattr(
+        args, "output_file", None
+    )
     use_dynamic = (
         not json_mode
+        and not sarif_to_stdout
         and sys.stdout.isatty()
         and not os.environ.get("NO_COLOR")
         and not args.quiet
@@ -202,7 +208,7 @@ def _run_validation(
         swabbing_time = None
 
     # Print header BEFORE starting dynamic display
-    if not args.quiet and not json_mode:
+    if not args.quiet and not json_mode and not sarif_to_stdout:
         _print_header(project_root, gates, args, swabbing_time=swabbing_time)
 
     # Load timing history for budget filtering
@@ -217,8 +223,9 @@ def _run_validation(
         dynamic_display, deferred_failures = _setup_dynamic_display(
             executor, reporter, args.quiet, project_root
         )
-    elif not json_mode:
-        # Fall back to traditional reporter (no progress in JSON mode)
+    elif not json_mode and not sarif_to_stdout:
+        # Fall back to traditional reporter (no progress in JSON mode
+        # or SARIF-to-stdout mode)
         executor.set_progress_callback(reporter.on_check_complete)
 
     try:
@@ -241,6 +248,30 @@ def _run_validation(
             # already shows failure details via _print_failure_sections.
             # Printing them individually via on_check_complete() too
             # caused double-reported failures (token sink #1).
+
+        # SARIF emission is orthogonal to the json/console choice — it's
+        # a third output format with its own shape.  We handle it first
+        # and write to the requested destination, then fall through to
+        # whatever human-facing output was selected.  This lets CI do
+        # both: SARIF to a file (for upload-sarif) AND human output to
+        # the job log (for someone reading the Actions run).
+        sarif_requested = getattr(args, "sarif_output", False)
+        output_file = getattr(args, "output_file", None)
+        if sarif_requested:
+            from slopmop.reporting.sarif import SarifReporter
+
+            sarif = SarifReporter(str(project_root)).generate(summary)
+            payload = json.dumps(sarif, indent=2)
+            if output_file:
+                Path(output_file).write_text(payload, encoding="utf-8")
+                # When SARIF goes to a file, console output continues
+                # below — the human still wants to see pass/fail.
+            else:
+                # SARIF to stdout is terminal: we emitted the payload,
+                # nothing more to say.  Mixing SARIF and console text
+                # on the same stream would corrupt both.
+                print(payload)
+                return 0 if summary.all_passed else 1
 
         if json_mode:
             # Write failure/error logs the same way the human path does,
@@ -289,7 +320,15 @@ def _run_validation(
                     f"sm swab -g {first_failure.name} --verbose",
                 ]
 
-            print(json.dumps(output, separators=(",", ":")))
+            json_payload = json.dumps(output, separators=(",", ":"))
+            if output_file and not sarif_requested:
+                # --output-file with --json (but not --sarif) redirects
+                # JSON there.  When BOTH --sarif and --json are set with
+                # one --output-file, SARIF wins the file and JSON goes
+                # to stdout — the file can only hold one format.
+                Path(output_file).write_text(json_payload, encoding="utf-8")
+            else:
+                print(json_payload)
         else:
             reporter.print_summary(summary)
 

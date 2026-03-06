@@ -13,10 +13,10 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 
 class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
@@ -161,6 +161,12 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
             output=result.output,
             error="Template compilation failed",
             fix_suggestion="Fix Jinja2 syntax errors in the templates shown above.",
+            findings=[
+                Finding(
+                    message="Template compilation failed",
+                    level=FindingLevel.ERROR,
+                )
+            ],
         )
 
     def _validate_templates(
@@ -186,6 +192,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
             ),
         )
         errors: List[str] = []
+        findings: List[Finding] = []
         count = 0
 
         for root, _, files in os.walk(templates_path):
@@ -197,6 +204,16 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
                         env.get_template(rel_path)
                     except Exception as e:
                         errors.append(f"  {rel_path}: {e}")
+                        # Jinja2 TemplateSyntaxError carries .lineno
+                        lineno = getattr(e, "lineno", None)
+                        findings.append(
+                            Finding(
+                                message=str(e),
+                                level=FindingLevel.ERROR,
+                                file=os.path.join(templates_dir, rel_path),
+                                line=lineno if isinstance(lineno, int) else None,
+                            )
+                        )
 
         duration = time.time() - start_time
 
@@ -207,6 +224,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
                 output="\n".join(errors),
                 error=f"{len(errors)} template(s) failed to compile",
                 fix_suggestion="Fix Jinja2 syntax errors shown above.",
+                findings=findings,
             )
 
         return self._create_result(

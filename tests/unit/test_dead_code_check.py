@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from slopmop.checks.quality.dead_code import DeadCodeCheck
-from slopmop.core.result import CheckStatus
+from slopmop.core.result import CheckStatus, Finding, FindingLevel
 
 
 class TestDeadCodeCheck:
@@ -186,8 +186,12 @@ class TestDeadCodeCheck:
         )
         findings = check._parse_findings(output)
         assert len(findings) == 2
-        assert findings[0] == ("app.py", 42, "unused function 'foo'", 80)
-        assert findings[1] == ("utils.py", 10, "unused import 'os'", 90)
+        assert findings[0].file == "app.py"
+        assert findings[0].line == 42
+        assert findings[0].message == "unused function 'foo' (80% confidence)"
+        assert findings[1].file == "utils.py"
+        assert findings[1].line == 10
+        assert findings[1].message == "unused import 'os' (90% confidence)"
 
     def test_parse_findings_empty(self, check):
         """Test parsing empty output produces no findings."""
@@ -208,17 +212,27 @@ class TestDeadCodeCheck:
         )
         findings = check._parse_findings(output)
         assert len(findings) == 3
-        assert "unused variable" in findings[0][2]
-        assert "unused class" in findings[1][2]
-        assert "unreachable code" in findings[2][2]
+        assert "unused variable" in findings[0].message
+        assert "unused class" in findings[1].message
+        assert "unreachable code" in findings[2].message
 
     # --- Output formatting ---
 
     def test_format_findings(self, check):
         """Test findings are formatted as prescriptive output."""
         findings = [
-            ("app.py", 42, "unused function 'foo'", 80),
-            ("utils.py", 10, "unused import 'os'", 90),
+            Finding(
+                message="unused function 'foo' (80% confidence)",
+                level=FindingLevel.ERROR,
+                file="app.py",
+                line=42,
+            ),
+            Finding(
+                message="unused import 'os' (90% confidence)",
+                level=FindingLevel.ERROR,
+                file="utils.py",
+                line=10,
+            ),
         ]
         output = check._format_findings(findings)
         assert "2 dead code issue(s)" in output
@@ -229,7 +243,13 @@ class TestDeadCodeCheck:
     def test_format_findings_truncates(self, check):
         """Test output truncation when many findings exist."""
         findings = [
-            (f"file{i}.py", i, f"unused function 'f{i}'", 80) for i in range(20)
+            Finding(
+                message=f"unused function 'f{i}' (80% confidence)",
+                level=FindingLevel.ERROR,
+                file=f"file{i}.py",
+                line=i,
+            )
+            for i in range(20)
         ]
         output = check._format_findings(findings)
         assert "... and 5 more" in output

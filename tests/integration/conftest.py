@@ -77,3 +77,65 @@ def result_all_fail(docker_manager: DockerManager) -> RunResult:
 def result_mixed(docker_manager: DockerManager) -> RunResult:
     """Run sm against the ``mixed`` fixtures once and cache the result."""
     return docker_manager.run_sm(branch="mixed", ref=FIXTURE_REFS["mixed"])
+
+
+# ------------------------------------------------------------------
+# SARIF fixture — one extra container run, cached for all SARIF tests
+# ------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def sarif_all_fail(docker_manager: DockerManager) -> dict[str, object]:
+    """Run swab --sarif against ``all-fail`` and return the parsed document.
+
+    This is the end-to-end acceptance check for the SARIF feature.  Unit
+    tests in ``test_sarif.py`` prove the reporter shapes documents
+    correctly from hand-built fixtures; this proves the whole pipeline
+    — real gates, real tool output, real parsing, real findings — emits
+    a schema-valid document with actual ``physicalLocation`` entries.
+
+    The ``all-fail`` branch is the right fixture because it trips every
+    gate that CAN fail on that codebase.  Running against slop-mop
+    itself produces an empty SARIF (everything passes) which validates
+    the schema but not the content.
+
+    One container run, session-scoped, consumed by every test in
+    ``test_sarif_integration.py``.  Adds ~40s to the integration suite.
+    """
+    import json
+
+    result = docker_manager.run_sm(
+        branch="all-fail",
+        ref=FIXTURE_REFS["all-fail"],
+        command=[
+            "sm",
+            "swab",
+            "--no-fail-fast",
+            "--no-json",
+            "--sarif",
+            "--output-file",
+            "/tmp/out.sarif",
+        ],
+        extract_file="/tmp/out.sarif",
+    )
+
+    # Prerequisites first — if clone/install/init failed, extracted is
+    # None and the json.loads below would throw an unhelpful TypeError.
+    # This surfaces the real cause.
+    result.assert_prerequisites()
+
+    if result.extracted is None:
+        pytest.fail(
+            f"swab crashed before writing /tmp/out.sarif — "
+            f"extract_file marker never appeared in container output.\n"
+            f"{result}"
+        )
+
+    try:
+        return json.loads(result.extracted)
+    except json.JSONDecodeError as e:
+        pytest.fail(
+            f"SARIF payload is not valid JSON: {e}\n"
+            f"--- payload (first 500 chars) ---\n{result.extracted[:500]}\n"
+            f"--- full run ---\n{result}"
+        )

@@ -15,9 +15,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    JavaScriptCheckMixin,
     ToolContext,
 )
+from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
     COVERAGE_GUIDANCE_FOOTER,
@@ -25,7 +25,7 @@ from slopmop.constants import (
     COVERAGE_STANDARDS_PREFIX,
     NPM_INSTALL_FAILED,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 DEFAULT_THRESHOLD = 80
 MAX_FILES_TO_SHOW = 5
@@ -158,6 +158,12 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 ),
                 error=COVERAGE_BELOW_THRESHOLD,
                 fix_suggestion="Add tests to increase coverage.",
+                findings=[
+                    Finding(
+                        message=f"Coverage {coverage:.1f}% below {self.threshold}%",
+                        level=FindingLevel.ERROR,
+                    )
+                ],
             )
 
         # Can't determine coverage
@@ -173,6 +179,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             duration=duration,
             output=result.output,
             error="Jest tests failed",
+            findings=[Finding(message="Jest tests failed", level=FindingLevel.ERROR)],
         )
 
     def _parse_coverage_json(self, project_root: str) -> Optional[Dict[str, Any]]:
@@ -247,6 +254,14 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             output="\n".join(lines),
             error=COVERAGE_BELOW_THRESHOLD,
             fix_suggestion="Add tests to increase coverage.",
+            findings=[
+                Finding(
+                    message=f"Coverage {file_pct:.1f}% below {self.threshold}%",
+                    file=path,
+                    level=FindingLevel.ERROR,
+                )
+                for path, file_pct in low_files
+            ],
         )
 
     def _parse_coverage_output(self, output: str) -> Optional[float]:

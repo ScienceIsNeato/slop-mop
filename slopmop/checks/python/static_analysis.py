@@ -12,10 +12,11 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.checks.constants import COMMAND_NOT_FOUND
+from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # mypy error code pattern: file.py:10: error: message  [code]
 _MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
@@ -180,12 +181,15 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         return cmd
 
     @staticmethod
-    def _dedup_output(raw_output: str) -> Tuple[List[str], Dict[str, int]]:
+    def _dedup_output(
+        raw_output: str,
+    ) -> Tuple[List[str], Dict[str, int], List[Finding]]:
         """Filter mypy output to root-cause errors only.
 
         Strips 'note:' lines (hints/context) and returns:
           - error_lines: the actual error messages
           - code_counts: Counter of error codes for the summary header
+          - findings: structured Finding objects for SARIF
 
         mypy doesn't cascade like Pylance — each error IS a root cause.
         The dedup here is about removing noise (notes), not collapsing
@@ -193,6 +197,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         """
         error_lines: List[str] = []
         code_counts: Dict[str, int] = Counter()
+        findings: List[Finding] = []
 
         for line in raw_output.splitlines():
             line = line.strip()
@@ -206,8 +211,17 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                 code = match.group(4) or "unknown"
                 code_counts[code] += 1
                 error_lines.append(line)
+                findings.append(
+                    Finding(
+                        message=match.group(3),
+                        level=FindingLevel.ERROR,
+                        file=match.group(1),
+                        line=int(match.group(2)),
+                        rule_id=match.group(4),
+                    )
+                )
 
-        return error_lines, dict(code_counts)
+        return error_lines, dict(code_counts), findings
 
     @staticmethod
     def _format_summary(error_lines: List[str], code_counts: Dict[str, int]) -> str:
@@ -249,15 +263,30 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         duration = time.time() - start_time
 
         if result.timed_out:
+            msg = "Type checking timed out after 2 minutes"
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error="Type checking timed out after 2 minutes",
+                error=msg,
+                findings=[Finding(message=msg, level=FindingLevel.ERROR)],
+            )
+
+        # Handle mypy not installed — warn but don't block
+        if result.returncode == 127 or (
+            result.returncode == -1 and COMMAND_NOT_FOUND in result.stderr
+        ):
+            msg = "mypy not available"
+            return self._create_result(
+                status=CheckStatus.WARNED,
+                duration=duration,
+                error=msg,
+                fix_suggestion="Install mypy: pip install mypy",
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         if not result.success:
-            error_lines, code_counts = self._dedup_output(result.output)
+            error_lines, code_counts, findings = self._dedup_output(result.output)
             output = self._format_summary(error_lines, code_counts)
             total = sum(code_counts.values())
 
@@ -279,6 +308,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                 output=output,
                 error=f"{total} type error(s) found",
                 fix_suggestion=" ".join(fix_parts),
+                findings=findings,
             )
 
         return self._create_result(

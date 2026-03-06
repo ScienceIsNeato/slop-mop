@@ -22,7 +22,7 @@ from slopmop.checks.base import (
     ToolContext,
     count_source_scope,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
 MIN_TOKENS = 50
@@ -240,12 +240,41 @@ class SourceDuplicationCheck(BaseCheck):
         if len(violations) > 10:
             detail += f"\n... and {len(violations) - 10} more"
 
+        # Per-clone findings anchored at the first file's start line
+        findings: List[Finding] = []
+        for dup in duplicates:
+            first = dup.get("firstFile", {})
+            second = dup.get("secondFile", {})
+            start = first.get("startLoc", {}).get("line")
+            end = first.get("endLoc", {}).get("line")
+            fname = first.get("name")
+            sname = second.get("name", "?")
+            sline = second.get("startLoc", {}).get("line", "?")
+            if fname:
+                findings.append(
+                    Finding(
+                        message=f"Duplicate of {sname}:{sline} ({dup.get('lines', 0)} lines)",
+                        level=FindingLevel.ERROR,
+                        file=fname,
+                        line=start if isinstance(start, int) else None,
+                        end_line=end if isinstance(end, int) else None,
+                    )
+                )
+        if not findings:
+            findings = [
+                Finding(
+                    message=f"Duplication {total_percentage:.1f}% exceeds {self.threshold}%",
+                    level=FindingLevel.ERROR,
+                )
+            ]
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error="Excessive code duplication detected",
             fix_suggestion="Extract duplicated code into shared functions or modules.",
+            findings=findings,
         )
 
     def run(self, project_root: str) -> CheckResult:
@@ -259,6 +288,7 @@ class SourceDuplicationCheck(BaseCheck):
                 duration=time.time() - start_time,
                 error=error,
                 fix_suggestion="Install jscpd: npm install -g jscpd",
+                findings=[Finding(message=error, level=FindingLevel.WARNING)],
             )
 
         # Get config values

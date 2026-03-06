@@ -35,10 +35,10 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
-    PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # pyright rules we enforce for type completeness
 TYPE_COMPLETENESS_RULES: Dict[str, str] = {
@@ -248,11 +248,13 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         # Check pyright is installed
         pyright_path = _find_pyright(project_root)
         if not pyright_path:
+            msg = "pyright not found"
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
-                error="pyright not found",
+                error=msg,
                 fix_suggestion="Install pyright: pip install pyright",
+                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
         # Generate pyrightconfig.json in project root
@@ -281,14 +283,16 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             duration = time.time() - start_time
 
             if result.timed_out:
+                msg = "Type checking timed out after 2 minutes"
                 return self._create_result(
                     status=CheckStatus.FAILED,
                     duration=duration,
                     output=result.output,
-                    error="Type checking timed out after 2 minutes",
+                    error=msg,
+                    findings=[Finding(message=msg, level=FindingLevel.ERROR)],
                 )
 
-            return self._process_output(result.output, duration)
+            return self._process_output(result.output, duration, project_root)
 
         finally:
             # Cleanup: only remove the config we wrote, not a pre-existing one
@@ -297,7 +301,9 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             if backup_path and backup_path.exists():
                 backup_path.rename(config_path)
 
-    def _process_output(self, raw_output: str, duration: float) -> CheckResult:
+    def _process_output(
+        self, raw_output: str, duration: float, project_root: str = ""
+    ) -> CheckResult:
         """Parse pyright JSON output and format prescriptive results."""
         try:
             data = json.loads(raw_output)
@@ -329,27 +335,69 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             )
 
         # Group and format errors
-        output = self._format_prescriptive_output(diagnostics, summary)
+        output = self._format_prescriptive_output(diagnostics, summary, project_root)
         fix_suggestion = self._build_fix_suggestion(diagnostics)
+        findings = self._build_findings(diagnostics, project_root)
 
+        msg = f"{error_count} type-completeness error(s) found"
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=output,
-            error=f"{error_count} type-completeness error(s) found",
+            error=msg,
             fix_suggestion=fix_suggestion,
+            findings=findings or [Finding(message=msg, level=FindingLevel.ERROR)],
         )
+
+    @staticmethod
+    def _build_findings(
+        diagnostics: List[Dict[str, Any]], project_root: str = ""
+    ) -> List[Finding]:
+        """Convert pyright JSON diagnostics to Finding objects.
+
+        pyright's ``range.start.line`` / ``character`` are 0-based — add 1
+        for SARIF's 1-based convention (the Finding docstring is explicit
+        that ``startColumn: 0`` is rejected by the SARIF schema).
+        """
+        root = project_root or os.getcwd()
+        cwd_prefix = root.rstrip("/") + "/"
+        findings: List[Finding] = []
+        for diag in diagnostics:
+            if diag.get("severity") != "error":
+                continue
+            filepath = diag.get("file", "")
+            if filepath.startswith(cwd_prefix):
+                filepath = filepath[len(cwd_prefix) :]
+            start = diag.get("range", {}).get("start", {})
+            line = start.get("line")
+            col = start.get("character")
+            msg = diag.get("message", "")
+            findings.append(
+                Finding(
+                    message=msg.split("\n")[0],
+                    level=FindingLevel.ERROR,
+                    file=filepath or None,
+                    line=line + 1 if isinstance(line, int) else None,
+                    column=col + 1 if isinstance(col, int) else None,
+                    rule_id=diag.get("rule"),
+                )
+            )
+        return findings
 
     def _format_prescriptive_output(
         self,
         diagnostics: List[Dict[str, Any]],
         summary: Dict[str, Any],
+        project_root: str = "",
     ) -> str:
         """Format pyright output for AI agents.
 
         Groups errors by file, then by rule, showing exactly what needs
         fixing and where. Sorted by error count per file (biggest gaps first).
         """
+        root = project_root or os.getcwd()
+        root_prefix = root.rstrip("/") + "/"
+
         # Group by file
         by_file: Dict[str, List[Dict[str, Any]]] = {}
         rule_counts: Counter[str] = Counter()
@@ -359,7 +407,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             # Strip absolute path prefix
             if "/" in filepath:
                 # Try to make relative
-                for prefix in [os.getcwd() + "/", ""]:
+                for prefix in [root_prefix, ""]:
                     if filepath.startswith(prefix) and prefix:
                         filepath = filepath[len(prefix) :]
                         break
