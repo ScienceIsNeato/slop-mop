@@ -98,10 +98,8 @@ class SarifAdapter:
 class ConsoleAdapter:
     """Render a RunReport to stdout as human-readable text.
 
-    Replaces the inline logic in ``ConsoleReporter.print_summary()``.
-    The existing ``ConsoleReporter`` is kept as the real-time progress
-    handler (``on_check_complete`` callbacks); this adapter owns the
-    end-of-run summary only.
+    Owns end-of-run summary output.  ``ConsoleReporter`` remains the
+    real-time progress handler (``on_check_complete`` callbacks).
 
     Unlike the other adapters this one prints directly rather than
     returning a string.  Console output is a stream — buffering the
