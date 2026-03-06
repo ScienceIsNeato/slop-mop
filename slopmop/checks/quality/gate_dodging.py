@@ -451,7 +451,7 @@ class GateDodgingCheck(BaseCheck):
       Disabled gate: Re-enable the gate and fix the failing code.
 
     Re-check:
-      ./sm swab -g deceptiveness:gate-dodging --verbose
+      sm swab -g deceptiveness:gate-dodging --verbose
     """
 
     @property

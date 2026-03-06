@@ -21,6 +21,7 @@ from slopmop.cli.hooks import (
     cmd_commit_hooks,
 )
 from slopmop.cli.init import prompt_user, prompt_yes_no
+from slopmop.core.result import ExecutionSummary
 from slopmop.sm import create_parser, load_config, main, setup_logging
 
 
@@ -91,7 +92,7 @@ class TestCreateParser:
         """Parser is created successfully."""
         parser = create_parser()
         assert parser is not None
-        assert parser.prog == "./sm"
+        assert parser.prog == "sm"
 
     def test_swab_subcommand(self):
         """Swab subcommand parses correctly."""
@@ -512,15 +513,19 @@ class TestGitHooksFunctions:
     def test_generate_hook_script(self):
         """Generates valid hook script with swab verb."""
         script = _generate_hook_script("swab")
-        assert "slopmop.sm swab" in script
         assert "MANAGED BY SLOP-MOP" in script
-        # Should use python -m slopmop.sm for direct submodule execution
-        assert "python" in script and "slopmop.sm" in script
+        # Hook invokes sm via PATH — no submodule hunting, no venv
+        # discovery, no python -m.  pipx users have no submodule dir;
+        # the old script bailed with "submodule not found" for them.
+        assert "sm swab" in script
+        assert "command -v sm" in script
+        assert "slopmop.sm" not in script  # no python -m indirection
+        assert "submodule" not in script.lower()
 
     def test_generate_hook_script_direct_verb(self):
         """Generates hook script when given a verb directly."""
         script = _generate_hook_script("scour")
-        assert "slopmop.sm scour" in script
+        assert "sm scour" in script
         assert "# Command: sm scour" in script
 
     def test_parse_hook_info_new_format(self):
@@ -835,7 +840,7 @@ class TestScourDisablesFailFast:
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
-        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor.run_checks.return_value = ExecutionSummary.from_results([], 0.0)
         mock_executor_cls.return_value = mock_executor
 
         _run_validation(self._make_args(tmp_path), ["gate1"], "scour")
@@ -855,7 +860,7 @@ class TestScourDisablesFailFast:
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
-        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor.run_checks.return_value = ExecutionSummary.from_results([], 0.0)
         mock_executor_cls.return_value = mock_executor
 
         # no_fail_fast=False means the user did NOT pass --no-fail-fast,
@@ -878,7 +883,7 @@ class TestScourDisablesFailFast:
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
-        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor.run_checks.return_value = ExecutionSummary.from_results([], 0.0)
         mock_executor_cls.return_value = mock_executor
 
         _run_validation(self._make_args(tmp_path), ["gate1"], "swab")
@@ -897,7 +902,7 @@ class TestScourDisablesFailFast:
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
-        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor.run_checks.return_value = ExecutionSummary.from_results([], 0.0)
         mock_executor_cls.return_value = mock_executor
 
         _run_validation(self._make_args(tmp_path, no_fail_fast=True), ["gate1"], "swab")

@@ -12,9 +12,28 @@ accident.
 ``PythonCheckMixin`` handles the venv-resolution dance: figuring out
 which ``python`` to invoke when the project has its own ``.venv`` but
 slop-mop was installed via pipx and has a DIFFERENT python with the
-bundled scanners.  The resolution order (project venv → VIRTUAL_ENV →
-sys.executable → PATH) and the warn-once-per-root caching are the
-bits that actually matter.
+bundled scanners.
+
+The environment gate is a hard stop, not a warning.  A quality gate
+that renders verdicts against a borrowed interpreter is a quality
+gate that lies — "13/13 passed" on the wrong python is worse than no
+gates at all because it manufactures confidence.  The old behaviour
+(warn once, suppress forever, proceed) produced exactly that failure
+mode in practice: a session that ran dozens of swabs against a
+different project's venv, all green, while eight tests passed only
+because the contaminated shell had $VIRTUAL_ENV set — they mocked
+the subprocess runner but the venv gate let them through on the
+ambient activation before the mock was ever reached.  The one
+warning that would have caught it fired on the first run and never
+again.
+
+There is no escape hatch.  If you don't have a project venv, the
+gates that need one fail and tell you how to create it.  "But CI
+doesn't have a .venv" — then CI creates one; it's one line in the
+workflow and it makes the env explicit instead of ambient.  The cost
+of one ``python -m venv .venv && pip install -e .`` is a lot lower
+than the cost of a green build that ran against the wrong
+interpreter.
 
 ``JavaScriptCheckMixin`` does the pnpm/yarn/npm lockfile detection
 plus the ``.npmrc`` parsing for ``legacy-peer-deps`` — the kind of
@@ -24,7 +43,6 @@ thing every JS gate needs and nobody wants to write twice.
 import logging
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -44,9 +62,11 @@ logger = logging.getLogger(__name__)
 class PythonCheckMixin:
     """Mixin for Python-specific check utilities."""
 
-    # Class-level cache for venv warning (only warn once per project_root)
-    _venv_warning_shown: set[str] = set()
-    # Cache resolved Python path per project_root
+    # Cache resolved Python path per project_root.  Naturally provides
+    # once-per-run log semantics — the fallback-cascade log lines only
+    # fire on cache miss, which is once per distinct project_root per
+    # process.  The old ``_venv_warning_shown`` set was a redundant
+    # second layer of suppression on top of this; it's gone.
     _python_cache: dict[str, str] = {}
 
     def _find_python_in_venv(self, venv_path: Path) -> Optional[str]:
@@ -62,38 +82,23 @@ class PythonCheckMixin:
         PythonCheckMixin._python_cache[project_root] = python_path
         return python_path
 
-    def _get_python_version(self, python_path: str) -> str:
-        """Get Python version string, or 'unknown version' on error."""
-        try:
-            result = subprocess.run(
-                [python_path, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            return result.stdout.strip()
-        except Exception:
-            return "unknown version"
-
     def has_project_venv(self, project_root: str) -> bool:
-        """Check if the project has a discoverable virtual environment.
+        """Check if the project has its own virtual environment.
 
-        Returns True if any of these exist:
-        1. project_root/venv/
-        2. project_root/.venv/
-        3. VIRTUAL_ENV environment variable is set
+        Returns True ONLY for ``project_root/venv`` or
+        ``project_root/.venv``.  It does NOT consult ``$VIRTUAL_ENV``.
+        The old behaviour treated any activated venv anywhere on the
+        system as equivalent to a project venv — a shell that had a
+        different project's venv activated would sail past this check
+        and then run gates against that foreign interpreter.  The
+        method name says "project venv"; a venv that lives somewhere
+        else is by definition not one.
         """
         root = Path(project_root)
         for venv_dir in ["venv", ".venv"]:
             if (root / venv_dir / "bin" / "python").exists():
                 return True
             if (root / venv_dir / "Scripts" / "python.exe").exists():
-                return True
-        if os.environ.get("VIRTUAL_ENV"):
-            venv_path = Path(os.environ["VIRTUAL_ENV"])
-            if (venv_path / "bin" / "python").exists():
-                return True
-            if (venv_path / "Scripts" / "python.exe").exists():
                 return True
         return False
 
@@ -123,130 +128,135 @@ class PythonCheckMixin:
         # Bare minimum
         return "python3 -m venv venv && source venv/bin/activate"
 
-    def check_project_venv_or_warn(
+    def check_project_venv_or_fail(
         self, project_root: str, start_time: float
     ) -> Optional[CheckResult]:
-        """Return a WARNED result when no project venv is found.
+        """Return FAILED when no project venv exists.  No escape hatch.
 
-        PROJECT-context checks should call this at the top of ``run()``.
-        If a venv *does* exist, returns ``None`` so the caller can
-        continue with normal execution.
+        PROJECT-context checks call this at the top of ``run()``.
+        These are checks that import or execute the project's own code
+        — pytest loads conftest.py, coverage instruments modules,
+        pip-audit inspects site-packages.  Running them against a
+        borrowed interpreter produces results that describe the wrong
+        thing.
 
-        Usage::
+        The old contract returned WARNED here, which downstream
+        rendered as yellow-not-red and didn't block commits.  Worse,
+        ``has_project_venv`` used to count any ``$VIRTUAL_ENV`` as a
+        project venv — so a stale shell activation from a *different
+        project* silently satisfied this gate, and the check then ran
+        against that foreign interpreter with full confidence.  That's
+        not a degraded result, that's a wrong result wearing a green
+        checkmark.
 
-            result = self.check_project_venv_or_warn(project_root, start_time)
+        Returns ``None`` when a real project venv exists so the caller
+        can proceed::
+
+            result = self.check_project_venv_or_fail(project_root, start_time)
             if result is not None:
                 return result
         """
         import time
 
-        if not self.has_project_venv(project_root):
-            msg = "No project virtual environment found"
-            return self._create_result(  # type: ignore[attr-defined]
-                status=CheckStatus.WARNED,
-                duration=time.time() - start_time,
-                error=msg,
-                fix_suggestion=(
-                    "Create a venv so this check can run against your project:\n"
-                    f"  cd {project_root} && {self.suggest_venv_command(project_root)}"
-                ),
-                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
-            )
-        return None
+        if self.has_project_venv(project_root):
+            return None
+
+        msg = "No project venv (./venv or ./.venv) — refusing to run against a borrowed interpreter"
+        ambient = os.environ.get("VIRTUAL_ENV")
+        ambient_note = (
+            f"\n\n$VIRTUAL_ENV is currently {ambient} — that is NOT this project's "
+            "venv and slop-mop will not use it.  A stale activation from another "
+            "project is exactly the case this gate exists to catch."
+            if ambient
+            else ""
+        )
+
+        return self._create_result(  # type: ignore[attr-defined]
+            status=CheckStatus.FAILED,
+            duration=time.time() - start_time,
+            error=msg,
+            fix_suggestion=(
+                f"Create a project venv:\n"
+                f"  cd {project_root} && {self.suggest_venv_command(project_root)}"
+                f"{ambient_note}"
+            ),
+            findings=[Finding(message=msg, level=FindingLevel.ERROR)],
+        )
+
+    # Back-compat alias — 4 call sites in checks/, renamed when the
+    # semantics flipped from warn-and-proceed to fail-hard.  External
+    # plugins (if any exist) that call the old name get the new
+    # behaviour, which is what they should want.
+    check_project_venv_or_warn = check_project_venv_or_fail
 
     def get_project_python(self, project_root: str) -> str:
         """Get the Python executable for the project.
 
-        Uses stepped fallback (project-local venvs prioritized):
-        1. ./venv/bin/python or ./.venv/bin/python (project-local - highest priority)
-        2. VIRTUAL_ENV environment variable (if no project venv exists)
-        3. sys.executable (slop-mop's Python - has all bundled tools)
-        4. python3/python in PATH (system Python - last resort)
+        Resolution order:
+        1. ``./venv/bin/python`` or ``./.venv/bin/python`` — the project's
+           own env, the only answer that's actually correct for gates
+           that inspect project state
+        2. ``$VIRTUAL_ENV`` — ambient activation, could be anything
+        3. ``sys.executable`` — slop-mop's own python, has bundled tools
+           but not project deps
+        4. ``python3`` on PATH — last resort
 
-        Warnings are logged once per project when:
-        - Using project venv while VIRTUAL_ENV points to a different venv
-        - Falling back to system Python or sys.executable (non-venv)
+        Levels 2-4 are reachable in two cases: the caller didn't gate
+        with ``check_project_venv_or_fail`` first (bundled-tool checks
+        that only need *a* python, not the *project's* python), or the
+        gate hasn't been wired up yet for a new check.  Either way we
+        log INFO — not WARNING — about what we picked.  INFO because
+        the gate is where the hard stop lives; this method just
+        resolves a path.  The cache naturally makes it once-per-root.
         """
         if project_root in PythonCheckMixin._python_cache:
             return PythonCheckMixin._python_cache[project_root]
 
         root = Path(project_root)
-        should_warn = project_root not in PythonCheckMixin._venv_warning_shown
 
-        # PRIORITY 1: Check common venv locations in project FIRST
+        # 1. Project venv — the correct answer.
         for venv_dir in ["venv", ".venv"]:
             python_path = self._find_python_in_venv(root / venv_dir)
             if python_path:
-                # Warn if VIRTUAL_ENV is set to a different location
                 virtual_env = os.environ.get("VIRTUAL_ENV")
-                if virtual_env and should_warn:
+                if virtual_env:
                     project_venv_path = (root / venv_dir).resolve()
-                    virtual_env_path = Path(virtual_env).resolve()
-                    if project_venv_path != virtual_env_path:
-                        logger.warning(
-                            f"⚠️  Using project venv: {project_venv_path}\n"
-                            f"   VIRTUAL_ENV is set to: {virtual_env_path}\n"
-                            "   This is intentional - project venvs take priority."
+                    if project_venv_path != Path(virtual_env).resolve():
+                        # We're doing the right thing (project venv wins),
+                        # but the shell is confused.  FYI, not a problem.
+                        logger.info(
+                            f"Using project venv {project_venv_path} "
+                            f"(ignoring $VIRTUAL_ENV={virtual_env})"
                         )
-                        PythonCheckMixin._venv_warning_shown.add(project_root)
                 return self._cache_and_return(project_root, python_path)
 
-        # PRIORITY 2: Fall back to VIRTUAL_ENV if no project venv exists
+        # 2-4. Fallback cascade.  Log what we landed on once — the
+        # _python_cache hit above means this fires once per root per
+        # process.  No separate suppression set; the cache IS the
+        # suppression.
         virtual_env = os.environ.get("VIRTUAL_ENV")
         if virtual_env:
             python_path = self._find_python_in_venv(Path(virtual_env))
             if python_path:
-                if should_warn:
-                    logger.warning(
-                        f"⚠️  No project venv found. Using VIRTUAL_ENV: {virtual_env}\n"
-                        "   Consider creating ./venv or ./.venv with project dependencies."
-                    )
-                    PythonCheckMixin._venv_warning_shown.add(project_root)
+                logger.info(
+                    f"No project venv in {project_root}; using $VIRTUAL_ENV={virtual_env}"
+                )
                 return self._cache_and_return(project_root, python_path)
-            if should_warn:
-                logger.warning(
-                    f"VIRTUAL_ENV={virtual_env} set but no Python found there. "
-                    "Continuing with fallback detection."
-                )
 
-        # No venv found - mark as warned and try sm's own Python
-        if should_warn:
-            PythonCheckMixin._venv_warning_shown.add(project_root)
-
-        # PRIORITY 3: slop-mop's own Python (has all bundled tools: pip-audit,
-        # bandit, detect-secrets, etc.).  Preferred over bare system Python which
-        # almost certainly does NOT have these modules installed.
         if sys.executable:
-            if should_warn:
-                version = self._get_python_version(sys.executable)
-                logger.warning(
-                    f"⚠️  No virtual environment found in {project_root}. "
-                    f"Using slop-mop's Python: {sys.executable} ({version}). "
-                    "Security scans will work, but pip-audit will only audit "
-                    "packages installed in slop-mop's environment. "
-                    "Consider creating a venv with project dependencies."
-                )
+            logger.info(
+                f"No project venv in {project_root}; using sys.executable={sys.executable}"
+            )
             return self._cache_and_return(project_root, sys.executable)
 
-        # PRIORITY 4: system Python in PATH (last resort)
         for python_name in ["python3", "python"]:
             system_python = shutil.which(python_name)
             if system_python:
-                if should_warn:
-                    version = self._get_python_version(system_python)
-                    logger.warning(
-                        f"⚠️  No Python found for slop-mop. "
-                        f"Falling back to system: {system_python} ({version}). "
-                        "Security tools (pip-audit, bandit) may not be available."
-                    )
+                logger.info(
+                    f"No project venv in {project_root}; using PATH {python_name}={system_python}"
+                )
                 return self._cache_and_return(project_root, system_python)
 
-        # Nothing found at all
-        if should_warn:
-            logger.warning(
-                "⚠️  No Python found anywhere. Security checks will fail. "
-                "Create a venv in your project or install Python."
-            )
         return self._cache_and_return(project_root, "python3")
 
     def _python_execution_failed_hint(self) -> str:

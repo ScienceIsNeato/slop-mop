@@ -221,6 +221,13 @@ class SarifReporter:
             rule["fullDescription"] = {"text": desc}
         if check.fix_suggestion:
             rule["help"] = {"text": check.fix_suggestion}
+        # Tag rules with their architectural tier so Code Scanning
+        # consumers can filter foundation (standard tooling floor)
+        # from diagnostic (novel AI-failure-mode detection).  SARIF's
+        # properties bag is the designated extension point — GitHub
+        # preserves unknown keys without complaint.
+        if check.role:
+            rule["properties"] = {"role": check.role}
         return rule
 
     def _build_result(
@@ -239,6 +246,15 @@ class SarifReporter:
             "level": finding.level.value,
             "message": {"text": finding.message},
         }
+
+        # Per-finding remediation, machine-extractable.  Carried in
+        # the properties bag rather than SARIF's ``fixes[]`` array
+        # because GitHub Code Scanning doesn't render ``fixes[]`` yet
+        # — a plain-text strategy in properties is more useful to an
+        # agent reading the SARIF directly than a structured fix
+        # object no one surfaces.
+        if finding.fix_strategy:
+            result["properties"] = {"fix_strategy": finding.fix_strategy}
 
         if finding.file is not None:
             uri = self._normalise_uri(finding.file)

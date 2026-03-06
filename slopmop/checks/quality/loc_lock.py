@@ -303,7 +303,7 @@ class LocLockCheck(BaseCheck):
           concepts. Three 30-line functions > one 90-line function.
 
     Re-check:
-      ./sm swab -g myopia:code-sprawl --verbose
+      sm swab -g myopia:code-sprawl --verbose
     """
 
     @property

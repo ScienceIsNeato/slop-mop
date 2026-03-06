@@ -11,6 +11,7 @@ from typing import List
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -48,10 +49,11 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
           for syntax errors.
 
     Re-check:
-      ./sm swab -g laziness:sloppy-frontend.js --verbose
+      sm swab -g laziness:sloppy-frontend.js --verbose
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION  # eslint (errors-only)
 
     @property
     def name(self) -> str:

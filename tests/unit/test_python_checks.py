@@ -296,7 +296,16 @@ class TestPythonTestsCheck:
         )
 
         check = PythonTestsCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        # These tests exercise the post-venv-gate logic (how the check
+        # interprets pytest output), but tmp_path has no venv.  The
+        # runner is already mocked — the venv gate is incidental
+        # plumbing, not the thing under test.  Without this patch the
+        # test only passes when the developer's shell has VIRTUAL_ENV
+        # set, which the mixin used to fall back to.  A clean env
+        # (no activation, no project venv) short-circuits to FAILED
+        # before the mocked runner is ever called.
+        with patch.object(check, "check_project_venv_or_fail", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
 
@@ -311,7 +320,8 @@ class TestPythonTestsCheck:
         )
 
         check = PythonTestsCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_fail", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
 
@@ -326,7 +336,8 @@ class TestPythonTestsCheck:
         )
 
         check = PythonTestsCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_fail", return_value=None):
+            result = check.run(str(tmp_path))
 
         # Should pass because tests passed, only coverage failed
         assert result.status == CheckStatus.PASSED
@@ -369,7 +380,8 @@ class TestPythonCoverageCheck:
         )
 
         check = PythonCoverageCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_fail", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
 
@@ -384,7 +396,8 @@ class TestPythonCoverageCheck:
         )
 
         check = PythonCoverageCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_fail", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
 
@@ -396,7 +409,8 @@ class TestPythonCoverageCheck:
         )
 
         check = PythonCoverageCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_fail", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
 

@@ -211,13 +211,22 @@ class TestHasProjectVenv:
         (venv_bin / "python").touch()
         assert self.mixin.has_project_venv(str(tmp_path)) is True
 
-    def test_virtual_env_envvar(self, tmp_path, monkeypatch):
-        """Returns True when VIRTUAL_ENV points to a real venv."""
+    def test_virtual_env_envvar_does_not_count(self, tmp_path, monkeypatch):
+        """VIRTUAL_ENV pointing at a real venv is NOT a project venv.
+
+        The method name is ``has_project_venv``, not ``has_some_venv
+        _somewhere``.  An activated venv from a different project used
+        to satisfy this check, which meant downstream gates ran against
+        that foreign interpreter while reporting green.  The ambient
+        env is not the project's env no matter where it points.
+        """
         venv_dir = tmp_path / "some_env"
         (venv_dir / "bin").mkdir(parents=True)
         (venv_dir / "bin" / "python").touch()
         monkeypatch.setenv("VIRTUAL_ENV", str(venv_dir))
-        assert self.mixin.has_project_venv(str(tmp_path)) is True
+        # tmp_path itself has no ./venv or ./.venv — only the ambient
+        # VIRTUAL_ENV pointing elsewhere.  That's a False.
+        assert self.mixin.has_project_venv(str(tmp_path)) is False
 
     def test_empty_venv_dir_no_python(self, tmp_path, monkeypatch):
         """Bare venv/ dir without bin/python and no VIRTUAL_ENV → False."""
@@ -261,8 +270,8 @@ class TestSuggestVenvCommand:
         assert "python3 -m venv venv" in cmd
 
 
-class TestCheckProjectVenvOrWarn:
-    """Tests for PythonCheckMixin.check_project_venv_or_warn()."""
+class TestCheckProjectVenvOrFail:
+    """Tests for PythonCheckMixin.check_project_venv_or_fail()."""
 
     def _make_check(self):
         """Create a concrete PROJECT check with both BaseCheck and mixin."""
@@ -294,16 +303,61 @@ class TestCheckProjectVenvOrWarn:
 
         return ProjectCheck({})
 
-    def test_returns_warned_when_no_venv(self, tmp_path, monkeypatch):
-        """Returns a WARNED CheckResult when no project venv found."""
+    def test_returns_failed_when_no_venv(self, tmp_path, monkeypatch):
+        """No project venv → FAILED.  Not WARNED, not skipped — blocked.
+
+        The old WARNED status rendered yellow and didn't block commits.
+        A gate that needs the project's interpreter and can't find it
+        has no business rendering a verdict at all; "I don't know" as
+        a yellow non-failure is the same as "fine, probably" to anyone
+        scanning a status board.
+        """
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        check = self._make_check()
+        import time
+
+        result = check.check_project_venv_or_fail(str(tmp_path), time.time())
+        assert result is not None
+        assert result.status is CheckStatus.FAILED
+        assert "No project venv" in result.error
+        assert "borrowed interpreter" in result.error
+
+    def test_old_name_aliased_to_new_semantics(self, tmp_path, monkeypatch):
+        """check_project_venv_or_warn still exists, now fails hard.
+
+        External check plugins (if any) that call the old name get
+        the new behaviour.  Breaking them is correct — they were
+        relying on a gate that let bad environments through.
+        """
         monkeypatch.delenv("VIRTUAL_ENV", raising=False)
         check = self._make_check()
         import time
 
         result = check.check_project_venv_or_warn(str(tmp_path), time.time())
         assert result is not None
-        assert result.status is CheckStatus.WARNED
-        assert "No project virtual environment" in result.error
+        assert result.status is CheckStatus.FAILED
+
+    def test_failure_names_the_stale_activation(self, tmp_path, monkeypatch):
+        """When VIRTUAL_ENV is set, the failure message calls it out.
+
+        The most common way to hit this is a stale shell — you worked
+        on project A, switched to project B without deactivating, ran
+        sm swab.  The failure message should tell you exactly which
+        venv is lurking so you can recognise it and deactivate.
+        """
+        foreign = tmp_path / "elsewhere" / "some_other_project" / ".venv"
+        (foreign / "bin").mkdir(parents=True)
+        (foreign / "bin" / "python").touch()
+        monkeypatch.setenv("VIRTUAL_ENV", str(foreign))
+
+        check = self._make_check()
+        import time
+
+        result = check.check_project_venv_or_fail(str(tmp_path), time.time())
+        assert result is not None
+        assert result.status is CheckStatus.FAILED
+        assert str(foreign) in result.fix_suggestion
+        assert "NOT this project's venv" in result.fix_suggestion
 
     def test_returns_none_when_venv_exists(self, tmp_path):
         """Returns None so the caller can continue normally."""
@@ -314,7 +368,7 @@ class TestCheckProjectVenvOrWarn:
         check = self._make_check()
         import time
 
-        result = check.check_project_venv_or_warn(str(tmp_path), time.time())
+        result = check.check_project_venv_or_fail(str(tmp_path), time.time())
         assert result is None
 
     def test_fix_suggestion_contains_command(self, tmp_path, monkeypatch):
@@ -324,7 +378,7 @@ class TestCheckProjectVenvOrWarn:
         check = self._make_check()
         import time
 
-        result = check.check_project_venv_or_warn(str(tmp_path), time.time())
+        result = check.check_project_venv_or_fail(str(tmp_path), time.time())
         assert result is not None
         assert "requirements.txt" in result.fix_suggestion
 
@@ -528,20 +582,41 @@ class TestPythonCheckMixin:
             # Edge case: nothing found at all, returns "python3" literal
             assert result == "python3"
 
-    def test_get_project_python_logs_warning_no_venv(
+    def test_get_project_python_logs_fallback_at_info_not_warning(
         self, tmp_path, monkeypatch, caplog
     ):
-        """get_project_python logs warning when no venv found."""
+        """get_project_python logs the fallback it picked, at INFO.
+
+        The level matters.  This used to be WARNING, which was the
+        right level when this method was the only venv gate — it was
+        the last chance to shout before running against a borrowed
+        interpreter.  Now ``check_project_venv_or_fail`` is the gate
+        and it fails hard; by the time you reach the fallback cascade
+        here you've either already passed that gate (so the fallback
+        is fine) or you're a bundled-tool check that doesn't care
+        which python it gets.  Either way it's an FYI, not an alarm.
+        Leaving it at WARNING would train people to ignore warnings
+        — which is exactly how the stale-venv bug survived as long
+        as it did.
+        """
         import logging
 
-        # Clear VIRTUAL_ENV
         monkeypatch.delenv("VIRTUAL_ENV", raising=False)
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.INFO):
             self.mixin.get_project_python(str(tmp_path))
 
-        # Should have logged a warning about no venv
-        assert any("No virtual environment found" in msg for msg in caplog.messages)
+        info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+        assert info_records, "expected an INFO record naming the fallback"
+        msg = info_records[0].message
+        assert "No project venv" in msg
+        # Names WHICH fallback it landed on — sys.executable or PATH
+        # — not just "no venv found, good luck".
+        assert "sys.executable" in msg or "PATH" in msg
+
+        # And explicitly NOT a warning.  A WARNING here would mean
+        # the hard-stop gate isn't doing its job.
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
     def test_python_execution_failed_hint(self):
         """Test _python_execution_failed_hint returns helpful text."""

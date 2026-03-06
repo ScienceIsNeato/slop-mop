@@ -14,6 +14,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -49,10 +50,11 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
           assertion on tuples, undefined names). Fix the code.
 
     Re-check:
-      ./sm swab -g laziness:sloppy-formatting.py --verbose
+      sm swab -g laziness:sloppy-formatting.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION  # black, isort, flake8
 
     @property
     def name(self) -> str:

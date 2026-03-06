@@ -6,14 +6,16 @@ Output is designed to be prescriptive for AI agents:
 - Provides copy-paste-ready line references
 """
 
+import ast
 import os
 import re
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -67,6 +69,103 @@ def _get_compare_branch() -> str:
     )
 
 
+def _first_range(ranges: str) -> Optional[Tuple[int, int]]:
+    """Pick the first ``start-end`` (or single ``N``) chunk from a
+    coverage ``missing`` string like ``"12-18, 42, 90-101"``.
+
+    Returns ``None`` when nothing parses — never raises.  We use the
+    FIRST range rather than all of them because fix_strategy text is a
+    single sentence: pointing at one concrete block gives the agent a
+    starting handle, and the full range list is already in ``message``.
+    """
+    for chunk in ranges.split(","):
+        chunk = chunk.strip()
+        m = re.match(r"^(\d+)(?:-(\d+))?$", chunk)
+        if m:
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else start
+            return start, end
+    return None
+
+
+def _characterise_block(func: ast.AST, start: int, end: int) -> Optional[str]:
+    """Identify whether an uncovered range sits inside an ``except``
+    clause or an ``if`` body — the two block types where the testing
+    approach is obvious (trigger the exception / supply the branching
+    input).  Returns a hint sentence or ``None`` when the range doesn't
+    land in a recognisable construct.
+    """
+    for node in ast.walk(func):
+        lo = getattr(node, "lineno", None)
+        hi = getattr(node, "end_lineno", None)
+        if lo is None or hi is None:
+            continue
+        if lo <= start and end <= hi:
+            if isinstance(node, ast.ExceptHandler):
+                return " This is an except block — test by triggering " "the exception."
+            if isinstance(node, ast.If):
+                return (
+                    " This is a conditional branch — test with input "
+                    "that takes this path."
+                )
+    return None
+
+
+def _resolve_uncovered_range(
+    project_root: str, filepath: str, ranges: str
+) -> Optional[str]:
+    """Resolve an uncovered line range to its enclosing function name
+    and, where possible, characterise the block type.
+
+    Returns a fix_strategy string or ``None``.  ``None`` is honest:
+    it means we couldn't locate the range inside a function (module-
+    level code, unparseable file, file moved since coverage ran).
+    Never guesses — a wrong function name is worse than no name.
+    """
+    span = _first_range(ranges)
+    if span is None:
+        return None
+    start, end = span
+
+    source_path = Path(project_root) / filepath
+    try:
+        source = source_path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+    except (OSError, SyntaxError, ValueError):
+        return None
+
+    # Find the innermost function containing the range.  Nested
+    # defs: prefer the tighter (inner) one since that's the name the
+    # test author will grep for.  Typed to the FunctionDef union, not
+    # ast.AST — mypy otherwise can't see .lineno/.name, and a type:
+    # ignore here would be a lie about what we actually store.
+    enclosing: Optional[Union[ast.FunctionDef, ast.AsyncFunctionDef]] = None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            lo = node.lineno
+            hi = getattr(node, "end_lineno", None)
+            if hi is None:
+                continue
+            if lo <= start and end <= hi:
+                if enclosing is None or lo > enclosing.lineno:
+                    enclosing = node
+
+    if enclosing is None:
+        # Module-level code — no function to name, and guessing a
+        # test-file path would violate the compute-don't-guess rule.
+        return None
+
+    func_name = enclosing.name
+    strategy = (
+        f"Lines {start}-{end} in {func_name}() are uncovered. "
+        f"Write a test that exercises this path."
+    )
+    hint = _characterise_block(enclosing, start, end)
+    if hint:
+        strategy += hint
+    return strategy
+
+
 class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
     """Python test coverage enforcement.
 
@@ -89,10 +188,11 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
           to generate coverage data.
 
     Re-check:
-      ./sm swab -g overconfidence:coverage-gaps.py --verbose
+      sm swab -g overconfidence:coverage-gaps.py --verbose
     """
 
     tool_context = ToolContext.PROJECT
+    role = CheckRole.FOUNDATION  # coverage.py
 
     DEFAULT_THRESHOLD = 80
 
@@ -156,7 +256,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         start_time = time.time()
 
         # PROJECT check: bail early when no project venv exists
-        venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+        venv_warn = self.check_project_venv_or_fail(project_root, start_time)
         if venv_warn is not None:
             return venv_warn
 
@@ -219,6 +319,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             Finding(
                 message=f"{miss} uncovered lines: {ranges}",
                 file=fp,
+                fix_strategy=_resolve_uncovered_range(project_root, fp, ranges),
             )
             for fp, _stmts, miss, ranges in missing_files
         ]
@@ -238,7 +339,12 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             duration=duration,
             output=prescriptive_output,
             error=COVERAGE_BELOW_THRESHOLD,
-            fix_suggestion="Add tests for the files and lines listed above.",
+            fix_suggestion=(
+                "Each uncovered range above is resolved to its "
+                "enclosing function where possible. Write tests that "
+                "exercise those paths. Verify with: "
+                f"sm swab -g {self.full_name}"
+            ),
             findings=per_file_findings,
         )
 
@@ -411,7 +517,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
         start_time = time.time()
 
         # PROJECT check: bail early when no project venv exists
-        venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+        venv_warn = self.check_project_venv_or_fail(project_root, start_time)
         if venv_warn is not None:
             return venv_warn
 

@@ -1,9 +1,24 @@
 """Quality gate checks for slopmop.
 
 This module provides registration for all available checks and aliases.
+
+The ``slopmop.core.registry`` import is deferred to function-call time.
+``registry.py`` imports ``slopmop.checks.base``, which must run this
+``__init__.py`` first (parent package initialisation).  If we import
+registry here at module level, the cycle only happens to work when
+``sm.py`` is the entry point because it touches ``checks.base`` before
+``registry`` does.  A bare ``from slopmop.core.registry import
+get_registry`` — the obvious first line in a REPL — blows up with a
+partial-initialisation ImportError.  Deferring to function bodies
+breaks the cycle in every import order.
 """
 
-from slopmop.core.registry import CheckRegistry, get_registry
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from slopmop.core.registry import CheckRegistry
 
 
 def _register_python_checks(registry: CheckRegistry) -> None:
@@ -130,6 +145,8 @@ def register_all_checks() -> None:
 
     Call this function before running checks to ensure all checks are available.
     """
+    from slopmop.core.registry import get_registry
+
     registry = get_registry()
     _register_python_checks(registry)
     _register_javascript_checks(registry)
@@ -148,6 +165,8 @@ def ensure_checks_registered() -> None:
     the registry might have been reset.
     """
     global _checks_registered
+    from slopmop.core.registry import get_registry
+
     registry = get_registry()
     # Also check if registry is actually populated, not just the flag
     # This handles test scenarios where registry was reset

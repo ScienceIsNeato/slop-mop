@@ -5,6 +5,7 @@ from typing import List
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -36,10 +37,11 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: Check package.json syntax.
 
     Re-check:
-      ./sm swab -g overconfidence:untested-code.js --verbose
+      sm swab -g overconfidence:untested-code.js --verbose
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION  # jest
 
     @property
     def name(self) -> str:
@@ -140,7 +142,11 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 duration=duration,
                 output=result.output,
                 error=f"{len(findings)} test file(s) failed",
-                fix_suggestion="Run: npm test to see detailed failures",
+                fix_suggestion=(
+                    "Test failures shown above. Fix the assertion "
+                    "errors, then verify with: "
+                    f"sm swab -g {self.full_name}"
+                ),
                 findings=findings,
             )
 

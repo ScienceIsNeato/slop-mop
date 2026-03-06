@@ -158,7 +158,7 @@ class ConfigDebtCheck(BaseCheck):
     blocker.
 
     Re-check:
-      ./sm swab -g laziness:silenced-gates
+      sm swab -g laziness:silenced-gates
     """
 
     tool_context = ToolContext.PURE

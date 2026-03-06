@@ -34,6 +34,43 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
 
+# Bandit rule IDs → concrete remediation.  bandit's own messages describe
+# WHAT is wrong; these describe WHAT TO DO.  Only covers rules where the
+# fix is unambiguous — unknown rule IDs get fix_strategy=None rather than
+# a generic guess, because bandit's message is already in the Finding.
+_BANDIT_FIXES = {
+    "B506": (
+        "Replace yaml.load(data) with yaml.safe_load(data) — the unsafe "
+        "loader can execute arbitrary Python."
+    ),
+    "B602": (
+        "Replace shell=True with a list argument: "
+        "subprocess.run(['cmd', arg]) instead of "
+        "subprocess.run(f'cmd {arg}', shell=True)."
+    ),
+    "B301": (
+        "Replace pickle.load() with json.load() if the data is trusted "
+        "JSON. If you must unpickle, validate the source."
+    ),
+    "B108": (
+        "Use tempfile.mkstemp() or tempfile.TemporaryDirectory() instead "
+        "of hardcoded /tmp paths."
+    ),
+    "B201": (
+        "Remove debug=True before deployment — Flask's debug mode enables "
+        "arbitrary code execution via the debugger PIN."
+    ),
+    "B105": (
+        "Move the hardcoded password to an environment variable or "
+        "secrets manager. Never commit credentials."
+    ),
+    "B608": (
+        "Use parameterised queries: "
+        "cursor.execute('SELECT ... WHERE x = %s', (value,)) instead of "
+        "f-string interpolation."
+    ),
+}
+
 EXCLUDED_DIRS = [
     "venv",
     ".venv",
@@ -84,7 +121,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-check:
-      ./sm swab -g myopia:vulnerability-blindness.py --verbose
+      sm swab -g myopia:vulnerability-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
@@ -161,17 +198,26 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     def _is_scanner_available(name: str, importable: dict[str, str]) -> bool:
         """Check if a scanner tool is available on this system.
 
-        For Python-based scanners (bandit, detect-secrets), checks
-        importability. For external binaries (semgrep), checks PATH.
+        For Python-based scanners (bandit, detect-secrets) we use
+        ``find_spec`` rather than ``import_module``.  Actually importing
+        bandit pulls in stevedore, which eagerly enumerates every
+        entry-point plugin and logs a WARNING for each one that fails
+        to load — ``Could not load 'sarif': No module named 'sarif_om'``
+        leaks to stderr on every swab.  Bandit's dep tree also imports
+        ``requests`` which fires a RequestsDependencyWarning on version
+        mismatch.  We don't need any of that just to answer "is it
+        installed?" — ``find_spec`` checks the import machinery without
+        executing a single line of the target module.
+
+        The scanner is then invoked as a subprocess anyway, so a
+        broken install (exists but raises on import) surfaces as a
+        subprocess failure in ``_run_bandit``, which is the right
+        place to report it.
         """
         if name in importable:
-            try:
-                import importlib
+            import importlib.util
 
-                importlib.import_module(importable[name])
-                return True
-            except ImportError:
-                return False
+            return importlib.util.find_spec(importable[name]) is not None
         # External binary (semgrep, etc.)
         return shutil.which(name) is not None
 
@@ -262,7 +308,12 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
-            fix_suggestion="Address HIGH severity issues first. They block merge.",
+            fix_suggestion=(
+                "Each finding above has a rule-specific fix where known. "
+                "Bandit's HIGH severity findings are real vulnerabilities "
+                "— fix those first. Verify with: "
+                f"sm swab -g {self.full_name}"
+            ),
             findings=all_findings,
         )
 
@@ -318,17 +369,23 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 f"- {r.get('filename', '')}:{r.get('line_number', '')}"
                 for r in issues[:10]
             )
-            # bandit has full file:line — emit per-issue Findings
+            # bandit has full file:line — emit per-issue Findings.
+            # test_id is the Bxxx rule code; look it up for a concrete
+            # remediation.  Unknown codes get fix_strategy=None — the
+            # bandit message itself is in `message` and is usually
+            # descriptive enough, so no need to invent a generic fix.
             sarif: List[Finding] = []
             for r in issues:
                 line_no = r.get("line_number")
+                test_id = r.get("test_id")
                 sarif.append(
                     Finding(
                         message=f"[{r['issue_severity']}] {r['issue_text']}",
                         level=FindingLevel.ERROR,
                         file=r.get("filename") or None,
                         line=line_no if isinstance(line_no, int) else None,
-                        rule_id=r.get("test_id"),
+                        rule_id=test_id,
+                        fix_strategy=_BANDIT_FIXES.get(test_id),
                     )
                 )
             return SecuritySubResult("bandit", False, detail, sarif)
@@ -530,7 +587,12 @@ class SecurityCheck(SecurityLocalCheck):
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
-            fix_suggestion="Address HIGH severity issues first. They block merge.",
+            fix_suggestion=(
+                "Each finding above has a rule-specific fix where known. "
+                "Bandit's HIGH severity findings are real vulnerabilities "
+                "— fix those first. Verify with: "
+                f"sm swab -g {self.full_name}"
+            ),
             findings=all_findings,
         )
 
