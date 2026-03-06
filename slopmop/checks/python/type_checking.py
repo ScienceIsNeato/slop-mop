@@ -89,21 +89,32 @@ def _detect_python_version(project_root: str) -> str:
 def _detect_venv_path(project_root: str) -> Tuple[Optional[str], Optional[str]]:
     """Detect venv path and name for pyright config.
 
-    Returns (venvPath, venv) tuple for pyrightconfig.json.
-    Priority: project-local venvs first, then VIRTUAL_ENV.
+    Returns ``(venvPath, venv)`` for the generated pyrightconfig.json,
+    or ``(None, None)`` to let pyright auto-detect.
+
+    Only returns project-local venvs. The old behaviour fell back to
+    ``$VIRTUAL_ENV`` when no ``./venv`` or ``./.venv`` existed, which
+    meant a stale shell activation from another project got baked
+    into the generated config — pyright would then type-check this
+    project's imports against that project's site-packages and
+    report nonsense. The gate's temp config is supposed to be
+    ephemeral, but when the process is killed hard the file leaks
+    with that foreign path frozen in it; one such leak made it to
+    ``main`` with an absolute ``/Users/…`` path and sat there for a
+    month. The mixin's ``has_project_venv`` had the same
+    ``$VIRTUAL_ENV``-counts-as-project-venv bug for the same reason
+    — "surely *some* venv is better than none." It isn't. The wrong
+    venv gives you confident wrong answers.
+
+    ``(None, None)`` is fine — pyright auto-detects ``./.venv``
+    without a ``venvPath`` key at all, and when there genuinely is
+    no venv anywhere, a config that points at nothing is more honest
+    than one that points at the wrong thing.
     """
-    # Check project-local venvs first (highest priority)
     for venv_name in ["venv", ".venv"]:
         venv_path = Path(project_root) / venv_name
         if venv_path.exists():
             return project_root, venv_name
-
-    # Fall back to VIRTUAL_ENV if no project venv exists
-    virtual_env = os.environ.get("VIRTUAL_ENV")
-    if virtual_env and Path(virtual_env).exists():
-        venv_parent = str(Path(virtual_env).parent)
-        venv_name = Path(virtual_env).name
-        return venv_parent, venv_name
 
     return None, None
 

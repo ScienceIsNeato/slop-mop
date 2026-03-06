@@ -71,8 +71,10 @@ class ToolContext(Enum):
               test fixtures, coverage instruments project modules, jinja2
               compiles project templates).  Resolved via
               ``get_project_python()``.  When no project venv exists the
-              gate **warns and skips** instead of failing — with an
-              actionable message telling the user exactly how to create one.
+              gate **fails** — a borrowed interpreter produces results that
+              describe the wrong thing, and a wrong result with a green
+              checkmark is worse than a red one.  The failure message
+              includes the exact command to create the venv.
 
     NODE — Tool is resolved via npm/npx from the project's node_modules.
            Requires ``package.json`` at project root.  Examples: eslint,

@@ -191,22 +191,24 @@ class MyCheck(BaseCheck, PythonCheckMixin):
 
 1. Does your gate call any external executable? **No** → `PURE`
 2. Does it wrap a Python tool that ships with slop-mop (listed in `pyproject.toml` dependencies)? **Yes** → `SM_TOOL`. Use bare command name in `_run_command()` (e.g., `["bandit", ...]`), not `get_project_python() + -m`.
-3. Does it need to run *inside* the project's own Python environment (pytest, coverage, project-specific imports)? **Yes** → `PROJECT`. Use `get_project_python()`. Call `check_project_venv_or_warn()` at the top of `run()`.
+3. Does it need to run *inside* the project's own Python environment (pytest, coverage, project-specific imports)? **Yes** → `PROJECT`. Use `get_project_python()`. Call `check_project_venv_or_fail()` at the top of `run()`.
 4. Does it need Node.js / npm packages? **Yes** → `NODE`.
 
-**PROJECT checks must include the venv guard:**
+**PROJECT checks must include the venv gate:**
 
 ```python
 def run(self, project_root: str) -> CheckResult:
     start_time = time.time()
 
-    # PROJECT check: bail early when no project venv exists
-    venv_warn = self.check_project_venv_or_warn(project_root, start_time)
-    if venv_warn is not None:
-        return venv_warn
+    # PROJECT check: refuse to run against a borrowed interpreter
+    no_venv = self.check_project_venv_or_fail(project_root, start_time)
+    if no_venv is not None:
+        return no_venv
 
     # ... normal check logic ...
 ```
+
+This is a hard stop, not a courtesy warning. If `./venv` or `./.venv` doesn't exist the gate returns `FAILED` with the exact `python -m venv` command to run. No escape hatch — an ambient `$VIRTUAL_ENV` from some other project does not count. A PROJECT check that runs pytest against the wrong interpreter produces a green checkmark that describes a different codebase; failing loudly is the only honest outcome.
 
 ### Check Role (Required Decision)
 

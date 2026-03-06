@@ -90,10 +90,10 @@ class TestTemplateValidationCheck:
         # only passes when the test runner itself happens to have
         # VIRTUAL_ENV set — i.e. it was accidentally coupled to the
         # developer's shell.  Discovered when a fresh .venv with
-        # VIRTUAL_ENV unset flipped this to WARNED.
+        # VIRTUAL_ENV unset flipped this to WARNED (now FAILED).
         success_result = _make_result(output="1 passed", returncode=0)
         with (
-            patch.object(check, "check_project_venv_or_warn", return_value=None),
+            patch.object(check, "check_project_venv_or_fail", return_value=None),
             patch.object(check, "_run_command", return_value=success_result),
         ):
             result = check.run(str(tmp_path))
@@ -115,7 +115,7 @@ class TestTemplateValidationCheck:
 
         fail_result = _make_result(output="FAILED test_x.py", returncode=1)
         with (
-            patch.object(check, "check_project_venv_or_warn", return_value=None),
+            patch.object(check, "check_project_venv_or_fail", return_value=None),
             patch.object(check, "_run_command", return_value=fail_result),
         ):
             result = check.run(str(tmp_path))
@@ -237,9 +237,23 @@ class TestTemplateValidationVenvGuard:
         assert result.status == CheckStatus.PASSED
         assert "1 template" in result.output
 
-    def test_template_test_warns_without_project_venv(self, tmp_path):
-        """_run_template_test returns WARNED when no project venv exists."""
-        # Create the template test file structure
+    def test_template_test_fails_without_project_venv(self, tmp_path):
+        """_run_template_test returns FAILED when no project venv exists.
+
+        The smoke-test path shells out to the project's pytest —
+        that's ``python -m pytest`` where ``python`` has to be the
+        project's interpreter or you're testing conftest.py's
+        behaviour under the wrong dependency set.  Without a project
+        venv there is no correct interpreter to hand to pytest, so
+        the gate refuses.
+
+        This used to return WARNED.  WARNED rendered yellow in the
+        status board — visually distinct from PASSED but not a
+        blocker, which in practice meant "noted, moving on."  A
+        template smoke test that ran against the wrong pytest would
+        be actively misleading; not running it at all and saying so
+        in red is the honest answer.
+        """
         test_dir = tmp_path / "tests" / "integration"
         test_dir.mkdir(parents=True)
         (test_dir / "test_template_smoke.py").write_text("# test file")
@@ -248,9 +262,16 @@ class TestTemplateValidationVenvGuard:
         templates_dir.mkdir()
 
         check = TemplateValidationCheck({"templates_dir": "templates"})
-        # No venv/ or .venv/ in tmp_path, and clear VIRTUAL_ENV so
-        # has_project_venv returns False
+        # No venv/ or .venv/ in tmp_path.  VIRTUAL_ENV cleared so
+        # the stale-activation callout doesn't fire — this test is
+        # about the base case, not the "you have the wrong venv
+        # active" case.
         with patch.dict("os.environ", {}, clear=True):
             result = check.run(str(tmp_path))
-        assert result.status == CheckStatus.WARNED
-        assert "No project virtual environment found" in result.error
+        assert result.status == CheckStatus.FAILED
+        assert "No project venv" in result.error
+        assert "borrowed interpreter" in result.error
+        # The fix_suggestion tells you exactly what to run, in
+        # the project directory.  Not "create a venv" — the command.
+        assert "python3 -m venv" in result.fix_suggestion
+        assert str(tmp_path) in result.fix_suggestion

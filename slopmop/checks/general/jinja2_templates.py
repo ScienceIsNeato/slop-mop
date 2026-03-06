@@ -132,7 +132,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
         project's venv.
         """
         # PROJECT check: bail early when no project venv exists
-        venv_warn = self.check_project_venv_or_warn(project_root, start_time)
+        venv_warn = self.check_project_venv_or_fail(project_root, start_time)
         if venv_warn is not None:
             return venv_warn
 
