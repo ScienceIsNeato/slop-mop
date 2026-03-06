@@ -60,8 +60,8 @@ class DeadCodeCheck(BaseCheck):
     Common failures:
       Unused function/class: Delete it, or add to vulture whitelist
           if it's used dynamically (e.g., via getattr, entrypoints).
-      Unused import: Remove it or mark with # noqa if needed for
-          side effects.
+      Unused import: Remove it, or re-export explicitly if needed
+          for side effects.
 
     Re-check:
       sm swab -g laziness:dead-code.py --verbose

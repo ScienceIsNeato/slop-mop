@@ -292,7 +292,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
             output = self._format_summary(error_lines, code_counts)
             total = sum(code_counts.values())
 
-            fix_parts = ["Fix type annotations or add # type: ignore comments."]
+            fix_parts = ["Fix type annotations or update function signatures."]
             if "type-arg" in code_counts:
                 fix_parts.append(
                     "type-arg: Add type parameters to generics "
