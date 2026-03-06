@@ -83,6 +83,13 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tools/find-duplicate-strings/package-lock.json
+
       - name: Install slopmop
         # ────────────────────────────────────────────────────────────
         # COPYING THIS TO YOUR REPO?  Change this line to:
@@ -99,13 +106,24 @@ jobs:
         # whatever stale version PyPI has.  `pip install .` installs
         # from the checkout.  On your repo you want PyPI's latest.
         #
-        # The [lint] extra brings black/flake8/isort so the
-        # laziness:sloppy-formatting gate can actually run.
-        # The [typing] extra brings mypy/pyright so the
-        # overconfidence:missing-annotations gate can run.
+        # [all] brings every tool extra (lint, typing, analysis,
+        # security, testing) so ALL gates have their dependencies.
+        #
+        # We install into a project-local venv so that PROJECT-context
+        # gates (untested-code, coverage-gaps) can find pytest via
+        # has_project_venv() instead of warning and skipping.
         # ────────────────────────────────────────────────────────────
         run: |
-          pip install ".[lint,typing]"
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -e ".[all]"
+
+      - name: Build string-duplication tool
+        run: |
+          cd tools/find-duplicate-strings
+          npm install
+          npx tsc
 
       - name: Run scour → SARIF
         id: scour
@@ -115,6 +133,7 @@ jobs:
         # the job so branch protection isn't bypassed.
         continue-on-error: true
         run: |
+          source .venv/bin/activate
           sm scour --sarif --output-file slopmop.sarif --no-json
 
       - name: Upload SARIF
