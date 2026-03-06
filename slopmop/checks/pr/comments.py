@@ -13,7 +13,14 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, GateLevel
+from slopmop.checks.base import (
+    BaseCheck,
+    CheckRole,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    GateLevel,
+)
 from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 
@@ -44,6 +51,7 @@ class PRCommentsCheck(BaseCheck):
     """
 
     level = GateLevel.SCOUR
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

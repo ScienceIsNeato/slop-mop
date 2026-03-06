@@ -85,6 +85,26 @@ When a gate fails, the output tells the agent exactly what to do next:
 
 This is purpose-built for AI agents. The iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
 
+### The Prescription Contract
+
+Every gate failure must be *prescriptive*, not just *descriptive*. A gate that says "coverage too low" is describing a symptom. A gate that says "add tests in `tests/test_foo.py` covering lines 45-67 of `foo.py`" is prescribing a remedy.
+
+This is a joint optimization. Prescriptive output is simultaneously:
+
+- **More maintainable** — a human reading the failure knows exactly what to do. No digging through tool docs, no re-running with `-v`, no interpreting a wall of output.
+- **More token-efficient** — an agent reading the failure can act on the first turn. No exploratory read-search-read cycle burning context to figure out what the gate already knew.
+
+The two goals aren't in tension. When a gate already ran `pytest`, it has the assertion error. When it already ran `coverage`, it has the missing line numbers. When it already ran `bandit`, it has the rule ID that maps to a documented fix. Surfacing that data *is* the fix for both problems at once.
+
+Gates are sorted into two roles to make the contract enforceable:
+
+| Role | What it wraps | Prescription standard |
+|------|---------------|------------------------|
+| 🔧 **Foundation** | Standard tooling (pytest, mypy, black, eslint, bandit) | Relay the tool's own diagnostic. Never say "run the tool yourself". |
+| 🔬 **Diagnostic** | Novel analysis (duplicate strings, complexity creep, size limits) | State what to change, where, and by how much. "Move `foo()` to `bar.py` — clears by 223 lines." |
+
+A gate earns its place by emitting something an agent can cargo-cult. If fixing it requires independent judgment beyond what the gate can factually determine, the finding stays descriptive and `fix_strategy` stays `None` — no guessing.
+
 Use `sm status` for a report card of all gates at once.
 
 ---

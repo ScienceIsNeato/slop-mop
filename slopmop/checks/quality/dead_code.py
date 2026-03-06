@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -67,6 +68,7 @@ class DeadCodeCheck(BaseCheck):
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

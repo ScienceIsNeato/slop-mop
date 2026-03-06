@@ -15,6 +15,7 @@ from typing import List
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -57,6 +58,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
@@ -173,22 +175,50 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         # radon --md lines embed file:line inside markdown — try to recover
         # them, but fall back to a message-only finding when the format
         # doesn't match (still a separate SARIF result per function).
+        #
+        # Line also carries the function name and (score) — extracting
+        # both lets the fix_strategy name the exact function and its
+        # complexity count.  "Extract helpers from foo() (complexity 24)"
+        # is actionable; "break complex functions" is a platitude.
         loc_re = re.compile(r"(\S+\.py)[:\s*]+(\d+)")
+        # radon -s annotates rank with the numeric score in parens, e.g.
+        # "... foo - D (24)" — capture the name token before the dash
+        # and the number in parens.  Either group may miss on odd output;
+        # strategy stays None in that case (no guessing).
+        meta_re = re.compile(r"`?(\w+)`?\s*-\s*[A-F]\s*\((\d+)\)")
         structured: List[Finding] = []
         for v in violations:
             m = loc_re.search(v)
+            fn = meta_re.search(v)
+            strategy = None
+            if fn:
+                name, score = fn.group(1), fn.group(2)
+                strategy = (
+                    f"Extract helpers from {name}() — complexity {score} "
+                    f"exceeds limit {MAX_COMPLEXITY}. Identify the "
+                    f"largest branch or loop and move it to a named "
+                    f"function."
+                )
             if m:
                 structured.append(
-                    Finding(message=v, file=m.group(1), line=int(m.group(2)))
+                    Finding(
+                        message=v,
+                        file=m.group(1),
+                        line=int(m.group(2)),
+                        fix_strategy=strategy,
+                    )
                 )
             else:
-                structured.append(Finding(message=v))
+                structured.append(Finding(message=v, fix_strategy=strategy))
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(violations)} function(s) exceed limit",
-            fix_suggestion="Break complex functions into smaller helpers.",
+            fix_suggestion=(
+                "Decompose each flagged function. The fix_strategy on "
+                "each finding names the specific function and its score."
+            ),
             findings=structured,
         )
 

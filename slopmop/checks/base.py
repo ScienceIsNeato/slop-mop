@@ -48,6 +48,44 @@ class GateLevel(Enum):
     SCOUR = "scour"
 
 
+class CheckRole(Enum):
+    """Architectural tier — what kind of value a gate provides.
+
+    slop-mop gates fall into two fundamentally different classes:
+
+    FOUNDATION — Wraps standard, off-the-shelf dev tooling (black, mypy,
+        pytest, eslint, radon, bandit, etc.) and answers binary structural
+        questions: does it lint, do types check, do tests pass.  These
+        gates are the floor everything else stands on.  Their value-add
+        is *orchestration* — running the right tool at the right time with
+        the right config — not novel detection.  If you ripped slop-mop
+        out, you could reproduce a FOUNDATION gate with one shell command.
+
+    DIAGNOSTIC — Novel analysis with no off-the-shelf equivalent.  AST
+        walking for empty test bodies, git-diff analysis of config
+        weakening, cross-file similarity detection, bespoke pattern
+        matching.  These gates are *why slop-mop exists as a distinct
+        tool* rather than a Makefile.  You cannot reproduce a DIAGNOSTIC
+        gate with a pip install.
+
+    Default is DIAGNOSTIC.  Gates must affirmatively declare themselves
+    FOUNDATION — the burden of proof is "I wrap a standard tool and that
+    tool does the real work", not the other way around.
+
+    Role is determined by *value-add*, not mechanism.  A gate that runs
+    eslint (standard tool) with a bespoke rule config that no public
+    eslint preset includes is DIAGNOSTIC — the novelty is in the rule,
+    not the runner.  A gate that runs radon with default thresholds is
+    FOUNDATION — radon does the detection, slop-mop just picks a number.
+    """
+
+    FOUNDATION = "foundation"
+    DIAGNOSTIC = "diagnostic"
+
+    def __str__(self) -> str:
+        return self.value
+
+
 class ToolContext(Enum):
     """How a gate resolves the external tools it needs.
 
@@ -360,6 +398,12 @@ class BaseCheck(ABC):
     # only run during thorough validation (PR readiness, CI).
     level: ClassVar[GateLevel] = GateLevel.SWAB
 
+    # Default check role — DIAGNOSTIC until proven otherwise.  Gates that
+    # wrap standard tooling (black, pytest, eslint, etc.) where the tool's
+    # core logic IS the check should override to CheckRole.FOUNDATION.
+    # See CheckRole docstring for the full taxonomy.
+    role: ClassVar[CheckRole] = CheckRole.DIAGNOSTIC
+
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
     ):
@@ -588,6 +632,7 @@ class BaseCheck(ABC):
             auto_fixed=auto_fixed,
             category=self.category.key if self.category else None,
             status_detail=status_detail,
+            role=self.role.value,
             findings=findings or [],
         )
 

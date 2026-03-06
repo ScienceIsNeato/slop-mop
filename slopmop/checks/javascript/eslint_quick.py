@@ -11,6 +11,7 @@ from typing import List
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -52,6 +53,7 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

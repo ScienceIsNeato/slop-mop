@@ -14,6 +14,7 @@ from typing import List, Optional, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -93,6 +94,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.PROJECT
+    role = CheckRole.FOUNDATION
 
     DEFAULT_THRESHOLD = 80
 
@@ -209,26 +211,48 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 output=COVERAGE_MEETS_THRESHOLD,
             )
 
-        # Coverage below threshold - provide prescriptive output
-        missing_files = self._parse_missing_lines(result.output)
+        return self._build_failure(coverage_pct, threshold, result.output, duration)
+
+    def _build_failure(
+        self,
+        coverage_pct: float,
+        threshold: int,
+        raw_output: str,
+        duration: float,
+    ) -> CheckResult:
+        """Construct the below-threshold failure result with per-file findings.
+
+        Each per-file finding gets a fix_strategy pointing at the
+        conventional test-file location + the exact uncovered line range.
+        We DON'T guess what the test should assert — only where to write
+        it and which lines it must exercise.  Anything further is
+        judgment the agent brings.
+        """
+        missing_files = self._parse_missing_lines(raw_output)
         prescriptive_output = self._format_prescriptive_output(
             coverage_pct, threshold, missing_files
         )
 
-        per_file_findings = [
-            Finding(
-                message=f"{miss} uncovered lines: {ranges}",
-                file=fp,
+        per_file: List[Finding] = []
+        for fp, _stmts, miss, ranges in missing_files:
+            stem = Path(fp).stem
+            per_file.append(
+                Finding(
+                    message=f"{miss} uncovered lines: {ranges}",
+                    file=fp,
+                    fix_strategy=(
+                        f"Add tests in tests/test_{stem}.py that exercise "
+                        f"lines {ranges} of {fp}"
+                    ),
+                )
             )
-            for fp, _stmts, miss, ranges in missing_files
-        ]
         # Fallback when per-file parsing yields nothing (e.g. minimal
         # coverage output that only contains the TOTAL line).
-        if not per_file_findings:
-            per_file_findings = [
+        if not per_file:
+            per_file = [
                 Finding(
                     message=(
-                        f"Coverage {coverage_pct:.1f}% below " f"threshold {threshold}%"
+                        f"Coverage {coverage_pct:.1f}% below threshold {threshold}%"
                     ),
                 )
             ]
@@ -238,8 +262,11 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             duration=duration,
             output=prescriptive_output,
             error=COVERAGE_BELOW_THRESHOLD,
-            fix_suggestion="Add tests for the files and lines listed above.",
-            findings=per_file_findings,
+            fix_suggestion=(
+                "Write tests exercising the uncovered line ranges above. "
+                "Each finding names its target test file."
+            ),
+            findings=per_file,
         )
 
     def _parse_missing_lines(self, output: str) -> List[Tuple[str, int, int, str]]:
@@ -368,6 +395,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
 
     level = GateLevel.SCOUR
     tool_context = ToolContext.PROJECT
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

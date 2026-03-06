@@ -161,6 +161,17 @@ class Finding:
             own name — one gate wraps many rules.  ``None`` when the
             gate has a single rule; the SARIF reporter then uses the
             gate's ``full_name`` as the ruleId.
+        fix_strategy: Specific, actionable remediation instruction —
+            what the agent should *actually do* to resolve THIS finding.
+            Distinct from :attr:`CheckResult.fix_suggestion`, which is
+            gate-level guidance; this is per-finding.  The contract:
+            an agent reading ``fix_strategy`` should be able to produce
+            a fix without further analysis.  ``None`` when the gate
+            cannot determine a specific fix — better to say nothing
+            than guess.  Examples:
+            ``"Replace yaml.load(data) with yaml.safe_load(data)"``,
+            ``"Move PythonCheckMixin (273 lines, starts line 619) to "
+            "its own file"``.
     """
 
     message: str
@@ -171,13 +182,16 @@ class Finding:
     end_line: Optional[int] = None
     end_column: Optional[int] = None
     rule_id: Optional[str] = None
+    fix_strategy: Optional[str] = None
 
     def __str__(self) -> str:
         """Human-readable ``file:line:col: message`` format.
 
         Used by the auto-output rail in ``_create_result`` to synthesise
         console output from structured findings when a gate didn't supply
-        free-form text.
+        free-form text.  When ``fix_strategy`` is set, renders as a
+        second indented line so the instruction is visually distinct
+        from the diagnosis.
         """
         loc = ""
         if self.file:
@@ -187,7 +201,10 @@ class Finding:
                 if self.column is not None:
                     loc += f":{self.column}"
             loc += ": "
-        return f"{loc}{self.message}"
+        base = f"{loc}{self.message}"
+        if self.fix_strategy:
+            return f"{base}\n  → fix: {self.fix_strategy}"
+        return base
 
     def to_dict(self) -> Dict[str, object]:
         """Serialise for JSON output.  Omits ``None`` fields — matches
@@ -209,6 +226,8 @@ class Finding:
             d["end_column"] = self.end_column
         if self.rule_id is not None:
             d["rule_id"] = self.rule_id
+        if self.fix_strategy is not None:
+            d["fix_strategy"] = self.fix_strategy
         return d
 
 
@@ -244,6 +263,7 @@ class CheckResult:
     scope: Optional[ScopeInfo] = None
     skip_reason: Optional["SkipReason"] = None
     status_detail: Optional[str] = None
+    role: Optional[str] = None
     findings: List[Finding] = field(default_factory=lambda: cast(List[Finding], []))
 
     def to_dict(self) -> Dict[str, object]:
@@ -269,6 +289,8 @@ class CheckResult:
             d["skip_reason"] = self.skip_reason.value
         if self.status_detail:
             d["status_detail"] = self.status_detail
+        if self.role:
+            d["role"] = self.role
         if self.findings:
             d["findings"] = [f.to_dict() for f in self.findings]
         return d

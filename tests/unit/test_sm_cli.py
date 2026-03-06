@@ -824,12 +824,19 @@ class TestScourDisablesFailFast:
             json_output=False,
         )
 
+    @patch("slopmop.cli.validate.ConsoleAdapter")
     @patch("slopmop.cli.validate.ConsoleReporter")
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
     def test_scour_forces_fail_fast_off(
-        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
     ):
         """Scour always creates executor with fail_fast=False."""
         from slopmop.cli.validate import _run_validation
@@ -844,12 +851,19 @@ class TestScourDisablesFailFast:
         _, kwargs = mock_executor_cls.call_args
         assert kwargs["fail_fast"] is False
 
+    @patch("slopmop.cli.validate.ConsoleAdapter")
     @patch("slopmop.cli.validate.ConsoleReporter")
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
     def test_scour_ignores_no_fail_fast_flag(
-        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
     ):
         """Even with --no-fail-fast omitted, scour still disables fail-fast."""
         from slopmop.cli.validate import _run_validation
@@ -867,12 +881,19 @@ class TestScourDisablesFailFast:
         _, kwargs = mock_executor_cls.call_args
         assert kwargs["fail_fast"] is False
 
+    @patch("slopmop.cli.validate.ConsoleAdapter")
     @patch("slopmop.cli.validate.ConsoleReporter")
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
     def test_swab_defaults_to_fail_fast(
-        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
     ):
         """Swab defaults to fail_fast=True."""
         from slopmop.cli.validate import _run_validation
@@ -886,12 +907,19 @@ class TestScourDisablesFailFast:
         _, kwargs = mock_executor_cls.call_args
         assert kwargs["fail_fast"] is True
 
+    @patch("slopmop.cli.validate.ConsoleAdapter")
     @patch("slopmop.cli.validate.ConsoleReporter")
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
     def test_swab_respects_no_fail_fast_flag(
-        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
     ):
         """Swab with --no-fail-fast creates executor with fail_fast=False."""
         from slopmop.cli.validate import _run_validation

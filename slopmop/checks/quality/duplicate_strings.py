@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, cast
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -54,6 +55,7 @@ class StringDuplicationCheck(BaseCheck):
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

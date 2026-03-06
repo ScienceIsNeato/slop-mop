@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -42,6 +43,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

@@ -5,6 +5,7 @@ from typing import List
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -47,6 +48,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.PROJECT
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
@@ -168,21 +170,17 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
             if failed_tests:
                 error_msg += ":\n" + "\n".join(failed_tests[:5])
 
-            # pytest FAILED lines: "FAILED path/to/test.py::Test::name - reason"
-            structured: List[Finding] = []
-            for line in failed_tests:
-                rest = line.split("FAILED", 1)[-1].strip()
-                path = rest.split("::", 1)[0]
-                if path.endswith(".py"):
-                    structured.append(Finding(message=rest, file=path))
-
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
                 error=error_msg,
-                fix_suggestion="Run: pytest -v to see detailed test failures",
-                findings=structured,
+                fix_suggestion=(
+                    "Review the traceback in the output above — --tb=short "
+                    "is already captured. Fix the assertion, then re-run "
+                    "this gate."
+                ),
+                findings=_parse_failed_lines(failed_tests),
             )
 
         return self._create_result(
@@ -190,3 +188,25 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
             duration=duration,
             output=result.output,
         )
+
+
+def _parse_failed_lines(failed_tests: List[str]) -> List[Finding]:
+    """Turn pytest FAILED summary lines into Findings with fix_strategy.
+
+    Line format: ``FAILED path/to/test.py::Test::name - reason``
+    The "- reason" suffix IS the assertion message (pytest's own
+    one-line summary).  Surface it as fix_strategy — no need to tell
+    the agent to re-run pytest when we already have the why.
+    """
+    structured: List[Finding] = []
+    for line in failed_tests:
+        rest = line.split("FAILED", 1)[-1].strip()
+        path = rest.split("::", 1)[0]
+        # Extract assertion text after " - " if present
+        reason = ""
+        if " - " in rest:
+            reason = rest.split(" - ", 1)[1].strip()
+        strategy = f"Fix the assertion: {reason}" if reason else None
+        if path.endswith(".py"):
+            structured.append(Finding(message=rest, file=path, fix_strategy=strategy))
+    return structured

@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -46,6 +47,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.PROJECT
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

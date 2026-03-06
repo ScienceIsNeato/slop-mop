@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -80,6 +81,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
