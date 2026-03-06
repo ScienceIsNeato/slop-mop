@@ -49,7 +49,7 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
           for syntax errors.
 
     Re-check:
-      ./sm swab -g laziness:sloppy-frontend.js --verbose
+      sm swab -g laziness:sloppy-frontend.js --verbose
     """
 
     tool_context = ToolContext.NODE

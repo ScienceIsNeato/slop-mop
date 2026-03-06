@@ -52,7 +52,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
           produce coverage reports.
 
     Re-check:
-      ./sm swab -g overconfidence:coverage-gaps.js --verbose
+      sm swab -g overconfidence:coverage-gaps.js --verbose
     """
 
     tool_context = ToolContext.NODE

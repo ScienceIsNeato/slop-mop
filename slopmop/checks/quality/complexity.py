@@ -54,7 +54,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
       radon not available: pip install radon
 
     Re-check:
-      ./sm swab -g laziness:complexity-creep.py --verbose
+      sm swab -g laziness:complexity-creep.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

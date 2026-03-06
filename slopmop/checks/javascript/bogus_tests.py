@@ -344,7 +344,7 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
           expect() calls to verify behavior.
 
     Re-check:
-      ./sm swab -g deceptiveness:bogus-tests.js --verbose
+      sm swab -g deceptiveness:bogus-tests.js --verbose
     """
 
     @property

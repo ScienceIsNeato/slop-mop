@@ -64,7 +64,7 @@ class DeadCodeCheck(BaseCheck):
           side effects.
 
     Re-check:
-      ./sm swab -g laziness:dead-code.py --verbose
+      sm swab -g laziness:dead-code.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

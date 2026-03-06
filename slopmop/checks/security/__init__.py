@@ -120,7 +120,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-check:
-      ./sm swab -g myopia:vulnerability-blindness.py --verbose
+      sm swab -g myopia:vulnerability-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
@@ -199,15 +199,18 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         """Check if a scanner tool is available on this system.
 
         For Python-based scanners (bandit, detect-secrets), checks
-        importability. For external binaries (semgrep), checks PATH.
+        importability via ``find_spec`` (not ``import_module``).
+        ``import_module("bandit")`` pulls in stevedore, which enumerates
+        every entry-point plugin and logs WARNING for each failed load —
+        "Could not load 'sarif'" on every run.  ``find_spec`` probes the
+        import machinery without executing the target package.
         """
         if name in importable:
             try:
-                import importlib
+                import importlib.util
 
-                importlib.import_module(importable[name])
-                return True
-            except ImportError:
+                return importlib.util.find_spec(importable[name]) is not None
+            except (ImportError, ModuleNotFoundError, ValueError):
                 return False
         # External binary (semgrep, etc.)
         return shutil.which(name) is not None

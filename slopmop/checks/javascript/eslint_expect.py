@@ -77,7 +77,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
           assertion helper.
 
     Re-check:
-      ./sm swab -g deceptiveness:hand-wavy-tests.js --verbose
+      sm swab -g deceptiveness:hand-wavy-tests.js --verbose
     """
 
     tool_context = ToolContext.NODE

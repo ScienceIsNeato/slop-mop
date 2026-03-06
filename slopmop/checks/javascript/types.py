@@ -66,7 +66,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: TypeScript must be in devDependencies.
 
     Re-check:
-      ./sm swab -g overconfidence:type-blindness.js --verbose
+      sm swab -g overconfidence:type-blindness.js --verbose
     """
 
     tool_context = ToolContext.NODE

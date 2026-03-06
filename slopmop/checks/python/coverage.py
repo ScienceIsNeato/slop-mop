@@ -90,7 +90,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
           to generate coverage data.
 
     Re-check:
-      ./sm swab -g overconfidence:coverage-gaps.py --verbose
+      sm swab -g overconfidence:coverage-gaps.py --verbose
     """
 
     tool_context = ToolContext.PROJECT

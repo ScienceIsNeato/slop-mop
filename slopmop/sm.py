@@ -67,7 +67,7 @@ def setup_logging(verbose: bool = False) -> None:
     logging.basicConfig(
         level=level,
         format="%(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
+        handlers=[logging.StreamHandler(sys.stderr)],
     )
 
 
@@ -450,17 +450,17 @@ Verbs:
 Quick Start:
   1. Add slop-mop as a git submodule
   2. Run: ./slop-mop/scripts/setup.sh (creates venv, installs tools, adds ./sm)
-  3. Run: ./sm init (auto-detect project, write config)
-  4. Run: ./sm swab (run quick quality gates)
+  3. Run: sm init (auto-detect project, write config)
+  4. Run: sm swab (run quick quality gates)
 
 Examples:
-  ./sm swab                               Quick validation (every commit)
-  ./sm scour                              Thorough validation (PR readiness)
-  ./sm swab -g python,quality             Run specific gate groups
-  ./sm scour --verbose                    Thorough with details
-  ./sm config --show                      Show current configuration
-  ./sm config --enable python-security    Enable a quality gate
-  ./sm help python-lint-format            Show help for specific gate
+  sm swab                               Quick validation (every commit)
+  sm scour                              Thorough validation (PR readiness)
+  sm swab -g python,quality             Run specific gate groups
+  sm scour --verbose                    Thorough with details
+  sm config --show                      Show current configuration
+  sm config --enable python-security    Enable a quality gate
+  sm help python-lint-format            Show help for specific gate
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

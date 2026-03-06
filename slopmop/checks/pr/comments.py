@@ -635,7 +635,7 @@ class PRCommentsCheck(BaseCheck):
         )
         lines.append("")
         lines.append("# Re-run this check:")
-        lines.append("./sm scour -g myopia:ignored-feedback")
+        lines.append("sm scour -g myopia:ignored-feedback")
         lines.append("")
         lines.append("━" * 80)
         lines.append(
@@ -777,7 +777,7 @@ class PRCommentsCheck(BaseCheck):
         lines.append("  1. Read the full report above")
         lines.append("  2. Address comments by category (most complex first)")
         lines.append("  3. Use provided commands to resolve each thread")
-        lines.append("  4. Re-run: ./sm scour -g myopia:ignored-feedback")
+        lines.append("  4. Re-run: sm scour -g myopia:ignored-feedback")
 
         return "\n".join(lines)
 
