@@ -4,7 +4,7 @@ Real-time progress callbacks for terminal display.  End-of-run
 summary rendering lives in :class:`slopmop.reporting.adapters.ConsoleAdapter`.
 """
 
-from slopmop.constants import STATUS_EMOJI
+from slopmop.constants import ROLE_BADGES, STATUS_EMOJI
 from slopmop.core.result import CheckResult
 
 
@@ -39,7 +39,10 @@ class ConsoleReporter:
             return
 
         emoji = STATUS_EMOJI.get(result.status, "❓")
-        print(f"{emoji} {result.name}: {result.status.value} ({result.duration:.2f}s)")
+        badge = ROLE_BADGES.get(result.role or "", "")
+        print(
+            f"{emoji} {badge}{result.name}: {result.status.value} ({result.duration:.2f}s)"
+        )
 
         # Only expand output in verbose mode — otherwise the end-of-run
         # summary handles failure/warning details to prevent duplication.

@@ -39,6 +39,7 @@ class CheckDisplayInfo:
         None  # Category key (overconfidence, laziness, myopia, etc.)
     )
     is_custom: bool = False  # True for user-defined custom gates
+    role: Optional[str] = None  # "foundation" or "diagnostic"
 
     @property
     def expected_duration(self) -> Optional[float]:

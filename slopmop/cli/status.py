@@ -172,11 +172,18 @@ def _print_gate_inventory(
 
     Shows every registered gate with role, level membership,
     applicability, and last-known result from historical timing data.
+    N/A gates are collapsed into a single summary line at the bottom
+    to keep the inventory focused on actionable results.
     """
     by_category: Dict[str, List[str]] = defaultdict(list)
+    na_gates: List[Tuple[str, str]] = []  # (full_name, reason)
     for gate in all_gates:
-        cat_key = gate.split(":")[0]
-        by_category[cat_key].append(gate)
+        is_app, reason = applicability.get(gate, (True, ""))
+        if not is_app:
+            na_gates.append((gate, reason))
+        else:
+            cat_key = gate.split(":")[0]
+            by_category[cat_key].append(gate)
 
     sorted_cats = sorted(
         by_category.keys(),
@@ -195,19 +202,23 @@ def _print_gate_inventory(
 
         for gate in gates:
             gate_name = gate.split(":", 1)[1]
-            is_app, reason = applicability.get(gate, (True, ""))
 
             line = _format_gate_line(
                 gate_name,
                 role=roles.get(gate, ""),
                 in_swab=gate in swab_gates,
                 in_scour=gate in scour_gates and gate not in swab_gates,
-                is_applicable=is_app,
-                skip_reason=reason,
+                is_applicable=True,
+                skip_reason="",
                 history=history.get(gate),
                 colors_enabled=colors_enabled,
             )
             print(line)
+
+    if na_gates:
+        names = [g.split(":", 1)[1] for g, _ in sorted(na_gates)]
+        print()
+        print(f"   ⊘ {len(na_gates)} n/a: {', '.join(names)}")
 
 
 # ── Section: Hook Status ────────────────────────────────────────

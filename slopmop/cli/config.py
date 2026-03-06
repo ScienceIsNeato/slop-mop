@@ -7,6 +7,7 @@ from typing import Any, Dict, cast
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
+from slopmop.constants import ROLE_BADGES
 from slopmop.core.registry import get_registry
 
 
@@ -154,7 +155,9 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         status = "❌ DISABLED" if name in disabled else "✅ ENABLED"
         definition = registry.get_definition(name)
         display = definition.name if definition else name
-        print(f"  {status}  {display}")
+        check = registry.get_check(name, {})
+        badge = ROLE_BADGES.get(check.role.value, "") if check else ""
+        print(f"  {status}  {badge}{display}")
 
     print()
     print("📦 Aliases:")

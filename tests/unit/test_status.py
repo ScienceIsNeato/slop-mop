@@ -607,7 +607,7 @@ class TestPrintGateInventory:
         assert "GATE INVENTORY" in out
 
     def test_not_applicable_gate(self, capsys):
-        """Not applicable gate shows reason."""
+        """Not applicable gate collapsed into n/a summary line."""
         _print_gate_inventory(
             all_gates=["overconfidence:untested-code.js"],
             swab_gates={"overconfidence:untested-code.js"},
@@ -624,7 +624,7 @@ class TestPrintGateInventory:
         )
         out = capsys.readouterr().out
         assert "n/a" in out
-        assert "No JavaScript code detected" in out
+        assert "untested-code.js" in out
 
     def test_gate_with_history(self, capsys):
         """Gate with history shows last result and sparkline."""

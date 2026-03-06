@@ -6,6 +6,7 @@ from typing import Dict, List
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
+from slopmop.constants import ROLE_BADGES
 from slopmop.core.registry import get_registry
 
 
@@ -53,6 +54,7 @@ def _show_gate_help(gate_name: str) -> int:
     print(f"\n🔍 Quality Gate: {definition.name}")
     print("=" * 60)
     print(f"  Flag:     {definition.flag}")
+    print(f"  Role:     {check.role.value}")
     print(f"  Auto-fix: {'Yes' if definition.auto_fix else 'No'}")
     if definition.depends_on:
         print(f"  Depends:  {', '.join(definition.depends_on)}")
@@ -75,8 +77,10 @@ def _print_gate_group(title: str, gates: List[str]) -> None:
     for name in gates:
         definition = registry.get_definition(name)
         display = definition.name if definition else name
-        auto_fix = "🔧" if definition and definition.auto_fix else "  "
-        print(f"    {auto_fix} {name:<30} {display}")
+        auto_fix = "⚡" if definition and definition.auto_fix else "  "
+        check = registry.get_check(name, {})
+        badge = ROLE_BADGES.get(check.role.value, "") if check else ""
+        print(f"    {auto_fix} {badge}{name:<30} {display}")
     print()
 
 
@@ -111,7 +115,7 @@ def _show_all_gates() -> int:
         print(f"    {alias:<30} {len(gates)} gates")
 
     print()
-    print("Legend: 🔧 = supports auto-fix")
+    print("Legend: ⚡ = supports auto-fix · 🔧 = foundation · 🔬 = diagnostic")
     print()
     print("For detailed help on a gate: sm help <gate-name>")
     print()

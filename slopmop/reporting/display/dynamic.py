@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Dict, List, Optional
 
-from slopmop.constants import STATUS_EMOJI
+from slopmop.constants import ROLE_BADGES, STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 from slopmop.reporting.display import config
 from slopmop.reporting.display.colors import (
@@ -153,7 +153,8 @@ class DynamicDisplay:
             self._total_checks_expected = total
 
     def register_pending_checks(
-        self, checks: List[tuple[str, Optional[str], bool]]
+        self,
+        checks: List[tuple[str, Optional[str], bool, Optional[str]]],
     ) -> None:
         """Register all checks as pending so they appear immediately.
 
@@ -161,13 +162,20 @@ class DynamicDisplay:
         the start — no more "items only appear when they start".
 
         Args:
-            checks: List of (full_name, category_key, is_custom) tuples
+            checks: List of (full_name, category_key, is_custom, role) tuples
         """
         with self._lock:
-            for name, category, is_custom in checks:
+            for item in checks:
+                name = item[0]
+                category = item[1]
+                is_custom = item[2]
+                role = item[3]
                 if name not in self._checks:
                     info = CheckDisplayInfo(
-                        name=name, category=category, is_custom=is_custom
+                        name=name,
+                        category=category,
+                        is_custom=is_custom,
+                        role=role,
                     )
                     # Populate timing stats from historical data
                     if name in self._historical_timings:
@@ -217,7 +225,8 @@ class DynamicDisplay:
 
         if not self._is_tty and not self.quiet:
             # Static mode: print start message
-            print(f"  ◐ {name}: running...")
+            badge = ROLE_BADGES.get(self._checks[name].role or "", "")
+            print(f"  ◐ {badge}{name}: running...")
 
     def on_check_complete(self, result: CheckResult) -> None:
         """Called when a check completes.
@@ -240,6 +249,9 @@ class DynamicDisplay:
             # Update category from result if not already set
             if result.category and not info.category:
                 info.category = result.category
+            # Update role from result if not already set
+            if result.role and not info.role:
+                info.role = result.role
             self._completed_count += 1
             self._completion_counter += 1
             info.completion_order = self._completion_counter
@@ -247,8 +259,9 @@ class DynamicDisplay:
         if not self._is_tty and not self.quiet:
             # Static mode: print completion (full names since no group headers)
             icon = STATUS_EMOJI.get(result.status, "❓")
+            badge = ROLE_BADGES.get(info.role or "", "")
             print(
-                f"{icon} {result.name}: {result.status.value} ({result.duration:.2f}s)"
+                f"{icon} {badge}{result.name}: {result.status.value} ({result.duration:.2f}s)"
             )
 
     def on_check_disabled(self, name: str) -> None:
@@ -584,6 +597,7 @@ class DynamicDisplay:
         # Prepend asterisk for custom gates (footnote-style indicator)
         if info.is_custom:
             short_name = "*" + short_name
+        badge = ROLE_BADGES.get(info.role or "", "")
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
         icon = STATUS_EMOJI.get(info.result.status, "❓")
 
@@ -604,7 +618,7 @@ class DynamicDisplay:
         rc = reset_color(ce)
         colored_status = f"{sc}{padded_status}{rc}"
 
-        left = f"{config.CHECK_INDENT}{icon} {padded_name}: {colored_status}"
+        left = f"{config.CHECK_INDENT}{icon} {badge}{padded_name}: {colored_status}"
 
         # Inline detail for warned checks (e.g. "3 unresolved")
         if info.result.status == CheckStatus.WARNED and info.result.status_detail:
@@ -627,6 +641,7 @@ class DynamicDisplay:
                     len(config.CHECK_INDENT)
                     + 2
                     + 1  # indent + icon + space
+                    + display_width(badge)  # role badge
                     + (name_width or len(short_name))  # name column
                     + 2
                     + config.STATUS_COLUMN_WIDTH  # ": " + status
@@ -697,7 +712,8 @@ class DynamicDisplay:
         if info.is_custom:
             short_name = "*" + short_name
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
-        left = f"{config.CHECK_INDENT}{spinner} {padded_name}"
+        badge = ROLE_BADGES.get(info.role or "", "")
+        left = f"{config.CHECK_INDENT}{spinner} {badge}{padded_name}"
         time_str = format_time(elapsed, allow_fast_label=False)
 
         stats = info.timing_stats
@@ -799,12 +815,15 @@ class DynamicDisplay:
         if info.is_custom:
             short_name = "*" + short_name
         padded_name = f"{short_name:<{name_width}}" if name_width else short_name
+        badge = ROLE_BADGES.get(info.role or "", "")
 
         # Dim the text when colors are available
         dim = Color.DIM.value if self._colors_enabled else ""
         rc = reset_color(self._colors_enabled)
 
-        left = f"{config.CHECK_INDENT}{dim}{indicator} {padded_name}: waiting{rc}"
+        left = (
+            f"{config.CHECK_INDENT}{dim}{indicator} {badge}{padded_name}: waiting{rc}"
+        )
         # Right section matches completed column layout (act | exp | history)
         act_col = " " * config.TIMING_TIME_WIDTH
         exp_col = (

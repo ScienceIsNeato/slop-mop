@@ -100,7 +100,7 @@ class CheckExecutor:
         self._on_check_na: Optional[Callable[[str], None]] = None
         self._on_total_determined: Optional[Callable[[int], None]] = None
         self._on_pending_checks: Optional[
-            Callable[[List[tuple[str, Optional[str], bool]]], None]
+            Callable[[List[tuple[str, Optional[str], bool, Optional[str]]]], None]
         ] = None
 
     def set_progress_callback(self, callback: Callable[[CheckResult], None]) -> None:
@@ -146,7 +146,10 @@ class CheckExecutor:
         self._on_total_determined = callback
 
     def set_pending_callback(
-        self, callback: Callable[[List[tuple[str, Optional[str], bool]]], None]
+        self,
+        callback: Callable[
+            [List[tuple[str, Optional[str], bool, Optional[str]]]], None
+        ],
     ) -> None:
         """Set callback for registering all applicable checks as pending.
 
@@ -154,7 +157,7 @@ class CheckExecutor:
 
         Args:
             callback: Function called with list of
-                (full_name, category_key, is_custom) tuples
+                (full_name, category_key, is_custom, role) tuples
         """
         self._on_pending_checks = callback
 
@@ -320,6 +323,7 @@ class CheckExecutor:
                     c.full_name,
                     c.category.key if c.category else None,
                     getattr(c, "is_custom_gate", False),
+                    c.role.value if hasattr(c, "role") else None,
                 )
                 for c in applicable
             ]

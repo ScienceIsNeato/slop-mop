@@ -1,5 +1,12 @@
 # Project Status
 
+## Design Documents
+
+- **NEXT_PHASE.md**: Three-workstream architectural brief for the next phase of slop-mop:
+  1. Two-tier check architecture (Foundation vs Diagnostic) with CheckRole enum
+  2. Didactic gate output (Diagnosis → Prescription → Verification)
+  3. Unified output adapter layer (RunReport + adapters replacing ad-hoc branching in _run_validation())
+
 ## Active Branch: `custom-gates-and-beta-hardening`
 
 **Status: LOCAL — all 1327 tests pass** ✅
@@ -8,9 +15,22 @@
 
 Custom gates feature, output polish, PR category removal, and comprehensive custom gate test coverage.
 
-### Latest Work: Custom gate tests + output polish + PR category removal
+### Latest Work: Strategic planning — model critique synthesis → 3 feature issues
 
-**Round 3 changes (this session):**
+**Round 4 changes (this session):**
+
+1. **Model critique analysis** — Fact-checked 20+ specific claims from two external model analyses against the actual codebase. ~40% of Model A's claims were factually wrong (e.g., "gates run in fixed order" — actually dual-lane parallel scheduler; "suppressions are binary" — actually multi-layered with transparency mechanisms; "SARIF creates feedback loop" — SARIF goes to Security tab, not PR review threads). Model B's analysis was more cautious and held up better.
+
+2. **Synthesized 4 criticisms, removed 1 via counterargument** — Config conflict detection removed as out-of-scope. Gate-dodging already monitors target repo's .sb_config.json (confirmed in code). 3 valid criticisms survived.
+
+3. **Filed 3 GitHub issues:**
+   - **#76**: `sm swab --baseline <ref>` — Delta reporting for responsible triage. "Do no harm" onboarding mode. Sentry-style new-vs-pre-existing findings.
+   - **#77**: Add `fix_strategy` field to `Finding` dataclass. Machine-extractable remediation instructions separate from human-readable message.
+   - **#78**: Gates as teachers — systematic actionability audit. 52% of gates are semi-actionable; target ≥70% prescriptive. Philosophy: agents should cargo-cult to green because gate instructions encode domain knowledge.
+
+### Previous Work: Custom gate tests + output polish + PR category removal
+
+**Round 3 changes:**
 
 1. **Emoji spacing fix** — `display_width()` in `renderer.py` counted zero-width chars (U+FE0E, U+FE0F, U+200B, U+200D, U+FEFF) as width 1 instead of 0, causing missing space between emoji and test name for skipped/warned gates. Fixed by adding zero-width char detection before `east_asian_width()` check.
 
