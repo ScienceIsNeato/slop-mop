@@ -13,13 +13,6 @@ jobs:
   validate:
     name: Slop-Mop Validation
     runs-on: ubuntu-latest
-    permissions:
-      # upload-sarif needs this to push into the Code Scanning API.
-      # Without it the upload step 403s on PRs from the same repo and
-      # silently no-ops on forks (which is fine — GitHub blocks fork
-      # SARIF uploads by policy anyway).
-      security-events: write
-      contents: read
 
     steps:
       - name: Checkout
@@ -52,36 +45,9 @@ jobs:
           npx tsc
 
       - name: Run slop-mop on itself
-        # continue-on-error keeps the SARIF file around even when scour
-        # fails — which is exactly when the upload is most useful.  The
-        # "Fail if issues found" step below re-raises the failure so the
-        # job's red X is preserved.
-        #
-        # --no-auto-fix: without it, black/isort/prettier fix files on
-        # the ephemeral runner, the lint gates then PASS on the fixed
-        # state, and SARIF reports 0 findings for issues that are still
-        # in the PR.  The report must describe the commit as-pushed.
-        id: slopmop
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python -m slopmop.sm scour --sarif --output-file slopmop.sarif --no-auto-fix
-
-      - name: Upload SARIF to GitHub Code Scanning
-        # hashFiles() guard: if scour crashed before writing the file
-        # (missing deps, import error) there's nothing to upload and
-        # the action would fail with a confusing "file not found".
-        if: always() && hashFiles('slopmop.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: slopmop.sarif
-          # category lets slop-mop results live alongside CodeQL in the
-          # Security tab without one clobbering the other's alert state.
-          category: slop-mop
-
-      - name: Fail if slop-mop found issues
-        if: steps.slopmop.outcome == 'failure'
-        run: exit 1
+        run: python -m slopmop.sm scour
 
   wait-for-bots:
     name: ⏳ Wait for External Bots

@@ -1,9 +1,7 @@
 """JavaScript lint and format check using ESLint and Prettier."""
 
-import json
-import os
 import time
-from typing import List
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -14,7 +12,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.constants import NPM_INSTALL_FAILED
-from slopmop.core.result import CheckResult, CheckStatus, Finding
+from slopmop.core.result import CheckResult, CheckStatus
 
 
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
@@ -119,6 +117,8 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def run(self, project_root: str) -> CheckResult:
         """Run lint and format checks."""
         start_time = time.time()
+        issues: List[str] = []
+        output_parts: List[str] = []
 
         # Install deps if needed
         if not self.has_node_modules(project_root):
@@ -132,33 +132,31 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                     output=npm_result.output,
                 )
 
-        eslint_findings = self._check_eslint(project_root)
-        prettier_findings = self._check_prettier(project_root)
-        findings = eslint_findings + prettier_findings
+        # Check ESLint
+        eslint_result = self._check_eslint(project_root)
+        if eslint_result:
+            issues.append(eslint_result)
+            output_parts.append(f"ESLint: {eslint_result}")
+        else:
+            output_parts.append("ESLint: ✅ No lint errors")
 
-        output_parts = [
-            (
-                f"ESLint: {len(eslint_findings)} issue(s)"
-                if eslint_findings
-                else "ESLint: ✅ No lint errors"
-            ),
-            (
-                f"Prettier: {len(prettier_findings)} file(s) need formatting"
-                if prettier_findings
-                else "Prettier: ✅ Formatting OK"
-            ),
-        ]
+        # Check Prettier
+        prettier_result = self._check_prettier(project_root)
+        if prettier_result:
+            issues.append(prettier_result)
+            output_parts.append(f"Prettier: {prettier_result}")
+        else:
+            output_parts.append("Prettier: ✅ Formatting OK")
 
         duration = time.time() - start_time
 
-        if findings:
+        if issues:
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output="\n".join(output_parts),
-                error=f"{len(findings)} issue(s) found",
+                error=f"{len(issues)} issue(s) found",
                 fix_suggestion="Run: npx eslint . --fix && npx prettier --write .",
-                findings=findings,
             )
 
         return self._create_result(
@@ -167,86 +165,27 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             output="\n".join(output_parts),
         )
 
-    def _check_eslint(self, project_root: str) -> List[Finding]:
-        """Run ESLint with ``--format json`` and extract per-line findings.
-
-        ESLint's JSON format is a list of ``{filePath, messages[]}`` where
-        each message has ``{ruleId, line, column, message, severity}``.
-        Severity 2 = error, 1 = warning.  We surface both — a warning in
-        lint config is still a finding the developer asked to be told about.
-        """
+    def _check_eslint(self, project_root: str) -> Optional[str]:
+        """Check ESLint."""
         result = self._run_command(
-            ["npx", "eslint", ".", "--format", "json"],
+            ["npx", "eslint", "."],
             cwd=project_root,
             timeout=60,
         )
 
-        # Exit 0 with valid JSON means no findings; exit 0 with no output
-        # means ESLint found nothing to lint.  Either way, clean.
-        if result.success:
-            return []
+        if not result.success and result.output.strip():
+            lines = result.output.strip().split("\n")
+            return f"{len(lines)} lint issue(s)"
+        return None
 
-        try:
-            data = json.loads(result.stdout)
-        except (json.JSONDecodeError, TypeError):
-            # ESLint crashed, bad config, or something wrote to stdout
-            # that isn't JSON.  Fall back to a single project-level
-            # finding so SARIF still points somewhere useful.
-            return [Finding(message=f"ESLint: {result.output.strip()[:200]}")]
-
-        findings: List[Finding] = []
-        for file_result in data:
-            filepath = file_result.get("filePath", "")
-            if filepath.startswith(project_root):
-                filepath = os.path.relpath(filepath, project_root)
-            for msg in file_result.get("messages", []):
-                findings.append(
-                    Finding(
-                        message=msg.get("message", "lint error"),
-                        file=filepath or None,
-                        line=msg.get("line") or None,
-                        column=msg.get("column") or None,
-                        rule_id=msg.get("ruleId") or None,
-                    )
-                )
-        return findings
-
-    def _check_prettier(self, project_root: str) -> List[Finding]:
-        """Run ``prettier --check`` and extract files that need formatting.
-
-        Prettier's check output lists unformatted files as ``[warn] path``
-        on stderr.  File-level findings only — prettier doesn't report
-        line numbers, and "the whole file's formatting is off" is
-        accurately a file-level problem anyway.
-        """
+    def _check_prettier(self, project_root: str) -> Optional[str]:
+        """Check Prettier formatting."""
         result = self._run_command(
             ["npx", "prettier", "--check", "."],
             cwd=project_root,
             timeout=60,
         )
 
-        if result.success:
-            return []
-
-        findings: List[Finding] = []
-        for line in result.output.split("\n"):
-            stripped = line.strip()
-            # ``[warn] src/foo.js`` — the file path is everything after
-            # the bracket tag.  Prettier also emits a summary line
-            # (``[warn] Code style issues found in N files...``) which
-            # doesn't look like a path; skip anything without a dot.
-            if stripped.startswith("[warn] ") and "." in stripped:
-                path = stripped[7:].strip()
-                # Summary line guard — real paths don't contain spaces
-                # in prettier's output (it quotes them if they do, but
-                # the common case is space-free).  "Code style issues
-                # found" has spaces and fails this.
-                if " " not in path:
-                    findings.append(Finding(message="needs prettier", file=path))
-
-        if not findings:
-            # Prettier failed but we couldn't parse file paths (exit 2,
-            # config error, etc.).  Surface the raw output.
-            findings.append(Finding(message=f"Prettier: {result.output.strip()[:200]}"))
-
-        return findings
+        if not result.success:
+            return "Formatting issues found"
+        return None

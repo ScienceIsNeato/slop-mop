@@ -68,8 +68,6 @@ Design the error output to include:
 - **How to fix it** — exact command, code change, or approach
 - **How to re-check** — the `sm swab -g` command to re-run just this gate
 
-**Do not build the output string manually.** Build a list of `Finding` objects and pass it to `_create_result(findings=...)`. The console output string is auto-generated from the findings (`file:line:col: message` per line), the JSON output gets structured data, and SARIF gets `physicalLocation` for GitHub Code Scanning — all from one call. See §2.2b.
-
 ### 1.4 Decide on Profiles
 
 Which profiles should include this gate?
@@ -190,47 +188,6 @@ def run(self, project_root: str) -> CheckResult:
     # ... normal check logic ...
 ```
 
-### 2.2b Structured Findings (Required)
-
-Every gate that fails with identifiable locations must return those locations as `Finding` objects, not as a formatted string. This is how the gate feeds three consumers at once:
-
-| Consumer | Gets | Via |
-| --- | --- | --- |
-| Terminal | `file:line:col: message` per line | `Finding.__str__()`, auto-joined |
-| `--json` | `[{file, line, column, message, rule_id}, ...]` | `Finding.to_dict()` |
-| `--sarif` | inline PR annotations in GitHub Code Scanning | `SarifReporter` → `physicalLocation` |
-
-**The pattern:**
-
-```python
-from slopmop.core.result import Finding
-
-def run(self, project_root: str) -> CheckResult:
-    # ... run the tool, parse its output ...
-    findings: List[Finding] = []
-    for problem in parsed_output:
-        findings.append(Finding(
-            message=problem.description,       # required
-            file=problem.relative_path,        # optional — omit for project-scoped issues
-            line=problem.line_number,          # optional, 1-based
-            column=problem.column,             # optional, 1-based
-            rule_id=problem.tool_rule_code,    # optional — e.g. "E501", "no-undef"
-        ))
-
-    if findings:
-        return self._create_result(
-            status=CheckStatus.FAILED,
-            duration=duration,
-            findings=findings,                 # ← console output auto-generated from this
-            error=f"{len(findings)} issue(s)",
-            fix_suggestion="...",
-        )
-```
-
-If the tool you're wrapping has a JSON output mode (`--format json`, `--json`, `--output-format=json`), use it — structured input means no regex parsing. ESLint, pyright, and jscpd all support this. If the tool only has text output, parse it once into `Finding`s; don't format text, then re-parse it later.
-
-**Granularity:** one `Finding` per fixable unit. A lint error on line 42 is one finding. Ten unformatted files is ten file-level findings (no line). A misconfigured `.sb_config.json` key is one project-level finding (no file — SARIF anchors it at the repo root).
-
 **The class docstring IS the help text.** `sm help <gate>` displays it directly. Write it like documentation, not like a code comment. Include:
 
 - What the gate checks and why it matters
@@ -335,7 +292,6 @@ Copy into your commit message or PR description:
 - [ ] Selection criteria all pass (fast, canonical, valuable, reliable, deterministic, actionable)
 - [ ] Tests written first (identity, config, applicability, run scenarios, output quality)
 - [ ] Check class with all 5 required members
-- [ ] Failures return structured `Finding` objects via `_create_result(findings=...)`
 - [ ] Class docstring written as help text (includes config reasoning)
 - [ ] Exported from category __init__.py
 - [ ] Registered in slopmop/checks/__init__.py
@@ -365,7 +321,7 @@ These are the mistakes agents make repeatedly. Read them before you start.
 
 5. **Wrong mixin order** — `class MyCheck(PythonCheckMixin, BaseCheck)` ✅ not `class MyCheck(BaseCheck, PythonCheckMixin)` ❌
 
-6. **Output not actionable** — Failed gate says "3 issues found" but doesn't say where or how to fix them. Useless to an LLM, and SARIF gets a single repo-root alert instead of three inline annotations. Build `Finding` objects (§2.2b); the string is generated for you.
+6. **Output not actionable** — Failed gate says "3 issues found" but doesn't say where or how to fix them. Useless to an LLM.
 
 7. **Not handling tool-not-installed** — Always check `returncode == 127`. Return `CheckStatus.ERROR` with `fix_suggestion="pip install <tool>"`.
 

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, cast
 
 from slopmop.checks.base import BaseCheck, Flaw, GateCategory, ToolContext
-from slopmop.core.result import CheckResult, CheckStatus, Finding
+from slopmop.core.result import CheckResult, CheckStatus
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +232,6 @@ class ConfigDebtCheck(BaseCheck):
             duration=duration,
             output="\n".join(lines),
             error=f"{len(findings)} config debt item(s)",
-            findings=[Finding(message=f, file=CONFIG_FILE) for f in findings],
         )
 
 

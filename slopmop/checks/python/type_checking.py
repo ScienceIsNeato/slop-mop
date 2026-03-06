@@ -38,7 +38,7 @@ from slopmop.checks.base import (
     PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus, Finding
+from slopmop.core.result import CheckResult, CheckStatus
 
 # pyright rules we enforce for type completeness
 TYPE_COMPLETENESS_RULES: Dict[str, str] = {
@@ -332,33 +332,12 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         output = self._format_prescriptive_output(diagnostics, summary)
         fix_suggestion = self._build_fix_suggestion(diagnostics)
 
-        # Structured findings — pyright ranges are 0-indexed; SARIF is 1-based.
-        cwd_prefix = os.getcwd() + os.sep
-        structured: List[Finding] = []
-        for d in diagnostics:
-            if d.get("severity") != "error":
-                continue
-            fp = d.get("file", "")
-            if fp.startswith(cwd_prefix):
-                fp = fp[len(cwd_prefix) :]
-            start = d.get("range", {}).get("start", {})
-            structured.append(
-                Finding(
-                    message=str(d.get("message", "")).split("\n", 1)[0],
-                    file=fp.replace(os.sep, "/") or None,
-                    line=start["line"] + 1 if "line" in start else None,
-                    column=start["character"] + 1 if "character" in start else None,
-                    rule_id=d.get("rule"),
-                )
-            )
-
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=output,
             error=f"{error_count} type-completeness error(s) found",
             fix_suggestion=fix_suggestion,
-            findings=structured,
         )
 
     def _format_prescriptive_output(

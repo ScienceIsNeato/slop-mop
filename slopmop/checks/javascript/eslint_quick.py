@@ -4,7 +4,6 @@ Runs ESLint in errors-only mode for rapid feedback (~5s) on
 frontend JavaScript sources. Requires 'frontend_dirs' in .sb_config.json.
 """
 
-import json
 import os
 import time
 from typing import List
@@ -17,7 +16,7 @@ from slopmop.checks.base import (
     JavaScriptCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus, Finding
+from slopmop.core.result import CheckResult, CheckStatus
 
 
 class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
@@ -112,9 +111,7 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
                 fix_suggestion='Add "frontend_dirs": ["static", "public"] to .sb_config.json',
             )
 
-        # Run ESLint in errors-only mode (fast path).  --format json
-        # gives us the same structured output eslint_expect.py parses —
-        # file, line, column, rule per finding — at no extra runtime cost.
+        # Run ESLint in errors-only mode (fast path)
         cmd = [
             "npx",
             "eslint",
@@ -123,8 +120,6 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
             "--rule",
             '{"no-undef": "error", "no-unused-vars": "warn"}',
             "--quiet",  # errors only
-            "--format",
-            "json",
         ] + js_dirs
 
         result = self._run_command(cmd, cwd=project_root, timeout=30)
@@ -146,35 +141,10 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
                 fix_suggestion="Check .eslintrc or eslint.config.js for syntax errors.",
             )
 
-        # Parse ESLint JSON into Findings.  If parsing fails (output
-        # corrupted, mixed stdout/stderr) the except branch emits a
-        # single project-level finding — SARIF still has something to show.
-        findings: List[Finding] = []
-        try:
-            for file_result in json.loads(result.stdout):
-                filepath = file_result.get("filePath", "")
-                if filepath.startswith(project_root):
-                    filepath = os.path.relpath(filepath, project_root)
-                for msg in file_result.get("messages", []):
-                    findings.append(
-                        Finding(
-                            message=msg.get("message", "lint error"),
-                            file=filepath or None,
-                            line=msg.get("line") or None,
-                            column=msg.get("column") or None,
-                            rule_id=msg.get("ruleId") or None,
-                        )
-                    )
-        except (json.JSONDecodeError, TypeError):
-            findings = [Finding(message=f"ESLint: {result.output.strip()[:200]}")]
-
-        # No explicit output= — the _create_result rail joins findings
-        # into ``file:line:col: message`` lines.  Passing result.output
-        # here would dump raw ESLint JSON into the console.
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
-            error=f"{len(findings)} ESLint error(s)",
+            output=result.output,
+            error="ESLint errors found",
             fix_suggestion="Fix ESLint errors above. Run: npx eslint --fix <file>",
-            findings=findings,
         )
