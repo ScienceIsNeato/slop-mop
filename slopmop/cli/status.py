@@ -96,10 +96,22 @@ def _print_config_summary(
 
 RECENT_HISTORY_HEADER = "📊 RECENT HISTORY"
 
+# Role badges — same glyphs as ConsoleAdapter (reporting/adapters.py) so
+# the dashboard inventory and the post-run summary speak the same visual
+# language.  Wrench = foundation (wraps tooling), microscope = diagnostic
+# (novel analysis).  Not imported to keep status.py free of adapter
+# dependencies; the sibling map is keyed off the same CheckRole enum
+# values so drift requires an enum change in base.py first.
+_ROLE_BADGES: Dict[str, str] = {
+    "foundation": "🔧 ",
+    "diagnostic": "🔬 ",
+}
+
 
 def _format_gate_line(
     gate_name: str,
     *,
+    role: str,
     in_swab: bool,
     in_scour: bool,
     is_applicable: bool,
@@ -109,8 +121,10 @@ def _format_gate_line(
 ) -> str:
     """Format a single gate line for the inventory.
 
-    Shows applicability, level membership, and last-known result from
-    historical timing data (no live execution).
+    Shows role, applicability, level membership, and last-known result
+    from historical timing data (no live execution).  The role badge
+    answers "is this a standard-tool wrapper or slop-mop's own analysis"
+    at a glance — useful when triaging which gates to disable or tune.
     """
     # Level badge
     if in_swab:
@@ -119,6 +133,9 @@ def _format_gate_line(
         level_tag = "scour"
     else:
         level_tag = "     "
+
+    # Role badge — empty string for unknown (custom gates may not set it)
+    role_badge = _ROLE_BADGES.get(role, "")
 
     # Applicability / history-based status
     if not is_applicable:
@@ -144,7 +161,7 @@ def _format_gate_line(
         icon = "·"
         suffix = "no history"
 
-    return f"   {icon}  {gate_name:<28} [{level_tag}] {suffix}"
+    return f"   {icon} {role_badge}{gate_name:<28} [{level_tag}] {suffix}"
 
 
 def _print_gate_inventory(
@@ -152,13 +169,14 @@ def _print_gate_inventory(
     swab_gates: Set[str],
     scour_gates: Set[str],
     applicability: Dict[str, Tuple[bool, str]],
+    roles: Dict[str, str],
     history: Dict[str, TimingStats],
     colors_enabled: bool,
 ) -> None:
     """Print the full gate inventory grouped by category.
 
-    Shows every registered gate with level membership, applicability,
-    and last-known result from historical timing data.
+    Shows every registered gate with role, level membership,
+    applicability, and last-known result from historical timing data.
     """
     by_category: Dict[str, List[str]] = defaultdict(list)
     for gate in all_gates:
@@ -186,6 +204,7 @@ def _print_gate_inventory(
 
             line = _format_gate_line(
                 gate_name,
+                role=roles.get(gate, ""),
                 in_swab=gate in swab_gates,
                 in_scour=gate in scour_gates and gate not in swab_gates,
                 is_applicable=is_app,
@@ -301,6 +320,7 @@ def _build_status_dict(
     scour_only_gates: Set[str],
     disabled: List[str],
     applicability: Dict[str, Tuple[bool, str]],
+    roles: Dict[str, str],
     history: Dict[str, TimingStats],
 ) -> Dict[str, Any]:
     """Build a JSON-serializable dict of project status."""
@@ -310,6 +330,7 @@ def _build_status_dict(
         hist = history.get(gate)
         entry: Dict[str, Any] = {
             "name": gate,
+            "role": roles.get(gate),
             "applicable": is_app,
             "in_swab": gate in swab_gates,
             "in_scour": gate in swab_gates or gate in scour_only_gates,
@@ -395,14 +416,19 @@ def run_status(
     )
     disabled = config.get("disabled_gates", [])
 
-    # ── Applicability (no execution — just is_applicable check) ──
+    # ── Applicability + role (no execution) ──────────────────────
+    # We already instantiate each check to probe is_applicable(); the
+    # role classvar comes for free on the same instance.  Collect both
+    # in one pass so downstream formatters don't need registry access.
     applicability: Dict[str, Tuple[bool, str]] = {}
+    roles: Dict[str, str] = {}
     for gate_name in all_gates:
         check = registry.get_check(gate_name, config)
         if check:
             is_app = check.is_applicable(str(root))
             reason = check.skip_reason(str(root)) if not is_app else ""
             applicability[gate_name] = (is_app, reason)
+            roles[gate_name] = check.role.value
         else:
             applicability[gate_name] = (False, "check class not found")
 
@@ -419,6 +445,7 @@ def run_status(
             scour_only_gates,
             disabled,
             applicability,
+            roles,
             history,
         )
         print(json.dumps(data, separators=(",", ":")))
@@ -445,6 +472,7 @@ def run_status(
         swab_gates=swab_gates,
         scour_gates=set(registry.get_gate_names_for_level(GateLevel.SCOUR)),
         applicability=applicability,
+        roles=roles,
         history=history,
         colors_enabled=colors_enabled,
     )

@@ -246,6 +246,7 @@ class TestFormatGateLine:
         """n/a gate shows skip reason."""
         line = _format_gate_line(
             "untested-code.js",
+            role="foundation",
             in_swab=True,
             in_scour=False,
             is_applicable=False,
@@ -261,6 +262,7 @@ class TestFormatGateLine:
         stats = _stats(results=("passed", "passed", "failed", "passed"))
         line = _format_gate_line(
             "untested-code.py",
+            role="foundation",
             in_swab=True,
             in_scour=False,
             is_applicable=True,
@@ -276,6 +278,7 @@ class TestFormatGateLine:
         stats = _stats(results=("passed", "failed"))
         line = _format_gate_line(
             "coverage-gaps.py",
+            role="foundation",
             in_swab=True,
             in_scour=False,
             is_applicable=True,
@@ -289,6 +292,7 @@ class TestFormatGateLine:
         """Gate with no history shows 'no history'."""
         line = _format_gate_line(
             "untested-code.py",
+            role="foundation",
             in_swab=True,
             in_scour=False,
             is_applicable=True,
@@ -302,6 +306,7 @@ class TestFormatGateLine:
         """Gate only in scour shows scour tag."""
         line = _format_gate_line(
             "ignored-feedback",
+            role="diagnostic",
             in_swab=False,
             in_scour=True,
             is_applicable=True,
@@ -310,6 +315,56 @@ class TestFormatGateLine:
             colors_enabled=False,
         )
         assert "scour" in line
+
+    def test_role_badge_foundation(self):
+        """Foundation gates get the wrench badge."""
+        line = _format_gate_line(
+            "untested-code.py",
+            role="foundation",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "🔧" in line
+
+    def test_role_badge_diagnostic(self):
+        """Diagnostic gates get the microscope badge."""
+        line = _format_gate_line(
+            "ignored-feedback",
+            role="diagnostic",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "🔬" in line
+
+    def test_role_badge_unknown_empty(self):
+        """Unknown role → no badge, no crash.
+
+        Custom gates defined in user config won't have a CheckRole
+        classvar until they opt in.  The badge map returns empty
+        string — line still formats correctly, just without the
+        tier indicator.
+        """
+        line = _format_gate_line(
+            "my-custom-gate",
+            role="",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "🔧" not in line
+        assert "🔬" not in line
+        assert "my-custom-gate" in line
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +382,7 @@ class TestPrintGateInventory:
             swab_gates={"overconfidence:untested-code.py"},
             scour_gates={"overconfidence:untested-code.py"},
             applicability={"overconfidence:untested-code.py": (True, "")},
+            roles={"overconfidence:untested-code.py": "foundation"},
             history={},
             colors_enabled=False,
         )
@@ -340,6 +396,7 @@ class TestPrintGateInventory:
             swab_gates={"overconfidence:untested-code.py"},
             scour_gates={"overconfidence:untested-code.py"},
             applicability={"overconfidence:untested-code.py": (True, "")},
+            roles={"overconfidence:untested-code.py": "foundation"},
             history={},
             colors_enabled=False,
         )
@@ -358,6 +415,7 @@ class TestPrintGateInventory:
                     "No JavaScript code detected",
                 )
             },
+            roles={"overconfidence:untested-code.js": "foundation"},
             history={},
             colors_enabled=False,
         )
@@ -378,6 +436,7 @@ class TestPrintGateInventory:
             swab_gates={"overconfidence:untested-code.py"},
             scour_gates={"overconfidence:untested-code.py"},
             applicability={"overconfidence:untested-code.py": (True, "")},
+            roles={"overconfidence:untested-code.py": "foundation"},
             history=history,
             colors_enabled=False,
         )
@@ -403,6 +462,10 @@ class TestPrintGateInventory:
                 "laziness:sloppy-formatting.py": (True, ""),
                 "overconfidence:untested-code.py": (True, ""),
             },
+            roles={
+                "laziness:sloppy-formatting.py": "foundation",
+                "overconfidence:untested-code.py": "foundation",
+            },
             history={},
             colors_enabled=False,
         )
@@ -411,6 +474,38 @@ class TestPrintGateInventory:
         over_pos = out.index("Overconfidence")
         lazy_pos = out.index("Laziness")
         assert over_pos < lazy_pos
+
+    def test_role_badges_in_inventory(self, capsys):
+        """Both role badges appear in the inventory output.
+
+        Foundation and diagnostic tiers are visually distinct — same
+        badges as the ConsoleAdapter post-run summary, so users learn
+        one legend for the whole tool.
+        """
+        _print_gate_inventory(
+            all_gates=[
+                "overconfidence:untested-code.py",
+                "deceptiveness:ignored-feedback",
+            ],
+            swab_gates={"overconfidence:untested-code.py"},
+            scour_gates={
+                "overconfidence:untested-code.py",
+                "deceptiveness:ignored-feedback",
+            },
+            applicability={
+                "overconfidence:untested-code.py": (True, ""),
+                "deceptiveness:ignored-feedback": (True, ""),
+            },
+            roles={
+                "overconfidence:untested-code.py": "foundation",
+                "deceptiveness:ignored-feedback": "diagnostic",
+            },
+            history={},
+            colors_enabled=False,
+        )
+        out = capsys.readouterr().out
+        assert "🔧" in out  # foundation
+        assert "🔬" in out  # diagnostic
 
 
 # ---------------------------------------------------------------------------
