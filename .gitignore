@@ -53,3 +53,6 @@ sm_status_*.json
 AGENTS.md
 .windsurfrules
 .slopmop/
+
+# Claude Code session state (hooks, settings, transcripts)
+.claude/
