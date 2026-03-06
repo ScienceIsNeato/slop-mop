@@ -513,15 +513,19 @@ class TestGitHooksFunctions:
     def test_generate_hook_script(self):
         """Generates valid hook script with swab verb."""
         script = _generate_hook_script("swab")
-        assert "slopmop.sm swab" in script
         assert "MANAGED BY SLOP-MOP" in script
-        # Should use python -m slopmop.sm for direct submodule execution
-        assert "python" in script and "slopmop.sm" in script
+        # Hook invokes sm via PATH — no submodule hunting, no venv
+        # discovery, no python -m.  pipx users have no submodule dir;
+        # the old script bailed with "submodule not found" for them.
+        assert "sm swab" in script
+        assert "command -v sm" in script
+        assert "slopmop.sm" not in script  # no python -m indirection
+        assert "submodule" not in script.lower()
 
     def test_generate_hook_script_direct_verb(self):
         """Generates hook script when given a verb directly."""
         script = _generate_hook_script("scour")
-        assert "slopmop.sm scour" in script
+        assert "sm scour" in script
         assert "# Command: sm scour" in script
 
     def test_parse_hook_info_new_format(self):

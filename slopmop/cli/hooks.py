@@ -31,9 +31,13 @@ def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
 def _generate_hook_script(verb: str) -> str:
     """Generate the pre-commit hook script content.
 
-    The hook runs slop-mop directly from the submodule via
-    `python -m slopmop.sm` — no pip install required. Each project
-    uses its own slop-mop copy via git submodule.
+    The hook assumes ``sm`` is on PATH — ``pipx install slopmop``
+    puts the entrypoint there, and so does the legacy setup.sh.
+    The old hook did 30 lines of submodule discovery and venv
+    hunting that broke the moment a pipx user ran ``sm commit-hooks
+    install`` (no ``slop-mop/`` directory to find).  If ``sm`` isn't
+    on PATH the hook fails with ``sm: command not found``, which is
+    the honest signal: fix your install.
 
     Args:
         verb: The validation command to run ("swab" or "scour").
@@ -47,35 +51,13 @@ def _generate_hook_script(verb: str) -> str:
 # To remove: sm commit-hooks uninstall
 #
 
-# Find slop-mop submodule directory
-SM_DIR=""
-for candidate in slop-mop vendor/slop-mop; do
-    if [ -d "$candidate/slopmop" ]; then
-        SM_DIR="$candidate"
-        break
-    fi
-done
-
-if [ -z "$SM_DIR" ]; then
-    echo "❌ Error: slop-mop submodule not found"
-    echo "   Run: git submodule update --init"
+if ! command -v sm >/dev/null 2>&1; then
+    echo "❌ sm not found on PATH"
+    echo "   Install: pipx install slopmop"
     exit 1
 fi
 
-# Find Python venv
-if [ -f "./venv/bin/python" ]; then
-    PYTHON="./venv/bin/python"
-elif [ -f "./.venv/bin/python" ]; then
-    PYTHON="./.venv/bin/python"
-else
-    echo "⚠️  Warning: No venv found. Using system python3."
-    PYTHON="python3"
-fi
-
-# Run slop-mop directly from the submodule (no pip install needed)
-PYTHONPATH="$SM_DIR:${{PYTHONPATH:-}}" $PYTHON -m slopmop.sm {verb}
-
-# Capture exit code
+sm {verb}
 result=$?
 
 if [ $result -ne 0 ]; then

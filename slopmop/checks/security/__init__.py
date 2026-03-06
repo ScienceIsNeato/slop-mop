@@ -198,17 +198,26 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     def _is_scanner_available(name: str, importable: dict[str, str]) -> bool:
         """Check if a scanner tool is available on this system.
 
-        For Python-based scanners (bandit, detect-secrets), checks
-        importability. For external binaries (semgrep), checks PATH.
+        For Python-based scanners (bandit, detect-secrets) we use
+        ``find_spec`` rather than ``import_module``.  Actually importing
+        bandit pulls in stevedore, which eagerly enumerates every
+        entry-point plugin and logs a WARNING for each one that fails
+        to load — ``Could not load 'sarif': No module named 'sarif_om'``
+        leaks to stderr on every swab.  Bandit's dep tree also imports
+        ``requests`` which fires a RequestsDependencyWarning on version
+        mismatch.  We don't need any of that just to answer "is it
+        installed?" — ``find_spec`` checks the import machinery without
+        executing a single line of the target module.
+
+        The scanner is then invoked as a subprocess anyway, so a
+        broken install (exists but raises on import) surfaces as a
+        subprocess failure in ``_run_bandit``, which is the right
+        place to report it.
         """
         if name in importable:
-            try:
-                import importlib
+            import importlib.util
 
-                importlib.import_module(importable[name])
-                return True
-            except ImportError:
-                return False
+            return importlib.util.find_spec(importable[name]) is not None
         # External binary (semgrep, etc.)
         return shutil.which(name) is not None
 

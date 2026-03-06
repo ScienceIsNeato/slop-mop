@@ -194,12 +194,20 @@ class RunReport:
         """
         counts: Dict[str, Dict[str, int]] = {}
         for r in self.summary.results:
-            role = r.role or "unknown"
-            bucket = counts.setdefault(role, {"passed": 0, "failed": 0})
+            # Only bucket results that actually land in a pass/fail
+            # column.  WARNED/SKIPPED/NOT_APPLICABLE results previously
+            # triggered setdefault (creating the bucket) but hit
+            # neither branch — leaking ``{"unknown": {"passed": 0,
+            # "failed": 0}}`` into the JSON for every run with N/A
+            # gates.  Empty buckets are noise.
             if r.status == CheckStatus.PASSED:
-                bucket["passed"] += 1
+                key = "passed"
             elif r.status in (CheckStatus.FAILED, CheckStatus.ERROR):
-                bucket["failed"] += 1
+                key = "failed"
+            else:
+                continue
+            role = r.role or "unknown"
+            counts.setdefault(role, {"passed": 0, "failed": 0})[key] += 1
         return counts
 
 
