@@ -67,7 +67,6 @@ testing = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "diff-cover>=7.0.0",
-    "jsonschema>=4.0.0",   # validates SARIF output against the vendored schema
 ]
 # All tools — batteries-included experience
 tools = [

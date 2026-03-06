@@ -95,70 +95,6 @@ class ScopeInfo:
 
 
 @dataclass
-class Finding:
-    """A single actionable issue discovered by a quality gate.
-
-    This is the structured representation that flows to SARIF output.
-    All location fields are optional — a gate may emit a project-level
-    finding with only a message (e.g. config-debt), a file-level finding
-    without a line, or a fully-located finding with line and column.
-
-    Line and column are 1-based (SARIF native).  File paths should be
-    relative to the project root with POSIX separators.
-
-    The ``__str__`` representation matches the ``file:line:col: message``
-    format gates already produce manually, so a gate that supplies
-    structured findings gets human-readable console output for free via
-    :pymeth:`BaseCheck._create_result`'s auto-output rail.
-
-    Attributes:
-        message: The issue description (required)
-        file: Path relative to project root, POSIX separators
-        line: 1-based line number
-        end_line: 1-based end line for multi-line regions
-        column: 1-based column number
-        end_column: 1-based end column
-        rule_id: Sub-rule identifier (e.g. mypy ``[type-arg]``, flake8 ``E501``)
-    """
-
-    message: str
-    file: Optional[str] = None
-    line: Optional[int] = None
-    end_line: Optional[int] = None
-    column: Optional[int] = None
-    end_column: Optional[int] = None
-    rule_id: Optional[str] = None
-
-    def __str__(self) -> str:
-        loc = ""
-        if self.file:
-            loc = self.file
-            if self.line is not None:
-                loc += f":{self.line}"
-                if self.column is not None:
-                    loc += f":{self.column}"
-            loc += ": "
-        return f"{loc}{self.message}"
-
-    def to_dict(self) -> Dict[str, object]:
-        """Serialize to a plain dict for JSON output (omit-None pattern)."""
-        d: Dict[str, object] = {"message": self.message}
-        if self.file:
-            d["file"] = self.file
-        if self.line is not None:
-            d["line"] = self.line
-        if self.end_line is not None:
-            d["end_line"] = self.end_line
-        if self.column is not None:
-            d["column"] = self.column
-        if self.end_column is not None:
-            d["end_column"] = self.end_column
-        if self.rule_id:
-            d["rule_id"] = self.rule_id
-        return d
-
-
-@dataclass
 class CheckResult:
     """Result of executing a quality gate check.
 
@@ -172,7 +108,6 @@ class CheckResult:
         auto_fixed: Whether issues were automatically fixed
         category: Category key for grouping (python, quality, security, etc.)
         scope: Scope metrics (files/LOC examined), if available
-        findings: Structured per-issue findings for SARIF output
     """
 
     name: str
@@ -186,7 +121,6 @@ class CheckResult:
     scope: Optional[ScopeInfo] = None
     skip_reason: Optional["SkipReason"] = None
     status_detail: Optional[str] = None
-    findings: List[Finding] = field(default_factory=lambda: cast(List[Finding], []))
 
     def to_dict(self) -> Dict[str, object]:
         """Serialize to a plain dict for JSON output."""
@@ -211,8 +145,6 @@ class CheckResult:
             d["skip_reason"] = self.skip_reason.value
         if self.status_detail:
             d["status_detail"] = self.status_detail
-        if self.findings:
-            d["findings"] = [f.to_dict() for f in self.findings]
         return d
 
     @property

@@ -30,7 +30,7 @@ from slopmop.checks.base import (
     GateLevel,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus, Finding
+from slopmop.core.result import CheckResult, CheckStatus
 
 # (extensions, compiled-regex, human-label)
 _PATTERNS: List[Tuple[Tuple[str, ...], re.Pattern[str], str]] = [
@@ -154,7 +154,7 @@ class DebuggerArtifactsCheck(BaseCheck):
         excluded = _DEFAULT_EXCLUDE | user_exclude
         max_files = int(self.config.get("max_files") or 50000)
 
-        hits: List[Finding] = []
+        hits: List[str] = []
         files_scanned = 0
 
         for path in root.rglob("*"):
@@ -196,13 +196,7 @@ class DebuggerArtifactsCheck(BaseCheck):
                         continue
                     for pat in patterns:
                         if pat.search(line):
-                            hits.append(
-                                Finding(
-                                    message=labels[pat.pattern],
-                                    file=str(rel),
-                                    line=lineno,
-                                )
-                            )
+                            hits.append(f"{rel}:{lineno}: {labels[pat.pattern]}")
                             break
             except (OSError, UnicodeDecodeError):
                 continue
@@ -216,13 +210,12 @@ class DebuggerArtifactsCheck(BaseCheck):
                 output=f"No debugger artifacts ({files_scanned} files scanned)",
             )
 
-        preview = "\n".join(str(h) for h in hits[:20])
+        preview = "\n".join(hits[:20])
         more = f"\n… and {len(hits) - 20} more" if len(hits) > 20 else ""
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=elapsed,
             output=f"{preview}{more}",
-            findings=hits,
             error=(
                 f"Found {len(hits)} debugger artifact(s) in "
                 f"{files_scanned} file(s)."

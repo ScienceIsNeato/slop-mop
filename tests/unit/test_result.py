@@ -5,7 +5,6 @@ from slopmop.core.result import (
     CheckResult,
     CheckStatus,
     ExecutionSummary,
-    Finding,
     ScopeInfo,
     SkipReason,
 )
@@ -90,27 +89,6 @@ class TestCheckResult:
         assert result.passed is False
         assert result.failed is False
 
-    def test_findings_default_empty(self):
-        """New findings field defaults to empty list."""
-        result = CheckResult("test", CheckStatus.PASSED, 1.0)
-        assert result.findings == []
-
-    def test_findings_in_to_dict(self):
-        """Findings serialise when present, absent when empty."""
-        r_with = CheckResult(
-            "a",
-            CheckStatus.FAILED,
-            1.0,
-            findings=[Finding("bad", file="x.py", line=1)],
-        )
-        r_without = CheckResult("b", CheckStatus.FAILED, 1.0)
-
-        assert "findings" in r_with.to_dict()
-        assert r_with.to_dict()["findings"] == [
-            {"message": "bad", "file": "x.py", "line": 1}
-        ]
-        assert "findings" not in r_without.to_dict()
-
     def test_result_with_error(self):
         """Test result with error info."""
         result = CheckResult(
@@ -123,59 +101,6 @@ class TestCheckResult:
 
         assert result.error == "Test failed"
         assert result.fix_suggestion == "Fix the test"
-
-
-class TestFinding:
-    """Tests for the structured Finding model (SARIF backbone)."""
-
-    def test_str_full_location(self):
-        f = Finding("bad", file="src/x.py", line=42, column=5)
-        assert str(f) == "src/x.py:42:5: bad"
-
-    def test_str_file_and_line(self):
-        f = Finding("bad", file="src/x.py", line=42)
-        assert str(f) == "src/x.py:42: bad"
-
-    def test_str_file_only(self):
-        f = Finding("bad", file="src/x.py")
-        assert str(f) == "src/x.py: bad"
-
-    def test_str_message_only(self):
-        assert str(Finding("project-wide issue")) == "project-wide issue"
-
-    def test_str_column_requires_line(self):
-        """Column without line doesn't print (degenerate)."""
-        f = Finding("bad", file="x.py", column=5)  # no line
-        assert str(f) == "x.py: bad"
-
-    def test_to_dict_omits_none(self):
-        f = Finding("msg")
-        assert f.to_dict() == {"message": "msg"}
-
-    def test_to_dict_full(self):
-        f = Finding(
-            "msg",
-            file="a.py",
-            line=1,
-            end_line=5,
-            column=2,
-            end_column=10,
-            rule_id="E501",
-        )
-        assert f.to_dict() == {
-            "message": "msg",
-            "file": "a.py",
-            "line": 1,
-            "end_line": 5,
-            "column": 2,
-            "end_column": 10,
-            "rule_id": "E501",
-        }
-
-    def test_to_dict_line_zero_preserved(self):
-        """Line 0 is falsy but valid — `is not None`, not truthiness."""
-        f = Finding("msg", file="x", line=0)
-        assert f.to_dict()["line"] == 0
 
 
 class TestCheckDefinition:

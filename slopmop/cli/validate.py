@@ -15,7 +15,7 @@ from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
 from slopmop.core.executor import CheckExecutor
 from slopmop.core.registry import get_registry
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.timings import clear_timings, load_timing_averages
@@ -109,54 +109,6 @@ def _setup_dynamic_display(
     return display, deferred_failures
 
 
-def _build_json_output(
-    summary: ExecutionSummary,
-    reporter: ConsoleReporter,
-    level_name: Optional[str],
-) -> str:
-    """Build the compact LLM-targeted JSON payload.
-
-    Extracted from _run_validation so the SARIF path can sit alongside
-    it without duplicating the output-dispatch branch.
-    """
-    # Write failure/error logs the same way the human path does,
-    # so JSON consumers can reference the same log files.
-    log_files: dict[str, str] = {}
-    for result in summary.results:
-        if result.failed or result.status == CheckStatus.ERROR:
-            log_path = reporter.write_failure_log(result)
-            if log_path:
-                log_files[result.name] = log_path
-
-    output = summary.to_dict()
-    output["schema"] = "slopmop/v1"
-    if level_name:
-        output["level"] = level_name
-
-    # Attach log file paths to individual results
-    # (results only contains non-passing checks in compact mode)
-    if log_files and isinstance(output.get("results"), list):
-        for entry in cast(List[dict[str, object]], output["results"]):
-            gate_name = str(entry.get("name", ""))
-            if gate_name in log_files:
-                entry["log_file"] = log_files[gate_name]
-
-    # Add next-steps guidance (same commands the human display shows)
-    failed_results = [r for r in summary.results if r.status == CheckStatus.FAILED]
-    error_results = [r for r in summary.results if r.status == CheckStatus.ERROR]
-    first_failure = (
-        failed_results[0]
-        if failed_results
-        else (error_results[0] if error_results else None)
-    )
-    if first_failure:
-        output["next_steps"] = [
-            f"sm swab -g {first_failure.name} --verbose",
-        ]
-
-    return json.dumps(output, separators=(",", ":"))
-
-
 # ─── Shared execution pipeline ───────────────────────────────────────────
 
 
@@ -187,17 +139,11 @@ def _run_validation(
         return 1
 
     json_mode = _is_json_mode(args)
-    sarif_mode = getattr(args, "sarif_output", False)
-    output_file = getattr(args, "output_file", None)
-    # Machine output to a file coexists with the human console display;
-    # machine output to stdout suppresses it.  This lets CI generate a
-    # SARIF artefact while the build log stays human-readable.
-    suppress_display = (json_mode or sarif_mode) and not output_file
 
     # Clear timing history if requested
     if getattr(args, "clear_history", False):
         if clear_timings(str(project_root)):
-            if not args.quiet and not suppress_display:
+            if not args.quiet and not json_mode:
                 print("🗑️  Timing history cleared")
 
     # Create executor
@@ -233,9 +179,9 @@ def _run_validation(
         gates = list(gates) + custom_names
 
     # Determine if we should use dynamic display
-    # Machine output to stdout suppresses all interactive output
+    # JSON mode suppresses all interactive output
     use_dynamic = (
-        not suppress_display
+        not json_mode
         and sys.stdout.isatty()
         and not os.environ.get("NO_COLOR")
         and not args.quiet
@@ -256,7 +202,7 @@ def _run_validation(
         swabbing_time = None
 
     # Print header BEFORE starting dynamic display
-    if not args.quiet and not suppress_display:
+    if not args.quiet and not json_mode:
         _print_header(project_root, gates, args, swabbing_time=swabbing_time)
 
     # Load timing history for budget filtering
@@ -271,9 +217,8 @@ def _run_validation(
         dynamic_display, deferred_failures = _setup_dynamic_display(
             executor, reporter, args.quiet, project_root
         )
-    elif not suppress_display:
-        # Fall back to traditional reporter (no progress when machine
-        # output is going to stdout)
+    elif not json_mode:
+        # Fall back to traditional reporter (no progress in JSON mode)
         executor.set_progress_callback(reporter.on_check_complete)
 
     try:
@@ -297,28 +242,54 @@ def _run_validation(
             # Printing them individually via on_check_complete() too
             # caused double-reported failures (token sink #1).
 
-        # Build machine output (SARIF and/or JSON).  SARIF wins when
-        # both are set — it's the explicit flag, JSON is auto-detected.
-        machine_output: Optional[str] = None
-        if sarif_mode:
-            from slopmop import __version__
-            from slopmop.reporting.sarif import SarifReporter
+        if json_mode:
+            # Write failure/error logs the same way the human path does,
+            # so JSON consumers can reference the same log files.
+            log_files: dict[str, str] = {}
+            for result in summary.results:
+                if result.failed or result.status == CheckStatus.ERROR:
+                    log_path = reporter.write_failure_log(result)
+                    if log_path:
+                        log_files[result.name] = log_path
 
-            machine_output = SarifReporter(version=__version__).to_json(summary)
-        elif json_mode:
-            machine_output = _build_json_output(summary, reporter, level_name)
+            # Build enriched JSON — everything the human display shows,
+            # structured for machine consumption.
+            output = summary.to_dict()
 
-        # Emit. Three paths:
-        #   - machine output → file, human summary → stdout
-        #   - machine output → stdout (human summary suppressed)
-        #   - human summary → stdout only
-        if machine_output is not None and output_file:
-            Path(output_file).write_text(machine_output, encoding="utf-8")
-            if not args.quiet:
-                reporter.print_summary(summary)
-                print(f"\n📄 Report written to {output_file}")
-        elif machine_output is not None:
-            print(machine_output)
+            # Schema version — lets consumers look up field semantics
+            # without the JSON needing to self-document every key.
+            output["schema"] = "slopmop/v1"
+
+            # Add run context
+            if level_name:
+                output["level"] = level_name
+
+            # Attach log file paths to individual results
+            # (results only contains non-passing checks in compact mode)
+            if log_files and isinstance(output.get("results"), list):
+                for entry in cast(List[dict[str, object]], output["results"]):
+                    gate_name = str(entry.get("name", ""))
+                    if gate_name in log_files:
+                        entry["log_file"] = log_files[gate_name]
+
+            # Add next-steps guidance (same commands the human display shows)
+            failed_results = [
+                r for r in summary.results if r.status == CheckStatus.FAILED
+            ]
+            error_results = [
+                r for r in summary.results if r.status == CheckStatus.ERROR
+            ]
+            first_failure = (
+                failed_results[0]
+                if failed_results
+                else (error_results[0] if error_results else None)
+            )
+            if first_failure:
+                output["next_steps"] = [
+                    f"sm swab -g {first_failure.name} --verbose",
+                ]
+
+            print(json.dumps(output, separators=(",", ":")))
         else:
             reporter.print_summary(summary)
 

@@ -24,7 +24,7 @@ from slopmop.checks.base import (
     GateCategory,
     JavaScriptCheckMixin,
 )
-from slopmop.core.result import CheckResult, CheckStatus, Finding
+from slopmop.core.result import CheckResult, CheckStatus
 
 # File patterns to scan
 TEST_FILE_PATTERNS = [
@@ -453,12 +453,4 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
             duration=duration,
             output="\n".join(output_lines),
             error=f"Found {len(findings)} bogus test(s) (max allowed: {max_allowed})",
-            findings=[
-                Finding(
-                    message=f"{b.test_name}: {b.reason}",
-                    file=b.file,
-                    line=b.line,
-                )
-                for b in findings
-            ],
         )
