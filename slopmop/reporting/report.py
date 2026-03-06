@@ -87,6 +87,13 @@ class RunReport:
     warned: List[CheckResult] = field(default_factory=_no_results)
     errored: List[CheckResult] = field(default_factory=_no_results)
     skipped: List[CheckResult] = field(default_factory=_no_results)
+    # NOT_APPLICABLE is distinct from SKIPPED — "this gate doesn't
+    # apply to your project" (all JS gates on a Python-only repo) vs
+    # "this was supposed to run but something blocked it" (fail-fast,
+    # missing dep).  The console adapter displays operational skips in
+    # the failure summary; inflating that count with n/a gates adds
+    # noise.  ExecutionSummary already tracks the split in its counts.
+    not_applicable: List[CheckResult] = field(default_factory=_no_results)
 
     # --- Log file mapping -------------------------------------------
     # gate_name → relative path.  Populated by write_logs().  Adapters
@@ -153,10 +160,8 @@ class RunReport:
             failed=failed,
             warned=status_buckets[CheckStatus.WARNED],
             errored=errored,
-            skipped=(
-                status_buckets[CheckStatus.SKIPPED]
-                + status_buckets[CheckStatus.NOT_APPLICABLE]
-            ),
+            skipped=status_buckets[CheckStatus.SKIPPED],
+            not_applicable=status_buckets[CheckStatus.NOT_APPLICABLE],
             verify_command=verify,
         )
 

@@ -17,7 +17,7 @@ inside an adapter, that's RunReport's job — add a property there.
 
 from typing import Dict, List, cast
 
-from slopmop.constants import format_duration_suffix
+from slopmop.constants import ROLE_BADGES, format_duration_suffix
 from slopmop.core.result import CheckResult
 from slopmop.reporting.report import RunReport
 
@@ -252,16 +252,12 @@ class ConsoleAdapter:
 
 # ─── helpers ─────────────────────────────────────────────────────────────
 
-_ROLE_BADGES: Dict[str, str] = {
-    "foundation": "🔧 ",
-    "diagnostic": "🔬 ",
-}
-
 
 def _role_badge(result: CheckResult) -> str:
     """Short emoji prefix distinguishing foundation vs diagnostic gates.
 
     Foundation = wrench (tooling).  Diagnostic = microscope (analysis).
-    Unknown/None → empty string — don't guess.
+    Unknown/None → empty string — don't guess.  Map lives in
+    constants.py (shared with `sm status`) so both surfaces agree.
     """
-    return _ROLE_BADGES.get(result.role or "", "")
+    return ROLE_BADGES.get(result.role or "", "")

@@ -96,16 +96,11 @@ def _print_config_summary(
 
 RECENT_HISTORY_HEADER = "📊 RECENT HISTORY"
 
-# Role badges — same glyphs as ConsoleAdapter (reporting/adapters.py) so
-# the dashboard inventory and the post-run summary speak the same visual
-# language.  Wrench = foundation (wraps tooling), microscope = diagnostic
-# (novel analysis).  Not imported to keep status.py free of adapter
-# dependencies; the sibling map is keyed off the same CheckRole enum
-# values so drift requires an enum change in base.py first.
-_ROLE_BADGES: Dict[str, str] = {
-    "foundation": "🔧 ",
-    "diagnostic": "🔬 ",
-}
+# Shared role → badge map lives in constants.py alongside STATUS_EMOJI —
+# imported rather than duplicated so `sm status` and the ConsoleAdapter
+# post-run summary can't drift.  Re-exported as an underscored module
+# alias to keep existing call sites (`_ROLE_BADGES.get(...)`) unchanged.
+from slopmop.constants import ROLE_BADGES as _ROLE_BADGES
 
 
 def _format_gate_line(

@@ -81,7 +81,11 @@ class TestRunReportCategorisation:
         assert [r.name for r in report.failed] == ["f1"]
         assert [r.name for r in report.warned] == ["w1"]
         assert [r.name for r in report.errored] == ["e1"]
-        assert [r.name for r in report.skipped] == ["s1", "na"]
+        # Operational skips (fail-fast, missing deps) stay separate
+        # from applicability filtering — the console summary shows
+        # "skipped" counts for things that *should* have run.
+        assert [r.name for r in report.skipped] == ["s1"]
+        assert [r.name for r in report.not_applicable] == ["na"]
 
     def test_preserves_order(self) -> None:
         summary = _summary(
