@@ -10,9 +10,14 @@
   "pythonVersion": "3.9",
   "venvPath": "/Users/pacey/Documents/SourceCode/slop-mop",
   "venv": "venv",
-  "reportUnknownMemberType": "error",
-  "reportUnknownVariableType": "error",
-  "reportUnknownArgumentType": "error",
-  "reportUnknownParameterType": "error",
-  "reportUnknownLambdaType": "error"
+  "executionEnvironments": [
+    {
+      "root": "slopmop",
+      "reportUnknownMemberType": "error",
+      "reportUnknownVariableType": "error",
+      "reportUnknownArgumentType": "error",
+      "reportUnknownParameterType": "error",
+      "reportUnknownLambdaType": "error"
+    }
+  ]
 }

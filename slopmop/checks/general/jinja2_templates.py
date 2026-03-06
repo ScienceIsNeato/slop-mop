@@ -16,7 +16,7 @@ from slopmop.checks.base import (
     PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 
 class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
@@ -186,6 +186,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
             ),
         )
         errors: List[str] = []
+        structured: List[Finding] = []
         count = 0
 
         for root, _, files in os.walk(templates_path):
@@ -197,6 +198,17 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
                         env.get_template(rel_path)
                     except Exception as e:
                         errors.append(f"  {rel_path}: {e}")
+                        # TemplateSyntaxError carries .lineno — grab it
+                        # duck-typed so we don't need the exception class.
+                        structured.append(
+                            Finding(
+                                message=str(e),
+                                file=os.path.join(templates_dir, rel_path).replace(
+                                    os.sep, "/"
+                                ),
+                                line=getattr(e, "lineno", None),
+                            )
+                        )
 
         duration = time.time() - start_time
 
@@ -207,6 +219,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
                 output="\n".join(errors),
                 error=f"{len(errors)} template(s) failed to compile",
                 fix_suggestion="Fix Jinja2 syntax errors shown above.",
+                findings=structured,
             )
 
         return self._create_result(

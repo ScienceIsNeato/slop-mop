@@ -33,7 +33,7 @@ from slopmop.constants import (
     COVERAGE_STANDARDS_PREFIX,
     COVERAGE_XML_NOT_FOUND,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 COVERAGE_THRESHOLD = 80
 CI_BUFFER = 0.5  # CI environments get slight buffer for timing variance
@@ -218,6 +218,13 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
             output=prescriptive_output,
             error=COVERAGE_BELOW_THRESHOLD,
             fix_suggestion="Add tests for the files and lines listed above.",
+            findings=[
+                Finding(
+                    message=f"{miss} uncovered lines: {ranges}",
+                    file=fp,
+                )
+                for fp, _stmts, miss, ranges in missing_files
+            ],
         )
 
     def _parse_missing_lines(self, output: str) -> List[Tuple[str, int, int, str]]:

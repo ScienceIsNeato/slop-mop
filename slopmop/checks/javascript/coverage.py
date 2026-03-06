@@ -25,7 +25,7 @@ from slopmop.constants import (
     COVERAGE_STANDARDS_PREFIX,
     NPM_INSTALL_FAILED,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 DEFAULT_THRESHOLD = 80
 MAX_FILES_TO_SHOW = 5
@@ -241,12 +241,27 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         lines.append("")
         lines.append(COVERAGE_GUIDANCE_FOOTER)
 
+        structured: List[Finding] = []
+        for path, file_pct in low_files:
+            # Jest coverage-summary.json uses absolute paths.
+            try:
+                rel = os.path.relpath(path)
+            except ValueError:
+                rel = path
+            structured.append(
+                Finding(
+                    message=f"line coverage {file_pct:.0f}% (threshold {self.threshold}%)",
+                    file=rel.replace(os.sep, "/"),
+                )
+            )
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output="\n".join(lines),
             error=COVERAGE_BELOW_THRESHOLD,
             fix_suggestion="Add tests to increase coverage.",
+            findings=structured,
         )
 
     def _parse_coverage_output(self, output: str) -> Optional[float]:

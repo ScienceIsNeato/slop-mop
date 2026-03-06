@@ -15,7 +15,7 @@ from slopmop.checks.base import (
     PythonCheckMixin,
     ToolContext,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 # mypy error code pattern: file.py:10: error: message  [code]
 _MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
@@ -261,6 +261,19 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
             output = self._format_summary(error_lines, code_counts)
             total = sum(code_counts.values())
 
+            structured: List[Finding] = []
+            for line in error_lines:
+                m = _MYPY_ERROR_RE.match(line)
+                if m:
+                    structured.append(
+                        Finding(
+                            message=m.group(3),
+                            file=m.group(1),
+                            line=int(m.group(2)),
+                            rule_id=m.group(4),
+                        )
+                    )
+
             fix_parts = ["Fix type annotations or add # type: ignore comments."]
             if "type-arg" in code_counts:
                 fix_parts.append(
@@ -279,6 +292,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                 output=output,
                 error=f"{total} type error(s) found",
                 fix_suggestion=" ".join(fix_parts),
+                findings=structured,
             )
 
         return self._create_result(

@@ -145,6 +145,29 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         action="store_false",
         help="Force pretty output even when stdout is not a TTY.",
     )
+    parser.add_argument(
+        "--sarif",
+        dest="sarif_output",
+        action="store_true",
+        default=False,
+        help=(
+            "Output results as SARIF 2.1.0 for GitHub Code Scanning "
+            "integration. Pair with --output-file and upload via "
+            "github/codeql-action/upload-sarif. In CI, also pass "
+            "--no-auto-fix so the report describes the commit as-pushed, "
+            "not as-would-be-after-formatting."
+        ),
+    )
+    parser.add_argument(
+        "--output-file",
+        dest="output_file",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Write machine-readable output (--json or --sarif) to this "
+            "file instead of stdout. The human summary is still printed."
+        ),
+    )
 
 
 def _add_swab_parser(

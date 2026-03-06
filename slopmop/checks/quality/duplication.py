@@ -22,7 +22,7 @@ from slopmop.checks.base import (
     ToolContext,
     count_source_scope,
 )
-from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
 MIN_TOKENS = 50
@@ -240,12 +240,39 @@ class SourceDuplicationCheck(BaseCheck):
         if len(violations) > 10:
             detail += f"\n... and {len(violations) - 10} more"
 
+        # Structured: one finding per clone pair, anchored at the first
+        # file's block.  end_line gives SARIF the full span to highlight.
+        structured: List[Finding] = []
+        for dup in duplicates:
+            first = dup.get("firstFile", {})
+            second = dup.get("secondFile", {})
+            f_name = first.get("name")
+            if not f_name:
+                continue
+            f_start = first.get("startLoc", {}).get("line")
+            f_end = first.get("endLoc", {}).get("line")
+            s_name = second.get("name", "?")
+            s_start = second.get("startLoc", {}).get("line", "?")
+            s_end = second.get("endLoc", {}).get("line", "?")
+            structured.append(
+                Finding(
+                    message=(
+                        f"duplicate of {s_name}:{s_start}-{s_end} "
+                        f"({dup.get('lines', 0)} lines)"
+                    ),
+                    file=f_name,
+                    line=f_start if isinstance(f_start, int) else None,
+                    end_line=f_end if isinstance(f_end, int) else None,
+                )
+            )
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error="Excessive code duplication detected",
             fix_suggestion="Extract duplicated code into shared functions or modules.",
+            findings=structured,
         )
 
     def run(self, project_root: str) -> CheckResult:
