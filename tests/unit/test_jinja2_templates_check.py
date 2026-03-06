@@ -84,8 +84,18 @@ class TestTemplateValidationCheck:
 
         check = TemplateValidationCheck({"templates_dir": "templates"})
 
+        # The smoke-test path (unlike direct template validation) shells
+        # out to the project's pytest, which means it hits the venv gate
+        # first.  tmp_path has no venv.  Without this patch the test
+        # only passes when the test runner itself happens to have
+        # VIRTUAL_ENV set — i.e. it was accidentally coupled to the
+        # developer's shell.  Discovered when a fresh .venv with
+        # VIRTUAL_ENV unset flipped this to WARNED.
         success_result = _make_result(output="1 passed", returncode=0)
-        with patch.object(check, "_run_command", return_value=success_result):
+        with (
+            patch.object(check, "check_project_venv_or_warn", return_value=None),
+            patch.object(check, "_run_command", return_value=success_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
@@ -104,7 +114,10 @@ class TestTemplateValidationCheck:
         check = TemplateValidationCheck({"templates_dir": "templates"})
 
         fail_result = _make_result(output="FAILED test_x.py", returncode=1)
-        with patch.object(check, "_run_command", return_value=fail_result):
+        with (
+            patch.object(check, "check_project_venv_or_warn", return_value=None),
+            patch.object(check, "_run_command", return_value=fail_result),
+        ):
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
