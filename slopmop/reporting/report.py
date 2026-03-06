@@ -182,6 +182,9 @@ class RunReport:
         os.makedirs(log_dir, exist_ok=True)
 
         for result in self.failed + self.errored:
+            # Gate names use "category:check-name" format. Replacing ":"
+            # with "_" is safe because no two registered gates would
+            # produce the same sanitized filename.
             safe_name = result.name.replace(":", "_").replace("/", "_")
             log_path = os.path.join(log_dir, f"{safe_name}.log")
             with open(log_path, "w") as f:

@@ -19,6 +19,7 @@ from typing import Iterator, List, Optional, Pattern, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -346,6 +347,8 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
     Re-check:
       sm swab -g deceptiveness:bogus-tests.js --verbose
     """
+
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:

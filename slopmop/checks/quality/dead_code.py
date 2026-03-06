@@ -278,7 +278,10 @@ class DeadCodeCheck(BaseCheck):
             duration=duration,
             output=output,
             error=f"{len(findings)} dead code finding(s)",
-            fix_suggestion="Remove unused code or add to vulture whitelist.",
+            fix_suggestion=(
+                "Remove unused code or add to vulture whitelist. "
+                "Verify with: " + self.verify_command
+            ),
             findings=findings,
         )
 

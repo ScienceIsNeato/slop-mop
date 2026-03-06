@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, CheckRole, ConfigField, Flaw, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
@@ -453,6 +453,8 @@ class GateDodgingCheck(BaseCheck):
     Re-check:
       sm swab -g deceptiveness:gate-dodging --verbose
     """
+
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:

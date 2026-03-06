@@ -40,6 +40,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -415,6 +416,8 @@ class BogusTestsCheck(BaseCheck):
     Re-check:
       sm swab -g deceptiveness:bogus-tests.py --verbose
     """
+
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:

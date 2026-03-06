@@ -18,6 +18,7 @@ from typing import List, Optional, Set, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -190,6 +191,8 @@ _FIX_SUGGESTION = (
     "the signal the file genuinely needs splitting."
 )
 
+_FIX_SUGGESTION_SUFFIX = "\n\nVerify with: "
+
 
 def _find_biggest_python_definition(
     content: str,
@@ -305,6 +308,8 @@ class LocLockCheck(BaseCheck):
     Re-check:
       sm swab -g myopia:code-sprawl --verbose
     """
+
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:
@@ -498,7 +503,9 @@ class LocLockCheck(BaseCheck):
                 file_violations, func_violations, max_file_lines, max_func_lines
             ),
             error=f"{total} LOC violation(s) found",
-            fix_suggestion=_FIX_SUGGESTION,
+            fix_suggestion=_FIX_SUGGESTION
+            + _FIX_SUGGESTION_SUFFIX
+            + self.verify_command,
             findings=self._build_findings(
                 file_violations, func_violations, max_file_lines, max_func_lines
             ),

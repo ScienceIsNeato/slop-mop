@@ -392,8 +392,11 @@ class JavaScriptCheckMixin:
                     if line.startswith("#") or line.startswith(";"):
                         continue
                     # Check for active legacy-peer-deps setting
+                    # Handle variations: with/without spaces around '='
+                    key, _, value = line.partition("=")
                     if (
-                        "legacy-peer-deps=true" in line
+                        key.strip() == "legacy-peer-deps"
+                        and value.strip().lower() == "true"
                         and "--legacy-peer-deps" not in cmd
                     ):
                         cmd.append("--legacy-peer-deps")

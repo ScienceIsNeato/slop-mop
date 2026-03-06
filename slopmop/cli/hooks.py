@@ -39,6 +39,10 @@ def _generate_hook_script(verb: str) -> str:
     on PATH the hook fails with ``sm: command not found``, which is
     the honest signal: fix your install.
 
+    Note: The generated script uses a ``#!/bin/sh`` shebang and POSIX
+    shell syntax.  On Windows this requires Git for Windows (Git Bash)
+    or WSL — native ``cmd.exe`` / PowerShell won't run it.
+
     Args:
         verb: The validation command to run ("swab" or "scour").
     """
