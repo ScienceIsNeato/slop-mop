@@ -11,7 +11,7 @@ Note: This is a cross-cutting quality check. While it uses radon
 import os
 import re
 import time
-from typing import List
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -26,6 +26,11 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_RANK = "C"
 MAX_COMPLEXITY = 20
+
+# radon -s emits the numeric complexity in parentheses after the rank
+# letter, e.g. "... - D (21)" in plain mode or "... **D** (21)" in --md
+# mode.  Capture it so we can compute the delta to shed.
+_SCORE_RE = re.compile(r"\((\d+)\)")
 
 
 class ComplexityCheck(BaseCheck, PythonCheckMixin):
@@ -174,21 +179,47 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         # them, but fall back to a message-only finding when the format
         # doesn't match (still a separate SARIF result per function).
         loc_re = re.compile(r"(\S+\.py)[:\s*]+(\d+)")
+        limit = self.config.get("max_complexity", MAX_COMPLEXITY)
         structured: List[Finding] = []
         for v in violations:
             m = loc_re.search(v)
+            # Pull the numeric score that -s appended.  If radon's
+            # output changed shape and we can't find one, skip the
+            # fix_strategy — a wrong delta is worse than no delta.
+            score_m = _SCORE_RE.search(v)
+            fix: Optional[str] = None
+            if score_m:
+                score = int(score_m.group(1))
+                delta = score - limit
+                if delta > 0:
+                    fix = (
+                        f"Complexity is {score}, limit is {limit} — "
+                        f"shed at least {delta}. Each "
+                        f"if/for/while/except/and/or adds 1. Extract "
+                        f"the longest branch into a helper function."
+                    )
             if m:
                 structured.append(
-                    Finding(message=v, file=m.group(1), line=int(m.group(2)))
+                    Finding(
+                        message=v,
+                        file=m.group(1),
+                        line=int(m.group(2)),
+                        fix_strategy=fix,
+                    )
                 )
             else:
-                structured.append(Finding(message=v))
+                structured.append(Finding(message=v, fix_strategy=fix))
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(violations)} function(s) exceed limit",
-            fix_suggestion="Break complex functions into smaller helpers.",
+            fix_suggestion=(
+                "Each function above has a complexity delta to shed. "
+                "Extract the longest conditional branch (if/elif chain "
+                "or try/except cascade) into a named helper. Verify "
+                f"with: sm swab -g {self.full_name}"
+            ),
             findings=structured,
         )
 

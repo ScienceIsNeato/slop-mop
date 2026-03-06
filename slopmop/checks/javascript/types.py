@@ -30,6 +30,7 @@ from typing import List
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -69,6 +70,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION  # tsc
 
     @property
     def name(self) -> str:
@@ -212,7 +214,12 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                 duration=duration,
                 output=result.output,
                 error=msg,
-                fix_suggestion=f"Run: npx tsc --noEmit -p {tsconfig} to see detailed errors",
+                fix_suggestion=(
+                    "Type errors shown above. Each TS error code has a "
+                    "standard fix — start with the first error (later "
+                    "errors often cascade). Verify with: "
+                    f"sm swab -g {self.full_name}"
+                ),
                 findings=findings or [Finding(message=msg, level=FindingLevel.ERROR)],
             )
 

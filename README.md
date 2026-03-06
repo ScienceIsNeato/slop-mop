@@ -89,6 +89,28 @@ Use `sm status` for a report card of all gates at once.
 
 ---
 
+## Design Philosophy
+
+### Two tiers
+
+Gates split into two roles. **Foundation** gates wrap tools every competent project already runs — black, mypy, pytest, eslint, tsc, coverage. They're the floor. **Diagnostic** gates ask questions nobody else asks — is this test asserting anything, did complexity creep up, is this code dead, are these strings duplicated across twelve files. They're the reason this project exists.
+
+Console output tags them `[floor]` and `[diag]`. JSON and SARIF carry the role so downstream consumers can filter: "skip what my CI already tells me, show only the novel stuff."
+
+The default is diagnostic. A gate proves itself foundation by wrapping something on the short list.
+
+### Joint optimization
+
+Slop-mop optimizes for two things at once: **maintainability** (the code stays navigable) and **token efficiency** (the agent fixes problems in one pass, not six).
+
+Those two goals turn out to be the same goal. A gate that says `"Coverage is 68%, threshold is 80%"` and nothing else costs four round-trips: the agent reads the message, runs coverage manually to find the uncovered lines, reads the source to figure out which function, writes a test, re-runs. A gate that says `"Lines 42-48 in handle_retry() are uncovered — this is an except clause; write a test that forces the error"` costs one. Same correctness outcome, one-quarter the tokens.
+
+Every gate's output is designed so an agent can cargo-cult its way to green. That is not an insult. Cargo-cult-to-green is a *feature*. If following the instructions blindly produces correct code, the instructions were good. If following them blindly produces wrong code, the gate lied, and that's a bug in the gate.
+
+The contract is: gates compute what they can prove and stay silent about what they can't. A coverage gate knows the uncovered line range and can parse the AST to name the enclosing function — so it does. It does *not* know what test file you should write to, so it doesn't guess one. `fix_strategy=None` is honest. A fabricated path wastes a turn.
+
+---
+
 ## Why These Categories?
 
 Gates aren't organized by language — they're organized by **the failure mode they catch**. These are the four ways LLMs reliably degrade a codebase:

@@ -21,6 +21,7 @@ from slopmop.cli.hooks import (
     cmd_commit_hooks,
 )
 from slopmop.cli.init import prompt_user, prompt_yes_no
+from slopmop.core.result import ExecutionSummary
 from slopmop.sm import create_parser, load_config, main, setup_logging
 
 
@@ -835,7 +836,7 @@ class TestScourDisablesFailFast:
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
-        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor.run_checks.return_value = ExecutionSummary.from_results([], 0.0)
         mock_executor_cls.return_value = mock_executor
 
         _run_validation(self._make_args(tmp_path), ["gate1"], "scour")
@@ -855,7 +856,7 @@ class TestScourDisablesFailFast:
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
-        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor.run_checks.return_value = ExecutionSummary.from_results([], 0.0)
         mock_executor_cls.return_value = mock_executor
 
         # no_fail_fast=False means the user did NOT pass --no-fail-fast,
@@ -878,7 +879,7 @@ class TestScourDisablesFailFast:
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
-        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor.run_checks.return_value = ExecutionSummary.from_results([], 0.0)
         mock_executor_cls.return_value = mock_executor
 
         _run_validation(self._make_args(tmp_path), ["gate1"], "swab")
@@ -897,7 +898,7 @@ class TestScourDisablesFailFast:
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
-        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor.run_checks.return_value = ExecutionSummary.from_results([], 0.0)
         mock_executor_cls.return_value = mock_executor
 
         _run_validation(self._make_args(tmp_path, no_fail_fast=True), ["gate1"], "swab")

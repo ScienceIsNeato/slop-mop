@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -55,6 +56,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION  # jest --coverage
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)

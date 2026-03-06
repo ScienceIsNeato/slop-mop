@@ -1,10 +1,12 @@
 """Python test execution check using pytest."""
 
+import re
 import time
 from typing import List
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -18,6 +20,57 @@ from slopmop.checks.constants import (
 )
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+
+# pytest's short-summary line format is stable across 6.x/7.x/8.x:
+#   FAILED tests/test_foo.py::TestBar::test_baz - AssertionError: expected 5, got 3
+# The `- reason` suffix is optional (pytest omits it when there's no
+# short repr, e.g. on bare `assert False`).
+_PYTEST_FAILED_RE = re.compile(
+    r"FAILED\s+(?P<path>\S+?\.py)::(?P<nodeid>\S+?)(?:\s+-\s+(?P<reason>.+))?$"
+)
+
+
+def _parse_failed_lines(failed_tests: List[str]) -> List[Finding]:
+    """Turn pytest FAILED lines into structured findings.
+
+    When the line matches pytest's short-summary format we extract the
+    bare test name (last ``::`` segment) and the assertion summary.
+    Unparseable lines still surface as findings but without a
+    ``fix_strategy`` — we can't compute one honestly.
+    """
+    structured: List[Finding] = []
+    for line in failed_tests:
+        m = _PYTEST_FAILED_RE.search(line)
+        if not m:
+            rest = line.split("FAILED", 1)[-1].strip()
+            path = rest.split("::", 1)[0]
+            structured.append(
+                Finding(
+                    message=rest,
+                    file=path if path.endswith(".py") else None,
+                )
+            )
+            continue
+
+        path = m.group("path")
+        # nodeid is `TestClass::test_method` or just `test_function` —
+        # the last segment is the test name an author will recognise.
+        test_name = m.group("nodeid").rsplit("::", 1)[-1]
+        reason = m.group("reason")
+        msg = f"{test_name} failed: {reason}" if reason else f"{test_name} failed"
+        structured.append(
+            Finding(
+                message=msg,
+                file=path,
+                rule_id="test-failure",
+                fix_strategy=(
+                    f"Test {test_name} expects different behaviour. "
+                    f"Read the assertion, decide whether the test or "
+                    f"the code is wrong, fix one."
+                ),
+            )
+        )
+    return structured
 
 
 class PythonTestsCheck(BaseCheck, PythonCheckMixin):
@@ -47,6 +100,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.PROJECT
+    role = CheckRole.FOUNDATION  # pytest
 
     @property
     def name(self) -> str:
@@ -168,21 +222,18 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
             if failed_tests:
                 error_msg += ":\n" + "\n".join(failed_tests[:5])
 
-            # pytest FAILED lines: "FAILED path/to/test.py::Test::name - reason"
-            structured: List[Finding] = []
-            for line in failed_tests:
-                rest = line.split("FAILED", 1)[-1].strip()
-                path = rest.split("::", 1)[0]
-                if path.endswith(".py"):
-                    structured.append(Finding(message=rest, file=path))
-
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
                 error=error_msg,
-                fix_suggestion="Run: pytest -v to see detailed test failures",
-                findings=structured,
+                fix_suggestion=(
+                    "Each failure above names the failing test and "
+                    "assertion. Fix the code (or the test, if the "
+                    "test's expectation is stale). Verify with: "
+                    f"sm swab -g {self.full_name}"
+                ),
+                findings=_parse_failed_lines(failed_tests),
             )
 
         return self._create_result(

@@ -161,6 +161,18 @@ class Finding:
             own name — one gate wraps many rules.  ``None`` when the
             gate has a single rule; the SARIF reporter then uses the
             gate's ``full_name`` as the ruleId.
+        fix_strategy: Machine-extractable remediation — the specific
+            action that resolves THIS finding.  Separate from
+            ``message`` so agents consuming ``--json`` can act without
+            parsing English prose.  ``message`` describes what's wrong;
+            ``fix_strategy`` says what to do.  Example: message is
+            ``"12 uncovered lines: 42-53"``, fix_strategy is ``"Lines
+            42-53 in handle_request() are an except block — write a
+            test that triggers the exception"``.  Gates should only
+            populate this with what they can COMPUTE — never guess
+            file paths or invent conventions.  ``None`` is valid and
+            means no per-finding strategy is available; the gate-wide
+            :attr:`CheckResult.fix_suggestion` may still apply.
     """
 
     message: str
@@ -171,13 +183,16 @@ class Finding:
     end_line: Optional[int] = None
     end_column: Optional[int] = None
     rule_id: Optional[str] = None
+    fix_strategy: Optional[str] = None
 
     def __str__(self) -> str:
         """Human-readable ``file:line:col: message`` format.
 
         Used by the auto-output rail in ``_create_result`` to synthesise
         console output from structured findings when a gate didn't supply
-        free-form text.
+        free-form text.  When ``fix_strategy`` is populated, it renders
+        as an indented second line — the arrow visually subordinates
+        the fix to its finding without cluttering the location prefix.
         """
         loc = ""
         if self.file:
@@ -187,7 +202,10 @@ class Finding:
                 if self.column is not None:
                     loc += f":{self.column}"
             loc += ": "
-        return f"{loc}{self.message}"
+        head = f"{loc}{self.message}"
+        if self.fix_strategy:
+            return f"{head}\n  → fix: {self.fix_strategy}"
+        return head
 
     def to_dict(self) -> Dict[str, object]:
         """Serialise for JSON output.  Omits ``None`` fields — matches
@@ -209,6 +227,8 @@ class Finding:
             d["end_column"] = self.end_column
         if self.rule_id is not None:
             d["rule_id"] = self.rule_id
+        if self.fix_strategy is not None:
+            d["fix_strategy"] = self.fix_strategy
         return d
 
 
@@ -241,6 +261,7 @@ class CheckResult:
     fix_suggestion: Optional[str] = None
     auto_fixed: bool = False
     category: Optional[str] = None
+    role: Optional[str] = None
     scope: Optional[ScopeInfo] = None
     skip_reason: Optional["SkipReason"] = None
     status_detail: Optional[str] = None
@@ -263,6 +284,8 @@ class CheckResult:
             d["auto_fixed"] = True
         if self.category:
             d["category"] = self.category
+        if self.role:
+            d["role"] = self.role
         if self.scope:
             d["scope"] = self.scope.to_dict()
         if self.skip_reason:

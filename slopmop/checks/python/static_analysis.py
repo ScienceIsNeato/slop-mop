@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -52,6 +53,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION  # mypy
 
     @property
     def name(self) -> str:

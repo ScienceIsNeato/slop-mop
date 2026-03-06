@@ -85,6 +85,50 @@ class ToolContext(Enum):
     NODE = "node"
 
 
+class CheckRole(Enum):
+    """Architectural tier — is this the floor, or the reason we exist?
+
+    slop-mop does two fundamentally different kinds of work, and the
+    distinction matters when answering the critique "this is just
+    ``pip install black`` with flaw names":
+
+    FOUNDATION — Wraps standard dev tooling that every sane project
+        already runs: black, mypy, pytest, eslint, tsc, prettier,
+        coverage.  Answers binary structural questions — does it lint,
+        do types check, do tests pass.  This is the floor everything
+        else stands on.  We don't pretend to have invented it; we
+        wrap it so the diagnostic tier has a known-clean surface to
+        analyse.  A diagnostic gate's signal is only trustworthy if
+        the foundation passed.
+
+    DIAGNOSTIC — Novel analysis with no equivalent in the conventional
+        tooling ecosystem: AST detection of empty test bodies,
+        git-diff analysis of config weakening, cross-file similarity,
+        complexity scored against extraction boundaries.  These catch
+        AI-specific failure modes that ``black`` and ``mypy`` can't
+        see.  This tier is WHY slop-mop exists as a distinct tool.
+
+    The default is DIAGNOSTIC.  A check proves itself FOUNDATION by
+    wrapping a tool that belongs in every project's CI regardless of
+    whether LLMs wrote the code.  Using an external tool (``radon``,
+    ``vulture``, ``jscpd``) is NOT sufficient — those are real tools,
+    but the questions they answer are novel.  :class:`ToolContext`
+    tells you HOW a check invokes its tool; :class:`CheckRole` tells
+    you WHETHER that tool is the floor.
+    """
+
+    FOUNDATION = "foundation"
+    DIAGNOSTIC = "diagnostic"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @property
+    def badge(self) -> str:
+        """Short label for console output."""
+        return "[floor]" if self is CheckRole.FOUNDATION else "[diag]"
+
+
 def find_tool(name: str, project_root: str) -> Optional[str]:
     """Find a tool executable, preferring the project's own environment.
 
@@ -360,6 +404,10 @@ class BaseCheck(ABC):
     # only run during thorough validation (PR readiness, CI).
     level: ClassVar[GateLevel] = GateLevel.SWAB
 
+    # Architectural tier.  DIAGNOSTIC is the default — a check proves
+    # itself FOUNDATION by overriding this.  See :class:`CheckRole`.
+    role: ClassVar[CheckRole] = CheckRole.DIAGNOSTIC
+
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
     ):
@@ -587,6 +635,7 @@ class BaseCheck(ABC):
             fix_suggestion=fix_suggestion,
             auto_fixed=auto_fixed,
             category=self.category.key if self.category else None,
+            role=self.role.value,
             status_detail=status_detail,
             findings=findings or [],
         )

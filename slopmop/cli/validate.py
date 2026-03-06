@@ -5,11 +5,10 @@ top-level commands.
 """
 
 import argparse
-import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, cast
+from typing import List, Optional
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
@@ -18,6 +17,7 @@ from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
+from slopmop.reporting.report import ConsoleAdapter, JsonAdapter, RunReport, SarifAdapter
 from slopmop.reporting.timings import clear_timings, load_timing_averages
 
 
@@ -249,6 +249,16 @@ def _run_validation(
             # Printing them individually via on_check_complete() too
             # caused double-reported failures (token sink #1).
 
+        # Build the canonical enriched report.  Everything downstream
+        # — SARIF, JSON, console — reads from this one object.  Result
+        # categorisation, log file writing, rerun commands: computed
+        # once here, formatted differently per adapter.
+        report = RunReport.from_summary(
+            summary,
+            project_root=str(project_root),
+            level=level_name,
+        )
+
         # SARIF emission is orthogonal to the json/console choice — it's
         # a third output format with its own shape.  We handle it first
         # and write to the requested destination, then fall through to
@@ -258,10 +268,7 @@ def _run_validation(
         sarif_requested = getattr(args, "sarif_output", False)
         output_file = getattr(args, "output_file", None)
         if sarif_requested:
-            from slopmop.reporting.sarif import SarifReporter
-
-            sarif = SarifReporter(str(project_root)).generate(summary)
-            payload = json.dumps(sarif, indent=2)
+            payload = SarifAdapter.render(report)
             if output_file:
                 Path(output_file).write_text(payload, encoding="utf-8")
                 # When SARIF goes to a file, console output continues
@@ -271,68 +278,22 @@ def _run_validation(
                 # nothing more to say.  Mixing SARIF and console text
                 # on the same stream would corrupt both.
                 print(payload)
-                return 0 if summary.all_passed else 1
+                return 0 if report.all_passed else 1
 
         if json_mode:
-            # Write failure/error logs the same way the human path does,
-            # so JSON consumers can reference the same log files.
-            log_files: dict[str, str] = {}
-            for result in summary.results:
-                if result.failed or result.status == CheckStatus.ERROR:
-                    log_path = reporter.write_failure_log(result)
-                    if log_path:
-                        log_files[result.name] = log_path
-
-            # Build enriched JSON — everything the human display shows,
-            # structured for machine consumption.
-            output = summary.to_dict()
-
-            # Schema version — lets consumers look up field semantics
-            # without the JSON needing to self-document every key.
-            output["schema"] = "slopmop/v1"
-
-            # Add run context
-            if level_name:
-                output["level"] = level_name
-
-            # Attach log file paths to individual results
-            # (results only contains non-passing checks in compact mode)
-            if log_files and isinstance(output.get("results"), list):
-                for entry in cast(List[dict[str, object]], output["results"]):
-                    gate_name = str(entry.get("name", ""))
-                    if gate_name in log_files:
-                        entry["log_file"] = log_files[gate_name]
-
-            # Add next-steps guidance (same commands the human display shows)
-            failed_results = [
-                r for r in summary.results if r.status == CheckStatus.FAILED
-            ]
-            error_results = [
-                r for r in summary.results if r.status == CheckStatus.ERROR
-            ]
-            first_failure = (
-                failed_results[0]
-                if failed_results
-                else (error_results[0] if error_results else None)
-            )
-            if first_failure:
-                output["next_steps"] = [
-                    f"sm swab -g {first_failure.name} --verbose",
-                ]
-
-            json_payload = json.dumps(output, separators=(",", ":"))
+            payload = JsonAdapter.render(report)
             if output_file and not sarif_requested:
                 # --output-file with --json (but not --sarif) redirects
                 # JSON there.  When BOTH --sarif and --json are set with
                 # one --output-file, SARIF wins the file and JSON goes
                 # to stdout — the file can only hold one format.
-                Path(output_file).write_text(json_payload, encoding="utf-8")
+                Path(output_file).write_text(payload, encoding="utf-8")
             else:
-                print(json_payload)
+                print(payload)
         else:
-            reporter.print_summary(summary)
+            ConsoleAdapter(verbose=args.verbose).render(report)
 
-        return 0 if summary.all_passed else 1
+        return 0 if report.all_passed else 1
     finally:
         # Ensure display is stopped on any exit
         if dynamic_display:

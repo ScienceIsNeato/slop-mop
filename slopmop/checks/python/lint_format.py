@@ -14,6 +14,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -53,6 +54,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION  # black, isort, flake8
 
     @property
     def name(self) -> str:

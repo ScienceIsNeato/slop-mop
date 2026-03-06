@@ -70,6 +70,24 @@ Design the error output to include:
 
 **Do not build the output string manually.** Build a list of `Finding` objects and pass it to `_create_result(findings=...)`. The console output string is auto-generated from the findings (`file:line:col: message` per line), the JSON output gets structured data, and SARIF gets `physicalLocation` for GitHub Code Scanning — all from one call. See §2.2b.
 
+#### The `fix_suggestion` contract
+
+Your `fix_suggestion` is the gate-wide strategy. It is read by an agent that already has your full `output` in context. It is **not** a pointer to somewhere else.
+
+**MUST:** tell the agent what kind of fix resolves this class of failure. "Extract the longest branch into a helper function." "Write tests that exercise the uncovered paths." The agent reads this, looks at the findings list, and acts.
+
+**MUST NOT:** say `"Run: <same tool> -v to see details"`. You already ran the tool. You already have the details. If the agent has to re-run the tool to learn what to fix, your gate wasted its first run. Parse the tool's output into `Finding` objects — that's where the details go.
+
+**May** say `Run: black . && isort .` — that's a *different* command that *applies the fix*. Auto-fix commands are fine. Re-run-for-output commands are not.
+
+#### The per-finding `fix_strategy`
+
+Some findings can be more specific than the gate-wide `fix_suggestion` allows. `Finding.fix_strategy` is a one-sentence recipe scoped to that single finding.
+
+**Only populate it with what you can compute.** A complexity checker knows the score and the limit — `"Complexity is 21, limit is 10 — shed at least 11"`. A coverage checker with the source file on disk can `ast.parse` it and name the enclosing function — `"Lines 42-48 in handle_retry() are uncovered"`. A bandit wrapper with the rule ID can look up the canonical fix — `"Replace yaml.load() with yaml.safe_load()"`.
+
+**Omit it when you'd be guessing.** Don't invent test file paths. Don't assume naming conventions. `fix_strategy=None` is honest; a fabricated path sends the agent on a hunt for a file that doesn't exist. The finding's `message` and `file:line` already locate the problem — silence is better than confident noise.
+
 ### 1.4 Decide on Profiles
 
 Which profiles should include this gate?
@@ -190,6 +208,26 @@ def run(self, project_root: str) -> CheckResult:
     # ... normal check logic ...
 ```
 
+### Check Role (Required Decision)
+
+Orthogonal to `tool_context`. `ToolContext` says *how* you invoke a tool; `CheckRole` says *whether that tool is the floor or the ceiling*.
+
+```python
+from slopmop.checks.base import CheckRole
+
+class MyCheck(BaseCheck):
+    role = CheckRole.FOUNDATION  # or omit — default is DIAGNOSTIC
+```
+
+| Role | Meaning | Test |
+|---|---|---|
+| `FOUNDATION` | Wraps a tool that every competent project already runs in CI: black, mypy, pytest, eslint, tsc, prettier, coverage. The gate is a binary structural floor — you can't ship without it. | Would a project without slop-mop *still* run this tool? |
+| `DIAGNOSTIC` | Novel analysis with no equivalent in conventional tooling. Asks questions nobody else asks. This is why slop-mop exists. | Is this something only an AI-codegen-aware checker would think to look for? |
+
+**The default is `DIAGNOSTIC`.** A check proves itself `FOUNDATION` by wrapping something on the `black`/`mypy`/`pytest` short list. Using an external tool is not sufficient — `radon`, `vulture`, `jscpd`, `bandit` are real tools but the *questions they answer* are novel. Complexity-creep and dead-code-detection are diagnostics; "do the tests pass" is foundation.
+
+Role appears in console output as `[floor]` / `[diag]` badges, in JSON as `result.role`, and in SARIF rule properties. Downstream consumers filter on it: "show me only the novel slop-mop insights, skip the stuff my CI already tells me."
+
 ### 2.2b Structured Findings (Required)
 
 Every gate that fails with identifiable locations must return those locations as `Finding` objects, not as a formatted string. This is how the gate feeds three consumers at once:
@@ -215,6 +253,7 @@ def run(self, project_root: str) -> CheckResult:
             line=problem.line_number,          # optional, 1-based
             column=problem.column,             # optional, 1-based
             rule_id=problem.tool_rule_code,    # optional — e.g. "E501", "no-undef"
+            fix_strategy=derive_fix(problem),  # optional — see §1.3, compute don't guess
         ))
 
     if findings:
@@ -366,6 +405,10 @@ These are the mistakes agents make repeatedly. Read them before you start.
 5. **Wrong mixin order** — `class MyCheck(PythonCheckMixin, BaseCheck)` ✅ not `class MyCheck(BaseCheck, PythonCheckMixin)` ❌
 
 6. **Output not actionable** — Failed gate says "3 issues found" but doesn't say where or how to fix them. Useless to an LLM, and SARIF gets a single repo-root alert instead of three inline annotations. Build `Finding` objects (§2.2b); the string is generated for you.
+
+6a. **`fix_suggestion` just says "run it again"** — `"Run: pytest -v to see failures"` is an admission that your gate didn't parse its own output. You *had* the output. Parse it. The agent should never need a second tool invocation to learn what the first one found.
+
+6b. **`fix_strategy` is a guess** — `fix_strategy="Add test to tests/test_foo.py"` when you don't know that file exists. The agent will try to edit a non-existent file. Leave `fix_strategy=None`; the `message` + `file:line` already locate the problem, and silence beats fabrication.
 
 7. **Not handling tool-not-installed** — Always check `returncode == 127`. Return `CheckStatus.ERROR` with `fix_suggestion="pip install <tool>"`.
 
