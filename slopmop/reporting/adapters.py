@@ -209,7 +209,7 @@ class ConsoleAdapter:
                 # Different from report.verify_command, which is the
                 # overall "first thing to fix" hint; this is per-gate.
                 verb = r.level or "swab"
-                rerun = f"sm {verb} -g {res.name}"
+                rerun = f"sm {verb} -g {res.name} --verbose"
                 log_path = r.log_files.get(res.name)
                 if log_path:
                     print(f"   📄 {log_path} · verify: {rerun}")

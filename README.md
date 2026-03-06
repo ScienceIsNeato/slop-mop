@@ -101,7 +101,7 @@ Gates are sorted into two roles to make the contract enforceable:
 | Role | What it wraps | Prescription standard |
 |------|---------------|------------------------|
 | 🔧 **Foundation** | Standard tooling (pytest, mypy, black, eslint, bandit) | Relay the tool's own diagnostic. Never say "run the tool yourself". |
-| 🔬 **Diagnostic** | Novel analysis (duplicate strings, gate dodging, size limits) | State what to change, where, and by how much. "Move `foo()` to `bar.py` — clears by 223 lines." |
+| 🔬 **Diagnostic** | Novel analysis (AST-based bogus-test detection, gate-dodging diffs, debugger-artifact scans) | State what to change, where, and by how much. "Move `foo()` to `bar.py` — clears by 223 lines." |
 
 A gate earns its place by emitting something an agent can cargo-cult. If fixing it requires independent judgment beyond what the gate can factually determine, the finding stays descriptive and `fix_strategy` stays `None` — no guessing.
 

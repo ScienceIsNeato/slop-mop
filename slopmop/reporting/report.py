@@ -150,7 +150,7 @@ class RunReport:
         verify = None
         if first_blocking is not None:
             verb = level or "swab"
-            verify = f"sm {verb} -g {first_blocking.name}"
+            verify = f"sm {verb} -g {first_blocking.name} --verbose"
 
         return cls(
             summary=summary,

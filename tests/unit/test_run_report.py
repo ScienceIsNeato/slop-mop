@@ -108,7 +108,7 @@ class TestRunReportCategorisation:
             ]
         )
         report = RunReport.from_summary(summary, level="swab")
-        assert report.verify_command == "sm swab -g f1"
+        assert report.verify_command == "sm swab -g f1 --verbose"
 
     def test_verify_command_falls_back_to_error(self) -> None:
         summary = _summary(
@@ -118,7 +118,7 @@ class TestRunReportCategorisation:
             ]
         )
         report = RunReport.from_summary(summary, level="scour")
-        assert report.verify_command == "sm scour -g e1"
+        assert report.verify_command == "sm scour -g e1 --verbose"
 
     def test_verify_command_none_when_all_passed(self) -> None:
         summary = _summary([_result("p1", CheckStatus.PASSED)])
@@ -223,7 +223,7 @@ class TestJsonAdapter:
         summary = _summary([_result("f", CheckStatus.FAILED)])
         report = RunReport.from_summary(summary, level="swab")
         out = JsonAdapter.render(report)
-        assert out["next_steps"] == ["sm swab -g f"]
+        assert out["next_steps"] == ["sm swab -g f --verbose"]
 
     def test_next_steps_absent_when_all_passed(self) -> None:
         summary = _summary([_result("p", CheckStatus.PASSED)])
@@ -381,7 +381,7 @@ class TestConsoleAdapter:
         assert "SLOP DETECTED" in out
         assert "myopia:code-sprawl" in out
         assert "Move BigClass" in out
-        assert "verify: sm swab -g myopia:code-sprawl" in out
+        assert "verify: sm swab -g myopia:code-sprawl --verbose" in out
 
     def test_role_badge_in_failure_header(self, capsys) -> None:
         summary = _summary([_result("f", CheckStatus.FAILED, role="foundation")])
