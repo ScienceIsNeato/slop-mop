@@ -14,6 +14,7 @@ from typing import List, Optional
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
 from slopmop.core.executor import CheckExecutor
+from slopmop.core.lock import SmLockError, sm_lock
 from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.adapters import ConsoleAdapter, JsonAdapter, SarifAdapter
@@ -131,7 +132,6 @@ def _run_validation(
     Returns:
         Exit code (0 = all passed, 1 = failures).
     """
-    from slopmop.sm import load_config
 
     # Determine project root
     project_root = Path(args.project_root).resolve()
@@ -139,6 +139,25 @@ def _run_validation(
     if not project_root.is_dir():
         print(f"❌ Project root not found: {project_root}")
         return 1
+
+    # Acquire repo-level lock — prevents concurrent sm runs from racing.
+    verb = level_name or "validation"
+    try:
+        with sm_lock(project_root, verb):
+            return _run_validation_locked(args, gates, level_name, project_root)
+    except SmLockError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+
+def _run_validation_locked(
+    args: argparse.Namespace,
+    gates: List[str],
+    level_name: Optional[str],
+    project_root: Path,
+) -> int:
+    """Inner validation pipeline, called while holding the repo lock."""
+    from slopmop.sm import load_config
 
     json_mode = _is_json_mode(args)
 
