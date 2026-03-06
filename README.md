@@ -7,7 +7,7 @@
   <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Attribution-blue.svg" alt="License"/></a>
 </p>
 
-**Automated steering for AI-generated code "shipping" to production.** Leverage the very behavior that results in slop to clean it up. Give your AI a mop and weaponize it in an attempt to keep your repos seaworthy
+**Quality gates that catch code that technically passes.** Agents optimize for the metric, not the intent — tests that assert nothing, complexity pushed just under the threshold, duplicated logic with renamed variables. Slop-mop treats the agent as an adversarial code author and checks for the slop that other gates wave through. When it finds some, it tells the agent exactly what to fix and how.
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop" width="300" align="right"/>
 

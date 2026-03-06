@@ -4,8 +4,6 @@ Real-time progress callbacks for terminal display.  End-of-run
 summary rendering lives in :class:`slopmop.reporting.adapters.ConsoleAdapter`.
 """
 
-from typing import Optional
-
 from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult
 
@@ -18,25 +16,15 @@ class ConsoleReporter:
     class only emits the live, one-line-per-check status indicators.
     """
 
-    def __init__(
-        self,
-        quiet: bool = False,
-        verbose: bool = False,
-        verb: Optional[str] = None,
-        project_root: Optional[str] = None,
-    ):
+    def __init__(self, quiet: bool = False, verbose: bool = False):
         """Initialize reporter.
 
         Args:
             quiet: Minimal output mode (only failures)
             verbose: Verbose output mode (include all output)
-            verb: The verb being run (swab, scour, etc.) for iteration guidance
-            project_root: Project root for writing failure logs
         """
         self.quiet = quiet
         self.verbose = verbose
-        self.verb = verb
-        self.project_root = project_root
 
     def on_check_complete(self, result: CheckResult) -> None:
         """Called when a check completes.

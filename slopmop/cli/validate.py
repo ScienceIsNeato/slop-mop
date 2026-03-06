@@ -158,13 +158,9 @@ def _run_validation(
         fail_fast=use_fail_fast,
     )
 
-    # Set up progress reporting
-    reporter = ConsoleReporter(
-        quiet=args.quiet,
-        verbose=args.verbose,
-        verb=level_name,
-        project_root=str(project_root),
-    )
+    # Set up progress reporting (per-check status lines during the run;
+    # RunReport + ConsoleAdapter own the end-of-run summary)
+    reporter = ConsoleReporter(quiet=args.quiet, verbose=args.verbose)
 
     # Load configuration (must happen early — swabbing-time default lives here)
     config = load_config(project_root)
