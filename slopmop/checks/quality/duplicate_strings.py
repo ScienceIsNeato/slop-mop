@@ -55,7 +55,13 @@ class StringDuplicationCheck(BaseCheck):
     """
 
     tool_context = ToolContext.NODE
-    role = CheckRole.FOUNDATION
+    # DIAGNOSTIC not FOUNDATION — the detection tool is vendored in
+    # tools/find-duplicate-strings/, not pip/npm-installable.  The
+    # protocol's litmus test is "could a developer reproduce this gate
+    # with one shell command?"  A vendored Node script fails that test
+    # even though the gate's mechanism (subprocess) looks foundational.
+    # Role is about reproducibility, not mechanism.
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:

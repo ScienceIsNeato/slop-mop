@@ -172,44 +172,6 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         detail = "Functions exceeding complexity:\n" + "\n".join(
             f"  {v}" for v in violations
         )
-        # radon --md lines embed file:line inside markdown — try to recover
-        # them, but fall back to a message-only finding when the format
-        # doesn't match (still a separate SARIF result per function).
-        #
-        # Line also carries the function name and (score) — extracting
-        # both lets the fix_strategy name the exact function and its
-        # complexity count.  "Extract helpers from foo() (complexity 24)"
-        # is actionable; "break complex functions" is a platitude.
-        loc_re = re.compile(r"(\S+\.py)[:\s*]+(\d+)")
-        # radon -s annotates rank with the numeric score in parens, e.g.
-        # "... foo - D (24)" — capture the name token before the dash
-        # and the number in parens.  Either group may miss on odd output;
-        # strategy stays None in that case (no guessing).
-        meta_re = re.compile(r"`?(\w+)`?\s*-\s*[A-F]\s*\((\d+)\)")
-        structured: List[Finding] = []
-        for v in violations:
-            m = loc_re.search(v)
-            fn = meta_re.search(v)
-            strategy = None
-            if fn:
-                name, score = fn.group(1), fn.group(2)
-                strategy = (
-                    f"Extract helpers from {name}() — complexity {score} "
-                    f"exceeds limit {MAX_COMPLEXITY}. Identify the "
-                    f"largest branch or loop and move it to a named "
-                    f"function."
-                )
-            if m:
-                structured.append(
-                    Finding(
-                        message=v,
-                        file=m.group(1),
-                        line=int(m.group(2)),
-                        fix_strategy=strategy,
-                    )
-                )
-            else:
-                structured.append(Finding(message=v, fix_strategy=strategy))
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
@@ -219,7 +181,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
                 "Decompose each flagged function. The fix_strategy on "
                 "each finding names the specific function and its score."
             ),
-            findings=structured,
+            findings=[_to_finding(v) for v in violations],
         )
 
     def _parse_violations(self, output: str) -> List[str]:
@@ -228,3 +190,50 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
             if re.search(r"\b[DEF]\b", line) and "(" in line:
                 violations.append(line.strip())
         return violations
+
+
+# ─── radon output parsing ────────────────────────────────────────────────
+#
+# radon --md lines embed file:line inside markdown — try to recover
+# them, but fall back to a message-only finding when the format
+# doesn't match (still a separate SARIF result per function).
+#
+# Line also carries the function name and (score) — extracting both
+# lets the fix_strategy name the exact function and its complexity
+# count.  "Extract helpers from foo() (complexity 24)" is actionable;
+# "break complex functions" is a platitude.
+
+_LOC_RE = re.compile(r"(\S+\.py)[:\s*]+(\d+)")
+
+# radon -s annotates rank with the numeric score in parens, e.g.
+# "... foo - D (24)" — capture the name token before the dash and
+# the number in parens.  [\w.]+ (not \w+) so "MyClass.complex_method
+# - D (24)" keeps the class qualifier; "Extract helpers from
+# complex_method()" is ambiguous when three classes share the name.
+# Either group may miss on odd output; strategy stays None in that
+# case (no guessing).
+_META_RE = re.compile(r"`?([\w.]+)`?\s*-\s*[A-F]\s*\((\d+)\)")
+
+
+def _to_finding(violation_line: str) -> Finding:
+    """Convert one radon violation line into a structured Finding."""
+    loc = _LOC_RE.search(violation_line)
+    meta = _META_RE.search(violation_line)
+
+    strategy = None
+    if meta:
+        name, score = meta.group(1), meta.group(2)
+        strategy = (
+            f"Extract helpers from {name}() — complexity {score} "
+            f"exceeds limit {MAX_COMPLEXITY}. Identify the largest "
+            f"branch or loop and move it to a named function."
+        )
+
+    if loc:
+        return Finding(
+            message=violation_line,
+            file=loc.group(1),
+            line=int(loc.group(2)),
+            fix_strategy=strategy,
+        )
+    return Finding(message=violation_line, fix_strategy=strategy)

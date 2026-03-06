@@ -18,7 +18,7 @@ inside an adapter, that's RunReport's job — add a property there.
 from typing import Dict, List, cast
 
 from slopmop.constants import format_duration_suffix
-from slopmop.core.result import CheckResult, SkipReason
+from slopmop.core.result import CheckResult
 from slopmop.reporting.report import RunReport
 
 
@@ -227,14 +227,22 @@ class ConsoleAdapter:
                 print(f"     💡 {res.fix_suggestion}")
 
     def _skipped_line(self) -> str:
-        """Compact skip-reason breakdown, e.g. '5 skipped (3 n/a · 2 ff)'."""
+        """Compact skip-reason breakdown, e.g. '5 skipped (3 n/a · 2 ff)'.
+
+        Results without an explicit ``skip_reason`` are bucketed under
+        the neutral ``"skip"`` code rather than guessed.  Defaulting a
+        missing reason to ``ff`` (fail-fast) would misreport: a check
+        that marked itself SKIPPED for its own reasons would show up
+        as if an earlier failure caused it.  The enum docstring says
+        ``skip_reason`` should always be set on skipped results, so
+        ``"skip"`` showing up is a signal that a check's skip path
+        needs fixing — not a fail-fast tally to inflate.
+        """
         r = self.report
         n = len(r.skipped)
         reason_counts: Dict[str, int] = {}
         for res in r.skipped:
-            code = (
-                res.skip_reason.value if res.skip_reason else SkipReason.FAIL_FAST.value
-            )
+            code = res.skip_reason.value if res.skip_reason else "skip"
             reason_counts[code] = reason_counts.get(code, 0) + 1
         if not reason_counts:
             return f"{n} skipped"

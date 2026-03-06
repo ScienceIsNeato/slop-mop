@@ -45,6 +45,17 @@ def _no_results() -> List[CheckResult]:
     return []
 
 
+def _no_logs() -> Dict[str, str]:
+    """Same typed-factory fix as _no_results, for the log_files dict.
+
+    ``dict[str, str]`` as a factory happens to work on 3.14 (GenericAlias
+    gained __call__) but raises ``TypeError: 'types.GenericAlias' object
+    is not callable`` on 3.9–3.11.  An explicit factory is correct
+    everywhere and symmetric with the list-field fix.
+    """
+    return {}
+
+
 # Single source of truth for the JSON schema identifier.  Bump when
 # output shape changes (new required fields, removed fields, renamed
 # keys).  Additive-only changes (new optional fields) are a judgement
@@ -80,7 +91,7 @@ class RunReport:
     # --- Log file mapping -------------------------------------------
     # gate_name → relative path.  Populated by write_logs().  Adapters
     # that don't need log files (SARIF) simply ignore this.
-    log_files: Dict[str, str] = field(default_factory=dict[str, str])
+    log_files: Dict[str, str] = field(default_factory=_no_logs)
 
     # --- Agent guidance ---------------------------------------------
     # The verify command is the single command an agent should run to

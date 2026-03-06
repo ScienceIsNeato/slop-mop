@@ -227,6 +227,13 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         We DON'T guess what the test should assert — only where to write
         it and which lines it must exercise.  Anything further is
         judgment the agent brings.
+
+        The test-file convention used is ``tests/test_{stem}.py`` for
+        ordinary modules, ``tests/test_{pkg}.py`` for ``__init__.py``
+        (package name, not the literal "__init__").  When neither
+        convention yields a sensible target — e.g. a top-level
+        ``__init__.py`` with no meaningful parent — strategy stays
+        None.  Better to say nothing than to guess a garbage path.
         """
         missing_files = self._parse_missing_lines(raw_output)
         prescriptive_output = self._format_prescriptive_output(
@@ -235,14 +242,18 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
         per_file: List[Finding] = []
         for fp, _stmts, miss, ranges in missing_files:
-            stem = Path(fp).stem
+            target = _test_file_for(fp)
             per_file.append(
                 Finding(
                     message=f"{miss} uncovered lines: {ranges}",
                     file=fp,
                     fix_strategy=(
-                        f"Add tests in tests/test_{stem}.py that exercise "
-                        f"lines {ranges} of {fp}"
+                        (
+                            f"Add tests in {target} that exercise "
+                            f"lines {ranges} of {fp}"
+                        )
+                        if target
+                        else None
                     ),
                 )
             )
@@ -498,3 +509,28 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
             fix_suggestion="Add tests for the new code shown above.",
             findings=diff_findings,
         )
+
+
+def _test_file_for(source_path: str) -> Optional[str]:
+    """Derive the conventional test-file path for a source module.
+
+    Convention: ``foo/bar.py`` → ``tests/test_bar.py``.
+    Package case: ``foo/bar/__init__.py`` → ``tests/test_bar.py`` (parent
+    dir name — the package IS the unit under test, not the file literal).
+
+    Returns None when no reasonable convention applies — a root-level
+    ``__init__.py`` with no named parent, or a degenerate path.  Caller
+    skips fix_strategy on None.  This is the no-guessing escape hatch:
+    saying nothing is better than ``test___init__.py``.
+    """
+    p = Path(source_path)
+    stem = p.stem
+    if stem == "__init__":
+        # Package __init__ — conventional test target is the package name
+        pkg = p.parent.name
+        if not pkg or pkg in (".", "/"):
+            return None
+        return f"tests/test_{pkg}.py"
+    if not stem:
+        return None
+    return f"tests/test_{stem}.py"
