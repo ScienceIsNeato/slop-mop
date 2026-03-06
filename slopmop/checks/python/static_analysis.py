@@ -49,7 +49,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
           inferred type. Check your class hierarchy.
 
     Re-check:
-      ./sm swab -g overconfidence:missing-annotations.py --verbose
+      sm swab -g overconfidence:missing-annotations.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

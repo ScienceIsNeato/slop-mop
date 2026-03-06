@@ -17,7 +17,12 @@ from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
-from slopmop.reporting.report import ConsoleAdapter, JsonAdapter, RunReport, SarifAdapter
+from slopmop.reporting.report import (
+    ConsoleAdapter,
+    JsonAdapter,
+    RunReport,
+    SarifAdapter,
+)
 from slopmop.reporting.timings import clear_timings, load_timing_averages
 
 

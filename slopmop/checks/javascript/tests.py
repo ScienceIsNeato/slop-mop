@@ -37,7 +37,7 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
       npm install failed: Check package.json syntax.
 
     Re-check:
-      ./sm swab -g overconfidence:untested-code.js --verbose
+      sm swab -g overconfidence:untested-code.js --verbose
     """
 
     tool_context = ToolContext.NODE

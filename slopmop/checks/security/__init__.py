@@ -121,7 +121,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-check:
-      ./sm swab -g myopia:vulnerability-blindness.py --verbose
+      sm swab -g myopia:vulnerability-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

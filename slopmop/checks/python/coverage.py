@@ -11,7 +11,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -102,10 +102,7 @@ def _characterise_block(func: ast.AST, start: int, end: int) -> Optional[str]:
             continue
         if lo <= start and end <= hi:
             if isinstance(node, ast.ExceptHandler):
-                return (
-                    " This is an except block — test by triggering "
-                    "the exception."
-                )
+                return " This is an except block — test by triggering " "the exception."
             if isinstance(node, ast.If):
                 return (
                     " This is a conditional branch — test with input "
@@ -139,8 +136,10 @@ def _resolve_uncovered_range(
 
     # Find the innermost function containing the range.  Nested
     # defs: prefer the tighter (inner) one since that's the name the
-    # test author will grep for.
-    enclosing: Optional[ast.AST] = None
+    # test author will grep for.  Typed to the FunctionDef union, not
+    # ast.AST — mypy otherwise can't see .lineno/.name, and a type:
+    # ignore here would be a lie about what we actually store.
+    enclosing: Optional[Union[ast.FunctionDef, ast.AsyncFunctionDef]] = None
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             lo = node.lineno
@@ -156,7 +155,7 @@ def _resolve_uncovered_range(
         # test-file path would violate the compute-don't-guess rule.
         return None
 
-    func_name = enclosing.name  # type: ignore[attr-defined]
+    func_name = enclosing.name
     strategy = (
         f"Lines {start}-{end} in {func_name}() are uncovered. "
         f"Write a test that exercises this path."
@@ -189,7 +188,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
           to generate coverage data.
 
     Re-check:
-      ./sm swab -g overconfidence:coverage-gaps.py --verbose
+      sm swab -g overconfidence:coverage-gaps.py --verbose
     """
 
     tool_context = ToolContext.PROJECT

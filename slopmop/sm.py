@@ -62,12 +62,21 @@ def load_config(project_root: Path) -> Dict[str, Any]:
 
 
 def setup_logging(verbose: bool = False) -> None:
-    """Configure logging for CLI."""
+    """Configure logging for CLI.
+
+    Handler writes to stderr, NOT stdout.  stdout belongs to the
+    primary output stream — JSON mode pipes it to ``jq``, SARIF mode
+    pipes it to ``upload-sarif``.  A ``logger.warning()`` call that
+    leaks into stdout corrupts the parse on the other end of the pipe.
+    An agent piping ``sm swab --json`` gets a JSONDecodeError and
+    wastes a turn figuring out why.  Diagnostics go to stderr; data
+    goes to stdout.  This is the Unix convention and we honor it.
+    """
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
         format="%(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
+        handlers=[logging.StreamHandler(sys.stderr)],
     )
 
 
@@ -433,7 +442,7 @@ def _add_status_parser(
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser for sm CLI."""
     parser = argparse.ArgumentParser(
-        prog="./sm",
+        prog="sm",
         description="""
 🪣 sm - Slop-Mop Quality Gate Framework
 
@@ -448,19 +457,18 @@ Verbs:
   help        Show detailed help for quality gates
 
 Quick Start:
-  1. Add slop-mop as a git submodule
-  2. Run: ./slop-mop/scripts/setup.sh (creates venv, installs tools, adds ./sm)
-  3. Run: ./sm init (auto-detect project, write config)
-  4. Run: ./sm swab (run quick quality gates)
+  1. pipx install slopmop[all]    (puts `sm` on PATH)
+  2. cd your-project && sm init   (auto-detect languages, write config)
+  3. sm swab                      (run quick quality gates)
 
 Examples:
-  ./sm swab                               Quick validation (every commit)
-  ./sm scour                              Thorough validation (PR readiness)
-  ./sm swab -g python,quality             Run specific gate groups
-  ./sm scour --verbose                    Thorough with details
-  ./sm config --show                      Show current configuration
-  ./sm config --enable python-security    Enable a quality gate
-  ./sm help python-lint-format            Show help for specific gate
+  sm swab                               Quick validation (every commit)
+  sm scour                              Thorough validation (PR readiness)
+  sm swab -g python,quality             Run specific gate groups
+  sm scour --verbose                    Thorough with details
+  sm config --show                      Show current configuration
+  sm config --enable python-security    Enable a quality gate
+  sm help python-lint-format            Show help for specific gate
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

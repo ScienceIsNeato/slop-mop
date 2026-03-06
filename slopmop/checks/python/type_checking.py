@@ -163,7 +163,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
           value to a function. Annotate the source variable.
 
     Re-check:
-      ./sm swab -g overconfidence:type-blindness.py --verbose
+      sm swab -g overconfidence:type-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL

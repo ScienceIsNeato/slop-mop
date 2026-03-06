@@ -96,7 +96,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
           Usually a missing dependency or renamed module.
 
     Re-check:
-      ./sm swab -g overconfidence:untested-code.py --verbose
+      sm swab -g overconfidence:untested-code.py --verbose
     """
 
     tool_context = ToolContext.PROJECT

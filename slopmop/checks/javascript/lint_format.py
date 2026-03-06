@@ -39,7 +39,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
           or missing registry access.
 
     Re-check:
-      ./sm swab -g laziness:sloppy-formatting.js --verbose
+      sm swab -g laziness:sloppy-formatting.js --verbose
     """
 
     tool_context = ToolContext.NODE

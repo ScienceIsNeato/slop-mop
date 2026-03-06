@@ -172,12 +172,12 @@ def cmd_ci(args: argparse.Namespace) -> int:
 
     if pr_number is None:
         print("❌ Could not detect PR number")
-        print("   Run from a branch with an open PR, or specify: ./sm ci <pr_number>")
+        print("   Run from a branch with an open PR, or specify: sm ci <pr_number>")
         return 2
 
     # Print header
     print()
-    print("🪣 ./sm ci - CI Status Check")
+    print("🪣 sm ci - CI Status Check")
     print("=" * 60)
     from slopmop.reporting import print_project_header
 

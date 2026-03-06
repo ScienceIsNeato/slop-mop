@@ -88,11 +88,21 @@ class RunReport:
     """
 
     summary: ExecutionSummary
-    passed: List[CheckResult] = field(default_factory=lambda: cast(List[CheckResult], []))
-    failed: List[CheckResult] = field(default_factory=lambda: cast(List[CheckResult], []))
-    warned: List[CheckResult] = field(default_factory=lambda: cast(List[CheckResult], []))
-    skipped: List[CheckResult] = field(default_factory=lambda: cast(List[CheckResult], []))
-    errors: List[CheckResult] = field(default_factory=lambda: cast(List[CheckResult], []))
+    passed: List[CheckResult] = field(
+        default_factory=lambda: cast(List[CheckResult], [])
+    )
+    failed: List[CheckResult] = field(
+        default_factory=lambda: cast(List[CheckResult], [])
+    )
+    warned: List[CheckResult] = field(
+        default_factory=lambda: cast(List[CheckResult], [])
+    )
+    skipped: List[CheckResult] = field(
+        default_factory=lambda: cast(List[CheckResult], [])
+    )
+    errors: List[CheckResult] = field(
+        default_factory=lambda: cast(List[CheckResult], [])
+    )
     level: Optional[str] = None
     project_root: str = ""
     log_files: Dict[str, str] = field(default_factory=lambda: cast(Dict[str, str], {}))
@@ -157,12 +167,15 @@ class RunReport:
 
     @staticmethod
     def verify_command(result: CheckResult) -> str:
-        """The exact ``sm swab -g`` command that re-checks ONE gate.
+        """The exact command that re-checks ONE gate.
 
         Every gate's output should end with this.  It's the closing
         of the loop: read the fix, apply the fix, run this command,
         see green.  ``--verbose`` because if the fix didn't land the
         agent needs the full output, not the preview.
+
+        Assumes ``sm`` is on PATH — pipx puts the entrypoint there,
+        and the legacy setup.sh bolt-on does the same.
         """
         return f"sm swab -g {result.name} --verbose"
 
@@ -282,7 +295,7 @@ class ConsoleAdapter:
             return
 
         # Failure path — compact, actionable, one rerun hint per gate.
-        counts = []
+        counts: List[str] = []
         if report.passed:
             counts.append(f"✅ {len(report.passed)} passed")
         if report.warned:
@@ -319,7 +332,7 @@ class ConsoleAdapter:
         known = {k: v for k, v in roles.items() if k != "unknown"}
         if not known:
             return
-        parts = []
+        parts: List[str] = []
         for role in ("foundation", "diagnostic"):
             if role in known:
                 c = known[role]
@@ -344,7 +357,9 @@ class ConsoleAdapter:
         ]:
             for r in results:
                 detail = r.error or default_detail
-                header = f"{emoji} {r.name} — {detail}" if detail else f"{emoji} {r.name}"
+                header = (
+                    f"{emoji} {r.name} — {detail}" if detail else f"{emoji} {r.name}"
+                )
                 if r.role:
                     header += f"  [{r.role}]"
                 print(header)

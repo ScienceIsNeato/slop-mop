@@ -50,7 +50,7 @@ class StringDuplicationCheck(BaseCheck):
           in tools/find-duplicate-strings/.
 
     Re-check:
-      ./sm swab -g myopia:string-duplication.py --verbose
+      sm swab -g myopia:string-duplication.py --verbose
     """
 
     tool_context = ToolContext.NODE

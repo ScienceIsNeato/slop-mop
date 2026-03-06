@@ -42,7 +42,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
       Jinja2 not installed: pip install jinja2
 
     Re-check:
-      ./sm swab -g laziness:broken-templates.py --verbose
+      sm swab -g laziness:broken-templates.py --verbose
     """
 
     tool_context = ToolContext.PROJECT

@@ -92,7 +92,7 @@ class TestCreateParser:
         """Parser is created successfully."""
         parser = create_parser()
         assert parser is not None
-        assert parser.prog == "./sm"
+        assert parser.prog == "sm"
 
     def test_swab_subcommand(self):
         """Swab subcommand parses correctly."""

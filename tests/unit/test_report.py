@@ -27,7 +27,6 @@ from slopmop.reporting.report import (
     SarifAdapter,
 )
 
-
 # ─── Fixtures ────────────────────────────────────────────────────────────
 
 
@@ -133,9 +132,7 @@ class TestVerifyCommand:
 
 class TestLogWriting:
     def test_writes_logs_for_failed_and_error(self, tmp_path, mixed_summary):
-        report = RunReport.from_summary(
-            mixed_summary, str(tmp_path), write_logs=True
-        )
+        report = RunReport.from_summary(mixed_summary, str(tmp_path), write_logs=True)
 
         # types (FAILED), sprawl (FAILED), dup (ERROR) — three logs
         assert set(report.log_files) == {"types", "sprawl", "dup"}
@@ -148,9 +145,7 @@ class TestLogWriting:
         assert "Status: failed" in content
 
     def test_write_logs_false_skips_disk(self, tmp_path, mixed_summary):
-        report = RunReport.from_summary(
-            mixed_summary, str(tmp_path), write_logs=False
-        )
+        report = RunReport.from_summary(mixed_summary, str(tmp_path), write_logs=False)
         assert report.log_files == {}
         assert not (tmp_path / ".slopmop").exists()
 
@@ -205,9 +200,7 @@ class TestJsonAdapter:
 
     def test_role_on_individual_results(self):
         """CheckResult.to_dict() now carries role — verify it survives."""
-        summary = _mk_summary(
-            [_mk_result("x", CheckStatus.FAILED, role="diagnostic")]
-        )
+        summary = _mk_summary([_mk_result("x", CheckStatus.FAILED, role="diagnostic")])
         report = RunReport.from_summary(summary, "", write_logs=False)
         payload = json.loads(JsonAdapter.render(report))
         assert payload["results"][0]["role"] == "diagnostic"
@@ -383,7 +376,10 @@ class TestFindingFixStrategy:
         lines = rendered.split("\n")
         assert len(lines) == 2
         assert lines[0] == "src/handler.py:42: 12 uncovered lines: 42-53"
-        assert lines[1] == "  → fix: Lines 42-53 are an except block — test with invalid input"
+        assert (
+            lines[1]
+            == "  → fix: Lines 42-53 are an except block — test with invalid input"
+        )
 
     def test_to_dict_omits_none_fix_strategy(self):
         f = Finding(message="x")
@@ -395,7 +391,9 @@ class TestFindingFixStrategy:
 
     def test_finding_is_still_frozen(self):
         f = Finding(message="x", fix_strategy="y")
-        with pytest.raises(Exception):  # noqa: B017 — FrozenInstanceError or AttributeError
+        with pytest.raises(
+            Exception
+        ):  # noqa: B017 — FrozenInstanceError or AttributeError
             f.fix_strategy = "z"  # type: ignore[misc]
 
 

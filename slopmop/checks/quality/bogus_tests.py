@@ -413,7 +413,7 @@ class BogusTestsCheck(BaseCheck):
           ``min_test_statements`` or setting it to 0.
 
     Re-check:
-      ./sm swab -g deceptiveness:bogus-tests.py --verbose
+      sm swab -g deceptiveness:bogus-tests.py --verbose
     """
 
     @property
