@@ -526,3 +526,98 @@ class TestExecutorCache:
         s2 = e2.run_checks(str(tmp_path), ["overconfidence:persist-test"])
         assert s2.passed == 1
         assert check_cls.run_count == 1  # Still 1 — served from disk cache
+
+
+class TestNoCacheFlag:
+    """Tests for use_cache=False (--no-cache CLI flag)."""
+
+    def test_no_cache_forces_rerun(self, tmp_path):
+        """use_cache=False forces checks to run even with unchanged sources."""
+        (tmp_path / "main.py").write_text("print('hello')")
+
+        check_cls = _make_slow_check_class("no-cache-rerun")
+        registry = CheckRegistry()
+        registry.register(check_cls)
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+
+        # First run: populates cache
+        s1 = executor.run_checks(str(tmp_path), ["overconfidence:no-cache-rerun"])
+        assert s1.passed == 1
+        assert check_cls.run_count == 1
+
+        # Second run WITH cache: hits cache, no re-run
+        s2 = executor.run_checks(str(tmp_path), ["overconfidence:no-cache-rerun"])
+        assert s2.passed == 1
+        assert check_cls.run_count == 1
+
+        # Third run WITHOUT cache: must re-run
+        s3 = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:no-cache-rerun"],
+            use_cache=False,
+        )
+        assert s3.passed == 1
+        assert check_cls.run_count == 2  # Ran again
+
+    def test_no_cache_skips_disk_write(self, tmp_path):
+        """use_cache=False doesn't write cache.json to disk."""
+        (tmp_path / "main.py").write_text("x = 1")
+
+        check_cls = _make_slow_check_class("no-write")
+        registry = CheckRegistry()
+        registry.register(check_cls)
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+
+        cache_file = tmp_path / ".slopmop" / "cache.json"
+        assert not cache_file.exists()
+
+        # Run with cache disabled
+        executor.run_checks(str(tmp_path), ["overconfidence:no-write"], use_cache=False)
+        assert check_cls.run_count == 1
+        # Cache file should NOT have been created
+        assert not cache_file.exists()
+
+    def test_no_cache_results_not_marked_cached(self, tmp_path):
+        """Results from a no-cache run are never marked as cached."""
+        (tmp_path / "main.py").write_text("x = 1")
+
+        check_cls = _make_slow_check_class("no-cached-flag")
+        registry = CheckRegistry()
+        registry.register(check_cls)
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+
+        # First run WITH cache to populate
+        executor.run_checks(str(tmp_path), ["overconfidence:no-cached-flag"])
+
+        # Second run WITHOUT cache: results should not be cached
+        s2 = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:no-cached-flag"],
+            use_cache=False,
+        )
+        cached_results = [r for r in s2.results if r.cached]
+        assert len(cached_results) == 0
+
+    def test_no_cache_does_not_pollute_future_cached_runs(self, tmp_path):
+        """A no-cache run doesn't affect subsequent cached runs."""
+        (tmp_path / "main.py").write_text("x = 1")
+
+        check_cls = _make_slow_check_class("no-pollute")
+        registry = CheckRegistry()
+        registry.register(check_cls)
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+
+        # First run: populates cache
+        executor.run_checks(str(tmp_path), ["overconfidence:no-pollute"])
+        assert check_cls.run_count == 1
+
+        # No-cache run: forces re-run but doesn't write
+        executor.run_checks(
+            str(tmp_path), ["overconfidence:no-pollute"], use_cache=False
+        )
+        assert check_cls.run_count == 2
+
+        # Cached run: should still hit original cache (not polluted)
+        s3 = executor.run_checks(str(tmp_path), ["overconfidence:no-pollute"])
+        assert s3.passed == 1
+        assert check_cls.run_count == 2  # Served from original cache

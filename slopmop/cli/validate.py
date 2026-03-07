@@ -254,6 +254,7 @@ def _run_validation_locked(
             auto_fix=not args.no_auto_fix,
             swabbing_time=swabbing_time,
             timings=timings,
+            use_cache=not getattr(args, "no_cache", False),
         )
 
         # Stop dynamic display before printing summary

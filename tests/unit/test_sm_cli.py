@@ -142,6 +142,24 @@ class TestCreateParser:
         args = parser.parse_args(["swab", "--swabbing-time", "0"])
         assert args.swabbing_time == 0
 
+    def test_no_cache_flag_default_false(self):
+        """--no-cache defaults to False when not provided."""
+        parser = create_parser()
+        args = parser.parse_args(["swab"])
+        assert args.no_cache is False
+
+    def test_no_cache_flag_set(self):
+        """--no-cache parses correctly on swab."""
+        parser = create_parser()
+        args = parser.parse_args(["swab", "--no-cache"])
+        assert args.no_cache is True
+
+    def test_no_cache_flag_on_scour(self):
+        """--no-cache parses correctly on scour."""
+        parser = create_parser()
+        args = parser.parse_args(["scour", "--no-cache"])
+        assert args.no_cache is True
+
     def test_config_subcommand(self):
         """Config subcommand parses correctly."""
         parser = create_parser()

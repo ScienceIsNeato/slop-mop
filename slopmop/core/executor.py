@@ -181,6 +181,7 @@ class CheckExecutor:
         auto_fix: bool = True,
         swabbing_time: Optional[int] = None,
         timings: Optional[Dict[str, float]] = None,
+        use_cache: bool = True,
     ) -> ExecutionSummary:
         """Run specified checks against a project.
 
@@ -209,8 +210,13 @@ class CheckExecutor:
         self._results.clear()
 
         # Load cache and compute fingerprint for this run
-        self._cache = load_cache(project_root)
-        self._fingerprint = compute_fingerprint(project_root)
+        if use_cache:
+            self._cache = load_cache(project_root)
+            self._fingerprint = compute_fingerprint(project_root)
+        else:
+            self._cache = {}
+            self._fingerprint = None
+            logger.debug("Cache disabled via --no-cache")
         self._cache_dirty = False
 
         # Get check instances

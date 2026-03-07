@@ -71,6 +71,61 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
+def _add_output_flags(parser: argparse.ArgumentParser) -> None:
+    """Add output-format and caching flags shared by validation verbs."""
+    parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=None,
+        help=(
+            "Output results as JSON. Auto-detected when stdout is not a TTY "
+            "(e.g. piped to an AI agent). Use --no-json to force pretty output."
+        ),
+    )
+    parser.add_argument(
+        "--no-json",
+        dest="json_output",
+        action="store_false",
+        help="Force pretty output even when stdout is not a TTY.",
+    )
+    parser.add_argument(
+        "--sarif",
+        dest="sarif_output",
+        action="store_true",
+        default=False,
+        help=(
+            "Emit SARIF 2.1.0 for GitHub Code Scanning. "
+            "Writes to stdout unless --output-file is given. "
+            "Upload with github/codeql-action/upload-sarif. "
+            "In CI, also pass --no-auto-fix so the report describes "
+            "the commit as-pushed, not as-would-be-after-formatting."
+        ),
+    )
+    parser.add_argument(
+        "--output-file",
+        "-o",
+        dest="output_file",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Write structured output (--json or --sarif) to a file "
+            "instead of stdout."
+        ),
+    )
+    parser.add_argument(
+        "--no-cache",
+        dest="no_cache",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable fingerprint-based result caching. Forces all "
+            "checks to run from scratch. Useful for troubleshooting "
+            "or development."
+        ),
+    )
+
+
 def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
     """Add the common validation flags shared by swab, scour, and validate."""
     parser.add_argument(
@@ -129,46 +184,7 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
             "Overrides the config-file default. Set to 0 to disable."
         ),
     )
-    parser.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-        default=None,
-        help=(
-            "Output results as JSON. Auto-detected when stdout is not a TTY "
-            "(e.g. piped to an AI agent). Use --no-json to force pretty output."
-        ),
-    )
-    parser.add_argument(
-        "--no-json",
-        dest="json_output",
-        action="store_false",
-        help="Force pretty output even when stdout is not a TTY.",
-    )
-    parser.add_argument(
-        "--sarif",
-        dest="sarif_output",
-        action="store_true",
-        default=False,
-        help=(
-            "Emit SARIF 2.1.0 for GitHub Code Scanning. "
-            "Writes to stdout unless --output-file is given. "
-            "Upload with github/codeql-action/upload-sarif. "
-            "In CI, also pass --no-auto-fix so the report describes "
-            "the commit as-pushed, not as-would-be-after-formatting."
-        ),
-    )
-    parser.add_argument(
-        "--output-file",
-        "-o",
-        dest="output_file",
-        metavar="PATH",
-        default=None,
-        help=(
-            "Write structured output (--json or --sarif) to a file "
-            "instead of stdout."
-        ),
-    )
+    _add_output_flags(parser)
 
 
 def _add_swab_parser(
