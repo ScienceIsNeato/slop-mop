@@ -454,3 +454,113 @@ class TestFindingFixStrategy:
         f = Finding(message="x", fix_strategy="y")
         with pytest.raises(AttributeError):
             f.fix_strategy = "z"  # type: ignore[misc]
+
+
+# ─── ConsoleAdapter additional coverage ──────────────────────────────────
+
+
+class TestConsoleAdapterSkippedLine:
+    """Tests for ConsoleAdapter._skipped_line() — skip reason bucketing."""
+
+    def test_single_reason(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result("f", CheckStatus.FAILED),
+                _result(
+                    "s1",
+                    CheckStatus.SKIPPED,
+                    skip_reason=SkipReason.FAIL_FAST,
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        adapter = ConsoleAdapter(report)
+        line = adapter._skipped_line()
+        assert "1 skipped" in line
+        assert "ff" in line
+
+    def test_mixed_reasons(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result("f", CheckStatus.FAILED),
+                _result("s1", CheckStatus.SKIPPED, skip_reason=SkipReason.FAIL_FAST),
+                _result(
+                    "s2",
+                    CheckStatus.SKIPPED,
+                    skip_reason=SkipReason.NOT_APPLICABLE,
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        adapter = ConsoleAdapter(report)
+        line = adapter._skipped_line()
+        assert "2 skipped" in line
+        assert "ff" in line
+        assert "n/a" in line
+
+    def test_no_skip_reason_buckets_as_skip(self) -> None:
+        summary = _summary(
+            [
+                _result("f", CheckStatus.FAILED),
+                _result("s1", CheckStatus.SKIPPED),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        adapter = ConsoleAdapter(report)
+        line = adapter._skipped_line()
+        assert "skip" in line
+
+
+class TestConsoleAdapterSingleRole:
+    """Test success path with only one role tier present."""
+
+    def test_single_role_omits_breakdown(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result("a", CheckStatus.PASSED, role="foundation"),
+                _result("b", CheckStatus.PASSED, role="foundation"),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "NO SLOP DETECTED" in out
+        # Should NOT show role breakdown when only one role
+        assert "diagnostic" not in out
+
+
+class TestConsoleAdapterWarnings:
+    """Test warning rendering including fix_suggestion."""
+
+    def test_warning_with_fix_suggestion(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "w",
+                    CheckStatus.WARNED,
+                    error="something off",
+                    fix_suggestion="try this fix",
+                ),
+                _result("f", CheckStatus.FAILED, error="broken"),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "something off" in out
+        assert "try this fix" in out
+
+    def test_output_truncation_with_log_file(self, capsys) -> None:
+        long_output = "\n".join(f"line {i}" for i in range(20))
+        summary = _summary(
+            [
+                _result("g", CheckStatus.FAILED, error="big", output=long_output),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        # Simulate log files being available
+        report.log_files = {"g": "logs/g.log"}
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "more lines in log" in out
+        assert "logs/g.log" in out

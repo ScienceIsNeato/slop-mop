@@ -263,3 +263,47 @@ class TestSmLock:
             # Different project root should not conflict
             with sm_lock(root_b, "scour"):
                 pass  # Both locked simultaneously — no error
+
+
+# ─── edge cases for diff-coverage gap ────────────────────────────────────
+
+
+class TestMaxExpectedDurationException:
+    """Test _max_expected_duration when load_timings raises."""
+
+    def test_returns_default_on_exception(self, tmp_path: Path) -> None:
+        with patch(
+            "slopmop.reporting.timings.load_timings",
+            side_effect=RuntimeError("corrupt"),
+        ):
+            result = _max_expected_duration(tmp_path)
+        from slopmop.core.lock import _DEFAULT_STALE_SECONDS
+
+        assert result == _DEFAULT_STALE_SECONDS
+
+
+class TestReadLockMetaNonDict:
+    """Test _read_lock_meta when JSON is valid but not a dict."""
+
+    def test_list_returns_none(self, tmp_path: Path) -> None:
+        meta_dir = tmp_path / LOCK_DIR
+        meta_dir.mkdir(parents=True)
+        lock_file = meta_dir / LOCK_FILE
+        lock_file.write_text(json.dumps([1, 2, 3]))
+        assert _read_lock_meta(lock_file) is None
+
+    def test_string_returns_none(self, tmp_path: Path) -> None:
+        meta_dir = tmp_path / LOCK_DIR
+        meta_dir.mkdir(parents=True)
+        lock_file = meta_dir / LOCK_FILE
+        lock_file.write_text(json.dumps("just a string"))
+        assert _read_lock_meta(lock_file) is None
+
+    def test_dict_returns_data(self, tmp_path: Path) -> None:
+        meta_dir = tmp_path / LOCK_DIR
+        meta_dir.mkdir(parents=True)
+        lock_file = meta_dir / LOCK_FILE
+        data = {"pid": 123, "verb": "swab"}
+        lock_file.write_text(json.dumps(data))
+        result = _read_lock_meta(lock_file)
+        assert result == data

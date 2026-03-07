@@ -15,6 +15,7 @@ from slopmop.cli.config import cmd_config
 from slopmop.cli.detection import detect_project_type
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
+    SB_HOOK_MARKER,
     _generate_hook_script,
     _get_git_hooks_dir,
     _parse_hook_info,
@@ -1000,3 +1001,70 @@ class TestSetupDynamicDisplay:
         reporter.on_check_complete.assert_not_called()
         assert len(deferred) == 1
         assert deferred[0] is failed
+
+
+# ─── hooks edge cases ───────────────────────────────────────────────────
+
+
+class TestHooksEdgeCases:
+    """Edge-case coverage for hook install/status paths."""
+
+    def test_status_hooks_dir_exists_but_empty(self, tmp_path, capsys):
+        """When hooks dir exists but has no hook files → 'No commit hooks installed'."""
+        (tmp_path / ".git" / "hooks").mkdir(parents=True)
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="status",
+        )
+        result = cmd_commit_hooks(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "No commit hooks installed" in out
+
+    def test_install_updates_existing_managed_hook(self, tmp_path, capsys):
+        """Reinstalling over an existing sm-managed hook updates it."""
+        (tmp_path / ".git" / "hooks").mkdir(parents=True)
+        hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+        # Write an old managed hook
+        hook_file.write_text(f"{SB_HOOK_MARKER}\n# Command: sm swab\nsm swab")
+        hook_file.chmod(0o755)
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="install",
+            hook_verb="scour",
+        )
+        result = cmd_commit_hooks(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Updating existing slopmop hook" in out
+        # New hook should contain the new verb
+        assert "sm scour" in hook_file.read_text()
+
+
+# ─── validate edge cases ────────────────────────────────────────────────
+
+
+class TestValidateSmLockError:
+    """Tests for SmLockError handling in _run_validation."""
+
+    @patch("slopmop.cli.validate.sm_lock")
+    def test_lock_error_returns_1(self, mock_lock, tmp_path, capsys):
+        from slopmop.cli.validate import _run_validation
+
+        mock_lock.side_effect = __import__(
+            "slopmop.core.lock", fromlist=["SmLockError"]
+        ).SmLockError("Another sm instance is running")
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+        result = _run_validation(args, [], None)
+        assert result == 1
+        err = capsys.readouterr().err
+        assert "Another sm instance" in err
