@@ -47,6 +47,7 @@ def _generate_hook_script(verb: str) -> str:
         verb: The validation command to run ("swab" or "scour").
     """
 
+    output_file = f".slopmop/last_{verb}.json"
     return f"""{SB_HOOK_MARKER}
 #!/bin/sh
 #
@@ -61,13 +62,14 @@ if ! command -v sm >/dev/null 2>&1; then
     exit 1
 fi
 
-sm {verb}
+mkdir -p .slopmop
+sm {verb} --json --output-file {output_file}
 result=$?
 
 if [ $result -ne 0 ]; then
     echo ""
     echo "❌ Commit blocked by slop-mop quality gates"
-    echo "   Run 'sm {verb}' to see details"
+    echo "   Structured results: {output_file}"
     echo ""
     exit 1
 fi

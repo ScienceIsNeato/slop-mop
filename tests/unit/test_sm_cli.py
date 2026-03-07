@@ -517,12 +517,18 @@ class TestGitHooksFunctions:
         assert "MANAGED BY SLOP-MOP" in script
         # Should use PATH-based sm lookup
         assert "command -v sm" in script
+        # Should write structured output for LLM consumption
+        assert "--json" in script
+        assert "--output-file .slopmop/last_swab.json" in script
+        assert "Structured results:" in script
+        assert "mkdir -p .slopmop" in script
 
     def test_generate_hook_script_direct_verb(self):
         """Generates hook script when given a verb directly."""
         script = _generate_hook_script("scour")
         assert "sm scour" in script
         assert "# Command: sm scour" in script
+        assert "--output-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""
