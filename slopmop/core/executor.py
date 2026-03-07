@@ -11,6 +11,13 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import BaseCheck
+from slopmop.core.cache import (
+    compute_fingerprint,
+    get_cached_result,
+    load_cache,
+    save_cache,
+    store_result,
+)
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import (
     CheckResult,
@@ -96,6 +103,9 @@ class CheckExecutor:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._results: Dict[str, CheckResult] = {}
+        self._cache: Dict[str, Any] = {}
+        self._fingerprint: Optional[str] = None
+        self._cache_dirty = False
         self._on_check_complete: Optional[Callable[[CheckResult], None]] = None
         self._on_check_start: Optional[Callable[[str, Optional[str]], None]] = None
         self._on_check_disabled: Optional[Callable[[str], None]] = None
@@ -197,6 +207,11 @@ class CheckExecutor:
         # Reset state
         self._stop_event.clear()
         self._results.clear()
+
+        # Load cache and compute fingerprint for this run
+        self._cache = load_cache(project_root)
+        self._fingerprint = compute_fingerprint(project_root)
+        self._cache_dirty = False
 
         # Get check instances
         checks = self._registry.get_checks(check_names, config)
@@ -343,6 +358,10 @@ class CheckExecutor:
             timings=timings,
             swabbing_time=swabbing_time,
         )
+
+        # Persist cache if any entries were added/updated
+        if self._cache_dirty:
+            save_cache(project_root, self._cache)
 
         duration = time.time() - start_time
         return ExecutionSummary.from_results(list(self._results.values()), duration)
@@ -787,6 +806,20 @@ class CheckExecutor:
             category = check.category.key if check.category else None
             self._on_check_start(check.full_name, category)
 
+        # ── Cache check ───────────────────────────────────────────
+        # If the project fingerprint hasn't changed since the last run,
+        # return the cached result instantly.  Results that involved
+        # auto-fix side effects are excluded at storage time (see
+        # store_result), so a cache hit here is always safe to replay.
+        if self._fingerprint:
+            cached = get_cached_result(self._cache, check.full_name, self._fingerprint)
+            if cached is not None:
+                logger.debug(
+                    f"Cache hit for {check.full_name} "
+                    f"(status={cached.status.value})"
+                )
+                return cached
+
         logger.debug(f"Running {check.display_name}")
 
         # Measure scope before running (lightweight file count)
@@ -815,6 +848,10 @@ class CheckExecutor:
             # Attach scope metrics if the check reported them
             if scope is not None and result.scope is None:
                 result.scope = scope
+            # Store result in cache for next run
+            if self._fingerprint:
+                store_result(self._cache, check.full_name, self._fingerprint, result)
+                self._cache_dirty = True
             return result
         except Exception as e:
             logger.error(f"Check {check.full_name} failed with exception: {e}")

@@ -7,7 +7,7 @@ to represent check definitions, statuses, and results.
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 
 class CheckStatus(Enum):
@@ -265,6 +265,7 @@ class CheckResult:
     status_detail: Optional[str] = None
     role: Optional[str] = None
     findings: List[Finding] = field(default_factory=lambda: cast(List[Finding], []))
+    cached: bool = False
 
     def to_dict(self) -> Dict[str, object]:
         """Serialize to a plain dict for JSON output."""
@@ -293,7 +294,103 @@ class CheckResult:
             d["role"] = self.role
         if self.findings:
             d["findings"] = [f.to_dict() for f in self.findings]
+        if self.cached:
+            d["cached"] = True
         return d
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "CheckResult":
+        """Deserialize from a plain dict (inverse of to_dict)."""
+        findings: List[Finding] = []
+        raw_findings = d.get("findings")
+        if isinstance(raw_findings, list):
+            findings_list = cast(List[object], raw_findings)
+            for fd_raw in findings_list:
+                if isinstance(fd_raw, dict):
+                    fd: Dict[str, Any] = cast(Dict[str, Any], fd_raw)
+                    level = FindingLevel.ERROR
+                    raw_level: object = fd.get("level")
+                    if isinstance(raw_level, str):
+                        try:
+                            level = FindingLevel(raw_level)
+                        except ValueError:
+                            pass
+                    _file = fd.get("file")
+                    _line = fd.get("line")
+                    _col = fd.get("column")
+                    _end_line = fd.get("end_line")
+                    _end_col = fd.get("end_column")
+                    _rule = fd.get("rule_id")
+                    _fix = fd.get("fix_strategy")
+                    findings.append(
+                        Finding(
+                            message=str(fd.get("message", "")),
+                            level=level,
+                            file=str(_file) if _file is not None else None,
+                            line=(
+                                int(_line) if isinstance(_line, (int, float)) else None
+                            ),
+                            column=(
+                                int(_col) if isinstance(_col, (int, float)) else None
+                            ),
+                            end_line=(
+                                int(_end_line)
+                                if isinstance(_end_line, (int, float))
+                                else None
+                            ),
+                            end_column=(
+                                int(_end_col)
+                                if isinstance(_end_col, (int, float))
+                                else None
+                            ),
+                            rule_id=str(_rule) if _rule is not None else None,
+                            fix_strategy=str(_fix) if _fix is not None else None,
+                        )
+                    )
+
+        scope = None
+        raw_scope = d.get("scope")
+        if isinstance(raw_scope, dict):
+            scope_dict: Dict[str, Any] = cast(Dict[str, Any], raw_scope)
+            raw_files = scope_dict.get("files", 0)
+            raw_lines = scope_dict.get("lines", 0)
+            scope = ScopeInfo(
+                files=int(raw_files) if isinstance(raw_files, (int, float)) else 0,
+                lines=int(raw_lines) if isinstance(raw_lines, (int, float)) else 0,
+            )
+
+        skip_reason = None
+        raw_skip = d.get("skip_reason")
+        if isinstance(raw_skip, str):
+            try:
+                skip_reason = SkipReason(raw_skip)
+            except ValueError:
+                pass
+
+        status = CheckStatus.PASSED
+        raw_status = d.get("status")
+        if isinstance(raw_status, str):
+            try:
+                status = CheckStatus(raw_status)
+            except ValueError:
+                pass
+
+        return cls(
+            name=str(d.get("name", "")),
+            status=status,
+            duration=float(d.get("duration", 0)),  # type: ignore[arg-type]
+            output=str(d.get("output", "")),
+            error=d.get("error"),  # type: ignore[arg-type]
+            fix_suggestion=d.get("fix_suggestion"),  # type: ignore[arg-type]
+            auto_fixed=bool(d.get("auto_fixed", False)),
+            category=d.get("category"),  # type: ignore[arg-type]
+            scope=scope,
+            skip_reason=skip_reason,
+            status_detail=d.get("status_detail"),  # type: ignore[arg-type]
+            role=d.get("role"),  # type: ignore[arg-type]
+            findings=findings,
+            cached=bool(d.get("cached", False)),
+        )
 
     @property
     def passed(self) -> bool:
