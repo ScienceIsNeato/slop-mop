@@ -61,12 +61,18 @@ def _get_compare_branch() -> str:
     """Resolve the branch to diff against.
 
     Precedence: COMPARE_BRANCH env → GITHUB_BASE_REF (set in PR CI) → origin/main.
+
+    GITHUB_BASE_REF is a bare branch name (e.g. 'main'), not a remote
+    tracking ref.  diff-cover needs 'origin/main' so it can resolve
+    commits via 'origin/main...HEAD'.  We prefix automatically.
     """
-    return (
-        os.environ.get("COMPARE_BRANCH")
-        or os.environ.get("GITHUB_BASE_REF")
-        or "origin/main"
-    )
+    explicit = os.environ.get("COMPARE_BRANCH")
+    if explicit:
+        return explicit
+    base_ref = os.environ.get("GITHUB_BASE_REF")
+    if base_ref:
+        return f"origin/{base_ref}"
+    return "origin/main"
 
 
 class PythonCoverageCheck(BaseCheck, PythonCheckMixin):

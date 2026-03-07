@@ -480,7 +480,8 @@ class BaseCheck(ABC):
         verify their fix.  Centralised here to avoid string duplication
         across every gate that wants the pattern.
         """
-        return f"sm swab -g {self.full_name} --verbose"
+        verb = self.level.value
+        return f"sm {verb} -g {self.full_name} --verbose"
 
     @property
     def depends_on(self) -> List[str]:

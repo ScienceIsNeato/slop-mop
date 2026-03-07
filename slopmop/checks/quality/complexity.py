@@ -230,8 +230,8 @@ def _to_finding(violation_line: str, limit: int = MAX_COMPLEXITY) -> Finding:
         delta = score - limit
         if delta > 0:
             strategy = (
-                f"Complexity is {score}, limit is {limit} \u2014 "
-                f"shed at least {delta}. Each "
+                f"Complexity of {name}() is {score}, limit is "
+                f"{limit} \u2014 shed at least {delta}. Each "
                 f"if/for/while/except/and/or adds 1. Extract "
                 f"the longest branch into a helper function."
             )
