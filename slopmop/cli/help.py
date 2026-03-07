@@ -80,7 +80,13 @@ def _print_gate_group(title: str, gates: List[str]) -> None:
         auto_fix = "⚡" if definition and definition.auto_fix else "  "
         check = registry.get_check(name, {})
         badge = ROLE_BADGES.get(check.role.value, "") if check else ""
-        print(f"    {auto_fix} {badge}{name:<30} {display}")
+        # Use dynamic width — gate names can exceed 30 chars
+        max_name = max(len(name), 30)
+        line = f"    {auto_fix} {badge}{name:<{max_name}} {display}"
+        # Truncate to fit 80-col PTY (76 accounts for emoji width)
+        if len(line) > 76:
+            line = line[:75] + "…"
+        print(line)
     print()
 
 

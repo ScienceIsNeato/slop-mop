@@ -140,7 +140,12 @@ class ConsoleAdapter:
                 f" 🔬 {roles['diagnostic']} diagnostic)"
             )
 
-        print(f"✨ NO SLOP DETECTED · {passed_label}" f" in {s.total_duration:.1f}s")
+        header = f"✨ NO SLOP DETECTED · {passed_label} in {s.total_duration:.1f}s"
+        if len(header) > 60:
+            print(f"✨ NO SLOP DETECTED · {passed_label}")
+            print(f"   in {s.total_duration:.1f}s")
+        else:
+            print(header)
         print("═" * 60)
         if r.warned:
             self._render_warnings()
@@ -161,10 +166,14 @@ class ConsoleAdapter:
         if r.skipped:
             counts.append(f"⏭️  {self._skipped_line()}")
 
-        print(
-            f"🪣 SLOP DETECTED · {' · '.join(counts)}"
-            f"{format_duration_suffix(s.total_duration)}"
-        )
+        duration = format_duration_suffix(s.total_duration)
+        header = f"🪣 SLOP DETECTED · {' · '.join(counts)}{duration}"
+        # Keep summary under 60 cols (separator width) to avoid PTY wrapping
+        if len(header) > 60:
+            print("🪣 SLOP DETECTED")
+            print(f"   {' · '.join(counts)}{duration}")
+        else:
+            print(header)
         print("─" * 60)
 
         self._render_failure_details()
@@ -212,9 +221,8 @@ class ConsoleAdapter:
                 rerun = f"sm {verb} -g {res.name} --verbose"
                 log_path = r.log_files.get(res.name)
                 if log_path:
-                    print(f"   📄 {log_path} · verify: {rerun}")
-                else:
-                    print(f"   ▸ verify: {rerun}")
+                    print(f"   📄 {log_path}")
+                print(f"   ▸ verify: {rerun}")
 
     def _render_warnings(self) -> None:
         print()

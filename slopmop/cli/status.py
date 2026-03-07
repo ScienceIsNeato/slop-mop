@@ -8,6 +8,7 @@ gates; use ``sm swab`` or ``sm scour`` for that.
 import argparse
 import json
 import sys
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -156,7 +157,9 @@ def _format_gate_line(
         icon = "·"
         suffix = "no history"
 
-    return f"   {icon} {role_badge}{gate_name:<28} [{level_tag}] {suffix}"
+    # Use dynamic width — gate names can exceed 28 chars
+    name_width = max(len(gate_name), 28)
+    return f"   {icon} {role_badge}{gate_name:<{name_width}} [{level_tag}] {suffix}"
 
 
 def _print_gate_inventory(
@@ -217,8 +220,16 @@ def _print_gate_inventory(
 
     if na_gates:
         names = [g.split(":", 1)[1] for g, _ in sorted(na_gates)]
+        prefix = f"   ⊘ {len(na_gates)} n/a: "
+        body = ", ".join(names)
+        wrapped = textwrap.fill(
+            body,
+            width=76,
+            initial_indent=prefix,
+            subsequent_indent=" " * len(prefix),
+        )
         print()
-        print(f"   ⊘ {len(na_gates)} n/a: {', '.join(names)}")
+        print(wrapped)
 
 
 # ── Section: Hook Status ────────────────────────────────────────

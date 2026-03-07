@@ -310,6 +310,9 @@ def _run_validation_locked(
                 # one --output-file, SARIF wins the file and JSON goes
                 # to stdout — the file can only hold one format.
                 Path(output_file).write_text(json_payload, encoding="utf-8")
+                # Still show console summary so the user gets visual
+                # feedback that something happened.
+                ConsoleAdapter(report).render()
             else:
                 print(json_payload)
         else:

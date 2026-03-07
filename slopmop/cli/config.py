@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import textwrap
 from pathlib import Path
 from typing import Any, Dict, cast
 
@@ -163,7 +164,15 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
     print("📦 Aliases:")
     print("-" * 40)
     for alias, gates in sorted(registry.list_aliases().items()):
-        print(f"  {alias}: {', '.join(gates)}")
+        prefix = f"  {alias}: "
+        body = ", ".join(gates)
+        wrapped = textwrap.fill(
+            body,
+            width=76,
+            initial_indent=prefix,
+            subsequent_indent=" " * len(prefix),
+        )
+        print(wrapped)
 
     print()
     return 0

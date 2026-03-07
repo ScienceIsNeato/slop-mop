@@ -406,10 +406,8 @@ class CheckExecutor:
                         dep_check = dep_checks[0]
                         check_map[dep_check.full_name] = dep_check
                         to_process.append(dep_check)
-                        logger.info(
-                            f"Auto-including {dep_check.full_name} "
-                            f"(dependency of {check.full_name})"
-                        )
+                        logger.info(f"  + {dep_check.full_name}")
+                        logger.info(f"    (needed by {check.full_name})")
 
         return list(check_map.values())
 
