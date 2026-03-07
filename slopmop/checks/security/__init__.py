@@ -132,7 +132,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🔐 Security Scan (code analysis)"
+        return "🔐 Security Scan (bandit, semgrep, detect-secrets)"
 
     @property
     def gate_description(self) -> str:
@@ -522,7 +522,7 @@ class SecurityCheck(SecurityLocalCheck):
 
     @property
     def display_name(self) -> str:
-        return "🔒 Security Audit (code + dependencies)"
+        return "🔒 Security Audit (full scan + pip-audit)"
 
     @property
     def gate_description(self) -> str:

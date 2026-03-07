@@ -78,7 +78,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🏗️ TypeScript Types (tsc --noEmit)"
+        return "🏗️ TypeScript Types (tsc strict)"
 
     @property
     def gate_description(self) -> str:

@@ -59,7 +59,7 @@ class PRCommentsCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "💬 PR Comments"
+        return "💬 Unresolved PR Comments"
 
     @property
     def gate_description(self) -> str:

@@ -317,7 +317,7 @@ class LocLockCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "📏 Code Sprawl"
+        return "📏 Code Sprawl (file & function length)"
 
     @property
     def gate_description(self) -> str:

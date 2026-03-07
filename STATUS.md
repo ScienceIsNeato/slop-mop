@@ -87,3 +87,118 @@ Custom gates feature, output polish, PR category removal, and comprehensive cust
 
 ### Remaining
 - Local validation via `sm validate commit` before committing
+
+## 2026-03-07 Delta: Config UX + Display Name Polish
+
+### Completed
+
+1. **Fixed `sm config --show` regression**
+  - Root cause: `cmd_config()` no longer checked `args.show`, so `--show` fell through to no-args usage output.
+  - Fix: restored explicit `if args.show: return _show_config(...)` branch in `slopmop/cli/config.py`.
+
+2. **Strengthened config behavior tests**
+  - `tests/unit/test_sm_cli.py`:
+    - Expanded `test_show_config` assertions to verify full gate list output appears.
+    - Added `test_config_no_args_shows_usage_hints` to lock in new no-args UX and prevent `--show` regressions.
+
+3. **Display-name updates finalized and reconciled with tests/docs**
+  - Updated security gate display-name expectations in `tests/unit/test_security_checks.py` to match new labels.
+  - Regenerated README gate tables after display-name changes:
+    - `python scripts/generate_readme_tables.py --update`
+    - Updated `README.md`.
+
+### Validation
+
+- `python -m pytest tests/unit/test_sm_cli.py tests/unit/test_result.py -q` → **106 passed**
+- `sm config` and `sm config --show` smoke test → **behavior correct**
+- `sm swab -g laziness:stale-docs --verbose` → **pass**
+- `sm swab -g overconfidence:untested-code.py --verbose` → **pass**
+- `sm swab --json --output-file .slopmop/last_swab.json` → **16 checks passed**
+
+## 2026-03-07 Delta: README Caching Callout
+
+### Completed
+
+1. Added a new **Selective Gate Caching** subsection to `README.md` under
+  the Levels/Time Budget area.
+2. Documented that caching is fingerprint-based and selective per gate when
+  checks declare scoped inputs, with project-wide fallback for conservative
+  correctness.
+3. Added explicit command examples for both cached runs and cold runs:
+  - `sm swab`
+  - `sm swab --no-cache`
+4. Documented cache location: `.slopmop/cache.json`.
+
+## 2026-03-07 Delta: Swabbing-Time Scheduler Fix
+
+### Issue
+
+- `--swabbing-time` runs were scheduling heavier timed gates early and skipping
+  cheaper ones, which contradicted the README's fastest-first contract.
+
+### Completed
+
+1. Updated budget scheduling in `slopmop/core/executor.py`:
+   - Replaced dual-lane heavy/light timed gate submission with
+     **fastest-first timed submission** under active budget.
+   - Kept no-budget behavior unchanged (longest-first for throughput).
+   - Fixed slot handling so untimed gates are capped to available worker slots.
+
+2. Updated and expanded scheduler tests in
+   `tests/unit/test_executor_budget.py`:
+   - Reworked dual-lane assertions to fastest-first expectations.
+   - Added coverage for untimed slot capping.
+   - Adjusted integration timing fixtures to still validate budget-expiry skips
+     under fastest-first semantics.
+
+3. Added early README pointer near Quick Start to selective caching section
+   (`README.md`) in addition to the detailed subsection.
+
+### Validation
+
+- `python -m pytest tests/unit/test_executor_budget.py tests/unit/test_sm_cli.py tests/unit/test_security_checks.py -q` → **142 passed**
+- Scenario smoke test: `sm config --swabbing-time 5 && sm swab --no-cache` now prioritizes cheaper timed gates and skips heavier ones first.
+- Restored budget and full validation:
+  - `sm config --swabbing-time 100`
+  - `sm swab --json --output-file .slopmop/last_swab.json` → **16 checks passed**
+
+## 2026-03-07 Delta: Budget-Aware Dual-Lane Packing
+
+### Issue
+
+- Fastest-first alone was too naive for constrained swab budgets.
+- Desired behavior: keep one fast lane for short checks, use remaining lanes
+  for longer checks, and pack as many checks as possible into projected time.
+
+### Completed
+
+1. Updated scheduler in `slopmop/core/executor.py`:
+   - Restored/implemented a dual-lane timed scheduler under budget:
+     - 1 fast lane pick (shortest fitting timed gate)
+     - remaining heavy lanes picked via subset packing
+   - Added projected-budget admission control:
+     - budget left = `swabbing_time - elapsed - in_flight_expected`
+     - if no projected room, defer timed submissions until next loop
+   - Added `_choose_packed_subset()` helper with objective:
+     - maximize count first, then maximize packed expected duration.
+   - Kept dependency safety by scheduling only from ready gates
+     (dependencies already satisfied by executor).
+
+2. Updated tests in `tests/unit/test_executor_budget.py`:
+   - Renamed expectations from fastest-first to dual-lane packing behavior.
+   - Added projected-budget/in-flight guardrail test.
+   - Updated selection expectations for fast-lane + heavy-pack outcomes.
+
+3. Updated README time-budget wording to match actual scheduler semantics.
+
+### Validation
+
+- `python -m pytest tests/unit/test_executor_budget.py -q` → **18 passed**
+- `python -m pytest tests/unit/test_executor_budget.py tests/unit/test_sm_cli.py tests/unit/test_security_checks.py -q` → **143 passed**
+- Scenario smoke test:
+  - `sm config --swabbing-time 5`
+  - `sm swab --no-cache`
+  - Observed 5.8s run with mixed fast-lane/heavy-lane selections and budget skips.
+- Restored default budget + full run:
+  - `sm config --swabbing-time 100`
+  - `sm swab --json --output-file .slopmop/last_swab.json` → **16 checks passed**

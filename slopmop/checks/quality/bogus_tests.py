@@ -425,7 +425,7 @@ class BogusTestsCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "🧟 Bogus Tests"
+        return "🧟 Bogus Tests (Python, AST)"
 
     @property
     def gate_description(self) -> str:

@@ -95,14 +95,12 @@ class MyCheck(BaseCheck):
     role = CheckRole.FOUNDATION  # wraps black; black does the real work
 ```
 
-### 1.5 Decide on Profiles
+### 1.5 Decide on Gate Level
 
-Which profiles should include this gate?
+Which level should this gate run at?
 
-- `commit` — most gates go here (runs every commit)
-- `pr` — everything in commit + PR-specific checks
-- `quick` — lint-only, ultra-fast
-- Category-specific (`python`, `javascript`, `quality`, `security`)
+- `SWAB` — runs every commit (most gates go here)
+- `SCOUR` — runs before opening PR (heavier/slower checks)
 
 ---
 
@@ -281,9 +279,6 @@ If the tool you're wrapping has a JSON output mode (`--format json`, `--json`, `
 2. **Register in `slopmop/checks/__init__.py`:**
    Add `registry.register(MyCheck)` to the appropriate `_register_*_checks()` function.
 
-3. **Add to profiles in `_register_aliases()`:**
-   Append `"<category>:<name>"` to the appropriate profile lists.
-
 ### 2.4 Whitelist External Tools
 
 If your check calls an external executable via `_run_command()`:
@@ -320,7 +315,7 @@ Add a row to the appropriate gate table in the "Available Gates" section:
 | `<category>:<name>` | <emoji> Description |
 ```
 
-If you added the gate to profiles, update the profiles table and the "Commit vs PR" section.
+If you added the gate, update the gate tables in the README.
 
 ### 3.3 Capture Example Output
 
@@ -351,7 +346,7 @@ After implementation, show the user:
 3. **How to run the help** — `sm help <category>:<name>`
 4. **Where README was updated** — link to the section
 5. **Config defaults and reasoning** — why each value is what it is
-6. **Profile membership** — which profiles include this gate
+6. **Gate level** — whether it runs during swab, scour, or both
 
 ---
 
@@ -370,11 +365,9 @@ Copy into your commit message or PR description:
 - [ ] Class docstring written as help text (includes config reasoning)
 - [ ] Exported from category __init__.py
 - [ ] Registered in slopmop/checks/__init__.py
-- [ ] Added to profiles in _register_aliases()
 - [ ] External tools whitelisted in ALLOWED_EXECUTABLES (if applicable)
 - [ ] External tools in requirements.txt and pyproject.toml (if applicable)
 - [ ] README gate table updated
-- [ ] README profiles table updated (if applicable)
 - [ ] Example failure output captured
 - [ ] sm swab passes
 - [ ] Report shown to user
@@ -388,9 +381,7 @@ These are the mistakes agents make repeatedly. Read them before you start.
 
 1. **Forgot to register** — Class exists but `registry.register(MyCheck)` never called. Gate doesn't appear.
 
-2. **Forgot to add to profiles** — Registered but not in `commit`/`pr` alias list. Individual validation works, profile skips it.
-
-3. **Missing subprocess whitelist** — Check calls `_run_command(["newtool", ...])` but `newtool` isn't in `ALLOWED_EXECUTABLES`. Runtime `SecurityError`.
+2. **Missing subprocess whitelist** — Check calls `_run_command(["newtool", ...])` but `newtool` isn't in `ALLOWED_EXECUTABLES`. Runtime `SecurityError`.
 
 4. **Category prefix in name** — `name` should be `"dead-code"`, not `"quality:dead-code"`. Prefix is auto-derived from `category`.
 

@@ -34,13 +34,6 @@ def _show_gate_help(gate_name: str) -> int:
 
     definition = registry.get_definition(gate_name)
     if not definition:
-        # Check if it's an alias
-        if registry.is_alias(gate_name):
-            print(f"\n📦 Alias: {gate_name}")
-            print("=" * 60)
-            print(f"Expands to: {', '.join(registry.expand_alias(gate_name))}")
-            print()
-            return 0
         print(f"❌ Unknown quality gate: {gate_name}")
         print("   Run 'sm help' to see all available gates")
         return 1
@@ -115,10 +108,6 @@ def _show_all_gates() -> int:
     for category in GateCategory:
         gates = gates_by_category.get(category, [])
         _print_gate_group(f"{category.emoji} {category.display_name}", gates)
-
-    print("📦 Aliases:")
-    for alias, gates in sorted(registry.list_aliases().items()):
-        print(f"    {alias:<30} {len(gates)} gates")
 
     print()
     print("Legend: ⚡ = supports auto-fix · 🔧 = foundation · 🔬 = diagnostic")

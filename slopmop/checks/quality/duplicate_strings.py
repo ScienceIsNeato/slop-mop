@@ -72,7 +72,7 @@ class StringDuplicationCheck(BaseCheck):
     @property
     def display_name(self) -> str:
         """Return human-readable display name."""
-        return "🔤 String Duplication"
+        return "🔤 String Duplication (cross-file literals)"
 
     @property
     def gate_description(self) -> str:

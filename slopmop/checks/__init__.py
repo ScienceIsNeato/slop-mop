@@ -91,57 +91,8 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(PRCommentsCheck)
 
 
-def _register_aliases(registry: CheckRegistry) -> None:
-    """Register convenience group aliases for -g flag.
-
-    Gate level (swab/scour) is intrinsic to each check class via the
-    ``level`` ClassVar.  Aliases here are convenience shortcuts for
-    ``-g`` when you want to run a subset of gates by topic.
-    """
-    # ── Convenience group aliases (for -g flag) ───────────────────────
-    registry.register_alias(
-        "quick", ["laziness:sloppy-formatting.py", "myopia:vulnerability-blindness.py"]
-    )
-
-    registry.register_alias(
-        "python",
-        [
-            "laziness:sloppy-formatting.py",
-            "overconfidence:missing-annotations.py",
-            "overconfidence:type-blindness.py",
-            "overconfidence:untested-code.py",
-            "overconfidence:coverage-gaps.py",
-        ],
-    )
-
-    registry.register_alias(
-        "javascript",
-        [
-            "laziness:sloppy-formatting.js",
-            "overconfidence:type-blindness.js",
-            "overconfidence:untested-code.js",
-            "overconfidence:coverage-gaps.js",
-            "laziness:sloppy-frontend.js",
-        ],
-    )
-
-    registry.register_alias("security", ["myopia:dependency-risk.py"])
-    registry.register_alias("security-local", ["myopia:vulnerability-blindness.py"])
-
-    registry.register_alias(
-        "quality",
-        [
-            "laziness:complexity-creep.py",
-            "myopia:source-duplication",
-            "myopia:string-duplication.py",
-            "deceptiveness:bogus-tests.py",
-            "myopia:code-sprawl",
-        ],
-    )
-
-
 def register_all_checks() -> None:
-    """Register all available checks and aliases with the registry.
+    """Register all available checks with the registry.
 
     Call this function before running checks to ensure all checks are available.
     """
@@ -151,7 +102,6 @@ def register_all_checks() -> None:
     _register_python_checks(registry)
     _register_javascript_checks(registry)
     _register_crosscutting_checks(registry)
-    _register_aliases(registry)
 
 
 _checks_registered = False

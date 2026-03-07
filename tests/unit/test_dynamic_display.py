@@ -231,6 +231,59 @@ class TestDynamicDisplay:
         assert "done" in line
         assert "1.2s" in line
 
+    def test_cached_result_shows_expected_and_history(self) -> None:
+        """Cached results should still show exp duration and sparkline."""
+        display = DynamicDisplay(quiet=True)
+        info = CheckDisplayInfo(
+            name="test:check",
+            state=DisplayState.COMPLETED,
+            result=CheckResult(
+                name="test:check",
+                status=CheckStatus.PASSED,
+                duration=0.0,
+                cached=True,
+            ),
+            duration=0.0,
+            timing_stats=TimingStats(
+                median=2.5,
+                q1=2.0,
+                q3=3.0,
+                iqr=1.0,
+                historical_max=4.0,
+                sample_count=5,
+            ),
+        )
+
+        line = display._format_check_line(info)
+
+        assert "cached" in line
+        # Should still show expected duration from timing_stats
+        assert "2.5s" in line
+        # Should NOT show actual duration (it was cached, no real execution)
+        assert "0.0s" not in line
+
+    def test_cached_result_without_history_blanks_timing(self) -> None:
+        """Cached result with no timing_stats should blank all columns."""
+        display = DynamicDisplay(quiet=True)
+        info = CheckDisplayInfo(
+            name="test:check",
+            state=DisplayState.COMPLETED,
+            result=CheckResult(
+                name="test:check",
+                status=CheckStatus.PASSED,
+                duration=0.0,
+                cached=True,
+            ),
+            duration=0.0,
+            timing_stats=None,
+        )
+
+        line = display._format_check_line(info)
+
+        assert "cached" in line
+        # No timing data, so no time values should appear
+        assert "0.0s" not in line
+
     def test_format_check_line_completed_failed(self) -> None:
         """Test formatting completed (failed) check line."""
         display = DynamicDisplay(quiet=True)

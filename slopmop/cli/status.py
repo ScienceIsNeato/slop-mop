@@ -42,17 +42,6 @@ def _get_category_display(category_key: str) -> Tuple[str, str]:
     return "❓", category_key.title()
 
 
-def _find_other_aliases(
-    gate: str, aliases: Dict[str, List[str]], current_level: str
-) -> List[str]:
-    """Find aliases that include a gate, excluding the current level."""
-    return [
-        alias
-        for alias, gates in aliases.items()
-        if gate in gates and alias != current_level
-    ]
-
-
 # ── Section: Config Summary ─────────────────────────────────────
 
 

@@ -462,11 +462,11 @@ class GateDodgingCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "🎭 Gate Dodging"
+        return "🚨 Gate Dodging (threshold weakening)"
 
     @property
     def gate_description(self) -> str:
-        return "🎭 Detects loosened quality thresholds"
+        return "🚨 Detects loosened quality thresholds"
 
     @property
     def category(self) -> GateCategory:

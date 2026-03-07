@@ -111,7 +111,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "📊 Coverage"
+        return "📊 Coverage (Python, pytest-cov)"
 
     @property
     def gate_description(self) -> str:

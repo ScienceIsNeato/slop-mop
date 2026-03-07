@@ -68,7 +68,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "📊 Coverage"
+        return "📊 Coverage (JavaScript, Jest)"
 
     @property
     def gate_description(self) -> str:

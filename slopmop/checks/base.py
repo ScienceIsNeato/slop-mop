@@ -554,6 +554,24 @@ class BaseCheck(ABC):
         # Default implementation provides a generic message
         return "Not applicable to this project"
 
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Return a per-check fingerprint, or ``None`` to use the global one.
+
+        The executor calls this before looking up cached results.  When
+        a check inspects only a well-defined subset of files (e.g. only
+        ``*.py`` files in ``src_dirs``), it should override this method
+        and return a fingerprint scoped to that subset via
+        :func:`slopmop.core.cache.hash_file_scope`.
+
+        With a scoped fingerprint, editing a JavaScript file won't
+        invalidate a Python-only check's cache — and vice versa.
+
+        The default returns ``None``, which tells the executor to fall
+        back to the project-wide fingerprint (conservative, always
+        correct, but invalidates on *any* source change).
+        """
+        return None
+
     @abstractmethod
     def run(self, project_root: str) -> CheckResult:
         """Execute the check and return result.

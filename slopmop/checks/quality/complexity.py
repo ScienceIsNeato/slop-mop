@@ -124,6 +124,12 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         # Fallback: check project root for .py files
         return ["."]
 
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        from slopmop.core.cache import hash_file_scope
+
+        dirs = self._get_target_dirs(project_root)
+        return hash_file_scope(project_root, dirs, {".py"}, self.config)
+
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
         dirs = self._get_target_dirs(project_root)

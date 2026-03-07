@@ -266,6 +266,10 @@ class CheckResult:
     role: Optional[str] = None
     findings: List[Finding] = field(default_factory=lambda: cast(List[Finding], []))
     cached: bool = False
+    cache_timestamp: Optional[str] = (
+        None  # ISO 8601 when result was originally produced
+    )
+    cache_commit: Optional[str] = None  # Short commit hash when result was produced
 
     def to_dict(self) -> Dict[str, object]:
         """Serialize to a plain dict for JSON output."""
@@ -296,6 +300,10 @@ class CheckResult:
             d["findings"] = [f.to_dict() for f in self.findings]
         if self.cached:
             d["cached"] = True
+        if self.cache_timestamp:
+            d["cache_timestamp"] = self.cache_timestamp
+        if self.cache_commit:
+            d["cache_commit"] = self.cache_commit
         return d
 
     @classmethod
@@ -390,6 +398,8 @@ class CheckResult:
             role=d.get("role"),  # type: ignore[arg-type]
             findings=findings,
             cached=bool(d.get("cached", False)),
+            cache_timestamp=d.get("cache_timestamp"),  # type: ignore[arg-type]
+            cache_commit=d.get("cache_commit"),  # type: ignore[arg-type]
         )
 
     @property

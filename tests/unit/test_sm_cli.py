@@ -348,9 +348,6 @@ class TestCmdConfig:
                 mock_reg = MagicMock()
                 mock_reg.list_checks.return_value = ["overconfidence:untested-code.py"]
                 mock_reg.get_definition.return_value = MagicMock(name="Python Tests")
-                mock_reg.list_aliases.return_value = {
-                    "commit": ["overconfidence:untested-code.py"]
-                }
                 mock_registry.return_value = mock_reg
 
                 result = cmd_config(args)
@@ -358,6 +355,35 @@ class TestCmdConfig:
         assert result == 0
         captured = capsys.readouterr()
         assert "Configuration" in captured.out
+        assert "Available Quality Gates" in captured.out
+        assert "Run 'sm config --show' to see all gates." not in captured.out
+
+    def test_config_no_args_shows_usage_hints(self, tmp_path, capsys):
+        """No args prints usage/help summary instead of full gate list."""
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            with patch("slopmop.cli.config.get_registry") as mock_registry:
+                mock_reg = MagicMock()
+                mock_reg.list_checks.return_value = ["deceptiveness:bogus-tests.js"]
+                mock_registry.return_value = mock_reg
+
+                result = cmd_config(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Usage:" in captured.out
+        assert "Run 'sm config --show' to see all gates." in captured.out
+        assert "Available Quality Gates" not in captured.out
 
     def test_enable_gate(self, tmp_path):
         """--enable adds gate to enabled list."""
@@ -456,9 +482,6 @@ class TestCmdHelp:
                 mock_reg.get_definition.return_value = MagicMock(
                     name="Test", auto_fix=False
                 )
-                mock_reg.list_aliases.return_value = {
-                    "commit": ["overconfidence:untested-code.py"]
-                }
                 mock_registry.return_value = mock_reg
 
                 result = cmd_help(args)
@@ -491,27 +514,6 @@ class TestCmdHelp:
         assert result == 0
         captured = capsys.readouterr()
         assert "Python Tests" in captured.out
-
-    def test_help_alias(self, capsys):
-        """Help for alias shows expanded gates."""
-        args = argparse.Namespace(gate="commit")
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            with patch("slopmop.cli.help.get_registry") as mock_registry:
-                mock_reg = MagicMock()
-                mock_reg.get_definition.return_value = None
-                mock_reg.is_alias.return_value = True
-                mock_reg.expand_alias.return_value = [
-                    "overconfidence:untested-code.py",
-                    "overconfidence:coverage-gaps.py",
-                ]
-                mock_registry.return_value = mock_reg
-
-                result = cmd_help(args)
-
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "Alias: commit" in captured.out
 
 
 class TestGitHooksFunctions:

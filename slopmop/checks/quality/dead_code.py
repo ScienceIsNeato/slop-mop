@@ -178,6 +178,12 @@ class DeadCodeCheck(BaseCheck):
         configured = self.config.get("src_dirs", ["."])
         return [d for d in configured if os.path.isdir(os.path.join(project_root, d))]
 
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        from slopmop.core.cache import hash_file_scope
+
+        dirs = self._get_src_dirs(project_root) or ["."]
+        return hash_file_scope(project_root, dirs, {".py"}, self.config)
+
     def _build_command(self, project_root: str) -> List[str]:
         """Build the vulture command with all configured options."""
         src_dirs = self._get_src_dirs(project_root)

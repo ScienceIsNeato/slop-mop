@@ -95,7 +95,7 @@ class DebuggerArtifactsCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "🐞 Debugger Artifacts"
+        return "🐞 Debugger Artifacts (breakpoints, console.log)"
 
     @property
     def gate_description(self) -> str:

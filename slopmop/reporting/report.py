@@ -29,9 +29,32 @@ Actions annotations) slot in without touching enrichment logic.
 
 import os
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+
+
+def _format_age(iso_timestamp: str) -> Optional[str]:
+    """Human-readable relative age from an ISO-8601 timestamp.
+
+    Returns e.g. '2m', '1h', '3d', or None on parse failure.
+    """
+    try:
+        then = datetime.fromisoformat(iso_timestamp)
+        if then.tzinfo is None:
+            then = then.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - then
+        secs = int(delta.total_seconds())
+        if secs < 60:
+            return f"{secs}s"
+        if secs < 3600:
+            return f"{secs // 60}m"
+        if secs < 86400:
+            return f"{secs // 3600}h"
+        return f"{secs // 86400}d"
+    except (ValueError, TypeError):
+        return None
 
 
 def _no_results() -> List[CheckResult]:
@@ -233,3 +256,38 @@ class RunReport:
             else:  # future roles — don't crash, bucket as diagnostic
                 counts["diagnostic"] += 1
         return counts
+
+    def cache_summary(self) -> Optional[str]:
+        """One-line cache summary, or None if no results came from cache.
+
+        Format: '📦 N/M from cache (commit abc1234, 2m ago)'
+        """
+        cached = [r for r in self.summary.results if r.cached]
+        if not cached:
+            return None
+
+        total_ran = len(
+            [
+                r
+                for r in self.summary.results
+                if r.status not in (CheckStatus.NOT_APPLICABLE, CheckStatus.SKIPPED)
+            ]
+        )
+        n_cached = len(cached)
+
+        parts = [f"📦 {n_cached}/{total_ran} from cache"]
+
+        # All cached results share the same fingerprint, so pick
+        # commit/timestamp from the first one.
+        sample = cached[0]
+        detail_parts: list[str] = []
+        if sample.cache_commit:
+            detail_parts.append(f"commit {sample.cache_commit}")
+        if sample.cache_timestamp:
+            age = _format_age(sample.cache_timestamp)
+            if age:
+                detail_parts.append(f"{age} ago")
+        if detail_parts:
+            parts.append(f"({', '.join(detail_parts)})")
+
+        return " ".join(parts)

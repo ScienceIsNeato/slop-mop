@@ -40,6 +40,9 @@ sm swab                       # fix what it finds, commit when green
 sm scour                      # thorough check before opening a PR
 ```
 
+Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
+`Selective Gate Caching` below for details and `--no-cache` behavior.
+
 `sm init` auto-detects Python, JavaScript/TypeScript, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. For Go, Rust, and C/C++ projects it scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) since built-in gates focus on Python and JS.
 
 ### Installation Options
@@ -142,7 +145,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS |
 | `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing |
 | `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C |
-| `deceptiveness:gate-dodging` | 🎭 Detects loosened quality thresholds |
+| `deceptiveness:gate-dodging` | 🚨 Detects loosened quality thresholds |
 | `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement |
 
 ### 🟠 Laziness
@@ -202,9 +205,10 @@ sm swab -g laziness:complexity-creep.py        # re-check just complexity
 ### Time Budget
 
 Use `--swabbing-time` to set a time budget in seconds. Gates with historical
-runtime data are sorted fastest-first and skipped once the accumulated
-estimate would exceed the budget. Gates without timing history always run
-(to establish a baseline). Once a gate starts running, it runs to completion.
+runtime data are scheduled with a dual-lane strategy (one fast lane + heavy
+lanes) and packed against projected remaining budget. Gates without timing
+history always run (to establish a baseline). Once a gate starts running,
+it runs to completion.
 
 ```bash
 sm swab --swabbing-time 30    # only run gates that fit in ~30 seconds
@@ -218,6 +222,27 @@ sm config --swabbing-time 0   # disable the limit entirely
 ```
 
 Time budgets only apply to swab. Scour runs always execute every gate.
+
+### Selective Gate Caching
+
+`sm swab` uses fingerprint-based result caching to avoid re-running unchanged
+work. The optimization is selective per gate:
+
+- Gates can declare their own input scope (for example, only Python files in
+  selected directories).
+- If files outside that scope change, only affected gates re-run; unaffected
+  gates are served from cache.
+- Gates that do not declare a scope still use a safe project-wide fingerprint.
+
+This keeps repeat runs fast while preserving correctness. You will see cache
+usage in summary output, for example `📦 3/16 from cache`.
+
+```bash
+sm swab              # normal mode: selective cache hits enabled
+sm swab --no-cache   # force a full cold run (debug/troubleshooting)
+```
+
+Cache data is stored at `.slopmop/cache.json` in the project.
 
 ---
 

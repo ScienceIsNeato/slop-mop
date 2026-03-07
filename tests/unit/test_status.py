@@ -9,7 +9,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 from slopmop.cli.status import (
-    _find_other_aliases,
     _format_gate_line,
     _print_config_summary,
     _print_gate_inventory,
@@ -30,7 +29,6 @@ def _mock_registry(all_gates=None, swab_gates=None, scour_gates=None):
     """Build a mock registry for status tests."""
     mock_reg = MagicMock()
     mock_reg.list_checks.return_value = all_gates or []
-    mock_reg.list_aliases.return_value = {}
 
     def _gate_names_for_level(level):
         from slopmop.checks.base import GateLevel
@@ -92,36 +90,6 @@ class TestStatusParser:
         parser = create_parser()
         args = parser.parse_args(["status"])
         assert args.verb == "status"
-
-
-# ---------------------------------------------------------------------------
-# _find_other_aliases
-# ---------------------------------------------------------------------------
-
-
-class TestFindOtherAliases:
-    """Tests for _find_other_aliases helper."""
-
-    def test_finds_alias_excluding_current_level(self):
-        aliases = {
-            "swab": ["gate-a", "gate-b"],
-            "scour": ["gate-a", "gate-c"],
-        }
-        result = _find_other_aliases("gate-a", aliases, "swab")
-        assert result == ["scour"]
-
-    def test_returns_empty_when_gate_only_in_current_level(self):
-        aliases = {
-            "swab": ["gate-a"],
-            "scour": ["gate-c"],
-        }
-        result = _find_other_aliases("gate-a", aliases, "swab")
-        assert result == []
-
-    def test_returns_empty_when_gate_not_found(self):
-        aliases = {"swab": ["gate-b"]}
-        result = _find_other_aliases("gate-x", aliases, "swab")
-        assert result == []
 
 
 # ---------------------------------------------------------------------------
@@ -386,55 +354,6 @@ class TestCmdStatus:
         result = cmd_status(args)
         assert result == 1
         assert "not found" in capsys.readouterr().out
-
-
-# ---------------------------------------------------------------------------
-# _find_other_aliases helper
-# ---------------------------------------------------------------------------
-
-
-class TestFindOtherAliases:
-    """Tests for _find_other_aliases helper."""
-
-    def test_finds_matching_aliases(self):
-        """Returns aliases that include the gate."""
-        aliases = {
-            "python": [
-                "overconfidence:untested-code.py",
-                "laziness:sloppy-formatting.py",
-            ],
-            "quality": [
-                "overconfidence:untested-code.py",
-                "laziness:complexity-creep.py",
-            ],
-            "quick": ["laziness:sloppy-formatting.py"],
-        }
-        result = _find_other_aliases(
-            "overconfidence:untested-code.py", aliases, "python"
-        )
-        assert result == ["quality"]
-
-    def test_excludes_current_level(self):
-        """Does not include the current level."""
-        aliases = {
-            "python": ["overconfidence:untested-code.py"],
-            "quality": ["overconfidence:untested-code.py"],
-        }
-        result = _find_other_aliases(
-            "overconfidence:untested-code.py", aliases, "python"
-        )
-        assert "python" not in result
-
-    def test_returns_empty_for_unique_gate(self):
-        """Returns empty list if gate only in current alias."""
-        aliases = {
-            "python": ["overconfidence:untested-code.py"],
-            "quality": ["laziness:complexity-creep.py"],
-        }
-        result = _find_other_aliases(
-            "overconfidence:untested-code.py", aliases, "python"
-        )
-        assert result == []
 
 
 # ---------------------------------------------------------------------------

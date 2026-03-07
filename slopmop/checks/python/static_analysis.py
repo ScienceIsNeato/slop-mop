@@ -5,7 +5,7 @@ import re
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -135,6 +135,12 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     def _is_strict(self) -> bool:
         """Whether strict typing mode is enabled."""
         return self.config.get("strict_typing", True)
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        from slopmop.core.cache import hash_file_scope
+
+        dirs = self._detect_source_dirs(project_root)
+        return hash_file_scope(project_root, dirs, {".py"}, self.config)
 
     def _detect_source_dirs(self, project_root: str) -> List[str]:
         """Detect source directories to type-check.

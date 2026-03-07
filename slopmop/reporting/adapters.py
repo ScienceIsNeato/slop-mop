@@ -146,6 +146,11 @@ class ConsoleAdapter:
             print(f"   in {s.total_duration:.1f}s")
         else:
             print(header)
+
+        cache_line = r.cache_summary()
+        if cache_line:
+            print(f"   {cache_line}")
+
         print("═" * 60)
         if r.warned:
             self._render_warnings()
@@ -174,6 +179,11 @@ class ConsoleAdapter:
             print(f"   {' · '.join(counts)}{duration}")
         else:
             print(header)
+
+        cache_line = r.cache_summary()
+        if cache_line:
+            print(f"   {cache_line}")
+
         print("─" * 60)
 
         self._render_failure_details()

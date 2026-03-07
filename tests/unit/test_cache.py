@@ -7,6 +7,7 @@ from slopmop.checks.base import BaseCheck, Flaw, GateCategory
 from slopmop.core.cache import (
     compute_fingerprint,
     get_cached_result,
+    hash_file_scope,
     load_cache,
     save_cache,
     store_result,
@@ -621,3 +622,183 @@ class TestNoCacheFlag:
         s3 = executor.run_checks(str(tmp_path), ["overconfidence:no-pollute"])
         assert s3.passed == 1
         assert check_cls.run_count == 2  # Served from original cache
+
+
+class TestHashFileScope:
+    """Tests for hash_file_scope() — per-check scoped fingerprints."""
+
+    def test_same_scope_same_fingerprint(self, tmp_path):
+        """Identical file state in scope produces identical fingerprint."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text("print('hello')")
+        fp1 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        fp2 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        assert fp1 == fp2
+
+    def test_change_in_scope_changes_fingerprint(self, tmp_path):
+        """Modifying a file inside the scope changes the fingerprint."""
+        src = tmp_path / "src"
+        src.mkdir()
+        f = src / "main.py"
+        f.write_text("print('hello')")
+        fp1 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        f.write_text("print('world')")
+        os.utime(f, (time.time() + 1, time.time() + 1))
+        fp2 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        assert fp1 != fp2
+
+    def test_change_outside_scope_does_not_change_fingerprint(self, tmp_path):
+        """Modifying a file outside the scope does NOT change fingerprint."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text("print('hello')")
+        fp1 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+
+        # Create a file outside the scope
+        (tmp_path / "README.md").write_text("# docs")
+        fp2 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        assert fp1 == fp2
+
+    def test_different_extension_outside_scope(self, tmp_path):
+        """A .js file doesn't affect a .py-only scope."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text("print('hello')")
+        fp1 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+
+        (src / "script.js").write_text("console.log('hi')")
+        fp2 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        assert fp1 == fp2
+
+    def test_config_change_changes_fingerprint(self, tmp_path):
+        """Changing the config dict changes the fingerprint."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text("x = 1")
+        fp1 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {"threshold": 80})
+        fp2 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {"threshold": 90})
+        assert fp1 != fp2
+
+    def test_exclude_dirs(self, tmp_path):
+        """Excluded directories are ignored in scoped fingerprint."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text("x = 1")
+        fp1 = hash_file_scope(
+            str(tmp_path), ["src"], {".py"}, {}, exclude_dirs={"vendor"}
+        )
+
+        vendor = src / "vendor"
+        vendor.mkdir()
+        (vendor / "lib.py").write_text("y = 2")
+        fp2 = hash_file_scope(
+            str(tmp_path), ["src"], {".py"}, {}, exclude_dirs={"vendor"}
+        )
+        assert fp1 == fp2
+
+    def test_nonexistent_dir_produces_valid_fingerprint(self, tmp_path):
+        """Scope pointing to a nonexistent dir still returns a hash."""
+        fp = hash_file_scope(str(tmp_path), ["nonexistent"], {".py"}, {})
+        assert isinstance(fp, str)
+        assert len(fp) == 64
+
+    def test_multiple_dirs(self, tmp_path):
+        """Scope covering multiple directories includes all their files."""
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        (tmp_path / "a" / "one.py").write_text("1")
+        (tmp_path / "b" / "two.py").write_text("2")
+
+        fp_both = hash_file_scope(str(tmp_path), ["a", "b"], {".py"}, {})
+        fp_a_only = hash_file_scope(str(tmp_path), ["a"], {".py"}, {})
+        assert fp_both != fp_a_only
+
+
+def _make_scoped_check_class(name: str, scope_dirs: list):
+    """Factory: a check that overrides cache_inputs with a scoped fingerprint."""
+
+    class ScopedCheck(_SlowCheck):
+        _name = name
+        run_count = 0
+
+        def cache_inputs(self, project_root: str):
+            return hash_file_scope(
+                project_root,
+                scope_dirs,
+                {".py"},
+                self.config,
+            )
+
+    return ScopedCheck
+
+
+class TestPerCheckCaching:
+    """Integration tests: per-check fingerprints enable independent caching."""
+
+    def test_scoped_check_survives_out_of_scope_change(self, tmp_path):
+        """A scoped check stays cached when files outside its scope change."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "app.py").write_text("x = 1")
+        (tmp_path / "README.md").write_text("# hello")
+
+        check_cls = _make_scoped_check_class("scoped-survive", ["src"])
+        registry = CheckRegistry()
+        registry.register(check_cls)
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+
+        # First run: populates cache
+        executor.run_checks(str(tmp_path), ["overconfidence:scoped-survive"])
+        assert check_cls.run_count == 1
+
+        # Change a file OUTSIDE the scope
+        (tmp_path / "README.md").write_text("# updated")
+
+        # Second run: scoped fingerprint unchanged → cache hit
+        s2 = executor.run_checks(str(tmp_path), ["overconfidence:scoped-survive"])
+        assert s2.passed == 1
+        assert check_cls.run_count == 1  # Not re-run
+
+    def test_scoped_check_invalidates_on_in_scope_change(self, tmp_path):
+        """A scoped check re-runs when files inside its scope change."""
+        src = tmp_path / "src"
+        src.mkdir()
+        f = src / "app.py"
+        f.write_text("x = 1")
+
+        check_cls = _make_scoped_check_class("scoped-inval", ["src"])
+        registry = CheckRegistry()
+        registry.register(check_cls)
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+
+        # First run: populates cache
+        executor.run_checks(str(tmp_path), ["overconfidence:scoped-inval"])
+        assert check_cls.run_count == 1
+
+        # Change a file INSIDE the scope
+        f.write_text("x = 2")
+        os.utime(f, (time.time() + 1, time.time() + 1))
+
+        # Second run: scoped fingerprint changed → cache miss → re-run
+        executor.run_checks(str(tmp_path), ["overconfidence:scoped-inval"])
+        assert check_cls.run_count == 2
+
+    def test_unscoped_check_falls_back_to_global(self, tmp_path):
+        """A check without cache_inputs override uses global fingerprint."""
+        (tmp_path / "main.py").write_text("x = 1")
+
+        # Uses default _SlowCheck which doesn't override cache_inputs
+        check_cls = _make_slow_check_class("global-fallback")
+        registry = CheckRegistry()
+        registry.register(check_cls)
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+
+        # First run
+        executor.run_checks(str(tmp_path), ["overconfidence:global-fallback"])
+        assert check_cls.run_count == 1
+
+        # Same files → global fingerprint unchanged → cache hit
+        s2 = executor.run_checks(str(tmp_path), ["overconfidence:global-fallback"])
+        assert s2.passed == 1
+        assert check_cls.run_count == 1

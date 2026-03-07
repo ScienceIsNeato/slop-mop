@@ -1,4 +1,4 @@
-"""Tests for wall-clock time budget with dual-lane scheduling."""
+"""Tests for wall-clock time budget with budget-aware dual-lane scheduling."""
 
 from unittest.mock import MagicMock
 
@@ -9,11 +9,12 @@ from tests.unit.test_executor import make_mock_check_class
 
 
 class TestSwabbingTimeBudget:
-    """Tests for wall-clock time budget with dual-lane scheduling.
+    """Tests for wall-clock time budget with budget-aware dual-lane scheduling.
 
     The executor uses wall-clock time to decide when to stop scheduling
-    new gates.  Gates without timing history always run.  The dual-lane
-    strategy submits (N-1) heavy and 1 light gate per scheduling round.
+    new gates.  Gates without timing history always run. Under budget,
+    one timed slot is reserved for fast checks, while remaining timed
+    slots are packed with heavier checks that fit projected time.
 
     Integration tests that verify actual budget expiry use checks that
     sleep >1s (since swabbing_time is int, minimum positive is 1).
@@ -132,8 +133,9 @@ class TestSwabbingTimeBudget:
             ("victim", 0.01, CheckStatus.PASSED),
         )
         timings = {
-            "overconfidence:blocker": 10.0,
-            "overconfidence:victim": 1.0,
+            # Fast-lane should pick blocker first; it then overruns budget.
+            "overconfidence:blocker": 0.1,
+            "overconfidence:victim": 10.0,
         }
 
         executor = CheckExecutor(registry=registry, fail_fast=False, max_workers=1)
@@ -150,7 +152,7 @@ class TestSwabbingTimeBudget:
         victim = results["overconfidence:victim"]
         assert victim.skip_reason == SkipReason.TIME_BUDGET
         assert "budget 1s expired" in victim.output
-        assert "estimated 1.0s" in victim.output
+        assert "estimated 10.0s" in victim.output
 
     def test_untimed_gate_runs_after_budget_expires(self, tmp_path):
         """Budget expires but untimed gate still runs; timed gate skipped."""
@@ -160,7 +162,8 @@ class TestSwabbingTimeBudget:
             ("timed-victim", 0.01, CheckStatus.PASSED),
         )
         timings = {
-            "overconfidence:blocker": 10.0,
+            # Fast-lane should pick blocker first; it then overruns budget.
+            "overconfidence:blocker": 0.1,
             "overconfidence:timed-victim": 5.0,
             # "untimed" has NO entry → always runs
         }
@@ -256,8 +259,8 @@ class TestSwabbingTimeBudget:
         assert "budget 20s expired" in output
         assert "22.5s wall-clock" in output
 
-    def test_select_dual_lane_heavy_and_light(self):
-        """Dual-lane: N-1 from heavy end, 1 from light end."""
+    def test_select_budget_dual_lane_fast_plus_heavy_pack(self):
+        """Under budget, pick one fast gate then pack heavy lanes."""
         executor = CheckExecutor(fail_fast=False, max_workers=4)
         timings = {"a": 10.0, "b": 8.0, "c": 5.0, "d": 3.0, "e": 1.0}
 
@@ -273,13 +276,11 @@ class TestSwabbingTimeBudget:
             swabbing_time=60,
         )
 
-        # 4 slots: heavy_count=min(3,4)=3 → [a,b,c]; light → e
         assert len(result) == 4
-        assert result[:3] == ["a", "b", "c"]
-        assert result[3] == "e"
+        assert result == ["e", "a", "b", "c"]
 
-    def test_select_dual_lane_with_untimed_priority(self):
-        """Untimed gates get priority; remaining slots use dual-lane."""
+    def test_select_with_untimed_priority_then_fast_plus_heavy(self):
+        """Untimed first; timed uses fast lane + heavy packing."""
         executor = CheckExecutor(fail_fast=False, max_workers=4)
         timings = {"t1": 10.0, "t2": 5.0, "t3": 1.0}
 
@@ -295,15 +296,11 @@ class TestSwabbingTimeBudget:
             swabbing_time=60,
         )
 
-        # 2 untimed fill 2 slots; 2 remaining → heavy=t1, light=t3
-        assert "u1" in result
-        assert "u2" in result
-        assert "t1" in result
-        assert "t3" in result
-        assert len(result) == 4
+        # 2 untimed fill 2 slots; timed picks fast lane t3 then heavy lane t1.
+        assert result == ["u1", "u2", "t3", "t1"]
 
-    def test_select_single_slot_takes_heaviest(self):
-        """With 1 available slot, submit the heaviest timed gate."""
+    def test_select_single_slot_takes_fastest(self):
+        """With 1 available slot, submit the fastest timed gate."""
         executor = CheckExecutor(fail_fast=False, max_workers=4)
         timings = {"a": 10.0, "b": 1.0}
 
@@ -321,7 +318,29 @@ class TestSwabbingTimeBudget:
             swabbing_time=60,
         )
 
-        assert result == ["a"]
+        assert result == ["b"]
+
+    def test_select_respects_projected_budget_with_inflight_work(self):
+        """Do not submit timed gates when projected budget has no room."""
+        executor = CheckExecutor(fail_fast=False, max_workers=2)
+        timings = {"running-heavy": 9.0, "candidate": 2.0}
+
+        running_future = MagicMock()
+        futures = {running_future: "running-heavy"}
+
+        result = executor._select_gates_for_submission(
+            ready=["candidate"],
+            pending={"candidate"},
+            completed=set(),
+            futures=futures,
+            timings=timings,
+            budget_active=True,
+            budget_expired=False,
+            budget_elapsed=2.0,
+            swabbing_time=10,
+        )
+
+        assert result == []
 
     def test_select_no_slots_returns_empty(self):
         """When all slots are busy, no gates submitted."""
@@ -345,7 +364,7 @@ class TestSwabbingTimeBudget:
         assert result == []
 
     def test_select_two_timed_gates_two_slots(self):
-        """With 2 slots and 2 timed gates: 1 heavy + 1 light."""
+        """With 2 slots and 2 timed gates, select shortest-first order."""
         executor = CheckExecutor(fail_fast=False, max_workers=2)
         timings = {"heavy": 10.0, "light": 1.0}
 
@@ -362,8 +381,26 @@ class TestSwabbingTimeBudget:
         )
 
         assert len(result) == 2
-        assert result[0] == "heavy"
-        assert result[1] == "light"
+        assert result[0] == "light"
+        assert result[1] == "heavy"
+
+    def test_select_untimed_does_not_exceed_available_slots(self):
+        """Untimed submissions are capped to free worker slots."""
+        executor = CheckExecutor(fail_fast=False, max_workers=2)
+
+        result = executor._select_gates_for_submission(
+            ready=["u1", "u2", "u3"],
+            pending={"u1", "u2", "u3"},
+            completed=set(),
+            futures={},
+            timings={},
+            budget_active=True,
+            budget_expired=False,
+            budget_elapsed=0.0,
+            swabbing_time=60,
+        )
+
+        assert result == ["u1", "u2"]
 
     # ── _record_budget_skips unit test ────────────────────────────────
 

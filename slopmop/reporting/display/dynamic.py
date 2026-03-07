@@ -260,9 +260,12 @@ class DynamicDisplay:
             # Static mode: print completion (full names since no group headers)
             icon = STATUS_EMOJI.get(result.status, "❓")
             badge = ROLE_BADGES.get(info.role or "", "")
-            print(
-                f"{icon} {badge}{result.name}: {result.status.value} ({result.duration:.2f}s)"
-            )
+            status_text = "cached" if result.cached else result.status.value
+            timing = f"({result.duration:.2f}s)" if not result.cached else ""
+            line = f"{icon} {badge}{result.name}: {status_text}"
+            if timing:
+                line += f" {timing}"
+            print(line)
 
     def on_check_disabled(self, name: str) -> None:
         """Called when a check is disabled by config.
@@ -607,12 +610,14 @@ class DynamicDisplay:
         if icon_w < 2:
             icon = icon + " " * (2 - icon_w)
 
-        # Status word — "skipped" for not-applicable/skipped, "done" otherwise
-        status_word = (
-            "skipped"
-            if info.result.status in (CheckStatus.NOT_APPLICABLE, CheckStatus.SKIPPED)
-            else "done"
-        )
+        # Status word — "skipped" for not-applicable/skipped,
+        # "cached" for cache hits, "done" otherwise
+        if info.result.status in (CheckStatus.NOT_APPLICABLE, CheckStatus.SKIPPED):
+            status_word = "skipped"
+        elif info.result.cached:
+            status_word = "cached"
+        else:
+            status_word = "done"
         padded_status = f"{status_word:<{config.STATUS_COLUMN_WIDTH}}"
         sc = status_color(info.result.status, ce)
         rc = reset_color(ce)
@@ -663,6 +668,32 @@ class DynamicDisplay:
 
         # ── Right section: timing columns (act | exp | history) ──
         stats = info.timing_stats
+
+        if info.result.cached:
+            # Cached: no actual execution time, but still show expected
+            # duration and sparkline so the right side isn't empty.
+            blank_act = " " * config.TIMING_TIME_WIDTH
+            if stats and stats.sample_count >= 2:
+                avg_str = format_time(stats.median).rjust(config.TIMING_AVG_WIDTH)
+                spark = stats.sparkline(
+                    max_width=config.TIMING_SPARK_WIDTH, colors_enabled=ce
+                )
+                timing = (
+                    f"{blank_act}{config.TIMING_SEP}"
+                    f"{avg_str}{config.TIMING_SEP}"
+                    f"{spark}"
+                )
+            else:
+                blank = " " * (
+                    config.TIMING_TIME_WIDTH
+                    + len(config.TIMING_SEP)
+                    + config.TIMING_AVG_WIDTH
+                    + len(config.TIMING_SEP)
+                    + config.TIMING_SPARK_WIDTH
+                )
+                timing = blank
+            return right_justify(left, timing, width)
+
         time_str = format_time(info.duration, allow_fast_label=False)
 
         if stats and stats.sample_count >= 2:
