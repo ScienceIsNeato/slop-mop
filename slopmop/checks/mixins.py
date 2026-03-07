@@ -27,7 +27,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional, cast
+
+if TYPE_CHECKING:
+    pass
 
 from slopmop.checks.base import count_source_scope
 from slopmop.core.result import (
@@ -142,7 +145,10 @@ class PythonCheckMixin:
 
         if not self.has_project_venv(project_root):
             msg = "No project virtual environment found"
-            return self._create_result(  # type: ignore[attr-defined]
+            # Mixin is always composed with BaseCheck
+            from slopmop.checks.base import BaseCheck
+
+            return cast(BaseCheck, self)._create_result(
                 status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 error=msg,

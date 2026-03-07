@@ -8,7 +8,7 @@ import concurrent.futures
 import logging
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.registry import CheckRegistry, get_registry
@@ -48,16 +48,18 @@ def _is_gate_enabled_in_config(
     # Check if language/category is enabled
     category_val: object = config.get(category_key)
     if isinstance(category_val, dict):
-        enabled_val = category_val.get("enabled")  # type: ignore[reportUnknownMemberType]
-        if enabled_val is False:
+        cat_dict = cast(Dict[str, Any], category_val)
+        if cat_dict.get("enabled") is False:
             return False, f"{category_key} language is disabled in config"
 
         # Check if specific gate is disabled
-        gates_val = category_val.get("gates")  # type: ignore[reportUnknownMemberType]
+        gates_val = cat_dict.get("gates")
         if isinstance(gates_val, dict) and gate_name in gates_val:
-            gate_cfg = gates_val.get(gate_name)  # type: ignore[reportUnknownMemberType]
-            if isinstance(gate_cfg, dict) and gate_cfg.get("enabled") is False:  # type: ignore[reportUnknownMemberType]
-                return False, f"{check.full_name} is disabled in config"
+            gate_cfg = cast(Dict[str, Any], gates_val).get(gate_name)
+            if isinstance(gate_cfg, dict):
+                gate_dict = cast(Dict[str, Any], gate_cfg)
+                if gate_dict.get("enabled") is False:
+                    return False, f"{check.full_name} is disabled in config"
 
     return True, ""
 

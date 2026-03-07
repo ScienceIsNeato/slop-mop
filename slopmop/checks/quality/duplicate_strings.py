@@ -1,5 +1,6 @@
 """String duplication check using vendored find-duplicate-strings tool."""
 
+import fnmatch
 import glob as globmod
 import json
 import os
@@ -422,7 +423,7 @@ class StringDuplicationCheck(BaseCheck):
 
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.strip_docstrings  # type: ignore[no-any-return]
+        return cast(Callable[[str], str], mod.strip_docstrings)
 
     def _preprocess_python_files(
         self, project_root: str, config: Dict[str, Any]
@@ -465,7 +466,7 @@ class StringDuplicationCheck(BaseCheck):
                 rel = os.path.relpath(f, project_root)
                 skip = False
                 for ign in ignore_patterns:
-                    if globmod.fnmatch.fnmatch(rel, ign):  # type: ignore[attr-defined]
+                    if fnmatch.fnmatch(rel, ign):
                         skip = True
                         break
                 if not skip:

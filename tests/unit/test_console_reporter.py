@@ -1,7 +1,5 @@
 """Tests for console reporter."""
 
-import pytest  # noqa: F401  # Required for fixtures
-
 from slopmop.constants import STATUS_EMOJI
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.console import ConsoleReporter
