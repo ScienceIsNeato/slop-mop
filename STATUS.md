@@ -295,3 +295,13 @@ Custom gates feature, output polish, PR category removal, and comprehensive cust
 ### Validation
 
 - `pytest -q tests/unit/test_quality_checks.py tests/unit/test_python_checks.py` → **138 passed**
+
+## 2026-03-08 Delta: PR #80 Workflow Advisory Fixes
+
+### Completed
+
+1. `.github/workflows/slopmop.yml`
+  - Added `continue-on-error: true` to the PR comments gate step so
+    advisory publishing still runs when unresolved comments are present.
+  - Updated `GITHUB_OUTPUT` writing to append mode (`open('a')`) instead of
+    overwrite, preventing clobbering previously emitted step outputs.

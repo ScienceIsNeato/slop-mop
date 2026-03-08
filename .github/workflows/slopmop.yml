@@ -125,6 +125,7 @@ jobs:
           pip install -e ".[all]"
 
       - name: Check for unresolved PR comments
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -155,7 +156,8 @@ jobs:
           ]
 
           out_file = Path(__import__('os').environ['GITHUB_OUTPUT'])
-          out_file.write_text("\n".join(lines) + "\n")
+          with out_file.open('a', encoding='utf-8') as fh:
+            fh.write("\n".join(lines) + "\n")
           PY
 
       - name: Publish PR comment advisory check
