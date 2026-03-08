@@ -14,7 +14,7 @@ from slopmop.checks.python.coverage import (
 )
 from slopmop.checks.python.lint_format import PythonLintFormatCheck
 from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
-from slopmop.checks.python.tests import PythonTestsCheck
+from slopmop.checks.python.tests import PythonTestsCheck, _parse_failed_lines
 from slopmop.core.result import CheckStatus
 from slopmop.subprocess.runner import SubprocessResult
 
@@ -353,6 +353,17 @@ class TestPythonTestsCheck:
 
         # Should pass because tests passed, only coverage failed
         assert result.status == CheckStatus.PASSED
+
+    def test_parse_failed_lines_ignores_embedded_failed_token(self):
+        """Regex should not match when line doesn't start with FAILED."""
+        lines = [
+            "INFO: previous output FAILED tests/test_foo.py::test_bar - AssertionError"
+        ]
+
+        findings = _parse_failed_lines(lines)
+
+        assert len(findings) == 1
+        assert findings[0].fix_strategy is None
 
 
 class TestPythonCoverageCheck:

@@ -305,3 +305,27 @@ Custom gates feature, output polish, PR category removal, and comprehensive cust
     advisory publishing still runs when unresolved comments are present.
   - Updated `GITHUB_OUTPUT` writing to append mode (`open('a')`) instead of
     overwrite, preventing clobbering previously emitted step outputs.
+
+## 2026-03-08 Delta: PR #80 Follow-up (Config Default + Regex Anchoring)
+
+### Completed
+
+1. `slopmop/checks/quality/complexity.py`
+  - Aligned `MAX_COMPLEXITY` fallback constant with schema default
+    (`15`) to prevent config-default mismatch in `_to_finding(...)` delta logic.
+
+2. `slopmop/checks/python/tests.py`
+  - Anchored `_PYTEST_FAILED_RE` to start-of-line and switched from
+    `.search(...)` to `.match(...)` on stripped input to avoid accidental
+    mid-line matches on embedded `FAILED` tokens.
+
+3. Regression tests
+  - `tests/unit/test_quality_checks.py`:
+    - Added assertion that schema default and `MAX_COMPLEXITY` stay aligned.
+  - `tests/unit/test_python_checks.py`:
+    - Added parser test ensuring embedded/non-leading `FAILED` tokens do not
+      trigger structured regex parsing.
+
+### Validation
+
+- `pytest -q tests/unit/test_quality_checks.py tests/unit/test_python_checks.py` → **140 passed**

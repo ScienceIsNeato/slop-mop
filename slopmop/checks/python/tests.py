@@ -26,7 +26,7 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 # The `- reason` suffix is optional (pytest omits it when there's no
 # short repr, e.g. on bare `assert False`).
 _PYTEST_FAILED_RE = re.compile(
-    r"FAILED\s+(?P<path>\S+?\.py)::(?P<nodeid>\S+?)(?:\s+-\s+(?P<reason>.+))?$"
+    r"^FAILED\s+(?P<path>\S+\.py)::(?P<nodeid>\S+)(?:\s+-\s+(?P<reason>.+))?$"
 )
 
 
@@ -40,7 +40,7 @@ def _parse_failed_lines(failed_tests: List[str]) -> List[Finding]:
     """
     structured: List[Finding] = []
     for line in failed_tests:
-        m = _PYTEST_FAILED_RE.search(line)
+        m = _PYTEST_FAILED_RE.match(line.strip())
         if not m:
             rest = line.split("FAILED", 1)[-1].strip()
             path = rest.split("::", 1)[0]

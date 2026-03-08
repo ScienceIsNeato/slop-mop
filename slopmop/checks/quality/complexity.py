@@ -26,7 +26,8 @@ from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_RANK = "C"
-MAX_COMPLEXITY = 20
+# Keep this aligned with config_schema.default for max_complexity.
+MAX_COMPLEXITY = 15
 
 
 class ComplexityCheck(BaseCheck, PythonCheckMixin):

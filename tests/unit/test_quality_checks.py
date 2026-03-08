@@ -3,7 +3,11 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from slopmop.checks.quality.complexity import ComplexityCheck, _to_finding
+from slopmop.checks.quality.complexity import (
+    MAX_COMPLEXITY,
+    ComplexityCheck,
+    _to_finding,
+)
 from slopmop.checks.quality.duplication import SourceDuplicationCheck
 from slopmop.core.result import CheckStatus
 
@@ -34,6 +38,12 @@ class TestComplexityCheck:
         assert "max_rank" in field_names
         assert "max_complexity" in field_names
         assert "src_dirs" in field_names
+
+    def test_max_complexity_constant_matches_schema_default(self):
+        """Fallback constant must stay in sync with schema default."""
+        check = ComplexityCheck({})
+        schema = {f.name: f for f in check.config_schema}
+        assert schema["max_complexity"].default == MAX_COMPLEXITY
 
     def test_is_applicable_with_python_files(self, tmp_path):
         """Test is_applicable returns True for Python projects."""
