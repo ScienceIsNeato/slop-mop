@@ -229,7 +229,8 @@ class TestStoreResult:
         """Passing results are stored."""
         cache: dict = {}
         result = CheckResult(name="check1", status=CheckStatus.PASSED, duration=1.0)
-        store_result(cache, "check1", "fp1", result)
+        stored = store_result(cache, "check1", "fp1", result)
+        assert stored is True
         assert "check1" in cache
         assert cache["check1"]["fingerprint"] == "fp1"
 
@@ -246,7 +247,8 @@ class TestStoreResult:
         result = CheckResult(
             name="check1", status=CheckStatus.ERROR, duration=0.0, error="boom"
         )
-        store_result(cache, "check1", "fp1", result)
+        stored = store_result(cache, "check1", "fp1", result)
+        assert stored is False
         assert "check1" not in cache
 
     def test_skips_auto_fixed_result(self):
@@ -258,7 +260,8 @@ class TestStoreResult:
             duration=1.0,
             auto_fixed=True,
         )
-        store_result(cache, "check1", "fp1", result)
+        stored = store_result(cache, "check1", "fp1", result)
+        assert stored is False
         assert "check1" not in cache
 
     def test_overwrites_previous_entry(self):

@@ -77,9 +77,9 @@ class SarifAdapter:
     dedup, artifactLocation normalisation) and they *should* stay
     there because they're format-specific, not business-logic.
 
-    This adapter's value is (a) the uniform RunReport interface and
-    (b) injecting role/fix_strategy into SARIF ``properties`` bags,
-    which the base SarifReporter doesn't know about.
+    This adapter's value is the uniform RunReport interface. SARIF
+    format-specific derivations (fingerprinting, rule shaping,
+    artifactLocation normalization) remain in ``SarifReporter``.
     """
 
     @staticmethod

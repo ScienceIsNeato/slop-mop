@@ -27,10 +27,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, cast
-
-if TYPE_CHECKING:
-    pass
+from typing import List, Optional, cast
 
 from slopmop.checks.base import count_source_scope
 from slopmop.core.result import (

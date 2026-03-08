@@ -1094,3 +1094,59 @@ class TestValidateSmLockError:
         assert result == 1
         err = capsys.readouterr().err
         assert "Another sm instance" in err
+
+
+class TestValidateJsonOutputFile:
+    """Regression tests for JSON output-file behavior in validate pipeline."""
+
+    @patch("builtins.print")
+    @patch("slopmop.cli.validate.RunReport.from_summary")
+    @patch("slopmop.cli.validate.JsonAdapter")
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_json_output_file_does_not_print_to_stdout(
+        self,
+        _mock_config,
+        _mock_registry,
+        mock_executor_cls,
+        _mock_reporter,
+        mock_json_adapter,
+        mock_from_summary,
+        mock_print,
+        tmp_path,
+    ):
+        """--json with --output-file writes payload to file without stdout leak."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        mock_report = MagicMock()
+        mock_from_summary.return_value = mock_report
+        mock_json_adapter.render.return_value = {"ok": True}
+
+        output_file = tmp_path / "result.json"
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+            json_output=True,
+            output_file=str(output_file),
+            sarif_output=False,
+            no_cache=False,
+        )
+
+        result = _run_validation(args, ["gate1"], "swab")
+
+        assert result == 0
+        assert output_file.exists()
+        assert output_file.read_text(encoding="utf-8") == '{"ok":true}'
+        mock_print.assert_not_called()

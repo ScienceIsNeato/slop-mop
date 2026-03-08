@@ -944,14 +944,15 @@ class CheckExecutor:
                 result.scope = scope
             # Store result in cache for next run
             if fingerprint:
-                store_result(
+                stored = store_result(
                     self._cache,
                     check.full_name,
                     fingerprint,
                     result,
                     project_root=project_root,
                 )
-                self._cache_dirty = True
+                if stored:
+                    self._cache_dirty = True
             return result
         except Exception as e:
             logger.error(f"Check {check.full_name} failed with exception: {e}")

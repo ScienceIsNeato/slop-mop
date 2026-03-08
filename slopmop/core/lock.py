@@ -15,7 +15,6 @@ the kernel lock is released (NFS, forced unmount, etc.):
 
 from __future__ import annotations
 
-import fcntl
 import json
 import logging
 import os
@@ -23,6 +22,11 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - platform-specific (Windows)
+    fcntl = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +165,13 @@ def sm_lock(project_root: str | Path, verb: str) -> Iterator[None]:
     root = Path(project_root).resolve()
     path = _lock_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Windows fallback: no fcntl available. Keep behavior functional
+    # without crashing imports/calls on non-POSIX systems.
+    if fcntl is None:
+        logger.warning("fcntl unavailable; running without repo lock")
+        yield
+        return
 
     fd = None
     try:

@@ -228,3 +228,47 @@ Custom gates feature, output polish, PR category removal, and comprehensive cust
   (`sm scour -g myopia:ignored-feedback --verbose --no-cache`).
 - Workflow logic now emits a separate advisory signal intended to make
   unresolved PR threads visibly non-green without hard-failing the pipeline.
+
+## 2026-03-08 Delta: PR Commentary Follow-up Fixes
+
+### Completed
+
+1. Cross-platform lock fallback in `slopmop/core/lock.py`:
+   - Guarded `fcntl` import and added non-POSIX fallback path in `sm_lock()`.
+   - Prevents import/runtime crashes on platforms without `fcntl`.
+
+2. PR comments gate role classification:
+   - Updated `PRCommentsCheck.role` to `CheckRole.DIAGNOSTIC` in
+     `slopmop/checks/pr/comments.py`.
+
+3. SARIF adapter doc accuracy:
+   - Corrected `SarifAdapter` docstring in `slopmop/reporting/adapters.py`
+     to remove inaccurate claim about role/fix_strategy injection.
+
+4. Cache dirty-state correctness:
+   - `store_result(...)` now returns `bool` in `slopmop/core/cache.py`.
+   - `slopmop/core/executor.py` now sets `_cache_dirty` only when a cache
+     write actually occurs.
+
+5. JSON output-file stdout leakage fix:
+   - `slopmop/cli/validate.py` no longer renders Console output when
+     `--json --output-file` is used.
+
+6. Dead code cleanup:
+   - Removed obsolete `TYPE_CHECKING`/unused pattern block in
+     `slopmop/checks/mixins.py`.
+
+### Test Updates
+
+- `tests/unit/test_cache.py`:
+  - Added assertions for `store_result()` return semantics.
+- `tests/unit/test_lock.py`:
+  - Added regression test for `fcntl`-unavailable fallback path.
+- `tests/unit/test_pr_checks.py`:
+  - Added assertion that PR comments check role is diagnostic.
+- `tests/unit/test_sm_cli.py`:
+  - Added regression test proving `--json --output-file` does not print to stdout.
+
+### Validation
+
+- `pytest -q tests/unit/test_cache.py tests/unit/test_lock.py tests/unit/test_pr_checks.py tests/unit/test_sm_cli.py` → **185 passed**

@@ -283,18 +283,19 @@ def store_result(
     fingerprint: str,
     result: CheckResult,
     project_root: Optional[str] = None,
-) -> None:
+) -> bool:
     """Store a check result in the cache dict (call save_cache to persist).
 
     Skips ERROR results (transient) and auto_fixed results (side-effecting).
     """
     if result.status == CheckStatus.ERROR:
-        return
+        return False
     if result.auto_fixed:
-        return
+        return False
     cache[check_name] = {
         "fingerprint": fingerprint,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "commit": _get_head_short(project_root),
         "result": result.to_dict(),
     }
+    return True

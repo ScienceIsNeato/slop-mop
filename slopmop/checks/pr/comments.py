@@ -51,7 +51,7 @@ class PRCommentsCheck(BaseCheck):
     """
 
     level = GateLevel.SCOUR
-    role = CheckRole.FOUNDATION
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:

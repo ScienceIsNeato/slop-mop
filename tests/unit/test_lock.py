@@ -264,6 +264,15 @@ class TestSmLock:
             with sm_lock(root_b, "scour"):
                 pass  # Both locked simultaneously — no error
 
+    def test_allows_execution_without_fcntl(self, lock_root: Path) -> None:
+        """When fcntl is unavailable, lock manager degrades gracefully."""
+        with patch("slopmop.core.lock.fcntl", None):
+            with sm_lock(lock_root, "swab"):
+                pass
+
+        # Fallback path should not attempt to create/lock the lock file.
+        assert not _lock_path(lock_root).exists()
+
 
 # ─── edge cases for diff-coverage gap ────────────────────────────────────
 
