@@ -272,3 +272,26 @@ Custom gates feature, output polish, PR category removal, and comprehensive cust
 ### Validation
 
 - `pytest -q tests/unit/test_cache.py tests/unit/test_lock.py tests/unit/test_pr_checks.py tests/unit/test_sm_cli.py` → **185 passed**
+
+## 2026-03-08 Delta: Final 2 PR Comment Fixes (PR #80)
+
+### Completed
+
+1. `slopmop/checks/quality/complexity.py`
+  - Updated `_to_finding()` rank-threshold fallback wording to avoid
+    misleading numeric-limit framing when `delta <= 0`.
+  - New guidance now says the function failed the configured rank gate.
+
+2. `slopmop/checks/python/tests.py`
+  - Updated `_parse_failed_lines()` to include pytest assertion summary
+    (`reason`) directly in `fix_strategy` when available.
+
+3. Regression tests
+  - `tests/unit/test_quality_checks.py`:
+    - Asserts updated rank-gate wording and absence of old phrasing.
+  - `tests/unit/test_python_checks.py`:
+    - Asserts assertion summary is present in `fix_strategy` for failed tests.
+
+### Validation
+
+- `pytest -q tests/unit/test_quality_checks.py tests/unit/test_python_checks.py` → **138 passed**

@@ -323,7 +323,7 @@ class TestPythonTestsCheck:
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
             returncode=1,
-            stdout="FAILED tests/test_foo.py::test_bar - AssertionError",
+            stdout="FAILED tests/test_foo.py::test_bar - AssertionError: expected 2, got 3",
             stderr="",
             duration=1.0,
         )
@@ -333,6 +333,9 @@ class TestPythonTestsCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+        assert result.findings
+        assert result.findings[0].fix_strategy is not None
+        assert "AssertionError: expected 2, got 3" in result.findings[0].fix_strategy
 
     def test_run_coverage_fail_only(self, tmp_path):
         """Test run passes when only coverage fails (not tests)."""

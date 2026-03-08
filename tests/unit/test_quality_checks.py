@@ -351,6 +351,8 @@ class TestToFinding:
         f = _to_finding(line, limit=10)
         assert f.fix_strategy is not None
         assert "Extract helpers" in f.fix_strategy
+        assert "configured rank gate" in f.fix_strategy
+        assert "exceeds rank threshold" not in f.fix_strategy
 
     def test_no_loc_match(self):
         line = "`some_func` - C (15)"

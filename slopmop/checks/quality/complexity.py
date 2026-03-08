@@ -243,9 +243,9 @@ def _to_finding(violation_line: str, limit: int = MAX_COMPLEXITY) -> Finding:
             )
         else:
             strategy = (
-                f"Extract helpers from {name}() \u2014 complexity {score} "
-                f"exceeds rank threshold. Identify the largest "
-                f"branch or loop and move it to a named function."
+                f"Extract helpers from {name}() — complexity {score} "
+                f"still failed the configured rank gate. Identify the "
+                f"largest branch or loop and move it to a named function."
             )
 
     if loc:

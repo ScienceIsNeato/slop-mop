@@ -63,6 +63,7 @@ def _parse_failed_lines(failed_tests: List[str]) -> List[Finding]:
                 rule_id="test-failure",
                 fix_strategy=(
                     f"Test {test_name} expects different behaviour. "
+                    f"{f'Pytest summary: {reason}. ' if reason else ''}"
                     f"Read the assertion, decide whether the test or "
                     f"the code is wrong, fix one."
                 ),
