@@ -328,3 +328,83 @@ class TestInitSuggestedCustomGateRefresh:
         assert "find . -name pubspec.yaml" in gates["flutter-test"]["command"]
         assert "my-custom" in gates
         assert gates["my-custom"]["command"] == "echo hi"
+
+    def test_merge_does_not_reenable_non_applicable_gates(self, tmp_path):
+        """Rerunning init should keep tool-disabled gates disabled after merge."""
+        import argparse
+        from unittest.mock import patch
+
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        # Existing config enables a gate that should be disabled by missing tools.
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "disabled_gates": [],
+                    "myopia": {
+                        "gates": {
+                            "vulnerability-blindness.py": {
+                                "enabled": True,
+                            }
+                        }
+                    },
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            config=None,
+            non_interactive=True,
+        )
+
+        detected = {
+            "has_python": True,
+            "has_javascript": False,
+            "has_typescript": False,
+            "has_go": False,
+            "has_rust": False,
+            "has_c_cpp": False,
+            "has_dart": False,
+            "has_tests_dir": False,
+            "has_pytest": False,
+            "has_jest": False,
+            "test_dirs": [],
+            "recommended_gates": [
+                "laziness:sloppy-formatting.py",
+                "overconfidence:untested-code.py",
+                "overconfidence:missing-annotations.py",
+            ],
+            "available_tools": [],
+            "missing_tools": [
+                (
+                    "bandit",
+                    "myopia:vulnerability-blindness.py",
+                    "pipx install slopmop[security]",
+                )
+            ],
+            "package_manager": "npm",
+            "suggested_custom_gates": [],
+            "language_detector": "manifest",
+            "detected_languages": [],
+        }
+
+        with (
+            patch("slopmop.cli.status.run_status", return_value=0),
+            patch("slopmop.cli.init.detect_project_type", return_value=detected),
+        ):
+            from slopmop.cli.init import cmd_init
+
+            assert cmd_init(args) == 0
+
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        disabled_list = config.get("disabled_gates", [])
+        nested_enabled = (
+            config.get("myopia", {})
+            .get("gates", {})
+            .get("vulnerability-blindness.py", {})
+            .get("enabled", True)
+        )
+        assert (
+            "myopia:vulnerability-blindness.py" in disabled_list
+            or nested_enabled is False
+        )

@@ -12,7 +12,7 @@ import pytest
 
 from slopmop.cli.ci import cmd_ci
 from slopmop.cli.config import cmd_config
-from slopmop.cli.detection import detect_project_type
+from slopmop.cli.detection import _normalize_language_key, detect_project_type
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
     SB_HOOK_MARKER,
@@ -219,7 +219,9 @@ class TestDetectProjectType:
     @pytest.fixture(autouse=True)
     def _disable_scc_by_default(self):
         """Keep legacy marker-based tests deterministic."""
-        with patch("slopmop.cli.detection._detect_languages_with_scc", return_value=None):
+        with patch(
+            "slopmop.cli.detection._detect_languages_with_scc", return_value=None
+        ):
             yield
 
     def test_detects_python_project_from_pyproject(self, tmp_path):
@@ -333,6 +335,23 @@ class TestDetectProjectType:
         assert result["has_javascript"] is True  # TS implies JS
         assert "overconfidence:type-blindness.js" in result["recommended_gates"]
 
+    def test_empty_scc_result_falls_back_to_manifest_detection(self, tmp_path):
+        """Empty scc output should not suppress manifest-based language detection."""
+        (tmp_path / "pyproject.toml").write_text("[tool.pytest]\n")
+        mock_scc = MagicMock(returncode=0, stdout="{}")
+        with (
+            patch("slopmop.cli.detection.find_tool", return_value="/usr/bin/scc"),
+            patch("subprocess.run", return_value=mock_scc),
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["language_detector"] == "manifest"
+        assert result["has_python"] is True
+
+    def test_normalize_language_key_handles_cplusplus_header(self):
+        """Normalization should preserve C++ semantics in keys."""
+        assert _normalize_language_key("C++ Header") == "cplusplusheader"
+
     def test_dart_detection_suggests_flutter_custom_gates(self, tmp_path):
         """Dart repos should get Flutter custom gates and built-in Dart gates."""
         with (
@@ -356,17 +375,21 @@ class TestDetectProjectType:
         by_name = {gate["name"]: gate for gate in result["suggested_custom_gates"]}
         assert "find . -name pubspec.yaml" in by_name["flutter-analyze"]["command"]
         assert "find . -name pubspec.yaml" in by_name["flutter-test"]["command"]
-        assert "dart format --output=none --set-exit-if-changed" in by_name[
-            "dart-format-check"
-        ]["command"]
-        assert "engine.stamp: Operation not permitted" in by_name[
-            "dart-format-check"
-        ]["command"]
+        assert (
+            "dart format --output=none --set-exit-if-changed"
+            in by_name["dart-format-check"]["command"]
+        )
+        assert (
+            "engine.stamp: Operation not permitted"
+            in by_name["dart-format-check"]["command"]
+        )
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
         assert "deceptiveness:bogus-tests.dart" in result["recommended_gates"]
         assert "laziness:generated-artifacts.dart" in result["recommended_gates"]
 
-    def test_dart_detection_omits_flutter_custom_gates_when_tools_missing(self, tmp_path):
+    def test_dart_detection_omits_flutter_custom_gates_when_tools_missing(
+        self, tmp_path
+    ):
         """Dart custom gates should not be suggested when flutter/dart tools are missing."""
         with (
             patch(
@@ -482,6 +505,47 @@ class TestCmdConfig:
         assert "Usage:" in captured.out
         assert "Run 'sm config --show' to see all gates." in captured.out
         assert "Available Quality Gates" not in captured.out
+
+    def test_config_no_args_counts_nested_disabled_gates(self, tmp_path, capsys):
+        """No-args summary should include nested gate enabled:false state."""
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "myopia": {
+                        "gates": {
+                            "vulnerability-blindness.py": {
+                                "enabled": False,
+                            }
+                        }
+                    }
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            result = cmd_config(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        summary_line = next(
+            (line.strip() for line in out.splitlines() if "applicable gates" in line),
+            "",
+        )
+        assert "disabled" in summary_line
+        disabled_count = int(summary_line.split(",")[-1].split("disabled")[0].strip())
+        assert disabled_count >= 1
 
     def test_config_registers_custom_gates(self, tmp_path):
         """cmd_config should register custom gates from config for management."""

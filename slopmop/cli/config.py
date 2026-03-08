@@ -11,6 +11,47 @@ from slopmop.constants import ROLE_BADGES
 from slopmop.core.registry import get_registry
 
 
+def _is_gate_enabled(cfg: dict[str, Any], full_name: str) -> bool:
+    """Return whether a gate is enabled across both config representations."""
+    disabled = cfg.get("disabled_gates", [])
+    if isinstance(disabled, list) and full_name in disabled:
+        return False
+    if ":" not in full_name:
+        return True
+
+    category, gate = full_name.split(":", 1)
+    gate_cfg = (
+        (cfg.get(category) or {}).get("gates", {}).get(gate)
+        if isinstance(cfg.get(category), dict)
+        else None
+    )
+    if isinstance(gate_cfg, dict) and "enabled" in gate_cfg:
+        return bool(gate_cfg.get("enabled"))
+    return True
+
+
+def _set_gate_enabled(cfg: dict[str, Any], full_name: str, enabled: bool) -> None:
+    """Set gate enabled state in both nested and legacy config forms."""
+    if ":" in full_name:
+        category, gate = full_name.split(":", 1)
+        cat = cfg.setdefault(category, {})
+        if isinstance(cat, dict):
+            gates = cat.setdefault("gates", {})
+            if isinstance(gates, dict):
+                gate_cfg = gates.setdefault(gate, {})
+                if isinstance(gate_cfg, dict):
+                    gate_cfg["enabled"] = enabled
+
+    disabled = cfg.get("disabled_gates", [])
+    if not isinstance(disabled, list):
+        disabled = []
+    if enabled:
+        disabled = [g for g in disabled if g != full_name]
+    elif full_name not in disabled:
+        disabled.append(full_name)
+    cfg["disabled_gates"] = disabled
+
+
 def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize flat 'category:gate' keys into hierarchical config.
 
@@ -107,41 +148,6 @@ def _enable_gate(
 ) -> int:
     """Enable a disabled gate."""
 
-    def _gate_enabled(cfg: dict[str, Any], full_name: str) -> bool:
-        if full_name in cfg.get("disabled_gates", []):
-            return False
-        if ":" not in full_name:
-            return True
-        category, gate = full_name.split(":", 1)
-        gate_cfg = (
-            (cfg.get(category) or {}).get("gates", {}).get(gate)
-            if isinstance(cfg.get(category), dict)
-            else None
-        )
-        if isinstance(gate_cfg, dict) and "enabled" in gate_cfg:
-            return bool(gate_cfg.get("enabled"))
-        return True
-
-    def _set_gate_enabled(cfg: dict[str, Any], full_name: str, enabled: bool) -> None:
-        if ":" in full_name:
-            category, gate = full_name.split(":", 1)
-            cat = cfg.setdefault(category, {})
-            if isinstance(cat, dict):
-                gates = cat.setdefault("gates", {})
-                if isinstance(gates, dict):
-                    gate_cfg = gates.setdefault(gate, {})
-                    if isinstance(gate_cfg, dict):
-                        gate_cfg["enabled"] = enabled
-
-        disabled = cfg.get("disabled_gates", [])
-        if not isinstance(disabled, list):
-            disabled = []
-        if enabled:
-            disabled = [g for g in disabled if g != full_name]
-        elif full_name not in disabled:
-            disabled.append(full_name)
-        cfg["disabled_gates"] = disabled
-
     registry = get_registry()
     check = registry.get_check(gate_name, config)
     if check is None:
@@ -150,12 +156,10 @@ def _enable_gate(
     if not check.is_applicable(str(project_root)):
         reason = check.skip_reason(str(project_root))
         print(f"❌ Cannot enable {gate_name}: not applicable for this repo ({reason})")
-        print(
-            "💡 If you've added a new language, re-run: sm init --non-interactive"
-        )
+        print("💡 If you've added a new language, re-run: sm init --non-interactive")
         return 1
 
-    if not _gate_enabled(config, gate_name):
+    if not _is_gate_enabled(config, gate_name):
         _set_gate_enabled(config, gate_name, True)
         config_file.write_text(json.dumps(config, indent=2))
         print(f"✅ Enabled: {gate_name}")
@@ -166,39 +170,7 @@ def _enable_gate(
 
 def _disable_gate(config_file: Path, config: dict[str, Any], gate_name: str) -> int:
     """Disable a gate."""
-
-    def _set_gate_enabled(cfg: dict[str, Any], full_name: str, enabled: bool) -> None:
-        if ":" in full_name:
-            category, gate = full_name.split(":", 1)
-            cat = cfg.setdefault(category, {})
-            if isinstance(cat, dict):
-                gates = cat.setdefault("gates", {})
-                if isinstance(gates, dict):
-                    gate_cfg = gates.setdefault(gate, {})
-                    if isinstance(gate_cfg, dict):
-                        gate_cfg["enabled"] = enabled
-
-        disabled = cfg.get("disabled_gates", [])
-        if not isinstance(disabled, list):
-            disabled = []
-        if enabled:
-            disabled = [g for g in disabled if g != full_name]
-        elif full_name not in disabled:
-            disabled.append(full_name)
-        cfg["disabled_gates"] = disabled
-
-    currently_disabled = False
-    if gate_name in config.get("disabled_gates", []):
-        currently_disabled = True
-    elif ":" in gate_name:
-        category, gate = gate_name.split(":", 1)
-        gate_cfg = (
-            (config.get(category) or {}).get("gates", {}).get(gate)
-            if isinstance(config.get(category), dict)
-            else None
-        )
-        if isinstance(gate_cfg, dict):
-            currently_disabled = gate_cfg.get("enabled") is False
+    currently_disabled = not _is_gate_enabled(config, gate_name)
 
     if not currently_disabled:
         _set_gate_enabled(config, gate_name, False)
@@ -240,27 +212,8 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         if check.is_applicable(str(project_root)):
             checks.append(name)
 
-    disabled = config.get("disabled_gates", [])
-    if not isinstance(disabled, list):
-        disabled = []
-
-    def _is_enabled(full_name: str) -> bool:
-        if full_name in disabled:
-            return False
-        if ":" not in full_name:
-            return True
-        category, gate = full_name.split(":", 1)
-        gate_cfg = (
-            (config.get(category) or {}).get("gates", {}).get(gate)
-            if isinstance(config.get(category), dict)
-            else None
-        )
-        if isinstance(gate_cfg, dict) and "enabled" in gate_cfg:
-            return bool(gate_cfg.get("enabled"))
-        return True
-
     for name in sorted(checks):
-        status = "❌ DISABLED" if not _is_enabled(name) else "✅ ENABLED"
+        status = "❌ DISABLED" if not _is_gate_enabled(config, name) else "✅ ENABLED"
         definition = registry.get_definition(name)
         display = definition.name if definition else name
         check = registry.get_check(name, config)
@@ -346,8 +299,7 @@ def cmd_config(args: argparse.Namespace) -> int:
             continue
         if check.is_applicable(str(project_root)):
             checks.append(name)
-    disabled = config.get("disabled_gates", [])
-    n_disabled = sum(1 for c in checks if c in disabled)
+    n_disabled = sum(1 for c in checks if not _is_gate_enabled(config, c))
 
     print(
         f"  {len(checks)} applicable gates"

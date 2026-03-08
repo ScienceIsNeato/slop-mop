@@ -86,7 +86,10 @@ def _normalize_language_key(name: str) -> str:
       "C++ Header" -> "cplusplusheader"
       "Objective-C" -> "objectivec"
     """
-    normalized = "".join(ch for ch in name.strip().lower() if ch.isalnum())
+    lowered = name.strip().lower()
+    # Preserve C/C++ distinctions before stripping punctuation.
+    lowered = lowered.replace("++", "plusplus").replace("#", "sharp")
+    normalized = "".join(ch for ch in lowered if ch.isalnum())
     return normalized
 
 
@@ -161,7 +164,9 @@ def _detect_languages_with_scc(project_root: Path) -> Optional[Set[str]]:
     except json.JSONDecodeError:
         return None
 
-    return _extract_scc_languages(payload)
+    languages = _extract_scc_languages(payload)
+    # Empty output behaves like unavailable output so manifest fallback still works.
+    return languages or None
 
 
 def _detect_tools(project_root: Path) -> Dict[str, Any]:
@@ -529,7 +534,7 @@ def _suggest_custom_gates(
                             + flutter_preflight
                             + 'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
                             '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                            'for pubspec in $pubspecs; do '
+                            "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'echo "==> flutter analyze ($dir)"; '
                             '(cd "$dir" && flutter analyze); '
@@ -543,15 +548,13 @@ def _suggest_custom_gates(
                         "description": "Run Flutter tests",
                         "category": "overconfidence",
                         "command": (
-                            "sh -c 'set -e; "
-                            + flutter_preflight
-                            + 'ran=0; '
+                            "sh -c 'set -e; " + flutter_preflight + "ran=0; "
                             'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
                             '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                            'for pubspec in $pubspecs; do '
+                            "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'if [ -d "$dir/test" ]; then '
-                            'ran=1; '
+                            "ran=1; "
                             'echo "==> flutter test ($dir)"; '
                             '(cd "$dir" && flutter test); '
                             "fi; "

@@ -82,11 +82,11 @@ def _build_non_interactive_config(
         "project_type": (
             "python"
             if detected["has_python"]
-            else "javascript"
-            if detected["has_javascript"]
-            else "dart"
-            if detected.get("has_dart")
-            else "mixed"
+            else (
+                "javascript"
+                if detected["has_javascript"]
+                else "dart" if detected.get("has_dart") else "mixed"
+            )
         ),
         "test_dirs": preconfig.get("test_dirs", detected["test_dirs"]),
         "disabled_gates": preconfig.get("disabled_gates", []),
@@ -340,10 +340,11 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
 
 def _write_config(
     config_file: Path,
+    project_root: Path,
     base_config: Dict[str, Any],
     detected: Dict[str, Any],
     config: Dict[str, Any],
-    ) -> None:
+) -> None:
     """Build final config, merge with existing, and write to disk."""
     from slopmop.utils.generate_base_config import backup_config
 
@@ -406,6 +407,11 @@ def _write_config(
     # Re-apply suggested gates after merge so rerunning init refreshes gate
     # definitions (and still keeps user-defined custom gates intact).
     _refresh_suggested_custom_gates(base_config, suggested_custom)
+
+    # Re-apply disable passes after merge so stale enabled flags from prior
+    # config cannot override current applicability/tool detection.
+    _disable_checks_with_missing_tools(base_config, detected)
+    _disable_non_applicable_by_applicability(base_config, project_root)
 
     config_file.write_text(json.dumps(base_config, indent=2) + "\n")
     print(f"✅ Configuration saved to: {config_file}")
@@ -480,7 +486,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     _set_bogus_tests_defaults(base_config, detected)
     _disable_non_applicable_by_applicability(base_config, project_root)
 
-    _write_config(config_file, base_config, detected, config)
+    _write_config(config_file, project_root, base_config, detected, config)
 
     # Show project dashboard so the user sees current state
     print("─" * 60)

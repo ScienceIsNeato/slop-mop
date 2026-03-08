@@ -12,6 +12,7 @@ with code files, not just Python projects.
 """
 
 import json
+import re
 import shutil
 import sys
 import time
@@ -340,7 +341,10 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     @staticmethod
     def _safe_read_line(
-        project_root: str, path: str, line_number: Optional[int]
+        project_root: str,
+        path: str,
+        line_number: Optional[int],
+        line_cache: Optional[dict[str, list[str]]] = None,
     ) -> str:
         """Best-effort line reader for detect-secrets post-filters."""
         if not isinstance(line_number, int) or line_number < 1:
@@ -352,7 +356,14 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             # Prevent escaping project root via crafted report paths.
             if root_resolved not in resolved.parents and resolved != root_resolved:
                 return ""
-            lines = resolved.read_text(encoding="utf-8", errors="ignore").splitlines()
+            cache_key = str(resolved)
+            lines: list[str]
+            if line_cache is not None and cache_key in line_cache:
+                lines = line_cache[cache_key]
+            else:
+                lines = resolved.read_text(encoding="utf-8", errors="ignore").splitlines()
+                if line_cache is not None:
+                    line_cache[cache_key] = lines
             if line_number <= len(lines):
                 return lines[line_number - 1]
         except OSError:
@@ -360,7 +371,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         return ""
 
     def _is_detect_secrets_false_positive(
-        self, project_root: str, path: str, secret: dict[str, Any]
+        self,
+        project_root: str,
+        path: str,
+        secret: dict[str, Any],
+        line_cache: Optional[dict[str, list[str]]] = None,
     ) -> bool:
         """Heuristics for common non-secret detect-secrets findings."""
         normalized = str(path).replace("\\", "/")
@@ -370,7 +385,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
         if "/.slopmop/" in lower or lower.startswith(".slopmop/"):
             return True
-        if "/ios/flutter/ephemeral/" in lower:
+        if "/ios/flutter/ephemeral/" in lower or lower.startswith(
+            "ios/flutter/ephemeral/"
+        ):
             return True
         if lower.endswith(".xcscheme") and detector_type == "Hex High Entropy String":
             return True
@@ -386,7 +403,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             return True
         if detector_type.lower() == ("se" "cret " "key" "word"):
             line_text = self._safe_read_line(
-                project_root, normalized, secret.get("line_number")
+                project_root, normalized, secret.get("line_number"), line_cache
             )
             line_lower = line_text.lower()
             # Accessing secret env/config keys is not a leaked secret.
@@ -402,10 +419,16 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 "demo",
                 "sample",
                 "dummy",
-                "test",
-                "local",
             )
             if any(marker in line_lower for marker in placeholder_markers):
+                return True
+            # Match whole tokens only; avoid substring false positives
+            # like "latest", "contest", or "locale".
+            tokens = set(re.findall(r"[a-z0-9]+", line_lower))
+            if (
+                {"test", "local", "dev", "demo", "sample", "dummy"} & tokens
+                and {"secret", "token", "key"} & tokens
+            ):
                 return True
         return False
 
@@ -549,6 +572,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 report = json.loads(result.output)
                 detected = report.get("results", {})
                 real_secrets = {}
+                line_cache: dict[str, list[str]] = {}
                 for path, secrets in detected.items():
                     if self._is_path_excluded_for_detect_secrets(path):
                         continue
@@ -561,7 +585,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                         for s in secrets
                         if isinstance(s, dict)
                         and not self._is_detect_secrets_false_positive(
-                            project_root, path, s
+                            project_root, path, s, line_cache
                         )
                     ]
                     if filtered:
