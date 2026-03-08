@@ -25,6 +25,25 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # flake8 default format: path:line:col: CODE message
 _FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
+_DEFAULT_EXCLUDE_DIRS = [
+    "venv",
+    ".venv",
+    "build",
+    "dist",
+    "node_modules",
+    ".git",
+    "cursor-rules",
+    "tools",
+    "__pycache__",
+    # Framework-generated history or transient helpers: format/lint noise,
+    # low signal for repository quality.
+    "migrations",
+    "alembic",
+    "ephemeral",
+]
+_BLACK_EXCLUDE_REGEX = (
+    r"/(venv|\.venv|build|dist|node_modules|migrations|alembic|ephemeral)/"
+)
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
@@ -110,7 +129,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "--in-place",
                 "--remove-all-unused-imports",
                 "--recursive",
-                "--exclude=venv,__pycache__,.git,.venv,build,dist,node_modules",
+                f"--exclude={','.join(_DEFAULT_EXCLUDE_DIRS)}",
                 ".",
             ],
             cwd=project_root,
@@ -122,7 +141,14 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Run black on each target
         for target in targets:
             result = self._run_command(
-                ["black", "--line-length", "88", target],
+                [
+                    "black",
+                    "--line-length",
+                    "88",
+                    "--exclude",
+                    _BLACK_EXCLUDE_REGEX,
+                    target,
+                ],
                 cwd=project_root,
                 timeout=60,
             )
@@ -130,22 +156,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 fixed = True
 
         # Run isort — skip hidden directories to match _check_isort behaviour
-        result = self._run_command(
-            [
-                "isort",
-                "--profile",
-                "black",
-                "--skip=venv",
-                "--skip=.venv",
-                "--skip=build",
-                "--skip=dist",
-                "--skip=node_modules",
-                "--skip-glob=.*",
-                ".",
-            ],
-            cwd=project_root,
-            timeout=60,
-        )
+        isort_cmd = ["isort", "--profile", "black"]
+        isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
+        isort_cmd.extend(["--skip-glob=.*", "."])
+        result = self._run_command(isort_cmd, cwd=project_root, timeout=60)
         if result.success:
             fixed = True
 
@@ -154,7 +168,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     def _get_python_targets(self, project_root: str) -> List[str]:
         """Get Python directories to lint/format."""
         targets: List[str] = []
-        exclude_dirs = {"venv", ".venv", "build", "dist", "node_modules", ".git"}
+        exclude_dirs = set(_DEFAULT_EXCLUDE_DIRS)
 
         for entry in os.listdir(project_root):
             if entry in exclude_dirs or entry.startswith("."):
@@ -239,7 +253,15 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         for target in targets:
             result = self._run_command(
-                ["black", "--check", "--line-length", "88", target],
+                [
+                    "black",
+                    "--check",
+                    "--line-length",
+                    "88",
+                    "--exclude",
+                    _BLACK_EXCLUDE_REGEX,
+                    target,
+                ],
                 cwd=project_root,
                 timeout=60,
             )
@@ -262,25 +284,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
     def _check_isort(self, project_root: str) -> Optional[str]:
         """Check isort import order."""
-        result = self._run_command(
-            [
-                "isort",
-                "--check-only",
-                "--profile",
-                "black",
-                "--skip=venv",
-                "--skip=.venv",
-                "--skip=build",
-                "--skip=dist",
-                "--skip=node_modules",
-                # Skip hidden directories (e.g. .claude/, .git/) that contain
-                # tool infrastructure rather than project source code.
-                "--skip-glob=.*",
-                ".",
-            ],
-            cwd=project_root,
-            timeout=60,
-        )
+        isort_cmd = ["isort", "--check-only", "--profile", "black"]
+        isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
+        # Skip hidden directories (e.g. .claude/, .git/) that contain
+        # tool infrastructure rather than project source code.
+        isort_cmd.extend(["--skip-glob=.*", "."])
+        result = self._run_command(isort_cmd, cwd=project_root, timeout=60)
 
         if not result.success:
             # isort outputs "ERROR: file.py ..." or "Skipped X files"
@@ -332,18 +341,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Build exclude list: base defaults + any configured exclude_dirs
         # Use --extend-exclude to preserve flake8's built-in defaults
         # (__pycache__, .tox, .nox, etc.) while adding our custom excludes.
-        base_excludes = [
-            "venv",
-            ".venv",
-            "build",
-            "dist",
-            "node_modules",
-            ".git",
-            "cursor-rules",
-            "tools",
-            "__pycache__",
-            ".*",  # Hidden directories
-        ]
+        base_excludes = _DEFAULT_EXCLUDE_DIRS + [".*"]  # Hidden directories
         config_excludes = self.config.get("exclude_dirs", [])
         if isinstance(config_excludes, str):
             config_excludes = [config_excludes]

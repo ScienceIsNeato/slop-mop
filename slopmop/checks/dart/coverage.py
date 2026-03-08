@@ -136,10 +136,12 @@ class DartCoverageCheck(BaseCheck):
             if not result.success or result.timed_out:
                 if _FLUTTER_CACHE_PERMISSION_ERROR in (result.output or ""):
                     return self._create_result(
-                        status=CheckStatus.WARNED,
+                        status=CheckStatus.SKIPPED,
                         duration=time.time() - start_time,
-                        error="Flutter SDK cache path is not writable in this environment",
-                        output=result.output,
+                        output=(
+                            "Skipping coverage-gaps.dart: Flutter SDK cache path "
+                            "is not writable in this environment."
+                        ),
                         findings=[
                             Finding(
                                 message=(
@@ -148,10 +150,6 @@ class DartCoverageCheck(BaseCheck):
                                 level=FindingLevel.WARNING,
                             )
                         ],
-                        fix_suggestion=(
-                            "Ensure Flutter SDK is writable for the current user "
-                            "(or run in an environment where SDK cache updates are allowed)."
-                        ),
                     )
                 pkg_rel = str(package_dir.relative_to(Path(project_root)))
                 message = f"flutter test failed in {pkg_rel}"

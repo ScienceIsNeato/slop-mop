@@ -51,7 +51,7 @@ class TestDartCoverageCheck:
         assert result.status == CheckStatus.FAILED
         assert "flutter test failed" in (result.error or "")
 
-    def test_warns_on_flutter_sdk_cache_permission_error(self, tmp_path):
+    def test_skips_on_flutter_sdk_cache_permission_error(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")
         (tmp_path / "test").mkdir()
         check = DartCoverageCheck({})
@@ -70,8 +70,8 @@ class TestDartCoverageCheck:
             patch.object(check, "_run_command", return_value=run_result),
         ):
             result = check.run(str(tmp_path))
-        assert result.status == CheckStatus.WARNED
-        assert "not writable" in (result.error or "")
+        assert result.status == CheckStatus.SKIPPED
+        assert "not writable" in (result.output or "")
 
     def test_passes_when_coverage_meets_threshold(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")
