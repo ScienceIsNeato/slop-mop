@@ -29,6 +29,12 @@ class TestCommandValidator:
         validator = CommandValidator()
         assert validator.validate(["npm", "install"]) is True
 
+    def test_allows_flutter_and_dart_tools(self):
+        """Flutter/Dart tooling should be allowed for first-class Dart gates."""
+        validator = CommandValidator()
+        assert validator.validate(["flutter", "test", "--coverage"]) is True
+        assert validator.validate(["dart", "format", "."]) is True
+
     def test_rejects_unknown_executable(self):
         """Test that unknown executables are rejected."""
         validator = CommandValidator()

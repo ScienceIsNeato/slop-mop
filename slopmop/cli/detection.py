@@ -24,6 +24,7 @@ _INSTALL_LINT = "pipx install slopmop[lint]"
 _INSTALL_TYPING = "pipx install slopmop[typing]"
 _INSTALL_ANALYSIS = "pipx install slopmop[analysis]"
 _INSTALL_SECURITY = "pipx install slopmop[security]"
+_INSTALL_FLUTTER = "Install Flutter SDK: https://docs.flutter.dev/get-started/install"
 
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     # Lint & format (sloppy-formatting.py gate) → [lint] extra
@@ -43,6 +44,8 @@ REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     ("pip-audit", "myopia:dependency-risk.py", _INSTALL_SECURITY),
     # Complexity scanning → [analysis] extra
     ("radon", "laziness:complexity-creep.py", _INSTALL_ANALYSIS),
+    # Dart/Flutter coverage gate
+    ("flutter", "overconfidence:coverage-gaps.dart", _INSTALL_FLUTTER),
 ]
 
 # Canonical language keys derived from scc --format json output.
@@ -358,6 +361,15 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
             recommended.append("overconfidence:coverage-gaps.js")
         if detected["has_typescript"]:
             recommended.append("overconfidence:type-blindness.js")
+
+    if detected.get("has_dart"):
+        recommended.extend(
+            [
+                "overconfidence:coverage-gaps.dart",
+                "deceptiveness:bogus-tests.dart",
+                "laziness:generated-artifacts.dart",
+            ]
+        )
 
     return recommended
 

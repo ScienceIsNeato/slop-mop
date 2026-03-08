@@ -303,7 +303,7 @@ class TestDetectProjectType:
         assert "overconfidence:type-blindness.js" in result["recommended_gates"]
 
     def test_dart_detection_suggests_flutter_custom_gates(self, tmp_path):
-        """Dart repos should get Flutter custom gate suggestions."""
+        """Dart repos should get Flutter custom gates and built-in Dart gates."""
         with patch(
             "slopmop.cli.detection._detect_languages_with_scc",
             return_value={"dart"},
@@ -322,6 +322,9 @@ class TestDetectProjectType:
         assert by_name["dart-format-check"]["command"].startswith(
             "dart format --output=none --set-exit-if-changed"
         )
+        assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
+        assert "deceptiveness:bogus-tests.dart" in result["recommended_gates"]
+        assert "laziness:generated-artifacts.dart" in result["recommended_gates"]
 
 
 class TestPromptFunctions:

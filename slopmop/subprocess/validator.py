@@ -76,6 +76,8 @@ class CommandValidator:
             "prettier",
             "jest",
             "tsc",
+            "dart",
+            "flutter",
             # Version control
             "git",
             "gh",
