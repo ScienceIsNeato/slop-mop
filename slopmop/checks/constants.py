@@ -20,17 +20,23 @@ COMMAND_NOT_FOUND = "Command not found"
 
 
 def has_python_test_files(project_root: str, test_dirs: list[str]) -> bool:
-    """Check whether any test_*.py files exist in the configured test dirs.
+    """Check whether Python test files exist in the configured test dirs.
 
     Shared by PythonTestsCheck, PythonCoverageCheck, and
     PythonDiffCoverageCheck for is_applicable().
     """
     from pathlib import Path
 
+    patterns = ("test_*.py", "*_test.py")
     root = Path(project_root)
-    return any(
-        (root / d).exists() and any((root / d).rglob("test_*.py")) for d in test_dirs
-    )
+    for test_dir in test_dirs:
+        base = root / test_dir
+        if not base.exists():
+            continue
+        for pattern in patterns:
+            if any(base.rglob(pattern)):
+                return True
+    return False
 
 
 def skip_reason_no_test_files(test_dirs: list[str]) -> str:
@@ -39,4 +45,4 @@ def skip_reason_no_test_files(test_dirs: list[str]) -> str:
     Used by PythonTestsCheck, PythonCoverageCheck, PythonDiffCoverageCheck,
     and BogusTestsCheck.
     """
-    return f"No Python test files (test_*.py) found in {test_dirs}"
+    return f"No Python test files (test_*.py or *_test.py) found in {test_dirs}"

@@ -56,6 +56,27 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
     print(f"  Jest detected:       {'✅' if detected['has_jest'] else '❌'}")
     if detected.get("language_detector") == "scc":
         print("  Language detector:   scc")
+    has_detected_code = any(
+        [
+            detected.get("has_python"),
+            detected.get("has_javascript"),
+            detected.get("has_go"),
+            detected.get("has_rust"),
+            detected.get("has_c_cpp"),
+            detected.get("has_dart"),
+        ]
+    )
+    has_test_signal = bool(
+        detected["has_tests_dir"] or detected["has_pytest"] or detected["has_jest"]
+    )
+    if has_detected_code and not has_test_signal:
+        print("  ⚠️  No tests detected in this repository.")
+        print(
+            "     Test execution and coverage gates fail until test files exist."
+        )
+        print(
+            "     If you add new test directories later, re-run: sm init"
+        )
     print()
 
     # Show tool availability

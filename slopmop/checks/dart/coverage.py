@@ -76,15 +76,12 @@ class DartCoverageCheck(BaseCheck):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        for package_dir in find_pubspec_dirs(project_root):
-            if (package_dir / "test").is_dir():
-                return True
-        return False
+        return bool(find_pubspec_dirs(project_root))
 
     def skip_reason(self, project_root: str) -> str:
         if not find_pubspec_dirs(project_root):
             return "No pubspec.yaml found"
-        return "No Flutter test directories found"
+        return "Dart coverage check not applicable"
 
     def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
         include_dirs = [
@@ -120,10 +117,17 @@ class DartCoverageCheck(BaseCheck):
             pkg for pkg in find_pubspec_dirs(project_root) if (pkg / "test").is_dir()
         ]
         if not package_dirs:
+            message = "No Flutter test directories found (expected package/test/)"
             return self._create_result(
-                status=CheckStatus.SKIPPED,
+                status=CheckStatus.FAILED,
                 duration=time.time() - start_time,
-                output="No Flutter test directories found",
+                output=message,
+                error=message,
+                fix_suggestion=(
+                    "Add Flutter tests under package test/ directories. "
+                    f"Verify with: {self.verify_command}"
+                ),
+                findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )
 
         aggregate: Dict[str, _FileCoverage] = {}

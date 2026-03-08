@@ -291,7 +291,8 @@ class TestDetectProjectType:
         (tmp_path / "setup.py").write_text("")
         result = detect_project_type(tmp_path)
         assert "recommended_gates" in result
-        assert "overconfidence:literally-no-testing" in result["recommended_gates"]
+        assert "overconfidence:untested-code.py" in result["recommended_gates"]
+        assert "overconfidence:missing-annotations.py" in result["recommended_gates"]
 
     def test_recommends_gates_for_mixed(self, tmp_path):
         """Recommends appropriate gates for mixed Python/JS projects."""
@@ -299,12 +300,14 @@ class TestDetectProjectType:
         (tmp_path / "package.json").write_text("{}")
         result = detect_project_type(tmp_path)
         assert "recommended_gates" in result
-        assert "overconfidence:literally-no-testing" in result["recommended_gates"]
+        assert "overconfidence:untested-code.py" in result["recommended_gates"]
+        assert "overconfidence:untested-code.js" in result["recommended_gates"]
 
-    def test_does_not_recommend_no_testing_for_non_code_repo(self, tmp_path):
-        """Docs-only repos should not recommend the no-testing gate."""
+    def test_does_not_recommend_test_gates_for_non_code_repo(self, tmp_path):
+        """Docs-only repos should not recommend test execution gates."""
         result = detect_project_type(tmp_path)
-        assert "overconfidence:literally-no-testing" not in result["recommended_gates"]
+        assert "overconfidence:untested-code.py" not in result["recommended_gates"]
+        assert "overconfidence:untested-code.js" not in result["recommended_gates"]
 
     def test_detects_typescript_from_tsconfig(self, tmp_path):
         """Detects TypeScript from tsconfig.json."""

@@ -58,6 +58,8 @@ class TestJavaScriptTestsCheck:
     def test_run_with_node_modules(self, tmp_path):
         """Test run() when node_modules exists."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
         (tmp_path / "node_modules").mkdir()
         check = JavaScriptTestsCheck({})
 
@@ -74,6 +76,8 @@ class TestJavaScriptTestsCheck:
     def test_run_without_node_modules_installs(self, tmp_path):
         """Test run() installs deps when node_modules missing."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
         check = JavaScriptTestsCheck({})
 
         npm_install_result = MagicMock()
@@ -94,6 +98,8 @@ class TestJavaScriptTestsCheck:
     def test_run_npm_install_fails(self, tmp_path):
         """Test run() when npm install fails."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
         check = JavaScriptTestsCheck({})
 
         npm_install_result = MagicMock()
@@ -109,6 +115,8 @@ class TestJavaScriptTestsCheck:
     def test_run_tests_timeout(self, tmp_path):
         """Test run() when tests timeout."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
         (tmp_path / "node_modules").mkdir()
         check = JavaScriptTestsCheck({})
 
@@ -120,6 +128,17 @@ class TestJavaScriptTestsCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+    def test_run_fails_when_no_test_files(self, tmp_path):
+        """Test run() fails when no JS/TS test files are present."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTestsCheck({})
+
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "No JavaScript/TypeScript tests found" in (result.error or "")
 
 
 class TestJavaScriptLintFormatCheck:
@@ -304,6 +323,17 @@ class TestJavaScriptCoverageCheck:
         (tmp_path / "package.json").write_text('{"name": "test"}')
         check = JavaScriptCoverageCheck({})
         assert check.is_applicable(str(tmp_path)) is True
+
+    def test_run_fails_when_no_test_files(self, tmp_path):
+        """Coverage gate fails when no JS/TS test files are present."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptCoverageCheck({})
+
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "No JavaScript/TypeScript tests found" in (result.error or "")
 
 
 class TestFrontendCheck:

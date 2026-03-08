@@ -109,6 +109,22 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
+        if not self.has_javascript_test_files(project_root):
+            message = (
+                "No JavaScript/TypeScript tests found "
+                "(expected test dirs or *.test.* / *.spec.* files)"
+            )
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=time.time() - start_time,
+                error=message,
+                output=message,
+                fix_suggestion=(
+                    "Add JS/TS tests (for example under test/, tests/, __tests__, "
+                    "or as *.test.ts/*.spec.js). Verify with: " + self.verify_command
+                ),
+                findings=[Finding(message=message, level=FindingLevel.ERROR)],
+            )
 
         # Ensure deps installed
         if not self.has_node_modules(project_root):
@@ -129,7 +145,6 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 "jest",
                 "--coverage",
                 "--coverageReporters=json-summary",
-                "--passWithNoTests",
             ],
             cwd=project_root,
             timeout=300,
@@ -166,6 +181,22 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                         level=FindingLevel.ERROR,
                     )
                 ],
+            )
+
+        if "No tests found" in result.output:
+            message = (
+                "No JavaScript/TypeScript tests found "
+                "(Jest reported no matching tests)"
+            )
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=duration,
+                output=result.output,
+                error=message,
+                fix_suggestion=(
+                    "Add JS/TS tests and rerun. Verify with: " + self.verify_command
+                ),
+                findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )
 
         # Can't determine coverage

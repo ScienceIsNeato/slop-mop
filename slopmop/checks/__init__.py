@@ -84,7 +84,6 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
         DebuggerArtifactsCheck,
         GateDodgingCheck,
         LocLockCheck,
-        NoTestingCheck,
         SourceDuplicationCheck,
         StringDuplicationCheck,
     )
@@ -96,7 +95,6 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(ComplexityCheck)
     registry.register(DeadCodeCheck)
     registry.register(DebuggerArtifactsCheck)
-    registry.register(NoTestingCheck)
     registry.register(GateDodgingCheck)
     registry.register(SourceDuplicationCheck)
     registry.register(StringDuplicationCheck)
