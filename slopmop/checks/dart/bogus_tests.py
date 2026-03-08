@@ -15,8 +15,19 @@ from slopmop.checks.base import (
     ToolContext,
     count_source_scope,
 )
-from slopmop.checks.dart.common import find_dart_test_files, find_pubspec_dirs
-from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel, ScopeInfo
+from slopmop.checks.constants import TAUTOLOGICAL_ASSERTION_PREFIX
+from slopmop.checks.dart.common import (
+    NO_PUBSPEC_FOUND,
+    find_dart_test_files,
+    find_pubspec_dirs,
+)
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    Finding,
+    FindingLevel,
+    ScopeInfo,
+)
 
 TEST_PATTERN: Pattern[str] = re.compile(
     r"(?:test|testWidgets)\s*\(\s*['\"`]([^'\"`]+)['\"`]\s*,\s*\([^)]*\)\s*(?:async\s*)?\{",
@@ -143,7 +154,7 @@ class DartBogusTestsCheck(BaseCheck):
 
     def skip_reason(self, project_root: str) -> str:
         if not find_pubspec_dirs(project_root):
-            return "No pubspec.yaml found"
+            return NO_PUBSPEC_FOUND
         return "No Dart test files found (*_test.dart)"
 
     def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
@@ -230,7 +241,7 @@ class DartBogusTestsCheck(BaseCheck):
                         rel_path,
                         test_name,
                         line_num,
-                        f"tautological assertion: {tautology}",
+                        f"{TAUTOLOGICAL_ASSERTION_PREFIX}{tautology}",
                     )
                 )
                 continue

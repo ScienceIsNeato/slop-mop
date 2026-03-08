@@ -85,10 +85,7 @@ class TestDartCoverageCheck:
         coverage_dir = tmp_path / "coverage"
         coverage_dir.mkdir()
         (coverage_dir / "lcov.info").write_text(
-            "SF:lib/main.dart\n"
-            "DA:1,1\n"
-            "DA:2,1\n"
-            "end_of_record\n"
+            "SF:lib/main.dart\n" "DA:1,1\n" "DA:2,1\n" "end_of_record\n"
         )
         check = DartCoverageCheck({"threshold": 80})
 
@@ -110,11 +107,7 @@ class TestDartCoverageCheck:
         coverage_dir = tmp_path / "coverage"
         coverage_dir.mkdir()
         (coverage_dir / "lcov.info").write_text(
-            "SF:lib/main.dart\n"
-            "DA:1,1\n"
-            "DA:2,0\n"
-            "DA:3,0\n"
-            "end_of_record\n"
+            "SF:lib/main.dart\n" "DA:1,1\n" "DA:2,0\n" "DA:3,0\n" "end_of_record\n"
         )
         check = DartCoverageCheck({"threshold": 80})
 

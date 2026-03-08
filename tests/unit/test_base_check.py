@@ -187,7 +187,9 @@ class TestToolContext:
 class TestFindTool:
     """Tests for executable resolution in find_tool()."""
 
-    def test_uses_virtual_env_entrypoint_when_shebang_is_valid(self, tmp_path, monkeypatch):
+    def test_uses_virtual_env_entrypoint_when_shebang_is_valid(
+        self, tmp_path, monkeypatch
+    ):
         venv_bin = tmp_path / "env" / "bin"
         venv_bin.mkdir(parents=True)
         tool = venv_bin / "radon"

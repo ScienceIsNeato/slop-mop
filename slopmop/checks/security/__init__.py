@@ -15,9 +15,9 @@ import json
 import shutil
 import sys
 import time
-from fnmatch import fnmatch
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Callable, List, Optional, cast
 
@@ -82,6 +82,7 @@ EXCLUDED_DIRS = [
     "*/.venv",  # Nested venvs
     "*/venv",  # Nested venvs
 ]
+
 
 @dataclass
 class SecuritySubResult:
@@ -338,7 +339,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         return False
 
     @staticmethod
-    def _safe_read_line(project_root: str, path: str, line_number: Optional[int]) -> str:
+    def _safe_read_line(
+        project_root: str, path: str, line_number: Optional[int]
+    ) -> str:
         """Best-effort line reader for detect-secrets post-filters."""
         if not isinstance(line_number, int) or line_number < 1:
             return ""
@@ -357,7 +360,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         return ""
 
     def _is_detect_secrets_false_positive(
-        self, project_root: str, path: str, secret: dict
+        self, project_root: str, path: str, secret: dict[str, object]
     ) -> bool:
         """Heuristics for common non-secret detect-secrets findings."""
         normalized = str(path).replace("\\", "/")
@@ -376,10 +379,15 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             "Base64 High Entropy String",
         }:
             return True
-        if basename in {".env.example", "alembic.ini"} and secret_type == "Basic Auth Credentials":
+        if (
+            basename in {".env.example", "alembic.ini"}
+            and secret_type == "Basic Auth Credentials"
+        ):
             return True
         if secret_type == "Secret Keyword":
-            line_text = self._safe_read_line(project_root, normalized, secret.get("line_number"))
+            line_number_raw = secret.get("line_number")
+            line_number = line_number_raw if isinstance(line_number_raw, int) else None
+            line_text = self._safe_read_line(project_root, normalized, line_number)
             line_lower = line_text.lower()
             # Accessing secret env/config keys is not a leaked secret.
             if ".config.get(" in line_lower or "os.getenv(" in line_lower:
@@ -531,29 +539,45 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         config_file = self.config.get("config_file_path")
 
         cmd = [sys.executable, "-m", "detect_secrets", "scan"]
-        if config_file:
+        if isinstance(config_file, str) and config_file.strip():
             cmd.extend(["--baseline", config_file])
 
         result = self._run_command(cmd, cwd=project_root, timeout=60)
 
         if result.success:
             try:
-                report = json.loads(result.output)
-                detected = report.get("results", {})
-                real_secrets = {}
-                for path, secrets in detected.items():
+                report_any = json.loads(result.output)
+                if not isinstance(report_any, dict):
+                    return SecuritySubResult("detect-secrets", True, "Scan completed")
+
+                report = cast(dict[str, object], report_any)
+                detected_any = report.get("results", {})
+                detected = (
+                    cast(dict[str, object], detected_any)
+                    if isinstance(detected_any, dict)
+                    else {}
+                )
+
+                real_secrets: dict[str, list[dict[str, object]]] = {}
+                for path_any, secrets_any in detected.items():
+                    if not isinstance(path_any, str):
+                        continue
+                    path = path_any
                     if self._is_path_excluded_for_detect_secrets(path):
                         continue
                     if "constants.py" in path:
                         continue
-                    if not isinstance(secrets, list):
+                    if not isinstance(secrets_any, list):
                         continue
-                    filtered = [
-                        s
-                        for s in secrets
-                        if isinstance(s, dict)
-                        and not self._is_detect_secrets_false_positive(project_root, path, s)
-                    ]
+                    filtered: list[dict[str, object]] = []
+                    for secret_any in cast(list[object], secrets_any):
+                        if not isinstance(secret_any, dict):
+                            continue
+                        secret = cast(dict[str, object], secret_any)
+                        if not self._is_detect_secrets_false_positive(
+                            project_root, path, secret
+                        ):
+                            filtered.append(secret)
                     if filtered:
                         real_secrets[path] = filtered
                 if not real_secrets:
@@ -569,11 +593,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 # detect-secrets: per-file Findings (line_number available)
                 sarif: List[Finding] = []
                 for path, secrets in real_secrets.items():
-                    for s in secrets:
-                        ln = s.get("line_number")
+                    for secret in secrets:
+                        ln = secret.get("line_number")
                         sarif.append(
                             Finding(
-                                message=f"Potential secret: {s.get('type', '?')}",
+                                message=f"Potential secret: {secret.get('type', '?')}",
                                 level=FindingLevel.ERROR,
                                 file=path,
                                 line=ln if isinstance(ln, int) else None,

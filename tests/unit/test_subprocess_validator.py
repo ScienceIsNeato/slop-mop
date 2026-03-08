@@ -63,6 +63,21 @@ class TestCommandValidator:
             validator.validate(["python", "script.py", "| cat /etc/passwd"])
         assert "Dangerous" in str(exc_info.value)
 
+    def test_allows_regex_argument_with_pipe_character(self):
+        """Regex alternation in a normal arg is not shell injection."""
+        validator = CommandValidator()
+        assert (
+            validator.validate(
+                [
+                    "black",
+                    "--exclude",
+                    r"/(venv|\.venv|build|dist|node_modules)/",
+                    ".",
+                ]
+            )
+            is True
+        )
+
     def test_rejects_shell_injection_backtick(self):
         """Test that backtick injection is rejected."""
         validator = CommandValidator()

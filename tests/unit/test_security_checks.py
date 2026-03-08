@@ -436,7 +436,9 @@ class TestRunDetectSecrets:
 
         assert result.passed is True  # constants.py is ignored
 
-    def test_detect_secrets_ignores_known_generated_and_placeholder_noise(self, tmp_path):
+    def test_detect_secrets_ignores_known_generated_and_placeholder_noise(
+        self, tmp_path
+    ):
         """Generated metadata and placeholder defaults should be filtered."""
         check = SecurityLocalCheck({})
         app_dir = tmp_path / "app"
@@ -462,9 +464,7 @@ class TestRunDetectSecrets:
                         {"type": "Secret Keyword", "line_number": 2},
                         {"type": "Secret Keyword", "line_number": 3},
                     ],
-                    "app/config.py": [
-                        {"type": "Secret Keyword", "line_number": 10}
-                    ],
+                    "app/config.py": [{"type": "Secret Keyword", "line_number": 10}],
                 }
             }
         )

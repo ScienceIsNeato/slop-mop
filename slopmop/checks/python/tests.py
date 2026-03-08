@@ -16,6 +16,7 @@ from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
     TESTS_TIMED_OUT_MSG,
     has_python_test_files,
+    python_no_tests_fix_suggestion,
     skip_reason_no_test_files,
 )
 from slopmop.checks.mixins import PythonCheckMixin
@@ -164,9 +165,8 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 duration=time.time() - start_time,
                 error=message,
                 output=message,
-                fix_suggestion=(
-                    "Add Python tests (test_*.py or *_test.py) in configured "
-                    f"test_dirs={test_dirs}. Verify with: {self.verify_command}"
+                fix_suggestion=python_no_tests_fix_suggestion(
+                    test_dirs, self.verify_command
                 ),
                 findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )

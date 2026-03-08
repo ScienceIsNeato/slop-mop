@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -12,7 +12,11 @@ from slopmop.checks.base import (
     GateCategory,
     ToolContext,
 )
-from slopmop.checks.dart.common import find_pubspec_dirs, unique_strings
+from slopmop.checks.dart.common import (
+    NO_PUBSPEC_FOUND,
+    find_pubspec_dirs,
+    unique_strings,
+)
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_SHOWN = 20
@@ -60,7 +64,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
         return bool(find_pubspec_dirs(project_root))
 
     def skip_reason(self, project_root: str) -> str:
-        return "No pubspec.yaml found"
+        return NO_PUBSPEC_FOUND
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
@@ -70,7 +74,9 @@ class DartGeneratedArtifactsCheck(BaseCheck):
             for pkg in find_pubspec_dirs(project_root)
         ]
 
-        git_result = self._run_command(["git", "ls-files"], cwd=project_root, timeout=30)
+        git_result = self._run_command(
+            ["git", "ls-files"], cwd=project_root, timeout=30
+        )
         duration = time.time() - start_time
         if not git_result.success:
             return self._create_result(
@@ -140,7 +146,10 @@ class DartGeneratedArtifactsCheck(BaseCheck):
         exclude_prefixes: set[str],
     ) -> bool:
         path = tracked_path.strip("/").replace("\\", "/")
-        if any(path == prefix or path.startswith(prefix + "/") for prefix in exclude_prefixes):
+        if any(
+            path == prefix or path.startswith(prefix + "/")
+            for prefix in exclude_prefixes
+        ):
             return False
 
         rel = DartGeneratedArtifactsCheck._path_within_package(path, package_prefixes)

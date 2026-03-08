@@ -11,7 +11,12 @@ from slopmop.checks.base import (
     GateCategory,
     ToolContext,
 )
-from slopmop.checks.constants import TESTS_TIMED_OUT_MSG
+from slopmop.checks.constants import (
+    JS_NO_TESTS_FOUND_EXPECTED,
+    JS_NO_TESTS_FOUND_JEST,
+    TESTS_TIMED_OUT_MSG,
+    js_no_tests_fix_suggestion,
+)
 from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
@@ -89,19 +94,13 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
         """Run Jest tests."""
         start_time = time.time()
         if not self.has_javascript_test_files(project_root):
-            message = (
-                "No JavaScript/TypeScript tests found "
-                "(expected test dirs or *.test.* / *.spec.* files)"
-            )
+            message = JS_NO_TESTS_FOUND_EXPECTED
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=time.time() - start_time,
                 error=message,
                 output=message,
-                fix_suggestion=(
-                    "Add JS/TS tests (for example under test/, tests/, __tests__, "
-                    "or as *.test.ts/*.spec.js). Verify with: " + self.verify_command
-                ),
+                fix_suggestion=js_no_tests_fix_suggestion(self.verify_command),
                 findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )
 
@@ -139,18 +138,13 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
 
         if not result.success:
             if "No tests found" in result.output:
-                message = (
-                    "No JavaScript/TypeScript tests found "
-                    "(Jest reported no matching tests)"
-                )
+                message = JS_NO_TESTS_FOUND_JEST
                 return self._create_result(
                     status=CheckStatus.FAILED,
                     duration=duration,
                     output=result.output,
                     error=message,
-                    fix_suggestion=(
-                        "Add JS/TS tests and rerun. Verify with: " + self.verify_command
-                    ),
+                    fix_suggestion=js_no_tests_fix_suggestion(self.verify_command),
                     findings=[Finding(message=message, level=FindingLevel.ERROR)],
                 )
             # Jest's text reporter prefixes each failing suite with

@@ -24,6 +24,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
 )
+from slopmop.checks.constants import TAUTOLOGICAL_ASSERTION_PREFIX
 from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -300,7 +301,7 @@ def _analyze_file(filepath: Path, project_root: str) -> List[BogusTestFinding]:
                         file=rel_path,
                         test_name=test_name,
                         line=line_num,
-                        reason=f"tautological assertion: {tautology}",
+                        reason=f"{TAUTOLOGICAL_ASSERTION_PREFIX}{tautology}",
                     )
                 )
                 continue

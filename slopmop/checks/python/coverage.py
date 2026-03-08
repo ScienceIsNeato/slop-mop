@@ -24,7 +24,9 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
+    coverage_below_threshold_message,
     has_python_test_files,
+    python_no_tests_fix_suggestion,
     skip_reason_no_test_files,
 )
 from slopmop.checks.mixins import PythonCheckMixin
@@ -167,9 +169,8 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 duration=time.time() - start_time,
                 error=message,
                 output=message,
-                fix_suggestion=(
-                    "Add Python tests (test_*.py or *_test.py) in configured "
-                    f"test_dirs={test_dirs}. Verify with: {self.verify_command}"
+                fix_suggestion=python_no_tests_fix_suggestion(
+                    test_dirs, self.verify_command
                 ),
                 findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )
@@ -288,9 +289,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         if not per_file:
             per_file = [
                 Finding(
-                    message=(
-                        f"Coverage {coverage_pct:.1f}% below threshold {threshold}%"
-                    ),
+                    message=coverage_below_threshold_message(coverage_pct, threshold),
                 )
             ]
 
@@ -479,9 +478,8 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
                 duration=time.time() - start_time,
                 error=message,
                 output=message,
-                fix_suggestion=(
-                    "Add Python tests (test_*.py or *_test.py) in configured "
-                    f"test_dirs={test_dirs}. Verify with: {self.verify_command}"
+                fix_suggestion=python_no_tests_fix_suggestion(
+                    test_dirs, self.verify_command
                 ),
                 findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )

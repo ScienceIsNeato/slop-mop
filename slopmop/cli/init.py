@@ -71,12 +71,8 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
     )
     if has_detected_code and not has_test_signal:
         print("  ⚠️  No tests detected in this repository.")
-        print(
-            "     Test execution and coverage gates fail until test files exist."
-        )
-        print(
-            "     If you add new test directories later, re-run: sm init"
-        )
+        print("     Test execution and coverage gates fail until test files exist.")
+        print("     If you add new test directories later, re-run: sm init")
     print()
 
     # Show tool availability
@@ -103,11 +99,11 @@ def _build_non_interactive_config(
         "project_type": (
             "python"
             if detected["has_python"]
-            else "javascript"
-            if detected["has_javascript"]
-            else "dart"
-            if detected.get("has_dart")
-            else "mixed"
+            else (
+                "javascript"
+                if detected["has_javascript"]
+                else "dart" if detected.get("has_dart") else "mixed"
+            )
         ),
         "test_dirs": preconfig.get("test_dirs", detected["test_dirs"]),
         "disabled_gates": preconfig.get("disabled_gates", []),
@@ -328,12 +324,14 @@ def _disable_non_applicable_by_applicability(
         section = base_config.get(category)
         if not isinstance(section, dict):
             continue
-        gates = section.get("gates")
+        section_dict = cast(Dict[str, Any], section)
+        gates = section_dict.get("gates")
         if not isinstance(gates, dict):
             continue
-        gate_cfg = gates.get(gate_name)
+        gates_dict = cast(Dict[str, Any], gates)
+        gate_cfg = gates_dict.get(gate_name)
         if isinstance(gate_cfg, dict):
-            gate_cfg["enabled"] = False
+            cast(Dict[str, Any], gate_cfg)["enabled"] = False
 
 
 def _print_next_steps(config: Dict[str, Any]) -> None:
@@ -364,7 +362,7 @@ def _write_config(
     base_config: Dict[str, Any],
     detected: Dict[str, Any],
     config: Dict[str, Any],
-    ) -> None:
+) -> None:
     """Build final config, merge with existing, and write to disk."""
     from slopmop.utils.generate_base_config import backup_config
 
@@ -380,7 +378,9 @@ def _write_config(
             return
 
         existing_any = merged.get("custom_gates", [])
-        existing = existing_any if isinstance(existing_any, list) else []
+        existing: list[Any] = []
+        if isinstance(existing_any, list):
+            existing = cast(list[Any], existing_any)
 
         suggested_names = {
             str(g.get("name"))
@@ -389,10 +389,11 @@ def _write_config(
         }
         refreshed: list[Any] = list(suggested)
 
-        for gate in existing:
-            if not isinstance(gate, dict):
-                refreshed.append(gate)
+        for gate_any in existing:
+            if not isinstance(gate_any, dict):
+                refreshed.append(gate_any)
                 continue
+            gate = cast(Dict[str, Any], gate_any)
             name = str(gate.get("name", "")).strip()
             if not name or name not in suggested_names:
                 refreshed.append(gate)
@@ -401,12 +402,11 @@ def _write_config(
 
     # Add suggested custom gates for non-Python/JS languages
     suggested_any = detected.get("suggested_custom_gates", [])
-    suggested_custom = (
-        suggested_any
-        if isinstance(suggested_any, list)
-        and all(isinstance(g, dict) for g in suggested_any)
-        else []
-    )
+    suggested_custom: list[dict[str, Any]] = []
+    if isinstance(suggested_any, list):
+        for gate_any in cast(list[Any], suggested_any):
+            if isinstance(gate_any, dict):
+                suggested_custom.append(cast(dict[str, Any], gate_any))
     if suggested_custom:
         base_config["custom_gates"] = suggested_custom
         print(

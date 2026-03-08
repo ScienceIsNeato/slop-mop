@@ -46,7 +46,10 @@ from slopmop.checks.base import (
     GateCategory,
     count_source_scope,
 )
-from slopmop.checks.constants import skip_reason_no_test_files
+from slopmop.checks.constants import (
+    TAUTOLOGICAL_ASSERTION_PREFIX,
+    skip_reason_no_test_files,
+)
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -140,7 +143,7 @@ class _TestAnalyzer(ast.NodeVisitor):
                     file=self.rel_path,
                     function=node.name,
                     line=node.lineno,
-                    reason=f"tautological assertion: {tautology}",
+                    reason=f"{TAUTOLOGICAL_ASSERTION_PREFIX}{tautology}",
                 )
             )
             return

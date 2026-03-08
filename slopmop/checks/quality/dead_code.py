@@ -11,7 +11,7 @@ universal concern regardless of project type.
 import os
 import re
 import time
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -165,7 +165,10 @@ class DeadCodeCheck(BaseCheck):
         configured = self.config.get("exclude_patterns")
         patterns: List[str]
         if isinstance(configured, list):
-            patterns = [p for p in configured if isinstance(p, str) and p.strip()]
+            patterns = []
+            for pattern_any in cast(List[object], configured):
+                if isinstance(pattern_any, str) and pattern_any.strip():
+                    patterns.append(pattern_any)
         else:
             patterns = DEFAULT_EXCLUDE_PATTERNS.copy()
         return list(dict.fromkeys(patterns + MANDATORY_EXCLUDE_PATTERNS))

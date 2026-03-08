@@ -3,7 +3,7 @@
 import json
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
 
@@ -64,6 +64,7 @@ _C_CPP_LANGS = {
 }
 _DART_LANGS = {"dart"}
 _SCC_SUMMARY_ROWS = {"total", "totals", "sum", "header"}
+_SH_C_SET_E_PREFIX = "sh -c 'set -e; "
 _DETECTION_EXCLUDED_DIRS = {
     ".git",
     "node_modules",
@@ -101,15 +102,22 @@ def _extract_scc_languages(payload: Any) -> Set[str]:
     languages: Set[str] = set()
 
     if isinstance(payload, list):
-        rows = [row for row in payload if isinstance(row, dict)]
+        payload_rows = cast(List[Any], payload)
+        for row_any in payload_rows:
+            if isinstance(row_any, dict):
+                rows.append(cast(Dict[str, Any], row_any))
     elif isinstance(payload, dict):
-        maybe_rows = payload.get("languages")
+        payload_dict = cast(Dict[str, Any], payload)
+        maybe_rows = payload_dict.get("languages")
         if isinstance(maybe_rows, list):
-            rows = [row for row in maybe_rows if isinstance(row, dict)]
+            for row_any in cast(List[Any], maybe_rows):
+                if isinstance(row_any, dict):
+                    rows.append(cast(Dict[str, Any], row_any))
         else:
             # Some versions key by language at top-level.
-            for key, value in payload.items():
-                if isinstance(key, str) and isinstance(value, dict):
+            for key_any, value_any in payload_dict.items():
+                if isinstance(key_any, str) and isinstance(value_any, dict):
+                    key = key_any
                     norm = _normalize_language_key(key)
                     if norm and norm not in _SCC_SUMMARY_ROWS:
                         languages.add(norm)
@@ -326,6 +334,7 @@ def _detect_test_dirs(project_root: Path) -> list[str]:
 
 def _detect_pytest(project_root: Path) -> bool:
     """Check for pytest configuration."""
+
     def _safe_contains(path: Path, needle: str) -> bool:
         try:
             return needle in path.read_text(encoding="utf-8", errors="ignore")
@@ -526,11 +535,11 @@ def _suggest_custom_gates(
                         "description": "Run Flutter static analysis",
                         "category": "laziness",
                         "command": (
-                            "sh -c 'set -e; "
+                            _SH_C_SET_E_PREFIX
                             + flutter_preflight
                             + 'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
                             '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                            'for pubspec in $pubspecs; do '
+                            "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'echo "==> flutter analyze ($dir)"; '
                             '(cd "$dir" && flutter analyze); '
@@ -544,15 +553,13 @@ def _suggest_custom_gates(
                         "description": "Run Flutter tests",
                         "category": "overconfidence",
                         "command": (
-                            "sh -c 'set -e; "
-                            + flutter_preflight
-                            + 'ran=0; '
+                            _SH_C_SET_E_PREFIX + flutter_preflight + "ran=0; "
                             'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
                             '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                            'for pubspec in $pubspecs; do '
+                            "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'if [ -d "$dir/test" ]; then '
-                            'ran=1; '
+                            "ran=1; "
                             'echo "==> flutter test ($dir)"; '
                             '(cd "$dir" && flutter test); '
                             "fi; "
@@ -573,7 +580,7 @@ def _suggest_custom_gates(
                     "description": "Check Dart formatting",
                     "category": "laziness",
                     "command": (
-                        "sh -c 'set -e; "
+                        _SH_C_SET_E_PREFIX
                         + flutter_preflight
                         + "dart format --output=none --set-exit-if-changed .'"
                     ),
