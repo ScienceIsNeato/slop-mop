@@ -165,5 +165,44 @@ jobs:
         # controls the green/red check mark.
         if: steps.scour.outcome == 'failure'
         run: |
-          echo "::error::slopmop scour failed — see Code Scanning alerts"
+          if [ -f slopmop.sarif ]; then
+            # Surface actionable context directly in the failing check.
+            python - <<'PY'
+            import json
+            from collections import Counter
+
+            try:
+              with open("slopmop.sarif", "r", encoding="utf-8") as f:
+                sarif = json.load(f)
+            except Exception as exc:  # pragma: no cover - CI diagnostic path
+              print(f"::warning::Unable to parse slopmop.sarif: {exc}")
+              print(
+                "::error::slopmop scour failed, and SARIF summary could not be read"
+              )
+              raise SystemExit(0)
+
+            runs = sarif.get("runs") or []
+            if not runs:
+              print("::error::slopmop scour failed with no SARIF runs present")
+              raise SystemExit(0)
+
+            results = runs[0].get("results") or []
+            if not results:
+              print("::error::slopmop scour failed, but SARIF has zero results")
+              raise SystemExit(0)
+
+            rule_counts = Counter(r.get("ruleId", "unknown") for r in results)
+            top_rules = sorted(rule_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
+            summary = ", ".join(f"{rule} ({count})" for rule, count in top_rules)
+
+            print("::error::slopmop scour failed")
+            print(f"::error::Top failing rules: {summary}")
+            print(
+              "::notice::See PR 'Code scanning results / slopmop' for inline findings "
+              "and full alert details."
+            )
+            PY
+          else
+            echo "::error::slopmop scour failed — slopmop.sarif missing"
+          fi
           exit 1
