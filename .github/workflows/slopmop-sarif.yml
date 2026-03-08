@@ -157,6 +157,36 @@ jobs:
           # (category, ruleId, fingerprint).
           category: slopmop
 
+      - name: Summarise SARIF failures
+        # When scour fails, parse the SARIF and surface the top
+        # failing rule IDs directly in the check output so reviewers
+        # don't have to click through to the Security tab.
+        if: steps.scour.outcome == 'failure'
+        run: |
+          if [ ! -f slopmop.sarif ]; then
+            echo "::error::slopmop scour failed — slopmop.sarif missing"
+          else
+            python3 -c "
+          import json, sys
+          from collections import Counter
+          try:
+              sarif = json.load(open('slopmop.sarif', encoding='utf-8'))
+          except Exception as exc:
+              print(f'::warning::Unable to parse slopmop.sarif: {exc}')
+              sys.exit(0)
+          runs = sarif.get('runs') or []
+          results = (runs[0].get('results') or []) if runs else []
+          if not results:
+              print('::error::slopmop scour failed, but SARIF has zero results')
+              sys.exit(0)
+          counts = Counter(r.get('ruleId', 'unknown') for r in results)
+          top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
+          summary = ', '.join(f'{rule} ({n})' for rule, n in top)
+          print(f'::error::Top failing rules: {summary}')
+          print('::notice::See Code scanning results / slopmop for full findings.')
+          "
+          fi
+
       - name: Enforce Primary Gate Verdict
         # Re-surface the scour exit code so branch protection rules
         # that require this job to pass actually mean something.
@@ -165,44 +195,5 @@ jobs:
         # controls the green/red check mark.
         if: steps.scour.outcome == 'failure'
         run: |
-          if [ -f slopmop.sarif ]; then
-            # Surface actionable context directly in the failing check.
-            python - <<'PY'
-            import json
-            from collections import Counter
-
-            try:
-              with open("slopmop.sarif", "r", encoding="utf-8") as f:
-                sarif = json.load(f)
-            except Exception as exc:  # pragma: no cover - CI diagnostic path
-              print(f"::warning::Unable to parse slopmop.sarif: {exc}")
-              print(
-                "::error::slopmop scour failed, and SARIF summary could not be read"
-              )
-              raise SystemExit(0)
-
-            runs = sarif.get("runs") or []
-            if not runs:
-              print("::error::slopmop scour failed with no SARIF runs present")
-              raise SystemExit(0)
-
-            results = runs[0].get("results") or []
-            if not results:
-              print("::error::slopmop scour failed, but SARIF has zero results")
-              raise SystemExit(0)
-
-            rule_counts = Counter(r.get("ruleId", "unknown") for r in results)
-            top_rules = sorted(rule_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
-            summary = ", ".join(f"{rule} ({count})" for rule, count in top_rules)
-
-            print("::error::slopmop scour failed")
-            print(f"::error::Top failing rules: {summary}")
-            print(
-              "::notice::See PR 'Code scanning results / slopmop' for inline findings "
-              "and full alert details."
-            )
-            PY
-          else
-            echo "::error::slopmop scour failed — slopmop.sarif missing"
-          fi
+          echo "::error::slopmop scour failed"
           exit 1
