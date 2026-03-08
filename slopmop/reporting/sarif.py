@@ -221,6 +221,16 @@ class SarifReporter:
             rule["fullDescription"] = {"text": desc}
         if check.fix_suggestion:
             rule["help"] = {"text": check.fix_suggestion}
+        # Properties bag — SARIF's extension point for tool-specific
+        # metadata.  GitHub doesn't render these in the UI but they're
+        # in the API payload, so downstream automation can filter by
+        # role ("show me only diagnostic findings") without inventing
+        # a naming convention on ruleId.
+        props: Dict[str, object] = {}
+        if check.role:
+            props["role"] = check.role
+        if props:
+            rule["properties"] = props
         return rule
 
     def _build_result(
@@ -269,6 +279,18 @@ class SarifReporter:
             result["locations"] = [
                 {"physicalLocation": {"artifactLocation": {"uri": "."}}}
             ]
+
+        # Per-finding properties.  ``fix_strategy`` is the machine-
+        # extractable remediation — what the agent should actually DO
+        # to resolve this specific finding.  Distinct from the rule's
+        # ``help.text`` (gate-level guidance); this is per-result.
+        # GitHub's SARIF fix-suggestion spec (``result.fixes[]``) is
+        # the "proper" place for this but GitHub Code Scanning doesn't
+        # render it yet, so we use the properties bag — consumable via
+        # API, invisible in UI.  When GitHub ships fix rendering we can
+        # dual-write.
+        if finding.fix_strategy:
+            result["properties"] = {"fix_strategy": finding.fix_strategy}
 
         return result
 

@@ -3,7 +3,11 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from slopmop.checks.quality.complexity import ComplexityCheck
+from slopmop.checks.quality.complexity import (
+    MAX_COMPLEXITY,
+    ComplexityCheck,
+    _to_finding,
+)
 from slopmop.checks.quality.duplication import SourceDuplicationCheck
 from slopmop.core.result import CheckStatus
 
@@ -34,6 +38,12 @@ class TestComplexityCheck:
         assert "max_rank" in field_names
         assert "max_complexity" in field_names
         assert "src_dirs" in field_names
+
+    def test_max_complexity_constant_matches_schema_default(self):
+        """Fallback constant must stay in sync with schema default."""
+        check = ComplexityCheck({})
+        schema = {f.name: f for f in check.config_schema}
+        assert schema["max_complexity"].default == MAX_COMPLEXITY
 
     def test_is_applicable_with_python_files(self, tmp_path):
         """Test is_applicable returns True for Python projects."""
@@ -329,3 +339,42 @@ class TestSourceDuplicationCheck:
         check = SourceDuplicationCheck({})
         reason = check.skip_reason(str(tmp_path))
         assert "not applicable" in reason.lower()
+
+
+# ─── _to_finding helper ──────────────────────────────────────────────────
+
+
+class TestToFinding:
+    """Tests for _to_finding() — radon violation line → Finding."""
+
+    def test_delta_positive_strategy(self):
+        line = "slopmop/cli/validate.py:10:0 `_run_validation` - C (17)"
+        f = _to_finding(line, limit=10)
+        assert f.fix_strategy is not None
+        assert "shed at least 7" in f.fix_strategy
+        assert f.file == "slopmop/cli/validate.py"
+        assert f.line == 10
+
+    def test_delta_zero_or_negative_strategy(self):
+        # Score equals limit — still gets "extract helpers" advice
+        line = "src/app.py:5:0 `handle` - B (10)"
+        f = _to_finding(line, limit=10)
+        assert f.fix_strategy is not None
+        assert "Extract helpers" in f.fix_strategy
+        assert "configured rank gate" in f.fix_strategy
+        assert "exceeds rank threshold" not in f.fix_strategy
+
+    def test_no_loc_match(self):
+        line = "`some_func` - C (15)"
+        f = _to_finding(line, limit=10)
+        assert f.file is None
+        assert f.line is None
+        assert f.fix_strategy is not None
+        assert "shed at least 5" in f.fix_strategy
+
+    def test_no_meta_match(self):
+        line = "slopmop/x.py:1:0 random noise"
+        f = _to_finding(line, limit=10)
+        assert f.fix_strategy is None
+        assert f.file == "slopmop/x.py"
+        assert f.line == 1

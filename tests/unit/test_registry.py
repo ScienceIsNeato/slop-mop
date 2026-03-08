@@ -93,22 +93,6 @@ class TestCheckRegistry:
 
         assert "overconfidence:test-check" in registry.list_checks()
 
-    def test_register_alias(self):
-        """Test registering an alias."""
-        registry = CheckRegistry()
-        check_class1 = make_mock_check_class("check1")
-        check_class2 = make_mock_check_class("check2")
-
-        registry.register(check_class1)
-        registry.register(check_class2)
-        registry.register_alias(
-            "both", ["overconfidence:check1", "overconfidence:check2"]
-        )
-
-        aliases = registry.list_aliases()
-        assert "both" in aliases
-        assert aliases["both"] == ["overconfidence:check1", "overconfidence:check2"]
-
     def test_get_checks_by_name(self):
         """Test getting checks by name."""
         registry = CheckRegistry()
@@ -121,24 +105,6 @@ class TestCheckRegistry:
         checks = registry.get_checks(["overconfidence:check1"], {})
         assert len(checks) == 1
         assert checks[0].name == "check1"
-
-    def test_get_checks_expands_alias(self):
-        """Test getting checks expands aliases."""
-        registry = CheckRegistry()
-        check_class1 = make_mock_check_class("check1")
-        check_class2 = make_mock_check_class("check2")
-
-        registry.register(check_class1)
-        registry.register(check_class2)
-        registry.register_alias(
-            "both", ["overconfidence:check1", "overconfidence:check2"]
-        )
-
-        checks = registry.get_checks(["both"], {})
-        assert len(checks) == 2
-        names = [c.name for c in checks]
-        assert "check1" in names
-        assert "check2" in names
 
     def test_get_checks_unknown_name_returns_empty(self):
         """Test getting unknown check name returns empty list."""
@@ -217,41 +183,10 @@ class TestCheckRegistry:
         registry = CheckRegistry()
         assert registry.list_checks() == []
 
-    def test_list_aliases_empty(self):
-        """Test listing aliases on empty registry."""
-        registry = CheckRegistry()
-        assert registry.list_aliases() == {}
-
     def test_get_definition_nonexistent(self):
         """Test getting definition for nonexistent check."""
         registry = CheckRegistry()
         assert registry.get_definition("nonexistent") is None
-
-    def test_is_alias(self):
-        """Test checking if name is an alias."""
-        registry = CheckRegistry()
-        registry.register_alias(
-            "myalias", ["overconfidence:check1", "overconfidence:check2"]
-        )
-
-        assert registry.is_alias("myalias") is True
-        assert registry.is_alias("overconfidence:check1") is False
-
-    def test_expand_alias(self):
-        """Test expanding an alias."""
-        registry = CheckRegistry()
-        registry.register_alias(
-            "myalias", ["overconfidence:check1", "overconfidence:check2"]
-        )
-
-        expanded = registry.expand_alias("myalias")
-        assert expanded == ["overconfidence:check1", "overconfidence:check2"]
-
-    def test_expand_alias_non_alias(self):
-        """Test expanding a non-alias returns itself."""
-        registry = CheckRegistry()
-        expanded = registry.expand_alias("not-an-alias")
-        assert expanded == ["not-an-alias"]
 
     def test_get_registry_singleton(self):
         """Test get_registry returns singleton."""

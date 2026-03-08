@@ -574,7 +574,10 @@ class TestCheckExecutor:
     def test_set_na_callback_registers_callback(self):
         """Test set_na_callback stores the callback."""
         executor = CheckExecutor()
-        cb = lambda name: None  # noqa: E731
+
+        def cb(name: str) -> None:
+            pass
+
         executor.set_na_callback(cb)
         assert executor._on_check_na is cb
 

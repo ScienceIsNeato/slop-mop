@@ -7,7 +7,7 @@
   <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Attribution-blue.svg" alt="License"/></a>
 </p>
 
-**Automated steering for AI-generated code "shipping" to production.** Leverage the very behavior that results in slop to clean it up. Give your AI a mop and weaponize it in an attempt to keep your repos seaworthy
+**Quality gates that catch code that technically passes.** Agents optimize for the metric, not the intent — tests that assert nothing, complexity pushed just under the threshold, duplicated logic with renamed variables. Slop-mop treats the agent as an adversarial code author and checks for the slop that other gates wave through. When it finds some, it tells the agent exactly what to fix and how.
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop" width="300" align="right"/>
 
@@ -39,6 +39,9 @@ sm init                       # auto-detects languages, writes .sb_config.json
 sm swab                       # fix what it finds, commit when green
 sm scour                      # thorough check before opening a PR
 ```
+
+Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
+`Selective Gate Caching` below for details and `--no-cache` behavior.
 
 `sm init` auto-detects Python, JavaScript/TypeScript, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. For Go, Rust, and C/C++ projects it scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) since built-in gates focus on Python and JS.
 
@@ -85,6 +88,26 @@ When a gate fails, the output tells the agent exactly what to do next:
 
 This is purpose-built for AI agents. The iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
 
+### The Prescription Contract
+
+Every gate failure must be *prescriptive*, not just *descriptive*. A gate that says "coverage too low" is describing a symptom. A gate that says "add tests in `tests/test_foo.py` covering lines 45-67 of `foo.py`" is prescribing a remedy.
+
+This is a joint optimization. Prescriptive output is simultaneously:
+
+- **More maintainable** — a human reading the failure knows exactly what to do. No digging through tool docs, no re-running with `-v`, no interpreting a wall of output.
+- **More token-efficient** — an agent reading the failure can act on the first turn. No exploratory read-search-read cycle burning context to figure out what the gate already knew.
+
+The two goals aren't in tension. When a gate already ran `pytest`, it has the assertion error. When it already ran `coverage`, it has the missing line numbers. When it already ran `bandit`, it has the rule ID that maps to a documented fix. Surfacing that data *is* the fix for both problems at once.
+
+Gates are sorted into two roles to make the contract enforceable:
+
+| Role | What it wraps | Prescription standard |
+|------|---------------|------------------------|
+| 🔧 **Foundation** | Standard tooling (pytest, mypy, black, eslint, bandit) | Relay the tool's own diagnostic. Never say "run the tool yourself". |
+| 🔬 **Diagnostic** | Novel analysis (AST-based bogus-test detection, gate-dodging diffs, debugger-artifact scans) | State what to change, where, and by how much. "Move `foo()` to `bar.py` — clears by 223 lines." |
+
+A gate earns its place by emitting something an agent can cargo-cult. If fixing it requires independent judgment beyond what the gate can factually determine, the finding stays descriptive and `fix_strategy` stays `None` — no guessing.
+
 Use `sm status` for a report card of all gates at once.
 
 ---
@@ -122,7 +145,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS |
 | `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing |
 | `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C |
-| `deceptiveness:gate-dodging` | 🎭 Detects loosened quality thresholds |
+| `deceptiveness:gate-dodging` | 🚨 Detects loosened quality thresholds |
 | `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement |
 
 ### 🟠 Laziness
@@ -182,9 +205,10 @@ sm swab -g laziness:complexity-creep.py        # re-check just complexity
 ### Time Budget
 
 Use `--swabbing-time` to set a time budget in seconds. Gates with historical
-runtime data are sorted fastest-first and skipped once the accumulated
-estimate would exceed the budget. Gates without timing history always run
-(to establish a baseline). Once a gate starts running, it runs to completion.
+runtime data are scheduled with a dual-lane strategy (one fast lane + heavy
+lanes) and packed against projected remaining budget. Gates without timing
+history always run (to establish a baseline). Once a gate starts running,
+it runs to completion.
 
 ```bash
 sm swab --swabbing-time 30    # only run gates that fit in ~30 seconds
@@ -198,6 +222,27 @@ sm config --swabbing-time 0   # disable the limit entirely
 ```
 
 Time budgets only apply to swab. Scour runs always execute every gate.
+
+### Selective Gate Caching
+
+`sm swab` uses fingerprint-based result caching to avoid re-running unchanged
+work. The optimization is selective per gate:
+
+- Gates can declare their own input scope (for example, only Python files in
+  selected directories).
+- If files outside that scope change, only affected gates re-run; unaffected
+  gates are served from cache.
+- Gates that do not declare a scope still use a safe project-wide fingerprint.
+
+This keeps repeat runs fast while preserving correctness. You will see cache
+usage in summary output, for example `📦 3/16 from cache`.
+
+```bash
+sm swab              # normal mode: selective cache hits enabled
+sm swab --no-cache   # force a full cold run (debug/troubleshooting)
+```
+
+Cache data is stored at `.slopmop/cache.json` in the project.
 
 ---
 

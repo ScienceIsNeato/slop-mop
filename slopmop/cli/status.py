@@ -8,6 +8,7 @@ gates; use ``sm swab`` or ``sm scour`` for that.
 import argparse
 import json
 import sys
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -39,17 +40,6 @@ def _get_category_display(category_key: str) -> Tuple[str, str]:
         if cat.key == category_key:
             return cat.emoji, cat.display_name
     return "❓", category_key.title()
-
-
-def _find_other_aliases(
-    gate: str, aliases: Dict[str, List[str]], current_level: str
-) -> List[str]:
-    """Find aliases that include a gate, excluding the current level."""
-    return [
-        alias
-        for alias, gates in aliases.items()
-        if gate in gates and alias != current_level
-    ]
 
 
 # ── Section: Config Summary ─────────────────────────────────────
@@ -96,10 +86,17 @@ def _print_config_summary(
 
 RECENT_HISTORY_HEADER = "📊 RECENT HISTORY"
 
+# Shared role → badge map lives in constants.py alongside STATUS_EMOJI —
+# imported rather than duplicated so `sm status` and the ConsoleAdapter
+# post-run summary can't drift.  Re-exported as an underscored module
+# alias to keep existing call sites (`_ROLE_BADGES.get(...)`) unchanged.
+from slopmop.constants import ROLE_BADGES as _ROLE_BADGES
+
 
 def _format_gate_line(
     gate_name: str,
     *,
+    role: str,
     in_swab: bool,
     in_scour: bool,
     is_applicable: bool,
@@ -109,8 +106,10 @@ def _format_gate_line(
 ) -> str:
     """Format a single gate line for the inventory.
 
-    Shows applicability, level membership, and last-known result from
-    historical timing data (no live execution).
+    Shows role, applicability, level membership, and last-known result
+    from historical timing data (no live execution).  The role badge
+    answers "is this a standard-tool wrapper or slop-mop's own analysis"
+    at a glance — useful when triaging which gates to disable or tune.
     """
     # Level badge
     if in_swab:
@@ -119,6 +118,9 @@ def _format_gate_line(
         level_tag = "scour"
     else:
         level_tag = "     "
+
+    # Role badge — empty string for unknown (custom gates may not set it)
+    role_badge = _ROLE_BADGES.get(role, "")
 
     # Applicability / history-based status
     if not is_applicable:
@@ -144,7 +146,9 @@ def _format_gate_line(
         icon = "·"
         suffix = "no history"
 
-    return f"   {icon}  {gate_name:<28} [{level_tag}] {suffix}"
+    # Use dynamic width — gate names can exceed 28 chars
+    name_width = max(len(gate_name), 28)
+    return f"   {icon} {role_badge}{gate_name:<{name_width}} [{level_tag}] {suffix}"
 
 
 def _print_gate_inventory(
@@ -152,18 +156,26 @@ def _print_gate_inventory(
     swab_gates: Set[str],
     scour_gates: Set[str],
     applicability: Dict[str, Tuple[bool, str]],
+    roles: Dict[str, str],
     history: Dict[str, TimingStats],
     colors_enabled: bool,
 ) -> None:
     """Print the full gate inventory grouped by category.
 
-    Shows every registered gate with level membership, applicability,
-    and last-known result from historical timing data.
+    Shows every registered gate with role, level membership,
+    applicability, and last-known result from historical timing data.
+    N/A gates are collapsed into a single summary line at the bottom
+    to keep the inventory focused on actionable results.
     """
     by_category: Dict[str, List[str]] = defaultdict(list)
+    na_gates: List[Tuple[str, str]] = []  # (full_name, reason)
     for gate in all_gates:
-        cat_key = gate.split(":")[0]
-        by_category[cat_key].append(gate)
+        is_app, reason = applicability.get(gate, (True, ""))
+        if not is_app:
+            na_gates.append((gate, reason))
+        else:
+            cat_key = gate.split(":")[0]
+            by_category[cat_key].append(gate)
 
     sorted_cats = sorted(
         by_category.keys(),
@@ -182,18 +194,31 @@ def _print_gate_inventory(
 
         for gate in gates:
             gate_name = gate.split(":", 1)[1]
-            is_app, reason = applicability.get(gate, (True, ""))
 
             line = _format_gate_line(
                 gate_name,
+                role=roles.get(gate, ""),
                 in_swab=gate in swab_gates,
                 in_scour=gate in scour_gates and gate not in swab_gates,
-                is_applicable=is_app,
-                skip_reason=reason,
+                is_applicable=True,
+                skip_reason="",
                 history=history.get(gate),
                 colors_enabled=colors_enabled,
             )
             print(line)
+
+    if na_gates:
+        names = [g.split(":", 1)[1] for g, _ in sorted(na_gates)]
+        prefix = f"   ⊘ {len(na_gates)} n/a: "
+        body = ", ".join(names)
+        wrapped = textwrap.fill(
+            body,
+            width=76,
+            initial_indent=prefix,
+            subsequent_indent=" " * len(prefix),
+        )
+        print()
+        print(wrapped)
 
 
 # ── Section: Hook Status ────────────────────────────────────────
@@ -301,6 +326,7 @@ def _build_status_dict(
     scour_only_gates: Set[str],
     disabled: List[str],
     applicability: Dict[str, Tuple[bool, str]],
+    roles: Dict[str, str],
     history: Dict[str, TimingStats],
 ) -> Dict[str, Any]:
     """Build a JSON-serializable dict of project status."""
@@ -310,6 +336,7 @@ def _build_status_dict(
         hist = history.get(gate)
         entry: Dict[str, Any] = {
             "name": gate,
+            "role": roles.get(gate),
             "applicable": is_app,
             "in_swab": gate in swab_gates,
             "in_scour": gate in swab_gates or gate in scour_only_gates,
@@ -395,14 +422,19 @@ def run_status(
     )
     disabled = config.get("disabled_gates", [])
 
-    # ── Applicability (no execution — just is_applicable check) ──
+    # ── Applicability + role (no execution) ──────────────────────
+    # We already instantiate each check to probe is_applicable(); the
+    # role classvar comes for free on the same instance.  Collect both
+    # in one pass so downstream formatters don't need registry access.
     applicability: Dict[str, Tuple[bool, str]] = {}
+    roles: Dict[str, str] = {}
     for gate_name in all_gates:
         check = registry.get_check(gate_name, config)
         if check:
             is_app = check.is_applicable(str(root))
             reason = check.skip_reason(str(root)) if not is_app else ""
             applicability[gate_name] = (is_app, reason)
+            roles[gate_name] = check.role.value
         else:
             applicability[gate_name] = (False, "check class not found")
 
@@ -419,6 +451,7 @@ def run_status(
             scour_only_gates,
             disabled,
             applicability,
+            roles,
             history,
         )
         print(json.dumps(data, separators=(",", ":")))
@@ -445,6 +478,7 @@ def run_status(
         swab_gates=swab_gates,
         scour_gates=set(registry.get_gate_names_for_level(GateLevel.SCOUR)),
         applicability=applicability,
+        roles=roles,
         history=history,
         colors_enabled=colors_enabled,
     )

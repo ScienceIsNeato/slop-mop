@@ -24,10 +24,10 @@ from typing import ClassVar, List, Tuple
 from slopmop.checks.base import (
     SCOPE_EXCLUDED_DIRS,
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
-    GateLevel,
     ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
@@ -87,7 +87,7 @@ class DebuggerArtifactsCheck(BaseCheck):
     """
 
     tool_context: ClassVar[ToolContext] = ToolContext.PURE
-    level: ClassVar[GateLevel] = GateLevel.SWAB
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:
@@ -95,7 +95,7 @@ class DebuggerArtifactsCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "🐞 Debugger Artifacts"
+        return "🐞 Debugger Artifacts (breakpoints, console.log)"
 
     @property
     def gate_description(self) -> str:

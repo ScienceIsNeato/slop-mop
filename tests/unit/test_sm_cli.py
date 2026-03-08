@@ -15,6 +15,7 @@ from slopmop.cli.config import cmd_config
 from slopmop.cli.detection import detect_project_type
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
+    SB_HOOK_MARKER,
     _generate_hook_script,
     _get_git_hooks_dir,
     _parse_hook_info,
@@ -140,6 +141,24 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["swab", "--swabbing-time", "0"])
         assert args.swabbing_time == 0
+
+    def test_no_cache_flag_default_false(self):
+        """--no-cache defaults to False when not provided."""
+        parser = create_parser()
+        args = parser.parse_args(["swab"])
+        assert args.no_cache is False
+
+    def test_no_cache_flag_set(self):
+        """--no-cache parses correctly on swab."""
+        parser = create_parser()
+        args = parser.parse_args(["swab", "--no-cache"])
+        assert args.no_cache is True
+
+    def test_no_cache_flag_on_scour(self):
+        """--no-cache parses correctly on scour."""
+        parser = create_parser()
+        args = parser.parse_args(["scour", "--no-cache"])
+        assert args.no_cache is True
 
     def test_config_subcommand(self):
         """Config subcommand parses correctly."""
@@ -329,9 +348,6 @@ class TestCmdConfig:
                 mock_reg = MagicMock()
                 mock_reg.list_checks.return_value = ["overconfidence:untested-code.py"]
                 mock_reg.get_definition.return_value = MagicMock(name="Python Tests")
-                mock_reg.list_aliases.return_value = {
-                    "commit": ["overconfidence:untested-code.py"]
-                }
                 mock_registry.return_value = mock_reg
 
                 result = cmd_config(args)
@@ -339,6 +355,35 @@ class TestCmdConfig:
         assert result == 0
         captured = capsys.readouterr()
         assert "Configuration" in captured.out
+        assert "Available Quality Gates" in captured.out
+        assert "Run 'sm config --show' to see all gates." not in captured.out
+
+    def test_config_no_args_shows_usage_hints(self, tmp_path, capsys):
+        """No args prints usage/help summary instead of full gate list."""
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            with patch("slopmop.cli.config.get_registry") as mock_registry:
+                mock_reg = MagicMock()
+                mock_reg.list_checks.return_value = ["deceptiveness:bogus-tests.js"]
+                mock_registry.return_value = mock_reg
+
+                result = cmd_config(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Usage:" in captured.out
+        assert "Run 'sm config --show' to see all gates." in captured.out
+        assert "Available Quality Gates" not in captured.out
 
     def test_enable_gate(self, tmp_path):
         """--enable adds gate to enabled list."""
@@ -437,9 +482,6 @@ class TestCmdHelp:
                 mock_reg.get_definition.return_value = MagicMock(
                     name="Test", auto_fix=False
                 )
-                mock_reg.list_aliases.return_value = {
-                    "commit": ["overconfidence:untested-code.py"]
-                }
                 mock_registry.return_value = mock_reg
 
                 result = cmd_help(args)
@@ -473,27 +515,6 @@ class TestCmdHelp:
         captured = capsys.readouterr()
         assert "Python Tests" in captured.out
 
-    def test_help_alias(self, capsys):
-        """Help for alias shows expanded gates."""
-        args = argparse.Namespace(gate="commit")
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            with patch("slopmop.cli.help.get_registry") as mock_registry:
-                mock_reg = MagicMock()
-                mock_reg.get_definition.return_value = None
-                mock_reg.is_alias.return_value = True
-                mock_reg.expand_alias.return_value = [
-                    "overconfidence:untested-code.py",
-                    "overconfidence:coverage-gaps.py",
-                ]
-                mock_registry.return_value = mock_reg
-
-                result = cmd_help(args)
-
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "Alias: commit" in captured.out
-
 
 class TestGitHooksFunctions:
     """Tests for git hooks helper functions."""
@@ -512,16 +533,22 @@ class TestGitHooksFunctions:
     def test_generate_hook_script(self):
         """Generates valid hook script with swab verb."""
         script = _generate_hook_script("swab")
-        assert "slopmop.sm swab" in script
+        assert "sm swab" in script
         assert "MANAGED BY SLOP-MOP" in script
-        # Should use python -m slopmop.sm for direct submodule execution
-        assert "python" in script and "slopmop.sm" in script
+        # Should use PATH-based sm lookup
+        assert "command -v sm" in script
+        # Should write structured output for LLM consumption
+        assert "--json" in script
+        assert "--output-file .slopmop/last_swab.json" in script
+        assert "Structured results:" in script
+        assert "mkdir -p .slopmop" in script
 
     def test_generate_hook_script_direct_verb(self):
         """Generates hook script when given a verb directly."""
         script = _generate_hook_script("scour")
-        assert "slopmop.sm scour" in script
+        assert "sm scour" in script
         assert "# Command: sm scour" in script
+        assert "--output-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""
@@ -824,12 +851,19 @@ class TestScourDisablesFailFast:
             json_output=False,
         )
 
+    @patch("slopmop.cli.validate.ConsoleAdapter")
     @patch("slopmop.cli.validate.ConsoleReporter")
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
     def test_scour_forces_fail_fast_off(
-        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
     ):
         """Scour always creates executor with fail_fast=False."""
         from slopmop.cli.validate import _run_validation
@@ -844,12 +878,19 @@ class TestScourDisablesFailFast:
         _, kwargs = mock_executor_cls.call_args
         assert kwargs["fail_fast"] is False
 
+    @patch("slopmop.cli.validate.ConsoleAdapter")
     @patch("slopmop.cli.validate.ConsoleReporter")
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
     def test_scour_ignores_no_fail_fast_flag(
-        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
     ):
         """Even with --no-fail-fast omitted, scour still disables fail-fast."""
         from slopmop.cli.validate import _run_validation
@@ -867,12 +908,19 @@ class TestScourDisablesFailFast:
         _, kwargs = mock_executor_cls.call_args
         assert kwargs["fail_fast"] is False
 
+    @patch("slopmop.cli.validate.ConsoleAdapter")
     @patch("slopmop.cli.validate.ConsoleReporter")
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
     def test_swab_defaults_to_fail_fast(
-        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
     ):
         """Swab defaults to fail_fast=True."""
         from slopmop.cli.validate import _run_validation
@@ -886,12 +934,19 @@ class TestScourDisablesFailFast:
         _, kwargs = mock_executor_cls.call_args
         assert kwargs["fail_fast"] is True
 
+    @patch("slopmop.cli.validate.ConsoleAdapter")
     @patch("slopmop.cli.validate.ConsoleReporter")
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
     def test_swab_respects_no_fail_fast_flag(
-        self, _mock_config, mock_reg, mock_executor_cls, _mock_reporter, tmp_path
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
     ):
         """Swab with --no-fail-fast creates executor with fail_fast=False."""
         from slopmop.cli.validate import _run_validation
@@ -972,3 +1027,126 @@ class TestSetupDynamicDisplay:
         reporter.on_check_complete.assert_not_called()
         assert len(deferred) == 1
         assert deferred[0] is failed
+
+
+# ─── hooks edge cases ───────────────────────────────────────────────────
+
+
+class TestHooksEdgeCases:
+    """Edge-case coverage for hook install/status paths."""
+
+    def test_status_hooks_dir_exists_but_empty(self, tmp_path, capsys):
+        """When hooks dir exists but has no hook files → 'No commit hooks installed'."""
+        (tmp_path / ".git" / "hooks").mkdir(parents=True)
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="status",
+        )
+        result = cmd_commit_hooks(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "No commit hooks installed" in out
+
+    def test_install_updates_existing_managed_hook(self, tmp_path, capsys):
+        """Reinstalling over an existing sm-managed hook updates it."""
+        (tmp_path / ".git" / "hooks").mkdir(parents=True)
+        hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+        # Write an old managed hook
+        hook_file.write_text(f"{SB_HOOK_MARKER}\n# Command: sm swab\nsm swab")
+        hook_file.chmod(0o755)
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="install",
+            hook_verb="scour",
+        )
+        result = cmd_commit_hooks(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Updating existing slopmop hook" in out
+        # New hook should contain the new verb
+        assert "sm scour" in hook_file.read_text()
+
+
+# ─── validate edge cases ────────────────────────────────────────────────
+
+
+class TestValidateSmLockError:
+    """Tests for SmLockError handling in _run_validation."""
+
+    @patch("slopmop.cli.validate.sm_lock")
+    def test_lock_error_returns_1(self, mock_lock, tmp_path, capsys):
+        from slopmop.cli.validate import _run_validation
+
+        mock_lock.side_effect = __import__(
+            "slopmop.core.lock", fromlist=["SmLockError"]
+        ).SmLockError("Another sm instance is running")
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+        result = _run_validation(args, [], None)
+        assert result == 1
+        err = capsys.readouterr().err
+        assert "Another sm instance" in err
+
+
+class TestValidateJsonOutputFile:
+    """Regression tests for JSON output-file behavior in validate pipeline."""
+
+    @patch("builtins.print")
+    @patch("slopmop.cli.validate.RunReport.from_summary")
+    @patch("slopmop.cli.validate.JsonAdapter")
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_json_output_file_does_not_print_to_stdout(
+        self,
+        _mock_config,
+        _mock_registry,
+        mock_executor_cls,
+        _mock_reporter,
+        mock_json_adapter,
+        mock_from_summary,
+        mock_print,
+        tmp_path,
+    ):
+        """--json with --output-file writes payload to file without stdout leak."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        mock_report = MagicMock()
+        mock_from_summary.return_value = mock_report
+        mock_json_adapter.render.return_value = {"ok": True}
+
+        output_file = tmp_path / "result.json"
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+            json_output=True,
+            output_file=str(output_file),
+            sarif_output=False,
+            no_cache=False,
+        )
+
+        result = _run_validation(args, ["gate1"], "swab")
+
+        assert result == 0
+        assert output_file.exists()
+        assert output_file.read_text(encoding="utf-8") == '{"ok":true}'
+        mock_print.assert_not_called()

@@ -22,6 +22,7 @@ from typing import Callable, List, Optional, cast
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -33,6 +34,41 @@ from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
+
+# Canonical remediations for common bandit test IDs.  These are the fixes
+# bandit's own docs prescribe — we're not guessing, we're relaying the
+# tool's documented resolution.  Rules not in this map get no
+# fix_strategy (agent decides, same as today).  Ordered by real-world
+# frequency: YAML/subprocess/pickle issues dominate bandit findings in
+# practice.
+_BANDIT_FIX_STRATEGIES: dict[str, str] = {
+    "B506": "Replace yaml.load() with yaml.safe_load() — the unsafe "
+    "loader executes arbitrary Python from YAML input.",
+    "B301": "Replace pickle.loads() with json.loads() if the payload is "
+    "structured data. If pickle is required, validate the input "
+    "source is trusted before deserialising.",
+    "B602": "Remove shell=True. Pass the command as a list "
+    "(['prog', 'arg']) so subprocess invokes the binary "
+    "directly without a shell.",
+    "B603": "Ensure the command list contains no user-controlled "
+    "elements. If arguments come from user input, validate "
+    "or escape them before the subprocess call.",
+    "B605": "Replace os.system() with subprocess.run([...]) using a "
+    "list argument, not a shell string.",
+    "B608": "Parameterise the SQL query. Use the DB driver's "
+    "placeholder syntax (? or %s) with a params tuple — "
+    "never build query strings by concatenation.",
+    "B104": "Bind to a specific interface (127.0.0.1 for local-only) "
+    "instead of 0.0.0.0, unless public exposure is intended.",
+    "B108": "Use tempfile.mkstemp() or a TemporaryDirectory context "
+    "manager instead of a hardcoded /tmp path.",
+    "B501": "Remove verify=False. If the certificate is self-signed, "
+    "pass a CA bundle path to verify= instead.",
+    "B105": "Move the hardcoded credential into an environment "
+    "variable or secrets manager. Read it at runtime.",
+    "B106": "Move the hardcoded password into an environment "
+    "variable. Read it at runtime via os.environ.",
+}
 
 EXCLUDED_DIRS = [
     "venv",
@@ -84,10 +120,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
           .secrets.baseline if it's a false positive.
 
     Re-check:
-      ./sm swab -g myopia:vulnerability-blindness.py --verbose
+      sm swab -g myopia:vulnerability-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
@@ -95,7 +132,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🔐 Security Scan (code analysis)"
+        return "🔐 Security Scan (bandit, semgrep, detect-secrets)"
 
     @property
     def gate_description(self) -> str:
@@ -162,15 +199,18 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         """Check if a scanner tool is available on this system.
 
         For Python-based scanners (bandit, detect-secrets), checks
-        importability. For external binaries (semgrep), checks PATH.
+        importability via ``find_spec`` (not ``import_module``).
+        ``import_module("bandit")`` pulls in stevedore, which enumerates
+        every entry-point plugin and logs WARNING for each failed load —
+        "Could not load 'sarif'" on every run.  ``find_spec`` probes the
+        import machinery without executing the target package.
         """
         if name in importable:
             try:
-                import importlib
+                import importlib.util
 
-                importlib.import_module(importable[name])
-                return True
-            except ImportError:
+                return importlib.util.find_spec(importable[name]) is not None
+            except (ImportError, ModuleNotFoundError, ValueError):
                 return False
         # External binary (semgrep, etc.)
         return shutil.which(name) is not None
@@ -262,7 +302,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
-            fix_suggestion="Address HIGH severity issues first. They block merge.",
+            fix_suggestion=(
+                "Each finding above has a rule-specific fix where known. "
+                "Bandit's HIGH severity findings are real vulnerabilities "
+                "\u2014 fix those first. Verify with: " + self.verify_command
+            ),
             findings=all_findings,
         )
 
@@ -318,17 +362,22 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 f"- {r.get('filename', '')}:{r.get('line_number', '')}"
                 for r in issues[:10]
             )
-            # bandit has full file:line — emit per-issue Findings
+            # bandit has full file:line — emit per-issue Findings.
+            # test_id maps to a documented canonical remediation when
+            # we have one; otherwise fix_strategy stays None (agent
+            # already sees issue_text which names the vulnerable call).
             sarif: List[Finding] = []
             for r in issues:
                 line_no = r.get("line_number")
+                test_id = r.get("test_id")
                 sarif.append(
                     Finding(
                         message=f"[{r['issue_severity']}] {r['issue_text']}",
                         level=FindingLevel.ERROR,
                         file=r.get("filename") or None,
                         line=line_no if isinstance(line_no, int) else None,
-                        rule_id=r.get("test_id"),
+                        rule_id=test_id,
+                        fix_strategy=_BANDIT_FIX_STRATEGIES.get(test_id or ""),
                     )
                 )
             return SecuritySubResult("bandit", False, detail, sarif)
@@ -465,6 +514,7 @@ class SecurityCheck(SecurityLocalCheck):
     """
 
     level = GateLevel.SCOUR
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
@@ -472,7 +522,7 @@ class SecurityCheck(SecurityLocalCheck):
 
     @property
     def display_name(self) -> str:
-        return "🔒 Security Audit (code + dependencies)"
+        return "🔒 Security Audit (full scan + pip-audit)"
 
     @property
     def gate_description(self) -> str:
@@ -530,7 +580,11 @@ class SecurityCheck(SecurityLocalCheck):
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
-            fix_suggestion="Address HIGH severity issues first. They block merge.",
+            fix_suggestion=(
+                "Each finding above has a rule-specific fix where known. "
+                "Bandit's HIGH severity findings are real vulnerabilities "
+                "\u2014 fix those first. Verify with: " + self.verify_command
+            ),
             findings=all_findings,
         )
 

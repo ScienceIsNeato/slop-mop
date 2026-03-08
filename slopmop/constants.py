@@ -21,6 +21,22 @@ STATUS_EMOJI = {
     CheckStatus.ERROR: "💥",
 }
 
+# Role → badge emoji.  Keyed by the string values of CheckRole members
+# ("foundation", "diagnostic") rather than the enum itself so callers
+# that handle bare strings (CheckResult.role, CLI JSON output) don't
+# need an import of checks.base just to look up an emoji.
+# Wrench = foundation (wraps standard tooling), microscope = diagnostic
+# (novel analysis).  Unknown key → "" via .get().
+# Trailing space is intentional — badges are always prepended directly
+# to gate names without an additional separator.
+#
+# Shared between ConsoleAdapter (post-run summary) and `sm status`
+# (gate inventory) so both surfaces speak the same visual language.
+ROLE_BADGES = {
+    "foundation": "🔧 ",
+    "diagnostic": "🔬 ",
+}
+
 
 # Check result messages
 NO_ISSUES_FOUND = "No issues found"

@@ -40,6 +40,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -413,8 +414,10 @@ class BogusTestsCheck(BaseCheck):
           ``min_test_statements`` or setting it to 0.
 
     Re-check:
-      ./sm swab -g deceptiveness:bogus-tests.py --verbose
+      sm swab -g deceptiveness:bogus-tests.py --verbose
     """
+
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:
@@ -422,7 +425,7 @@ class BogusTestsCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "🧟 Bogus Tests"
+        return "🧟 Bogus Tests (Python, AST)"
 
     @property
     def gate_description(self) -> str:

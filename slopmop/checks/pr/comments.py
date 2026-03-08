@@ -13,7 +13,14 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory, GateLevel
+from slopmop.checks.base import (
+    BaseCheck,
+    CheckRole,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    GateLevel,
+)
 from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 
@@ -44,6 +51,7 @@ class PRCommentsCheck(BaseCheck):
     """
 
     level = GateLevel.SCOUR
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:
@@ -51,7 +59,7 @@ class PRCommentsCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "💬 PR Comments"
+        return "💬 Unresolved PR Comments"
 
     @property
     def gate_description(self) -> str:
@@ -627,7 +635,7 @@ class PRCommentsCheck(BaseCheck):
         )
         lines.append("")
         lines.append("# Re-run this check:")
-        lines.append("./sm scour -g myopia:ignored-feedback")
+        lines.append("sm scour -g myopia:ignored-feedback")
         lines.append("")
         lines.append("━" * 80)
         lines.append(
@@ -769,7 +777,7 @@ class PRCommentsCheck(BaseCheck):
         lines.append("  1. Read the full report above")
         lines.append("  2. Address comments by category (most complex first)")
         lines.append("  3. Use provided commands to resolve each thread")
-        lines.append("  4. Re-run: ./sm scour -g myopia:ignored-feedback")
+        lines.append("  4. Re-run: sm scour -g myopia:ignored-feedback")
 
         return "\n".join(lines)
 

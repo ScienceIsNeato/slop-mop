@@ -11,10 +11,11 @@ Note: This is a cross-cutting quality check. While it uses radon
 import os
 import re
 import time
-from typing import List
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -25,7 +26,8 @@ from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_RANK = "C"
-MAX_COMPLEXITY = 20
+# Keep this aligned with config_schema.default for max_complexity.
+MAX_COMPLEXITY = 15
 
 
 class ComplexityCheck(BaseCheck, PythonCheckMixin):
@@ -53,10 +55,11 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
       radon not available: pip install radon
 
     Re-check:
-      ./sm swab -g laziness:complexity-creep.py --verbose
+      sm swab -g laziness:complexity-creep.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
@@ -122,6 +125,12 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         # Fallback: check project root for .py files
         return ["."]
 
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        from slopmop.core.cache import hash_file_scope
+
+        dirs = self._get_target_dirs(project_root)
+        return hash_file_scope(project_root, dirs, {".py"}, self.config)
+
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
         dirs = self._get_target_dirs(project_root)
@@ -170,26 +179,19 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         detail = "Functions exceeding complexity:\n" + "\n".join(
             f"  {v}" for v in violations
         )
-        # radon --md lines embed file:line inside markdown — try to recover
-        # them, but fall back to a message-only finding when the format
-        # doesn't match (still a separate SARIF result per function).
-        loc_re = re.compile(r"(\S+\.py)[:\s*]+(\d+)")
-        structured: List[Finding] = []
-        for v in violations:
-            m = loc_re.search(v)
-            if m:
-                structured.append(
-                    Finding(message=v, file=m.group(1), line=int(m.group(2)))
-                )
-            else:
-                structured.append(Finding(message=v))
+        limit = self.config.get("max_complexity", MAX_COMPLEXITY)
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(violations)} function(s) exceed limit",
-            fix_suggestion="Break complex functions into smaller helpers.",
-            findings=structured,
+            fix_suggestion=(
+                "Each function above has a complexity delta to shed. "
+                "Extract the longest conditional branch (if/elif chain "
+                "or try/except cascade) into a named helper. Verify "
+                "with: " + self.verify_command
+            ),
+            findings=[_to_finding(v, limit) for v in violations],
         )
 
     def _parse_violations(self, output: str) -> List[str]:
@@ -198,3 +200,60 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
             if re.search(r"\b[DEF]\b", line) and "(" in line:
                 violations.append(line.strip())
         return violations
+
+
+# ─── radon output parsing ────────────────────────────────────────────────
+#
+# radon --md lines embed file:line inside markdown — try to recover
+# them, but fall back to a message-only finding when the format
+# doesn't match (still a separate SARIF result per function).
+#
+# Line also carries the function name and (score) — extracting both
+# lets the fix_strategy name the exact function and its complexity
+# count.  "Extract helpers from foo() (complexity 24)" is actionable;
+# "break complex functions" is a platitude.
+
+_LOC_RE = re.compile(r"(\S+\.py)[:\s*]+(\d+)")
+
+# radon -s annotates rank with the numeric score in parens, e.g.
+# "... foo - D (24)" — capture the name token before the dash and
+# the number in parens.  [\w.]+ (not \w+) so "MyClass.complex_method
+# - D (24)" keeps the class qualifier; "Extract helpers from
+# complex_method()" is ambiguous when three classes share the name.
+# Either group may miss on odd output; strategy stays None in that
+# case (no guessing).
+_META_RE = re.compile(r"`?([\w.]+)`?\s*-\s*[A-F]\s*\((\d+)\)")
+
+
+def _to_finding(violation_line: str, limit: int = MAX_COMPLEXITY) -> Finding:
+    """Convert one radon violation line into a structured Finding."""
+    loc = _LOC_RE.search(violation_line)
+    meta = _META_RE.search(violation_line)
+
+    strategy: Optional[str] = None
+    if meta:
+        name, score_s = meta.group(1), meta.group(2)
+        score = int(score_s)
+        delta = score - limit
+        if delta > 0:
+            strategy = (
+                f"Complexity of {name}() is {score}, limit is "
+                f"{limit} \u2014 shed at least {delta}. Each "
+                f"if/for/while/except/and/or adds 1. Extract "
+                f"the longest branch into a helper function."
+            )
+        else:
+            strategy = (
+                f"Extract helpers from {name}() — complexity {score} "
+                f"still failed the configured rank gate. Identify the "
+                f"largest branch or loop and move it to a named function."
+            )
+
+    if loc:
+        return Finding(
+            message=violation_line,
+            file=loc.group(1),
+            line=int(loc.group(2)),
+            fix_strategy=strategy,
+        )
+    return Finding(message=violation_line, fix_strategy=strategy)

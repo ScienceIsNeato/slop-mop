@@ -61,23 +61,46 @@ Document the reasoning behind each default value in the config field's `descript
 
 **This is the most important design decision.** The output is what an LLM reads when the gate fails. It must contain everything needed to fix the problem immediately, with no additional research required.
 
-Design the error output to include:
+Design the error output to follow **Diagnosis → Prescription → Verification**:
 
-- **What failed** — specific files and line numbers
-- **Why it failed** — the rule and threshold that was violated
-- **How to fix it** — exact command, code change, or approach
-- **How to re-check** — the `sm swab -g` command to re-run just this gate
+- **Diagnosis** (what failed): specific files, line numbers, the rule/threshold violated
+- **Prescription** (how to fix): the exact action to take — per-finding `fix_strategy` when you can determine it, gate-level `fix_suggestion` for general guidance
+- **Verification** (how to confirm): the `sm swab -g {gate}` command to re-run just this gate
 
-**Do not build the output string manually.** Build a list of `Finding` objects and pass it to `_create_result(findings=...)`. The console output string is auto-generated from the findings (`file:line:col: message` per line), the JSON output gets structured data, and SARIF gets `physicalLocation` for GitHub Code Scanning — all from one call. See §2.2b.
+**Actionability rules — these are MUST requirements, not guidelines:**
 
-### 1.4 Decide on Profiles
+- **MUST**: Every `fix_suggestion` tells the agent exactly what to do. "Fix the issues above" is not acceptable.
+- **MUST**: If the underlying tool provides structured output (JSON, error codes), parse it and attach `fix_strategy` per finding.
+- **MUST NOT**: `fix_suggestion` must never delegate to running the underlying tool ("Run: pytest -v to see details"). If the gate's own output is insufficient, improve the gate — don't work around it.
+- **MUST NOT**: `fix_strategy` must never guess. If the gate cannot determine what the fix is, leave `fix_strategy=None` — absent guidance is better than wrong guidance.
+- **SHOULD**: `fix_strategy` is a command that can be run verbatim or a code transformation that can be applied directly.
 
-Which profiles should include this gate?
+**Do not build the output string manually.** Build a list of `Finding` objects and pass it to `_create_result(findings=...)`. The console output string is auto-generated from the findings (`file:line:col: message` per line plus `→ fix:` line when `fix_strategy` is set), the JSON output gets structured data, and SARIF gets `physicalLocation` for GitHub Code Scanning — all from one call. See §2.2b.
 
-- `commit` — most gates go here (runs every commit)
-- `pr` — everything in commit + PR-specific checks
-- `quick` — lint-only, ultra-fast
-- Category-specific (`python`, `javascript`, `quality`, `security`)
+### 1.4 Decide on Role
+
+Every gate declares a `role` — either `CheckRole.FOUNDATION` or `CheckRole.DIAGNOSTIC`. The default is `DIAGNOSTIC`; you only declare `FOUNDATION` when the gate wraps standard, off-the-shelf tooling and that tool's core logic IS the check.
+
+| Role | Test |
+|---|---|
+| `FOUNDATION` | Could a developer reproduce this gate with one shell command? (`black .`, `pytest`, `eslint`) |
+| `DIAGNOSTIC` | Does this gate implement novel detection that no standard tool provides? (AST walking, git-diff analysis, cross-file patterns) |
+
+**Role is determined by value-add, not mechanism.** A gate that runs eslint with a bespoke rule config that no public preset includes is DIAGNOSTIC — the novelty is in the rule. A gate that runs radon with a configurable threshold is FOUNDATION — radon does the detection, slop-mop picks a number.
+
+```python
+from slopmop.checks.base import CheckRole
+
+class MyCheck(BaseCheck):
+    role = CheckRole.FOUNDATION  # wraps black; black does the real work
+```
+
+### 1.5 Decide on Gate Level
+
+Which level should this gate run at?
+
+- `SWAB` — runs every commit (most gates go here)
+- `SCOUR` — runs before opening PR (heavier/slower checks)
 
 ---
 
@@ -210,11 +233,12 @@ def run(self, project_root: str) -> CheckResult:
     findings: List[Finding] = []
     for problem in parsed_output:
         findings.append(Finding(
-            message=problem.description,       # required
+            message=problem.description,       # required — what's wrong
             file=problem.relative_path,        # optional — omit for project-scoped issues
             line=problem.line_number,          # optional, 1-based
             column=problem.column,             # optional, 1-based
             rule_id=problem.tool_rule_code,    # optional — e.g. "E501", "no-undef"
+            fix_strategy=problem.remediation,  # optional — exact action to resolve THIS finding
         ))
 
     if findings:
@@ -223,9 +247,11 @@ def run(self, project_root: str) -> CheckResult:
             duration=duration,
             findings=findings,                 # ← console output auto-generated from this
             error=f"{len(findings)} issue(s)",
-            fix_suggestion="...",
+            fix_suggestion="...",              # ← gate-level guidance (distinct from per-finding fix_strategy)
         )
 ```
+
+**`fix_strategy` vs `fix_suggestion`:** Per-finding `fix_strategy` is the specific action for THAT finding ("Replace `yaml.load(data)` with `yaml.safe_load(data)`"). Gate-level `fix_suggestion` is general guidance or anti-pattern warnings ("DO NOT trim comments to squeeze under the limit — comments already don't count"). Use both when appropriate; use neither when you'd have to guess.
 
 If the tool you're wrapping has a JSON output mode (`--format json`, `--json`, `--output-format=json`), use it — structured input means no regex parsing. ESLint, pyright, and jscpd all support this. If the tool only has text output, parse it once into `Finding`s; don't format text, then re-parse it later.
 
@@ -252,9 +278,6 @@ If the tool you're wrapping has a JSON output mode (`--format json`, `--json`, `
 
 2. **Register in `slopmop/checks/__init__.py`:**
    Add `registry.register(MyCheck)` to the appropriate `_register_*_checks()` function.
-
-3. **Add to profiles in `_register_aliases()`:**
-   Append `"<category>:<name>"` to the appropriate profile lists.
 
 ### 2.4 Whitelist External Tools
 
@@ -292,7 +315,7 @@ Add a row to the appropriate gate table in the "Available Gates" section:
 | `<category>:<name>` | <emoji> Description |
 ```
 
-If you added the gate to profiles, update the profiles table and the "Commit vs PR" section.
+If you added the gate, update the gate tables in the README.
 
 ### 3.3 Capture Example Output
 
@@ -323,7 +346,7 @@ After implementation, show the user:
 3. **How to run the help** — `sm help <category>:<name>`
 4. **Where README was updated** — link to the section
 5. **Config defaults and reasoning** — why each value is what it is
-6. **Profile membership** — which profiles include this gate
+6. **Gate level** — whether it runs during swab, scour, or both
 
 ---
 
@@ -335,15 +358,16 @@ Copy into your commit message or PR description:
 - [ ] Selection criteria all pass (fast, canonical, valuable, reliable, deterministic, actionable)
 - [ ] Tests written first (identity, config, applicability, run scenarios, output quality)
 - [ ] Check class with all 5 required members
+- [ ] `role` declared (FOUNDATION if wrapping standard tooling, else default DIAGNOSTIC)
 - [ ] Failures return structured `Finding` objects via `_create_result(findings=...)`
+- [ ] `fix_strategy` populated per-finding where the fix is knowable (not guessed)
+- [ ] `fix_suggestion` does not delegate to running the underlying tool
 - [ ] Class docstring written as help text (includes config reasoning)
 - [ ] Exported from category __init__.py
 - [ ] Registered in slopmop/checks/__init__.py
-- [ ] Added to profiles in _register_aliases()
 - [ ] External tools whitelisted in ALLOWED_EXECUTABLES (if applicable)
 - [ ] External tools in requirements.txt and pyproject.toml (if applicable)
 - [ ] README gate table updated
-- [ ] README profiles table updated (if applicable)
 - [ ] Example failure output captured
 - [ ] sm swab passes
 - [ ] Report shown to user
@@ -357,9 +381,7 @@ These are the mistakes agents make repeatedly. Read them before you start.
 
 1. **Forgot to register** — Class exists but `registry.register(MyCheck)` never called. Gate doesn't appear.
 
-2. **Forgot to add to profiles** — Registered but not in `commit`/`pr` alias list. Individual validation works, profile skips it.
-
-3. **Missing subprocess whitelist** — Check calls `_run_command(["newtool", ...])` but `newtool` isn't in `ALLOWED_EXECUTABLES`. Runtime `SecurityError`.
+2. **Missing subprocess whitelist** — Check calls `_run_command(["newtool", ...])` but `newtool` isn't in `ALLOWED_EXECUTABLES`. Runtime `SecurityError`.
 
 4. **Category prefix in name** — `name` should be `"dead-code"`, not `"quality:dead-code"`. Prefix is auto-derived from `category`.
 
@@ -367,10 +389,12 @@ These are the mistakes agents make repeatedly. Read them before you start.
 
 6. **Output not actionable** — Failed gate says "3 issues found" but doesn't say where or how to fix them. Useless to an LLM, and SARIF gets a single repo-root alert instead of three inline annotations. Build `Finding` objects (§2.2b); the string is generated for you.
 
-7. **Not handling tool-not-installed** — Always check `returncode == 127`. Return `CheckStatus.ERROR` with `fix_suggestion="pip install <tool>"`.
+7. **fix_suggestion delegates to the underlying tool** — `"Run: pytest -v to see details"` defeats the purpose of wrapping pytest. The gate already ran pytest; it has the details. Parse them into `Finding.fix_strategy` or include them in `Finding.message`. If the agent needs to run the raw tool anyway, the gate added a step and no value.
 
-8. **Stale Documentation (Current list includes: README)** — Added the gate, wrote the tests, forgot to update documentation. Next session wastes time wondering why `sm help` shows it but README doesn't.
+8. **Not handling tool-not-installed** — Always check `returncode == 127`. Return `CheckStatus.ERROR` with `fix_suggestion="pip install <tool>"`.
 
-9. **Config default mismatch** — Getter method hardcodes a fallback that differs from `ConfigField.default`.
+9. **Stale Documentation (Current list includes: README)** — Added the gate, wrote the tests, forgot to update documentation. Next session wastes time wondering why `sm help` shows it but README doesn't.
 
-10. **Tests that run real tools** — Unit tests must mock `_run_command`. Only integration tests invoke actual binaries.
+10. **Config default mismatch** — Getter method hardcodes a fallback that differs from `ConfigField.default`.
+
+11. **Tests that run real tools** — Unit tests must mock `_run_command`. Only integration tests invoke actual binaries.
