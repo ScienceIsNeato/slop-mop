@@ -39,9 +39,14 @@
 # To see inline annotations for real, drop this workflow into
 # bucket-o-slop (github.com/ScienceIsNeato/bucket-o-slop) — the
 # integration-test fixture repo whose all-fail branch is broken in
-# ways that trip every gate.  Open a PR from all-fail into main and
-# the diff lights up with dead-code, lint, type-error, and security
-# annotations.
+# ways that trip every gate.  Open a PR from all-fail into all-pass
+# and the diff lights up with dead-code, lint, type-error, and
+# security annotations.
+#
+# Fixture-branch update policy:
+# - Validate workflow/test additions on all-pass first
+# - Then port to all-fail for alert-heavy validation/screenshot capture
+# - Update mixed opportunistically when needed
 #
 # The integration tests in tests/integration/test_sarif_integration.py
 # run this same all-fail fixture inside Docker and assert the SARIF

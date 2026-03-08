@@ -23,10 +23,16 @@ RENDERS it — that needs ``upload-sarif`` to run against a real PR.
 To see annotations live:
 
   1. Fork ``bucket-o-slop``
-  2. Copy ``.github/workflows/slopmop-sarif.yml`` from slop-mop into it
-  3. Open a PR from ``all-fail`` into ``main``
+    2. Copy ``.github/workflows/slopmop-sarif.yml`` from slop-mop into it
+    3. Open a PR from ``all-fail`` into ``all-pass``
   4. The workflow runs, uploads SARIF, and Code Scanning decorates
      the diff with every gate's findings
+
+Branch policy for fixture evolution:
+
+    - Land test/workflow plumbing on ``all-pass`` first (clean baseline)
+    - Then port to ``all-fail`` for alert-heavy screenshots/validation
+    - Update ``mixed`` opportunistically when behavior diverges
 
 That's the full loop.  The integration test gets you 95% of the way
 there; the last 5% is GitHub's ingestion, which is their code not ours.

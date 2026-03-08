@@ -41,6 +41,61 @@
 
 Custom gates feature, output polish, PR category removal, and comprehensive custom gate test coverage.
 
+## 2026-03-08 Delta: Bucket-o-Slop Scenario Matrix Clarified
+
+### Completed
+
+1. Promoted `all-pass` to a first-class integration fixture scenario in
+  `tests/integration/conftest.py`:
+  - Added `FIXTURE_REFS["all-pass"]`.
+  - Added `result_all_pass` session fixture.
+  - Kept backward-compatible aliasing (`FIXTURE_REFS["main"]` and
+   `result_main`) so existing callers do not break during migration.
+
+2. Updated integration tests in `tests/integration/test_docker_install.py`
+  to use explicit `all-pass` naming for the passing scenario:
+  - Renamed main-path tests/labels/messages to `all-pass`.
+  - Updated scenario summary docstring to list:
+   - `all-pass`
+   - `all-fail`
+   - `mixed`
+
+3. Updated usage examples in `tests/integration/docker_manager.py` to reflect
+  `all-pass` scenario naming in direct and fixture-based examples.
+
+### Validation
+
+- `pytest tests/integration/test_docker_install.py -q` → **23 passed**
+- `get_errors` check on edited integration files → **no errors**
+
+## 2026-03-08 Delta: Bucket-o-Slop Code Scanning PR Playbook
+
+### Completed
+
+1. Updated SARIF integration verification guidance to use bucket-o-slop PRs
+   from `all-fail` into `all-pass` (instead of `main`) in:
+  - `tests/integration/test_sarif_integration.py`
+
+2. Updated integration runbook branch naming and added a dedicated
+   code-scanning workflow section in:
+  - `tests/integration/README.md`
+  - New guidance reflects branch policy:
+    - build/validate on `all-pass` first,
+    - then port to `all-fail` for alert-rich screenshot/testing,
+    - update `mixed` opportunistically.
+
+3. Aligned workflow commentary in:
+  - `.github/workflows/slopmop-sarif.yml`
+  - Explicitly documents `all-fail` -> `all-pass` PR flow and branch update order.
+
+4. Added fixture-maintenance note in:
+  - `tests/integration/conftest.py`
+
+### Validation
+
+- `pytest tests/integration/test_docker_install.py tests/integration/test_sarif_integration.py -q` → **32 passed**
+- `get_errors` on edited files → **no errors**
+
 ### Latest Work: Strategic planning — model critique synthesis → 3 feature issues
 
 **Round 4 changes (this session):**

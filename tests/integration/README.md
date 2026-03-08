@@ -35,8 +35,8 @@ git clone https://github.com/ScienceIsNeato/bucket-o-slop.git .
 cp -r /slopmop-src /tmp/slopmop-build
 pip install /tmp/slopmop-build
 
-# Pick a branch: main | all-fail | mixed
-git checkout main
+# Pick a branch: all-pass | all-fail | mixed
+git checkout all-pass
 
 # Init and validate
 sm init --non-interactive
@@ -47,9 +47,19 @@ sm swab
 
 | Branch     | Expected exit | What it tests                                      |
 |------------|:------------:|----------------------------------------------------|
-| `main`     | 0            | All gates pass (happy path)                        |
+| `all-pass` | 0            | All gates pass (happy path)                        |
 | `all-fail` | 1            | Every gate uniquely broken                         |
 | `mixed`    | 1            | security + dead-code + bogus-tests fail; duplication skipped |
+
+## Bucket-o-Slop PR Code Scanning Workflow
+
+Use this when preparing screenshots and end-to-end validation for GitHub Code Scanning.
+
+1. Add/update `.github/workflows/slopmop-sarif.yml` in `bucket-o-slop`.
+2. Validate workflow and fixture changes on `all-pass` first.
+3. Port to `all-fail` and open a PR from `all-fail` into `all-pass`.
+4. Capture annotations/screenshots from the PR's Code Scanning results.
+5. Update `mixed` only when needed for a specific scenario.
 
 ### Exit code reference
 
