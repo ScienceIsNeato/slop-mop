@@ -248,12 +248,43 @@ class TestDetectProjectType:
         result = detect_project_type(tmp_path)
         assert result["has_jest"] is True
 
+    def test_detects_jest_from_nested_package_json(self, tmp_path):
+        """Detects Jest from nested package.json in monorepo layouts."""
+        pkg = {"devDependencies": {"jest": "^29.0.0"}}
+        (tmp_path / "client").mkdir()
+        (tmp_path / "client" / "package.json").write_text(json.dumps(pkg))
+        result = detect_project_type(tmp_path)
+        assert result["has_jest"] is True
+
     def test_detects_test_directories(self, tmp_path):
         """Detects test directories."""
         (tmp_path / "tests").mkdir()
         result = detect_project_type(tmp_path)
         assert result["has_tests_dir"] is True
         assert "tests" in result["test_dirs"]
+
+    def test_detects_nested_test_directories(self, tmp_path):
+        """Detects nested test directories in monorepo layouts."""
+        (tmp_path / "server" / "tests").mkdir(parents=True)
+        (tmp_path / "client" / "test").mkdir(parents=True)
+        result = detect_project_type(tmp_path)
+        assert result["has_tests_dir"] is True
+        assert "server/tests" in result["test_dirs"]
+        assert "client/test" in result["test_dirs"]
+
+    def test_ignores_test_directories_in_excluded_paths(self, tmp_path):
+        """Does not count node_modules test directories."""
+        (tmp_path / "node_modules" / "foo" / "tests").mkdir(parents=True)
+        result = detect_project_type(tmp_path)
+        assert result["has_tests_dir"] is False
+        assert result["test_dirs"] == []
+
+    def test_detects_pytest_from_nested_config(self, tmp_path):
+        """Detects pytest from nested pytest.ini."""
+        (tmp_path / "server").mkdir()
+        (tmp_path / "server" / "pytest.ini").write_text("[pytest]\n")
+        result = detect_project_type(tmp_path)
+        assert result["has_pytest"] is True
 
     def test_recommends_gates_for_python(self, tmp_path):
         """Recommends appropriate gates for Python-only projects."""

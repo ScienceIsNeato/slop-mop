@@ -64,6 +64,19 @@ _C_CPP_LANGS = {
 }
 _DART_LANGS = {"dart"}
 _SCC_SUMMARY_ROWS = {"total", "totals", "sum", "header"}
+_DETECTION_EXCLUDED_DIRS = {
+    ".git",
+    "node_modules",
+    "venv",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".slopmop",
+}
+_MAX_NESTED_SCAN_DEPTH = 4
 
 
 def _normalize_language_key(name: str) -> str:
@@ -296,46 +309,77 @@ def _detect_package_manager(project_root: Path) -> str:
 
 def _detect_test_dirs(project_root: Path) -> list[str]:
     """Find test directories."""
-    test_dirs: list[str] = []
-    for test_dir in ["tests", "test", "spec", "__tests__"]:
-        test_path = project_root / test_dir
-        if test_path.is_dir():
-            test_dirs.append(str(test_path.relative_to(project_root)))
-    return test_dirs
+    names = {"tests", "test", "spec", "__tests__"}
+    found: set[str] = set()
+    for name in names:
+        for path in project_root.rglob(name):
+            if not path.is_dir():
+                continue
+            rel = path.relative_to(project_root)
+            if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+                continue
+            if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+                continue
+            found.add(str(rel))
+    return sorted(found)
 
 
 def _detect_pytest(project_root: Path) -> bool:
     """Check for pytest configuration."""
-    pyproject = project_root / "pyproject.toml"
-    if pyproject.exists() and "pytest" in pyproject.read_text():
-        return True
+    def _safe_contains(path: Path, needle: str) -> bool:
+        try:
+            return needle in path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return False
 
-    setup_cfg = project_root / "setup.cfg"
-    if setup_cfg.exists() and "pytest" in setup_cfg.read_text():
-        return True
+    for path in project_root.rglob("pyproject.toml"):
+        rel = path.relative_to(project_root)
+        if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+            continue
+        if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+            continue
+        if _safe_contains(path, "pytest"):
+            return True
 
-    return (project_root / "pytest.ini").exists() or (
-        project_root / "conftest.py"
-    ).exists()
+    for path in project_root.rglob("setup.cfg"):
+        rel = path.relative_to(project_root)
+        if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+            continue
+        if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+            continue
+        if _safe_contains(path, "pytest"):
+            return True
+
+    for name in ("pytest.ini", "conftest.py"):
+        for path in project_root.rglob(name):
+            rel = path.relative_to(project_root)
+            if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+                continue
+            if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+                continue
+            return True
+    return False
 
 
 def _detect_jest(project_root: Path) -> bool:
     """Check for Jest configuration."""
-    package_json = project_root / "package.json"
-    if not package_json.exists():
-        return False
-
-    try:
-        pkg = json.loads(package_json.read_text())
-        if "jest" in pkg.get("devDependencies", {}):
-            return True
-        if "jest" in pkg.get("dependencies", {}):
-            return True
-        if "test" in pkg.get("scripts", {}):
-            if "jest" in pkg["scripts"]["test"]:
+    for package_json in project_root.rglob("package.json"):
+        rel = package_json.relative_to(project_root)
+        if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+            continue
+        if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+            continue
+        try:
+            pkg = json.loads(package_json.read_text(encoding="utf-8", errors="ignore"))
+            if "jest" in pkg.get("devDependencies", {}):
                 return True
-    except json.JSONDecodeError:
-        pass
+            if "jest" in pkg.get("dependencies", {}):
+                return True
+            if "test" in pkg.get("scripts", {}):
+                if "jest" in pkg["scripts"]["test"]:
+                    return True
+        except json.JSONDecodeError:
+            continue
     return False
 
 
