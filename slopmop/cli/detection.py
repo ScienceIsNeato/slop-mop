@@ -386,6 +386,19 @@ def _detect_jest(project_root: Path) -> bool:
 def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     """Determine recommended gates based on detection."""
     recommended: list[str] = []
+    has_any_source_language = any(
+        [
+            detected.get("has_python"),
+            detected.get("has_javascript"),
+            detected.get("has_go"),
+            detected.get("has_rust"),
+            detected.get("has_c_cpp"),
+            detected.get("has_dart"),
+        ]
+    )
+    if has_any_source_language:
+        recommended.append("overconfidence:literally-no-testing")
+
     if detected["has_python"]:
         recommended.extend(
             [

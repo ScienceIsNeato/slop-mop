@@ -9,6 +9,7 @@ Cross-cutting quality gates that apply to any project:
 - StringDuplicationCheck: Duplicate string literal detection
 - LocLockCheck: Lines of code enforcement
 - DebuggerArtifactsCheck: Cross-language debugger artifact detection
+- NoTestingCheck: Repository has code but no tests at all
 """
 
 from slopmop.checks.quality.bogus_tests import BogusTestsCheck
@@ -20,6 +21,7 @@ from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
 from slopmop.checks.quality.duplication import SourceDuplicationCheck
 from slopmop.checks.quality.gate_dodging import GateDodgingCheck
 from slopmop.checks.quality.loc_lock import LocLockCheck
+from slopmop.checks.quality.no_testing import NoTestingCheck
 
 __all__ = [
     "BogusTestsCheck",
@@ -31,4 +33,5 @@ __all__ = [
     "SourceDuplicationCheck",
     "StringDuplicationCheck",
     "LocLockCheck",
+    "NoTestingCheck",
 ]
