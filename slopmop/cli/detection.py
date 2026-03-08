@@ -463,58 +463,79 @@ def _suggest_custom_gates(
         )
 
     if detected.get("has_dart"):
-        gates.extend(
-            [
-                {
-                    "name": "flutter-analyze",
-                    "description": "Run Flutter static analysis",
-                    "category": "laziness",
-                    "command": (
-                        "sh -c 'set -e; "
-                        'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
-                        '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                        'for pubspec in $pubspecs; do '
-                        'dir=$(dirname "$pubspec"); '
-                        'echo "==> flutter analyze ($dir)"; '
-                        '(cd "$dir" && flutter analyze); '
-                        "done'"
-                    ),
-                    "level": "swab",
-                    "timeout": 300,
-                },
-                {
-                    "name": "flutter-test",
-                    "description": "Run Flutter tests",
-                    "category": "overconfidence",
-                    "command": (
-                        "sh -c 'set -e; "
-                        'ran=0; '
-                        'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
-                        '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                        'for pubspec in $pubspecs; do '
-                        'dir=$(dirname "$pubspec"); '
-                        'if [ -d "$dir/test" ]; then '
-                        'ran=1; '
-                        'echo "==> flutter test ($dir)"; '
-                        '(cd "$dir" && flutter test); '
-                        "fi; "
-                        "done; "
-                        '[ "$ran" -eq 1 ] || { echo "No Flutter test directories found"; exit 1; }'
-                        "'"
-                    ),
-                    "level": "swab",
-                    "timeout": 600,
-                },
+        flutter_available = find_tool("flutter", str(project_root)) is not None
+        dart_available = find_tool("dart", str(project_root)) is not None
+
+        flutter_preflight = (
+            "if flutter --version 2>&1 | grep -q "
+            '"engine.stamp: Operation not permitted"; '
+            'then echo "Skipping Flutter gate: SDK cache path not writable in this environment"; '
+            "exit 0; fi; "
+        )
+
+        if flutter_available:
+            gates.extend(
+                [
+                    {
+                        "name": "flutter-analyze",
+                        "description": "Run Flutter static analysis",
+                        "category": "laziness",
+                        "command": (
+                            "sh -c 'set -e; "
+                            + flutter_preflight
+                            + 'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
+                            '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
+                            'for pubspec in $pubspecs; do '
+                            'dir=$(dirname "$pubspec"); '
+                            'echo "==> flutter analyze ($dir)"; '
+                            '(cd "$dir" && flutter analyze); '
+                            "done'"
+                        ),
+                        "level": "swab",
+                        "timeout": 300,
+                    },
+                    {
+                        "name": "flutter-test",
+                        "description": "Run Flutter tests",
+                        "category": "overconfidence",
+                        "command": (
+                            "sh -c 'set -e; "
+                            + flutter_preflight
+                            + 'ran=0; '
+                            'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
+                            '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
+                            'for pubspec in $pubspecs; do '
+                            'dir=$(dirname "$pubspec"); '
+                            'if [ -d "$dir/test" ]; then '
+                            'ran=1; '
+                            'echo "==> flutter test ($dir)"; '
+                            '(cd "$dir" && flutter test); '
+                            "fi; "
+                            "done; "
+                            '[ "$ran" -eq 1 ] || { echo "No Flutter test directories found"; exit 1; }'
+                            "'"
+                        ),
+                        "level": "swab",
+                        "timeout": 600,
+                    },
+                ]
+            )
+
+        if dart_available:
+            gates.append(
                 {
                     "name": "dart-format-check",
                     "description": "Check Dart formatting",
                     "category": "laziness",
-                    "command": "dart format --output=none --set-exit-if-changed .",
+                    "command": (
+                        "sh -c 'set -e; "
+                        + flutter_preflight
+                        + "dart format --output=none --set-exit-if-changed .'"
+                    ),
                     "level": "swab",
                     "timeout": 120,
-                },
-            ]
-        )
+                }
+            )
 
     return gates
 

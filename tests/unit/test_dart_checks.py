@@ -51,6 +51,28 @@ class TestDartCoverageCheck:
         assert result.status == CheckStatus.FAILED
         assert "flutter test failed" in (result.error or "")
 
+    def test_warns_on_flutter_sdk_cache_permission_error(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        (tmp_path / "test").mkdir()
+        check = DartCoverageCheck({})
+
+        run_result = MagicMock()
+        run_result.success = False
+        run_result.timed_out = False
+        run_result.output = (
+            "/opt/homebrew/share/flutter/bin/internal/update_engine_version.sh: "
+            "line 64: /opt/homebrew/share/flutter/bin/cache/engine.stamp: "
+            "Operation not permitted"
+        )
+
+        with (
+            patch("slopmop.checks.dart.coverage.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.WARNED
+        assert "not writable" in (result.error or "")
+
     def test_passes_when_coverage_meets_threshold(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")
         (tmp_path / "test").mkdir()

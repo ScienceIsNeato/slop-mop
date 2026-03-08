@@ -304,9 +304,15 @@ class TestDetectProjectType:
 
     def test_dart_detection_suggests_flutter_custom_gates(self, tmp_path):
         """Dart repos should get Flutter custom gates and built-in Dart gates."""
-        with patch(
-            "slopmop.cli.detection._detect_languages_with_scc",
-            return_value={"dart"},
+        with (
+            patch(
+                "slopmop.cli.detection._detect_languages_with_scc",
+                return_value={"dart"},
+            ),
+            patch(
+                "slopmop.cli.detection.find_tool",
+                side_effect=lambda name, _root: f"/usr/bin/{name}",
+            ),
         ):
             result = detect_project_type(tmp_path)
 
@@ -319,12 +325,30 @@ class TestDetectProjectType:
         by_name = {gate["name"]: gate for gate in result["suggested_custom_gates"]}
         assert "find . -name pubspec.yaml" in by_name["flutter-analyze"]["command"]
         assert "find . -name pubspec.yaml" in by_name["flutter-test"]["command"]
-        assert by_name["dart-format-check"]["command"].startswith(
-            "dart format --output=none --set-exit-if-changed"
-        )
+        assert "dart format --output=none --set-exit-if-changed" in by_name[
+            "dart-format-check"
+        ]["command"]
+        assert "engine.stamp: Operation not permitted" in by_name[
+            "dart-format-check"
+        ]["command"]
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
         assert "deceptiveness:bogus-tests.dart" in result["recommended_gates"]
         assert "laziness:generated-artifacts.dart" in result["recommended_gates"]
+
+    def test_dart_detection_omits_flutter_custom_gates_when_tools_missing(self, tmp_path):
+        """Dart custom gates should not be suggested when flutter/dart tools are missing."""
+        with (
+            patch(
+                "slopmop.cli.detection._detect_languages_with_scc",
+                return_value={"dart"},
+            ),
+            patch("slopmop.cli.detection.find_tool", return_value=None),
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["has_dart"] is True
+        assert result["suggested_custom_gates"] == []
+        assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
 
 
 class TestPromptFunctions:
