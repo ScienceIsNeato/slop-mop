@@ -366,6 +366,8 @@ class TestDetectProjectType:
 
         by_name = {gate["name"]: gate for gate in result["suggested_custom_gates"]}
         assert "find . -name pubspec.yaml" in by_name["flutter-analyze"]["command"]
+        assert "--no-fatal-infos" in by_name["flutter-analyze"]["command"]
+        assert "--no-fatal-warnings" in by_name["flutter-analyze"]["command"]
         assert "find . -name pubspec.yaml" in by_name["flutter-test"]["command"]
         assert (
             "dart format --output=none --set-exit-if-changed"

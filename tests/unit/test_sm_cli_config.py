@@ -229,6 +229,43 @@ class TestCmdConfig:
             config["myopia"]["gates"]["vulnerability-blindness.py"]["enabled"] is True
         )
 
+    def test_enable_gate_preserves_non_dict_category_value(self, tmp_path):
+        """--enable must not overwrite malformed category values in config."""
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "myopia": "legacy-string-value",
+                    "disabled_gates": ["myopia:vulnerability-blindness.py"],
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable="myopia:vulnerability-blindness.py",
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        with (
+            patch("slopmop.checks.ensure_checks_registered"),
+            patch(
+                "slopmop.cli.config.get_registry",
+                return_value=_mock_registry_for_vuln_gate(applicable=True),
+            ),
+        ):
+            result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert config["myopia"] == "legacy-string-value"
+        assert "myopia:vulnerability-blindness.py" not in config["disabled_gates"]
+
     def test_show_uses_nested_enabled_flag(self, tmp_path, capsys):
         """--show should mark nested enabled:false gates as disabled."""
         (tmp_path / "main.py").write_text("print('hello')\n")

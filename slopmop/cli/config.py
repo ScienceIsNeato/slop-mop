@@ -18,14 +18,18 @@ def _as_dict(value: Any) -> dict[str, Any] | None:
     return None
 
 
-def _ensure_dict(container: dict[str, Any], key: str) -> dict[str, Any]:
-    """Ensure `container[key]` is a dict and return it."""
-    existing = _as_dict(container.get(key))
-    if existing is not None:
-        return existing
-    fresh: dict[str, Any] = {}
-    container[key] = fresh
-    return fresh
+def _ensure_dict(container: dict[str, Any], key: str) -> dict[str, Any] | None:
+    """Ensure `container[key]` is a dict and return it.
+
+    Creates a new dict only when key is missing. If key exists with a non-dict
+    value, returns None and preserves the original value.
+    """
+    existing_value = container.get(key)
+    if existing_value is None:
+        fresh: dict[str, Any] = {}
+        container[key] = fresh
+        return fresh
+    return _as_dict(existing_value)
 
 
 def _string_list(value: Any) -> list[str]:
@@ -152,9 +156,12 @@ def _enable_gate(
         if ":" in full_name:
             category, gate = full_name.split(":", 1)
             cat = _ensure_dict(cfg, category)
-            gates = _ensure_dict(cat, "gates")
-            gate_cfg = _ensure_dict(gates, gate)
-            gate_cfg["enabled"] = enabled
+            if cat is not None:
+                gates = _ensure_dict(cat, "gates")
+                if gates is not None:
+                    gate_cfg = _ensure_dict(gates, gate)
+                    if gate_cfg is not None:
+                        gate_cfg["enabled"] = enabled
 
         disabled = _string_list(cfg.get("disabled_gates", []))
         if enabled:
@@ -190,9 +197,12 @@ def _disable_gate(config_file: Path, config: dict[str, Any], gate_name: str) -> 
         if ":" in full_name:
             category, gate = full_name.split(":", 1)
             cat = _ensure_dict(cfg, category)
-            gates = _ensure_dict(cat, "gates")
-            gate_cfg = _ensure_dict(gates, gate)
-            gate_cfg["enabled"] = enabled
+            if cat is not None:
+                gates = _ensure_dict(cat, "gates")
+                if gates is not None:
+                    gate_cfg = _ensure_dict(gates, gate)
+                    if gate_cfg is not None:
+                        gate_cfg["enabled"] = enabled
 
         disabled = _string_list(cfg.get("disabled_gates", []))
         if enabled:

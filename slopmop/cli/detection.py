@@ -542,7 +542,7 @@ def _suggest_custom_gates(
                             "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'echo "==> flutter analyze ($dir)"; '
-                            '(cd "$dir" && flutter analyze); '
+                            '(cd "$dir" && flutter analyze --no-fatal-infos --no-fatal-warnings); '
                             "done'"
                         ),
                         "level": "swab",

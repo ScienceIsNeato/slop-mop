@@ -131,6 +131,10 @@ class CommandValidator:
         # Shell operators only when used as operators (space/token delimited).
         # This avoids false positives on legitimate regex args like /(a|b)/.
         re.compile(r"(^|\s)(\||>>?|2>|&>|<)(\s|$)"),
+        # Operators at arg start without surrounding spaces (e.g. "|cat", "2>/tmp").
+        re.compile(r"^(\||>>?|2>|&>|<)\S"),
+        # Operators at arg end without surrounding spaces (e.g. "foo|", "bar>>").
+        re.compile(r"\S(\||>>?|2>|&>|<)$"),
     ]
 
     def __init__(self, additional_allowed: Optional[Set[str]] = None):

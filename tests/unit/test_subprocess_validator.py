@@ -63,6 +63,27 @@ class TestCommandValidator:
             validator.validate(["python", "script.py", "| cat /etc/passwd"])
         assert "Dangerous" in str(exc_info.value)
 
+    def test_rejects_shell_operator_at_arg_start_without_space(self):
+        """Operator at token start should be rejected (e.g. '|cat')."""
+        validator = CommandValidator()
+        with pytest.raises(SecurityError) as exc_info:
+            validator.validate(["python", "script.py", "|cat"])
+        assert "Dangerous" in str(exc_info.value)
+
+    def test_rejects_shell_operator_at_arg_end_without_space(self):
+        """Operator at token end should be rejected (e.g. 'cat|')."""
+        validator = CommandValidator()
+        with pytest.raises(SecurityError) as exc_info:
+            validator.validate(["python", "script.py", "cat|"])
+        assert "Dangerous" in str(exc_info.value)
+
+    def test_rejects_redirect_without_space(self):
+        """Redirection operators without spaces should be rejected."""
+        validator = CommandValidator()
+        with pytest.raises(SecurityError) as exc_info:
+            validator.validate(["python", "script.py", "2>/tmp/err"])
+        assert "Dangerous" in str(exc_info.value)
+
     def test_allows_regex_argument_with_pipe_character(self):
         """Regex alternation in a normal arg is not shell injection."""
         validator = CommandValidator()
