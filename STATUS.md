@@ -202,3 +202,29 @@ Custom gates feature, output polish, PR category removal, and comprehensive cust
 - Restored default budget + full run:
   - `sm config --swabbing-time 100`
   - `sm swab --json --output-file .slopmop/last_swab.json` → **16 checks passed**
+
+## 2026-03-07 Delta: PR Comments CI Advisory Signal
+
+### Issue
+
+- `myopia:ignored-feedback` warned on unresolved PR threads, but CI appeared green
+  because WARN is non-blocking by design.
+
+### Completed
+
+1. Updated `.github/workflows/slopmop.yml` `pr-comments` job to:
+   - run `myopia:ignored-feedback` with JSON output file,
+   - parse warned/unresolved state,
+   - publish a dedicated `PR Comment Advisory` check run via GitHub Checks API.
+2. Advisory conclusion is:
+   - `action_required` when unresolved comments exist,
+   - `success` when clear.
+3. Added job permissions for checks write:
+   - `permissions: checks: write, contents: read`.
+
+### Validation
+
+- Local reproduction still shows unresolved comments as WARN
+  (`sm scour -g myopia:ignored-feedback --verbose --no-cache`).
+- Workflow logic now emits a separate advisory signal intended to make
+  unresolved PR threads visibly non-green without hard-failing the pipeline.
