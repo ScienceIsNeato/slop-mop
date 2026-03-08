@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -51,10 +52,11 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
           produce coverage reports.
 
     Re-check:
-      ./sm swab -g overconfidence:coverage-gaps.js --verbose
+      sm swab -g overconfidence:coverage-gaps.js --verbose
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)
@@ -66,7 +68,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "📊 Coverage"
+        return "📊 Coverage (JavaScript, Jest)"
 
     @property
     def gate_description(self) -> str:

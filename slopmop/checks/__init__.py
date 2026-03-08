@@ -1,9 +1,24 @@
 """Quality gate checks for slopmop.
 
 This module provides registration for all available checks and aliases.
+
+The ``slopmop.core.registry`` import is deferred to function-call time.
+``registry.py`` imports ``slopmop.checks.base``, which must run this
+``__init__.py`` first (parent package initialisation).  If we import
+registry here at module level, the cycle only happens to work when
+``sm.py`` is the entry point because it touches ``checks.base`` before
+``registry`` does.  A bare ``from slopmop.core.registry import
+get_registry`` in a REPL blows up with a partial-initialisation
+ImportError.  Deferring to function bodies breaks the cycle in every
+import order.
 """
 
-from slopmop.core.registry import CheckRegistry, get_registry
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from slopmop.core.registry import CheckRegistry
 
 
 def _register_python_checks(registry: CheckRegistry) -> None:
@@ -76,65 +91,17 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(PRCommentsCheck)
 
 
-def _register_aliases(registry: CheckRegistry) -> None:
-    """Register convenience group aliases for -g flag.
-
-    Gate level (swab/scour) is intrinsic to each check class via the
-    ``level`` ClassVar.  Aliases here are convenience shortcuts for
-    ``-g`` when you want to run a subset of gates by topic.
-    """
-    # ── Convenience group aliases (for -g flag) ───────────────────────
-    registry.register_alias(
-        "quick", ["laziness:sloppy-formatting.py", "myopia:vulnerability-blindness.py"]
-    )
-
-    registry.register_alias(
-        "python",
-        [
-            "laziness:sloppy-formatting.py",
-            "overconfidence:missing-annotations.py",
-            "overconfidence:type-blindness.py",
-            "overconfidence:untested-code.py",
-            "overconfidence:coverage-gaps.py",
-        ],
-    )
-
-    registry.register_alias(
-        "javascript",
-        [
-            "laziness:sloppy-formatting.js",
-            "overconfidence:type-blindness.js",
-            "overconfidence:untested-code.js",
-            "overconfidence:coverage-gaps.js",
-            "laziness:sloppy-frontend.js",
-        ],
-    )
-
-    registry.register_alias("security", ["myopia:dependency-risk.py"])
-    registry.register_alias("security-local", ["myopia:vulnerability-blindness.py"])
-
-    registry.register_alias(
-        "quality",
-        [
-            "laziness:complexity-creep.py",
-            "myopia:source-duplication",
-            "myopia:string-duplication.py",
-            "deceptiveness:bogus-tests.py",
-            "myopia:code-sprawl",
-        ],
-    )
-
-
 def register_all_checks() -> None:
-    """Register all available checks and aliases with the registry.
+    """Register all available checks with the registry.
 
     Call this function before running checks to ensure all checks are available.
     """
+    from slopmop.core.registry import get_registry
+
     registry = get_registry()
     _register_python_checks(registry)
     _register_javascript_checks(registry)
     _register_crosscutting_checks(registry)
-    _register_aliases(registry)
 
 
 _checks_registered = False
@@ -148,6 +115,8 @@ def ensure_checks_registered() -> None:
     the registry might have been reset.
     """
     global _checks_registered
+    from slopmop.core.registry import get_registry
+
     registry = get_registry()
     # Also check if registry is actually populated, not just the flag
     # This handles test scenarios where registry was reset

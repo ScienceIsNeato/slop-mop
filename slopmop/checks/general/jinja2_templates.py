@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -42,10 +43,11 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
       Jinja2 not installed: pip install jinja2
 
     Re-check:
-      ./sm swab -g laziness:broken-templates.py --verbose
+      sm swab -g laziness:broken-templates.py --verbose
     """
 
     tool_context = ToolContext.PROJECT
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -155,17 +156,21 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
 
     Common failures:
       reportUnknownVariableType: Annotate the variable.
-          `results = []` → `results: List[str] = []`
+          `results = []` → `results: List[str] = []`.
+          For dataclass `field(default_factory=list)`: use a typed
+          factory function — the bare `list` builtin has no element
+          type under strict mode.
       reportUnknownMemberType: The object's type is partially
           unknown, so its methods are too. Fix the root variable.
       reportUnknownArgumentType: You're passing an unknown-typed
           value to a function. Annotate the source variable.
 
     Re-check:
-      ./sm swab -g overconfidence:type-blindness.py --verbose
+      sm swab -g overconfidence:type-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
@@ -494,9 +499,20 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         suggestions: List[str] = ["Add type annotations to eliminate Unknown types."]
 
         if "reportUnknownVariableType" in rules:
+            # Two common causes, two distinct fixes.  The local-variable
+            # case is the majority; the dataclass-factory case is rarer
+            # but the first fix actively misleads there (the annotation
+            # IS present — the factory's return type is what's wrong).
+            # Listing both prevents the agent burning a turn trying the
+            # wrong one.
             suggestions.append(
-                "reportUnknownVariableType: Annotate local variables. "
-                "results = [] → results: List[str] = []"
+                "reportUnknownVariableType: "
+                "(a) Local variable: annotate it — "
+                "results = [] → results: List[str] = []. "
+                "(b) Dataclass field(default_factory=list): the builtin "
+                "returns list[Unknown]. Use a typed factory — "
+                "def _empty() -> List[Foo]: return []; "
+                "field(default_factory=_empty)."
             )
 
         if "reportUnknownMemberType" in rules:

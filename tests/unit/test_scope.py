@@ -352,7 +352,8 @@ class TestConsoleSummaryScope:
 
     def test_summary_all_passed_no_scope_in_summary(self, capsys):
         """Scope is NOT shown in swab/scour summary (moved to sm status)."""
-        from slopmop.reporting.console import ConsoleReporter
+        from slopmop.reporting.adapters import ConsoleAdapter
+        from slopmop.reporting.report import RunReport
 
         scope = ScopeInfo(files=47, lines=3200)
         results = [
@@ -365,8 +366,7 @@ class TestConsoleSummaryScope:
             ),
         ]
         summary = ExecutionSummary.from_results(results, 1.0)
-        reporter = ConsoleReporter()
-        reporter.print_summary(summary)
+        ConsoleAdapter(RunReport.from_summary(summary)).render()
 
         captured = capsys.readouterr()
         assert "NO SLOP DETECTED" in captured.out
@@ -376,14 +376,14 @@ class TestConsoleSummaryScope:
 
     def test_summary_all_passed_no_scope(self, capsys):
         """Summary line omits scope when no checks report it."""
-        from slopmop.reporting.console import ConsoleReporter
+        from slopmop.reporting.adapters import ConsoleAdapter
+        from slopmop.reporting.report import RunReport
 
         results = [
             CheckResult("check1", CheckStatus.PASSED, 1.0),
         ]
         summary = ExecutionSummary.from_results(results, 1.0)
-        reporter = ConsoleReporter()
-        reporter.print_summary(summary)
+        ConsoleAdapter(RunReport.from_summary(summary)).render()
 
         captured = capsys.readouterr()
         assert "NO SLOP DETECTED" in captured.out
@@ -391,7 +391,8 @@ class TestConsoleSummaryScope:
 
     def test_summary_failure_no_scope_in_summary(self, capsys):
         """Scope is NOT shown in failure summary (moved to sm status)."""
-        from slopmop.reporting.console import ConsoleReporter
+        from slopmop.reporting.adapters import ConsoleAdapter
+        from slopmop.reporting.report import RunReport
 
         scope = ScopeInfo(files=148, lines=27800)
         results = [
@@ -405,8 +406,7 @@ class TestConsoleSummaryScope:
             ),
         ]
         summary = ExecutionSummary.from_results(results, 1.0)
-        reporter = ConsoleReporter()
-        reporter.print_summary(summary)
+        ConsoleAdapter(RunReport.from_summary(summary)).render()
 
         captured = capsys.readouterr()
         assert "SLOP DETECTED" in captured.out

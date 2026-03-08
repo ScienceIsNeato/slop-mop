@@ -8,9 +8,16 @@ import concurrent.futures
 import logging
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import BaseCheck
+from slopmop.core.cache import (
+    compute_fingerprint,
+    get_cached_result,
+    load_cache,
+    save_cache,
+    store_result,
+)
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import (
     CheckResult,
@@ -48,16 +55,18 @@ def _is_gate_enabled_in_config(
     # Check if language/category is enabled
     category_val: object = config.get(category_key)
     if isinstance(category_val, dict):
-        enabled_val = category_val.get("enabled")  # type: ignore[reportUnknownMemberType]
-        if enabled_val is False:
+        cat_dict = cast(Dict[str, Any], category_val)
+        if cat_dict.get("enabled") is False:
             return False, f"{category_key} language is disabled in config"
 
         # Check if specific gate is disabled
-        gates_val = category_val.get("gates")  # type: ignore[reportUnknownMemberType]
+        gates_val = cat_dict.get("gates")
         if isinstance(gates_val, dict) and gate_name in gates_val:
-            gate_cfg = gates_val.get(gate_name)  # type: ignore[reportUnknownMemberType]
-            if isinstance(gate_cfg, dict) and gate_cfg.get("enabled") is False:  # type: ignore[reportUnknownMemberType]
-                return False, f"{check.full_name} is disabled in config"
+            gate_cfg = cast(Dict[str, Any], gates_val).get(gate_name)
+            if isinstance(gate_cfg, dict):
+                gate_dict = cast(Dict[str, Any], gate_cfg)
+                if gate_dict.get("enabled") is False:
+                    return False, f"{check.full_name} is disabled in config"
 
     return True, ""
 
@@ -94,13 +103,16 @@ class CheckExecutor:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._results: Dict[str, CheckResult] = {}
+        self._cache: Dict[str, Any] = {}
+        self._fingerprint: Optional[str] = None
+        self._cache_dirty = False
         self._on_check_complete: Optional[Callable[[CheckResult], None]] = None
         self._on_check_start: Optional[Callable[[str, Optional[str]], None]] = None
         self._on_check_disabled: Optional[Callable[[str], None]] = None
         self._on_check_na: Optional[Callable[[str], None]] = None
         self._on_total_determined: Optional[Callable[[int], None]] = None
         self._on_pending_checks: Optional[
-            Callable[[List[tuple[str, Optional[str], bool]]], None]
+            Callable[[List[tuple[str, Optional[str], bool, Optional[str]]]], None]
         ] = None
 
     def set_progress_callback(self, callback: Callable[[CheckResult], None]) -> None:
@@ -146,7 +158,10 @@ class CheckExecutor:
         self._on_total_determined = callback
 
     def set_pending_callback(
-        self, callback: Callable[[List[tuple[str, Optional[str], bool]]], None]
+        self,
+        callback: Callable[
+            [List[tuple[str, Optional[str], bool, Optional[str]]]], None
+        ],
     ) -> None:
         """Set callback for registering all applicable checks as pending.
 
@@ -154,7 +169,7 @@ class CheckExecutor:
 
         Args:
             callback: Function called with list of
-                (full_name, category_key, is_custom) tuples
+                (full_name, category_key, is_custom, role) tuples
         """
         self._on_pending_checks = callback
 
@@ -166,6 +181,7 @@ class CheckExecutor:
         auto_fix: bool = True,
         swabbing_time: Optional[int] = None,
         timings: Optional[Dict[str, float]] = None,
+        use_cache: bool = True,
     ) -> ExecutionSummary:
         """Run specified checks against a project.
 
@@ -176,7 +192,8 @@ class CheckExecutor:
             auto_fix: Whether to attempt auto-fixing issues
             swabbing_time: Wall-clock time budget in seconds.  Gates
                 with historical timing data are scheduled using a
-                dual-lane strategy until budget expires, then skipped.
+                budget-aware dual-lane strategy until budget expires,
+                then skipped.
                 Gates without timing data always run (to establish a
                 baseline).  ``None`` or ``<= 0`` means no limit.
             timings: Historical timing data mapping check full_name to
@@ -192,6 +209,16 @@ class CheckExecutor:
         # Reset state
         self._stop_event.clear()
         self._results.clear()
+
+        # Load cache and compute fingerprint for this run
+        if use_cache:
+            self._cache = load_cache(project_root)
+            self._fingerprint = compute_fingerprint(project_root)
+        else:
+            self._cache = {}
+            self._fingerprint = None
+            logger.debug("Cache disabled via --no-cache")
+        self._cache_dirty = False
 
         # Get check instances
         checks = self._registry.get_checks(check_names, config)
@@ -320,6 +347,7 @@ class CheckExecutor:
                     c.full_name,
                     c.category.key if c.category else None,
                     getattr(c, "is_custom_gate", False),
+                    c.role.value if hasattr(c, "role") else None,
                 )
                 for c in applicable
             ]
@@ -337,6 +365,10 @@ class CheckExecutor:
             timings=timings,
             swabbing_time=swabbing_time,
         )
+
+        # Persist cache if any entries were added/updated
+        if self._cache_dirty:
+            save_cache(project_root, self._cache)
 
         duration = time.time() - start_time
         return ExecutionSummary.from_results(list(self._results.values()), duration)
@@ -375,10 +407,8 @@ class CheckExecutor:
                         dep_check = dep_checks[0]
                         check_map[dep_check.full_name] = dep_check
                         to_process.append(dep_check)
-                        logger.info(
-                            f"Auto-including {dep_check.full_name} "
-                            f"(dependency of {check.full_name})"
-                        )
+                        logger.info(f"  + {dep_check.full_name}")
+                        logger.info(f"    (needed by {check.full_name})")
 
         return list(check_map.values())
 
@@ -412,14 +442,16 @@ class CheckExecutor:
     ) -> None:
         """Execute checks respecting dependencies with wall-clock budget.
 
-        Uses a **dual-lane** scheduling strategy when a time budget is
-        active.  Each scheduling round fills thread pool slots from two
-        ends of the ready queue:
+        Uses a **budget-aware dual-lane** strategy when a time budget is
+        active. The scheduler fills available slots from two ends:
 
-        * **Heavy lane** (``N − 1`` slots): longest-estimated gates
-          first, so expensive work starts early.
-        * **Light lane** (``1`` slot): shortest-estimated gate, making
-          forward progress on quick wins while the heavy work runs.
+        * one **fast lane** slot for short checks (quick wins), and
+        * remaining **heavy lane** slots for longer checks.
+
+        Submission is constrained by projected remaining budget using
+        historical expected durations and in-flight estimates, so we
+        pack as many checks as possible into the remaining time while
+        still making progress on heavier work.
 
         Wall-clock time determines when to stop: once elapsed time
         exceeds the budget, no new *timed* gates are submitted.
@@ -633,9 +665,10 @@ class CheckExecutor:
            (maximise parallelism by starting slow work early).
         2. **Budget expired** — skip all timed ready gates
            (record TIME_BUDGET results), submit only untimed gates.
-        3. **Budget active, not expired** — dual-lane slot-based
-           submission: ``N − 1`` slots from the heavy end, ``1`` from
-           the light end.  Untimed gates always get priority.
+          3. **Budget active, not expired** — budget-aware dual-lane
+              submission: untimed gates first, then one fast-lane timed
+              gate plus heavy-lane timed gates chosen to best pack the
+              remaining projected budget.
 
         Gates without timing history are *always* submitted regardless
         of budget state (they need to run to build a baseline).
@@ -680,7 +713,7 @@ class CheckExecutor:
                 completed.add(name)
             return untimed
 
-        # Budget active, not yet expired — dual-lane slot-based submission.
+        # Budget active, not yet expired — budget-aware dual-lane submission.
         # Only submit to available slots so we maintain control over what
         # actually runs (vs queuing excess tasks in the thread pool).
         available_slots = self._max_workers - len(futures)
@@ -688,26 +721,111 @@ class CheckExecutor:
             return []
 
         # Untimed gates always submit first (they always run)
-        to_submit = untimed[:]
-        remaining_slots = max(0, available_slots - len(untimed))
+        to_submit = untimed[:available_slots]
+        remaining_slots = max(0, available_slots - len(to_submit))
 
-        if remaining_slots > 0 and timed:
-            # Sort timed gates: heaviest first for dual-lane selection
-            timed.sort(key=lambda n: timings.get(n, 0), reverse=True)
+        if remaining_slots > 0 and timed and swabbing_time is not None:
+            # Project remaining budget by accounting for elapsed wall-clock
+            # and expected duration already in-flight.
+            inflight_est = sum(
+                timings.get(name, 0.0) for name in futures.values() if name in timings
+            )
+            budget_left = max(0.0, float(swabbing_time) - budget_elapsed - inflight_est)
 
-            if remaining_slots >= 2 and len(timed) >= 2:
-                # Dual-lane: N-1 from heavy end, 1 from light end
-                heavy_count = min(remaining_slots - 1, len(timed) - 1)
-                heavy = timed[:heavy_count]
-                # Light lane: lightest gate not already in heavy set
-                light = [timed[-1]] if timed[-1] not in set(heavy) else []
-                to_submit.extend(heavy + light)
-            else:
-                # 1 slot or 1 timed gate: take the heaviest (start
-                # expensive work early — the core dual-lane insight)
-                to_submit.extend(timed[:remaining_slots])
+            # If we have no projected room left, defer timed submissions.
+            # Pending gates remain pending and may run later if estimates
+            # and elapsed time allow before hard budget expiry.
+            if budget_left <= 0:
+                return to_submit
+
+            # Sort by duration once; we use both ends for dual-lane.
+            timed_sorted = sorted(timed, key=lambda n: timings.get(n, 0.0))
+
+            # 1) Fast lane: pick shortest gate that fits.
+            fast_pick: Optional[str] = None
+            for name in timed_sorted:
+                est = timings.get(name, 0.0)
+                if est <= budget_left:
+                    fast_pick = name
+                    budget_left -= est
+                    break
+
+            selected: List[str] = []
+            if fast_pick is not None:
+                selected.append(fast_pick)
+
+            # 2) Heavy lanes: choose subset that maximizes count first,
+            # then total packed duration, under remaining budget.
+            heavy_slots = max(0, remaining_slots - len(selected))
+            if heavy_slots > 0:
+                candidates = [n for n in timed_sorted if n != fast_pick]
+                heavy_pick = self._choose_packed_subset(
+                    candidates,
+                    timings,
+                    budget_left,
+                    heavy_slots,
+                )
+                selected.extend(heavy_pick)
+
+            to_submit.extend(selected)
 
         return to_submit
+
+    def _choose_packed_subset(
+        self,
+        candidates: List[str],
+        timings: Dict[str, float],
+        budget_left: float,
+        max_items: int,
+    ) -> List[str]:
+        """Choose a subset that packs budget with count-first objective.
+
+        Objective (lexicographic):
+        1. Maximize number of selected checks (throughput)
+        2. Maximize total estimated duration (pack remaining budget)
+
+        The returned order is heavy-first to preserve heavy-lane behavior.
+        """
+        if max_items <= 0 or budget_left <= 0 or not candidates:
+            return []
+
+        best: List[str] = []
+        best_count = -1
+        best_total = -1.0
+
+        ordered = sorted(candidates, key=lambda n: timings.get(n, 0.0), reverse=True)
+
+        def dfs(idx: int, current: List[str], total: float) -> None:
+            nonlocal best, best_count, best_total
+            count = len(current)
+
+            if count > best_count or (count == best_count and total > best_total):
+                best = list(current)
+                best_count = count
+                best_total = total
+
+            if idx >= len(ordered) or count >= max_items:
+                return
+
+            # Upper bound on achievable count from this point.
+            remaining = len(ordered) - idx
+            if count + remaining < best_count:
+                return
+
+            name = ordered[idx]
+            est = timings.get(name, 0.0)
+
+            # Include if it fits.
+            if total + est <= budget_left:
+                current.append(name)
+                dfs(idx + 1, current, total + est)
+                current.pop()
+
+            # Exclude
+            dfs(idx + 1, current, total)
+
+        dfs(0, [], 0.0)
+        return best
 
     def _record_budget_skips(
         self,
@@ -781,6 +899,21 @@ class CheckExecutor:
             category = check.category.key if check.category else None
             self._on_check_start(check.full_name, category)
 
+        # ── Cache check ───────────────────────────────────────────
+        # Prefer a per-check fingerprint when the check declares its
+        # input scope (e.g. "I only read *.py in src/").  Fall back to
+        # the global project fingerprint for checks that don't override.
+        fingerprint: Optional[str] = None
+        if self._fingerprint:
+            fingerprint = check.cache_inputs(project_root) or self._fingerprint
+            cached = get_cached_result(self._cache, check.full_name, fingerprint)
+            if cached is not None:
+                logger.debug(
+                    f"Cache hit for {check.full_name} "
+                    f"(status={cached.status.value})"
+                )
+                return cached
+
         logger.debug(f"Running {check.display_name}")
 
         # Measure scope before running (lightweight file count)
@@ -809,6 +942,17 @@ class CheckExecutor:
             # Attach scope metrics if the check reported them
             if scope is not None and result.scope is None:
                 result.scope = scope
+            # Store result in cache for next run
+            if fingerprint:
+                stored = store_result(
+                    self._cache,
+                    check.full_name,
+                    fingerprint,
+                    result,
+                    project_root=project_root,
+                )
+                if stored:
+                    self._cache_dirty = True
             return result
         except Exception as e:
             logger.error(f"Check {check.full_name} failed with exception: {e}")

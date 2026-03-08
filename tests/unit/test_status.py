@@ -9,7 +9,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 from slopmop.cli.status import (
-    _find_other_aliases,
     _format_gate_line,
     _print_config_summary,
     _print_gate_inventory,
@@ -30,7 +29,6 @@ def _mock_registry(all_gates=None, swab_gates=None, scour_gates=None):
     """Build a mock registry for status tests."""
     mock_reg = MagicMock()
     mock_reg.list_checks.return_value = all_gates or []
-    mock_reg.list_aliases.return_value = {}
 
     def _gate_names_for_level(level):
         from slopmop.checks.base import GateLevel
@@ -92,6 +90,179 @@ class TestStatusParser:
         parser = create_parser()
         args = parser.parse_args(["status"])
         assert args.verb == "status"
+
+
+# ---------------------------------------------------------------------------
+# _format_gate_line
+# ---------------------------------------------------------------------------
+
+
+class TestFormatGateLine:
+    """Tests for _format_gate_line rendering."""
+
+    def test_swab_gate_no_history(self):
+        line = _format_gate_line(
+            "sloppy-formatting.py",
+            role="foundation",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "swab" in line
+        assert "sloppy-formatting.py" in line
+        assert "no history" in line
+
+    def test_not_applicable_shows_skip_reason(self):
+        line = _format_gate_line(
+            "coverage-gaps.py",
+            role="foundation",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=False,
+            skip_reason="no pytest",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "⊘" in line
+        assert "no pytest" in line
+
+    def test_with_history_shows_last_result(self):
+        stats = _stats(results=("passed", "failed", "passed"))
+        line = _format_gate_line(
+            "bogus-tests.py",
+            role="diagnostic",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=stats,
+            colors_enabled=False,
+        )
+        assert "passed" in line
+
+    def test_scour_only_gate(self):
+        line = _format_gate_line(
+            "ignored-feedback",
+            role="diagnostic",
+            in_swab=False,
+            in_scour=True,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "scour" in line
+
+    def test_role_badge_included(self):
+        line = _format_gate_line(
+            "test-gate",
+            role="foundation",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        # Foundation role badge is "🔧 "
+        assert "🔧" in line
+
+
+# ---------------------------------------------------------------------------
+# _print_config_summary
+# ---------------------------------------------------------------------------
+
+
+class TestPrintConfigSummary:
+    """Tests for _print_config_summary output."""
+
+    def test_prints_gate_counts(self, tmp_path, capsys):
+        config = {}
+        _print_config_summary(
+            tmp_path, config, swab_count=5, scour_count=2, disabled=[]
+        )
+        captured = capsys.readouterr()
+        assert "5 swab" in captured.out
+        assert "2 scour" in captured.out
+
+    def test_prints_disabled_gates(self, tmp_path, capsys):
+        config = {}
+        _print_config_summary(
+            tmp_path,
+            config,
+            swab_count=3,
+            scour_count=1,
+            disabled=["laziness:sloppy-formatting.py"],
+        )
+        captured = capsys.readouterr()
+        assert "1 gate(s)" in captured.out
+        assert "sloppy-formatting.py" in captured.out
+
+    def test_prints_time_budget(self, tmp_path, capsys):
+        config = {"swabbing_time": 120}
+        _print_config_summary(
+            tmp_path, config, swab_count=3, scour_count=1, disabled=[]
+        )
+        captured = capsys.readouterr()
+        assert "120s" in captured.out
+
+    def test_shows_config_file_when_present(self, tmp_path, capsys):
+        (tmp_path / ".sb_config.json").write_text("{}")
+        config = {}
+        _print_config_summary(
+            tmp_path, config, swab_count=1, scour_count=0, disabled=[]
+        )
+        captured = capsys.readouterr()
+        assert ".sb_config.json" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# _print_hooks_status
+# ---------------------------------------------------------------------------
+
+
+class TestPrintHooksStatus:
+    """Tests for _print_hooks_status output."""
+
+    def test_no_git_dir(self, tmp_path, capsys):
+        _print_hooks_status(tmp_path)
+        captured = capsys.readouterr()
+        assert "No hooks" in captured.out
+
+    def test_sm_hook_detected(self, tmp_path, capsys):
+        hooks_dir = tmp_path / ".git" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        from slopmop.cli.hooks import SB_HOOK_MARKER
+
+        hook_content = f"#!/bin/sh\n{SB_HOOK_MARKER}\nsm swab\n"
+        (hooks_dir / "pre-commit").write_text(hook_content)
+        _print_hooks_status(tmp_path)
+        captured = capsys.readouterr()
+        assert "✅" in captured.out
+        assert "pre-commit" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# _print_recent_history
+# ---------------------------------------------------------------------------
+
+
+class TestPrintRecentHistory:
+    """Tests for _print_recent_history output."""
+
+    def test_empty_history(self, capsys):
+        _print_recent_history({})
+        captured = capsys.readouterr()
+        assert "No gate run history" in captured.out
+
+    def test_with_history(self, capsys):
+        history = {"overconfidence:untested-code.py": _stats()}
+        _print_recent_history(history)
+        captured = capsys.readouterr()
+        assert "RECENT HISTORY" in captured.out
 
     def test_status_no_level_positional(self):
         """Status no longer has a level positional arg."""
@@ -186,55 +357,6 @@ class TestCmdStatus:
 
 
 # ---------------------------------------------------------------------------
-# _find_other_aliases helper
-# ---------------------------------------------------------------------------
-
-
-class TestFindOtherAliases:
-    """Tests for _find_other_aliases helper."""
-
-    def test_finds_matching_aliases(self):
-        """Returns aliases that include the gate."""
-        aliases = {
-            "python": [
-                "overconfidence:untested-code.py",
-                "laziness:sloppy-formatting.py",
-            ],
-            "quality": [
-                "overconfidence:untested-code.py",
-                "laziness:complexity-creep.py",
-            ],
-            "quick": ["laziness:sloppy-formatting.py"],
-        }
-        result = _find_other_aliases(
-            "overconfidence:untested-code.py", aliases, "python"
-        )
-        assert result == ["quality"]
-
-    def test_excludes_current_level(self):
-        """Does not include the current level."""
-        aliases = {
-            "python": ["overconfidence:untested-code.py"],
-            "quality": ["overconfidence:untested-code.py"],
-        }
-        result = _find_other_aliases(
-            "overconfidence:untested-code.py", aliases, "python"
-        )
-        assert "python" not in result
-
-    def test_returns_empty_for_unique_gate(self):
-        """Returns empty list if gate only in current alias."""
-        aliases = {
-            "python": ["overconfidence:untested-code.py"],
-            "quality": ["laziness:complexity-creep.py"],
-        }
-        result = _find_other_aliases(
-            "overconfidence:untested-code.py", aliases, "python"
-        )
-        assert result == []
-
-
-# ---------------------------------------------------------------------------
 # Gate line formatting
 # ---------------------------------------------------------------------------
 
@@ -246,6 +368,7 @@ class TestFormatGateLine:
         """n/a gate shows skip reason."""
         line = _format_gate_line(
             "untested-code.js",
+            role="foundation",
             in_swab=True,
             in_scour=False,
             is_applicable=False,
@@ -261,6 +384,7 @@ class TestFormatGateLine:
         stats = _stats(results=("passed", "passed", "failed", "passed"))
         line = _format_gate_line(
             "untested-code.py",
+            role="foundation",
             in_swab=True,
             in_scour=False,
             is_applicable=True,
@@ -276,6 +400,7 @@ class TestFormatGateLine:
         stats = _stats(results=("passed", "failed"))
         line = _format_gate_line(
             "coverage-gaps.py",
+            role="foundation",
             in_swab=True,
             in_scour=False,
             is_applicable=True,
@@ -289,6 +414,7 @@ class TestFormatGateLine:
         """Gate with no history shows 'no history'."""
         line = _format_gate_line(
             "untested-code.py",
+            role="foundation",
             in_swab=True,
             in_scour=False,
             is_applicable=True,
@@ -302,6 +428,7 @@ class TestFormatGateLine:
         """Gate only in scour shows scour tag."""
         line = _format_gate_line(
             "ignored-feedback",
+            role="diagnostic",
             in_swab=False,
             in_scour=True,
             is_applicable=True,
@@ -310,6 +437,56 @@ class TestFormatGateLine:
             colors_enabled=False,
         )
         assert "scour" in line
+
+    def test_role_badge_foundation(self):
+        """Foundation gates get the wrench badge."""
+        line = _format_gate_line(
+            "untested-code.py",
+            role="foundation",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "🔧" in line
+
+    def test_role_badge_diagnostic(self):
+        """Diagnostic gates get the microscope badge."""
+        line = _format_gate_line(
+            "ignored-feedback",
+            role="diagnostic",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "🔬" in line
+
+    def test_role_badge_unknown_empty(self):
+        """Unknown role → no badge, no crash.
+
+        Custom gates defined in user config won't have a CheckRole
+        classvar until they opt in.  The badge map returns empty
+        string — line still formats correctly, just without the
+        tier indicator.
+        """
+        line = _format_gate_line(
+            "my-custom-gate",
+            role="",
+            in_swab=True,
+            in_scour=False,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "🔧" not in line
+        assert "🔬" not in line
+        assert "my-custom-gate" in line
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +504,7 @@ class TestPrintGateInventory:
             swab_gates={"overconfidence:untested-code.py"},
             scour_gates={"overconfidence:untested-code.py"},
             applicability={"overconfidence:untested-code.py": (True, "")},
+            roles={"overconfidence:untested-code.py": "foundation"},
             history={},
             colors_enabled=False,
         )
@@ -340,6 +518,7 @@ class TestPrintGateInventory:
             swab_gates={"overconfidence:untested-code.py"},
             scour_gates={"overconfidence:untested-code.py"},
             applicability={"overconfidence:untested-code.py": (True, "")},
+            roles={"overconfidence:untested-code.py": "foundation"},
             history={},
             colors_enabled=False,
         )
@@ -347,7 +526,7 @@ class TestPrintGateInventory:
         assert "GATE INVENTORY" in out
 
     def test_not_applicable_gate(self, capsys):
-        """Not applicable gate shows reason."""
+        """Not applicable gate collapsed into n/a summary line."""
         _print_gate_inventory(
             all_gates=["overconfidence:untested-code.js"],
             swab_gates={"overconfidence:untested-code.js"},
@@ -358,12 +537,13 @@ class TestPrintGateInventory:
                     "No JavaScript code detected",
                 )
             },
+            roles={"overconfidence:untested-code.js": "foundation"},
             history={},
             colors_enabled=False,
         )
         out = capsys.readouterr().out
         assert "n/a" in out
-        assert "No JavaScript code detected" in out
+        assert "untested-code.js" in out
 
     def test_gate_with_history(self, capsys):
         """Gate with history shows last result and sparkline."""
@@ -378,6 +558,7 @@ class TestPrintGateInventory:
             swab_gates={"overconfidence:untested-code.py"},
             scour_gates={"overconfidence:untested-code.py"},
             applicability={"overconfidence:untested-code.py": (True, "")},
+            roles={"overconfidence:untested-code.py": "foundation"},
             history=history,
             colors_enabled=False,
         )
@@ -403,6 +584,10 @@ class TestPrintGateInventory:
                 "laziness:sloppy-formatting.py": (True, ""),
                 "overconfidence:untested-code.py": (True, ""),
             },
+            roles={
+                "laziness:sloppy-formatting.py": "foundation",
+                "overconfidence:untested-code.py": "foundation",
+            },
             history={},
             colors_enabled=False,
         )
@@ -411,6 +596,38 @@ class TestPrintGateInventory:
         over_pos = out.index("Overconfidence")
         lazy_pos = out.index("Laziness")
         assert over_pos < lazy_pos
+
+    def test_role_badges_in_inventory(self, capsys):
+        """Both role badges appear in the inventory output.
+
+        Foundation and diagnostic tiers are visually distinct — same
+        badges as the ConsoleAdapter post-run summary, so users learn
+        one legend for the whole tool.
+        """
+        _print_gate_inventory(
+            all_gates=[
+                "overconfidence:untested-code.py",
+                "deceptiveness:ignored-feedback",
+            ],
+            swab_gates={"overconfidence:untested-code.py"},
+            scour_gates={
+                "overconfidence:untested-code.py",
+                "deceptiveness:ignored-feedback",
+            },
+            applicability={
+                "overconfidence:untested-code.py": (True, ""),
+                "deceptiveness:ignored-feedback": (True, ""),
+            },
+            roles={
+                "overconfidence:untested-code.py": "foundation",
+                "deceptiveness:ignored-feedback": "diagnostic",
+            },
+            history={},
+            colors_enabled=False,
+        )
+        out = capsys.readouterr().out
+        assert "🔧" in out  # foundation
+        assert "🔬" in out  # diagnostic
 
 
 # ---------------------------------------------------------------------------

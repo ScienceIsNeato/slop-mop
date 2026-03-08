@@ -1,7 +1,7 @@
 """Check registry for discovering and managing quality gate checks.
 
-The registry maintains a catalog of available checks and aliases,
-enabling dynamic check discovery and configuration-based selection.
+The registry maintains a catalog of available checks, enabling dynamic
+check discovery and configuration-based selection.
 """
 
 import logging
@@ -18,7 +18,6 @@ class CheckRegistry:
 
     The registry provides:
     - Registration of check classes
-    - Alias definitions for check groups
     - Check discovery and instantiation
     - Configuration-based filtering
     """
@@ -26,7 +25,6 @@ class CheckRegistry:
     def __init__(self) -> None:
         """Initialize an empty registry."""
         self._check_classes: Dict[str, Type[BaseCheck]] = {}
-        self._aliases: Dict[str, List[str]] = {}
         self._definitions: Dict[str, CheckDefinition] = {}
 
     def register(
@@ -59,16 +57,6 @@ class CheckRegistry:
         self._definitions[name] = definition
 
         logger.debug(f"Registered check: {name}")
-
-    def register_alias(self, alias: str, check_names: List[str]) -> None:
-        """Register a check alias (group of checks).
-
-        Args:
-            alias: Name of the alias
-            check_names: List of check names included in this alias
-        """
-        self._aliases[alias] = check_names
-        logger.debug(f"Registered alias '{alias}': {check_names}")
 
     def get_check(self, name: str, config: Dict[str, Any]) -> Optional[BaseCheck]:
         """Get a single check instance by name.
@@ -118,27 +106,19 @@ class CheckRegistry:
         return gate_config
 
     def get_checks(self, names: List[str], config: Dict[str, Any]) -> List[BaseCheck]:
-        """Get check instances by name, expanding aliases.
+        """Get check instances by name.
 
         Args:
-            names: List of check names or aliases
+            names: List of check names
             config: Configuration dictionary
 
         Returns:
             List of check instances
         """
-        # Expand aliases to individual check names
-        expanded_names: List[str] = []
-        for name in names:
-            if name in self._aliases:
-                expanded_names.extend(self._aliases[name])
-            else:
-                expanded_names.append(name)
-
         # Remove duplicates while preserving order
         seen: set[str] = set()
         unique_names: List[str] = []
-        for name in expanded_names:
+        for name in names:
             if name not in seen:
                 seen.add(name)
                 unique_names.append(name)
@@ -154,21 +134,6 @@ class CheckRegistry:
 
         return checks
 
-    def expand_alias(self, alias: str) -> List[str]:
-        """Expand an alias to its constituent check names.
-
-        Args:
-            alias: Alias name
-
-        Returns:
-            List of check names, or [alias] if not an alias
-        """
-        return self._aliases.get(alias, [alias])
-
-    def is_alias(self, name: str) -> bool:
-        """Check if a name is a registered alias."""
-        return name in self._aliases
-
     def get_definition(self, name: str) -> Optional[CheckDefinition]:
         """Get the definition for a check.
 
@@ -183,10 +148,6 @@ class CheckRegistry:
     def list_checks(self) -> List[str]:
         """List all registered check names."""
         return list(self._check_classes.keys())
-
-    def list_aliases(self) -> Dict[str, List[str]]:
-        """List all registered aliases and their checks."""
-        return dict(self._aliases)
 
     def get_gate_names_for_level(self, level: GateLevel) -> List[str]:
         """Get all registered gate names appropriate for a given level.

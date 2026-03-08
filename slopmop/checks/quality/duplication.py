@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -55,10 +56,11 @@ class SourceDuplicationCheck(BaseCheck):
       jscpd not available: npm install -g jscpd
 
     Re-check:
-      ./sm swab -g myopia:source-duplication --verbose
+      sm swab -g myopia:source-duplication --verbose
     """
 
     tool_context = ToolContext.NODE
+    role = CheckRole.FOUNDATION
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)
@@ -70,7 +72,7 @@ class SourceDuplicationCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "📋 Source Duplication"
+        return "📋 Source Duplication (jscpd clone detection)"
 
     @property
     def gate_description(self) -> str:
@@ -125,6 +127,22 @@ class SourceDuplicationCheck(BaseCheck):
                 permissiveness="fewer_is_stricter",
             ),
         ]
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        from slopmop.core.cache import hash_file_scope
+
+        dirs = self.config.get("include_dirs", ["."])
+        if not dirs:
+            dirs = ["."]
+        exclude = set(self.config.get("exclude_dirs", []))
+        exts = {".py", ".js", ".ts", ".jsx", ".tsx"}
+        return hash_file_scope(
+            project_root,
+            dirs,
+            exts,
+            self.config,
+            exclude_dirs=exclude,
+        )
 
     def is_applicable(self, project_root: str) -> bool:
         # Applicable to any project with code

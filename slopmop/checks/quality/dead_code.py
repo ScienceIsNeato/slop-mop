@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -59,14 +60,15 @@ class DeadCodeCheck(BaseCheck):
     Common failures:
       Unused function/class: Delete it, or add to vulture whitelist
           if it's used dynamically (e.g., via getattr, entrypoints).
-      Unused import: Remove it or mark with # noqa if needed for
-          side effects.
+      Unused import: Remove it, or re-export explicitly if needed
+          for side effects.
 
     Re-check:
-      ./sm swab -g laziness:dead-code.py --verbose
+      sm swab -g laziness:dead-code.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
@@ -176,6 +178,12 @@ class DeadCodeCheck(BaseCheck):
         configured = self.config.get("src_dirs", ["."])
         return [d for d in configured if os.path.isdir(os.path.join(project_root, d))]
 
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        from slopmop.core.cache import hash_file_scope
+
+        dirs = self._get_src_dirs(project_root) or ["."]
+        return hash_file_scope(project_root, dirs, {".py"}, self.config)
+
     def _build_command(self, project_root: str) -> List[str]:
         """Build the vulture command with all configured options."""
         src_dirs = self._get_src_dirs(project_root)
@@ -276,7 +284,10 @@ class DeadCodeCheck(BaseCheck):
             duration=duration,
             output=output,
             error=f"{len(findings)} dead code finding(s)",
-            fix_suggestion="Remove unused code or add to vulture whitelist.",
+            fix_suggestion=(
+                "Remove unused code or add to vulture whitelist. "
+                "Verify with: " + self.verify_command
+            ),
             findings=findings,
         )
 

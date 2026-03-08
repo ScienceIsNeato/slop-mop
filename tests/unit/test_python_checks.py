@@ -2,7 +2,16 @@
 
 from unittest.mock import MagicMock, patch
 
-from slopmop.checks.python.coverage import PythonCoverageCheck
+from slopmop.checks.python.coverage import (
+    PythonCoverageCheck,
+    PythonDiffCoverageCheck,
+    _characterise_block,
+    _first_range,
+    _get_compare_branch,
+    _parse_diff_cover_files,
+    _resolve_uncovered_range,
+    _test_file_for,
+)
 from slopmop.checks.python.lint_format import PythonLintFormatCheck
 from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
 from slopmop.checks.python.tests import PythonTestsCheck
@@ -296,7 +305,16 @@ class TestPythonTestsCheck:
         )
 
         check = PythonTestsCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        # These tests exercise the post-venv-gate logic (how the check
+        # interprets pytest output), but tmp_path has no venv.  The
+        # runner is already mocked — the venv gate is incidental
+        # plumbing, not the thing under test.  Without this patch the
+        # test only passes when the developer's shell has VIRTUAL_ENV
+        # set, which the mixin falls back to.  A clean env (no
+        # activation, no project venv) short-circuits to WARNED before
+        # the mocked runner is ever called.
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
 
@@ -311,7 +329,8 @@ class TestPythonTestsCheck:
         )
 
         check = PythonTestsCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
 
@@ -326,7 +345,8 @@ class TestPythonTestsCheck:
         )
 
         check = PythonTestsCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
 
         # Should pass because tests passed, only coverage failed
         assert result.status == CheckStatus.PASSED
@@ -369,7 +389,8 @@ class TestPythonCoverageCheck:
         )
 
         check = PythonCoverageCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
 
@@ -384,7 +405,8 @@ class TestPythonCoverageCheck:
         )
 
         check = PythonCoverageCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
 
@@ -396,7 +418,8 @@ class TestPythonCoverageCheck:
         )
 
         check = PythonCoverageCheck({}, runner=mock_runner)
-        result = check.run(str(tmp_path))
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
 
@@ -924,3 +947,271 @@ class TestPythonTypeCheckingCheck:
         assert config_path.exists()
         restored = json.loads(config_path.read_text())
         assert restored == existing_config
+
+
+# ─── coverage.py helper functions ────────────────────────────────────────
+
+
+class TestGetCompareBranch:
+    """Tests for _get_compare_branch() env-var precedence."""
+
+    def test_explicit_compare_branch_takes_priority(self):
+        with patch.dict("os.environ", {"COMPARE_BRANCH": "origin/dev"}):
+            assert _get_compare_branch() == "origin/dev"
+
+    def test_github_base_ref_gets_origin_prefix(self):
+        env = {"GITHUB_BASE_REF": "main"}
+        with patch.dict("os.environ", env, clear=True):
+            # Remove COMPARE_BRANCH if it exists
+            import os
+
+            os.environ.pop("COMPARE_BRANCH", None)
+            assert _get_compare_branch() == "origin/main"
+
+    def test_defaults_to_origin_main(self):
+        with patch.dict("os.environ", {}, clear=True):
+            assert _get_compare_branch() == "origin/main"
+
+    def test_compare_branch_overrides_github_base_ref(self):
+        env = {"COMPARE_BRANCH": "origin/staging", "GITHUB_BASE_REF": "main"}
+        with patch.dict("os.environ", env):
+            assert _get_compare_branch() == "origin/staging"
+
+
+class TestTestFileFor:
+    """Tests for _test_file_for() — conventional test path derivation."""
+
+    def test_regular_module(self):
+        assert _test_file_for("slopmop/cli/hooks.py") == "tests/test_hooks.py"
+
+    def test_init_resolves_to_package_name(self):
+        assert _test_file_for("slopmop/core/__init__.py") == "tests/test_core.py"
+
+    def test_root_init_returns_none(self):
+        assert _test_file_for("__init__.py") is None
+
+    def test_empty_stem_returns_none(self):
+        assert _test_file_for("") is None
+
+    def test_nested_module(self):
+        assert _test_file_for("a/b/c/utils.py") == "tests/test_utils.py"
+
+    def test_degenerate_init_with_dot_parent(self):
+        assert _test_file_for("./__init__.py") is None
+
+
+class TestFirstRange:
+    """Tests for _first_range() — parsing coverage missing ranges."""
+
+    def test_single_number(self):
+        assert _first_range("42") == (42, 42)
+
+    def test_range(self):
+        assert _first_range("12-18") == (12, 18)
+
+    def test_comma_separated_picks_first(self):
+        assert _first_range("12-18, 42, 90-101") == (12, 18)
+
+    def test_single_in_list(self):
+        assert _first_range("5, 10-20") == (5, 5)
+
+    def test_garbage_returns_none(self):
+        assert _first_range("abc") is None
+
+    def test_empty_returns_none(self):
+        assert _first_range("") is None
+
+    def test_whitespace_stripped(self):
+        assert _first_range("  7  ") == (7, 7)
+
+
+class TestCharacteriseBlock:
+    """Tests for _characterise_block() — AST-based block identification."""
+
+    def test_except_handler(self):
+        import ast
+
+        code = "def foo():\n  try:\n    x()\n  except IOError:\n    pass\n"
+        tree = ast.parse(code)
+        func = tree.body[0]
+        hint = _characterise_block(func, 4, 5)
+        assert hint is not None
+        assert "except" in hint
+
+    def test_if_body(self):
+        import ast
+
+        code = "def foo():\n  if x:\n    return 1\n"
+        tree = ast.parse(code)
+        func = tree.body[0]
+        hint = _characterise_block(func, 3, 3)
+        assert hint is not None
+        assert "conditional" in hint
+
+    def test_other_body_returns_none(self):
+        import ast
+
+        code = "def foo():\n  x = 1\n  return x\n"
+        tree = ast.parse(code)
+        func = tree.body[0]
+        hint = _characterise_block(func, 2, 3)
+        assert hint is None
+
+
+class TestResolveUncoveredRange:
+    """Tests for _resolve_uncovered_range() — AST-resolution of uncovered lines."""
+
+    def test_happy_path_finds_enclosing_function(self, tmp_path):
+        source = "def helper():\n    if True:\n        x = 1\n    return x\n"
+        (tmp_path / "mod.py").write_text(source)
+        result = _resolve_uncovered_range(str(tmp_path), "mod.py", "2-3")
+        assert result is not None
+        assert "helper()" in result
+        assert "uncovered" in result
+
+    def test_no_enclosing_function_returns_none(self, tmp_path):
+        source = "x = 1\ny = 2\n"
+        (tmp_path / "mod.py").write_text(source)
+        result = _resolve_uncovered_range(str(tmp_path), "mod.py", "1-2")
+        assert result is None
+
+    def test_unparseable_file_returns_none(self, tmp_path):
+        (tmp_path / "bad.py").write_text("def whoops(:\n")
+        result = _resolve_uncovered_range(str(tmp_path), "bad.py", "1")
+        assert result is None
+
+    def test_missing_file_returns_none(self, tmp_path):
+        result = _resolve_uncovered_range(str(tmp_path), "gone.py", "1")
+        assert result is None
+
+    def test_garbage_range_returns_none(self, tmp_path):
+        (tmp_path / "mod.py").write_text("def f():\n    pass\n")
+        result = _resolve_uncovered_range(str(tmp_path), "mod.py", "abc")
+        assert result is None
+
+    def test_except_block_gets_hint(self, tmp_path):
+        source = (
+            "def handler():\n"
+            "    try:\n"
+            "        open('x')\n"
+            "    except FileNotFoundError:\n"
+            "        return None\n"
+        )
+        (tmp_path / "mod.py").write_text(source)
+        result = _resolve_uncovered_range(str(tmp_path), "mod.py", "5")
+        assert result is not None
+        assert "except" in result
+
+
+class TestParseDiffCoverFiles:
+    """Tests for _parse_diff_cover_files() — diff-cover output parsing."""
+
+    def test_with_missing_lines(self):
+        output = "  src/mod.py (75.0%): Missing lines 12-15, 42\n"
+        findings = _parse_diff_cover_files(output)
+        assert len(findings) == 1
+        assert findings[0].file == "src/mod.py"
+        assert "75.0%" in findings[0].message
+        assert "missing" in findings[0].message.lower()
+
+    def test_without_missing_lines(self):
+        output = "  src/mod.py (85.0%)\n"
+        findings = _parse_diff_cover_files(output)
+        assert len(findings) == 1
+        assert "85.0%" in findings[0].message
+
+    def test_multiple_files(self):
+        output = (
+            "  src/a.py (70.0%): Missing lines 1-5\n"
+            "  src/b.py (60.0%): Missing lines 10\n"
+        )
+        findings = _parse_diff_cover_files(output)
+        assert len(findings) == 2
+
+    def test_no_matches_returns_empty(self):
+        output = "Total: 100% coverage\nDone.\n"
+        findings = _parse_diff_cover_files(output)
+        assert findings == []
+
+
+class TestPythonDiffCoverageCheck:
+    """Tests for PythonDiffCoverageCheck high-level behavior."""
+
+    def test_name(self):
+        check = PythonDiffCoverageCheck({})
+        assert check.name == "just-this-once.py"
+
+    def test_depends_on_untested_code(self):
+        check = PythonDiffCoverageCheck({})
+        assert "overconfidence:untested-code.py" in check.depends_on
+
+    def test_is_applicable_python_with_tests(self, tmp_path):
+        (tmp_path / "setup.py").touch()
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a(): pass")
+        check = PythonDiffCoverageCheck({})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_run_success(self, tmp_path):
+        (tmp_path / "coverage.xml").write_text("<coverage/>")
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="100% coverage", stderr="", duration=0.5
+        )
+        check = PythonDiffCoverageCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_run_no_diff(self, tmp_path):
+        (tmp_path / "coverage.xml").write_text("<coverage/>")
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1, stdout="No diff found", stderr="", duration=0.5
+        )
+        check = PythonDiffCoverageCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_run_failure_with_findings(self, tmp_path):
+        (tmp_path / "coverage.xml").write_text("<coverage/>")
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="  src/a.py (50.0%): Missing lines 1-10\n",
+            stderr="",
+            duration=0.5,
+        )
+        check = PythonDiffCoverageCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert result.findings
+
+    def test_run_failure_no_parseable_findings(self, tmp_path):
+        (tmp_path / "coverage.xml").write_text("<coverage/>")
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="Something went wrong\n",
+            stderr="",
+            duration=0.5,
+        )
+        check = PythonDiffCoverageCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert len(result.findings) == 1
+
+    def test_run_no_coverage_xml(self, tmp_path):
+        check = PythonDiffCoverageCheck({})
+        with (
+            patch.object(check, "check_project_venv_or_warn", return_value=None),
+            patch(
+                "slopmop.checks.python.coverage._wait_for_coverage_xml",
+                return_value=False,
+            ),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.ERROR

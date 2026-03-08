@@ -14,6 +14,7 @@ from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -44,15 +45,16 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
       Formatting drift: Run `sm swab -g laziness:sloppy-formatting.py` with
           auto-fix enabled. Black and isort will fix in place.
       Unused imports: autoflake removes them automatically during
-          auto-fix. If you need to keep one, add `# noqa: F401`.
+          auto-fix. If you need to keep one, re-export it explicitly.
       Flake8 E9/F63/F7/F82: These are critical errors (syntax,
           assertion on tuples, undefined names). Fix the code.
 
     Re-check:
-      ./sm swab -g laziness:sloppy-formatting.py --verbose
+      sm swab -g laziness:sloppy-formatting.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:

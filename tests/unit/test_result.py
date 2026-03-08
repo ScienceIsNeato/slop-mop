@@ -122,7 +122,7 @@ class TestCheckDefinition:
         """Test definition with dependencies."""
         definition = CheckDefinition(
             flag="overconfidence:coverage-gaps.py",
-            name="📊 Coverage",
+            name="📊 Coverage (Python, pytest-cov)",
             depends_on=["overconfidence:untested-code.py"],
         )
 

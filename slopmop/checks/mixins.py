@@ -27,7 +27,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from slopmop.checks.base import count_source_scope
 from slopmop.core.result import (
@@ -142,7 +142,10 @@ class PythonCheckMixin:
 
         if not self.has_project_venv(project_root):
             msg = "No project virtual environment found"
-            return self._create_result(  # type: ignore[attr-defined]
+            # Mixin is always composed with BaseCheck
+            from slopmop.checks.base import BaseCheck
+
+            return cast(BaseCheck, self)._create_result(
                 status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
                 error=msg,
@@ -392,8 +395,11 @@ class JavaScriptCheckMixin:
                     if line.startswith("#") or line.startswith(";"):
                         continue
                     # Check for active legacy-peer-deps setting
+                    # Handle variations: with/without spaces around '='
+                    key, _, value = line.partition("=")
                     if (
-                        "legacy-peer-deps=true" in line
+                        key.strip() == "legacy-peer-deps"
+                        and value.strip().lower() == "true"
                         and "--legacy-peer-deps" not in cmd
                     ):
                         cmd.append("--legacy-peer-deps")

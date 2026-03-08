@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
-from slopmop.checks.base import BaseCheck, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, CheckRole, ConfigField, Flaw, GateCategory
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ def _load_base_config(project_root: str, base_ref: str) -> Optional[Dict[str, An
             cwd=project_root,
         )
         if result.returncode == 0:
-            return json.loads(result.stdout)  # type: ignore[no-any-return]
+            return cast(Dict[str, Any], json.loads(result.stdout))
     except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
         pass
     return None
@@ -90,7 +90,7 @@ def _load_current_config(project_root: str) -> Optional[Dict[str, Any]]:
     if not config_path.exists():
         return None
     try:
-        return json.loads(config_path.read_text())  # type: ignore[no-any-return]
+        return cast(Dict[str, Any], json.loads(config_path.read_text()))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -360,7 +360,7 @@ def _detect_pr_number(project_root: str) -> Optional[int]:
         if result.returncode == 0:
             data = json.loads(result.stdout)
             if data and len(data) > 0:
-                return data[0].get("number")  # type: ignore[no-any-return]
+                return cast(Optional[int], data[0].get("number"))
     except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
         pass
 
@@ -451,8 +451,10 @@ class GateDodgingCheck(BaseCheck):
       Disabled gate: Re-enable the gate and fix the failing code.
 
     Re-check:
-      ./sm swab -g deceptiveness:gate-dodging --verbose
+      sm swab -g deceptiveness:gate-dodging --verbose
     """
+
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:
@@ -460,11 +462,11 @@ class GateDodgingCheck(BaseCheck):
 
     @property
     def display_name(self) -> str:
-        return "🎭 Gate Dodging"
+        return "🚨 Gate Dodging (threshold weakening)"
 
     @property
     def gate_description(self) -> str:
-        return "🎭 Detects loosened quality thresholds"
+        return "🚨 Detects loosened quality thresholds"
 
     @property
     def category(self) -> GateCategory:

@@ -5,10 +5,11 @@ import re
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -48,10 +49,11 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
           inferred type. Check your class hierarchy.
 
     Re-check:
-      ./sm swab -g overconfidence:missing-annotations.py --verbose
+      sm swab -g overconfidence:missing-annotations.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
+    role = CheckRole.FOUNDATION
 
     @property
     def name(self) -> str:
@@ -133,6 +135,12 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     def _is_strict(self) -> bool:
         """Whether strict typing mode is enabled."""
         return self.config.get("strict_typing", True)
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        from slopmop.core.cache import hash_file_scope
+
+        dirs = self._detect_source_dirs(project_root)
+        return hash_file_scope(project_root, dirs, {".py"}, self.config)
 
     def _detect_source_dirs(self, project_root: str) -> List[str]:
         """Detect source directories to type-check.
@@ -290,7 +298,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
             output = self._format_summary(error_lines, code_counts)
             total = sum(code_counts.values())
 
-            fix_parts = ["Fix type annotations or add # type: ignore comments."]
+            fix_parts = ["Fix type annotations or update function signatures."]
             if "type-arg" in code_counts:
                 fix_parts.append(
                     "type-arg: Add type parameters to generics "

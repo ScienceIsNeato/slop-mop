@@ -7,6 +7,7 @@ from typing import Any, Dict, cast
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
+from slopmop.constants import ROLE_BADGES
 from slopmop.core.registry import get_registry
 
 
@@ -154,13 +155,10 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         status = "❌ DISABLED" if name in disabled else "✅ ENABLED"
         definition = registry.get_definition(name)
         display = definition.name if definition else name
-        print(f"  {status}  {display}")
-
-    print()
-    print("📦 Aliases:")
-    print("-" * 40)
-    for alias, gates in sorted(registry.list_aliases().items()):
-        print(f"  {alias}: {', '.join(gates)}")
+        check = registry.get_check(name, {})
+        badge = ROLE_BADGES.get(check.role.value, "") if check else ""
+        print(f"  {status}  {badge}{display}")
+        print(f"             gate: {name}")
 
     print()
     return 0
@@ -206,5 +204,41 @@ def cmd_config(args: argparse.Namespace) -> int:
     if getattr(args, "swabbing_time", None) is not None:
         return _set_swabbing_time(config_file, config, args.swabbing_time)
 
-    # Default: show config
-    return _show_config(project_root, config_file, config)
+    if args.show:
+        return _show_config(project_root, config_file, config)
+
+    # Default: show usage hints
+    print("\n📋 Slop-Mop Configuration")
+    print("=" * 60)
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
+    print()
+    print("Usage:")
+    print("  sm config --show                   Show full config")
+    print("  sm config --enable  <gate>         Enable a gate")
+    print("  sm config --disable <gate>         Disable a gate")
+    print("  sm config --swabbing-time <secs>   Set time budget")
+    print("  sm config --json <file>            Merge config JSON")
+    print()
+
+    registry = get_registry()
+    checks = sorted(registry.list_checks())
+    disabled = config.get("disabled_gates", [])
+    n_disabled = sum(1 for c in checks if c in disabled)
+
+    print(
+        f"  {len(checks)} gates registered"
+        f" ({len(checks) - n_disabled} enabled,"
+        f" {n_disabled} disabled)"
+    )
+    print()
+    print("Examples:")
+    if checks:
+        example = checks[0]
+        print(f"  sm config --disable {example}")
+        print(f"  sm config --enable  {example}")
+    print()
+    print("Run 'sm config --show' to see all gates.")
+    print()
+    return 0

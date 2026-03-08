@@ -47,7 +47,7 @@ class TestSecurityLocalCheck:
         """Test display name."""
         check = SecurityLocalCheck({})
         assert "Security Scan" in check.display_name
-        assert "code analysis" in check.display_name
+        assert "bandit" in check.display_name
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
@@ -473,7 +473,7 @@ class TestSecurityCheck:
         """Test display name includes dependency scanning."""
         check = SecurityCheck({})
         assert "Security Audit" in check.display_name
-        assert "dependencies" in check.display_name
+        assert "pip-audit" in check.display_name
 
     def test_run_all_checks_passed(self, tmp_path):
         """Test run() when all checks including pip-audit pass."""

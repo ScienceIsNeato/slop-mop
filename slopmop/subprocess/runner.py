@@ -201,7 +201,7 @@ class SubprocessRunner:
         Returns:
             SubprocessResult from last attempt
         """
-        last_result = None
+        last_result: Optional[SubprocessResult] = None
 
         for attempt in range(max_retries + 1):
             result = self.run(command, timeout=timeout, cwd=cwd)
@@ -215,7 +215,8 @@ class SubprocessRunner:
                     f"Retry {attempt + 1}/{max_retries} for: {' '.join(command)}"
                 )
 
-        return last_result  # type: ignore
+        assert last_result is not None, f"max_retries must be >= 0, got {max_retries}"
+        return last_result
 
     def start_background(
         self,

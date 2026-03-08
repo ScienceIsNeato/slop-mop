@@ -18,7 +18,21 @@ set -euo pipefail
 # ─── Resolve paths ────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SLOP_MOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_ROOT="$(cd "$SLOP_MOP_DIR/.." && pwd)"
+
+# Determine project root — same heuristic as scripts/sm.  A real .git
+# directory means slop-mop IS the project (cloned standalone for dev).
+# A .git *file* means we're a submodule and the real project is one
+# level up.  Without this check, running setup.sh in a standalone
+# clone puts the venv at ../venv — one directory above the repo,
+# where nothing will ever find it — and then writes wrapper scripts
+# into the parent directory too.  scripts/sm already had this logic;
+# setup.sh having a different answer to "where is the project?" meant
+# the two scripts could never agree on which venv to use.
+if [ -d "$SLOP_MOP_DIR/.git" ]; then
+    PROJECT_ROOT="$SLOP_MOP_DIR"
+else
+    PROJECT_ROOT="$(cd "$SLOP_MOP_DIR/.." && pwd)"
+fi
 
 echo ""
 echo "🪣 Slop-Mop Setup"

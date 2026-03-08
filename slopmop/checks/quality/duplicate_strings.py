@@ -1,5 +1,6 @@
 """String duplication check using vendored find-duplicate-strings tool."""
 
+import fnmatch
 import glob as globmod
 import json
 import os
@@ -11,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, cast
 
 from slopmop.checks.base import (
     BaseCheck,
+    CheckRole,
     ConfigField,
     Flaw,
     GateCategory,
@@ -50,10 +52,17 @@ class StringDuplicationCheck(BaseCheck):
           in tools/find-duplicate-strings/.
 
     Re-check:
-      ./sm swab -g myopia:string-duplication.py --verbose
+      sm swab -g myopia:string-duplication.py --verbose
     """
 
     tool_context = ToolContext.NODE
+    # DIAGNOSTIC not FOUNDATION — the detection tool is vendored in
+    # tools/find-duplicate-strings/, not pip/npm-installable.  The
+    # protocol's litmus test is "could a developer reproduce this gate
+    # with one shell command?"  A vendored Node script fails that test
+    # even though the gate's mechanism (subprocess) looks foundational.
+    # Role is about reproducibility, not mechanism.
+    role = CheckRole.DIAGNOSTIC
 
     @property
     def name(self) -> str:
@@ -63,7 +72,7 @@ class StringDuplicationCheck(BaseCheck):
     @property
     def display_name(self) -> str:
         """Return human-readable display name."""
-        return "🔤 String Duplication"
+        return "🔤 String Duplication (cross-file literals)"
 
     @property
     def gate_description(self) -> str:
@@ -414,7 +423,7 @@ class StringDuplicationCheck(BaseCheck):
 
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.strip_docstrings  # type: ignore[no-any-return]
+        return cast(Callable[[str], str], mod.strip_docstrings)
 
     def _preprocess_python_files(
         self, project_root: str, config: Dict[str, Any]
@@ -457,7 +466,7 @@ class StringDuplicationCheck(BaseCheck):
                 rel = os.path.relpath(f, project_root)
                 skip = False
                 for ign in ignore_patterns:
-                    if globmod.fnmatch.fnmatch(rel, ign):  # type: ignore[attr-defined]
+                    if fnmatch.fnmatch(rel, ign):
                         skip = True
                         break
                 if not skip:

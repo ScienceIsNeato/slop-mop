@@ -27,6 +27,13 @@ class TestPRCommentsCheck:
         check = PRCommentsCheck({})
         assert check.category == GateCategory.MYOPIA
 
+    def test_role_is_diagnostic(self):
+        """PR comments check is diagnostic, not foundational."""
+        from slopmop.checks.base import CheckRole
+
+        check = PRCommentsCheck({})
+        assert check.role == CheckRole.DIAGNOSTIC
+
     def test_is_applicable_no_git_dir(self, tmp_path):
         """Test is_applicable returns False without .git directory."""
         check = PRCommentsCheck({})
