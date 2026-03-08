@@ -13,6 +13,18 @@ from slopmop.cli.config import _deep_merge
 from slopmop.cli.detection import detect_project_type
 
 
+def _as_dict(value: Any) -> Dict[str, Any] | None:
+    if isinstance(value, dict):
+        return cast(Dict[str, Any], value)
+    return None
+
+
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return cast(list[Any], value)
+    return []
+
+
 def prompt_user(question: str, default: str = "") -> str:
     """Prompt user for input with optional default."""
     if default:
@@ -180,7 +192,10 @@ def _disable_non_applicable(
             continue
 
         section = cast(Dict[str, Any], section)
-        gates = cast(Dict[str, Any], section.get("gates", {}))
+        gates_any = section.get("gates", {})
+        if not isinstance(gates_any, dict):
+            continue
+        gates = cast(Dict[str, Any], gates_any)
         for gate_name, gate_config in gates.items():
             if not isinstance(gate_config, dict):
                 continue
@@ -204,34 +219,49 @@ def _disable_non_applicable(
     # Apply detected test dirs to untested-code.py gate
     if detected["has_python"] and detected["test_dirs"]:
         for cat_key in base_config:
-            section = base_config.get(cat_key)
-            if isinstance(section, dict) and "gates" in section:
-                if "untested-code.py" in section["gates"]:
-                    section["gates"]["untested-code.py"]["test_dirs"] = detected[
-                        "test_dirs"
-                    ]
+            section = _as_dict(base_config.get(cat_key))
+            if section is None:
+                continue
+            gates = _as_dict(section.get("gates"))
+            if gates is None:
+                continue
+            gate_cfg_any = _as_dict(gates.get("untested-code.py"))
+            if gate_cfg_any is not None:
+                gate_cfg_any["test_dirs"] = detected["test_dirs"]
 
 
 def _apply_user_config(base_config: Dict[str, Any], config: Dict[str, Any]) -> None:
     """Apply user config overrides to base config."""
     # Apply disabled gates — format is "category:gate" (e.g. "myopia:vulnerability-blindness.py")
-    for gate_full_name in config.get("disabled_gates", []):
+    for gate_full_name in _as_list(config.get("disabled_gates", [])):
+        if not isinstance(gate_full_name, str):
+            continue
         if ":" in gate_full_name:
             category, gate = gate_full_name.split(":", 1)
-            if category in base_config and "gates" in base_config[category]:
-                if gate in base_config[category]["gates"]:
-                    base_config[category]["gates"][gate]["enabled"] = False
+            section = _as_dict(base_config.get(category))
+            if section is None:
+                continue
+            gates = _as_dict(section.get("gates"))
+            if gates is None:
+                continue
+            gate_cfg = _as_dict(gates.get(gate))
+            if gate_cfg is not None:
+                gate_cfg["enabled"] = False
 
     # Apply coverage threshold across all categories that have coverage gates
     if "coverage_threshold" in config:
         for cat_key in base_config:
-            section = base_config.get(cat_key)
-            if isinstance(section, dict) and "gates" in section:
-                cat_gates = cast(Dict[str, Any], section["gates"])
-                for gate_name, gate_config in cat_gates.items():
-                    if isinstance(gate_config, dict) and "coverage" in gate_name:
-                        if "threshold" in gate_config:
-                            gate_config["threshold"] = config["coverage_threshold"]
+            section = _as_dict(base_config.get(cat_key))
+            if section is None:
+                continue
+            cat_gates = _as_dict(section.get("gates"))
+            if cat_gates is None:
+                continue
+            for gate_name, gate_config in cat_gates.items():
+                gate_cfg = _as_dict(gate_config)
+                if gate_cfg is not None and "coverage" in gate_name:
+                    if "threshold" in gate_cfg:
+                        gate_cfg["threshold"] = config["coverage_threshold"]
 
 
 def _disable_checks_with_missing_tools(
@@ -242,19 +272,42 @@ def _disable_checks_with_missing_tools(
     This prevents ERROR status from missing tools - if the tool isn't
     available, the check is disabled rather than failing.
     """
-    missing_tools = detected.get("missing_tools", [])
+    empty_list: list[Any] = []
+    missing_tools = _as_list(detected.get("missing_tools", empty_list))
     if not missing_tools:
         return
 
-    for _tool_name, check_name, _install_cmd in missing_tools:
+    for entry_any in missing_tools:
+        check_name_raw: Any
+        if isinstance(entry_any, list):
+            entry_list = cast(list[Any], entry_any)
+            if len(entry_list) != 3:
+                continue
+            check_name_raw = entry_list[1]
+        elif isinstance(entry_any, tuple):
+            entry_tuple = cast(tuple[Any, ...], entry_any)
+            if len(entry_tuple) != 3:
+                continue
+            check_name_raw = entry_tuple[1]
+        else:
+            continue
+        if not isinstance(check_name_raw, str):
+            continue
+        check_name: str = check_name_raw
         # Parse check name: "laziness:dead-code.py" -> category="laziness", gate="dead-code.py"
         if ":" not in check_name:
             continue
         category, gate = check_name.split(":", 1)
 
-        if category in base_config and "gates" in base_config[category]:
-            if gate in base_config[category]["gates"]:
-                base_config[category]["gates"][gate]["enabled"] = False
+        section = _as_dict(base_config.get(category))
+        if section is None:
+            continue
+        gates = _as_dict(section.get("gates"))
+        if gates is None:
+            continue
+        gate_cfg = _as_dict(gates.get(gate))
+        if gate_cfg is not None:
+            gate_cfg["enabled"] = False
 
 
 def _set_bogus_tests_defaults(
@@ -272,10 +325,14 @@ def _set_bogus_tests_defaults(
     if not detected["has_python"]:
         return
 
-    deceptiveness = base_config.get("deceptiveness", {})
-    gates = deceptiveness.get("gates", {})
-    bogus_cfg = gates.get("bogus-tests.py")
-    if not bogus_cfg or not bogus_cfg.get("enabled", False):
+    deceptiveness = _as_dict(base_config.get("deceptiveness"))
+    if deceptiveness is None:
+        return
+    gates = _as_dict(deceptiveness.get("gates"))
+    if gates is None:
+        return
+    bogus_cfg = _as_dict(gates.get("bogus-tests.py"))
+    if bogus_cfg is None or not bool(bogus_cfg.get("enabled", False)):
         return
 
     bogus_cfg["min_test_statements"] = 1
@@ -295,7 +352,12 @@ def _disable_non_applicable_by_applicability(
     ensure_checks_registered()
     registry = get_registry()
 
-    for full_name in registry.list_checks():
+    check_names: list[str] = []
+    for full_name_any in registry.list_checks():
+        if isinstance(full_name_any, str):
+            check_names.append(full_name_any)
+
+    for full_name in check_names:
         check = registry.get_check(full_name, base_config)
         if check is None:
             continue
@@ -304,14 +366,14 @@ def _disable_non_applicable_by_applicability(
         if ":" not in full_name:
             continue
         category, gate_name = full_name.split(":", 1)
-        section = base_config.get(category)
-        if not isinstance(section, dict):
+        section = _as_dict(base_config.get(category))
+        if section is None:
             continue
-        gates = section.get("gates")
-        if not isinstance(gates, dict):
+        gates = _as_dict(section.get("gates"))
+        if gates is None:
             continue
-        gate_cfg = gates.get(gate_name)
-        if isinstance(gate_cfg, dict):
+        gate_cfg = _as_dict(gates.get(gate_name))
+        if gate_cfg is not None:
             gate_cfg["enabled"] = False
 
 
@@ -359,8 +421,7 @@ def _write_config(
         if not suggested:
             return
 
-        existing_any = merged.get("custom_gates", [])
-        existing = existing_any if isinstance(existing_any, list) else []
+        existing = _as_list(merged.get("custom_gates", []))
 
         suggested_names = {
             str(g.get("name"))
@@ -373,20 +434,21 @@ def _write_config(
             if not isinstance(gate, dict):
                 refreshed.append(gate)
                 continue
-            name = str(gate.get("name", "")).strip()
+            gate_dict = cast(dict[str, Any], gate)
+            name = str(gate_dict.get("name", "")).strip()
             if not name or name not in suggested_names:
                 refreshed.append(gate)
 
         merged["custom_gates"] = refreshed
 
     # Add suggested custom gates for non-Python/JS languages
-    suggested_any = detected.get("suggested_custom_gates", [])
-    suggested_custom = (
-        suggested_any
-        if isinstance(suggested_any, list)
-        and all(isinstance(g, dict) for g in suggested_any)
-        else []
-    )
+    suggested_any = detected.get("suggested_custom_gates", cast(list[Any], []))
+    suggested_custom: list[dict[str, Any]] = []
+    if isinstance(suggested_any, list):
+        suggested_entries = cast(list[Any], suggested_any)
+        for gate_any in suggested_entries:
+            if isinstance(gate_any, dict):
+                suggested_custom.append(cast(dict[str, Any], gate_any))
     if suggested_custom:
         base_config["custom_gates"] = suggested_custom
         print(
@@ -396,7 +458,7 @@ def _write_config(
     # Merge with existing config if present
     if config_file.exists():
         try:
-            existing = json.loads(config_file.read_text())
+            existing = cast(Dict[str, Any], json.loads(config_file.read_text()))
             backup_path = backup_config(config_file)
             if backup_path:
                 print(f"📦 Backed up existing config to: {backup_path}")

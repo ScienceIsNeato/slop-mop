@@ -3,7 +3,7 @@
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -16,7 +16,13 @@ from slopmop.checks.base import (
     find_tool,
 )
 from slopmop.checks.dart.common import find_pubspec_dirs
-from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel, ScopeInfo
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    Finding,
+    FindingLevel,
+    ScopeInfo,
+)
 
 DEFAULT_THRESHOLD = 80
 MAX_FILES_TO_SHOW = 5
@@ -97,98 +103,91 @@ class DartCoverageCheck(BaseCheck):
             project_root, include_dirs=include_dirs, extensions={".dart"}
         )
 
-    def run(self, project_root: str) -> CheckResult:
-        start_time = time.time()
-        threshold = int(self.config.get("threshold", DEFAULT_THRESHOLD))
+    def _warn_flutter_missing(self, start_time: float) -> CheckResult:
+        return self._create_result(
+            status=CheckStatus.WARNED,
+            duration=time.time() - start_time,
+            error="flutter not available",
+            fix_suggestion="Install Flutter SDK and ensure `flutter` is on PATH",
+            findings=[
+                Finding(
+                    message="flutter not available",
+                    level=FindingLevel.WARNING,
+                )
+            ],
+        )
 
-        flutter_path = find_tool("flutter", project_root)
-        if not flutter_path:
-            return self._create_result(
-                status=CheckStatus.WARNED,
-                duration=time.time() - start_time,
-                error="flutter not available",
-                fix_suggestion="Install Flutter SDK and ensure `flutter` is on PATH",
-                findings=[
-                    Finding(
-                        message="flutter not available",
-                        level=FindingLevel.WARNING,
-                    )
-                ],
-            )
-
-        package_dirs = [
+    def _get_test_package_dirs(self, project_root: str) -> List[Path]:
+        return [
             pkg for pkg in find_pubspec_dirs(project_root) if (pkg / "test").is_dir()
         ]
-        if not package_dirs:
-            return self._create_result(
-                status=CheckStatus.SKIPPED,
-                duration=time.time() - start_time,
-                output="No Flutter test directories found",
-            )
 
-        aggregate: Dict[str, _FileCoverage] = {}
-        for package_dir in package_dirs:
-            result = self._run_command(
-                [flutter_path, "test", "--coverage"],
-                cwd=str(package_dir),
-                timeout=900,
-            )
-            if not result.success or result.timed_out:
-                if _FLUTTER_CACHE_PERMISSION_ERROR in (result.output or ""):
-                    return self._create_result(
-                        status=CheckStatus.SKIPPED,
-                        duration=time.time() - start_time,
-                        output=(
-                            "Skipping coverage-gaps.dart: Flutter SDK cache path "
-                            "is not writable in this environment."
-                        ),
-                        findings=[
-                            Finding(
-                                message=(
-                                    "Flutter SDK cache path is not writable in this environment"
-                                ),
-                                level=FindingLevel.WARNING,
-                            )
-                        ],
-                    )
-                pkg_rel = str(package_dir.relative_to(Path(project_root)))
-                message = f"flutter test failed in {pkg_rel}"
+    def _run_coverage_for_package(
+        self,
+        project_root: str,
+        package_dir: Path,
+        flutter_path: str,
+        aggregate: Dict[str, _FileCoverage],
+        start_time: float,
+    ) -> Optional[CheckResult]:
+        result = self._run_command(
+            [flutter_path, "test", "--coverage"],
+            cwd=str(package_dir),
+            timeout=900,
+        )
+        if not result.success or result.timed_out:
+            if _FLUTTER_CACHE_PERMISSION_ERROR in (result.output or ""):
                 return self._create_result(
-                    status=CheckStatus.FAILED,
+                    status=CheckStatus.SKIPPED,
                     duration=time.time() - start_time,
-                    error=message,
-                    output=result.output,
-                    findings=[Finding(message=message, level=FindingLevel.ERROR)],
-                    fix_suggestion=(
-                        "Fix Flutter test failures and rerun coverage. "
-                        f"Verify with: {self.verify_command}"
+                    output=(
+                        "Skipping coverage-gaps.dart: Flutter SDK cache path "
+                        "is not writable in this environment."
                     ),
+                    findings=[
+                        Finding(
+                            message=(
+                                "Flutter SDK cache path is not writable in this environment"
+                            ),
+                            level=FindingLevel.WARNING,
+                        )
+                    ],
                 )
-
-            lcov_path = package_dir / "coverage" / "lcov.info"
-            if not lcov_path.exists():
-                pkg_rel = str(package_dir.relative_to(Path(project_root)))
-                message = f"coverage/lcov.info not found in {pkg_rel}"
-                return self._create_result(
-                    status=CheckStatus.FAILED,
-                    duration=time.time() - start_time,
-                    error=message,
-                    findings=[Finding(message=message, level=FindingLevel.ERROR)],
-                )
-            self._merge_lcov(project_root, lcov_path, aggregate)
-
-        total_lines = sum(item.total for item in aggregate.values())
-        covered_lines = sum(item.covered for item in aggregate.values())
-        coverage_pct = 100.0 if total_lines == 0 else (covered_lines / total_lines) * 100.0
-
-        duration = time.time() - start_time
-        if coverage_pct >= threshold:
+            pkg_rel = str(package_dir.relative_to(Path(project_root)))
+            message = f"flutter test failed in {pkg_rel}"
             return self._create_result(
-                status=CheckStatus.PASSED,
-                duration=duration,
-                output=f"Coverage {coverage_pct:.1f}% meets threshold {threshold}%",
+                status=CheckStatus.FAILED,
+                duration=time.time() - start_time,
+                error=message,
+                output=result.output,
+                findings=[Finding(message=message, level=FindingLevel.ERROR)],
+                fix_suggestion=(
+                    "Fix Flutter test failures and rerun coverage. "
+                    f"Verify with: {self.verify_command}"
+                ),
             )
 
+        lcov_path = package_dir / "coverage" / "lcov.info"
+        if not lcov_path.exists():
+            pkg_rel = str(package_dir.relative_to(Path(project_root)))
+            message = f"coverage/lcov.info not found in {pkg_rel}"
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=time.time() - start_time,
+                error=message,
+                findings=[Finding(message=message, level=FindingLevel.ERROR)],
+            )
+
+        self._merge_lcov(project_root, lcov_path, aggregate)
+        return None
+
+    def _build_failure_result(
+        self,
+        aggregate: Dict[str, _FileCoverage],
+        threshold: int,
+        coverage_pct: float,
+        duration: float,
+    ) -> CheckResult:
         low_files = sorted(
             (
                 (file_path, stats)
@@ -224,7 +223,8 @@ class DartCoverageCheck(BaseCheck):
             duration=duration,
             output="\n".join(lines),
             error=f"Coverage {coverage_pct:.1f}% below threshold {threshold}%",
-            findings=findings or [
+            findings=findings
+            or [
                 Finding(
                     message=f"Coverage {coverage_pct:.1f}% below threshold {threshold}%",
                     level=FindingLevel.ERROR,
@@ -236,13 +236,64 @@ class DartCoverageCheck(BaseCheck):
             ),
         )
 
+    def run(self, project_root: str) -> CheckResult:
+        start_time = time.time()
+        threshold = int(self.config.get("threshold", DEFAULT_THRESHOLD))
+
+        flutter_path = find_tool("flutter", project_root)
+        if not flutter_path:
+            return self._warn_flutter_missing(start_time)
+
+        package_dirs = self._get_test_package_dirs(project_root)
+        if not package_dirs:
+            return self._create_result(
+                status=CheckStatus.SKIPPED,
+                duration=time.time() - start_time,
+                output="No Flutter test directories found",
+            )
+
+        aggregate: Dict[str, _FileCoverage] = {}
+        for package_dir in package_dirs:
+            package_error = self._run_coverage_for_package(
+                project_root,
+                package_dir,
+                flutter_path,
+                aggregate,
+                start_time,
+            )
+            if package_error is not None:
+                return package_error
+
+        total_lines = sum(item.total for item in aggregate.values())
+        covered_lines = sum(item.covered for item in aggregate.values())
+        coverage_pct = (
+            100.0 if total_lines == 0 else (covered_lines / total_lines) * 100.0
+        )
+
+        duration = time.time() - start_time
+        if coverage_pct >= threshold:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output=f"Coverage {coverage_pct:.1f}% meets threshold {threshold}%",
+            )
+
+        return self._build_failure_result(
+            aggregate,
+            threshold,
+            coverage_pct,
+            duration,
+        )
+
     @staticmethod
     def _merge_lcov(
         project_root: str, lcov_path: Path, aggregate: Dict[str, _FileCoverage]
     ) -> None:
         current_file: Optional[str] = None
         root = Path(project_root).resolve()
-        for raw_line in lcov_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        for raw_line in lcov_path.read_text(
+            encoding="utf-8", errors="ignore"
+        ).splitlines():
             line = raw_line.strip()
             if line.startswith("SF:"):
                 raw_path = line[3:]

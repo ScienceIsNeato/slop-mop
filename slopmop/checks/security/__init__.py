@@ -361,7 +361,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             if line_cache is not None and cache_key in line_cache:
                 lines = line_cache[cache_key]
             else:
-                lines = resolved.read_text(encoding="utf-8", errors="ignore").splitlines()
+                lines = resolved.read_text(
+                    encoding="utf-8", errors="ignore"
+                ).splitlines()
                 if line_cache is not None:
                     line_cache[cache_key] = lines
             if line_number <= len(lines):
@@ -425,10 +427,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             # Match whole tokens only; avoid substring false positives
             # like "latest", "contest", or "locale".
             tokens = set(re.findall(r"[a-z0-9]+", line_lower))
-            if (
-                {"test", "local", "dev", "demo", "sample", "dummy"} & tokens
-                and {"secret", "token", "key"} & tokens
-            ):
+            if {"test", "local", "dev", "demo", "sample", "dummy"} & tokens and {
+                "secret",
+                "token",
+                "key",
+            } & tokens:
                 return True
         return False
 
@@ -569,25 +572,41 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
         if result.success:
             try:
-                report = json.loads(result.output)
-                detected = report.get("results", {})
-                real_secrets = {}
+                report_loaded: Any = json.loads(result.output)
+                report: dict[str, Any]
+                if isinstance(report_loaded, dict):
+                    report = cast(dict[str, Any], report_loaded)
+                else:
+                    report = {}
+                detected_any = report.get("results", {})
+                detected = (
+                    cast(dict[str, Any], detected_any)
+                    if isinstance(detected_any, dict)
+                    else {}
+                )
+                real_secrets: dict[str, list[dict[str, Any]]] = {}
                 line_cache: dict[str, list[str]] = {}
-                for path, secrets in detected.items():
+                for path_any, secrets_any in detected.items():
+                    if not isinstance(path_any, str):
+                        continue
+                    path = path_any
                     if self._is_path_excluded_for_detect_secrets(path):
                         continue
                     if "constants.py" in path:
                         continue
-                    if not isinstance(secrets, list):
+                    if not isinstance(secrets_any, list):
                         continue
-                    filtered = [
-                        s
-                        for s in secrets
-                        if isinstance(s, dict)
-                        and not self._is_detect_secrets_false_positive(
-                            project_root, path, s, line_cache
-                        )
-                    ]
+                    secrets: list[dict[str, Any]] = []
+                    secrets_raw = cast(list[Any], secrets_any)
+                    for secret_any in secrets_raw:
+                        if isinstance(secret_any, dict):
+                            secrets.append(cast(dict[str, Any], secret_any))
+                    filtered: list[dict[str, Any]] = []
+                    for secret in secrets:
+                        if not self._is_detect_secrets_false_positive(
+                            project_root, path, secret, line_cache
+                        ):
+                            filtered.append(secret)
                     if filtered:
                         real_secrets[path] = filtered
                 if not real_secrets:
@@ -595,11 +614,15 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                         "detect-secrets", True, "No secrets detected"
                     )
 
-                detail = "\n".join(
-                    f"  Potential secret in {path}: "
-                    f"{', '.join(str(s.get('type', '?')) for s in secrets)}"
-                    for path, secrets in real_secrets.items()
-                )
+                detail_lines: list[str] = []
+                for path, secrets in real_secrets.items():
+                    types: list[str] = []
+                    for secret in secrets:
+                        types.append(str(secret.get("type", "?")))
+                    detail_lines.append(
+                        f"  Potential secret in {path}: {', '.join(types)}"
+                    )
+                detail = "\n".join(detail_lines)
                 # detect-secrets: per-file Findings (line_number available)
                 sarif: List[Finding] = []
                 for path, secrets in real_secrets.items():

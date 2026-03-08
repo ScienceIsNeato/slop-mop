@@ -173,7 +173,9 @@ class TestSourceDuplicationCheck:
     def test_build_command_ignores_migrations_by_default(self):
         """jscpd command should ignore migration boilerplate by default."""
         check = SourceDuplicationCheck({})
-        cmd = check._build_jscpd_command("/tmp/report", ["."], min_tokens=50, min_lines=5)
+        cmd = check._build_jscpd_command(
+            "/tmp/report", ["."], min_tokens=50, min_lines=5
+        )
         ignore_arg = cmd[cmd.index("--ignore") + 1]
         assert "migrations" in ignore_arg
         assert "alembic" in ignore_arg

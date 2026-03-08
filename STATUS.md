@@ -11,6 +11,32 @@
 
 **Status: LOCAL — all 1327 tests pass** ✅
 
+## 2026-03-08 Delta: Pre-Commit Hook Blockers Cleared (PR #84 follow-up)
+
+### Completed
+
+1. Cleared `myopia:code-sprawl` violations:
+  - Refactored `slopmop/checks/dart/coverage.py` by extracting helper methods from
+    `run()` so function length is within threshold.
+  - Split `TestCmdConfig` out of `tests/unit/test_sm_cli.py` into
+    `tests/unit/test_sm_cli_config.py` to bring file LOC under the gate limit.
+
+2. Cleared `overconfidence:type-blindness.py` failures:
+  - Hardened type narrowing/coercion in:
+    - `slopmop/cli/config.py`
+    - `slopmop/cli/detection.py`
+    - `slopmop/cli/init.py`
+    - `slopmop/checks/security/__init__.py`
+    - `slopmop/checks/quality/dead_code.py`
+
+3. Validated behavior after refactors:
+  - `python -m pytest tests/unit/test_sm_cli.py tests/unit/test_sm_cli_config.py tests/unit/test_security_checks.py tests/unit/test_dart_checks.py tests/unit/test_quality_checks.py -q` → **188 passed**
+
+4. Re-validated gates used by hooks:
+  - `sm swab -g myopia:code-sprawl --json --output-file .slopmop/code_sprawl_check.json` → **passed**
+  - `sm swab -g overconfidence:type-blindness.py --json --output-file .slopmop/type_blindness_check.json` → **passed**
+  - `sm swab --json --output-file .slopmop/last_swab.json` → **all_passed: true**
+
 ### Summary
 
 Custom gates feature, output polish, PR category removal, and comprehensive custom gate test coverage.

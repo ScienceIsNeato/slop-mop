@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -70,7 +70,9 @@ class DartGeneratedArtifactsCheck(BaseCheck):
             for pkg in find_pubspec_dirs(project_root)
         ]
 
-        git_result = self._run_command(["git", "ls-files"], cwd=project_root, timeout=30)
+        git_result = self._run_command(
+            ["git", "ls-files"], cwd=project_root, timeout=30
+        )
         duration = time.time() - start_time
         if not git_result.success:
             return self._create_result(
@@ -140,7 +142,10 @@ class DartGeneratedArtifactsCheck(BaseCheck):
         exclude_prefixes: set[str],
     ) -> bool:
         path = tracked_path.strip("/").replace("\\", "/")
-        if any(path == prefix or path.startswith(prefix + "/") for prefix in exclude_prefixes):
+        if any(
+            path == prefix or path.startswith(prefix + "/")
+            for prefix in exclude_prefixes
+        ):
             return False
 
         rel = DartGeneratedArtifactsCheck._path_within_package(path, package_prefixes)

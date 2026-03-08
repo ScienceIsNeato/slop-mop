@@ -11,20 +11,35 @@ from slopmop.constants import ROLE_BADGES
 from slopmop.core.registry import get_registry
 
 
+def _as_dict(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return cast(dict[str, Any], value)
+    return None
+
+
+def _as_str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items = cast(list[Any], value)
+    result: list[str] = []
+    for item in items:
+        if isinstance(item, str):
+            result.append(item)
+    return result
+
+
 def _is_gate_enabled(cfg: dict[str, Any], full_name: str) -> bool:
     """Return whether a gate is enabled across both config representations."""
-    disabled = cfg.get("disabled_gates", [])
-    if isinstance(disabled, list) and full_name in disabled:
+    disabled = _as_str_list(cfg.get("disabled_gates", []))
+    if full_name in disabled:
         return False
     if ":" not in full_name:
         return True
 
     category, gate = full_name.split(":", 1)
-    gate_cfg = (
-        (cfg.get(category) or {}).get("gates", {}).get(gate)
-        if isinstance(cfg.get(category), dict)
-        else None
-    )
+    category_cfg = _as_dict(cfg.get(category))
+    gates_cfg = _as_dict(category_cfg.get("gates") if category_cfg else None)
+    gate_cfg = _as_dict(gates_cfg.get(gate) if gates_cfg else None)
     if isinstance(gate_cfg, dict) and "enabled" in gate_cfg:
         return bool(gate_cfg.get("enabled"))
     return True
@@ -34,17 +49,32 @@ def _set_gate_enabled(cfg: dict[str, Any], full_name: str, enabled: bool) -> Non
     """Set gate enabled state in both nested and legacy config forms."""
     if ":" in full_name:
         category, gate = full_name.split(":", 1)
-        cat = cfg.setdefault(category, {})
-        if isinstance(cat, dict):
-            gates = cat.setdefault("gates", {})
-            if isinstance(gates, dict):
-                gate_cfg = gates.setdefault(gate, {})
-                if isinstance(gate_cfg, dict):
-                    gate_cfg["enabled"] = enabled
+        cat_any = _as_dict(cfg.get(category))
+        cat: dict[str, Any]
+        if cat_any is not None:
+            cat = cat_any
+        else:
+            cat = {}
+            cfg[category] = cat
 
-    disabled = cfg.get("disabled_gates", [])
-    if not isinstance(disabled, list):
-        disabled = []
+        gates_any = _as_dict(cat.get("gates"))
+        gates: dict[str, Any]
+        if gates_any is not None:
+            gates = gates_any
+        else:
+            gates = {}
+            cat["gates"] = gates
+
+        gate_cfg_any = _as_dict(gates.get(gate))
+        gate_cfg: dict[str, Any]
+        if gate_cfg_any is not None:
+            gate_cfg = gate_cfg_any
+        else:
+            gate_cfg = {}
+            gates[gate] = gate_cfg
+        gate_cfg["enabled"] = enabled
+
+    disabled = _as_str_list(cfg.get("disabled_gates", []))
     if enabled:
         disabled = [g for g in disabled if g != full_name]
     elif full_name not in disabled:
@@ -204,8 +234,12 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
     # Show all available gates
     print("🔍 Available Quality Gates:")
     print("-" * 40)
-    checks = []
-    for name in registry.list_checks():
+    checks: list[str] = []
+    check_names: list[str] = []
+    for name_any in registry.list_checks():
+        if isinstance(name_any, str):
+            check_names.append(name_any)
+    for name in check_names:
         check = registry.get_check(name, config)
         if check is None:
             continue
@@ -215,9 +249,13 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
     for name in sorted(checks):
         status = "❌ DISABLED" if not _is_gate_enabled(config, name) else "✅ ENABLED"
         definition = registry.get_definition(name)
-        display = definition.name if definition else name
+        display = str(getattr(definition, "name", name))
         check = registry.get_check(name, config)
-        badge = ROLE_BADGES.get(check.role.value, "") if check else ""
+        badge = ROLE_BADGES.get(
+            str(getattr(getattr(check, "role", None), "value", "")), ""
+        )
+        if check is None:
+            badge = ""
         print(f"  {status}  {badge}{display}")
         print(f"             gate: {name}")
 
@@ -292,8 +330,12 @@ def cmd_config(args: argparse.Namespace) -> int:
     print()
 
     registry = get_registry()
-    checks = []
-    for name in sorted(registry.list_checks()):
+    checks: list[str] = []
+    check_names: list[str] = []
+    for name_any in registry.list_checks():
+        if isinstance(name_any, str):
+            check_names.append(name_any)
+    for name in sorted(check_names):
         check = registry.get_check(name, config)
         if check is None:
             continue

@@ -3,7 +3,7 @@
 import json
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
 
@@ -104,14 +104,21 @@ def _extract_scc_languages(payload: Any) -> Set[str]:
     languages: Set[str] = set()
 
     if isinstance(payload, list):
-        rows = [row for row in payload if isinstance(row, dict)]
+        payload_rows = cast(List[Any], payload)
+        for row_any in payload_rows:
+            if isinstance(row_any, dict):
+                rows.append(cast(Dict[str, Any], row_any))
     elif isinstance(payload, dict):
-        maybe_rows = payload.get("languages")
+        payload_dict = cast(Dict[str, Any], payload)
+        maybe_rows = payload_dict.get("languages")
         if isinstance(maybe_rows, list):
-            rows = [row for row in maybe_rows if isinstance(row, dict)]
+            rows_any = cast(List[Any], maybe_rows)
+            for row_any in rows_any:
+                if isinstance(row_any, dict):
+                    rows.append(cast(Dict[str, Any], row_any))
         else:
             # Some versions key by language at top-level.
-            for key, value in payload.items():
+            for key, value in payload_dict.items():
                 if isinstance(key, str) and isinstance(value, dict):
                     norm = _normalize_language_key(key)
                     if norm and norm not in _SCC_SUMMARY_ROWS:

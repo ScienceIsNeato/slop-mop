@@ -532,9 +532,7 @@ class TestRunDetectSecrets:
         mock_result.output = json.dumps(
             {
                 "results": {
-                    "app/config.py": [
-                        {"type": "Secret Keyword", "line_number": 1}
-                    ]
+                    "app/config.py": [{"type": "Secret Keyword", "line_number": 1}]
                 }
             }
         )

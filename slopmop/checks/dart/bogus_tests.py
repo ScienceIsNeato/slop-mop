@@ -16,7 +16,13 @@ from slopmop.checks.base import (
     count_source_scope,
 )
 from slopmop.checks.dart.common import find_dart_test_files, find_pubspec_dirs
-from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel, ScopeInfo
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    Finding,
+    FindingLevel,
+    ScopeInfo,
+)
 
 TEST_PATTERN: Pattern[str] = re.compile(
     r"(?:test|testWidgets)\s*\(\s*['\"`]([^'\"`]+)['\"`]\s*,\s*\([^)]*\)\s*(?:async\s*)?\{",
