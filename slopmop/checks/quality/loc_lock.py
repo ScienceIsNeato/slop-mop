@@ -273,6 +273,10 @@ EXCLUDED_DIRS = {
     ".claude",
     ".cursor",
     ".aider",
+    # Framework-generated migration histories are intentionally verbose and
+    # repetitive; file/function size limits are not useful there.
+    "migrations",
+    "alembic",
 }
 
 

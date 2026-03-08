@@ -1,8 +1,9 @@
 """Project type detection for slop-mop CLI."""
 
 import json
+import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks.base import find_tool
 
@@ -44,6 +45,108 @@ REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     ("radon", "laziness:complexity-creep.py", _INSTALL_ANALYSIS),
 ]
 
+# Canonical language keys derived from scc --format json output.
+_PYTHON_LANGS = {"python"}
+_JAVASCRIPT_LANGS = {"javascript"}
+_TYPESCRIPT_LANGS = {"typescript"}
+_GO_LANGS = {"go"}
+_RUST_LANGS = {"rust"}
+_C_CPP_LANGS = {
+    "c",
+    "cheader",
+    "cplusplus",
+    "cplusplusheader",
+    "objectivec",
+    "objectivecplusplus",
+}
+_DART_LANGS = {"dart"}
+_SCC_SUMMARY_ROWS = {"total", "totals", "sum", "header"}
+
+
+def _normalize_language_key(name: str) -> str:
+    """Normalize language names to stable keys for set membership checks.
+
+    Example:
+      "C++ Header" -> "cplusplusheader"
+      "Objective-C" -> "objectivec"
+    """
+    normalized = "".join(ch for ch in name.strip().lower() if ch.isalnum())
+    return normalized
+
+
+def _extract_scc_languages(payload: Any) -> Set[str]:
+    """Extract normalized language keys from scc JSON output.
+
+    scc's JSON schema has changed across versions; support both:
+    - list of rows with "Name"/"Code"/...
+    - dict shapes where language stats are keyed by language name
+    """
+    rows: List[Dict[str, Any]] = []
+    languages: Set[str] = set()
+
+    if isinstance(payload, list):
+        rows = [row for row in payload if isinstance(row, dict)]
+    elif isinstance(payload, dict):
+        maybe_rows = payload.get("languages")
+        if isinstance(maybe_rows, list):
+            rows = [row for row in maybe_rows if isinstance(row, dict)]
+        else:
+            # Some versions key by language at top-level.
+            for key, value in payload.items():
+                if isinstance(key, str) and isinstance(value, dict):
+                    norm = _normalize_language_key(key)
+                    if norm and norm not in _SCC_SUMMARY_ROWS:
+                        languages.add(norm)
+
+    for row in rows:
+        raw_name: Any = (
+            row.get("Name")
+            or row.get("name")
+            or row.get("Language")
+            or row.get("language")
+        )
+        if not isinstance(raw_name, str):
+            continue
+        norm = _normalize_language_key(raw_name)
+        if not norm or norm in _SCC_SUMMARY_ROWS:
+            continue
+        languages.add(norm)
+
+    return languages
+
+
+def _detect_languages_with_scc(project_root: Path) -> Optional[Set[str]]:
+    """Detect languages using local `scc` (no network).
+
+    Returns:
+      - set of normalized language keys when scc is available and output parses
+      - None when scc is unavailable or output is unusable
+    """
+    scc_path = find_tool("scc", str(project_root))
+    if not scc_path:
+        return None
+
+    try:
+        result = subprocess.run(
+            [scc_path, "--format", "json", "--no-cocomo", str(project_root)],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    return _extract_scc_languages(payload)
+
 
 def _detect_tools(project_root: Path) -> Dict[str, Any]:
     """Detect which required tools are available.
@@ -72,10 +175,12 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
     }
 
 
-def _detect_python(project_root: Path) -> bool:
+def _detect_python(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for Python project indicators.
 
-    Manifest-only.  We do NOT glob ``**/*.py`` because real-world
+    Manifest fallback.  We do NOT glob ``**/*.py`` because real-world
     polyglot repos routinely ship stray Python utility scripts:
 
     * curl/             — test-case generators in tests/*.py
@@ -88,11 +193,16 @@ def _detect_python(project_root: Path) -> bool:
     project with zero manifest files in 2025 they can flip the gates on
     by hand.
     """
+    if detected_languages is not None:
+        return bool(detected_languages & _PYTHON_LANGS)
+
     py_indicators = ["setup.py", "pyproject.toml", "requirements.txt", "Pipfile"]
     return any((project_root / p).exists() for p in py_indicators)
 
 
-def _detect_javascript(project_root: Path) -> bool:
+def _detect_javascript(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for JavaScript project indicators.
 
     Manifest-only — same reasoning as ``_detect_python``.  Go repos
@@ -102,33 +212,66 @@ def _detect_javascript(project_root: Path) -> bool:
     reports ``n/a (No package.json found)`` — which is the symptom
     telling you the detection was wrong in the first place.
     """
+    if detected_languages is not None:
+        return bool(detected_languages & (_JAVASCRIPT_LANGS | _TYPESCRIPT_LANGS))
+
     js_indicators = ["package.json", "tsconfig.json"]
     return any((project_root / p).exists() for p in js_indicators)
 
 
-def _detect_typescript(project_root: Path) -> bool:
-    """Check specifically for TypeScript (manifest-only)."""
+def _detect_typescript(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
+    """Check specifically for TypeScript."""
+    if detected_languages is not None:
+        return bool(detected_languages & _TYPESCRIPT_LANGS)
+
     ts_indicators = ["tsconfig.json", "tsconfig.ci.json"]
     return any((project_root / p).exists() for p in ts_indicators)
 
 
-def _detect_go(project_root: Path) -> bool:
+def _detect_go(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for Go project indicators."""
+    if detected_languages is not None:
+        return bool(detected_languages & _GO_LANGS)
+
     return (project_root / "go.mod").exists()
 
 
-def _detect_rust(project_root: Path) -> bool:
+def _detect_rust(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for Rust project indicators."""
+    if detected_languages is not None:
+        return bool(detected_languages & _RUST_LANGS)
+
     return (project_root / "Cargo.toml").exists()
 
 
-def _detect_c_cpp(project_root: Path) -> bool:
+def _detect_c_cpp(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for C/C++ project indicators."""
+    if detected_languages is not None:
+        return bool(detected_languages & _C_CPP_LANGS)
+
     c_indicators = ["CMakeLists.txt", "Makefile", "configure.ac", "meson.build"]
     for indicator in c_indicators:
         if (project_root / indicator).exists():
             return True
     return False
+
+
+def _detect_dart(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
+    """Check for Dart / Flutter project indicators."""
+    if detected_languages is not None:
+        return bool(detected_languages & _DART_LANGS)
+
+    return (project_root / "pubspec.yaml").exists()
 
 
 # this is a duplicate - need to keep just one version of this method
@@ -307,6 +450,60 @@ def _suggest_custom_gates(
             }
         )
 
+    if detected.get("has_dart"):
+        gates.extend(
+            [
+                {
+                    "name": "flutter-analyze",
+                    "description": "Run Flutter static analysis",
+                    "category": "laziness",
+                    "command": (
+                        "sh -c 'set -e; "
+                        'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
+                        '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
+                        'for pubspec in $pubspecs; do '
+                        'dir=$(dirname "$pubspec"); '
+                        'echo "==> flutter analyze ($dir)"; '
+                        '(cd "$dir" && flutter analyze); '
+                        "done'"
+                    ),
+                    "level": "swab",
+                    "timeout": 300,
+                },
+                {
+                    "name": "flutter-test",
+                    "description": "Run Flutter tests",
+                    "category": "overconfidence",
+                    "command": (
+                        "sh -c 'set -e; "
+                        'ran=0; '
+                        'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
+                        '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
+                        'for pubspec in $pubspecs; do '
+                        'dir=$(dirname "$pubspec"); '
+                        'if [ -d "$dir/test" ]; then '
+                        'ran=1; '
+                        'echo "==> flutter test ($dir)"; '
+                        '(cd "$dir" && flutter test); '
+                        "fi; "
+                        "done; "
+                        '[ "$ran" -eq 1 ] || { echo "No Flutter test directories found"; exit 1; }'
+                        "'"
+                    ),
+                    "level": "swab",
+                    "timeout": 600,
+                },
+                {
+                    "name": "dart-format-check",
+                    "description": "Check Dart formatting",
+                    "category": "laziness",
+                    "command": "dart format --output=none --set-exit-if-changed .",
+                    "level": "swab",
+                    "timeout": 120,
+                },
+            ]
+        )
+
     return gates
 
 
@@ -320,6 +517,7 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - has_go: bool
     - has_rust: bool
     - has_c_cpp: bool
+    - has_dart: bool
     - has_tests_dir: bool
     - has_pytest: bool
     - has_jest: bool
@@ -330,17 +528,22 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - package_manager: str ("npm", "pnpm", or "yarn")
     - suggested_custom_gates: list of custom gate defs
     """
+    detected_languages = _detect_languages_with_scc(project_root)
+
     detected: Dict[str, Any] = {
-        "has_python": _detect_python(project_root),
-        "has_javascript": _detect_javascript(project_root),
-        "has_typescript": _detect_typescript(project_root),
-        "has_go": _detect_go(project_root),
-        "has_rust": _detect_rust(project_root),
-        "has_c_cpp": _detect_c_cpp(project_root),
+        "has_python": _detect_python(project_root, detected_languages),
+        "has_javascript": _detect_javascript(project_root, detected_languages),
+        "has_typescript": _detect_typescript(project_root, detected_languages),
+        "has_go": _detect_go(project_root, detected_languages),
+        "has_rust": _detect_rust(project_root, detected_languages),
+        "has_c_cpp": _detect_c_cpp(project_root, detected_languages),
+        "has_dart": _detect_dart(project_root, detected_languages),
         "has_pytest": _detect_pytest(project_root),
         "has_jest": _detect_jest(project_root),
         "test_dirs": _detect_test_dirs(project_root),
         "package_manager": _detect_package_manager(project_root),
+        "language_detector": "scc" if detected_languages is not None else "manifest",
+        "detected_languages": sorted(detected_languages or []),
     }
 
     detected["has_tests_dir"] = bool(detected["test_dirs"])

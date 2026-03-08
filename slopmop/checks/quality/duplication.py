@@ -173,6 +173,7 @@ class SourceDuplicationCheck(BaseCheck):
         "dist",
         "build",
         ".git",
+        ".slopmop",
         "__pycache__",
         ".venv",
         "venv",
@@ -184,6 +185,10 @@ class SourceDuplicationCheck(BaseCheck):
         "htmlcov",
         "*.egg-info",
         "tools",  # vendored third-party tools
+        "migrations",  # DB migrations are intentionally repetitive
+        "alembic",  # Alembic revisions are intentionally repetitive
+        "**/migrations/**",
+        "**/alembic/**",
     ]
 
     def _check_jscpd_availability(self, project_root: str) -> Optional[str]:

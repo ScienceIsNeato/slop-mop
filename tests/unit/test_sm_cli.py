@@ -216,6 +216,12 @@ class TestCreateParser:
 class TestDetectProjectType:
     """Tests for detect_project_type function."""
 
+    @pytest.fixture(autouse=True)
+    def _disable_scc_by_default(self):
+        """Keep legacy marker-based tests deterministic."""
+        with patch("slopmop.cli.detection._detect_languages_with_scc", return_value=None):
+            yield
+
     def test_detects_python_project_from_pyproject(self, tmp_path):
         """Detects Python from pyproject.toml."""
         (tmp_path / "pyproject.toml").write_text("[tool.pytest]")
@@ -282,6 +288,40 @@ class TestDetectProjectType:
         (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
         result = detect_project_type(tmp_path)
         assert "overconfidence:type-blindness.js" in result["recommended_gates"]
+
+    def test_prefers_scc_detection_when_available(self, tmp_path):
+        """scc output should drive language flags when available."""
+        with patch(
+            "slopmop.cli.detection._detect_languages_with_scc",
+            return_value={"typescript"},
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["language_detector"] == "scc"
+        assert result["has_typescript"] is True
+        assert result["has_javascript"] is True  # TS implies JS
+        assert "overconfidence:type-blindness.js" in result["recommended_gates"]
+
+    def test_dart_detection_suggests_flutter_custom_gates(self, tmp_path):
+        """Dart repos should get Flutter custom gate suggestions."""
+        with patch(
+            "slopmop.cli.detection._detect_languages_with_scc",
+            return_value={"dart"},
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["has_dart"] is True
+        names = {gate["name"] for gate in result["suggested_custom_gates"]}
+        assert "flutter-analyze" in names
+        assert "flutter-test" in names
+        assert "dart-format-check" in names
+
+        by_name = {gate["name"]: gate for gate in result["suggested_custom_gates"]}
+        assert "find . -name pubspec.yaml" in by_name["flutter-analyze"]["command"]
+        assert "find . -name pubspec.yaml" in by_name["flutter-test"]["command"]
+        assert by_name["dart-format-check"]["command"].startswith(
+            "dart format --output=none --set-exit-if-changed"
+        )
 
 
 class TestPromptFunctions:
@@ -385,8 +425,48 @@ class TestCmdConfig:
         assert "Run 'sm config --show' to see all gates." in captured.out
         assert "Available Quality Gates" not in captured.out
 
+    def test_config_registers_custom_gates(self, tmp_path):
+        """cmd_config should register custom gates from config for management."""
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "custom_gates": [
+                        {
+                            "name": "x-custom",
+                            "command": "echo ok",
+                        }
+                    ]
+                }
+            )
+        )
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        with (
+            patch("slopmop.checks.ensure_checks_registered"),
+            patch("slopmop.checks.custom.register_custom_gates") as mock_register,
+            patch("slopmop.cli.config.get_registry") as mock_registry,
+        ):
+            mock_reg = MagicMock()
+            mock_reg.list_checks.return_value = []
+            mock_registry.return_value = mock_reg
+            result = cmd_config(args)
+
+        assert result == 0
+        mock_register.assert_called_once()
+
     def test_enable_gate(self, tmp_path):
         """--enable adds gate to enabled list."""
+        # Make vulnerability-blindness applicable (needs source files)
+        (tmp_path / "main.py").write_text("print('hello')\n")
         (tmp_path / ".sb_config.json").write_text(
             json.dumps({"disabled_gates": ["myopia:vulnerability-blindness.py"]})
         )
@@ -410,6 +490,104 @@ class TestCmdConfig:
         assert "myopia:vulnerability-blindness.py" not in config.get(
             "disabled_gates", []
         )
+
+    def test_enable_gate_not_applicable(self, tmp_path, capsys):
+        """--enable refuses gates that cannot apply to this repo."""
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps({"disabled_gates": ["myopia:vulnerability-blindness.py"]})
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable="myopia:vulnerability-blindness.py",
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            result = cmd_config(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Cannot enable myopia:vulnerability-blindness.py" in captured.out
+        assert "re-run: sm init --non-interactive" in captured.out
+
+    def test_enable_gate_updates_nested_enabled_flag(self, tmp_path):
+        """--enable also updates canonical nested gate enabled flag."""
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "myopia": {
+                        "gates": {
+                            "vulnerability-blindness.py": {
+                                "enabled": False,
+                            }
+                        }
+                    }
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable="myopia:vulnerability-blindness.py",
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert (
+            config["myopia"]["gates"]["vulnerability-blindness.py"]["enabled"] is True
+        )
+
+    def test_show_uses_nested_enabled_flag(self, tmp_path, capsys):
+        """--show should mark nested enabled:false gates as disabled."""
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "myopia": {
+                        "gates": {
+                            "vulnerability-blindness.py": {
+                                "enabled": False,
+                            }
+                        }
+                    }
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=True,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        with patch("slopmop.checks.ensure_checks_registered"):
+            result = cmd_config(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "gate: myopia:vulnerability-blindness.py" in out
+        assert "❌ DISABLED" in out
 
     def test_config_swabbing_time_parser(self):
         """config --swabbing-time flag parses correctly."""

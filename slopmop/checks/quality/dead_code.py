@@ -34,6 +34,22 @@ from slopmop.core.result import (
 
 DEFAULT_MIN_CONFIDENCE = 80
 MAX_FINDINGS_TO_SHOW = 15
+DEFAULT_EXCLUDE_PATTERNS = [
+    "**/venv/**",
+    "**/.venv/**",
+    "**/node_modules/**",
+    "**/ephemeral/**",
+    "**/test_*",
+    "**/tests/**",
+    "**/conftest.py",
+    "**/*.egg-info/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/cursor-rules/**",
+]
+# Generated Flutter iOS helpers consistently trigger vulture noise.
+# Keep this exclusion regardless of older persisted configs.
+MANDATORY_EXCLUDE_PATTERNS = ["**/ephemeral/**"]
 
 
 class DeadCodeCheck(BaseCheck):
@@ -103,18 +119,7 @@ class DeadCodeCheck(BaseCheck):
             ConfigField(
                 name="exclude_patterns",
                 field_type="string[]",
-                default=[
-                    "**/venv/**",
-                    "**/.venv/**",
-                    "**/node_modules/**",
-                    "**/test_*",
-                    "**/tests/**",
-                    "**/conftest.py",
-                    "**/*.egg-info/**",
-                    "**/build/**",
-                    "**/dist/**",
-                    "**/cursor-rules/**",
-                ],
+                default=DEFAULT_EXCLUDE_PATTERNS.copy(),
                 description="Glob patterns to exclude from scanning",
                 permissiveness="fewer_is_stricter",
             ),
@@ -157,21 +162,13 @@ class DeadCodeCheck(BaseCheck):
 
     def _get_exclude_patterns(self) -> List[str]:
         """Get configured exclude patterns."""
-        return self.config.get(
-            "exclude_patterns",
-            [
-                "**/venv/**",
-                "**/.venv/**",
-                "**/node_modules/**",
-                "**/test_*",
-                "**/tests/**",
-                "**/conftest.py",
-                "**/*.egg-info/**",
-                "**/build/**",
-                "**/dist/**",
-                "**/cursor-rules/**",
-            ],
-        )
+        configured = self.config.get("exclude_patterns")
+        patterns: List[str]
+        if isinstance(configured, list):
+            patterns = [p for p in configured if isinstance(p, str) and p.strip()]
+        else:
+            patterns = DEFAULT_EXCLUDE_PATTERNS.copy()
+        return list(dict.fromkeys(patterns + MANDATORY_EXCLUDE_PATTERNS))
 
     def _get_src_dirs(self, project_root: str) -> List[str]:
         """Get directories to scan, validated against filesystem."""

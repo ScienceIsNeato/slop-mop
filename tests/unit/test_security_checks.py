@@ -373,6 +373,25 @@ class TestRunSemgrep:
 class TestRunDetectSecrets:
     """Tests for _run_detect_secrets method."""
 
+    def test_detect_secrets_uses_post_filter_not_exclude_files_arg(self):
+        """Exclude handling should avoid shell-sensitive regex arguments."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps({"results": {}})
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            check._run_detect_secrets("/tmp/project")
+
+        call_args = mock_run.call_args[0][0]
+        assert "--exclude-files" not in call_args
+
+    def test_detect_secrets_path_exclude_filters_tests_dir(self):
+        """Configured exclude dirs should be honored during result parsing."""
+        check = SecurityLocalCheck({})
+        assert check._is_path_excluded_for_detect_secrets("server/tests/test_auth.py")
+        assert not check._is_path_excluded_for_detect_secrets("server/app/auth.py")
+
     def test_detect_secrets_no_findings(self, tmp_path):
         """Test _run_detect_secrets with no secrets found."""
         check = SecurityLocalCheck({})
@@ -416,6 +435,68 @@ class TestRunDetectSecrets:
             result = check._run_detect_secrets(str(tmp_path))
 
         assert result.passed is True  # constants.py is ignored
+
+    def test_detect_secrets_ignores_known_generated_and_placeholder_noise(self, tmp_path):
+        """Generated metadata and placeholder defaults should be filtered."""
+        check = SecurityLocalCheck({})
+        app_dir = tmp_path / "app"
+        app_dir.mkdir()
+        (app_dir / "__init__.py").write_text(
+            'secret_key = app.config.get("SECRET_KEY")\n'
+            'if not secret_key or secret_key == "dev-secret-change-me":\n'
+            'jwt_secret = "dev-jwt-secret"\n'
+        )
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "client/.metadata": [
+                        {"type": "Hex High Entropy String", "line_number": 7}
+                    ],
+                    "server/.env.example": [
+                        {"type": "Basic Auth Credentials", "line_number": 3}
+                    ],
+                    "app/__init__.py": [
+                        {"type": "Secret Keyword", "line_number": 1},
+                        {"type": "Secret Keyword", "line_number": 2},
+                        {"type": "Secret Keyword", "line_number": 3},
+                    ],
+                    "app/config.py": [
+                        {"type": "Secret Keyword", "line_number": 10}
+                    ],
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is False
+        assert "app/config.py" in result.findings
+        assert "client/.metadata" not in result.findings
+        assert "server/.env.example" not in result.findings
+        assert "app/__init__.py" not in result.findings
+
+    def test_detect_secrets_ignores_paths_from_exclude_dirs(self, tmp_path):
+        """Findings in excluded dirs should not fail the gate."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "server/tests/test_auth.py": [
+                        {"type": "Secret Keyword", "line_number": 3}
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True
 
     def test_detect_secrets_json_error(self, tmp_path):
         """Test _run_detect_secrets handles JSON errors."""

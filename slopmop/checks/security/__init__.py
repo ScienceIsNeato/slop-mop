@@ -15,6 +15,7 @@ import json
 import shutil
 import sys
 import time
+from fnmatch import fnmatch
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -81,7 +82,6 @@ EXCLUDED_DIRS = [
     "*/.venv",  # Nested venvs
     "*/venv",  # Nested venvs
 ]
-
 
 @dataclass
 class SecuritySubResult:
@@ -314,6 +314,93 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         """Get directories to exclude from config or defaults."""
         return self.config.get("exclude_dirs", EXCLUDED_DIRS)
 
+    def _is_path_excluded_for_detect_secrets(self, path: str) -> bool:
+        """Return True when a path should be ignored by detect-secrets parsing."""
+        normalized = str(path).replace("\\", "/").lstrip("./")
+        if not normalized:
+            return False
+
+        padded = f"/{normalized}/"
+        for raw in self._get_exclude_dirs():
+            if not isinstance(raw, str):
+                continue
+            token = raw.strip().strip("/")
+            if not token:
+                continue
+            if any(ch in token for ch in "*?[]"):
+                # fnmatch patterns in config are usually directory tokens
+                # (e.g. */.venv). Match both exact and descendant paths.
+                if fnmatch(normalized, token) or fnmatch(normalized, f"{token}/*"):
+                    return True
+            else:
+                if f"/{token}/" in padded:
+                    return True
+        return False
+
+    @staticmethod
+    def _safe_read_line(project_root: str, path: str, line_number: Optional[int]) -> str:
+        """Best-effort line reader for detect-secrets post-filters."""
+        if not isinstance(line_number, int) or line_number < 1:
+            return ""
+        try:
+            candidate = Path(project_root) / path
+            resolved = candidate.resolve()
+            root_resolved = Path(project_root).resolve()
+            # Prevent escaping project root via crafted report paths.
+            if root_resolved not in resolved.parents and resolved != root_resolved:
+                return ""
+            lines = resolved.read_text(encoding="utf-8", errors="ignore").splitlines()
+            if line_number <= len(lines):
+                return lines[line_number - 1]
+        except OSError:
+            return ""
+        return ""
+
+    def _is_detect_secrets_false_positive(
+        self, project_root: str, path: str, secret: dict
+    ) -> bool:
+        """Heuristics for common non-secret detect-secrets findings."""
+        normalized = str(path).replace("\\", "/")
+        lower = normalized.lower()
+        basename = Path(normalized).name.lower()
+        secret_type = str(secret.get("type", ""))
+
+        if "/.slopmop/" in lower or lower.startswith(".slopmop/"):
+            return True
+        if "/ios/flutter/ephemeral/" in lower:
+            return True
+        if lower.endswith(".xcscheme") and secret_type == "Hex High Entropy String":
+            return True
+        if basename == ".metadata" and secret_type in {
+            "Hex High Entropy String",
+            "Base64 High Entropy String",
+        }:
+            return True
+        if basename in {".env.example", "alembic.ini"} and secret_type == "Basic Auth Credentials":
+            return True
+        if secret_type == "Secret Keyword":
+            line_text = self._safe_read_line(project_root, normalized, secret.get("line_number"))
+            line_lower = line_text.lower()
+            # Accessing secret env/config keys is not a leaked secret.
+            if ".config.get(" in line_lower or "os.getenv(" in line_lower:
+                return True
+            # Placeholder defaults are expected in templates and smoke tooling.
+            placeholder_markers = (
+                "change-me",
+                "changeme",
+                "placeholder",
+                "example",
+                "dev-",
+                "demo",
+                "sample",
+                "dummy",
+                "test",
+                "local",
+            )
+            if any(marker in line_lower for marker in placeholder_markers):
+                return True
+        return False
+
     def _run_bandit(self, project_root: str) -> SecuritySubResult:
         """Run bandit static analysis."""
         # Check for bandit-specific config file (e.g., .bandit, pyproject.toml with [tool.bandit])
@@ -453,9 +540,22 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             try:
                 report = json.loads(result.output)
                 detected = report.get("results", {})
-                real_secrets = {
-                    k: v for k, v in detected.items() if v and "constants.py" not in k
-                }
+                real_secrets = {}
+                for path, secrets in detected.items():
+                    if self._is_path_excluded_for_detect_secrets(path):
+                        continue
+                    if "constants.py" in path:
+                        continue
+                    if not isinstance(secrets, list):
+                        continue
+                    filtered = [
+                        s
+                        for s in secrets
+                        if isinstance(s, dict)
+                        and not self._is_detect_secrets_false_positive(project_root, path, s)
+                    ]
+                    if filtered:
+                        real_secrets[path] = filtered
                 if not real_secrets:
                     return SecuritySubResult(
                         "detect-secrets", True, "No secrets detected"

@@ -30,6 +30,11 @@ def _make_javascript_project(root: Path) -> None:
     (root / "package.json").write_text('{"name": "demo"}')
 
 
+def _make_dart_project(root: Path) -> None:
+    """Place a Dart/Flutter project marker."""
+    (root / "pubspec.yaml").write_text("name: demo\n")
+
+
 # ---------------------------------------------------------------------------
 # Metadata / properties
 # ---------------------------------------------------------------------------
@@ -248,6 +253,20 @@ class TestStaleApplicability:
         langs = [f.split()[1] for f in findings]
         assert "javascript" in langs
         assert "python" in langs
+
+    def test_dart_gates_disabled_dart_present(self, tmp_path: Path):
+        """Dart gates disabled but pubspec.yaml exists → findings."""
+        _make_dart_project(tmp_path)
+        config = {
+            "laziness": {
+                "enabled": True,
+                "gates": {"sloppy-formatting.dart": {"enabled": False}},
+            },
+        }
+        findings = check_stale_applicability(tmp_path, config, set())
+        assert len(findings) == 1
+        assert "dart" in findings[0].lower()
+        assert "sloppy-formatting.dart" in findings[0]
 
 
 # ---------------------------------------------------------------------------

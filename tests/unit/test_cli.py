@@ -1,5 +1,7 @@
 """Tests for CLI helper functions."""
 
+import json
+
 from slopmop.cli.config import _deep_merge, _normalize_flat_keys
 
 
@@ -274,3 +276,55 @@ class TestPrintNextSteps:
         assert "sm config --disable" in out
         assert "sm status" in out
         assert "sm config --show" in out
+
+
+class TestInitSuggestedCustomGateRefresh:
+    """Tests that rerunning init refreshes suggested custom gate definitions."""
+
+    def test_refreshes_suggested_custom_gates_and_preserves_user_gates(self, tmp_path):
+        """Suggested gate names should be updated while user custom gates remain."""
+        import argparse
+        from unittest.mock import patch
+
+        (tmp_path / "client").mkdir()
+        (tmp_path / "client" / "pubspec.yaml").write_text("name: app\n")
+        (tmp_path / "client" / "main.dart").write_text("void main() {}\n")
+
+        existing = {
+            "custom_gates": [
+                {
+                    "name": "flutter-test",
+                    "category": "overconfidence",
+                    "command": "flutter test",
+                },
+                {
+                    "name": "my-custom",
+                    "category": "laziness",
+                    "command": "echo hi",
+                },
+            ]
+        }
+        (tmp_path / ".sb_config.json").write_text(json.dumps(existing))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            config=None,
+            non_interactive=True,
+        )
+
+        with patch("slopmop.cli.status.run_status", return_value=0):
+            from slopmop.cli.init import cmd_init
+
+            assert cmd_init(args) == 0
+
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        gates = {
+            gate["name"]: gate
+            for gate in config.get("custom_gates", [])
+            if isinstance(gate, dict) and isinstance(gate.get("name"), str)
+        }
+
+        assert "flutter-test" in gates
+        assert "find . -name pubspec.yaml" in gates["flutter-test"]["command"]
+        assert "my-custom" in gates
+        assert gates["my-custom"]["command"] == "echo hi"
