@@ -1,7 +1,12 @@
-# Reference workflow: slopmop → GitHub Code Scanning
+# Primary workflow: slop-mop code scanning gate
 #
-# Runs slopmop's scour gates, emits SARIF, and uploads it so failures
-# appear as inline PR annotations + entries in the Security tab.  The
+# Runs slopmop's scour gates, emits SARIF, and uploads it so findings
+# appear as inline PR annotations + entries in the Security tab. This
+# is the first-class CI gate in the pipeline.
+#
+# Failures in this workflow block merge. Warnings remain warnings.
+#
+# The
 # upload-sarif action handles the GitHub API plumbing — no tokens, no
 # custom auth, works on any public repo out of the box.
 #
@@ -44,7 +49,7 @@
 # proves the payload.  Uploading it to a real bucket-o-slop PR proves
 # GitHub renders it.  Between the two, the whole pipeline is covered.
 
-name: slopmop → Code Scanning
+name: slop-mop primary code scanning gate
 
 on:
   push:
@@ -67,6 +72,7 @@ permissions:
 
 jobs:
   scan:
+    name: Primary Code Scanning Gate (blocking)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -125,7 +131,7 @@ jobs:
           npm install
           npx tsc
 
-      - name: Run scour → SARIF
+      - name: Run Primary Gate (scour -> SARIF)
         id: scour
         # Gates failing is EXPECTED — that's what produces findings.
         # We still want to upload the SARIF and let Code Scanning
@@ -136,7 +142,7 @@ jobs:
           source .venv/bin/activate
           sm scour --sarif --output-file slopmop.sarif --no-json
 
-      - name: Upload SARIF
+      - name: Publish SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: slopmop.sarif
@@ -146,7 +152,7 @@ jobs:
           # (category, ruleId, fingerprint).
           category: slopmop
 
-      - name: Verdict
+      - name: Enforce Primary Gate Verdict
         # Re-surface the scour exit code so branch protection rules
         # that require this job to pass actually mean something.
         # Without this, continue-on-error above would let everything
