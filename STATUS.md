@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-03-09 Delta: Buff CI State Clarity (No Gate-Level Move)
+
+### Completed
+
+1. Kept `myopia:ignored-feedback` behavior unchanged in `scour` (warning-level triage signal).
+2. Enhanced `sm buff` triage metadata to explicitly report CI run state ambiguity:
+  - latest workflow run id/status
+  - triaged run id (latest completed artifact used for deterministic triage)
+  - `pending_newer_run` boolean when a newer run is still queued/in-progress
+  - human-readable note explaining whether to re-run `sm buff` after completion
+3. Updated buff/triage console output to print CI state and note before actionable gate list.
+
+### Files
+
+- `slopmop/cli/scan_triage.py`
+- `tests/unit/test_ci_triage_and_buff.py`
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py` -> **20 passed**
+
 ## Design Documents
 
 - **NEXT_PHASE.md**: Three-workstream architectural brief for the next phase of slop-mop:

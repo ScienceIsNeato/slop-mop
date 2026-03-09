@@ -9,8 +9,9 @@ so the error message can tell you *what* is already running.
 Stale-lock detection covers edge cases where the sidecar survives after
 the kernel lock is released (NFS, forced unmount, etc.):
   1. PID no longer alive  →  force-remove, re-acquire.
-  2. Age exceeds 2× the sum of historical gate timings  →  stale.
-  3. Absolute fallback cap (10 min) when no timing history exists.
+    2. PID is alive but no longer an sm/slopmop process (PID reuse) → stale.
+    3. Age exceeds 2× the sum of historical gate timings  →  stale.
+    4. Absolute fallback cap (10 min) when no timing history exists.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -61,6 +63,37 @@ def _pid_alive(pid: int) -> bool:
         # Process exists but we can't signal it (different user).
         return True
     return True
+
+
+def _pid_looks_like_sm(pid: int) -> bool:
+    """Return True when *pid* appears to be an sm/slopmop process.
+
+    Guards against PID reuse where a dead lock-holder PID gets reassigned
+    to an unrelated process.
+    """
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+    if result.returncode != 0:
+        return False
+
+    command = (result.stdout or "").strip().lower()
+    if not command:
+        return False
+
+    return (
+        "slopmop" in command
+        or "python -m slopmop" in command
+        or " sm " in f" {command} "
+        or command.endswith("/sm")
+    )
 
 
 def _max_expected_duration(project_root: Path) -> float:
@@ -114,7 +147,15 @@ def _is_stale(
         logger.debug("Lock holder PID %d is dead — treating as stale", pid)
         return True
 
-    # 2. If the lock is older than the max expected duration, stale.
+    # 2. PID reuse guard: process exists, but isn't an sm/slopmop process.
+    if isinstance(pid, int) and _pid_alive(pid) and not _pid_looks_like_sm(pid):
+        logger.debug(
+            "Lock holder PID %d exists but is not sm/slopmop — treating as stale",
+            pid,
+        )
+        return True
+
+    # 3. If the lock is older than the max expected duration, stale.
     started = meta.get("started_at", 0)
     age = time.time() - started
     threshold = (

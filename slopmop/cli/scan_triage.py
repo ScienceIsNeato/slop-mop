@@ -27,6 +27,9 @@ from slopmop.reporting.rail import (
 ARTIFACT_NAME = "slopmop-results"
 ARTIFACT_JSON = "slopmop-results.json"
 WORKFLOW_NAME = "slop-mop primary code scanning gate"
+NO_COMPLETED_RUN_MSG = (
+    "No completed runs found for that PR/workflow. Pass --run-id explicitly."
+)
 
 
 class TriageError(RuntimeError):
@@ -39,6 +42,11 @@ class _RunEntry(TypedDict, total=False):
     conclusion: str
     createdAt: str
     name: str
+
+
+class _WorkflowRunState(TypedDict):
+    latest: _RunEntry
+    latest_completed: _RunEntry
 
 
 def _run_gh(args: list[str]) -> str:
@@ -103,6 +111,14 @@ def current_pr_number(repo: str) -> int:
 
 
 def latest_completed_run_id(repo: str, pr_number: int, workflow: str) -> int:
+    state = _workflow_run_state(repo, pr_number, workflow)
+    run_id = state["latest_completed"].get("databaseId")
+    if not isinstance(run_id, int):
+        raise TriageError(NO_COMPLETED_RUN_MSG)
+    return run_id
+
+
+def _workflow_run_state(repo: str, pr_number: int, workflow: str) -> _WorkflowRunState:
     pr_out = _run_gh(
         [
             "pr",
@@ -141,18 +157,32 @@ def latest_completed_run_id(repo: str, pr_number: int, workflow: str) -> int:
         cast(_RunEntry, r) for r in run_list if isinstance(r, dict)
     ]
 
+    matched: List[_RunEntry] = []
     for run in runs:
         run_name = str(run.get("name") or "")
-        run_status = run.get("status")
-        run_id = run.get("databaseId")
-        if workflow not in run_name:
-            continue
-        if run_status == "completed" and isinstance(run_id, int):
-            return run_id
+        if workflow in run_name:
+            matched.append(run)
 
-    raise TriageError(
-        "No completed runs found for that PR/workflow. Pass --run-id explicitly."
-    )
+    if not matched:
+        raise TriageError(
+            "No workflow runs found for that PR/workflow. Pass --run-id explicitly."
+        )
+
+    latest = matched[0]
+
+    latest_completed: _RunEntry | None = None
+    for run in matched:
+        if run.get("status") == "completed":
+            latest_completed = run
+            break
+
+    if latest_completed is None:
+        raise TriageError(NO_COMPLETED_RUN_MSG)
+
+    return {
+        "latest": latest,
+        "latest_completed": latest_completed,
+    }
 
 
 def download_results_json(repo: str, run_id: int, artifact_name: str) -> Path:
@@ -214,6 +244,7 @@ def build_triage_payload(
     json_path: Path,
     show_low_coverage: bool,
     pr_number: int | None,
+    ci_state: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int]:
     summary_raw = doc.get("summary")
     summary: Dict[str, Any] = (
@@ -247,6 +278,9 @@ def build_triage_payload(
         "lowest_coverage": [],
         "next_steps": default_next_steps(pr_number),
     }
+
+    if ci_state is not None:
+        payload["ci_state"] = ci_state
 
     for row in actionable:
         payload["actionable"].append(normalize_actionable_row(row))
@@ -303,6 +337,21 @@ def print_triage(payload: dict[str, Any], show_low_coverage: bool) -> None:
         f"all_passed={summary.get('all_passed')}"
     )
 
+    ci_state_raw = payload.get("ci_state")
+    if isinstance(ci_state_raw, dict):
+        ci_state = cast(Dict[str, Any], ci_state_raw)
+        latest_status = str(ci_state.get("latest_status") or "unknown")
+        latest_id = str(ci_state.get("latest_run_id") or "unknown")
+        triaged_id = str(ci_state.get("triaged_run_id") or "unknown")
+        print(
+            "CI State: "
+            f"latest_run={latest_id} ({latest_status}) "
+            f"triaged_run={triaged_id}"
+        )
+        note_raw = ci_state.get("note")
+        if isinstance(note_raw, str) and note_raw:
+            print(f"CI State Note: {note_raw}")
+
     actionable = cast(List[Dict[str, Any]], payload.get("actionable") or [])
     if not actionable:
         print("No actionable gate results found.")
@@ -345,12 +394,51 @@ def run_triage(
     resolved_repo = repo or default_repo()
     resolved_run_id = run_id
     resolved_pr_number = pr_number
+    ci_state: dict[str, Any] | None = None
     if resolved_run_id is None:
         resolved_pr = (
             pr_number if pr_number is not None else current_pr_number(resolved_repo)
         )
         resolved_pr_number = resolved_pr
-        resolved_run_id = latest_completed_run_id(resolved_repo, resolved_pr, workflow)
+        state = _workflow_run_state(resolved_repo, resolved_pr, workflow)
+
+        latest = state["latest"]
+        latest_completed = state["latest_completed"]
+
+        triaged_run_id = latest_completed.get("databaseId")
+        if not isinstance(triaged_run_id, int):
+            raise TriageError(NO_COMPLETED_RUN_MSG)
+
+        latest_run_id = latest.get("databaseId")
+        latest_status = str(latest.get("status") or "unknown")
+
+        triaged_is_latest = latest_run_id == triaged_run_id
+        pending_newer_run = (not triaged_is_latest) and latest_status != "completed"
+
+        note = ""
+        if pending_newer_run:
+            note = (
+                "Using latest completed run while a newer CI run is still "
+                f"{latest_status}. Re-run buff after that run completes."
+            )
+        elif not triaged_is_latest:
+            note = (
+                "Using latest completed run; newer completed run(s) may exist. "
+                "Re-run buff to refresh."
+            )
+
+        ci_state = {
+            "latest_run_id": latest_run_id,
+            "latest_status": latest_status,
+            "latest_conclusion": latest.get("conclusion"),
+            "latest_created_at": latest.get("createdAt"),
+            "triaged_run_id": triaged_run_id,
+            "triaged_is_latest": triaged_is_latest,
+            "pending_newer_run": pending_newer_run,
+            "note": note,
+        }
+
+        resolved_run_id = triaged_run_id
 
     json_path = download_results_json(resolved_repo, resolved_run_id, artifact)
     doc = _load_json(json_path)
@@ -360,6 +448,7 @@ def run_triage(
         json_path,
         show_low_coverage,
         resolved_pr_number,
+        ci_state,
     )
     if print_output:
         print_triage(payload, show_low_coverage)

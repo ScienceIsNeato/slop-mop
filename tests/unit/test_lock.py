@@ -17,6 +17,7 @@ from slopmop.core.lock import (
     _lock_path,
     _max_expected_duration,
     _pid_alive,
+    _pid_looks_like_sm,
     _read_lock_meta,
     _write_lock_meta,
     sm_lock,
@@ -59,6 +60,20 @@ class TestPidAlive:
     def test_permission_error_treated_as_alive(self) -> None:
         with patch("os.kill", side_effect=PermissionError):
             assert _pid_alive(1) is True
+
+
+class TestPidLooksLikeSm:
+    def test_detects_sm_command(self) -> None:
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "python -m slopmop.sm swab\n"
+            assert _pid_looks_like_sm(12345) is True
+
+    def test_detects_non_sm_command(self) -> None:
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "node server.js\n"
+            assert _pid_looks_like_sm(12345) is False
 
 
 # ── _read_lock_meta / _write_lock_meta ───────────────────────────────────
@@ -105,7 +120,17 @@ class TestIsStale:
             "started_at": time.time(),
             "verb": "swab",
         }
-        assert _is_stale(meta, tmp_path) is False
+        with patch("slopmop.core.lock._pid_looks_like_sm", return_value=True):
+            assert _is_stale(meta, tmp_path) is False
+
+    def test_alive_pid_non_sm_process_is_stale(self, tmp_path: Path) -> None:
+        meta = {
+            "pid": os.getpid(),
+            "started_at": time.time(),
+            "verb": "swab",
+        }
+        with patch("slopmop.core.lock._pid_looks_like_sm", return_value=False):
+            assert _is_stale(meta, tmp_path) is True
 
     def test_alive_pid_old_lock_is_stale(self, tmp_path: Path) -> None:
         meta = {
@@ -129,7 +154,8 @@ class TestIsStale:
             "started_at": time.time() - 20,
             "verb": "swab",
         }
-        assert _is_stale(meta, tmp_path, stale_after_seconds=30) is False
+        with patch("slopmop.core.lock._pid_looks_like_sm", return_value=True):
+            assert _is_stale(meta, tmp_path, stale_after_seconds=30) is False
 
 
 # ── _max_expected_duration ───────────────────────────────────────────────

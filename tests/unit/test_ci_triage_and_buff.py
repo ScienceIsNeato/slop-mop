@@ -126,6 +126,30 @@ class TestScanTriageInternals:
         monkeypatch.setattr(triage, "_run_gh", fake_gh)
         assert triage.latest_completed_run_id("o/r", 84, triage.WORKFLOW_NAME) == 321
 
+    def test_workflow_run_state_prefers_latest_completed(self, monkeypatch):
+        responses = [
+            json.dumps({"headRefName": "feat-x"}),
+            json.dumps(
+                [
+                    {
+                        "name": "slop-mop primary code scanning gate",
+                        "status": "in_progress",
+                        "databaseId": 500,
+                    },
+                    {
+                        "name": "slop-mop primary code scanning gate",
+                        "status": "completed",
+                        "databaseId": 499,
+                    },
+                ]
+            ),
+        ]
+
+        monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
+        state = triage._workflow_run_state("o/r", 84, triage.WORKFLOW_NAME)
+        assert state["latest"]["databaseId"] == 500
+        assert state["latest_completed"]["databaseId"] == 499
+
     def test_latest_completed_run_id_error(self, monkeypatch):
         responses = [
             json.dumps({"headRefName": "feat-x"}),
@@ -179,16 +203,25 @@ class TestScanTriageInternals:
             json_path=Path(".slopmop/last_ci_scan_results.json"),
             show_low_coverage=True,
             pr_number=84,
+            ci_state={
+                "latest_run_id": 1001,
+                "latest_status": "in_progress",
+                "triaged_run_id": 999,
+                "note": "Using latest completed run while newer run is in progress.",
+            },
         )
         assert code == 1
         assert payload["schema"] == "slopmop/ci-triage/v1"
         assert payload["next_steps"][1] == "Run full validation locally: sm scour"
         assert len(payload["actionable"]) == 2
         assert payload["lowest_coverage"][0]["coverage_pct"] == 62.5
+        assert payload["ci_state"]["latest_status"] == "in_progress"
 
         triage.print_triage(payload, show_low_coverage=True)
         out = capsys.readouterr().out
         assert "Actionable Gates:" in out
+        assert "CI State:" in out
+        assert "CI State Note:" in out
         assert "Next Steps:" in out
         assert "Re-run triage: sm buff 84" in out
         assert "Lowest Coverage Findings:" in out
@@ -221,10 +254,22 @@ class TestScanTriageInternals:
         monkeypatch.setattr(
             triage, "_load_json", Mock(return_value={"summary": {}, "results": []})
         )
+        monkeypatch.setattr(
+            triage,
+            "_workflow_run_state",
+            Mock(
+                return_value={
+                    "latest": {"databaseId": 201, "status": "in_progress"},
+                    "latest_completed": {"databaseId": 200, "status": "completed"},
+                }
+            ),
+        )
 
-        def fake_build(doc, run_id, json_path, show_low_coverage, pr_number):
-            assert run_id == 123
+        def fake_build(doc, run_id, json_path, show_low_coverage, pr_number, ci_state):
+            assert run_id == 200
             assert pr_number == 84
+            assert ci_state is not None
+            assert ci_state["pending_newer_run"] is True
             return ({"summary": {}, "actionable": [], "next_steps": []}, 0)
 
         monkeypatch.setattr(triage, "build_triage_payload", fake_build)
@@ -233,7 +278,7 @@ class TestScanTriageInternals:
 
         code, payload = triage.run_triage(
             repo=None,
-            run_id=123,
+            run_id=None,
             pr_number=84,
             workflow=triage.WORKFLOW_NAME,
             artifact=triage.ARTIFACT_NAME,
