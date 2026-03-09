@@ -7,9 +7,42 @@
   2. Didactic gate output (Diagnosis → Prescription → Verification)
   3. Unified output adapter layer (RunReport + adapters replacing ad-hoc branching in _run_validation())
 
-## Active Branch: `custom-gates-and-beta-hardening`
+## Active Branch: `feat/flutter-support`
 
-**Status: LOCAL — all 1327 tests pass** ✅
+**Status: LOCAL — all 1568 tests pass** ✅
+
+## 2026-03-09 Delta: Test Isolation Fix + Triple-Output CI
+
+### Completed
+
+1. **Fixed test isolation bug** — `test_registry.py` was the polluter.
+   `test_get_registry_singleton` and `test_register_check_decorator` both
+   set `_default_registry = None` without restoring. After
+   `test_register_check_decorator`, the global registry had exactly ONE
+   test check (`overconfidence:decorated-check`). `ensure_checks_registered()`
+   checked `_checks_registered=True` AND `len(registry._check_classes) > 0`
+   → skipped re-registration → 5 config tests failed because real gates
+   like `myopia:vulnerability-blindness.py` were missing.
+   Fix: save/restore both `_default_registry` and `_checks_registered` in
+   try/finally blocks, following the pattern already used in `test_executor.py`.
+
+2. **Added `--json-file` CLI flag** — Orthogonal to `--json`/`--sarif` modes.
+   Writes JSON results to a file independent of the primary output mode.
+   Enables console + SARIF + JSON from a single `sm scour` run, all derived
+   from the same `RunReport` object (same source of truth).
+
+3. **Updated CI workflow** — `.github/workflows/slopmop-sarif.yml` now runs:
+   `sm scour --sarif --output-file slopmop.sarif --json-file slopmop-results.json --no-json`
+   Producing all 3 outputs from one invocation:
+   - Console display → visible in CI logs
+   - SARIF file → uploaded to Code Scanning
+   - JSON file → artifact for downstream steps
+
+### Files Changed
+- `tests/unit/test_registry.py` — save/restore global registry state
+- `slopmop/sm.py` — added `--json-file` argument
+- `slopmop/cli/validate.py` — write JSON to `--json-file` path in output pipeline
+- `.github/workflows/slopmop-sarif.yml` — use `--json-file` for triple output
 
 ## 2026-03-08 Delta: Pre-Commit Hook Blockers Cleared (PR #84 follow-up)
 

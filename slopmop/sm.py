@@ -114,6 +114,17 @@ def _add_output_flags(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--json-file",
+        dest="json_file",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Write JSON results to a file, independent of the primary "
+            "output mode. Allows emitting console + SARIF + JSON from "
+            "a single run (e.g. --sarif -o scan.sarif --json-file results.json)."
+        ),
+    )
+    parser.add_argument(
         "--no-cache",
         dest="no_cache",
         action="store_true",

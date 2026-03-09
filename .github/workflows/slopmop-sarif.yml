@@ -145,7 +145,10 @@ jobs:
         continue-on-error: true
         run: |
           source .venv/bin/activate
-          sm scour --sarif --output-file slopmop.sarif --no-json
+          sm scour \
+            --sarif --output-file slopmop.sarif \
+            --json-file slopmop-results.json \
+            --no-json
 
       - name: Publish SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v4

@@ -243,15 +243,35 @@ class TestGateCoverage:
     """
 
     def test_multiple_gates_represented(self, sarif_all_fail: Any) -> None:
-        # all-fail trips ~6-8 gates depending on which deps the
-        # container has.  3 is a very conservative floor — if we're
-        # below that, something structural is wrong.
-        gate_prefixes = {r.split("/", 1)[0] for r in _rule_ids(sarif_all_fail)}
-        assert len(gate_prefixes) >= 3, (
+        # Guard against fixture regressions that collapse coverage to
+        # only 1-2 rules. Keep this as a floor (not exact match) so
+        # fixture evolution can add/remove rules without churn.
+        rule_ids = _rule_ids(sarif_all_fail)
+        gate_prefixes = {r.split("/", 1)[0] for r in rule_ids}
+        assert len(gate_prefixes) >= 9, (
             f"Only {len(gate_prefixes)} gate(s) in SARIF rules: "
-            f"{sorted(gate_prefixes)}.  bucket-o-slop:all-fail breaks "
-            f"~6+ gates; fewer than 3 surfacing means findings aren't "
-            f"flowing through the pipeline."
+            f"{sorted(gate_prefixes)}. bucket-o-slop:all-fail should "
+            f"surface broad scanner coverage, not just a couple alerts."
+        )
+
+        required = {
+            "deceptiveness:bogus-tests.py",
+            "deceptiveness:hand-wavy-tests.js",
+            "laziness:dead-code.py",
+            "laziness:sloppy-formatting.js",
+            "myopia:source-duplication",
+            "myopia:vulnerability-blindness.py",
+            "overconfidence:missing-annotations.py",
+            "overconfidence:untested-code.py",
+        }
+        missing = [
+            gate
+            for gate in sorted(required)
+            if not any(r.startswith(gate) for r in rule_ids)
+        ]
+        assert not missing, (
+            f"Missing expected high-value gate findings in SARIF: {missing}. "
+            f"Rules seen: {sorted(rule_ids)}"
         )
 
     def test_every_result_has_locations(self, sarif_all_fail: Any) -> None:

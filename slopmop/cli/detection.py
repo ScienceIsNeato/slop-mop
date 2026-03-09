@@ -338,6 +338,7 @@ def _detect_test_dirs(project_root: Path) -> list[str]:
 
 def _detect_pytest(project_root: Path) -> bool:
     """Check for pytest configuration."""
+
     def _safe_contains(path: Path, needle: str) -> bool:
         try:
             return needle in path.read_text(encoding="utf-8", errors="ignore")

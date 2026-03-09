@@ -280,12 +280,24 @@ def _run_validation_locked(
 
         sarif_requested = getattr(args, "sarif_output", False)
         output_file = getattr(args, "output_file", None)
+        json_file = getattr(args, "json_file", None)
 
         # Log files are needed by both console and JSON.  SARIF doesn't
         # reference them but writing is cheap and idempotent, so do it
         # unconditionally when we have a project root.  Writing BEFORE
         # dispatch means adapters read log_files, never create them.
         report.write_logs()
+
+        # --json-file is orthogonal to everything else.  When set,
+        # always write JSON to that path, regardless of the primary
+        # output mode.  This enables console + SARIF + JSON from one
+        # run.
+        if json_file:
+            json_output = JsonAdapter.render(report)
+            Path(json_file).write_text(
+                json.dumps(json_output, separators=(",", ":")),
+                encoding="utf-8",
+            )
 
         # SARIF emission is orthogonal to the json/console choice — it's
         # a third output format with its own shape.  Handle it first;
