@@ -517,6 +517,7 @@ class TestGitHooksFunctions:
         # Should use PATH-based sm lookup
         assert "command -v sm" in script
         # Should write structured output for LLM consumption
+        assert "--swabbing-time 0" in script
         assert "--json" in script
         assert "--output-file .slopmop/last_swab.json" in script
         assert "Structured results:" in script
@@ -527,6 +528,7 @@ class TestGitHooksFunctions:
         script = _generate_hook_script("scour")
         assert "sm scour" in script
         assert "# Command: sm scour" in script
+        assert "--swabbing-time 0" in script
         assert "--output-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
@@ -1085,7 +1087,7 @@ class TestValidateJsonOutputFile:
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
-    def test_json_output_file_does_not_print_to_stdout(
+    def test_json_output_file_mirrors_and_prints_to_stdout(
         self,
         _mock_config,
         _mock_registry,
@@ -1096,7 +1098,7 @@ class TestValidateJsonOutputFile:
         mock_print,
         tmp_path,
     ):
-        """--json with --output-file writes payload to file without stdout leak."""
+        """--json with --output-file writes payload to file and stdout."""
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
@@ -1128,4 +1130,4 @@ class TestValidateJsonOutputFile:
         assert result == 0
         assert output_file.exists()
         assert output_file.read_text(encoding="utf-8") == '{"ok":true}'
-        mock_print.assert_not_called()
+        mock_print.assert_called_once_with('{"ok":true}')

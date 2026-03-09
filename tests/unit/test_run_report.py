@@ -408,6 +408,31 @@ class TestConsoleAdapter:
         out = capsys.readouterr().out
         assert "→ fix: Do the thing" in out
 
+    def test_success_path_warns_on_time_budget_skips(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result("a", CheckStatus.PASSED, role="foundation"),
+                _result("b", CheckStatus.SKIPPED, skip_reason=SkipReason.TIME_BUDGET),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "Swabbing-time budget skipped 1 timed check(s)" in out
+        assert "sm swab --swabbing-time 0" in out
+
+    def test_failure_path_warns_on_time_budget_skips(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result("f", CheckStatus.FAILED),
+                _result("s", CheckStatus.SKIPPED, skip_reason=SkipReason.TIME_BUDGET),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "Swabbing-time budget skipped 1 timed check(s)" in out
+
 
 # ─── role badge helper ───────────────────────────────────────────────────
 

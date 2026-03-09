@@ -312,7 +312,47 @@ class TestInitSuggestedCustomGateRefresh:
             non_interactive=True,
         )
 
-        with patch("slopmop.cli.status.run_status", return_value=0):
+        detected = {
+            "has_python": False,
+            "has_javascript": False,
+            "has_typescript": False,
+            "has_go": False,
+            "has_rust": False,
+            "has_c_cpp": False,
+            "has_dart": True,
+            "has_tests_dir": False,
+            "has_pytest": False,
+            "has_jest": False,
+            "test_dirs": [],
+            "recommended_gates": [],
+            "available_tools": ["flutter", "dart"],
+            "missing_tools": [],
+            "package_manager": "npm",
+            "suggested_custom_gates": [
+                {
+                    "name": "flutter-test",
+                    "category": "overconfidence",
+                    "command": (
+                        "sh -c 'set -e; "
+                        'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
+                        '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
+                        "ran=0; for pubspec in $pubspecs; do "
+                        'dir=$(dirname "$pubspec"); '
+                        'if [ -d "$dir/test" ]; then ran=1; (cd "$dir" && flutter test); fi; '
+                        "done; "
+                        '[ "$ran" -eq 1 ] || { echo "No Flutter test directories found"; exit 1; }'
+                        "'"
+                    ),
+                }
+            ],
+            "language_detector": "manifest",
+            "detected_languages": [],
+        }
+
+        with (
+            patch("slopmop.cli.status.run_status", return_value=0),
+            patch("slopmop.cli.init.detect_project_type", return_value=detected),
+        ):
             from slopmop.cli.init import cmd_init
 
             assert cmd_init(args) == 0

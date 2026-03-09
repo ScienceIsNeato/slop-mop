@@ -15,7 +15,9 @@ from slopmop.checks.base import (
     count_source_scope,
     find_tool,
 )
+from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 from slopmop.checks.dart.common import find_pubspec_dirs
+from slopmop.constants import COVERAGE_BELOW_THRESHOLD
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -27,6 +29,10 @@ from slopmop.core.result import (
 DEFAULT_THRESHOLD = 80
 MAX_FILES_TO_SHOW = 5
 _FLUTTER_CACHE_PERMISSION_ERROR = "engine.stamp: Operation not permitted"
+
+
+def _coverage_below_threshold_message(coverage_pct: float, threshold: int) -> str:
+    return f"Coverage {coverage_pct:.1f}% below threshold {threshold}%"
 
 
 @dataclass
@@ -89,7 +95,7 @@ class DartCoverageCheck(BaseCheck):
 
     def skip_reason(self, project_root: str) -> str:
         if not find_pubspec_dirs(project_root):
-            return "No pubspec.yaml found"
+            return NO_PUBSPEC_YAML_FOUND
         return "No Flutter test directories found"
 
     def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
@@ -209,7 +215,7 @@ class DartCoverageCheck(BaseCheck):
         ]
 
         lines = [
-            f"Coverage {coverage_pct:.1f}% below threshold {threshold}%",
+            _coverage_below_threshold_message(coverage_pct, threshold),
             "",
             "Lowest coverage files:",
         ]
@@ -222,11 +228,11 @@ class DartCoverageCheck(BaseCheck):
             status=CheckStatus.FAILED,
             duration=duration,
             output="\n".join(lines),
-            error=f"Coverage {coverage_pct:.1f}% below threshold {threshold}%",
+            error=COVERAGE_BELOW_THRESHOLD,
             findings=findings
             or [
                 Finding(
-                    message=f"Coverage {coverage_pct:.1f}% below threshold {threshold}%",
+                    message=_coverage_below_threshold_message(coverage_pct, threshold),
                     level=FindingLevel.ERROR,
                 )
             ],

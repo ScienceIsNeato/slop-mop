@@ -358,13 +358,10 @@ def _run_validation_locked(
             output = JsonAdapter.render(report)
             json_payload = json.dumps(output, separators=(",", ":"))
             if output_file and not sarif_requested:
-                # --output-file with --json (but not --sarif) redirects
-                # JSON there.  When BOTH --sarif and --json are set with
-                # one --output-file, SARIF wins the file and JSON goes
-                # to stdout — the file can only hold one format.
+                # Mirror JSON to disk for archival, but keep stdout payload
+                # so callers can consume it directly in pipelines.
                 Path(output_file).write_text(json_payload, encoding="utf-8")
-            else:
-                print(json_payload)
+            print(json_payload)
         else:
             ConsoleAdapter(report).render()
 

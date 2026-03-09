@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
+from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
 # Used during `sm init` to auto-disable checks whose tools aren't available.
@@ -522,6 +523,11 @@ def _suggest_custom_gates(
     if detected.get("has_dart"):
         flutter_available = find_tool("flutter", str(project_root)) is not None
         dart_available = find_tool("dart", str(project_root)) is not None
+        strict_shell_prefix = "sh -c 'set -e; "
+        pubspec_guard = (
+            'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
+            f'[ -n "$pubspecs" ] || {{ echo "{NO_PUBSPEC_YAML_FOUND}"; exit 1; }}; '
+        )
 
         flutter_preflight = (
             "if flutter --version 2>&1 | grep -q "
@@ -538,11 +544,10 @@ def _suggest_custom_gates(
                         "description": "Run Flutter static analysis",
                         "category": "laziness",
                         "command": (
-                            "sh -c 'set -e; "
+                            strict_shell_prefix
                             + flutter_preflight
-                            + 'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
-                            '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                            "for pubspec in $pubspecs; do "
+                            + pubspec_guard
+                            + "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'echo "==> flutter analyze ($dir)"; '
                             '(cd "$dir" && flutter analyze); '
@@ -556,10 +561,11 @@ def _suggest_custom_gates(
                         "description": "Run Flutter tests",
                         "category": "overconfidence",
                         "command": (
-                            "sh -c 'set -e; " + flutter_preflight + "ran=0; "
-                            'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
-                            '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                            "for pubspec in $pubspecs; do "
+                            strict_shell_prefix
+                            + flutter_preflight
+                            + "ran=0; "
+                            + pubspec_guard
+                            + "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'if [ -d "$dir/test" ]; then '
                             "ran=1; "
@@ -583,7 +589,7 @@ def _suggest_custom_gates(
                     "description": "Check Dart formatting",
                     "category": "laziness",
                     "command": (
-                        "sh -c 'set -e; "
+                        strict_shell_prefix
                         + flutter_preflight
                         + "dart format --output=none --set-exit-if-changed .'"
                     ),

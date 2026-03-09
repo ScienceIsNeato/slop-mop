@@ -11,6 +11,79 @@
 
 **Status: LOCAL — all 1568 tests pass** ✅
 
+## 2026-03-09 Delta: Swabbing-Time Safety Warning + Local Budget Increase
+
+### Completed
+
+1. Increased local swabbing-time in `.sb_config.json`:
+  - `swabbing_time` changed from `10` to `25` seconds.
+
+2. Added explicit budget warning in console summaries:
+  - `slopmop/reporting/adapters.py`
+  - If timed checks are skipped due to budget (`skip_reason=time`), `sm` now prints:
+    - how many timed checks were skipped
+    - recommendation to run `sm swab --swabbing-time 0` for full coverage
+  - Warning appears in both success and failure summary paths.
+
+3. Added regression tests:
+  - `tests/unit/test_run_report.py`
+    - `test_success_path_warns_on_time_budget_skips`
+    - `test_failure_path_warns_on_time_budget_skips`
+
+### Validation
+
+- `pytest tests/unit/test_run_report.py::TestConsoleAdapter::test_success_path_warns_on_time_budget_skips tests/unit/test_run_report.py::TestConsoleAdapter::test_failure_path_warns_on_time_budget_skips tests/unit/test_sm_cli.py::TestGitHooksFunctions::test_generate_hook_script tests/unit/test_sm_cli.py::TestValidateJsonOutputFile::test_json_output_file_mirrors_and_prints_to_stdout -q` → **4 passed**
+- `sm config --show` confirms: `Swabbing-time budget: 25s`
+- `sm swab --swabbing-time 1 --no-json` shows explicit warning:
+  - `Swabbing-time budget skipped 7 timed check(s); run sm swab --swabbing-time 0 for full coverage.`
+- Deduped repeated literals that were tripping `myopia:string-duplication.py` (shared constants/helpers + Dart command assembly cleanup).
+- `sm swab --swabbing-time 0 --json --output-file .slopmop/precommit_equivalent.json` → **all_passed: true**
+
+## 2026-03-08 Delta: Prevent CI Surprise From Budget-Skipped Swab Gates
+
+### Root Cause Verified
+
+1. The installed blocking pre-commit hook was running:
+  - `sm swab --json --output-file .slopmop/last_swab.json`
+2. Repo config has `swabbing_time: 10`.
+3. In hook-mode runs, swab reported `all_passed: true` while skipping timed gates:
+  - Example: `skip_reasons: {"time": 5, ...}`
+  - This allowed swab-level failures to be missed locally and later appear in CI scour.
+
+### Fix Implemented
+
+1. Hardened hook generation in `slopmop/cli/hooks.py`:
+  - Hook now runs `sm <verb> --swabbing-time 0 --json --output-file ...`
+  - This disables budget skipping for commit-time enforcement.
+
+2. Updated tests in `tests/unit/test_sm_cli.py`:
+  - Hook script tests now require `--swabbing-time 0` in generated scripts.
+
+### Validation
+
+- `pytest tests/unit/test_sm_cli.py::TestGitHooksFunctions::test_generate_hook_script tests/unit/test_sm_cli.py::TestGitHooksFunctions::test_generate_hook_script_direct_verb tests/unit/test_sm_cli.py::TestValidateJsonOutputFile::test_json_output_file_mirrors_and_prints_to_stdout -q` → **3 passed**
+- Reinstalled local hook: `sm commit-hooks install swab` now emits `sm swab --swabbing-time 0 ...`.
+- Hook-mode reproduction (`sm swab --swabbing-time 0 ...`) now returns `all_passed: false` and surfaces `myopia:string-duplication.py` as expected.
+
+## 2026-03-08 Delta: JSON Output Mirroring Behavior
+
+### Completed
+
+1. Updated JSON output semantics in `slopmop/cli/validate.py`:
+  - `--json` now always prints JSON to stdout.
+  - `--output-file` now mirrors JSON payload to file instead of suppressing stdout.
+
+2. Updated CLI help text in `slopmop/sm.py`:
+  - Clarifies that `--output-file` mirrors structured output and does not replace stdout.
+
+3. Updated regression test in `tests/unit/test_sm_cli.py`:
+  - Renamed and adjusted assertion to require JSON emission to both stdout and file.
+
+### Validation
+
+- `pytest tests/unit/test_sm_cli.py::TestValidateJsonOutputFile::test_json_output_file_mirrors_and_prints_to_stdout -q` → **1 passed**
+- `sm swab -g laziness:silenced-gates --json --output-file .slopmop/mirror_check.json` → JSON observed on stdout and file.
+
 ## 2026-03-09 Delta: CI Failure Clarity (Scour vs Swab)
 
 ### Completed

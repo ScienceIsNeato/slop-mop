@@ -109,8 +109,8 @@ def _add_output_flags(parser: argparse.ArgumentParser) -> None:
         metavar="PATH",
         default=None,
         help=(
-            "Write structured output (--json or --sarif) to a file "
-            "instead of stdout."
+            "Mirror structured output (--json or --sarif) to a file. "
+            "Stdout output is unchanged."
         ),
     )
     parser.add_argument(
