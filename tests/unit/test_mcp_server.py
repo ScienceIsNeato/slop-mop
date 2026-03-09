@@ -121,11 +121,12 @@ def test_tools_call_unknown_tool_returns_rpc_error(tmp_path):
             "jsonrpc": "2.0",
             "id": 4,
             "method": "tools/call",
-            "params": {"name": "bogus", "arguments": {}},
+            "params": {"name": "bogus", "arguments": {"no_cache": True}},
         }
     )
     assert response is not None
     assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "Unknown tool: bogus"
 
 
 def test_tools_call_invalid_params_returns_rpc_error(tmp_path):

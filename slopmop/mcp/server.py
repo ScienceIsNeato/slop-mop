@@ -319,11 +319,11 @@ class SwabMcpServer:
                 return _rpc_error(
                     request_id, -32602, "Invalid params: arguments must be an object"
                 )
+            if tool_name != _TOOL_NAME:
+                return _rpc_error(request_id, -32602, f"Unknown tool: {tool_name}")
             valid, validation_error = self._validate_swab_arguments(arguments)
             if not valid and validation_error is not None:
                 return _rpc_error(request_id, -32602, validation_error)
-            if tool_name != _TOOL_NAME:
-                return _rpc_error(request_id, -32602, f"Unknown tool: {tool_name}")
 
             result = self._call_swab_tool(arguments)
             return _rpc_result(request_id, result)
