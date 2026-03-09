@@ -55,6 +55,35 @@
   - `sm swab --swabbing-time 1 --json --output-file .slopmop/runtime_warning_smoke.json`
   - JSON now includes `runtime_warnings` with `code: swabbing_time_budget_skipped`.
 
+  ## 2026-03-09 Delta: Wrapper Friction Incident (Groundhog)
+
+  ### Completed
+
+  1. Reverted unintended edits to wrapper infrastructure:
+    - `cursor-rules/scripts/git_wrapper.sh`
+    - `cursor-rules/scripts/activate_env.sh`
+
+  2. Confirmed friction source (read-only diagnostics):
+    - Wrapper prints memorial banner to **stdout** on every git command.
+    - Parse-oriented commands (e.g. `git rev-parse --show-toplevel`) return banner + data, which can break automation expecting clean machine output.
+
+  3. Logged incident + root cause in:
+    - `cursor-rules/RECURRENT_ANTIPATTERN_LOG.md`
+
+  ### Resolution Applied (approved)
+
+  1. Updated active git wrapper (shell alias target):
+    - `/Users/pacey/Documents/SourceCode/cursor-rules/scripts/git_wrapper.sh`
+    - Removed success-path memorial banner emission.
+
+  2. Kept enforcement unchanged:
+    - Wrapper still blocks bypass attempts (e.g. `--no-verify`, `-n`, `SKIP=...`).
+
+  3. Verification:
+    - `git rev-parse --show-toplevel` now returns clean parseable output only.
+    - `git log --oneline -n 1` now returns clean output.
+    - `git commit --no-verify ...` still hard-blocked by wrapper.
+
 ## 2026-03-08 Delta: Prevent CI Surprise From Budget-Skipped Swab Gates
 
 ### Root Cause Verified
