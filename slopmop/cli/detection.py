@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
+from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
 # Used during `sm init` to auto-disable checks whose tools aren't available.
@@ -64,7 +65,6 @@ _C_CPP_LANGS = {
 }
 _DART_LANGS = {"dart"}
 _SCC_SUMMARY_ROWS = {"total", "totals", "sum", "header"}
-_SH_C_SET_E_PREFIX = "sh -c 'set -e; "
 _DETECTION_EXCLUDED_DIRS = {
     ".git",
     "node_modules",
@@ -87,7 +87,10 @@ def _normalize_language_key(name: str) -> str:
       "C++ Header" -> "cplusplusheader"
       "Objective-C" -> "objectivec"
     """
-    normalized = "".join(ch for ch in name.strip().lower() if ch.isalnum())
+    lowered = name.strip().lower()
+    # Preserve C/C++ distinctions before stripping punctuation.
+    lowered = lowered.replace("++", "plusplus").replace("#", "sharp")
+    normalized = "".join(ch for ch in lowered if ch.isalnum())
     return normalized
 
 
@@ -110,14 +113,14 @@ def _extract_scc_languages(payload: Any) -> Set[str]:
         payload_dict = cast(Dict[str, Any], payload)
         maybe_rows = payload_dict.get("languages")
         if isinstance(maybe_rows, list):
-            for row_any in cast(List[Any], maybe_rows):
+            rows_any = cast(List[Any], maybe_rows)
+            for row_any in rows_any:
                 if isinstance(row_any, dict):
                     rows.append(cast(Dict[str, Any], row_any))
         else:
             # Some versions key by language at top-level.
-            for key_any, value_any in payload_dict.items():
-                if isinstance(key_any, str) and isinstance(value_any, dict):
-                    key = key_any
+            for key, value in payload_dict.items():
+                if isinstance(key, str) and isinstance(value, dict):
                     norm = _normalize_language_key(key)
                     if norm and norm not in _SCC_SUMMARY_ROWS:
                         languages.add(norm)
@@ -169,7 +172,9 @@ def _detect_languages_with_scc(project_root: Path) -> Optional[Set[str]]:
     except json.JSONDecodeError:
         return None
 
-    return _extract_scc_languages(payload)
+    languages = _extract_scc_languages(payload)
+    # Empty output behaves like unavailable output so manifest fallback still works.
+    return languages or None
 
 
 def _detect_tools(project_root: Path) -> Dict[str, Any]:
@@ -395,7 +400,6 @@ def _detect_jest(project_root: Path) -> bool:
 def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     """Determine recommended gates based on detection."""
     recommended: list[str] = []
-
     if detected["has_python"]:
         recommended.extend(
             [
@@ -519,6 +523,11 @@ def _suggest_custom_gates(
     if detected.get("has_dart"):
         flutter_available = find_tool("flutter", str(project_root)) is not None
         dart_available = find_tool("dart", str(project_root)) is not None
+        strict_shell_prefix = "sh -c 'set -e; "
+        pubspec_guard = (
+            'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
+            f'[ -n "$pubspecs" ] || {{ echo "{NO_PUBSPEC_YAML_FOUND}"; exit 1; }}; '
+        )
 
         flutter_preflight = (
             "if flutter --version 2>&1 | grep -q "
@@ -535,14 +544,13 @@ def _suggest_custom_gates(
                         "description": "Run Flutter static analysis",
                         "category": "laziness",
                         "command": (
-                            _SH_C_SET_E_PREFIX
+                            strict_shell_prefix
                             + flutter_preflight
-                            + 'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
-                            '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                            "for pubspec in $pubspecs; do "
+                            + pubspec_guard
+                            + "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'echo "==> flutter analyze ($dir)"; '
-                            '(cd "$dir" && flutter analyze --no-fatal-infos --no-fatal-warnings); '
+                            '(cd "$dir" && flutter analyze); '
                             "done'"
                         ),
                         "level": "swab",
@@ -553,10 +561,11 @@ def _suggest_custom_gates(
                         "description": "Run Flutter tests",
                         "category": "overconfidence",
                         "command": (
-                            _SH_C_SET_E_PREFIX + flutter_preflight + "ran=0; "
-                            'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
-                            '[ -n "$pubspecs" ] || { echo "No pubspec.yaml found"; exit 1; }; '
-                            "for pubspec in $pubspecs; do "
+                            strict_shell_prefix
+                            + flutter_preflight
+                            + "ran=0; "
+                            + pubspec_guard
+                            + "for pubspec in $pubspecs; do "
                             'dir=$(dirname "$pubspec"); '
                             'if [ -d "$dir/test" ]; then '
                             "ran=1; "
@@ -580,7 +589,7 @@ def _suggest_custom_gates(
                     "description": "Check Dart formatting",
                     "category": "laziness",
                     "command": (
-                        _SH_C_SET_E_PREFIX
+                        strict_shell_prefix
                         + flutter_preflight
                         + "dart format --output=none --set-exit-if-changed .'"
                     ),

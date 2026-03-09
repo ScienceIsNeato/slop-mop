@@ -190,14 +190,20 @@ class TestCheckRegistry:
 
     def test_get_registry_singleton(self):
         """Test get_registry returns singleton."""
-        # Reset global registry for this test
+        import slopmop.checks as checks_module
         import slopmop.core.registry as registry_module
 
-        registry_module._default_registry = None
+        old_registry = registry_module._default_registry
+        old_checks_registered = checks_module._checks_registered
+        try:
+            registry_module._default_registry = None
 
-        reg1 = get_registry()
-        reg2 = get_registry()
-        assert reg1 is reg2
+            reg1 = get_registry()
+            reg2 = get_registry()
+            assert reg1 is reg2
+        finally:
+            registry_module._default_registry = old_registry
+            checks_module._checks_registered = old_checks_registered
 
     def test_get_checks_removes_duplicates(self):
         """Test that duplicate check names are deduplicated."""
@@ -243,43 +249,49 @@ class TestRegisterCheckDecorator:
 
     def test_register_check_decorator(self):
         """Test the register_check decorator adds check to registry."""
-        # Reset the global registry
+        import slopmop.checks as checks_module
         import slopmop.core.registry as registry_module
         from slopmop.core.registry import get_registry, register_check
 
-        registry_module._default_registry = None
+        old_registry = registry_module._default_registry
+        old_checks_registered = checks_module._checks_registered
+        try:
+            registry_module._default_registry = None
 
-        @register_check
-        class DecoratedCheck(BaseCheck):
-            @property
-            def name(self) -> str:
-                return "decorated-check"
+            @register_check
+            class DecoratedCheck(BaseCheck):
+                @property
+                def name(self) -> str:
+                    return "decorated-check"
 
-            @property
-            def display_name(self) -> str:
-                return "Decorated Check"
+                @property
+                def display_name(self) -> str:
+                    return "Decorated Check"
 
-            @property
-            def category(self) -> GateCategory:
-                return GateCategory.OVERCONFIDENCE
+                @property
+                def category(self) -> GateCategory:
+                    return GateCategory.OVERCONFIDENCE
 
-            @property
-            def flaw(self) -> Flaw:
-                return Flaw.OVERCONFIDENCE
+                @property
+                def flaw(self) -> Flaw:
+                    return Flaw.OVERCONFIDENCE
 
-            def is_applicable(self, project_root: str) -> bool:
-                return True
+                def is_applicable(self, project_root: str) -> bool:
+                    return True
 
-            def run(self, project_root: str) -> CheckResult:
-                return CheckResult(
-                    name=self.name,
-                    status=CheckStatus.PASSED,
-                    duration=0.01,
-                    output="Success",
-                )
+                def run(self, project_root: str) -> CheckResult:
+                    return CheckResult(
+                        name=self.name,
+                        status=CheckStatus.PASSED,
+                        duration=0.01,
+                        output="Success",
+                    )
 
-        reg = get_registry()
-        assert "overconfidence:decorated-check" in reg.list_checks()
+            reg = get_registry()
+            assert "overconfidence:decorated-check" in reg.list_checks()
+        finally:
+            registry_module._default_registry = old_registry
+            checks_module._checks_registered = old_checks_registered
 
 
 class TestCheckDefinition:

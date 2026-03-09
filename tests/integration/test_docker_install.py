@@ -26,7 +26,7 @@ Three branches × one container = ~2-3 minutes for the whole suite.
 
 Branch fixture summary
 ----------------------
-  main      — all gates pass (Python + JS)
+    all-pass  — all gates pass (Python + JS)
   all-fail  — every gate uniquely broken (Python + JS)
   mixed     — security + dead-code.py + bogus-tests.py fail; source-duplication disabled; JS passes
 
@@ -129,10 +129,10 @@ def _assert_gate_passed(result: RunResult, gate_name: str) -> None:
 class TestInstall:
     """Verify that ``pip install slopmop`` works from a clean slate."""
 
-    def test_install_on_main(self, result_main: RunResult) -> None:
+    def test_install_on_all_pass(self, result_all_pass: RunResult) -> None:
         assert (
-            result_main.install_succeeded
-        ), f"pip install failed on main branch:\n{result_main}"
+            result_all_pass.install_succeeded
+        ), f"pip install failed on all-pass branch:\n{result_all_pass}"
 
     def test_install_on_all_fail(self, result_all_fail: RunResult) -> None:
         assert (
@@ -153,11 +153,13 @@ class TestInstall:
 class TestInit:
     """Verify that ``sm init --non-interactive`` completes without error."""
 
-    def test_init_on_main(self, result_main: RunResult) -> None:
-        assert result_main.install_succeeded, f"Precondition failed:\n{result_main}"
+    def test_init_on_all_pass(self, result_all_pass: RunResult) -> None:
         assert (
-            result_main.init_succeeded
-        ), f"sm init failed on main branch:\n{result_main}"
+            result_all_pass.install_succeeded
+        ), f"Precondition failed:\n{result_all_pass}"
+        assert (
+            result_all_pass.init_succeeded
+        ), f"sm init failed on all-pass branch:\n{result_all_pass}"
 
     def test_init_on_all_fail(self, result_all_fail: RunResult) -> None:
         assert (
@@ -180,27 +182,29 @@ class TestInit:
 
 
 class TestHappyPath:
-    """Branch main: all gates pass -> exit 0."""
+    """Branch all-pass: all gates pass -> exit 0."""
 
-    def test_exit_code_is_zero(self, result_main: RunResult) -> None:
-        result_main.assert_prerequisites()
-        assert result_main.passed, f"Expected exit 0 on main branch:\n{result_main}"
+    def test_exit_code_is_zero(self, result_all_pass: RunResult) -> None:
+        result_all_pass.assert_prerequisites()
+        assert (
+            result_all_pass.passed
+        ), f"Expected exit 0 on all-pass branch:\n{result_all_pass}"
 
-    def test_key_gates_run(self, result_main: RunResult) -> None:
-        result_main.assert_prerequisites()
+    def test_key_gates_run(self, result_all_pass: RunResult) -> None:
+        result_all_pass.assert_prerequisites()
         for gate in (
             "sloppy-formatting.py",
             "untested-code.py",
             "vulnerability-blindness.py",
         ):
             assert (
-                gate in result_main.output
-            ), f"Expected gate '{gate}' in output.\n{result_main}"
+                gate in result_all_pass.output
+            ), f"Expected gate '{gate}' in output.\n{result_all_pass}"
 
-    def test_js_expect_gate_passes(self, result_main: RunResult) -> None:
+    def test_js_expect_gate_passes(self, result_all_pass: RunResult) -> None:
         """hand-wavy-tests.js should pass — all JS tests have proper assertions."""
-        result_main.assert_prerequisites()
-        _assert_gate_passed(result_main, "hand-wavy-tests.js")
+        result_all_pass.assert_prerequisites()
+        _assert_gate_passed(result_all_pass, "hand-wavy-tests.js")
 
 
 class TestAllFail:

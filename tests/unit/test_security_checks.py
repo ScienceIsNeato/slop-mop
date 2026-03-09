@@ -1,6 +1,7 @@
 """Tests for security checks (bandit, semgrep, detect-secrets)."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from slopmop.checks.security import (
@@ -412,7 +413,13 @@ class TestRunDetectSecrets:
         mock_result = MagicMock()
         mock_result.success = True
         mock_result.output = json.dumps(
-            {"results": {"config.py": [{"type": "Secret Keyword", "line_number": 5}]}}
+            {
+                "results": {
+                    "config.py": [
+                        {"type": "Secret Keyword", "line_number": 5}  # pragma: allowlist secret
+                    ]
+                }
+            }
         )
 
         with patch.object(check, "_run_command", return_value=mock_result):
@@ -444,9 +451,9 @@ class TestRunDetectSecrets:
         app_dir = tmp_path / "app"
         app_dir.mkdir()
         (app_dir / "__init__.py").write_text(
-            'secret_key = app.config.get("SECRET_KEY")\n'
-            'if not secret_key or secret_key == "dev-secret-change-me":\n'
-            'jwt_secret = "dev-jwt-secret"\n'
+            'secret_key = app.config.get("SECRET_KEY")\n'  # pragma: allowlist secret
+            'if not secret_key or secret_key == "dev-secret-change-me":\n'  # pragma: allowlist secret
+            'jwt_secret = "dev-jwt-secret"\n'  # pragma: allowlist secret
         )
         mock_result = MagicMock()
         mock_result.success = True
@@ -460,11 +467,13 @@ class TestRunDetectSecrets:
                         {"type": "Basic Auth Credentials", "line_number": 3}
                     ],
                     "app/__init__.py": [
-                        {"type": "Secret Keyword", "line_number": 1},
-                        {"type": "Secret Keyword", "line_number": 2},
-                        {"type": "Secret Keyword", "line_number": 3},
+                        {"type": "Secret Keyword", "line_number": 1},  # pragma: allowlist secret
+                        {"type": "Secret Keyword", "line_number": 2},  # pragma: allowlist secret
+                        {"type": "Secret Keyword", "line_number": 3},  # pragma: allowlist secret
                     ],
-                    "app/config.py": [{"type": "Secret Keyword", "line_number": 10}],
+                    "app/config.py": [
+                        {"type": "Secret Keyword", "line_number": 10}  # pragma: allowlist secret
+                    ],
                 }
             }
         )
@@ -487,7 +496,7 @@ class TestRunDetectSecrets:
             {
                 "results": {
                     "server/tests/test_auth.py": [
-                        {"type": "Secret Keyword", "line_number": 3}
+                        {"type": "Secret Keyword", "line_number": 3}  # pragma: allowlist secret
                     ]
                 }
             }
@@ -497,6 +506,75 @@ class TestRunDetectSecrets:
             result = check._run_detect_secrets(str(tmp_path))
 
         assert result.passed is True
+
+    def test_detect_secrets_ignores_root_flutter_ephemeral_paths(self, tmp_path):
+        """Root-level Flutter iOS ephemeral artifacts should be filtered."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "ios/Flutter/ephemeral/generated.xcconfig": [
+                        {"type": "Secret Keyword", "line_number": 1}  # pragma: allowlist secret
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True
+
+    def test_detect_secrets_does_not_filter_latest_as_test_marker(self, tmp_path):
+        """Substring like 'latest' should not be treated as test placeholder noise."""
+        check = SecurityLocalCheck({})
+        app_dir = tmp_path / "app"
+        app_dir.mkdir()
+        (app_dir / "config.py").write_text(
+            'SECRET_KEY = "latest_production_key_abc123"\n'  # pragma: allowlist secret
+        )
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "app/config.py": [
+                        {"type": "Secret Keyword", "line_number": 1}  # pragma: allowlist secret
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is False
+        assert "app/config.py" in result.findings
+
+    def test_safe_read_line_uses_cache_for_same_file(self, tmp_path):
+        """Line lookup cache should avoid repeated file reads per path."""
+        check = SecurityLocalCheck({})
+        app_dir = tmp_path / "app"
+        app_dir.mkdir()
+        (app_dir / "config.py").write_text("line1\nline2\n")
+
+        read_calls = {"count": 0}
+        original_read_text = Path.read_text
+
+        def _counting_read_text(self, *args, **kwargs):
+            read_calls["count"] += 1
+            return original_read_text(self, *args, **kwargs)
+
+        with patch("pathlib.Path.read_text", new=_counting_read_text):
+            cache: dict[str, list[str]] = {}
+            first = check._safe_read_line(str(tmp_path), "app/config.py", 1, cache)
+            second = check._safe_read_line(str(tmp_path), "app/config.py", 2, cache)
+
+        assert first == "line1"
+        assert second == "line2"
+        assert read_calls["count"] == 1
 
     def test_detect_secrets_json_error(self, tmp_path):
         """Test _run_detect_secrets handles JSON errors."""

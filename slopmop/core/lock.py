@@ -101,7 +101,11 @@ def _write_lock_meta(path: Path, verb: str) -> None:
     path.write_text(json.dumps(payload))
 
 
-def _is_stale(meta: Dict[str, Any], project_root: Path) -> bool:
+def _is_stale(
+    meta: Dict[str, Any],
+    project_root: Path,
+    stale_after_seconds: Optional[float] = None,
+) -> bool:
     """Determine whether the lock described by *meta* is stale."""
     pid = meta.get("pid")
 
@@ -113,7 +117,11 @@ def _is_stale(meta: Dict[str, Any], project_root: Path) -> bool:
     # 2. If the lock is older than the max expected duration, stale.
     started = meta.get("started_at", 0)
     age = time.time() - started
-    threshold = _max_expected_duration(project_root)
+    threshold = (
+        stale_after_seconds
+        if stale_after_seconds is not None and stale_after_seconds > 0
+        else _max_expected_duration(project_root)
+    )
     if age > threshold:
         logger.debug(
             "Lock age %.1fs exceeds threshold %.1fs — treating as stale",
@@ -149,7 +157,11 @@ def _format_busy_message(meta: Dict[str, Any]) -> str:
 
 
 @contextmanager
-def sm_lock(project_root: str | Path, verb: str) -> Iterator[None]:
+def sm_lock(
+    project_root: str | Path,
+    verb: str,
+    stale_after_seconds: Optional[float] = None,
+) -> Iterator[None]:
     """Context manager that acquires a per-repo lock.
 
     Usage::
@@ -185,7 +197,11 @@ def sm_lock(project_root: str | Path, verb: str) -> Iterator[None]:
             # Could not acquire — someone else holds the flock.
             # Check staleness via the metadata sidecar.
             meta = _read_lock_meta(path)
-            if meta and _is_stale(meta, root):
+            if meta and _is_stale(
+                meta,
+                root,
+                stale_after_seconds=stale_after_seconds,
+            ):
                 logger.info("Clearing stale lock (PID %s)", meta.get("pid"))
                 # Force-acquire: the kernel lock is gone (holder died)
                 # or holder is hung past threshold.  Truncate + re-lock.

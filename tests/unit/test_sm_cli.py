@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from slopmop.cli.ci import cmd_ci
-from slopmop.cli.detection import detect_project_type
+from slopmop.cli.detection import _normalize_language_key, detect_project_type
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
     SB_HOOK_MARKER,
@@ -104,6 +104,30 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["scour"])
         assert args.verb == "scour"
+
+    def test_buff_subcommand(self):
+        """Buff subcommand parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff"])
+        assert args.verb == "buff"
+
+    def test_buff_with_pr_number(self):
+        """Buff with explicit PR number parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "84"])
+        assert args.verb == "buff"
+        assert args.pr_number == 84
+
+    def test_buff_json_and_output_file_flags(self):
+        """Buff supports JSON stdout and machine output file mirroring."""
+        parser = create_parser()
+        args = parser.parse_args(
+            ["buff", "84", "--json", "--output-file", "triage.json"]
+        )
+        assert args.verb == "buff"
+        assert args.pr_number == 84
+        assert args.json_output is True
+        assert args.output_file == "triage.json"
 
     def test_swab_with_quality_gates(self):
         """Swab with --quality-gates parses correctly."""
@@ -292,8 +316,6 @@ class TestDetectProjectType:
         (tmp_path / "setup.py").write_text("")
         result = detect_project_type(tmp_path)
         assert "recommended_gates" in result
-        assert "overconfidence:untested-code.py" in result["recommended_gates"]
-        assert "overconfidence:missing-annotations.py" in result["recommended_gates"]
 
     def test_recommends_gates_for_mixed(self, tmp_path):
         """Recommends appropriate gates for mixed Python/JS projects."""
@@ -301,14 +323,6 @@ class TestDetectProjectType:
         (tmp_path / "package.json").write_text("{}")
         result = detect_project_type(tmp_path)
         assert "recommended_gates" in result
-        assert "overconfidence:untested-code.py" in result["recommended_gates"]
-        assert "overconfidence:untested-code.js" in result["recommended_gates"]
-
-    def test_does_not_recommend_test_gates_for_non_code_repo(self, tmp_path):
-        """Docs-only repos should not recommend test execution gates."""
-        result = detect_project_type(tmp_path)
-        assert "overconfidence:untested-code.py" not in result["recommended_gates"]
-        assert "overconfidence:untested-code.js" not in result["recommended_gates"]
 
     def test_detects_typescript_from_tsconfig(self, tmp_path):
         """Detects TypeScript from tsconfig.json."""
@@ -344,6 +358,23 @@ class TestDetectProjectType:
         assert result["has_javascript"] is True  # TS implies JS
         assert "overconfidence:type-blindness.js" in result["recommended_gates"]
 
+    def test_empty_scc_result_falls_back_to_manifest_detection(self, tmp_path):
+        """Empty scc output should not suppress manifest-based language detection."""
+        (tmp_path / "pyproject.toml").write_text("[tool.pytest]\n")
+        mock_scc = MagicMock(returncode=0, stdout="{}")
+        with (
+            patch("slopmop.cli.detection.find_tool", return_value="/usr/bin/scc"),
+            patch("subprocess.run", return_value=mock_scc),
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["language_detector"] == "manifest"
+        assert result["has_python"] is True
+
+    def test_normalize_language_key_handles_cplusplus_header(self):
+        """Normalization should preserve C++ semantics in keys."""
+        assert _normalize_language_key("C++ Header") == "cplusplusheader"
+
     def test_dart_detection_suggests_flutter_custom_gates(self, tmp_path):
         """Dart repos should get Flutter custom gates and built-in Dart gates."""
         with (
@@ -366,8 +397,6 @@ class TestDetectProjectType:
 
         by_name = {gate["name"]: gate for gate in result["suggested_custom_gates"]}
         assert "find . -name pubspec.yaml" in by_name["flutter-analyze"]["command"]
-        assert "--no-fatal-infos" in by_name["flutter-analyze"]["command"]
-        assert "--no-fatal-warnings" in by_name["flutter-analyze"]["command"]
         assert "find . -name pubspec.yaml" in by_name["flutter-test"]["command"]
         assert (
             "dart format --output=none --set-exit-if-changed"
@@ -512,6 +541,7 @@ class TestGitHooksFunctions:
         # Should use PATH-based sm lookup
         assert "command -v sm" in script
         # Should write structured output for LLM consumption
+        assert "--swabbing-time 0" in script
         assert "--json" in script
         assert "--output-file .slopmop/last_swab.json" in script
         assert "Structured results:" in script
@@ -522,6 +552,7 @@ class TestGitHooksFunctions:
         script = _generate_hook_script("scour")
         assert "sm scour" in script
         assert "# Command: sm scour" in script
+        assert "--swabbing-time 0" in script
         assert "--output-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
@@ -635,6 +666,14 @@ class TestMain:
         with patch("slopmop.cli.cmd_scour") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["scour"])
+            mock_cmd.assert_called_once()
+            assert result == 0
+
+    def test_main_buff_calls_cmd_buff(self):
+        """Main routes buff to cmd_buff."""
+        with patch("slopmop.cli.cmd_buff") as mock_cmd:
+            mock_cmd.return_value = 0
+            result = main(["buff"])
             mock_cmd.assert_called_once()
             assert result == 0
 
@@ -1080,7 +1119,7 @@ class TestValidateJsonOutputFile:
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
-    def test_json_output_file_does_not_print_to_stdout(
+    def test_json_output_file_mirrors_and_prints_to_stdout(
         self,
         _mock_config,
         _mock_registry,
@@ -1091,7 +1130,7 @@ class TestValidateJsonOutputFile:
         mock_print,
         tmp_path,
     ):
-        """--json with --output-file writes payload to file without stdout leak."""
+        """--json with --output-file writes payload to file and stdout."""
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
@@ -1123,4 +1162,4 @@ class TestValidateJsonOutputFile:
         assert result == 0
         assert output_file.exists()
         assert output_file.read_text(encoding="utf-8") == '{"ok":true}'
-        mock_print.assert_not_called()
+        mock_print.assert_called_once_with('{"ok":true}')

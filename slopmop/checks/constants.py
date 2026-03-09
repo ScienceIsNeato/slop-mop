@@ -18,7 +18,7 @@ TESTS_TIMED_OUT_MSG = "Tests timed out after 5 minutes"
 # Used by dead_code, complexity, and static_analysis to detect missing tools.
 COMMAND_NOT_FOUND = "Command not found"
 
-# Shared no-tests messages/suggestions
+# Shared no-tests and language literals reused across checks.
 PYTHON_NO_TESTS_FIX_PREFIX = "Add Python tests (test_*.py or *_test.py) in configured "
 JS_NO_TESTS_FOUND_EXPECTED = (
     "No JavaScript/TypeScript tests found "
@@ -27,7 +27,13 @@ JS_NO_TESTS_FOUND_EXPECTED = (
 JS_NO_TESTS_FOUND_JEST = (
     "No JavaScript/TypeScript tests found " "(Jest reported no matching tests)"
 )
-TAUTOLOGICAL_ASSERTION_PREFIX = "tautological assertion: "
+NO_PUBSPEC_YAML_FOUND = "No pubspec.yaml found"
+TAUTOLOGICAL_ASSERTION_PREFIX = "tautological assertion"
+
+
+def tautological_assertion_reason(tautology: str) -> str:
+    """Build a consistent tautological-assertion finding reason."""
+    return f"{TAUTOLOGICAL_ASSERTION_PREFIX}: {tautology}"
 
 
 def has_python_test_files(project_root: str, test_dirs: list[str]) -> bool:
@@ -38,8 +44,8 @@ def has_python_test_files(project_root: str, test_dirs: list[str]) -> bool:
     """
     from pathlib import Path
 
-    patterns = ("test_*.py", "*_test.py")
     root = Path(project_root)
+    patterns = ("test_*.py", "*_test.py")
     for test_dir in test_dirs:
         base = root / test_dir
         if not base.exists():

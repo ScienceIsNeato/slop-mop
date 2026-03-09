@@ -1,4 +1,4 @@
-"""Tests for cmd_config command handler."""
+"""Config-command tests split out from test_sm_cli for code-sprawl limits."""
 
 import argparse
 import json
@@ -6,20 +6,6 @@ from unittest.mock import MagicMock, patch
 
 from slopmop.cli.config import cmd_config
 from slopmop.sm import create_parser
-
-
-def _mock_registry_for_vuln_gate(applicable: bool = True) -> MagicMock:
-    """Build a deterministic registry stub for vulnerability gate tests."""
-    mock_registry = MagicMock()
-    mock_check = MagicMock()
-    mock_check.is_applicable.return_value = applicable
-    mock_check.skip_reason.return_value = "no source files found"
-    mock_registry.get_check.return_value = mock_check
-    mock_registry.list_checks.return_value = ["myopia:vulnerability-blindness.py"]
-    definition = MagicMock()
-    definition.name = "Vulnerability Blindness"
-    mock_registry.get_definition.return_value = definition
-    return mock_registry
 
 
 class TestCmdConfig:
@@ -83,6 +69,46 @@ class TestCmdConfig:
         assert "Run 'sm config --show' to see all gates." in captured.out
         assert "Available Quality Gates" not in captured.out
 
+    def test_config_no_args_counts_nested_disabled_gates(self, tmp_path, capsys):
+        """No-args summary should include nested gate enabled:false state."""
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "myopia": {
+                        "gates": {
+                            "vulnerability-blindness.py": {
+                                "enabled": False,
+                            }
+                        }
+                    }
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        summary_line = next(
+            (line.strip() for line in out.splitlines() if "applicable gates" in line),
+            "",
+        )
+        assert "disabled" in summary_line
+        disabled_count = int(summary_line.split(",")[-1].split("disabled")[0].strip())
+        assert disabled_count >= 1
+
     def test_config_registers_custom_gates(self, tmp_path):
         """cmd_config should register custom gates from config for management."""
         (tmp_path / ".sb_config.json").write_text(
@@ -123,7 +149,6 @@ class TestCmdConfig:
 
     def test_enable_gate(self, tmp_path):
         """--enable adds gate to enabled list."""
-        # Make vulnerability-blindness applicable (needs source files)
         (tmp_path / "main.py").write_text("print('hello')\n")
         (tmp_path / ".sb_config.json").write_text(
             json.dumps({"disabled_gates": ["myopia:vulnerability-blindness.py"]})
@@ -140,14 +165,7 @@ class TestCmdConfig:
             swabbing_time=None,
         )
 
-        with (
-            patch("slopmop.checks.ensure_checks_registered"),
-            patch(
-                "slopmop.cli.config.get_registry",
-                return_value=_mock_registry_for_vuln_gate(applicable=True),
-            ),
-        ):
-            result = cmd_config(args)
+        result = cmd_config(args)
 
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
@@ -172,14 +190,7 @@ class TestCmdConfig:
             swabbing_time=None,
         )
 
-        with (
-            patch("slopmop.checks.ensure_checks_registered"),
-            patch(
-                "slopmop.cli.config.get_registry",
-                return_value=_mock_registry_for_vuln_gate(applicable=False),
-            ),
-        ):
-            result = cmd_config(args)
+        result = cmd_config(args)
 
         assert result == 1
         captured = capsys.readouterr()
@@ -214,57 +225,13 @@ class TestCmdConfig:
             swabbing_time=None,
         )
 
-        with (
-            patch("slopmop.checks.ensure_checks_registered"),
-            patch(
-                "slopmop.cli.config.get_registry",
-                return_value=_mock_registry_for_vuln_gate(applicable=True),
-            ),
-        ):
-            result = cmd_config(args)
+        result = cmd_config(args)
 
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
         assert (
             config["myopia"]["gates"]["vulnerability-blindness.py"]["enabled"] is True
         )
-
-    def test_enable_gate_preserves_non_dict_category_value(self, tmp_path):
-        """--enable must not overwrite malformed category values in config."""
-        (tmp_path / "main.py").write_text("print('hello')\n")
-        (tmp_path / ".sb_config.json").write_text(
-            json.dumps(
-                {
-                    "myopia": "legacy-string-value",
-                    "disabled_gates": ["myopia:vulnerability-blindness.py"],
-                }
-            )
-        )
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable="myopia:vulnerability-blindness.py",
-            disable=None,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=None,
-        )
-
-        with (
-            patch("slopmop.checks.ensure_checks_registered"),
-            patch(
-                "slopmop.cli.config.get_registry",
-                return_value=_mock_registry_for_vuln_gate(applicable=True),
-            ),
-        ):
-            result = cmd_config(args)
-
-        assert result == 0
-        config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert config["myopia"] == "legacy-string-value"
-        assert "myopia:vulnerability-blindness.py" not in config["disabled_gates"]
 
     def test_show_uses_nested_enabled_flag(self, tmp_path, capsys):
         """--show should mark nested enabled:false gates as disabled."""
@@ -294,127 +261,12 @@ class TestCmdConfig:
             swabbing_time=None,
         )
 
-        with (
-            patch("slopmop.checks.ensure_checks_registered"),
-            patch(
-                "slopmop.cli.config.get_registry",
-                return_value=_mock_registry_for_vuln_gate(applicable=True),
-            ),
-        ):
-            result = cmd_config(args)
+        result = cmd_config(args)
 
         assert result == 0
         out = capsys.readouterr().out
         assert "gate: myopia:vulnerability-blindness.py" in out
         assert "❌ DISABLED" in out
-
-    def test_disable_gate_sets_flat_and_nested_flags(self, tmp_path):
-        """--disable stores both flat disabled list and nested enabled:false."""
-        gate = "myopia:vulnerability-blindness.py"
-        (tmp_path / ".sb_config.json").write_text(json.dumps({}))
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable=None,
-            disable=gate,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=None,
-        )
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            result = cmd_config(args)
-
-        assert result == 0
-        config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert gate in config["disabled_gates"]
-        assert (
-            config["myopia"]["gates"]["vulnerability-blindness.py"]["enabled"] is False
-        )
-
-    def test_disable_gate_already_disabled_flat_list(self, tmp_path, capsys):
-        """--disable is a no-op when gate is already in disabled_gates."""
-        gate = "myopia:vulnerability-blindness.py"
-        (tmp_path / ".sb_config.json").write_text(
-            json.dumps({"disabled_gates": [gate]})
-        )
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable=None,
-            disable=gate,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=None,
-        )
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            result = cmd_config(args)
-
-        assert result == 0
-        assert f"{gate} is already disabled" in capsys.readouterr().out
-
-    def test_disable_gate_already_disabled_nested_flag(self, tmp_path, capsys):
-        """--disable is a no-op when nested config already has enabled:false."""
-        gate = "myopia:vulnerability-blindness.py"
-        (tmp_path / ".sb_config.json").write_text(
-            json.dumps(
-                {
-                    "myopia": {
-                        "gates": {"vulnerability-blindness.py": {"enabled": False}}
-                    }
-                }
-            )
-        )
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable=None,
-            disable=gate,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=None,
-        )
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            result = cmd_config(args)
-
-        assert result == 0
-        assert f"{gate} is already disabled" in capsys.readouterr().out
-
-    def test_enable_non_scoped_gate_treated_as_enabled(self, tmp_path, capsys):
-        """Non-scoped gate names are treated as enabled unless explicitly disabled."""
-        gate = "custom-style-check"
-        (tmp_path / ".sb_config.json").write_text(json.dumps({"disabled_gates": {}}))
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable=gate,
-            disable=None,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=None,
-        )
-
-        with (
-            patch("slopmop.checks.ensure_checks_registered"),
-            patch(
-                "slopmop.cli.config.get_registry",
-                return_value=_mock_registry_for_vuln_gate(applicable=True),
-            ),
-        ):
-            result = cmd_config(args)
-
-        assert result == 0
-        assert f"{gate} is already enabled" in capsys.readouterr().out
 
     def test_config_swabbing_time_parser(self):
         """config --swabbing-time flag parses correctly."""

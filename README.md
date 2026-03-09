@@ -2,7 +2,7 @@
 
 <p>
   <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/v/slopmop.svg" alt="PyPI version"/></a>
-  <a href="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml"><img src="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop.yml/badge.svg" alt="CI"/></a>
+  <a href="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop-sarif.yml"><img src="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop-sarif.yml/badge.svg" alt="Primary code scanning gate"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"/></a>
   <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Attribution-blue.svg" alt="License"/></a>
 </p>
@@ -22,6 +22,26 @@ Slop-mop runs a set of quality gates organized around these four failure modes. 
 
 The mop finds the slop. The agent cleans it up. The ship stays seaworthy.
 
+### Fast CI Failure Triage
+
+When a PR fails the primary code-scanning gate, use the reusable machine-first
+triage script instead of manually digging through logs:
+
+```bash
+activate && python scripts/ci_scan_triage.py --pr 84 --show-low-coverage
+```
+
+Or triage a specific run immediately:
+
+```bash
+activate && python scripts/ci_scan_triage.py --run-id 22840517416 --show-low-coverage
+```
+
+What it does:
+- Downloads the `slopmop-results` artifact from GitHub Actions
+- Extracts actionable failed/error/warned gates
+- Writes machine-readable output to `.slopmop/last_ci_triage.json`
+
 ---
 
 ## Quick Start
@@ -38,6 +58,7 @@ sm init                       # auto-detects languages, writes .sb_config.json
 # Run quality gates
 sm swab                       # fix what it finds, commit when green
 sm scour                      # thorough check before opening a PR
+sm buff                       # post-PR loop: CI triage + next-step guidance
 ```
 
 Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
@@ -145,6 +166,17 @@ When a gate fails, the output tells the agent exactly what to do next:
 
 This is purpose-built for AI agents. The iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
 
+Practical lifecycle loop:
+
+```text
+while coding       -> sm swab
+before PR          -> sm scour
+after PR opens     -> sm buff
+```
+
+`sm buff` is post-submit protection. It reads CI scan results for the PR branch,
+surfaces unresolved machine signals, and directs the next local fix/recheck loop.
+
 ### The Prescription Contract
 
 Every gate failure must be *prescriptive*, not just *descriptive*. A gate that says "coverage too low" is describing a symptom. A gate that says "add tests in `tests/test_foo.py` covering lines 45-67 of `foo.py`" is prescribing a remedy.
@@ -183,6 +215,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 | Gate | What It Does |
 |------|--------------|
+| `overconfidence:coverage-gaps.dart` | 📊 Dart/Flutter coverage analysis from flutter test --coverage |
 | `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis |
 | `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) |
 | `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out |
@@ -199,6 +232,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 | Gate | What It Does |
 |------|--------------|
+| `deceptiveness:bogus-tests.dart` | 🧪 Detects empty or non-assertive Dart/Flutter tests |
 | `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS |
 | `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing |
 | `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C |
@@ -216,6 +250,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `laziness:broken-templates.py` | 📄 Jinja2 template validation |
 | `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) |
 | `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) |
+| `laziness:generated-artifacts.dart` | 🧱 Detects committed Flutter build/tool artifacts |
 | `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists |
 | `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) |
 | `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) |
@@ -443,33 +478,112 @@ Some built-in gates wrap well-known tools — `coverage-gaps.py` runs `pytest --
 
 ## CI Integration
 
-### GitHub Actions
+### Dead-Simple: Turn On Code Scanning
+
+1. Create `.github/workflows/slopmop-code-scanning.yml` in your repo.
+2. Paste this workflow.
+3. In branch protection/rulesets, require `Primary Code Scanning Gate (blocking)`.
+
+Note: On private repos, GitHub Code Scanning may require GitHub Advanced
+Security. Public repos work out of the box.
 
 ```yaml
-name: slop-mop
+name: slop-mop primary code scanning gate
+
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
-  quality-gates:
+  scan:
+    name: Primary Code Scanning Gate (blocking)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install slopmop[all]
-      - run: sm swab
-      - if: github.event_name == 'pull_request'
+
+      - name: Install slop-mop
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install slopmop[all]
+
+      - name: Run primary gate (scour -> SARIF)
+        id: scour
+        continue-on-error: true
+        run: |
+          source .venv/bin/activate
+          sm scour --sarif --output-file slopmop.sarif --no-json
+
+      - name: Publish SARIF to Code Scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slopmop.sarif
+          category: slopmop
+
+      - name: Enforce primary gate verdict
+        if: steps.scour.outcome == 'failure'
+        run: |
+          echo "::error::slop-mop primary code scanning gate failed"
+          exit 1
+```
+
+Warnings stay warnings. Failures block merge.
+
+### Optional: Final Dogfood Sanity After Scan Passes
+
+Use this only if you want a second, downstream sanity run after the primary gate
+is already green on a PR.
+
+```yaml
+name: slop-mop downstream dogfood sanity
+
+on:
+  workflow_run:
+    workflows: ["slop-mop primary code scanning gate"]
+    types: [completed]
+
+jobs:
+  dogfood:
+    name: Final Dogfood Sanity Check (blocking)
+    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install slopmop[all]
+      - name: Run final dogfood scour
         env:
           GH_TOKEN: ${{ github.token }}
-        run: sm scour
+        run: |
+          source .venv/bin/activate
+          sm scour
 ```
+
+Recommended policy: one required blocking gate (code scanning), optional dogfood
+as a second safety net.
 
 ### Check CI Status Locally
 

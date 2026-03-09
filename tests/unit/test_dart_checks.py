@@ -18,6 +18,7 @@ class TestDartCoverageCheck:
 
     def test_is_applicable_requires_pubspec(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        (tmp_path / "test").mkdir()
         check = DartCoverageCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
@@ -36,8 +37,8 @@ class TestDartCoverageCheck:
 
         with patch("slopmop.checks.dart.coverage.find_tool", return_value="flutter"):
             result = check.run(str(tmp_path))
-        assert result.status == CheckStatus.FAILED
-        assert "No Flutter test directories found" in (result.error or "")
+        assert result.status == CheckStatus.SKIPPED
+        assert "No Flutter test directories found" in (result.output or "")
 
     def test_fails_when_flutter_test_fails(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")

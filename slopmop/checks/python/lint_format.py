@@ -41,9 +41,6 @@ _DEFAULT_EXCLUDE_DIRS = [
     "alembic",
     "ephemeral",
 ]
-_BLACK_EXCLUDE_REGEX = (
-    r"/(venv|\.venv|build|dist|node_modules|migrations|alembic|ephemeral)/"
-)
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
@@ -145,8 +142,6 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     "black",
                     "--line-length",
                     "88",
-                    "--exclude",
-                    _BLACK_EXCLUDE_REGEX,
                     target,
                 ],
                 cwd=project_root,
@@ -258,8 +253,6 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     "--check",
                     "--line-length",
                     "88",
-                    "--exclude",
-                    _BLACK_EXCLUDE_REGEX,
                     target,
                 ],
                 cwd=project_root,

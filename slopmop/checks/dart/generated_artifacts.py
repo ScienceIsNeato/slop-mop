@@ -12,11 +12,8 @@ from slopmop.checks.base import (
     GateCategory,
     ToolContext,
 )
-from slopmop.checks.dart.common import (
-    NO_PUBSPEC_FOUND,
-    find_pubspec_dirs,
-    unique_strings,
-)
+from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
+from slopmop.checks.dart.common import find_pubspec_dirs, unique_strings
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_SHOWN = 20
@@ -64,7 +61,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
         return bool(find_pubspec_dirs(project_root))
 
     def skip_reason(self, project_root: str) -> str:
-        return NO_PUBSPEC_FOUND
+        return NO_PUBSPEC_YAML_FOUND
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
