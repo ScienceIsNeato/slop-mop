@@ -3,6 +3,7 @@
 Usage:
     sm swab [--quality-gates GATES] [--verbose] [--quiet]
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
+    sm mcp serve [--project-root PATH]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
     sm commit-hooks status
@@ -16,6 +17,7 @@ Verbs:
     scour         Thorough validation (PR readiness — superset of swab)
     config        View or update configuration
     init          Interactive setup and project configuration
+    mcp           Run local MCP server for agent integrations
     commit-hooks  Manage git pre-commit hooks
     ci            Check CI status for current PR
     help          Show help for quality gates
@@ -400,6 +402,43 @@ def _add_ci_parser(
     )
 
 
+def _add_mcp_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the mcp subcommand parser."""
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="Run local MCP server for agent integrations",
+        description=(
+            "Run slop-mop as an MCP stdio server. Exposes a single tool: "
+            "`swab`, which runs `sm swab` for this repository."
+        ),
+    )
+    mcp_subparsers = mcp_parser.add_subparsers(
+        dest="mcp_action",
+        help="MCP action",
+    )
+
+    serve_parser = mcp_subparsers.add_parser(
+        "serve",
+        help="Start MCP stdio server",
+    )
+    serve_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+    serve_parser.add_argument(
+        "--allow-no-cache",
+        action="store_true",
+        help=(
+            "Expose an optional tool argument to force cold swab runs. "
+            "Off by default to keep the agent interface minimal."
+        ),
+    )
+
+
 def _add_status_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -460,6 +499,7 @@ both human developers and AI coding assistants.
 Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
+  mcp         Local MCP server (single `swab` tool)
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -489,6 +529,7 @@ Examples:
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
     _add_init_parser(subparsers)
+    _add_mcp_parser(subparsers)
     _add_hooks_parser(subparsers)
     _add_ci_parser(subparsers)
 
@@ -509,6 +550,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_config,
         cmd_help,
         cmd_init,
+        cmd_mcp,
         cmd_scour,
         cmd_status,
         cmd_swab,
@@ -536,6 +578,8 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_help(parsed_args)
     elif parsed_args.verb == "init":
         return cmd_init(parsed_args)
+    elif parsed_args.verb == "mcp":
+        return cmd_mcp(parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return cmd_commit_hooks(parsed_args)
     elif parsed_args.verb == "ci":

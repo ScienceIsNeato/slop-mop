@@ -57,6 +57,40 @@ Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
 | `pipx install slopmop[testing]` | + pytest, pytest-cov, diff-cover |
 | `pipx install slopmop[all]` | Everything above |
 
+### MCP (Single-Tool Agent Interface)
+
+Slop-mop includes a local MCP server that exposes one tool: `swab`.
+
+The design is intentionally simple:
+
+- Agent calls `swab`
+- Server runs `sm swab` for the repo
+- Slop-mop returns its normal JSON payload
+- Agent fixes what it says and calls `swab` again
+
+Start the server:
+
+```bash
+sm mcp serve --project-root .
+```
+
+Typical MCP server config (adjust to your client format):
+
+```json
+{
+  "command": "sm",
+  "args": ["mcp", "serve", "--project-root", "/absolute/path/to/repo"]
+}
+```
+
+Optional: expose a debug-only `no_cache` tool argument:
+
+```bash
+sm mcp serve --project-root . --allow-no-cache
+```
+
+This keeps the default workflow no-thinking and deterministic while still
+allowing occasional cold-run debugging.
 ---
 
 ## The Loop

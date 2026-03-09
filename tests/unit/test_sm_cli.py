@@ -212,6 +212,14 @@ class TestCreateParser:
         assert args.verb == "commit-hooks"
         assert args.hooks_action == "uninstall"
 
+    def test_mcp_serve_parses(self):
+        """MCP serve subcommand parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["mcp", "serve", "--project-root", "."])
+        assert args.verb == "mcp"
+        assert args.mcp_action == "serve"
+        assert args.project_root == "."
+
 
 class TestDetectProjectType:
     """Tests for detect_project_type function."""
@@ -693,6 +701,14 @@ class TestMain:
         with patch("slopmop.cli.cmd_ci") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["ci"])
+            mock_cmd.assert_called_once()
+            assert result == 0
+
+    def test_main_mcp_calls_cmd_mcp(self):
+        """Main routes mcp to cmd_mcp."""
+        with patch("slopmop.cli.cmd_mcp") as mock_cmd:
+            mock_cmd.return_value = 0
+            result = main(["mcp", "serve"])
             mock_cmd.assert_called_once()
             assert result == 0
 

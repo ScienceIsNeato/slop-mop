@@ -10,6 +10,7 @@ from slopmop.cli.detection import detect_project_type
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import cmd_commit_hooks
 from slopmop.cli.init import cmd_init
+from slopmop.cli.mcp import cmd_mcp
 from slopmop.cli.status import cmd_status, run_status
 from slopmop.cli.validate import cmd_scour, cmd_swab
 
@@ -19,6 +20,7 @@ __all__ = [
     "cmd_config",
     "cmd_help",
     "cmd_init",
+    "cmd_mcp",
     "cmd_scour",
     "cmd_status",
     "cmd_swab",
