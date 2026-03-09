@@ -1,5 +1,17 @@
 # Project Status
 
+## 2026-03-09 Delta: PR #85 Buff PR Resolution Consistency
+
+### Completed
+
+1. Added `pr_number` to the CI triage payload so downstream consumers can reuse the exact PR number triage resolved.
+2. Updated `sm buff` to pass the resolved PR number from the triage payload into the blocking PR-feedback gate instead of relying only on the original CLI argument.
+3. Added regression coverage proving `cmd_buff()` uses the triage-resolved PR number when `args.pr_number` is unset.
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py` -> **22 passed**
+
 ## 2026-03-09 Delta: PR #85 Final GraphQL Escape Fix
 
 ### Completed

@@ -266,6 +266,7 @@ def build_triage_payload(
         "schema": "slopmop/ci-triage/v1",
         "source": "code-scanning",
         "run_id": run_id,
+        "pr_number": pr_number,
         "artifact_json": str(json_path),
         "summary": {
             "failed": summary.get("failed", 0),

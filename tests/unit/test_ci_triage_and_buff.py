@@ -398,6 +398,40 @@ class TestBuffCommand:
         out = capsys.readouterr().out
         assert '"schema": "slopmop/ci-triage/v1"' in out
 
+    def test_cmd_buff_uses_resolved_pr_number_from_triage_payload(self, monkeypatch):
+        args = argparse.Namespace(
+            json_output=False,
+            repo=None,
+            run_id=None,
+            pr_number=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+        )
+
+        monkeypatch.setattr(
+            buff_mod,
+            "run_triage",
+            Mock(
+                return_value=(
+                    0,
+                    {
+                        "pr_number": 85,
+                        "summary": {},
+                        "actionable": [],
+                        "next_steps": [],
+                    },
+                )
+            ),
+        )
+        monkeypatch.setattr(buff_mod, "write_json_out", Mock())
+        monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        feedback_gate = Mock(return_value=self._feedback_result(CheckStatus.PASSED))
+        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+
+        assert buff_mod.cmd_buff(args) == 0
+        feedback_gate.assert_called_once_with(85)
+
     def test_cmd_buff_no_payload(self, monkeypatch, capsys):
         args = argparse.Namespace(
             json_output=False,

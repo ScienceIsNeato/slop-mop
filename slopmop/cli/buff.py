@@ -65,7 +65,8 @@ def cmd_buff(args: argparse.Namespace) -> int:
         print("ERROR: CI triage produced no payload.")
         return 1
 
-    feedback_result = _run_pr_feedback_gate(args.pr_number)
+    resolved_pr_number = payload.get("pr_number", args.pr_number)
+    feedback_result = _run_pr_feedback_gate(resolved_pr_number)
     payload["pr_feedback"] = {
         "gate": "myopia:ignored-feedback",
         "status": feedback_result.status.value,
