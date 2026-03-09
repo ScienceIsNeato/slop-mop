@@ -176,6 +176,7 @@ jobs:
           python3 scripts/summarize_scour_failure.py \
             --sarif slopmop.sarif \
             --json slopmop-results.json \
+            --step-summary-path "$GITHUB_STEP_SUMMARY" \
             | tee .scour-failure-summary.txt
 
       - name: Enforce Primary Gate Verdict

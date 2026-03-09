@@ -40,35 +40,73 @@ def _swab_gate_names() -> set[str]:
         return set()
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--sarif", default="slopmop.sarif")
-    parser.add_argument("--json", default="slopmop-results.json")
-    args = parser.parse_args()
+def _write_step_summary(
+    path: str | None,
+    classification_line: str,
+    swab_failed: list[str],
+    scour_only_failed: list[str],
+    top_rules_line: str,
+    actionable_lines: list[str],
+) -> None:
+    if not path:
+        return
 
-    sarif_doc = _load_json(Path(args.sarif))
+    summary_lines = [
+        "## slopmop scour failure summary",
+        "",
+    ]
+    if classification_line:
+        summary_lines.append(f"- Classification: {classification_line}")
+    if swab_failed:
+        summary_lines.append(f"- SWAB-overlap failed gates: {', '.join(swab_failed)}")
+    if scour_only_failed:
+        summary_lines.append(
+            f"- SCOUR-only failed gates: {', '.join(scour_only_failed)}"
+        )
+    if top_rules_line:
+        summary_lines.append("")
+        summary_lines.append("### Top SARIF rules")
+        summary_lines.append(top_rules_line)
+    if actionable_lines:
+        summary_lines.append("")
+        summary_lines.append("### Actionable gate details")
+        summary_lines.extend(actionable_lines)
+    summary_lines.append("")
+    summary_lines.append(
+        "See Security > Code scanning (category `slopmop`) and artifact `slopmop-results` for full payloads."
+    )
+
+    Path(path).write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+
+
+def _read_sarif(sarif_path: str) -> tuple[list[dict[str, Any]], str]:
+    sarif_doc = _load_json(Path(sarif_path))
     if sarif_doc is None:
         print("::error::slopmop scour failed - SARIF missing or unreadable")
-        return 0
+        return [], "SARIF missing or unreadable"
 
     runs = sarif_doc.get("runs") or []
     sarif_results = (runs[0].get("results") or []) if runs else []
     if not sarif_results:
         print("::error::slopmop scour failed, but SARIF has zero results")
-    else:
-        counts = Counter(r.get("ruleId", "unknown") for r in sarif_results)
-        top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:12]
-        summary = ", ".join(f"{rule} ({n})" for rule, n in top)
-        print(f"::error::Top SARIF rules: {summary}")
+        return [], "SARIF had zero results"
 
-    json_doc = _load_json(Path(args.json))
+    counts = Counter(r.get("ruleId", "unknown") for r in sarif_results)
+    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:12]
+    top_rules_line = ", ".join(f"{rule} ({n})" for rule, n in top)
+    print(f"::error::Top SARIF rules: {top_rules_line}")
+    return sarif_results, top_rules_line
+
+
+def _read_actionable_results(json_path: str) -> list[dict[str, Any]]:
+    json_doc = _load_json(Path(json_path))
     if json_doc is None:
         print(
             "::warning::JSON report missing/unreadable; cannot classify "
             "scour-only vs swab-overlap failures"
         )
         print("::notice::See Code scanning results / slopmop for detailed findings.")
-        return 0
+        return []
 
     actionable = [
         r
@@ -77,42 +115,60 @@ def main() -> int:
     ]
     if not actionable:
         print("::warning::No actionable results found in JSON report")
-        return 0
+        return []
 
     status_order = {"error": 0, "failed": 1, "warned": 2}
     actionable.sort(
         key=lambda r: (status_order.get(str(r.get("status")), 9), str(r.get("name", "")))
     )
+    return actionable
 
+
+def _classify_failed_gates(
+    actionable: list[dict[str, Any]],
+) -> tuple[str, list[str], list[str]]:
     failed_names = {
         str(r.get("name", ""))
         for r in actionable
         if r.get("status") in {"failed", "error"}
     }
 
+    classification_line = ""
+    swab_failed: list[str] = []
+    scour_only_failed: list[str] = []
     swab_names = _swab_gate_names()
-    if swab_names:
-        swab_failed = sorted(n for n in failed_names if n in swab_names)
-        scour_only_failed = sorted(n for n in failed_names if n not in swab_names)
+    if not swab_names:
+        return classification_line, swab_failed, scour_only_failed
 
-        if scour_only_failed and not swab_failed:
-            print(
-                "::notice::Classification: CI failed due to SCOUR-ONLY gates "
-                "(would not fail a plain swab run)."
-            )
-        elif swab_failed and scour_only_failed:
-            print(
-                "::notice::Classification: CI failed due to both SWAB-overlap "
-                "and SCOUR-only gates."
-            )
-        elif swab_failed:
-            print("::notice::Classification: CI failed on gates that are also in SWAB.")
+    swab_failed = sorted(n for n in failed_names if n in swab_names)
+    scour_only_failed = sorted(n for n in failed_names if n not in swab_names)
 
-        if swab_failed:
-            print(f"::error::SWAB-overlap failed gates: {', '.join(swab_failed)}")
-        if scour_only_failed:
-            print(f"::error::SCOUR-only failed gates: {', '.join(scour_only_failed)}")
+    if scour_only_failed and not swab_failed:
+        classification_line = "SCOUR-only failures"
+        print(
+            "::notice::Classification: CI failed due to SCOUR-ONLY gates "
+            "(would not fail a plain swab run)."
+        )
+    elif swab_failed and scour_only_failed:
+        classification_line = "Mixed: SWAB-overlap + SCOUR-only failures"
+        print(
+            "::notice::Classification: CI failed due to both SWAB-overlap "
+            "and SCOUR-only gates."
+        )
+    elif swab_failed:
+        classification_line = "SWAB-overlap failures"
+        print("::notice::Classification: CI failed on gates that are also in SWAB.")
 
+    if swab_failed:
+        print(f"::error::SWAB-overlap failed gates: {', '.join(swab_failed)}")
+    if scour_only_failed:
+        print(f"::error::SCOUR-only failed gates: {', '.join(scour_only_failed)}")
+
+    return classification_line, swab_failed, scour_only_failed
+
+
+def _print_actionable_details(actionable: list[dict[str, Any]]) -> list[str]:
+    actionable_lines: list[str] = []
     print("::group::Detailed actionable gate results")
     for row in actionable:
         name = str(row.get("name", "unknown"))
@@ -123,10 +179,58 @@ def main() -> int:
             or row.get("status_detail")
             or "(no detail)"
         )
-        print(f"- {status}: {name} :: {detail}")
+        line = f"- {status}: {name} :: {detail}"
+        print(line)
+        actionable_lines.append(line)
     print("::endgroup::")
-
     print("::notice::See Code scanning results / slopmop for full findings.")
+    return actionable_lines
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sarif", default="slopmop.sarif")
+    parser.add_argument("--json", default="slopmop-results.json")
+    parser.add_argument("--step-summary-path", default=None)
+    args = parser.parse_args()
+
+    sarif_results, top_rules_line = _read_sarif(args.sarif)
+    if not sarif_results and top_rules_line == "SARIF missing or unreadable":
+        _write_step_summary(
+            args.step_summary_path,
+            "",
+            [],
+            [],
+            top_rules_line,
+            [],
+        )
+        return 0
+
+    actionable = _read_actionable_results(args.json)
+    if not actionable:
+        _write_step_summary(
+            args.step_summary_path,
+            "",
+            [],
+            [],
+            top_rules_line,
+            [],
+        )
+        return 0
+    classification_line, swab_failed, scour_only_failed = _classify_failed_gates(
+        actionable
+    )
+    actionable_lines = _print_actionable_details(actionable)
+
+    _write_step_summary(
+        args.step_summary_path,
+        classification_line,
+        swab_failed,
+        scour_only_failed,
+        top_rules_line,
+        actionable_lines,
+    )
+
     return 0
 
 

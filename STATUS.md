@@ -11,6 +11,28 @@
 
 **Status: LOCAL — all 1568 tests pass** ✅
 
+## 2026-03-09 Delta: CI Failure Clarity (Scour vs Swab)
+
+### Completed
+
+1. Added CI-side failure summarization script:
+  - `scripts/summarize_scour_failure.py`
+  - Reads `slopmop.sarif` + `slopmop-results.json` from the same scour run.
+  - Prints explicit classification in Actions logs:
+    - SWAB-overlap failed gates
+    - SCOUR-only failed gates
+    - mixed case when both are present
+  - Emits per-gate actionable lines with status + detail for quick triage.
+
+2. Updated workflow summary step:
+  - `.github/workflows/slopmop-sarif.yml`
+  - Replaced brittle inline Python with script invocation for maintainability.
+  - Kept top SARIF rule summary for quick Code Scanning navigation.
+
+3. Added JSON report artifact upload in CI:
+  - Artifact name: `slopmop-results`
+  - Makes exact `results[]` payload downloadable from the run UI.
+
 ## 2026-03-09 Delta: Test Isolation Fix + Triple-Output CI
 
 ### Completed
