@@ -411,6 +411,21 @@ class TestPythonTestsCheck:
         # Should pass because tests passed, only coverage failed
         assert result.status == CheckStatus.PASSED
 
+    def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
+        """Skip reason uses the generic applicable message for Python projects."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonTestsCheck({})
+        assert check.skip_reason(str(tmp_path)) == "Python tests check not applicable"
+
+    def test_run_fails_when_no_python_tests_exist(self, tmp_path):
+        """No test files should fail with explicit fix guidance."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonTestsCheck({})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "No Python test files" in (result.error or "")
+        assert result.fix_suggestion is not None
+
     def test_parse_failed_lines_ignores_embedded_failed_token(self):
         """Regex should not match when line doesn't start with FAILED."""
         lines = [
@@ -505,6 +520,23 @@ class TestPythonCoverageCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+    def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
+        """Skip reason uses coverage-specific generic message for Python projects."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonCoverageCheck({})
+        assert (
+            check.skip_reason(str(tmp_path)) == "Python coverage check not applicable"
+        )
+
+    def test_run_fails_when_no_python_tests_exist(self, tmp_path):
+        """No tests should fail before coverage parsing with actionable guidance."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonCoverageCheck({})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "No Python test files" in (result.error or "")
+        assert result.fix_suggestion is not None
 
 
 class TestPythonStaticAnalysisCheck:
@@ -1308,3 +1340,18 @@ class TestPythonDiffCoverageCheck:
         ):
             result = check.run(str(tmp_path))
         assert result.status == CheckStatus.ERROR
+
+    def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
+        """Skip reason uses diff-coverage specific generic message for Python projects."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonDiffCoverageCheck({})
+        assert check.skip_reason(str(tmp_path)) == "Diff coverage check not applicable"
+
+    def test_run_fails_when_no_python_tests_exist(self, tmp_path):
+        """No tests should fail before invoking diff-cover."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonDiffCoverageCheck({})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "No Python test files" in (result.error or "")
+        assert result.fix_suggestion is not None

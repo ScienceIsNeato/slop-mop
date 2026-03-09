@@ -125,6 +125,35 @@ class TestDartCoverageCheck:
         assert result.status == CheckStatus.FAILED
         assert "below threshold" in (result.error or "")
 
+    def test_uses_shared_coverage_message_helper(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        (tmp_path / "test").mkdir()
+        coverage_dir = tmp_path / "coverage"
+        coverage_dir.mkdir()
+        (coverage_dir / "lcov.info").write_text(
+            "SF:lib/main.dart\n" "DA:1,1\n" "DA:2,0\n" "DA:3,0\n" "end_of_record\n"
+        )
+        check = DartCoverageCheck({"threshold": 80})
+
+        run_result = MagicMock()
+        run_result.success = True
+        run_result.timed_out = False
+        run_result.output = ""
+
+        with (
+            patch("slopmop.checks.dart.coverage.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+            patch(
+                "slopmop.checks.dart.coverage.coverage_below_threshold_message",
+                return_value="shared helper message",
+            ) as shared_msg,
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "shared helper message" in (result.output or "")
+        shared_msg.assert_called()
+
 
 class TestDartBogusTestsCheck:
     """Tests for DartBogusTestsCheck."""

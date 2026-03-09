@@ -3,9 +3,6 @@
 from pathlib import Path
 from typing import Iterable, List
 
-NO_PUBSPEC_FOUND = "No pubspec.yaml found"
-VERIFY_WITH_PREFIX = "Verify with: "
-
 
 def find_pubspec_dirs(project_root: str) -> List[Path]:
     """Return package directories containing pubspec.yaml.

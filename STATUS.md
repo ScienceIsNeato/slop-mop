@@ -25,7 +25,26 @@
 
 ### Validation
 
-- `pytest -q tests/unit/test_sm_cli.py tests/unit/test_ci_triage_and_buff.py` -> **109 passed**
+
+## 2026-03-09 Delta: PR Feedback Fixes (Dead Constants + Shared Dart Helper)
+
+### Completed
+
+1. Removed dead constants from `slopmop/checks/dart/common.py`:
+  - `NO_PUBSPEC_FOUND`
+  - `VERIFY_WITH_PREFIX`
+2. Deduplicated Dart coverage threshold messaging:
+  - `slopmop/checks/dart/coverage.py` now imports and uses shared `coverage_below_threshold_message` from `slopmop/checks/constants.py`.
+3. Added regression tests for coverage branches and no-test paths:
+  - `tests/unit/test_dart_checks.py`
+  - `tests/unit/test_javascript_checks.py`
+  - `tests/unit/test_python_checks.py`
+
+### Validation
+
+- `pytest -q tests/unit/test_dart_checks.py tests/unit/test_javascript_checks.py tests/unit/test_python_checks.py` -> **220 passed**
+- `sm scour -g myopia:just-this-once.py --verbose` -> **passed**
+- `sm scour` -> **no slop detected** (non-blocking warning: `myopia:ignored-feedback`)
 
 ## 2026-03-09 Delta: Shared Rail Helpers For CI Triage + Commentary
 
