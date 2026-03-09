@@ -693,7 +693,7 @@ class PRCommentsCheck(BaseCheck):
 
             if scenario == "fixed_in_code":
                 lines.append(
-                    f"echo 'Fixed in commit $(git rev-parse --short HEAD). [explain the code change]' | gh pr comment {pr_number} --body-file -"
+                    f'echo "Fixed in commit $(git rev-parse --short HEAD). [explain the code change]" | gh pr comment {pr_number} --body-file -'
                 )
                 lines.append(resolve_thread_command(thread_id))
             elif scenario == "invalid_with_explanation":
@@ -1148,7 +1148,10 @@ class PRCommentsCheck(BaseCheck):
         grouped: Dict[str, List[Dict[str, Any]]] = {}
 
         for thread in threads:
-            category = self._categorize_comment(thread.get("body", ""))
+            category = str(
+                thread.get("category")
+                or self._categorize_comment(thread.get("body", ""))
+            )
             if category not in grouped:
                 grouped[category] = []
             grouped[category].append(thread)

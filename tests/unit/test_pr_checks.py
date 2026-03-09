@@ -512,6 +512,42 @@ class TestPRCommentsCheck:
         assert (loop_dir / "outcomes.json").exists()
         assert (loop_dir / "pr_123_comments_report.md").exists()
 
+    def test_commands_script_uses_expandable_fixed_in_code_comment(self):
+        """Fixed-in-code rail should allow shell command substitution expansion."""
+        check = PRCommentsCheck({})
+
+        script = check._build_commands_script(
+            [
+                {
+                    "thread_id": "PRRT_abc",
+                    "resolution_scenario": "fixed_in_code",
+                    "resolution_priority_rank": 1,
+                    "resolution_priority_reason": "logic issue",
+                }
+            ],
+            pr_number=85,
+            owner="owner",
+            repo="repo",
+        )
+
+        assert 'echo "Fixed in commit $(git rev-parse --short HEAD).' in script
+
+    def test_group_threads_by_category_uses_preclassified_category(self):
+        """Grouping should reuse the classifier output when category is preset."""
+        check = PRCommentsCheck({})
+        threads = [
+            {
+                "thread_id": "PRRT_abc",
+                "body": "this text would normally look like a question?",
+                "category": "🐛 Logic/Correctness",
+            }
+        ]
+
+        grouped = check._group_threads_by_category(threads)
+
+        assert list(grouped) == ["🐛 Logic/Correctness"]
+        assert grouped["🐛 Logic/Correctness"][0]["thread_id"] == "PRRT_abc"
+
     def test_protocol_loop_directory_increments(self, tmp_path):
         """Protocol loop directory should increment per run for same PR."""
         check = PRCommentsCheck({})

@@ -1,5 +1,18 @@
 # Project Status
 
+## 2026-03-09 Delta: PR #85 Final Bugbot Follow-up
+
+### Completed
+
+1. Fixed generated PR-resolution command-pack quoting:
+  - `fixed_in_code` comment rails now use double quotes so `$(git rev-parse --short HEAD)` expands to the actual commit hash instead of being posted literally.
+2. Simplified category grouping to reuse preclassified `thread["category"]` when present instead of redundantly re-categorizing from raw comment text.
+3. Added regression tests for both behaviors in `tests/unit/test_pr_checks.py`.
+
+### Validation
+
+- `pytest -q tests/unit/test_pr_checks.py` -> **30 passed**
+
 ## 2026-03-09 Delta: PR #85 Final Lock Follow-up Threads
 
 ### Completed
