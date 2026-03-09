@@ -12,15 +12,18 @@ import json
 import subprocess
 import sys
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, Optional
-
-from slopmop import __version__
+from typing import Any, BinaryIO, Dict, Optional, cast
 
 _JSONRPC_VERSION = "2.0"
 _PROTOCOL_VERSION = "2024-11-05"
 _SERVER_NAME = "slop-mop"
 _TOOL_NAME = "swab"
+try:
+    _SERVER_VERSION = version("slopmop")
+except PackageNotFoundError:
+    _SERVER_VERSION = "0.0.0-dev"
 
 
 def _rpc_result(request_id: object, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -75,7 +78,7 @@ def _read_message(stdin: BinaryIO) -> Optional[Dict[str, Any]]:
         return None
 
     if isinstance(data, dict):
-        return data
+        return cast(Dict[str, Any], data)
     return None
 
 
@@ -101,7 +104,7 @@ def _load_json_payload(raw_stdout: str) -> Optional[Dict[str, Any]]:
     try:
         parsed = json.loads(text)
         if isinstance(parsed, dict):
-            return parsed
+            return cast(Dict[str, Any], parsed)
     except json.JSONDecodeError:
         pass
 
@@ -113,13 +116,15 @@ def _load_json_payload(raw_stdout: str) -> Optional[Dict[str, Any]]:
         try:
             parsed = json.loads(line)
             if isinstance(parsed, dict):
-                return parsed
+                return cast(Dict[str, Any], parsed)
         except json.JSONDecodeError:
             continue
     return None
 
 
-def _run_swab(project_root: Path, no_cache: bool = False) -> tuple[bool, Dict[str, Any]]:
+def _run_swab(
+    project_root: Path, no_cache: bool = False
+) -> tuple[bool, Dict[str, Any]]:
     """Execute ``sm swab`` and return (ok, payload)."""
     cmd = [
         sys.executable,
@@ -221,7 +226,10 @@ class SwabMcpServer:
                 "structuredContent": payload,
             }
 
-        summary = payload.get("summary", {})
+        summary_raw = payload.get("summary")
+        summary: Dict[str, Any] = (
+            cast(Dict[str, Any], summary_raw) if isinstance(summary_raw, dict) else {}
+        )
         passed = int(summary.get("passed", 0) or 0)
         failed = int(summary.get("failed", 0) or 0)
         errored = int(summary.get("errored", 0) or 0)
@@ -241,7 +249,7 @@ class SwabMcpServer:
         method = request.get("method")
         request_id = request.get("id")
         has_id = "id" in request
-        params = request.get("params", {})
+        params_raw = request.get("params", {})
 
         if not isinstance(method, str):
             if has_id:
@@ -249,9 +257,11 @@ class SwabMcpServer:
             return None
 
         if method == "initialize":
-            client_version = None
-            if isinstance(params, dict):
-                client_version = params.get("protocolVersion")
+            client_version: Optional[str] = None
+            if isinstance(params_raw, dict):
+                protocol_raw = cast(Dict[str, Any], params_raw).get("protocolVersion")
+                if isinstance(protocol_raw, str):
+                    client_version = protocol_raw
             protocol_version = (
                 client_version if isinstance(client_version, str) else _PROTOCOL_VERSION
             )
@@ -259,7 +269,7 @@ class SwabMcpServer:
                 request_id,
                 {
                     "protocolVersion": protocol_version,
-                    "serverInfo": {"name": _SERVER_NAME, "version": __version__},
+                    "serverInfo": {"name": _SERVER_NAME, "version": _SERVER_VERSION},
                     "capabilities": {"tools": {}},
                 },
             )
@@ -280,14 +290,25 @@ class SwabMcpServer:
         if method == "tools/call":
             if not has_id:
                 return None
-            if not isinstance(params, dict):
+            if not isinstance(params_raw, dict):
                 return _rpc_error(request_id, -32602, "Invalid params")
+            params = cast(Dict[str, Any], params_raw)
 
-            tool_name = params.get("name")
-            arguments = params.get("arguments", {})
+            tool_name_raw = params.get("name")
+            arguments_raw = params.get("arguments", {})
+            tool_name: Optional[str] = (
+                tool_name_raw if isinstance(tool_name_raw, str) else None
+            )
+            arguments: Optional[Dict[str, Any]] = (
+                cast(Dict[str, Any], arguments_raw)
+                if isinstance(arguments_raw, dict)
+                else None
+            )
             if not isinstance(tool_name, str):
-                return _rpc_error(request_id, -32602, "Invalid params: missing tool name")
-            if not isinstance(arguments, dict):
+                return _rpc_error(
+                    request_id, -32602, "Invalid params: missing tool name"
+                )
+            if arguments is None:
                 return _rpc_error(
                     request_id, -32602, "Invalid params: arguments must be an object"
                 )
@@ -329,4 +350,3 @@ def run_stdio_server(project_root: Path, allow_no_cache: bool = False) -> int:
             break
 
     return 0
-

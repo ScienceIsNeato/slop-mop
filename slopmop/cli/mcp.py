@@ -16,11 +16,10 @@ def cmd_mcp(args: argparse.Namespace) -> int:
 
     project_root = Path(args.project_root).resolve()
     if not project_root.is_dir():
-        print(f"❌ Project root not found: {project_root}")
+        print(f"❌ MCP project root not found: {project_root}")
         return 1
 
     return run_stdio_server(
         project_root=project_root,
         allow_no_cache=bool(getattr(args, "allow_no_cache", False)),
     )
-
