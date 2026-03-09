@@ -141,7 +141,8 @@ class TestIsStale:
             "started_at": time.time() - 9999,  # way past any threshold
             "verb": "swab",
         }
-        assert _is_stale(meta, tmp_path) is True
+        with patch("slopmop.core.lock._pid_looks_like_sm", return_value=True):
+            assert _is_stale(meta, tmp_path) is True
 
     def test_override_threshold_marks_old_lock_stale(self, tmp_path: Path) -> None:
         meta = {

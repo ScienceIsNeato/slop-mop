@@ -14,7 +14,7 @@ from typing import List, Optional
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
 from slopmop.core.executor import CheckExecutor
-from slopmop.core.lock import SmLockError, _max_expected_duration, sm_lock
+from slopmop.core.lock import SmLockError, max_expected_duration, sm_lock
 from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.adapters import ConsoleAdapter, JsonAdapter, SarifAdapter
@@ -175,7 +175,7 @@ def _run_validation(
     historical_estimate = (
         sum(timing_averages.values())
         if timing_averages
-        else _max_expected_duration(project_root)
+        else max_expected_duration(project_root)
     )
 
     if level_name == "swab":

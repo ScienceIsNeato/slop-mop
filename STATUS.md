@@ -1,5 +1,27 @@
 # Project Status
 
+## 2026-03-09 Delta: PR #85 Follow-up Thread Fixes (Loop 005)
+
+### Completed
+
+1. Addressed lock false-stale behavior when `ps` is unavailable:
+  - `_pid_looks_like_sm` now fails closed (`True`) on command failure/unknown identity.
+2. Fixed lock busy-message newline formatting to remove extra blank lines.
+3. Added public lock API `max_expected_duration()` and switched `validate.py` off private import.
+4. Corrected stale-lock age test path:
+  - `test_alive_pid_old_lock_is_stale` now patches `_pid_looks_like_sm=True` so age logic is explicitly exercised.
+5. Removed dead `_save_report_to_file()` from PR comments check.
+6. Documentation restructure for reviewer feedback:
+  - moved advanced developer-only setup from `README.md` to new `DEVELOPING.md`
+  - added lock behavior section for agents in `DEVELOPING.md`
+  - kept README as user-oriented rail with pointer to `DEVELOPING.md`
+
+### Validation
+
+- `pytest -q tests/unit/test_lock.py tests/unit/test_pr_checks.py tests/unit/test_ci_triage_and_buff.py` -> **84 passed**
+- `python -m slopmop.sm swab` -> **passed**
+- `python -m slopmop.sm scour` -> **passed** (non-blocking `myopia:ignored-feedback` warning expected)
+
 ## 2026-03-09 Delta: README Buff Philosophy Rail
 
 ### Completed

@@ -1086,21 +1086,6 @@ class PRCommentsCheck(BaseCheck):
                 findings=structured,
             )
 
-    def _save_report_to_file(self, report: str, pr_number: int) -> str:
-        """Save the full PR comments report to a temp file.
-
-        Args:
-            report: Full report content
-            pr_number: PR number for filename
-
-        Returns:
-            Path to the saved report file
-        """
-        # Backward-compat shim; canonical path is now persistent loop storage.
-        report_path = Path.cwd() / f"pr_{pr_number}_comments_report.md"
-        report_path.write_text(report, encoding="utf-8")
-        return str(report_path)
-
     def _format_summary(
         self,
         threads: List[Dict[str, Any]],

@@ -142,62 +142,13 @@ Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
 | `pipx install slopmop[testing]` | + pytest, pytest-cov, diff-cover |
 | `pipx install slopmop[all]` | Everything above |
 
-### Multi-Repo Isolation (Canonical Setup)
+### Advanced Developer Setup
 
-If you work across many repos and branches, use this model to prevent
-cross-project interference:
+Developer-only setup guidance (multi-repo isolation, clean-slate reset,
+editable worktree installs, and lock internals) lives in `DEVELOPING.md`.
 
-1. Create a separate venv per project.
-2. For most repos, install a pinned PyPI version:
-
-```bash
-pip install "slopmop==<version>"
-```
-
-3. For active slop-mop development, install editable **from a branch-specific git worktree**:
-
-```bash
-cd ~/Documents/SourceCode/slop-mop
-git worktree add ~/Documents/SourceCode/slop-mop-wt-my-feature feat/my-feature
-
-cd /path/to/target-project
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ~/Documents/SourceCode/slop-mop-wt-my-feature
-```
-
-Do **not** point multiple envs at a single moving checkout (for example
-`pip install -e ~/Documents/SourceCode/slop-mop`) if you frequently switch
-branches there.
-
-Verify what each project is actually using:
-
-```bash
-python -c "import slopmop; print(slopmop.__file__)"
-pip show slopmop
-```
-
-### Clean Slate (One-Time Reset)
-
-If your machine has mixed old installs, reset once and then follow the model above.
-
-```bash
-# inspect current command resolution
-type -a sm
-which sm
-
-# remove old global installs
-pipx uninstall slopmop || true
-python3 -m pip uninstall -y slopmop || true
-
-# reinstall machine-level CLI runner
-pipx install slopmop[all]
-```
-
-After that, in each project venv choose one of:
-
-- stable: `pip install "slopmop==<version>"`
-- active development: `pip install -e /path/to/slop-mop-worktree`
+Use that guide if you are developing slop-mop itself or running multiple local
+checkout/venv combinations.
 
 ### Agent Install (Low-Friction AI Setup)
 
@@ -218,6 +169,9 @@ Generated files:
 These templates keep the runtime path simple: agents call `sm swab` routinely
 during implementation and `sm scour` before PR updates. No protocol adapter is
 required for the default integration flow.
+
+Note for agents: this list reflects current defaults. Source of truth for
+install behavior is always `sm agent install --help` and command output.
 ---
 
 ## The Loop

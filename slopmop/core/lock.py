@@ -80,14 +80,15 @@ def _pid_looks_like_sm(pid: int) -> bool:
             timeout=2,
         )
     except (subprocess.TimeoutExpired, OSError):
-        return False
+        # Fail closed: unknown process identity should not force stale eviction.
+        return True
 
     if result.returncode != 0:
-        return False
+        return True
 
     command = (result.stdout or "").strip().lower()
     if not command:
-        return False
+        return True
 
     return (
         "slopmop" in command
@@ -113,6 +114,16 @@ def _max_expected_duration(project_root: Path) -> float:
         return max(total_max * _STALE_MULTIPLIER, 30.0)  # floor 30s
     except Exception:
         return _DEFAULT_STALE_SECONDS
+
+
+def max_expected_duration(project_root: Path) -> float:
+    """Public wrapper for max expected duration estimate.
+
+    Exposes lock timing estimate to other modules without importing
+    private underscore-prefixed helpers.
+    """
+
+    return _max_expected_duration(project_root)
 
 
 def _read_lock_meta(path: Path) -> Optional[Dict[str, Any]]:
@@ -207,20 +218,26 @@ def _format_busy_message(meta: Dict[str, Any]) -> str:
     eta_str = ""
     if isinstance(expected_done_at, (int, float)):
         remaining = max(0.0, float(expected_done_at) - time.time())
-        eta_str = f"\n   ETA: ~{remaining:.0f}s until lock is free"
+        eta_str = f"   ETA: ~{remaining:.0f}s until lock is free"
         if isinstance(expected_done_at_utc, str) and expected_done_at_utc:
             eta_str += f" (expected done at {expected_done_at_utc})"
     elif isinstance(expected_done_at_utc, str) and expected_done_at_utc:
-        eta_str = f"\n   ETA: expected done at {expected_done_at_utc}"
+        eta_str = f"   ETA: expected done at {expected_done_at_utc}"
 
-    return (
-        f"⏳ Another sm process is already running on this project.\n"
-        f"   PID {pid} · verb: {verb}{time_str}\n"
-        f"{eta_str}\n"
-        f"\n"
-        f"   Wait for it to finish, or if it crashed:\n"
-        f"     rm {LOCK_DIR}/{LOCK_FILE}"
+    lines = [
+        "⏳ Another sm process is already running on this project.",
+        f"   PID {pid} · verb: {verb}{time_str}",
+    ]
+    if eta_str:
+        lines.append(eta_str)
+    lines.extend(
+        [
+            "",
+            "   Wait for it to finish, or if it crashed:",
+            f"     rm {LOCK_DIR}/{LOCK_FILE}",
+        ]
     )
+    return "\n".join(lines)
 
 
 # ── public API ───────────────────────────────────────────────────────────
