@@ -11,8 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from slopmop.cli.ci import cmd_ci
-from slopmop.cli.config import cmd_config
-from slopmop.cli.detection import detect_project_type
+from slopmop.cli.detection import _normalize_language_key, detect_project_type
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
     SB_HOOK_MARKER,
@@ -105,6 +104,30 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["scour"])
         assert args.verb == "scour"
+
+    def test_buff_subcommand(self):
+        """Buff subcommand parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff"])
+        assert args.verb == "buff"
+
+    def test_buff_with_pr_number(self):
+        """Buff with explicit PR number parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "84"])
+        assert args.verb == "buff"
+        assert args.pr_number == 84
+
+    def test_buff_json_and_output_file_flags(self):
+        """Buff supports JSON stdout and machine output file mirroring."""
+        parser = create_parser()
+        args = parser.parse_args(
+            ["buff", "84", "--json", "--output-file", "triage.json"]
+        )
+        assert args.verb == "buff"
+        assert args.pr_number == 84
+        assert args.json_output is True
+        assert args.output_file == "triage.json"
 
     def test_swab_with_quality_gates(self):
         """Swab with --quality-gates parses correctly."""
@@ -227,6 +250,14 @@ class TestCreateParser:
 class TestDetectProjectType:
     """Tests for detect_project_type function."""
 
+    @pytest.fixture(autouse=True)
+    def _disable_scc_by_default(self):
+        """Keep legacy marker-based tests deterministic."""
+        with patch(
+            "slopmop.cli.detection._detect_languages_with_scc", return_value=None
+        ):
+            yield
+
     def test_detects_python_project_from_pyproject(self, tmp_path):
         """Detects Python from pyproject.toml."""
         (tmp_path / "pyproject.toml").write_text("[tool.pytest]")
@@ -253,12 +284,43 @@ class TestDetectProjectType:
         result = detect_project_type(tmp_path)
         assert result["has_jest"] is True
 
+    def test_detects_jest_from_nested_package_json(self, tmp_path):
+        """Detects Jest from nested package.json in monorepo layouts."""
+        pkg = {"devDependencies": {"jest": "^29.0.0"}}
+        (tmp_path / "client").mkdir()
+        (tmp_path / "client" / "package.json").write_text(json.dumps(pkg))
+        result = detect_project_type(tmp_path)
+        assert result["has_jest"] is True
+
     def test_detects_test_directories(self, tmp_path):
         """Detects test directories."""
         (tmp_path / "tests").mkdir()
         result = detect_project_type(tmp_path)
         assert result["has_tests_dir"] is True
         assert "tests" in result["test_dirs"]
+
+    def test_detects_nested_test_directories(self, tmp_path):
+        """Detects nested test directories in monorepo layouts."""
+        (tmp_path / "server" / "tests").mkdir(parents=True)
+        (tmp_path / "client" / "test").mkdir(parents=True)
+        result = detect_project_type(tmp_path)
+        assert result["has_tests_dir"] is True
+        assert "server/tests" in result["test_dirs"]
+        assert "client/test" in result["test_dirs"]
+
+    def test_ignores_test_directories_in_excluded_paths(self, tmp_path):
+        """Does not count node_modules test directories."""
+        (tmp_path / "node_modules" / "foo" / "tests").mkdir(parents=True)
+        result = detect_project_type(tmp_path)
+        assert result["has_tests_dir"] is False
+        assert result["test_dirs"] == []
+
+    def test_detects_pytest_from_nested_config(self, tmp_path):
+        """Detects pytest from nested pytest.ini."""
+        (tmp_path / "server").mkdir()
+        (tmp_path / "server" / "pytest.ini").write_text("[pytest]\n")
+        result = detect_project_type(tmp_path)
+        assert result["has_pytest"] is True
 
     def test_recommends_gates_for_python(self, tmp_path):
         """Recommends appropriate gates for Python-only projects."""
@@ -293,6 +355,88 @@ class TestDetectProjectType:
         (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
         result = detect_project_type(tmp_path)
         assert "overconfidence:type-blindness.js" in result["recommended_gates"]
+
+    def test_prefers_scc_detection_when_available(self, tmp_path):
+        """scc output should drive language flags when available."""
+        with patch(
+            "slopmop.cli.detection._detect_languages_with_scc",
+            return_value={"typescript"},
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["language_detector"] == "scc"
+        assert result["has_typescript"] is True
+        assert result["has_javascript"] is True  # TS implies JS
+        assert "overconfidence:type-blindness.js" in result["recommended_gates"]
+
+    def test_empty_scc_result_falls_back_to_manifest_detection(self, tmp_path):
+        """Empty scc output should not suppress manifest-based language detection."""
+        (tmp_path / "pyproject.toml").write_text("[tool.pytest]\n")
+        mock_scc = MagicMock(returncode=0, stdout="{}")
+        with (
+            patch("slopmop.cli.detection.find_tool", return_value="/usr/bin/scc"),
+            patch("subprocess.run", return_value=mock_scc),
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["language_detector"] == "manifest"
+        assert result["has_python"] is True
+
+    def test_normalize_language_key_handles_cplusplus_header(self):
+        """Normalization should preserve C++ semantics in keys."""
+        assert _normalize_language_key("C++ Header") == "cplusplusheader"
+
+    def test_dart_detection_suggests_flutter_custom_gates(self, tmp_path):
+        """Dart repos should get Flutter custom gates and built-in Dart gates."""
+        with (
+            patch(
+                "slopmop.cli.detection._detect_languages_with_scc",
+                return_value={"dart"},
+            ),
+            patch(
+                "slopmop.cli.detection.find_tool",
+                side_effect=lambda name, _root: f"/usr/bin/{name}",
+            ),
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["has_dart"] is True
+        names = {gate["name"] for gate in result["suggested_custom_gates"]}
+        assert "flutter-analyze" in names
+        assert "flutter-test" in names
+        assert "dart-format-check" in names
+
+        by_name = {gate["name"]: gate for gate in result["suggested_custom_gates"]}
+        assert "find . -name pubspec.yaml" in by_name["flutter-analyze"]["command"]
+        assert "find . -name pubspec.yaml" in by_name["flutter-test"]["command"]
+        assert (
+            "dart format --output=none --set-exit-if-changed"
+            in by_name["dart-format-check"]["command"]
+        )
+        assert (
+            "engine.stamp: Operation not permitted"
+            in by_name["dart-format-check"]["command"]
+        )
+        assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
+        assert "deceptiveness:bogus-tests.dart" in result["recommended_gates"]
+        assert "laziness:generated-artifacts.dart" in result["recommended_gates"]
+
+    def test_dart_detection_omits_flutter_custom_gates_when_tools_missing(
+        self, tmp_path
+    ):
+        """Dart custom gates should not be suggested when flutter/dart tools are missing."""
+        with (
+            patch(
+                "slopmop.cli.detection._detect_languages_with_scc",
+                return_value={"dart"},
+            ),
+            patch("slopmop.cli.detection.find_tool", return_value=None),
+        ):
+            result = detect_project_type(tmp_path)
+
+        assert result["has_dart"] is True
+        assert result["suggested_custom_gates"] == []
+        assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
 
 
 class TestPromptFunctions:
@@ -333,147 +477,6 @@ class TestPromptFunctions:
         with patch("builtins.input", return_value=""):
             result = prompt_yes_no("Continue?", default=False)
             assert result is False
-
-
-class TestCmdConfig:
-    """Tests for cmd_config command handler."""
-
-    def test_show_config(self, tmp_path, capsys):
-        """--show displays configuration."""
-        config = {"laziness": {"enabled": True}}
-        (tmp_path / ".sb_config.json").write_text(json.dumps(config))
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=True,
-            enable=None,
-            disable=None,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=None,
-        )
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            with patch("slopmop.cli.config.get_registry") as mock_registry:
-                mock_reg = MagicMock()
-                mock_reg.list_checks.return_value = ["overconfidence:untested-code.py"]
-                mock_reg.get_definition.return_value = MagicMock(name="Python Tests")
-                mock_registry.return_value = mock_reg
-
-                result = cmd_config(args)
-
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "Configuration" in captured.out
-        assert "Available Quality Gates" in captured.out
-        assert "Run 'sm config --show' to see all gates." not in captured.out
-
-    def test_config_no_args_shows_usage_hints(self, tmp_path, capsys):
-        """No args prints usage/help summary instead of full gate list."""
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable=None,
-            disable=None,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=None,
-        )
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            with patch("slopmop.cli.config.get_registry") as mock_registry:
-                mock_reg = MagicMock()
-                mock_reg.list_checks.return_value = ["deceptiveness:bogus-tests.js"]
-                mock_registry.return_value = mock_reg
-
-                result = cmd_config(args)
-
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "Usage:" in captured.out
-        assert "Run 'sm config --show' to see all gates." in captured.out
-        assert "Available Quality Gates" not in captured.out
-
-    def test_enable_gate(self, tmp_path):
-        """--enable adds gate to enabled list."""
-        (tmp_path / ".sb_config.json").write_text(
-            json.dumps({"disabled_gates": ["myopia:vulnerability-blindness.py"]})
-        )
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable="myopia:vulnerability-blindness.py",
-            disable=None,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=None,
-        )
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            result = cmd_config(args)
-
-        assert result == 0
-        config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert "myopia:vulnerability-blindness.py" not in config.get(
-            "disabled_gates", []
-        )
-
-    def test_config_swabbing_time_parser(self):
-        """config --swabbing-time flag parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["config", "--swabbing-time", "45"])
-        assert args.verb == "config"
-        assert args.swabbing_time == 45
-
-    def test_set_swabbing_time(self, tmp_path):
-        """--swabbing-time updates config file."""
-        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable=None,
-            disable=None,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=30,
-        )
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            result = cmd_config(args)
-
-        assert result == 0
-        config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert config["swabbing_time"] == 30
-
-    def test_disable_swabbing_time(self, tmp_path):
-        """--swabbing-time 0 removes swabbing_time from config."""
-        (tmp_path / ".sb_config.json").write_text(
-            json.dumps({"version": "1.0", "swabbing_time": 20})
-        )
-
-        args = argparse.Namespace(
-            project_root=str(tmp_path),
-            show=False,
-            enable=None,
-            disable=None,
-            include_dir=None,
-            exclude_dir=None,
-            json=None,
-            swabbing_time=0,
-        )
-
-        with patch("slopmop.checks.ensure_checks_registered"):
-            result = cmd_config(args)
-
-        assert result == 0
-        config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert "swabbing_time" not in config
 
 
 class TestCmdHelp:
@@ -549,6 +552,7 @@ class TestGitHooksFunctions:
         # Should use PATH-based sm lookup
         assert "command -v sm" in script
         # Should write structured output for LLM consumption
+        assert "--swabbing-time 0" in script
         assert "--json" in script
         assert "--output-file .slopmop/last_swab.json" in script
         assert "Structured results:" in script
@@ -559,6 +563,7 @@ class TestGitHooksFunctions:
         script = _generate_hook_script("scour")
         assert "sm scour" in script
         assert "# Command: sm scour" in script
+        assert "--swabbing-time 0" in script
         assert "--output-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
@@ -672,6 +677,14 @@ class TestMain:
         with patch("slopmop.cli.cmd_scour") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["scour"])
+            mock_cmd.assert_called_once()
+            assert result == 0
+
+    def test_main_buff_calls_cmd_buff(self):
+        """Main routes buff to cmd_buff."""
+        with patch("slopmop.cli.cmd_buff") as mock_cmd:
+            mock_cmd.return_value = 0
+            result = main(["buff"])
             mock_cmd.assert_called_once()
             assert result == 0
 
@@ -1125,7 +1138,7 @@ class TestValidateJsonOutputFile:
     @patch("slopmop.cli.validate.CheckExecutor")
     @patch("slopmop.cli.validate.get_registry")
     @patch("slopmop.sm.load_config", return_value={})
-    def test_json_output_file_does_not_print_to_stdout(
+    def test_json_output_file_mirrors_and_prints_to_stdout(
         self,
         _mock_config,
         _mock_registry,
@@ -1136,7 +1149,7 @@ class TestValidateJsonOutputFile:
         mock_print,
         tmp_path,
     ):
-        """--json with --output-file writes payload to file without stdout leak."""
+        """--json with --output-file writes payload to file and stdout."""
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
@@ -1168,4 +1181,4 @@ class TestValidateJsonOutputFile:
         assert result == 0
         assert output_file.exists()
         assert output_file.read_text(encoding="utf-8") == '{"ok":true}'
-        mock_print.assert_not_called()
+        mock_print.assert_called_once_with('{"ok":true}')

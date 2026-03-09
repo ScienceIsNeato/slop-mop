@@ -66,6 +66,24 @@ class JsonAdapter:
         if report.verify_command:
             output["next_steps"] = [report.verify_command]
 
+        # Machine-readable runtime warnings for automation/CI parsers.
+        # Keep this orthogonal to actionable gate failures: these are
+        # execution-context warnings, not check results.
+        skip_reasons = report.summary.skip_reason_summary()
+        budget_skips = skip_reasons.get("time", 0)
+        if budget_skips > 0:
+            output["runtime_warnings"] = [
+                {
+                    "code": "swabbing_time_budget_skipped",
+                    "message": (
+                        "Swabbing-time budget skipped timed checks; "
+                        "run full coverage when needed."
+                    ),
+                    "skipped_timed_checks": budget_skips,
+                    "suggested_command": "sm swab --swabbing-time 0",
+                }
+            ]
+
         return output
 
 
@@ -151,6 +169,8 @@ class ConsoleAdapter:
         if cache_line:
             print(f"   {cache_line}")
 
+        self._render_time_budget_warning()
+
         print("═" * 60)
         if r.warned:
             self._render_warnings()
@@ -183,6 +203,8 @@ class ConsoleAdapter:
         cache_line = r.cache_summary()
         if cache_line:
             print(f"   {cache_line}")
+
+        self._render_time_budget_warning()
 
         print("─" * 60)
 
@@ -243,6 +265,19 @@ class ConsoleAdapter:
                 print(f"     └─ {res.error}")
             if res.fix_suggestion:
                 print(f"     💡 {res.fix_suggestion}")
+
+    def _render_time_budget_warning(self) -> None:
+        """Warn when timed gates were skipped due to swabbing-time budget."""
+        counts = self.report.summary.skip_reason_summary()
+        skipped_for_budget = counts.get("time", 0)
+        if skipped_for_budget <= 0:
+            return
+
+        print(
+            "   ⚠️  Swabbing-time budget skipped "
+            f"{skipped_for_budget} timed check(s); "
+            "run `sm swab --swabbing-time 0` for full coverage."
+        )
 
     def _skipped_line(self) -> str:
         """Compact skip-reason breakdown, e.g. '5 skipped (3 n/a · 2 ff)'.

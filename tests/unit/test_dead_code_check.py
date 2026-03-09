@@ -80,6 +80,7 @@ class TestDeadCodeCheck:
         """Test default exclude patterns include common ignored dirs."""
         patterns = check._get_exclude_patterns()
         assert "**/venv/**" in patterns
+        assert "**/ephemeral/**" in patterns
         assert "**/test_*" in patterns
         assert "**/*.egg-info/**" in patterns
         assert "**/build/**" in patterns
@@ -87,10 +88,11 @@ class TestDeadCodeCheck:
         assert "**/cursor-rules/**" in patterns
 
     def test_get_exclude_patterns_custom(self):
-        """Test custom exclude patterns override defaults."""
+        """Custom excludes should merge with mandatory generated-file ignores."""
         check = DeadCodeCheck({"exclude_patterns": ["**/custom/**"]})
         patterns = check._get_exclude_patterns()
-        assert patterns == ["**/custom/**"]
+        assert "**/custom/**" in patterns
+        assert "**/ephemeral/**" in patterns
 
     def test_get_src_dirs_default(self, check, tmp_path):
         """Test default src_dirs is ['.']."""

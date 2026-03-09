@@ -1,7 +1,12 @@
-# Reference workflow: slopmop → GitHub Code Scanning
+# Primary workflow: slop-mop code scanning gate
 #
-# Runs slopmop's scour gates, emits SARIF, and uploads it so failures
-# appear as inline PR annotations + entries in the Security tab.  The
+# Runs slopmop's scour gates, emits SARIF, and uploads it so findings
+# appear as inline PR annotations + entries in the Security tab. This
+# is the first-class CI gate in the pipeline.
+#
+# Failures in this workflow block merge. Warnings remain warnings.
+#
+# The
 # upload-sarif action handles the GitHub API plumbing — no tokens, no
 # custom auth, works on any public repo out of the box.
 #
@@ -34,9 +39,14 @@
 # To see inline annotations for real, drop this workflow into
 # bucket-o-slop (github.com/ScienceIsNeato/bucket-o-slop) — the
 # integration-test fixture repo whose all-fail branch is broken in
-# ways that trip every gate.  Open a PR from all-fail into main and
-# the diff lights up with dead-code, lint, type-error, and security
-# annotations.
+# ways that trip every gate.  Open a PR from all-fail into all-pass
+# and the diff lights up with dead-code, lint, type-error, and
+# security annotations.
+#
+# Fixture-branch update policy:
+# - Validate workflow/test additions on all-pass first
+# - Then port to all-fail for alert-heavy validation/screenshot capture
+# - Update mixed opportunistically when needed
 #
 # The integration tests in tests/integration/test_sarif_integration.py
 # run this same all-fail fixture inside Docker and assert the SARIF
@@ -44,7 +54,7 @@
 # proves the payload.  Uploading it to a real bucket-o-slop PR proves
 # GitHub renders it.  Between the two, the whole pipeline is covered.
 
-name: slopmop → Code Scanning
+name: slop-mop primary code scanning gate
 
 on:
   push:
@@ -67,6 +77,7 @@ permissions:
 
 jobs:
   scan:
+    name: Primary Code Scanning Gate (blocking)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -125,7 +136,7 @@ jobs:
           npm install
           npx tsc
 
-      - name: Run scour → SARIF
+      - name: Run Primary Gate (scour -> SARIF)
         id: scour
         # Gates failing is EXPECTED — that's what produces findings.
         # We still want to upload the SARIF and let Code Scanning
@@ -134,9 +145,12 @@ jobs:
         continue-on-error: true
         run: |
           source .venv/bin/activate
-          sm scour --sarif --output-file slopmop.sarif --no-json
+          sm scour \
+            --sarif --output-file slopmop.sarif \
+            --json-file slopmop-results.json \
+            --no-json
 
-      - name: Upload SARIF
+      - name: Publish SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: slopmop.sarif
@@ -146,7 +160,26 @@ jobs:
           # (category, ruleId, fingerprint).
           category: slopmop
 
-      - name: Verdict
+      - name: Upload JSON scan report
+        uses: actions/upload-artifact@v4
+        with:
+          name: slopmop-results
+          path: slopmop-results.json
+
+      - name: Summarise SARIF failures
+        # When scour fails, parse the SARIF and surface the top
+        # failing rule IDs directly in the check output so reviewers
+        # don't have to click through to the Security tab.
+        if: steps.scour.outcome == 'failure'
+        run: |
+          source .venv/bin/activate
+          python3 scripts/summarize_scour_failure.py \
+            --sarif slopmop.sarif \
+            --json slopmop-results.json \
+            --step-summary-path "$GITHUB_STEP_SUMMARY" \
+            | tee .scour-failure-summary.txt
+
+      - name: Enforce Primary Gate Verdict
         # Re-surface the scour exit code so branch protection rules
         # that require this job to pass actually mean something.
         # Without this, continue-on-error above would let everything
@@ -154,5 +187,11 @@ jobs:
         # controls the green/red check mark.
         if: steps.scour.outcome == 'failure'
         run: |
-          echo "::error::slopmop scour failed — see Code Scanning alerts"
+          if [ -f .scour-failure-summary.txt ]; then
+            echo "::group::Scour failure summary"
+            cat .scour-failure-summary.txt
+            echo "::endgroup::"
+          fi
+          echo "::notice::Local triage command: python scripts/ci_scan_triage.py --run-id ${GITHUB_RUN_ID} --show-low-coverage"
+          echo "::error::slopmop scour failed"
           exit 1

@@ -9,6 +9,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     ToolContext,
+    find_tool,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin, PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus
@@ -181,6 +182,43 @@ class TestToolContext:
             assert (
                 len(cls.__doc__) > 10
             ), f"{cls.__name__}.__doc__ is suspiciously short"
+
+
+class TestFindTool:
+    """Tests for executable resolution in find_tool()."""
+
+    def test_uses_virtual_env_entrypoint_when_shebang_is_valid(
+        self, tmp_path, monkeypatch
+    ):
+        venv_bin = tmp_path / "env" / "bin"
+        venv_bin.mkdir(parents=True)
+        tool = venv_bin / "radon"
+        tool.write_text("#!/bin/sh\necho ok\n")
+        tool.chmod(0o755)
+
+        monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "env"))
+        monkeypatch.setattr("shutil.which", lambda name: None)
+
+        assert find_tool("radon", str(tmp_path)) == str(tool)
+
+    def test_skips_broken_virtual_env_shebang_and_falls_back_to_path(
+        self, tmp_path, monkeypatch
+    ):
+        venv_bin = tmp_path / "env" / "bin"
+        venv_bin.mkdir(parents=True)
+        tool = venv_bin / "vulture"
+        tool.write_text("#!/tmp/missing-python\nprint('x')\n")
+        tool.chmod(0o755)
+
+        monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "env"))
+
+        fallback = "/opt/homebrew/bin/vulture"
+        monkeypatch.setattr(
+            "shutil.which",
+            lambda name: fallback if name == "vulture" else None,
+        )
+
+        assert find_tool("vulture", str(tmp_path)) == fallback
 
 
 class TestHasProjectVenv:

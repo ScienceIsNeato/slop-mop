@@ -3,6 +3,7 @@
 Usage:
     sm swab [--quality-gates GATES] [--verbose] [--quiet]
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
+    sm buff [PR_NUMBER]
     sm agent install [--target TARGET] [--project-root PATH] [--force]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
@@ -15,6 +16,7 @@ Usage:
 Verbs:
     swab          Quick validation (every commit)
     scour         Thorough validation (PR readiness — superset of swab)
+    buff          Post-PR CI triage and next-step guidance
     config        View or update configuration
     init          Interactive setup and project configuration
     agent         Install agent integration templates
@@ -111,8 +113,19 @@ def _add_output_flags(parser: argparse.ArgumentParser) -> None:
         metavar="PATH",
         default=None,
         help=(
-            "Write structured output (--json or --sarif) to a file "
-            "instead of stdout."
+            "Mirror structured output (--json or --sarif) to a file. "
+            "Stdout output is unchanged."
+        ),
+    )
+    parser.add_argument(
+        "--json-file",
+        dest="json_file",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Write JSON results to a file, independent of the primary "
+            "output mode. Allows emitting console + SARIF + JSON from "
+            "a single run (e.g. --sarif -o scan.sarif --json-file results.json)."
         ),
     )
     parser.add_argument(
@@ -219,6 +232,73 @@ def _add_scour_parser(
         ),
     )
     _add_validation_flags(scour_parser)
+
+
+def _add_buff_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the buff subcommand parser (post-PR validation loop)."""
+    buff_parser = subparsers.add_parser(
+        "buff",
+        help="Post-PR CI triage and next-step guidance",
+        description=(
+            "Run post-submit buff checks: CI code-scanning triage "
+            "for the PR branch and actionable guidance."
+        ),
+    )
+    buff_parser.add_argument(
+        "pr_number",
+        nargs="?",
+        type=int,
+        default=None,
+        help="PR number to triage (auto-detect from current branch if omitted)",
+    )
+    buff_parser.add_argument(
+        "--run-id",
+        type=int,
+        default=None,
+        help="Explicit Actions run id for scan triage (overrides PR auto-detect)",
+    )
+    buff_parser.add_argument(
+        "--repo",
+        default=None,
+        help="GitHub repo owner/name (defaults to current repo)",
+    )
+    buff_parser.add_argument(
+        "--workflow",
+        default="slop-mop primary code scanning gate",
+        help="Workflow name used for CI scan triage",
+    )
+    buff_parser.add_argument(
+        "--artifact",
+        default="slopmop-results",
+        help="Artifact name containing JSON scan results",
+    )
+    buff_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=None,
+        help="Output buff results as JSON.",
+    )
+    buff_parser.add_argument(
+        "--no-json",
+        dest="json_output",
+        action="store_false",
+        help="Force human-readable buff output.",
+    )
+    buff_parser.add_argument(
+        "--output-file",
+        "--output",
+        "-o",
+        dest="output_file",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Write machine-readable buff payload to a file while preserving "
+            "stdout output mode."
+        ),
+    )
 
 
 def _add_config_parser(
@@ -505,7 +585,8 @@ both human developers and AI coding assistants.
 Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
-  agent       Install agent integration templates
+    buff        Post-PR CI triage and next-step guidance
+    agent       Install agent integration templates
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -518,6 +599,7 @@ Quick Start:
 Examples:
   sm swab                               Quick validation (every commit)
   sm scour                              Thorough validation (PR readiness)
+    sm buff                               Post-PR CI triage
   sm swab -g python,quality             Run specific gate groups
   sm scour --verbose                    Thorough with details
   sm config --show                      Show current configuration
@@ -531,6 +613,7 @@ Examples:
 
     _add_swab_parser(subparsers)
     _add_scour_parser(subparsers)
+    _add_buff_parser(subparsers)
     _add_status_parser(subparsers)
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
@@ -552,6 +635,7 @@ def main(args: Optional[List[str]] = None) -> int:
     """Main entry point for sm CLI."""
     from slopmop.cli import (
         cmd_agent,
+        cmd_buff,
         cmd_ci,
         cmd_commit_hooks,
         cmd_config,
@@ -576,6 +660,8 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_swab(parsed_args)
     elif parsed_args.verb == "scour":
         return cmd_scour(parsed_args)
+    elif parsed_args.verb == "buff":
+        return cmd_buff(parsed_args)
     elif parsed_args.verb == "status":
         return cmd_status(parsed_args)
     elif parsed_args.verb == "config":

@@ -68,6 +68,35 @@ class TestPythonLintFormatCheck:
         # Should have called black and isort
         assert mock_runner.run.call_count >= 2
 
+    def test_auto_fix_excludes_generated_dirs(self, tmp_path):
+        """Test auto_fix excludes migration/ephemeral directories."""
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "__init__.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="", stderr="", duration=1.0
+        )
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        check.auto_fix(str(tmp_path))
+
+        commands = [call.args[0] for call in mock_runner.run.call_args_list]
+        autoflake_cmd = next(
+            cmd for cmd in commands if cmd and cmd[0].endswith("autoflake")
+        )
+        isort_cmd = next(cmd for cmd in commands if cmd and cmd[0].endswith("isort"))
+
+        assert any(
+            arg.startswith("--exclude=")
+            and "migrations" in arg
+            and "alembic" in arg
+            and "ephemeral" in arg
+            for arg in autoflake_cmd
+        )
+        assert "--skip=migrations" in isort_cmd
+        assert "--skip=alembic" in isort_cmd
+        assert "--skip=ephemeral" in isort_cmd
+
     def test_run_success(self, tmp_path):
         """Test run with passing checks."""
         (tmp_path / "src").mkdir()
@@ -268,6 +297,22 @@ class TestPythonLintFormatCheck:
         result = check._check_isort(str(tmp_path))
 
         assert result == "Import order issues found"
+
+    def test_check_isort_uses_generated_dir_excludes(self, tmp_path):
+        """Test _check_isort command excludes migration/ephemeral directories."""
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="", stderr="", duration=1.0
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        check._check_isort(str(tmp_path))
+
+        command = mock_runner.run.call_args.args[0]
+        assert "--skip=migrations" in command
+        assert "--skip=alembic" in command
+        assert "--skip=ephemeral" in command
 
 
 class TestPythonTestsCheck:

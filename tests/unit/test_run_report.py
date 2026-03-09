@@ -270,6 +270,27 @@ class TestJsonAdapter:
         out = JsonAdapter.render(report)
         assert out["results"][0]["role"] == "foundation"
 
+    def test_runtime_warning_present_for_time_budget_skips(self) -> None:
+        summary = _summary(
+            [
+                _result("p", CheckStatus.PASSED),
+                _result("s", CheckStatus.SKIPPED, skip_reason=SkipReason.TIME_BUDGET),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        warnings = out.get("runtime_warnings")
+        assert isinstance(warnings, list)
+        assert warnings[0]["code"] == "swabbing_time_budget_skipped"
+        assert warnings[0]["skipped_timed_checks"] == 1
+        assert warnings[0]["suggested_command"] == "sm swab --swabbing-time 0"
+
+    def test_runtime_warning_absent_without_time_budget_skips(self) -> None:
+        summary = _summary([_result("p", CheckStatus.PASSED)])
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert "runtime_warnings" not in out
+
 
 # ─── SarifAdapter ────────────────────────────────────────────────────────
 
@@ -407,6 +428,31 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "→ fix: Do the thing" in out
+
+    def test_success_path_warns_on_time_budget_skips(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result("a", CheckStatus.PASSED, role="foundation"),
+                _result("b", CheckStatus.SKIPPED, skip_reason=SkipReason.TIME_BUDGET),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "Swabbing-time budget skipped 1 timed check(s)" in out
+        assert "sm swab --swabbing-time 0" in out
+
+    def test_failure_path_warns_on_time_budget_skips(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result("f", CheckStatus.FAILED),
+                _result("s", CheckStatus.SKIPPED, skip_reason=SkipReason.TIME_BUDGET),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "Swabbing-time budget skipped 1 timed check(s)" in out
 
 
 # ─── role badge helper ───────────────────────────────────────────────────

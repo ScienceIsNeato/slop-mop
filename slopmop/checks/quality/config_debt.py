@@ -36,6 +36,7 @@ CONFIG_FILE = ".sb_config.json"
 _LANGUAGE_SUFFIXES: Dict[str, str] = {
     ".py": "python",
     ".js": "javascript",
+    ".dart": "dart",
 }
 
 
@@ -55,9 +56,15 @@ def _has_javascript_markers(root: Path) -> bool:
     return False
 
 
+def _has_dart_markers(root: Path) -> bool:
+    """Quick check for Dart/Flutter project markers."""
+    return (root / "pubspec.yaml").exists()
+
+
 _LANGUAGE_DETECTORS: Dict[str, Callable[[Path], bool]] = {
     "python": _has_python_markers,
     "javascript": _has_javascript_markers,
+    "dart": _has_dart_markers,
 }
 
 
