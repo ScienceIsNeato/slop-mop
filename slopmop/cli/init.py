@@ -13,6 +13,18 @@ from slopmop.cli.config import _deep_merge
 from slopmop.cli.detection import detect_project_type
 
 
+def _as_dict(value: Any) -> Dict[str, Any] | None:
+    if isinstance(value, dict):
+        return cast(Dict[str, Any], value)
+    return None
+
+
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return cast(list[Any], value)
+    return []
+
+
 def prompt_user(question: str, default: str = "") -> str:
     """Prompt user for input with optional default."""
     if default:
@@ -45,6 +57,8 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
         print(f"  Rust project:        ✅")
     if detected.get("has_c_cpp"):
         print(f"  C/C++ project:       ✅")
+    if detected.get("has_dart"):
+        print(f"  Dart/Flutter project: ✅")
     if detected.get("package_manager") and detected.get("package_manager") != "npm":
         print(f"  Package manager:     {detected['package_manager']}")
     print(f"  Has test directory:  {'✅' if detected['has_tests_dir'] else '❌'}")
@@ -52,6 +66,8 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
         print(f"  Test directories:    {', '.join(detected['test_dirs'])}")
     print(f"  Pytest detected:     {'✅' if detected['has_pytest'] else '❌'}")
     print(f"  Jest detected:       {'✅' if detected['has_jest'] else '❌'}")
+    if detected.get("language_detector") == "scc":
+        print("  Language detector:   scc")
     print()
 
     # Show tool availability
@@ -78,7 +94,11 @@ def _build_non_interactive_config(
         "project_type": (
             "python"
             if detected["has_python"]
-            else "javascript" if detected["has_javascript"] else "mixed"
+            else (
+                "javascript"
+                if detected["has_javascript"]
+                else "dart" if detected.get("has_dart") else "mixed"
+            )
         ),
         "test_dirs": preconfig.get("test_dirs", detected["test_dirs"]),
         "disabled_gates": preconfig.get("disabled_gates", []),
@@ -147,6 +167,7 @@ def _disable_non_applicable(
     Gate names use a suffix convention to indicate language specificity:
       .py  → Python-specific gate
       .js  → JavaScript-specific gate
+      .dart → Dart-specific gate
 
     Cross-cutting gates (e.g. security scanners that check multiple
     languages) are excluded from suffix-based disabling — they rely
@@ -155,6 +176,7 @@ def _disable_non_applicable(
     # Gate-name suffixes that indicate language specificity
     py_suffix = ".py"
     js_suffix = ".js"
+    dart_suffix = ".dart"
 
     # Cross-cutting gates whose is_applicable checks for Python *or* JS/TS.
     # These must NOT be disabled by suffix alone — a JS-only project still
@@ -170,7 +192,10 @@ def _disable_non_applicable(
             continue
 
         section = cast(Dict[str, Any], section)
-        gates = cast(Dict[str, Any], section.get("gates", {}))
+        gates_any = section.get("gates", {})
+        if not isinstance(gates_any, dict):
+            continue
+        gates = cast(Dict[str, Any], gates_any)
         for gate_name, gate_config in gates.items():
             if not isinstance(gate_config, dict):
                 continue
@@ -187,37 +212,56 @@ def _disable_non_applicable(
             if not detected["has_javascript"] and gate_name.endswith(js_suffix):
                 gate_config["enabled"] = False
 
+            # Disable Dart-specific gates if no Dart detected
+            if not detected.get("has_dart") and gate_name.endswith(dart_suffix):
+                gate_config["enabled"] = False
+
     # Apply detected test dirs to untested-code.py gate
     if detected["has_python"] and detected["test_dirs"]:
         for cat_key in base_config:
-            section = base_config.get(cat_key)
-            if isinstance(section, dict) and "gates" in section:
-                if "untested-code.py" in section["gates"]:
-                    section["gates"]["untested-code.py"]["test_dirs"] = detected[
-                        "test_dirs"
-                    ]
+            section = _as_dict(base_config.get(cat_key))
+            if section is None:
+                continue
+            gates = _as_dict(section.get("gates"))
+            if gates is None:
+                continue
+            gate_cfg_any = _as_dict(gates.get("untested-code.py"))
+            if gate_cfg_any is not None:
+                gate_cfg_any["test_dirs"] = detected["test_dirs"]
 
 
 def _apply_user_config(base_config: Dict[str, Any], config: Dict[str, Any]) -> None:
     """Apply user config overrides to base config."""
     # Apply disabled gates — format is "category:gate" (e.g. "myopia:vulnerability-blindness.py")
-    for gate_full_name in config.get("disabled_gates", []):
+    for gate_full_name in _as_list(config.get("disabled_gates", [])):
+        if not isinstance(gate_full_name, str):
+            continue
         if ":" in gate_full_name:
             category, gate = gate_full_name.split(":", 1)
-            if category in base_config and "gates" in base_config[category]:
-                if gate in base_config[category]["gates"]:
-                    base_config[category]["gates"][gate]["enabled"] = False
+            section = _as_dict(base_config.get(category))
+            if section is None:
+                continue
+            gates = _as_dict(section.get("gates"))
+            if gates is None:
+                continue
+            gate_cfg = _as_dict(gates.get(gate))
+            if gate_cfg is not None:
+                gate_cfg["enabled"] = False
 
     # Apply coverage threshold across all categories that have coverage gates
     if "coverage_threshold" in config:
         for cat_key in base_config:
-            section = base_config.get(cat_key)
-            if isinstance(section, dict) and "gates" in section:
-                cat_gates = cast(Dict[str, Any], section["gates"])
-                for gate_name, gate_config in cat_gates.items():
-                    if isinstance(gate_config, dict) and "coverage" in gate_name:
-                        if "threshold" in gate_config:
-                            gate_config["threshold"] = config["coverage_threshold"]
+            section = _as_dict(base_config.get(cat_key))
+            if section is None:
+                continue
+            cat_gates = _as_dict(section.get("gates"))
+            if cat_gates is None:
+                continue
+            for gate_name, gate_config in cat_gates.items():
+                gate_cfg = _as_dict(gate_config)
+                if gate_cfg is not None and "coverage" in gate_name:
+                    if "threshold" in gate_cfg:
+                        gate_cfg["threshold"] = config["coverage_threshold"]
 
 
 def _disable_checks_with_missing_tools(
@@ -228,19 +272,42 @@ def _disable_checks_with_missing_tools(
     This prevents ERROR status from missing tools - if the tool isn't
     available, the check is disabled rather than failing.
     """
-    missing_tools = detected.get("missing_tools", [])
+    empty_list: list[Any] = []
+    missing_tools = _as_list(detected.get("missing_tools", empty_list))
     if not missing_tools:
         return
 
-    for _tool_name, check_name, _install_cmd in missing_tools:
+    for entry_any in missing_tools:
+        check_name_raw: Any
+        if isinstance(entry_any, list):
+            entry_list = cast(list[Any], entry_any)
+            if len(entry_list) != 3:
+                continue
+            check_name_raw = entry_list[1]
+        elif isinstance(entry_any, tuple):
+            entry_tuple = cast(tuple[Any, ...], entry_any)
+            if len(entry_tuple) != 3:
+                continue
+            check_name_raw = entry_tuple[1]
+        else:
+            continue
+        if not isinstance(check_name_raw, str):
+            continue
+        check_name: str = check_name_raw
         # Parse check name: "laziness:dead-code.py" -> category="laziness", gate="dead-code.py"
         if ":" not in check_name:
             continue
         category, gate = check_name.split(":", 1)
 
-        if category in base_config and "gates" in base_config[category]:
-            if gate in base_config[category]["gates"]:
-                base_config[category]["gates"][gate]["enabled"] = False
+        section = _as_dict(base_config.get(category))
+        if section is None:
+            continue
+        gates = _as_dict(section.get("gates"))
+        if gates is None:
+            continue
+        gate_cfg = _as_dict(gates.get(gate))
+        if gate_cfg is not None:
+            gate_cfg["enabled"] = False
 
 
 def _set_bogus_tests_defaults(
@@ -258,13 +325,56 @@ def _set_bogus_tests_defaults(
     if not detected["has_python"]:
         return
 
-    deceptiveness = base_config.get("deceptiveness", {})
-    gates = deceptiveness.get("gates", {})
-    bogus_cfg = gates.get("bogus-tests.py")
-    if not bogus_cfg or not bogus_cfg.get("enabled", False):
+    deceptiveness = _as_dict(base_config.get("deceptiveness"))
+    if deceptiveness is None:
+        return
+    gates = _as_dict(deceptiveness.get("gates"))
+    if gates is None:
+        return
+    bogus_cfg = _as_dict(gates.get("bogus-tests.py"))
+    if bogus_cfg is None or not bool(bogus_cfg.get("enabled", False)):
         return
 
     bogus_cfg["min_test_statements"] = 1
+
+
+def _disable_non_applicable_by_applicability(
+    base_config: Dict[str, Any], project_root: Path
+) -> None:
+    """Disable any built-in gate that is not applicable to this repo.
+
+    This is the final applicability guard after suffix-based language pruning.
+    It keeps init defaults aligned with "only enable checks that can run now."
+    """
+    from slopmop.checks import ensure_checks_registered
+    from slopmop.core.registry import get_registry
+
+    ensure_checks_registered()
+    registry = get_registry()
+
+    check_names: list[str] = []
+    for full_name_any in registry.list_checks():
+        if isinstance(full_name_any, str):
+            check_names.append(full_name_any)
+
+    for full_name in check_names:
+        check = registry.get_check(full_name, base_config)
+        if check is None:
+            continue
+        if check.is_applicable(str(project_root)):
+            continue
+        if ":" not in full_name:
+            continue
+        category, gate_name = full_name.split(":", 1)
+        section = _as_dict(base_config.get(category))
+        if section is None:
+            continue
+        gates = _as_dict(section.get("gates"))
+        if gates is None:
+            continue
+        gate_cfg = _as_dict(gates.get(gate_name))
+        if gate_cfg is not None:
+            gate_cfg["enabled"] = False
 
 
 def _print_next_steps(config: Dict[str, Any]) -> None:
@@ -278,6 +388,9 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print("  2. Disable any gates you're not ready for: sm config --disable <gate>")
     print("  3. Run 'sm swab' and fix what fails")
     print("  4. Gradually enable more gates and tighten thresholds over time")
+    print(
+        "  5. If you add a new language later, re-run 'sm init' to enable newly applicable gates"
+    )
     print()
     print("Quick reference:")
     print("  sm swab              # Fast pre-commit validation")
@@ -289,6 +402,7 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
 
 def _write_config(
     config_file: Path,
+    project_root: Path,
     base_config: Dict[str, Any],
     detected: Dict[str, Any],
     config: Dict[str, Any],
@@ -296,8 +410,45 @@ def _write_config(
     """Build final config, merge with existing, and write to disk."""
     from slopmop.utils.generate_base_config import backup_config
 
+    def _refresh_suggested_custom_gates(
+        merged: Dict[str, Any], suggested: list[dict[str, Any]]
+    ) -> None:
+        """Refresh auto-suggested custom gates while preserving user custom gates.
+
+        Suggested gates are matched by ``name`` and overwritten with the latest
+        generated definition. Existing non-suggested custom gates are preserved.
+        """
+        if not suggested:
+            return
+
+        existing = _as_list(merged.get("custom_gates", []))
+
+        suggested_names = {
+            str(g.get("name"))
+            for g in suggested
+            if isinstance(g, dict) and str(g.get("name", "")).strip()
+        }
+        refreshed: list[Any] = list(suggested)
+
+        for gate in existing:
+            if not isinstance(gate, dict):
+                refreshed.append(gate)
+                continue
+            gate_dict = cast(dict[str, Any], gate)
+            name = str(gate_dict.get("name", "")).strip()
+            if not name or name not in suggested_names:
+                refreshed.append(gate)
+
+        merged["custom_gates"] = refreshed
+
     # Add suggested custom gates for non-Python/JS languages
-    suggested_custom = detected.get("suggested_custom_gates", [])
+    suggested_any = detected.get("suggested_custom_gates", cast(list[Any], []))
+    suggested_custom: list[dict[str, Any]] = []
+    if isinstance(suggested_any, list):
+        suggested_entries = cast(list[Any], suggested_any)
+        for gate_any in suggested_entries:
+            if isinstance(gate_any, dict):
+                suggested_custom.append(cast(dict[str, Any], gate_any))
     if suggested_custom:
         base_config["custom_gates"] = suggested_custom
         print(
@@ -307,13 +458,22 @@ def _write_config(
     # Merge with existing config if present
     if config_file.exists():
         try:
-            existing = json.loads(config_file.read_text())
+            existing = cast(Dict[str, Any], json.loads(config_file.read_text()))
             backup_path = backup_config(config_file)
             if backup_path:
                 print(f"📦 Backed up existing config to: {backup_path}")
             base_config = _deep_merge(base_config, existing)
         except json.JSONDecodeError:
             pass
+
+    # Re-apply suggested gates after merge so rerunning init refreshes gate
+    # definitions (and still keeps user-defined custom gates intact).
+    _refresh_suggested_custom_gates(base_config, suggested_custom)
+
+    # Re-apply disable passes after merge so stale enabled flags from prior
+    # config cannot override current applicability/tool detection.
+    _disable_checks_with_missing_tools(base_config, detected)
+    _disable_non_applicable_by_applicability(base_config, project_root)
 
     config_file.write_text(json.dumps(base_config, indent=2) + "\n")
     print(f"✅ Configuration saved to: {config_file}")
@@ -386,8 +546,9 @@ def cmd_init(args: argparse.Namespace) -> int:
     _apply_user_config(base_config, config)
     _disable_checks_with_missing_tools(base_config, detected)
     _set_bogus_tests_defaults(base_config, detected)
+    _disable_non_applicable_by_applicability(base_config, project_root)
 
-    _write_config(config_file, base_config, detected, config)
+    _write_config(config_file, project_root, base_config, detected, config)
 
     # Show project dashboard so the user sees current state
     print("─" * 60)

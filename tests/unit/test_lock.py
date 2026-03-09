@@ -115,6 +115,22 @@ class TestIsStale:
         }
         assert _is_stale(meta, tmp_path) is True
 
+    def test_override_threshold_marks_old_lock_stale(self, tmp_path: Path) -> None:
+        meta = {
+            "pid": os.getpid(),
+            "started_at": time.time() - 35,
+            "verb": "swab",
+        }
+        assert _is_stale(meta, tmp_path, stale_after_seconds=30) is True
+
+    def test_override_threshold_keeps_recent_lock_fresh(self, tmp_path: Path) -> None:
+        meta = {
+            "pid": os.getpid(),
+            "started_at": time.time() - 20,
+            "verb": "swab",
+        }
+        assert _is_stale(meta, tmp_path, stale_after_seconds=30) is False
+
 
 # ── _max_expected_duration ───────────────────────────────────────────────
 

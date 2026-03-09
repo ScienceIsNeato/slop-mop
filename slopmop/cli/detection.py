@@ -1,10 +1,12 @@
 """Project type detection for slop-mop CLI."""
 
 import json
+import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
+from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
 # Used during `sm init` to auto-disable checks whose tools aren't available.
@@ -23,6 +25,7 @@ _INSTALL_LINT = "pipx install slopmop[lint]"
 _INSTALL_TYPING = "pipx install slopmop[typing]"
 _INSTALL_ANALYSIS = "pipx install slopmop[analysis]"
 _INSTALL_SECURITY = "pipx install slopmop[security]"
+_INSTALL_FLUTTER = "Install Flutter SDK: https://docs.flutter.dev/get-started/install"
 
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     # Lint & format (sloppy-formatting.py gate) → [lint] extra
@@ -42,7 +45,136 @@ REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     ("pip-audit", "myopia:dependency-risk.py", _INSTALL_SECURITY),
     # Complexity scanning → [analysis] extra
     ("radon", "laziness:complexity-creep.py", _INSTALL_ANALYSIS),
+    # Dart/Flutter coverage gate
+    ("flutter", "overconfidence:coverage-gaps.dart", _INSTALL_FLUTTER),
 ]
+
+# Canonical language keys derived from scc --format json output.
+_PYTHON_LANGS = {"python"}
+_JAVASCRIPT_LANGS = {"javascript"}
+_TYPESCRIPT_LANGS = {"typescript"}
+_GO_LANGS = {"go"}
+_RUST_LANGS = {"rust"}
+_C_CPP_LANGS = {
+    "c",
+    "cheader",
+    "cplusplus",
+    "cplusplusheader",
+    "objectivec",
+    "objectivecplusplus",
+}
+_DART_LANGS = {"dart"}
+_SCC_SUMMARY_ROWS = {"total", "totals", "sum", "header"}
+_DETECTION_EXCLUDED_DIRS = {
+    ".git",
+    "node_modules",
+    "venv",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".slopmop",
+}
+_MAX_NESTED_SCAN_DEPTH = 4
+
+
+def _normalize_language_key(name: str) -> str:
+    """Normalize language names to stable keys for set membership checks.
+
+    Example:
+      "C++ Header" -> "cplusplusheader"
+      "Objective-C" -> "objectivec"
+    """
+    lowered = name.strip().lower()
+    # Preserve C/C++ distinctions before stripping punctuation.
+    lowered = lowered.replace("++", "plusplus").replace("#", "sharp")
+    normalized = "".join(ch for ch in lowered if ch.isalnum())
+    return normalized
+
+
+def _extract_scc_languages(payload: Any) -> Set[str]:
+    """Extract normalized language keys from scc JSON output.
+
+    scc's JSON schema has changed across versions; support both:
+    - list of rows with "Name"/"Code"/...
+    - dict shapes where language stats are keyed by language name
+    """
+    rows: List[Dict[str, Any]] = []
+    languages: Set[str] = set()
+
+    if isinstance(payload, list):
+        payload_rows = cast(List[Any], payload)
+        for row_any in payload_rows:
+            if isinstance(row_any, dict):
+                rows.append(cast(Dict[str, Any], row_any))
+    elif isinstance(payload, dict):
+        payload_dict = cast(Dict[str, Any], payload)
+        maybe_rows = payload_dict.get("languages")
+        if isinstance(maybe_rows, list):
+            rows_any = cast(List[Any], maybe_rows)
+            for row_any in rows_any:
+                if isinstance(row_any, dict):
+                    rows.append(cast(Dict[str, Any], row_any))
+        else:
+            # Some versions key by language at top-level.
+            for key, value in payload_dict.items():
+                if isinstance(key, str) and isinstance(value, dict):
+                    norm = _normalize_language_key(key)
+                    if norm and norm not in _SCC_SUMMARY_ROWS:
+                        languages.add(norm)
+
+    for row in rows:
+        raw_name: Any = (
+            row.get("Name")
+            or row.get("name")
+            or row.get("Language")
+            or row.get("language")
+        )
+        if not isinstance(raw_name, str):
+            continue
+        norm = _normalize_language_key(raw_name)
+        if not norm or norm in _SCC_SUMMARY_ROWS:
+            continue
+        languages.add(norm)
+
+    return languages
+
+
+def _detect_languages_with_scc(project_root: Path) -> Optional[Set[str]]:
+    """Detect languages using local `scc` (no network).
+
+    Returns:
+      - set of normalized language keys when scc is available and output parses
+      - None when scc is unavailable or output is unusable
+    """
+    scc_path = find_tool("scc", str(project_root))
+    if not scc_path:
+        return None
+
+    try:
+        result = subprocess.run(
+            [scc_path, "--format", "json", "--no-cocomo", str(project_root)],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    languages = _extract_scc_languages(payload)
+    # Empty output behaves like unavailable output so manifest fallback still works.
+    return languages or None
 
 
 def _detect_tools(project_root: Path) -> Dict[str, Any]:
@@ -72,10 +204,12 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
     }
 
 
-def _detect_python(project_root: Path) -> bool:
+def _detect_python(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for Python project indicators.
 
-    Manifest-only.  We do NOT glob ``**/*.py`` because real-world
+    Manifest fallback.  We do NOT glob ``**/*.py`` because real-world
     polyglot repos routinely ship stray Python utility scripts:
 
     * curl/             — test-case generators in tests/*.py
@@ -88,11 +222,16 @@ def _detect_python(project_root: Path) -> bool:
     project with zero manifest files in 2025 they can flip the gates on
     by hand.
     """
+    if detected_languages is not None:
+        return bool(detected_languages & _PYTHON_LANGS)
+
     py_indicators = ["setup.py", "pyproject.toml", "requirements.txt", "Pipfile"]
     return any((project_root / p).exists() for p in py_indicators)
 
 
-def _detect_javascript(project_root: Path) -> bool:
+def _detect_javascript(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for JavaScript project indicators.
 
     Manifest-only — same reasoning as ``_detect_python``.  Go repos
@@ -102,33 +241,66 @@ def _detect_javascript(project_root: Path) -> bool:
     reports ``n/a (No package.json found)`` — which is the symptom
     telling you the detection was wrong in the first place.
     """
+    if detected_languages is not None:
+        return bool(detected_languages & (_JAVASCRIPT_LANGS | _TYPESCRIPT_LANGS))
+
     js_indicators = ["package.json", "tsconfig.json"]
     return any((project_root / p).exists() for p in js_indicators)
 
 
-def _detect_typescript(project_root: Path) -> bool:
-    """Check specifically for TypeScript (manifest-only)."""
+def _detect_typescript(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
+    """Check specifically for TypeScript."""
+    if detected_languages is not None:
+        return bool(detected_languages & _TYPESCRIPT_LANGS)
+
     ts_indicators = ["tsconfig.json", "tsconfig.ci.json"]
     return any((project_root / p).exists() for p in ts_indicators)
 
 
-def _detect_go(project_root: Path) -> bool:
+def _detect_go(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for Go project indicators."""
+    if detected_languages is not None:
+        return bool(detected_languages & _GO_LANGS)
+
     return (project_root / "go.mod").exists()
 
 
-def _detect_rust(project_root: Path) -> bool:
+def _detect_rust(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for Rust project indicators."""
+    if detected_languages is not None:
+        return bool(detected_languages & _RUST_LANGS)
+
     return (project_root / "Cargo.toml").exists()
 
 
-def _detect_c_cpp(project_root: Path) -> bool:
+def _detect_c_cpp(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
     """Check for C/C++ project indicators."""
+    if detected_languages is not None:
+        return bool(detected_languages & _C_CPP_LANGS)
+
     c_indicators = ["CMakeLists.txt", "Makefile", "configure.ac", "meson.build"]
     for indicator in c_indicators:
         if (project_root / indicator).exists():
             return True
     return False
+
+
+def _detect_dart(
+    project_root: Path, detected_languages: Optional[Set[str]] = None
+) -> bool:
+    """Check for Dart / Flutter project indicators."""
+    if detected_languages is not None:
+        return bool(detected_languages & _DART_LANGS)
+
+    return (project_root / "pubspec.yaml").exists()
 
 
 # this is a duplicate - need to keep just one version of this method
@@ -150,46 +322,78 @@ def _detect_package_manager(project_root: Path) -> str:
 
 def _detect_test_dirs(project_root: Path) -> list[str]:
     """Find test directories."""
-    test_dirs: list[str] = []
-    for test_dir in ["tests", "test", "spec", "__tests__"]:
-        test_path = project_root / test_dir
-        if test_path.is_dir():
-            test_dirs.append(str(test_path.relative_to(project_root)))
-    return test_dirs
+    names = {"tests", "test", "spec", "__tests__"}
+    found: set[str] = set()
+    for name in names:
+        for path in project_root.rglob(name):
+            if not path.is_dir():
+                continue
+            rel = path.relative_to(project_root)
+            if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+                continue
+            if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+                continue
+            found.add(str(rel))
+    return sorted(found)
 
 
 def _detect_pytest(project_root: Path) -> bool:
     """Check for pytest configuration."""
-    pyproject = project_root / "pyproject.toml"
-    if pyproject.exists() and "pytest" in pyproject.read_text():
-        return True
 
-    setup_cfg = project_root / "setup.cfg"
-    if setup_cfg.exists() and "pytest" in setup_cfg.read_text():
-        return True
+    def _safe_contains(path: Path, needle: str) -> bool:
+        try:
+            return needle in path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return False
 
-    return (project_root / "pytest.ini").exists() or (
-        project_root / "conftest.py"
-    ).exists()
+    for path in project_root.rglob("pyproject.toml"):
+        rel = path.relative_to(project_root)
+        if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+            continue
+        if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+            continue
+        if _safe_contains(path, "pytest"):
+            return True
+
+    for path in project_root.rglob("setup.cfg"):
+        rel = path.relative_to(project_root)
+        if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+            continue
+        if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+            continue
+        if _safe_contains(path, "pytest"):
+            return True
+
+    for name in ("pytest.ini", "conftest.py"):
+        for path in project_root.rglob(name):
+            rel = path.relative_to(project_root)
+            if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+                continue
+            if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+                continue
+            return True
+    return False
 
 
 def _detect_jest(project_root: Path) -> bool:
     """Check for Jest configuration."""
-    package_json = project_root / "package.json"
-    if not package_json.exists():
-        return False
-
-    try:
-        pkg = json.loads(package_json.read_text())
-        if "jest" in pkg.get("devDependencies", {}):
-            return True
-        if "jest" in pkg.get("dependencies", {}):
-            return True
-        if "test" in pkg.get("scripts", {}):
-            if "jest" in pkg["scripts"]["test"]:
+    for package_json in project_root.rglob("package.json"):
+        rel = package_json.relative_to(project_root)
+        if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
+            continue
+        if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+            continue
+        try:
+            pkg = json.loads(package_json.read_text(encoding="utf-8", errors="ignore"))
+            if "jest" in pkg.get("devDependencies", {}):
                 return True
-    except json.JSONDecodeError:
-        pass
+            if "jest" in pkg.get("dependencies", {}):
+                return True
+            if "test" in pkg.get("scripts", {}):
+                if "jest" in pkg["scripts"]["test"]:
+                    return True
+        except json.JSONDecodeError:
+            continue
     return False
 
 
@@ -215,6 +419,15 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
             recommended.append("overconfidence:coverage-gaps.js")
         if detected["has_typescript"]:
             recommended.append("overconfidence:type-blindness.js")
+
+    if detected.get("has_dart"):
+        recommended.extend(
+            [
+                "overconfidence:coverage-gaps.dart",
+                "deceptiveness:bogus-tests.dart",
+                "laziness:generated-artifacts.dart",
+            ]
+        )
 
     return recommended
 
@@ -307,6 +520,84 @@ def _suggest_custom_gates(
             }
         )
 
+    if detected.get("has_dart"):
+        flutter_available = find_tool("flutter", str(project_root)) is not None
+        dart_available = find_tool("dart", str(project_root)) is not None
+        strict_shell_prefix = "sh -c 'set -e; "
+        pubspec_guard = (
+            'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
+            f'[ -n "$pubspecs" ] || {{ echo "{NO_PUBSPEC_YAML_FOUND}"; exit 1; }}; '
+        )
+
+        flutter_preflight = (
+            "if flutter --version 2>&1 | grep -q "
+            '"engine.stamp: Operation not permitted"; '
+            'then echo "Skipping Flutter gate: SDK cache path not writable in this environment"; '
+            "exit 0; fi; "
+        )
+
+        if flutter_available:
+            gates.extend(
+                [
+                    {
+                        "name": "flutter-analyze",
+                        "description": "Run Flutter static analysis",
+                        "category": "laziness",
+                        "command": (
+                            strict_shell_prefix
+                            + flutter_preflight
+                            + pubspec_guard
+                            + "for pubspec in $pubspecs; do "
+                            'dir=$(dirname "$pubspec"); '
+                            'echo "==> flutter analyze ($dir)"; '
+                            '(cd "$dir" && flutter analyze); '
+                            "done'"
+                        ),
+                        "level": "swab",
+                        "timeout": 300,
+                    },
+                    {
+                        "name": "flutter-test",
+                        "description": "Run Flutter tests",
+                        "category": "overconfidence",
+                        "command": (
+                            strict_shell_prefix
+                            + flutter_preflight
+                            + "ran=0; "
+                            + pubspec_guard
+                            + "for pubspec in $pubspecs; do "
+                            'dir=$(dirname "$pubspec"); '
+                            'if [ -d "$dir/test" ]; then '
+                            "ran=1; "
+                            'echo "==> flutter test ($dir)"; '
+                            '(cd "$dir" && flutter test); '
+                            "fi; "
+                            "done; "
+                            '[ "$ran" -eq 1 ] || { echo "No Flutter test directories found"; exit 1; }'
+                            "'"
+                        ),
+                        "level": "swab",
+                        "timeout": 600,
+                    },
+                ]
+            )
+
+        if dart_available:
+            gates.append(
+                {
+                    "name": "dart-format-check",
+                    "description": "Check Dart formatting",
+                    "category": "laziness",
+                    "command": (
+                        strict_shell_prefix
+                        + flutter_preflight
+                        + "dart format --output=none --set-exit-if-changed .'"
+                    ),
+                    "level": "swab",
+                    "timeout": 120,
+                }
+            )
+
     return gates
 
 
@@ -320,6 +611,7 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - has_go: bool
     - has_rust: bool
     - has_c_cpp: bool
+    - has_dart: bool
     - has_tests_dir: bool
     - has_pytest: bool
     - has_jest: bool
@@ -330,17 +622,22 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - package_manager: str ("npm", "pnpm", or "yarn")
     - suggested_custom_gates: list of custom gate defs
     """
+    detected_languages = _detect_languages_with_scc(project_root)
+
     detected: Dict[str, Any] = {
-        "has_python": _detect_python(project_root),
-        "has_javascript": _detect_javascript(project_root),
-        "has_typescript": _detect_typescript(project_root),
-        "has_go": _detect_go(project_root),
-        "has_rust": _detect_rust(project_root),
-        "has_c_cpp": _detect_c_cpp(project_root),
+        "has_python": _detect_python(project_root, detected_languages),
+        "has_javascript": _detect_javascript(project_root, detected_languages),
+        "has_typescript": _detect_typescript(project_root, detected_languages),
+        "has_go": _detect_go(project_root, detected_languages),
+        "has_rust": _detect_rust(project_root, detected_languages),
+        "has_c_cpp": _detect_c_cpp(project_root, detected_languages),
+        "has_dart": _detect_dart(project_root, detected_languages),
         "has_pytest": _detect_pytest(project_root),
         "has_jest": _detect_jest(project_root),
         "test_dirs": _detect_test_dirs(project_root),
         "package_manager": _detect_package_manager(project_root),
+        "language_detector": "scc" if detected_languages is not None else "manifest",
+        "detected_languages": sorted(detected_languages or []),
     }
 
     detected["has_tests_dir"] = bool(detected["test_dirs"])

@@ -59,6 +59,19 @@ def _register_javascript_checks(registry: CheckRegistry) -> None:
     registry.register(JavaScriptExpectCheck)
 
 
+def _register_dart_checks(registry: CheckRegistry) -> None:
+    """Register all Dart/Flutter checks."""
+    from slopmop.checks.dart import (
+        DartBogusTestsCheck,
+        DartCoverageCheck,
+        DartGeneratedArtifactsCheck,
+    )
+
+    registry.register(DartCoverageCheck)
+    registry.register(DartBogusTestsCheck)
+    registry.register(DartGeneratedArtifactsCheck)
+
+
 def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     """Register security, quality, and general checks."""
     from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
@@ -101,6 +114,7 @@ def register_all_checks() -> None:
     registry = get_registry()
     _register_python_checks(registry)
     _register_javascript_checks(registry)
+    _register_dart_checks(registry)
     _register_crosscutting_checks(registry)
 
 

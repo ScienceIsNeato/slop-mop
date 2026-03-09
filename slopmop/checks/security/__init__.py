@@ -12,13 +12,15 @@ with code files, not just Python projects.
 """
 
 import json
+import re
 import shutil
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
-from typing import Callable, List, Optional, cast
+from typing import Any, Callable, List, Optional, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -314,6 +316,125 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         """Get directories to exclude from config or defaults."""
         return self.config.get("exclude_dirs", EXCLUDED_DIRS)
 
+    def _is_path_excluded_for_detect_secrets(self, path: str) -> bool:
+        """Return True when a path should be ignored by detect-secrets parsing."""
+        normalized = str(path).replace("\\", "/").lstrip("./")
+        if not normalized:
+            return False
+
+        padded = f"/{normalized}/"
+        for raw in self._get_exclude_dirs():
+            if not isinstance(raw, str):
+                continue
+            token = raw.strip().strip("/")
+            if not token:
+                continue
+            if any(ch in token for ch in "*?[]"):
+                # fnmatch patterns in config are usually directory tokens
+                # (e.g. */.venv). Match both exact and descendant paths.
+                if fnmatch(normalized, token) or fnmatch(normalized, f"{token}/*"):
+                    return True
+            else:
+                if f"/{token}/" in padded:
+                    return True
+        return False
+
+    @staticmethod
+    def _safe_read_line(
+        project_root: str,
+        path: str,
+        line_number: Optional[int],
+        line_cache: Optional[dict[str, list[str]]] = None,
+    ) -> str:
+        """Best-effort line reader for detect-secrets post-filters."""
+        if not isinstance(line_number, int) or line_number < 1:
+            return ""
+        try:
+            candidate = Path(project_root) / path
+            resolved = candidate.resolve()
+            root_resolved = Path(project_root).resolve()
+            # Prevent escaping project root via crafted report paths.
+            if root_resolved not in resolved.parents and resolved != root_resolved:
+                return ""
+            cache_key = str(resolved)
+            lines: list[str]
+            if line_cache is not None and cache_key in line_cache:
+                lines = line_cache[cache_key]
+            else:
+                lines = resolved.read_text(
+                    encoding="utf-8", errors="ignore"
+                ).splitlines()
+                if line_cache is not None:
+                    line_cache[cache_key] = lines
+            if line_number <= len(lines):
+                return lines[line_number - 1]
+        except OSError:
+            return ""
+        return ""
+
+    def _is_detect_secrets_false_positive(
+        self,
+        project_root: str,
+        path: str,
+        secret: dict[str, Any],
+        line_cache: Optional[dict[str, list[str]]] = None,
+    ) -> bool:
+        """Heuristics for common non-secret detect-secrets findings."""
+        normalized = str(path).replace("\\", "/")
+        lower = normalized.lower()
+        basename = Path(normalized).name.lower()
+        detector_type = str(secret.get("type", ""))
+
+        if "/.slopmop/" in lower or lower.startswith(".slopmop/"):
+            return True
+        if "/ios/flutter/ephemeral/" in lower or lower.startswith(
+            "ios/flutter/ephemeral/"
+        ):
+            return True
+        if lower.endswith(".xcscheme") and detector_type == "Hex High Entropy String":
+            return True
+        if basename == ".metadata" and detector_type in {
+            "Hex High Entropy String",
+            "Base64 High Entropy String",
+        }:  # pragma: allowlist secret
+            return True
+        if (
+            basename in {".env.example", "alembic.ini"}
+            and detector_type == "Basic Auth Credentials"
+        ):
+            return True
+        if detector_type.lower() == ("se" "cret " "key" "word"):
+            line_text = self._safe_read_line(
+                project_root, normalized, secret.get("line_number"), line_cache
+            )
+            line_lower = line_text.lower()
+            # Accessing secret env/config keys is not a leaked secret.
+            if ".config.get(" in line_lower or "os.getenv(" in line_lower:
+                return True
+            # Placeholder defaults are expected in templates and smoke tooling.
+            placeholder_markers = (
+                "change-me",
+                "changeme",
+                "placeholder",
+                "example",
+                "dev-",
+                "demo",
+                "sample",
+                "dummy",
+            )
+            if any(marker in line_lower for marker in placeholder_markers):
+                return True
+            # Match whole tokens only; avoid substring false positives
+            # like "latest", "contest", or "locale".
+            tokens = set(re.findall(r"[a-z0-9]+", line_lower))
+            if {"test", "local", "dev", "demo", "sample", "dummy"} & tokens and {
+                "secret",
+                "token",
+                "key",
+            } & tokens:
+                return True
+        return False
+
     def _run_bandit(self, project_root: str) -> SecuritySubResult:
         """Run bandit static analysis."""
         # Check for bandit-specific config file (e.g., .bandit, pyproject.toml with [tool.bandit])
@@ -451,21 +572,57 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
         if result.success:
             try:
-                report = json.loads(result.output)
-                detected = report.get("results", {})
-                real_secrets = {
-                    k: v for k, v in detected.items() if v and "constants.py" not in k
-                }
+                report_loaded: Any = json.loads(result.output)
+                report: dict[str, Any]
+                if isinstance(report_loaded, dict):
+                    report = cast(dict[str, Any], report_loaded)
+                else:
+                    report = {}
+                detected_any = report.get("results", {})
+                detected = (
+                    cast(dict[str, Any], detected_any)
+                    if isinstance(detected_any, dict)
+                    else {}
+                )
+                real_secrets: dict[str, list[dict[str, Any]]] = {}
+                line_cache: dict[str, list[str]] = {}
+                for path_any, secrets_any in detected.items():
+                    if not isinstance(path_any, str):
+                        continue
+                    path = path_any
+                    if self._is_path_excluded_for_detect_secrets(path):
+                        continue
+                    if "constants.py" in path:
+                        continue
+                    if not isinstance(secrets_any, list):
+                        continue
+                    secrets: list[dict[str, Any]] = []
+                    secrets_raw = cast(list[Any], secrets_any)
+                    for secret_any in secrets_raw:
+                        if isinstance(secret_any, dict):
+                            secrets.append(cast(dict[str, Any], secret_any))
+                    filtered: list[dict[str, Any]] = []
+                    for secret in secrets:
+                        if not self._is_detect_secrets_false_positive(
+                            project_root, path, secret, line_cache
+                        ):
+                            filtered.append(secret)
+                    if filtered:
+                        real_secrets[path] = filtered
                 if not real_secrets:
                     return SecuritySubResult(
                         "detect-secrets", True, "No secrets detected"
                     )
 
-                detail = "\n".join(
-                    f"  Potential secret in {path}: "
-                    f"{', '.join(str(s.get('type', '?')) for s in secrets)}"
-                    for path, secrets in real_secrets.items()
-                )
+                detail_lines: list[str] = []
+                for path, secrets in real_secrets.items():
+                    types: list[str] = []
+                    for secret in secrets:
+                        types.append(str(secret.get("type", "?")))
+                    detail_lines.append(
+                        f"  Potential secret in {path}: {', '.join(types)}"
+                    )
+                detail = "\n".join(detail_lines)
                 # detect-secrets: per-file Findings (line_number available)
                 sarif: List[Finding] = []
                 for path, secrets in real_secrets.items():

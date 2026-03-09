@@ -11,13 +11,13 @@ Provides ``DockerManager``, a context-manager / pytest fixture that handles:
 Usage (direct)::
 
     with DockerManager() as dm:
-        result = dm.run_sm(branch="main")
+        result = dm.run_sm(branch="all-pass")
         assert result.exit_code == 0
 
 Usage (pytest fixture, defined in conftest.py)::
 
     def test_happy_path(docker_manager):
-        result = docker_manager.run_sm(branch="main")
+        result = docker_manager.run_sm(branch="all-pass")
         assert result.exit_code == 0
 """
 

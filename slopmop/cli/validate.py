@@ -24,6 +24,31 @@ from slopmop.reporting.report import RunReport
 from slopmop.reporting.timings import clear_timings, load_timing_averages
 
 
+def _resolve_swabbing_time(
+    args: argparse.Namespace,
+    project_root: Path,
+) -> Optional[int]:
+    """Resolve effective swabbing-time budget for this run.
+
+    Resolution order:
+    1. CLI ``--swabbing-time``
+    2. ``.sb_config.json`` value
+    3. None (no budget)
+    """
+    swabbing_time: Optional[int] = getattr(args, "swabbing_time", None)
+    if swabbing_time is None:
+        from slopmop.sm import load_config
+
+        config = load_config(project_root)
+        config_val = config.get("swabbing_time")
+        if isinstance(config_val, (int, float)) and config_val > 0:
+            swabbing_time = int(config_val)
+
+    if swabbing_time is not None and swabbing_time > 0:
+        return int(swabbing_time)
+    return None
+
+
 def _is_json_mode(args: argparse.Namespace) -> bool:
     """Determine whether output should be JSON.
 
@@ -142,9 +167,26 @@ def _run_validation(
 
     # Acquire repo-level lock — prevents concurrent sm runs from racing.
     verb = level_name or "validation"
+    lock_stale_after: Optional[float] = None
+    resolved_swabbing_time: Optional[int] = None
+    if level_name == "swab":
+        resolved_swabbing_time = _resolve_swabbing_time(args, project_root)
+        if resolved_swabbing_time is not None:
+            lock_stale_after = float(resolved_swabbing_time * 3)
+
     try:
-        with sm_lock(project_root, verb):
-            return _run_validation_locked(args, gates, level_name, project_root)
+        with sm_lock(
+            project_root,
+            verb,
+            stale_after_seconds=lock_stale_after,
+        ):
+            return _run_validation_locked(
+                args,
+                gates,
+                level_name,
+                project_root,
+                resolved_swabbing_time=resolved_swabbing_time,
+            )
     except SmLockError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -155,6 +197,7 @@ def _run_validation_locked(
     gates: List[str],
     level_name: Optional[str],
     project_root: Path,
+    resolved_swabbing_time: Optional[int] = None,
 ) -> int:
     """Inner validation pipeline, called while holding the repo lock."""
     from slopmop.sm import load_config
@@ -214,11 +257,9 @@ def _run_validation_locked(
     # Handle time budget (swabbing-time).
     # Only applies to swab, not scour.  Read from CLI flag first,
     # fall back to config value.  <= 0 means no limit.
-    swabbing_time: Optional[int] = getattr(args, "swabbing_time", None)
+    swabbing_time: Optional[int] = resolved_swabbing_time
     if swabbing_time is None:
-        config_val = config.get("swabbing_time")
-        if isinstance(config_val, (int, float)) and config_val > 0:
-            swabbing_time = int(config_val)
+        swabbing_time = _resolve_swabbing_time(args, project_root)
 
     # Only enforce for swab runs
     if level_name != "swab":
@@ -280,12 +321,24 @@ def _run_validation_locked(
 
         sarif_requested = getattr(args, "sarif_output", False)
         output_file = getattr(args, "output_file", None)
+        json_file = getattr(args, "json_file", None)
 
         # Log files are needed by both console and JSON.  SARIF doesn't
         # reference them but writing is cheap and idempotent, so do it
         # unconditionally when we have a project root.  Writing BEFORE
         # dispatch means adapters read log_files, never create them.
         report.write_logs()
+
+        # --json-file is orthogonal to everything else.  When set,
+        # always write JSON to that path, regardless of the primary
+        # output mode.  This enables console + SARIF + JSON from one
+        # run.
+        if json_file:
+            json_output = JsonAdapter.render(report)
+            Path(json_file).write_text(
+                json.dumps(json_output, separators=(",", ":")),
+                encoding="utf-8",
+            )
 
         # SARIF emission is orthogonal to the json/console choice — it's
         # a third output format with its own shape.  Handle it first;
@@ -305,13 +358,10 @@ def _run_validation_locked(
             output = JsonAdapter.render(report)
             json_payload = json.dumps(output, separators=(",", ":"))
             if output_file and not sarif_requested:
-                # --output-file with --json (but not --sarif) redirects
-                # JSON there.  When BOTH --sarif and --json are set with
-                # one --output-file, SARIF wins the file and JSON goes
-                # to stdout — the file can only hold one format.
+                # Mirror JSON to disk for archival, but keep stdout payload
+                # so callers can consume it directly in pipelines.
                 Path(output_file).write_text(json_payload, encoding="utf-8")
-            else:
-                print(json_payload)
+            print(json_payload)
         else:
             ConsoleAdapter(report).render()
 

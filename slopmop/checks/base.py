@@ -144,14 +144,50 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
     Returns:
         Absolute path to the executable, or None if not found.
     """
+
+    def _is_usable_tool_path(path: Path) -> bool:
+        """Return True when path exists, is executable, and has a valid shebang.
+
+        Some stale virtualenv entrypoints are executable files whose shebang
+        points to a deleted interpreter ("bad interpreter"). Treat those as
+        unusable so we can fall back to a working binary on PATH.
+        """
+        if not path.exists() or not path.is_file() or not os.access(path, os.X_OK):
+            return False
+
+        try:
+            with path.open("rb") as f:
+                first_line = f.readline(256).strip()
+        except OSError:
+            return False
+
+        if not first_line.startswith(b"#!"):
+            return True
+
+        shebang = first_line[2:].decode("utf-8", errors="ignore").strip()
+        if not shebang:
+            return True
+
+        parts = shebang.split()
+        interpreter = parts[0]
+
+        # Handles shebangs like: #!/usr/bin/env python3
+        if interpreter.endswith("/env") and len(parts) > 1:
+            return shutil.which(parts[1]) is not None
+
+        if Path(interpreter).is_absolute():
+            return Path(interpreter).exists()
+
+        return shutil.which(interpreter) is not None
+
     root = Path(project_root)
     for venv_dir in ["venv", ".venv"]:
         candidate = root / venv_dir / "bin" / name
-        if candidate.exists():
+        if _is_usable_tool_path(candidate):
             return str(candidate)
         # Windows
         candidate = root / venv_dir / "Scripts" / f"{name}.exe"
-        if candidate.exists():
+        if _is_usable_tool_path(candidate):
             return str(candidate)
 
     # Check the currently activated venv (e.g. user ran `source venv/bin/activate`
@@ -159,10 +195,10 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
     virtual_env = os.environ.get("VIRTUAL_ENV")
     if virtual_env:
         candidate = Path(virtual_env) / "bin" / name
-        if candidate.exists():
+        if _is_usable_tool_path(candidate):
             return str(candidate)
         candidate = Path(virtual_env) / "Scripts" / f"{name}.exe"
-        if candidate.exists():
+        if _is_usable_tool_path(candidate):
             return str(candidate)
 
     return shutil.which(name)
