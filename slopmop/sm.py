@@ -3,7 +3,7 @@
 Usage:
     sm swab [--quality-gates GATES] [--verbose] [--quiet]
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
-    sm mcp serve [--project-root PATH] [--allow-no-cache]
+    sm agent install [--target TARGET] [--project-root PATH] [--force]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
     sm commit-hooks status
@@ -17,7 +17,7 @@ Verbs:
     scour         Thorough validation (PR readiness — superset of swab)
     config        View or update configuration
     init          Interactive setup and project configuration
-    mcp           Run local MCP server for agent integrations
+    agent         Install agent integration templates
     commit-hooks  Manage git pre-commit hooks
     ci            Check CI status for current PR
     help          Show help for quality gates
@@ -402,40 +402,46 @@ def _add_ci_parser(
     )
 
 
-def _add_mcp_parser(
+def _add_agent_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    """Add the mcp subcommand parser."""
-    mcp_parser = subparsers.add_parser(
-        "mcp",
-        help="Run local MCP server for agent integrations",
+    """Add the agent subcommand parser."""
+    agent_parser = subparsers.add_parser(
+        "agent",
+        help="Install agent integration templates",
         description=(
-            "Run slop-mop as an MCP stdio server. Exposes a single tool: "
-            "`swab`, which runs `sm swab` for this repository."
+            "Install repo-local templates for AI coding agents so they discover "
+            "and use the slop-mop swab/scour workflow consistently."
         ),
     )
-    mcp_subparsers = mcp_parser.add_subparsers(
-        dest="mcp_action",
-        help="MCP action",
+    agent_subparsers = agent_parser.add_subparsers(
+        dest="agent_action",
+        help="Agent action",
     )
 
-    serve_parser = mcp_subparsers.add_parser(
-        "serve",
-        help="Start MCP stdio server",
+    install_parser = agent_subparsers.add_parser(
+        "install",
+        help="Install Cursor/Claude template files",
     )
-    serve_parser.add_argument(
+    install_parser.add_argument(
+        "--target",
+        choices=["all", "cursor", "claude"],
+        default="all",
+        help=(
+            "Which agent templates to install. "
+            "'all' installs both cursor and claude."
+        ),
+    )
+    install_parser.add_argument(
         "--project-root",
         type=str,
         default=".",
         help=PROJECT_ROOT_HELP,
     )
-    serve_parser.add_argument(
-        "--allow-no-cache",
+    install_parser.add_argument(
+        "--force",
         action="store_true",
-        help=(
-            "Expose an optional tool argument to force cold swab runs. "
-            "Off by default to keep the agent interface minimal."
-        ),
+        help="Overwrite existing files managed by this command.",
     )
 
 
@@ -499,7 +505,7 @@ both human developers and AI coding assistants.
 Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
-  mcp         Local MCP server (single `swab` tool)
+  agent       Install agent integration templates
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -529,7 +535,7 @@ Examples:
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
     _add_init_parser(subparsers)
-    _add_mcp_parser(subparsers)
+    _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
     _add_ci_parser(subparsers)
 
@@ -545,12 +551,12 @@ Examples:
 def main(args: Optional[List[str]] = None) -> int:
     """Main entry point for sm CLI."""
     from slopmop.cli import (
+        cmd_agent,
         cmd_ci,
         cmd_commit_hooks,
         cmd_config,
         cmd_help,
         cmd_init,
-        cmd_mcp,
         cmd_scour,
         cmd_status,
         cmd_swab,
@@ -578,8 +584,8 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_help(parsed_args)
     elif parsed_args.verb == "init":
         return cmd_init(parsed_args)
-    elif parsed_args.verb == "mcp":
-        return cmd_mcp(parsed_args)
+    elif parsed_args.verb == "agent":
+        return cmd_agent(parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return cmd_commit_hooks(parsed_args)
     elif parsed_args.verb == "ci":

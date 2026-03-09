@@ -57,40 +57,25 @@ Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
 | `pipx install slopmop[testing]` | + pytest, pytest-cov, diff-cover |
 | `pipx install slopmop[all]` | Everything above |
 
-### MCP (Single-Tool Agent Interface)
+### Agent Install (Low-Friction AI Setup)
 
-Slop-mop includes a local MCP server that exposes one tool: `swab`.
-
-The design is intentionally simple:
-
-- Agent calls `swab`
-- Server runs `sm swab` for the repo
-- Slop-mop returns its normal JSON payload
-- Agent fixes what it says and calls `swab` again
-
-Start the server:
+Use `sm agent install` to scaffold repo-local files that help agents discover
+and follow the slop-mop workflow.
 
 ```bash
-sm mcp serve --project-root .
+sm agent install                      # install Cursor + Claude templates
+sm agent install --target cursor      # only Cursor templates
+sm agent install --target claude      # only Claude templates
+sm agent install --force              # overwrite existing managed files
 ```
 
-Typical MCP server config (adjust to your client format):
+Generated files:
+- `.cursor/rules/slopmop-swab.mdc`
+- `.claude/commands/sm-swab.md`
 
-```json
-{
-  "command": "sm",
-  "args": ["mcp", "serve", "--project-root", "/absolute/path/to/repo"]
-}
-```
-
-Optional: expose a debug-only `no_cache` tool argument:
-
-```bash
-sm mcp serve --project-root . --allow-no-cache
-```
-
-This keeps the default workflow no-thinking and deterministic while still
-allowing occasional cold-run debugging.
+These templates keep the runtime path simple: agents call `sm swab` routinely
+during implementation and `sm scour` before PR updates. No protocol adapter is
+required for the default integration flow.
 ---
 
 ## The Loop

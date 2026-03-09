@@ -212,12 +212,15 @@ class TestCreateParser:
         assert args.verb == "commit-hooks"
         assert args.hooks_action == "uninstall"
 
-    def test_mcp_serve_parses(self):
-        """MCP serve subcommand parses correctly."""
+    def test_agent_install_parses(self):
+        """Agent install subcommand parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["mcp", "serve", "--project-root", "."])
-        assert args.verb == "mcp"
-        assert args.mcp_action == "serve"
+        args = parser.parse_args(
+            ["agent", "install", "--target", "cursor", "--project-root", "."]
+        )
+        assert args.verb == "agent"
+        assert args.agent_action == "install"
+        assert args.target == "cursor"
         assert args.project_root == "."
 
 
@@ -704,11 +707,11 @@ class TestMain:
             mock_cmd.assert_called_once()
             assert result == 0
 
-    def test_main_mcp_calls_cmd_mcp(self):
-        """Main routes mcp to cmd_mcp."""
-        with patch("slopmop.cli.cmd_mcp") as mock_cmd:
+    def test_main_agent_calls_cmd_agent(self):
+        """Main routes agent to cmd_agent."""
+        with patch("slopmop.cli.cmd_agent") as mock_cmd:
             mock_cmd.return_value = 0
-            result = main(["mcp", "serve"])
+            result = main(["agent", "install"])
             mock_cmd.assert_called_once()
             assert result == 0
 
