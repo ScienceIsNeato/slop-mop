@@ -835,7 +835,11 @@ class PRCommentsCheck(BaseCheck):
         artifact_paths: Optional[Dict[str, str]] = None,
     ) -> str:
         """Format actionable guidance for resolving PR comments."""
-        ordered = ordered_threads or self._classify_and_order_threads(threads)
+        ordered = (
+            ordered_threads
+            if ordered_threads is not None
+            else self._classify_and_order_threads(threads)
+        )
         lines: List[str] = []
         lines.append("=" * 80)
         lines.append("🔀 PR COMMENT RESOLUTION PROTOCOL")

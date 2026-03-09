@@ -1,5 +1,16 @@
 # Project Status
 
+## 2026-03-09 Delta: PR #85 Ordered Threads Precision
+
+### Completed
+
+1. Updated `PRCommentsCheck._format_guidance()` to distinguish `ordered_threads is None` from an explicitly provided empty list.
+2. Added a regression test proving `ordered_threads=[]` does not trigger fallback reclassification.
+
+### Validation
+
+- `pytest -q tests/unit/test_pr_checks.py` -> **32 passed**
+
 ## 2026-03-09 Delta: PR #85 Buff Root And Loop-Race Hardening
 
 ### Completed

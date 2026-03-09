@@ -551,6 +551,32 @@ class TestPRCommentsCheck:
         assert list(grouped) == ["🐛 Logic/Correctness"]
         assert grouped["🐛 Logic/Correctness"][0]["thread_id"] == "PRRT_abc"
 
+    def test_format_guidance_preserves_explicit_empty_ordered_threads(self):
+        """Explicit empty ordered_threads should not trigger reclassification."""
+        check = PRCommentsCheck({})
+        threads = [
+            {
+                "thread_id": "PRRT_abc",
+                "body": "Please fix this issue",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 42,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+
+        with patch.object(check, "_classify_and_order_threads") as classify:
+            guidance = check._format_guidance(
+                threads,
+                85,
+                "owner",
+                "repo",
+                ordered_threads=[],
+            )
+
+        classify.assert_not_called()
+        assert "LOCKED RESOLUTION ORDER" in guidance
+
     def test_protocol_loop_directory_increments(self, tmp_path):
         """Protocol loop directory should increment per run for same PR."""
         check = PRCommentsCheck({})
