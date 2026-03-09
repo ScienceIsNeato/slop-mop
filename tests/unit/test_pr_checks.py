@@ -531,6 +531,8 @@ class TestPRCommentsCheck:
         )
 
         assert 'echo "Fixed in commit $(git rev-parse --short HEAD).' in script
+        assert 'threadId: "PRRT_abc"' in script
+        assert '\\"PRRT_abc\\"' not in script
 
     def test_group_threads_by_category_uses_preclassified_category(self):
         """Grouping should reuse the classifier output when category is preset."""

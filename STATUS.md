@@ -1,5 +1,18 @@
 # Project Status
 
+## 2026-03-09 Delta: PR #85 Final GraphQL Escape Fix
+
+### Completed
+
+1. Fixed generated `resolveReviewThread` command mutations so thread IDs are emitted as `"PRRT_..."` in GraphQL rather than the invalid over-escaped `\"PRRT_...\"` form.
+2. Extended the existing PR command-pack regression test to assert both:
+  - the fixed-in-code comment rail still expands `$(git rev-parse --short HEAD)`
+  - the generated resolve mutation contains correctly quoted thread IDs without backslashes.
+
+### Validation
+
+- `pytest -q tests/unit/test_pr_checks.py` -> **30 passed**
+
 ## 2026-03-09 Delta: PR #85 Final Bugbot Follow-up
 
 ### Completed

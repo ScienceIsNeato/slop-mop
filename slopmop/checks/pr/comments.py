@@ -668,7 +668,7 @@ class PRCommentsCheck(BaseCheck):
         def resolve_thread_command(thread_id: str) -> str:
             mutation = (
                 "mutation { resolveReviewThread(input: {threadId: "
-                f'\\"{thread_id}\\"'
+                f'"{thread_id}"'
                 "}) { thread { id isResolved } } }"
             )
             return f"gh api graphql -f query='{mutation}'"
