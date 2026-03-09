@@ -4,6 +4,7 @@ Usage:
     sm swab [--quality-gates GATES] [--verbose] [--quiet]
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
     sm buff [PR_NUMBER]
+    sm agent install [--target TARGET] [--project-root PATH] [--force]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
     sm commit-hooks status
@@ -18,6 +19,7 @@ Verbs:
     buff          Post-PR CI triage and next-step guidance
     config        View or update configuration
     init          Interactive setup and project configuration
+    agent         Install agent integration templates
     commit-hooks  Manage git pre-commit hooks
     ci            Check CI status for current PR
     help          Show help for quality gates
@@ -480,6 +482,49 @@ def _add_ci_parser(
     )
 
 
+def _add_agent_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the agent subcommand parser."""
+    agent_parser = subparsers.add_parser(
+        "agent",
+        help="Install agent integration templates",
+        description=(
+            "Install repo-local templates for AI coding agents so they discover "
+            "and use the slop-mop swab/scour workflow consistently."
+        ),
+    )
+    agent_subparsers = agent_parser.add_subparsers(
+        dest="agent_action",
+        help="Agent action",
+    )
+
+    install_parser = agent_subparsers.add_parser(
+        "install",
+        help="Install Cursor/Claude template files",
+    )
+    install_parser.add_argument(
+        "--target",
+        choices=["all", "cursor", "claude"],
+        default="all",
+        help=(
+            "Which agent templates to install. "
+            "'all' installs both cursor and claude."
+        ),
+    )
+    install_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+    install_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing files managed by this command.",
+    )
+
+
 def _add_status_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -541,6 +586,7 @@ Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
     buff        Post-PR CI triage and next-step guidance
+    agent       Install agent integration templates
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -572,6 +618,7 @@ Examples:
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
     _add_init_parser(subparsers)
+    _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
     _add_ci_parser(subparsers)
 
@@ -587,6 +634,7 @@ Examples:
 def main(args: Optional[List[str]] = None) -> int:
     """Main entry point for sm CLI."""
     from slopmop.cli import (
+        cmd_agent,
         cmd_buff,
         cmd_ci,
         cmd_commit_hooks,
@@ -622,6 +670,8 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_help(parsed_args)
     elif parsed_args.verb == "init":
         return cmd_init(parsed_args)
+    elif parsed_args.verb == "agent":
+        return cmd_agent(parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return cmd_commit_hooks(parsed_args)
     elif parsed_args.verb == "ci":

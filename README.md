@@ -135,6 +135,25 @@ After that, in each project venv choose one of:
 - stable: `pip install "slopmop==<version>"`
 - active development: `pip install -e /path/to/slop-mop-worktree`
 
+### Agent Install (Low-Friction AI Setup)
+
+Use `sm agent install` to scaffold repo-local files that help agents discover
+and follow the slop-mop workflow.
+
+```bash
+sm agent install                      # install Cursor + Claude templates
+sm agent install --target cursor      # only Cursor templates
+sm agent install --target claude      # only Claude templates
+sm agent install --force              # overwrite existing managed files
+```
+
+Generated files:
+- `.cursor/rules/slopmop-swab.mdc`
+- `.claude/commands/sm-swab.md`
+
+These templates keep the runtime path simple: agents call `sm swab` routinely
+during implementation and `sm scour` before PR updates. No protocol adapter is
+required for the default integration flow.
 ---
 
 ## The Loop

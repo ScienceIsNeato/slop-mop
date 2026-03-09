@@ -235,6 +235,17 @@ class TestCreateParser:
         assert args.verb == "commit-hooks"
         assert args.hooks_action == "uninstall"
 
+    def test_agent_install_parses(self):
+        """Agent install subcommand parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(
+            ["agent", "install", "--target", "cursor", "--project-root", "."]
+        )
+        assert args.verb == "agent"
+        assert args.agent_action == "install"
+        assert args.target == "cursor"
+        assert args.project_root == "."
+
 
 class TestDetectProjectType:
     """Tests for detect_project_type function."""
@@ -706,6 +717,14 @@ class TestMain:
         with patch("slopmop.cli.cmd_ci") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["ci"])
+            mock_cmd.assert_called_once()
+            assert result == 0
+
+    def test_main_agent_calls_cmd_agent(self):
+        """Main routes agent to cmd_agent."""
+        with patch("slopmop.cli.cmd_agent") as mock_cmd:
+            mock_cmd.return_value = 0
+            result = main(["agent", "install"])
             mock_cmd.assert_called_once()
             assert result == 0
 

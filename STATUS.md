@@ -11,6 +11,22 @@
 
 **Status: LOCAL — all 1568 tests pass** ✅
 
+## 2026-03-09 Delta: PR #86 Merge Conflict Resolution (In Progress)
+
+### Completed
+
+1. Resolved merge conflicts from `origin/main` into `feat/mcp-swab-server`:
+  - `slopmop/cli/__init__.py`
+  - `slopmop/sm.py`
+2. Preserved both CLI command families during conflict resolution:
+  - `agent` command wiring/imports
+  - `buff` command wiring/imports
+3. Removed all merge markers and corrected CLI help text/indentation.
+
+### Validation
+
+- `pytest -q tests/unit/test_sm_cli.py tests/unit/test_ci_triage_and_buff.py` -> **109 passed**
+
 ## 2026-03-09 Delta: Shared Rail Helpers For CI Triage + Commentary
 
 ### Completed
