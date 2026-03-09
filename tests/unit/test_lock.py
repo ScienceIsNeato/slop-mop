@@ -69,6 +69,14 @@ class TestPidLooksLikeSm:
             mock_run.return_value.stdout = "python -m slopmop.sm swab\n"
             assert _pid_looks_like_sm(12345) is True
 
+    def test_detects_sm_entrypoint_script(self) -> None:
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = (
+                "/tmp/venv/bin/python /tmp/venv/bin/sm swab\n"
+            )
+            assert _pid_looks_like_sm(12345) is True
+
     def test_detects_non_sm_command(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value.returncode = 0
@@ -150,7 +158,8 @@ class TestIsStale:
             "started_at": time.time() - 35,
             "verb": "swab",
         }
-        assert _is_stale(meta, tmp_path, stale_after_seconds=30) is True
+        with patch("slopmop.core.lock._pid_looks_like_sm", return_value=True):
+            assert _is_stale(meta, tmp_path, stale_after_seconds=30) is True
 
     def test_override_threshold_keeps_recent_lock_fresh(self, tmp_path: Path) -> None:
         meta = {

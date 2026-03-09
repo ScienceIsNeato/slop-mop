@@ -90,11 +90,13 @@ def _pid_looks_like_sm(pid: int) -> bool:
     if not command:
         return True
 
+    command_parts = command.split()
+
     return (
         "slopmop" in command
         or "python -m slopmop" in command
         or " sm " in f" {command} "
-        or command.endswith("/sm")
+        or any(part == "sm" or part.endswith("/sm") for part in command_parts)
     )
 
 

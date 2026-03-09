@@ -1,5 +1,22 @@
 # Project Status
 
+## 2026-03-09 Delta: PR #85 Final Lock Follow-up Threads
+
+### Completed
+
+1. Fixed `_pid_looks_like_sm()` to recognize standalone `sm` entrypoint invocations:
+  - commands like `/path/to/venv/bin/python /path/to/venv/bin/sm swab` now count as legitimate `sm` lock holders
+  - avoids false stale-lock detection from PID reuse guard when `sm` is launched via entrypoint script instead of `python -m slopmop`
+2. Corrected `test_override_threshold_marks_old_lock_stale` so it explicitly patches `_pid_looks_like_sm=True` and exercises the age-threshold override path rather than passing via the PID-identity guard.
+3. Added regression coverage for standalone `sm` entrypoint detection in `tests/unit/test_lock.py`.
+4. Tightened buff protocol command-pack permissions from world-executable to owner-only executable to satisfy the security gate.
+
+### Validation
+
+- `pytest -q tests/unit/test_lock.py` -> **36 passed**
+- `pytest -q tests/unit/test_lock.py tests/unit/test_pr_checks.py` -> **64 passed**
+- `python -m slopmop.sm swab -g myopia:vulnerability-blindness.py --verbose` -> **passed**
+
 ## 2026-03-09 Delta: PR #85 Follow-up Thread Fixes (Loop 005)
 
 ### Completed

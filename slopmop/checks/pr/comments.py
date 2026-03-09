@@ -771,7 +771,7 @@ class PRCommentsCheck(BaseCheck):
             self._build_commands_script(ordered_threads, pr_number, owner, repo),
             encoding="utf-8",
         )
-        os.chmod(commands_sh, 0o755)
+        os.chmod(commands_sh, 0o700)
         execution_log.write_text(
             "# Buff Protocol Execution Log\n\n"
             f"- protocol_version: {self.PROTOCOL_VERSION}\n"
