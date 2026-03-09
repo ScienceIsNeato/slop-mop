@@ -22,6 +22,26 @@ Slop-mop runs a set of quality gates organized around these four failure modes. 
 
 The mop finds the slop. The agent cleans it up. The ship stays seaworthy.
 
+### Fast CI Failure Triage
+
+When a PR fails the primary code-scanning gate, use the reusable machine-first
+triage script instead of manually digging through logs:
+
+```bash
+activate && python scripts/ci_scan_triage.py --pr 84 --show-low-coverage
+```
+
+Or triage a specific run immediately:
+
+```bash
+activate && python scripts/ci_scan_triage.py --run-id 22840517416 --show-low-coverage
+```
+
+What it does:
+- Downloads the `slopmop-results` artifact from GitHub Actions
+- Extracts actionable failed/error/warned gates
+- Writes machine-readable output to `.slopmop/last_ci_triage.json`
+
 ---
 
 ## Quick Start
@@ -38,6 +58,7 @@ sm init                       # auto-detects languages, writes .sb_config.json
 # Run quality gates
 sm swab                       # fix what it finds, commit when green
 sm scour                      # thorough check before opening a PR
+sm buff                       # post-PR loop: CI triage + next-step guidance
 ```
 
 Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
@@ -87,6 +108,17 @@ When a gate fails, the output tells the agent exactly what to do next:
 ```
 
 This is purpose-built for AI agents. The iteration is mechanical, and the agent never has to wonder what to do next. The same trait that creates slop — relentless task accomplishment — is what makes agents excellent at cleaning it up when given precise instructions. Slop-mop turns the agent's biggest liability into its best feature: point the mop at the mess, and the agent won't stop until it's clean.
+
+Practical lifecycle loop:
+
+```text
+while coding       -> sm swab
+before PR          -> sm scour
+after PR opens     -> sm buff
+```
+
+`sm buff` is post-submit protection. It reads CI scan results for the PR branch,
+surfaces unresolved machine signals, and directs the next local fix/recheck loop.
 
 ### The Prescription Contract
 

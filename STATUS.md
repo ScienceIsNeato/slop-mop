@@ -11,6 +11,54 @@
 
 **Status: LOCAL — all 1568 tests pass** ✅
 
+## 2026-03-09 Delta: Shared Rail Helpers For CI Triage + Commentary
+
+### Completed
+
+1. Added shared generation/consumption helpers:
+  - New module: `slopmop/reporting/rail.py`
+  - Canonicalizes actionable gate extraction/detail formatting.
+  - Provides shared next-step rail guidance.
+
+2. Refactored CI triage to use shared rail helpers:
+  - `slopmop/cli/scan_triage.py` now uses shared actionable normalization/line formatting.
+  - Added machine schema metadata: `schema: slopmop/ci-triage/v1`, `source: code-scanning`.
+  - Added payload `next_steps` to keep agent loop on the same rail.
+
+3. Refactored scour-failure commentary script to use same shared actionable formatter:
+  - `scripts/summarize_scour_failure.py` now reuses shared normalization and line rendering.
+
+### Validation
+
+- `pytest tests/unit/test_sm_cli.py::TestCreateParser::test_buff_json_and_output_file_flags tests/unit/test_sm_cli.py::TestMain::test_main_buff_calls_cmd_buff -q` -> **2 passed**
+- `python -m slopmop.sm buff 84 --json --output-file .slopmop/buff_smoke.json` -> emitted shared machine payload including `schema`, `actionable`, `next_steps`.
+- `python -m slopmop.sm buff 84` -> human output includes shared actionable lines and numbered next steps.
+- `python scripts/summarize_scour_failure.py --sarif slopmop.sarif --json .slopmop/last_ci_scan_results.json` -> could not fully validate in this workspace snapshot because `slopmop.sarif` was not present.
+
+## 2026-03-09 Delta: Rename Post-PR Verb `polish` -> `buff`
+
+### Completed
+
+1. Renamed CLI verb and wiring:
+  - `slopmop/sm.py` routes `buff` (replacing `polish`).
+  - `slopmop/cli/__init__.py` exports `cmd_buff`.
+  - `slopmop/cli/buff.py` added; `slopmop/cli/polish.py` removed.
+
+2. Updated triage module and docs:
+  - `slopmop/cli/scan_triage.py` docstring now references `sm buff`.
+  - `README.md` lifecycle examples now use `sm buff`.
+
+3. Updated tests:
+  - `tests/unit/test_sm_cli.py`
+    - `test_buff_subcommand`
+    - `test_buff_with_pr_number`
+    - `test_main_buff_calls_cmd_buff`
+
+### Validation
+
+- `pytest tests/unit/test_sm_cli.py::TestCreateParser::test_buff_subcommand tests/unit/test_sm_cli.py::TestCreateParser::test_buff_with_pr_number tests/unit/test_sm_cli.py::TestMain::test_main_buff_calls_cmd_buff -q` -> **3 passed**
+- `python -m slopmop.sm buff --skip-scour --pr 84 --show-low-coverage` -> surfaced expected failing gate (`myopia:just-this-once.py`) and exited non-zero.
+
 ## 2026-03-09 Delta: Swabbing-Time Safety Warning + Local Budget Increase
 
 ### Completed
@@ -83,6 +131,80 @@
     - `git rev-parse --show-toplevel` now returns clean parseable output only.
     - `git log --oneline -n 1` now returns clean output.
     - `git commit --no-verify ...` still hard-blocked by wrapper.
+
+  ## 2026-03-09 Delta: Fast CI Scan Triage Script
+
+  ### Completed
+
+  1. Added reusable CI triage script:
+    - `scripts/ci_scan_triage.py`
+    - Downloads `slopmop-results` artifact directly from a GH Actions run.
+    - Prints actionable failed/error/warned gates immediately.
+    - Optional `--show-low-coverage` surfaces the worst changed-file coverage findings.
+
+  2. Supports rapid workflows:
+    - By run id: `python scripts/ci_scan_triage.py --run-id <run_id>`
+    - By PR number: `python scripts/ci_scan_triage.py --pr <pr_number>`
+    - Auto-discovers current repo and latest failed run in the primary code-scanning workflow.
+
+  ### Validation
+
+  - `python scripts/ci_scan_triage.py --run-id 22840517416 --show-low-coverage`:
+    - Reported `myopia:just-this-once.py` failure with low-coverage file ranking.
+  - `python scripts/ci_scan_triage.py --pr 84`:
+    - Resolved latest failed run and printed actionable failure details.
+
+  ### Loop Hardening (same day)
+
+  1. Added machine-readable triage payload output:
+    - `scripts/ci_scan_triage.py --json-out <path>` (defaults to `.slopmop/last_ci_triage.json`)
+    - Payload includes run id, actionable gates, hard failures, and optional lowest-coverage findings.
+
+  2. Improved GitHub CLI compatibility:
+    - PR mode now resolves PR head branch and uses `gh run list --branch ...` (works on gh versions without `--pr` flag for `run list`).
+
+  3. Added explicit local rerun hint in CI failure step:
+    - `.github/workflows/slopmop-sarif.yml` now emits:
+      - `python scripts/ci_scan_triage.py --run-id ${GITHUB_RUN_ID} --show-low-coverage`
+
+  4. Added README docs section:
+    - `Fast CI Failure Triage` with copy-paste commands for PR and run-id modes.
+
+  5. Validation:
+    - `python scripts/ci_scan_triage.py --pr 84 --show-low-coverage` prints actionable gate + ranked low coverage.
+    - `.slopmop/last_ci_triage.json` successfully emitted with structured payload.
+
+    ## 2026-03-09 Delta: Post-PR `buff` Verb
+
+    ### Completed
+
+    1. Added first-class post-PR verb:
+      - `sm buff`
+      - Runs post-submit loop: local `scour` + CI code-scan triage.
+
+    2. Promoted CI triage logic into package code (pipx-visible):
+      - New module: `slopmop/cli/scan_triage.py`
+      - Repository script `scripts/ci_scan_triage.py` is now a thin wrapper over package logic.
+
+    3. New command behavior:
+      - `python -m slopmop.sm buff --skip-scour --pr 84 --show-low-coverage`
+      - Reports actionable failed scan gates and lowest-coverage offenders.
+      - Exits non-zero when unresolved signals remain.
+
+    4. CLI/parser wiring:
+      - `slopmop/sm.py` now registers and routes `buff`.
+      - `slopmop/cli/__init__.py` exports `cmd_buff` and triage utility.
+
+    5. Test updates:
+      - `tests/unit/test_sm_cli.py`
+        - `test_buff_subcommand`
+        - `test_buff_with_pr_number`
+        - `test_main_buff_calls_cmd_buff`
+
+    ### Validation
+
+    - `pytest tests/unit/test_sm_cli.py::TestCreateParser::test_buff_subcommand tests/unit/test_sm_cli.py::TestCreateParser::test_buff_with_pr_number tests/unit/test_sm_cli.py::TestMain::test_main_buff_calls_cmd_buff -q` → **3 passed**
+    - `python -m slopmop.sm buff --skip-scour --pr 84 --show-low-coverage` → correctly surfaced `myopia:just-this-once.py` from latest PR scan run.
 
 ## 2026-03-08 Delta: Prevent CI Surprise From Budget-Skipped Swab Gates
 

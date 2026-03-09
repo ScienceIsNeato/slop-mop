@@ -16,6 +16,12 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from slopmop.reporting.rail import (
+    filter_actionable_rows,
+    format_actionable_line,
+    normalize_actionable_row,
+)
+
 
 def _load_json(path: Path) -> dict[str, Any] | None:
     try:
@@ -108,10 +114,9 @@ def _read_actionable_results(json_path: str) -> list[dict[str, Any]]:
         print("::notice::See Code scanning results / slopmop for detailed findings.")
         return []
 
+    raw_results = json_doc.get("results") or []
     actionable = [
-        r
-        for r in (json_doc.get("results") or [])
-        if r.get("status") in {"failed", "error", "warned"}
+        r for r in filter_actionable_rows(raw_results) if isinstance(r, dict)
     ]
     if not actionable:
         print("::warning::No actionable results found in JSON report")
@@ -171,15 +176,7 @@ def _print_actionable_details(actionable: list[dict[str, Any]]) -> list[str]:
     actionable_lines: list[str] = []
     print("::group::Detailed actionable gate results")
     for row in actionable:
-        name = str(row.get("name", "unknown"))
-        status = str(row.get("status", "unknown")).upper()
-        detail = (
-            row.get("error")
-            or row.get("fix_suggestion")
-            or row.get("status_detail")
-            or "(no detail)"
-        )
-        line = f"- {status}: {name} :: {detail}"
+        line = format_actionable_line(normalize_actionable_row(row))
         print(line)
         actionable_lines.append(line)
     print("::endgroup::")

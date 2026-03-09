@@ -105,6 +105,30 @@ class TestCreateParser:
         args = parser.parse_args(["scour"])
         assert args.verb == "scour"
 
+    def test_buff_subcommand(self):
+        """Buff subcommand parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff"])
+        assert args.verb == "buff"
+
+    def test_buff_with_pr_number(self):
+        """Buff with explicit PR number parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "84"])
+        assert args.verb == "buff"
+        assert args.pr_number == 84
+
+    def test_buff_json_and_output_file_flags(self):
+        """Buff supports JSON stdout and machine output file mirroring."""
+        parser = create_parser()
+        args = parser.parse_args(
+            ["buff", "84", "--json", "--output-file", "triage.json"]
+        )
+        assert args.verb == "buff"
+        assert args.pr_number == 84
+        assert args.json_output is True
+        assert args.output_file == "triage.json"
+
     def test_swab_with_quality_gates(self):
         """Swab with --quality-gates parses correctly."""
         parser = create_parser()
@@ -642,6 +666,14 @@ class TestMain:
         with patch("slopmop.cli.cmd_scour") as mock_cmd:
             mock_cmd.return_value = 0
             result = main(["scour"])
+            mock_cmd.assert_called_once()
+            assert result == 0
+
+    def test_main_buff_calls_cmd_buff(self):
+        """Main routes buff to cmd_buff."""
+        with patch("slopmop.cli.cmd_buff") as mock_cmd:
+            mock_cmd.return_value = 0
+            result = main(["buff"])
             mock_cmd.assert_called_once()
             assert result == 0
 

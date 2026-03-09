@@ -192,5 +192,6 @@ jobs:
             cat .scour-failure-summary.txt
             echo "::endgroup::"
           fi
+          echo "::notice::Local triage command: python scripts/ci_scan_triage.py --run-id ${GITHUB_RUN_ID} --show-low-coverage"
           echo "::error::slopmop scour failed"
           exit 1
