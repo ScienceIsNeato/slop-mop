@@ -175,7 +175,8 @@ jobs:
           source .venv/bin/activate
           python3 scripts/summarize_scour_failure.py \
             --sarif slopmop.sarif \
-            --json slopmop-results.json
+            --json slopmop-results.json \
+            | tee .scour-failure-summary.txt
 
       - name: Enforce Primary Gate Verdict
         # Re-surface the scour exit code so branch protection rules
@@ -185,5 +186,10 @@ jobs:
         # controls the green/red check mark.
         if: steps.scour.outcome == 'failure'
         run: |
+          if [ -f .scour-failure-summary.txt ]; then
+            echo "::group::Scour failure summary"
+            cat .scour-failure-summary.txt
+            echo "::endgroup::"
+          fi
           echo "::error::slopmop scour failed"
           exit 1
