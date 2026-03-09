@@ -1,5 +1,32 @@
 # Project Status
 
+## 2026-03-09 Delta: Lock ETA Metadata + Busy-Wait Estimate
+
+### Completed
+
+1. Added expected-finish metadata to repo lock file writes:
+  - `expected_duration_seconds`
+  - `expected_done_at` (epoch)
+  - `expected_done_at_utc` (ISO8601 UTC)
+2. Updated lock contention error messaging to include wait estimate:
+  - when another lock holder exists, message now includes ETA like
+    `~Ns until lock is free` and expected UTC completion time.
+3. Wired validation pipeline to pass expected lock duration from runtime estimates:
+  - computed from timing history medians
+  - constrained by `swabbing-time` budget for `swab` runs
+
+### Files
+
+- `slopmop/core/lock.py`
+- `slopmop/cli/validate.py`
+- `tests/unit/test_lock.py`
+
+### Validation
+
+- `pytest -q tests/unit/test_lock.py tests/unit/test_cli.py` -> **57 passed**
+- `sm swab` -> **no slop detected**
+- `sm scour` -> **no slop detected** (non-blocking warn: `myopia:ignored-feedback`)
+
 ## 2026-03-09 Delta: Buff CI State Clarity (No Gate-Level Move)
 
 ### Completed

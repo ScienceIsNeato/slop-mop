@@ -14,7 +14,7 @@ from typing import List, Optional
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
 from slopmop.core.executor import CheckExecutor
-from slopmop.core.lock import SmLockError, sm_lock
+from slopmop.core.lock import SmLockError, _max_expected_duration, sm_lock
 from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.adapters import ConsoleAdapter, JsonAdapter, SarifAdapter
@@ -168,17 +168,35 @@ def _run_validation(
     # Acquire repo-level lock — prevents concurrent sm runs from racing.
     verb = level_name or "validation"
     lock_stale_after: Optional[float] = None
+    lock_expected_duration: Optional[float] = None
     resolved_swabbing_time: Optional[int] = None
+
+    timing_averages = load_timing_averages(str(project_root))
+    historical_estimate = (
+        sum(timing_averages.values())
+        if timing_averages
+        else _max_expected_duration(project_root)
+    )
+
     if level_name == "swab":
         resolved_swabbing_time = _resolve_swabbing_time(args, project_root)
         if resolved_swabbing_time is not None:
             lock_stale_after = float(resolved_swabbing_time * 3)
+            lock_expected_duration = min(
+                max(float(resolved_swabbing_time), 1.0),
+                max(float(historical_estimate), 1.0),
+            )
+        else:
+            lock_expected_duration = max(float(historical_estimate), 1.0)
+    else:
+        lock_expected_duration = max(float(historical_estimate), 1.0)
 
     try:
         with sm_lock(
             project_root,
             verb,
             stale_after_seconds=lock_stale_after,
+            expected_duration_seconds=lock_expected_duration,
         ):
             return _run_validation_locked(
                 args,

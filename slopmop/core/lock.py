@@ -22,6 +22,7 @@ import os
 import subprocess
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional
 
@@ -124,12 +125,27 @@ def _read_lock_meta(path: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _write_lock_meta(path: Path, verb: str) -> None:
+def _format_utc_epoch(epoch: float) -> str:
+    """Return an ISO8601 UTC timestamp for *epoch* (seconds since epoch)."""
+    return (
+        datetime.fromtimestamp(epoch, tz=timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _write_lock_meta(path: Path, verb: str, expected_duration_seconds: float) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    started_at = time.time()
+    expected_duration = max(float(expected_duration_seconds), 1.0)
+    expected_done_at = started_at + expected_duration
     payload: Dict[str, Any] = {
         "pid": os.getpid(),
         "verb": verb,
-        "started_at": time.time(),
+        "started_at": started_at,
+        "expected_duration_seconds": round(expected_duration, 1),
+        "expected_done_at": expected_done_at,
+        "expected_done_at_utc": _format_utc_epoch(expected_done_at),
     }
     path.write_text(json.dumps(payload))
 
@@ -179,15 +195,28 @@ def _format_busy_message(meta: Dict[str, Any]) -> str:
     pid = meta.get("pid", "?")
     verb = meta.get("verb", "unknown")
     started = meta.get("started_at")
+    expected_done_at = meta.get("expected_done_at")
+    expected_done_at_utc = meta.get("expected_done_at_utc")
+
     if started:
         elapsed = time.time() - started
         time_str = f" (running for {elapsed:.0f}s)"
     else:
         time_str = ""
 
+    eta_str = ""
+    if isinstance(expected_done_at, (int, float)):
+        remaining = max(0.0, float(expected_done_at) - time.time())
+        eta_str = f"\n   ETA: ~{remaining:.0f}s until lock is free"
+        if isinstance(expected_done_at_utc, str) and expected_done_at_utc:
+            eta_str += f" (expected done at {expected_done_at_utc})"
+    elif isinstance(expected_done_at_utc, str) and expected_done_at_utc:
+        eta_str = f"\n   ETA: expected done at {expected_done_at_utc}"
+
     return (
         f"⏳ Another sm process is already running on this project.\n"
         f"   PID {pid} · verb: {verb}{time_str}\n"
+        f"{eta_str}\n"
         f"\n"
         f"   Wait for it to finish, or if it crashed:\n"
         f"     rm {LOCK_DIR}/{LOCK_FILE}"
@@ -202,6 +231,7 @@ def sm_lock(
     project_root: str | Path,
     verb: str,
     stale_after_seconds: Optional[float] = None,
+    expected_duration_seconds: Optional[float] = None,
 ) -> Iterator[None]:
     """Context manager that acquires a per-repo lock.
 
@@ -264,7 +294,12 @@ def sm_lock(
                 )
 
         # We hold the flock.  Write metadata for diagnostics.
-        _write_lock_meta(path, verb)
+        expected_duration = (
+            expected_duration_seconds
+            if expected_duration_seconds is not None and expected_duration_seconds > 0
+            else _max_expected_duration(root)
+        )
+        _write_lock_meta(path, verb, expected_duration)
 
         yield
 

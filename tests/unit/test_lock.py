@@ -82,13 +82,16 @@ class TestPidLooksLikeSm:
 class TestLockMeta:
     def test_write_and_read_roundtrip(self, lock_root: Path) -> None:
         path = _lock_path(lock_root)
-        _write_lock_meta(path, "swab")
+        _write_lock_meta(path, "swab", expected_duration_seconds=42)
         meta = _read_lock_meta(path)
 
         assert meta is not None
         assert meta["pid"] == os.getpid()
         assert meta["verb"] == "swab"
         assert isinstance(meta["started_at"], float)
+        assert meta["expected_duration_seconds"] == 42.0
+        assert isinstance(meta["expected_done_at"], float)
+        assert meta["expected_done_at_utc"].endswith("Z")
 
     def test_read_missing_file_returns_none(self, tmp_path: Path) -> None:
         assert _read_lock_meta(tmp_path / "nope") is None
@@ -100,7 +103,7 @@ class TestLockMeta:
 
     def test_write_creates_parent_dirs(self, tmp_path: Path) -> None:
         path = tmp_path / "nested" / "dirs" / "lock"
-        _write_lock_meta(path, "scour")
+        _write_lock_meta(path, "scour", expected_duration_seconds=30)
         meta = _read_lock_meta(path)
         assert meta is not None
         assert meta["verb"] == "scour"
@@ -238,6 +241,19 @@ class TestFormatBusyMessage:
         meta = {"pid": 1, "verb": "swab"}
         msg = _format_busy_message(meta)
         assert f"rm {LOCK_DIR}/{LOCK_FILE}" in msg
+
+    def test_includes_eta_when_expected_done_is_present(self) -> None:
+        future = time.time() + 90
+        meta = {
+            "pid": 12345,
+            "verb": "swab",
+            "started_at": time.time() - 5,
+            "expected_done_at": future,
+            "expected_done_at_utc": "2026-03-09T12:34:56Z",
+        }
+        msg = _format_busy_message(meta)
+        assert "ETA:" in msg
+        assert "expected done at 2026-03-09T12:34:56Z" in msg
 
 
 # ── sm_lock (integration) ───────────────────────────────────────────────
