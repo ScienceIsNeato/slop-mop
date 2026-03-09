@@ -348,6 +348,9 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print(
         "  5. If you add a new language later, re-run 'sm init' to enable newly applicable gates"
     )
+    print(
+        "  6. Use pinned PyPI versions per repo; use editable installs only from branch-specific slop-mop worktrees"
+    )
     print()
     print("Quick reference:")
     print("  sm swab              # Fast pre-commit validation")

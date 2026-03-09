@@ -57,6 +57,63 @@ Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
 | `pipx install slopmop[testing]` | + pytest, pytest-cov, diff-cover |
 | `pipx install slopmop[all]` | Everything above |
 
+### Multi-Repo Isolation (Canonical Setup)
+
+If you work across many repos and branches, use this model to prevent
+cross-project interference:
+
+1. Create a separate venv per project.
+2. For most repos, install a pinned PyPI version:
+
+```bash
+pip install "slopmop==<version>"
+```
+
+3. For active slop-mop development, install editable **from a branch-specific git worktree**:
+
+```bash
+cd ~/Documents/SourceCode/slop-mop
+git worktree add ~/Documents/SourceCode/slop-mop-wt-my-feature feat/my-feature
+
+cd /path/to/target-project
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ~/Documents/SourceCode/slop-mop-wt-my-feature
+```
+
+Do **not** point multiple envs at a single moving checkout (for example
+`pip install -e ~/Documents/SourceCode/slop-mop`) if you frequently switch
+branches there.
+
+Verify what each project is actually using:
+
+```bash
+python -c "import slopmop; print(slopmop.__file__)"
+pip show slopmop
+```
+
+### Clean Slate (One-Time Reset)
+
+If your machine has mixed old installs, reset once and then follow the model above.
+
+```bash
+# inspect current command resolution
+type -a sm
+which sm
+
+# remove old global installs
+pipx uninstall slopmop || true
+python3 -m pip uninstall -y slopmop || true
+
+# reinstall machine-level CLI runner
+pipx install slopmop[all]
+```
+
+After that, in each project venv choose one of:
+
+- stable: `pip install "slopmop==<version>"`
+- active development: `pip install -e /path/to/slop-mop-worktree`
+
 ---
 
 ## The Loop
@@ -436,6 +493,9 @@ Slop-mop installs as a normal package and is configured per-project via `.sb_con
 This means if the project has its own `pytest` (with plugins like `pytest-django`), sm uses it. Otherwise, sm falls back to its own.
 
 **Submodule alternative**: For strict version pinning, add `slop-mop` as a git submodule and invoke `python -m slopmop.sm` directly. Supported but not recommended for most projects.
+
+**Editable-install rule of thumb**: editable installs are for active framework
+development only, and should come from branch-specific worktrees.
 
 ---
 
