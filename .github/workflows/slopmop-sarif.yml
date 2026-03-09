@@ -160,35 +160,22 @@ jobs:
           # (category, ruleId, fingerprint).
           category: slopmop
 
+      - name: Upload JSON scan report
+        uses: actions/upload-artifact@v4
+        with:
+          name: slopmop-results
+          path: slopmop-results.json
+
       - name: Summarise SARIF failures
         # When scour fails, parse the SARIF and surface the top
         # failing rule IDs directly in the check output so reviewers
         # don't have to click through to the Security tab.
         if: steps.scour.outcome == 'failure'
         run: |
-          if [ ! -f slopmop.sarif ]; then
-            echo "::error::slopmop scour failed — slopmop.sarif missing"
-          else
-            python3 -c "
-          import json, sys
-          from collections import Counter
-          try:
-              sarif = json.load(open('slopmop.sarif', encoding='utf-8'))
-          except Exception as exc:
-              print(f'::warning::Unable to parse slopmop.sarif: {exc}')
-              sys.exit(0)
-          runs = sarif.get('runs') or []
-          results = (runs[0].get('results') or []) if runs else []
-          if not results:
-              print('::error::slopmop scour failed, but SARIF has zero results')
-              sys.exit(0)
-          counts = Counter(r.get('ruleId', 'unknown') for r in results)
-          top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
-          summary = ', '.join(f'{rule} ({n})' for rule, n in top)
-          print(f'::error::Top failing rules: {summary}')
-          print('::notice::See Code scanning results / slopmop for full findings.')
-          "
-          fi
+          source .venv/bin/activate
+          python3 scripts/summarize_scour_failure.py \
+            --sarif slopmop.sarif \
+            --json slopmop-results.json
 
       - name: Enforce Primary Gate Verdict
         # Re-surface the scour exit code so branch protection rules
