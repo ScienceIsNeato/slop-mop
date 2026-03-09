@@ -413,7 +413,13 @@ class TestRunDetectSecrets:
         mock_result = MagicMock()
         mock_result.success = True
         mock_result.output = json.dumps(
-            {"results": {"config.py": [{"type": "Secret Keyword", "line_number": 5}]}}
+            {
+                "results": {
+                    "config.py": [
+                        {"type": "Secret Keyword", "line_number": 5}  # pragma: allowlist secret
+                    ]
+                }
+            }
         )
 
         with patch.object(check, "_run_command", return_value=mock_result):
@@ -445,9 +451,9 @@ class TestRunDetectSecrets:
         app_dir = tmp_path / "app"
         app_dir.mkdir()
         (app_dir / "__init__.py").write_text(
-            'secret_key = app.config.get("SECRET_KEY")\n'
-            'if not secret_key or secret_key == "dev-secret-change-me":\n'
-            'jwt_secret = "dev-jwt-secret"\n'
+            'secret_key = app.config.get("SECRET_KEY")\n'  # pragma: allowlist secret
+            'if not secret_key or secret_key == "dev-secret-change-me":\n'  # pragma: allowlist secret
+            'jwt_secret = "dev-jwt-secret"\n'  # pragma: allowlist secret
         )
         mock_result = MagicMock()
         mock_result.success = True
@@ -461,11 +467,13 @@ class TestRunDetectSecrets:
                         {"type": "Basic Auth Credentials", "line_number": 3}
                     ],
                     "app/__init__.py": [
-                        {"type": "Secret Keyword", "line_number": 1},
-                        {"type": "Secret Keyword", "line_number": 2},
-                        {"type": "Secret Keyword", "line_number": 3},
+                        {"type": "Secret Keyword", "line_number": 1},  # pragma: allowlist secret
+                        {"type": "Secret Keyword", "line_number": 2},  # pragma: allowlist secret
+                        {"type": "Secret Keyword", "line_number": 3},  # pragma: allowlist secret
                     ],
-                    "app/config.py": [{"type": "Secret Keyword", "line_number": 10}],
+                    "app/config.py": [
+                        {"type": "Secret Keyword", "line_number": 10}  # pragma: allowlist secret
+                    ],
                 }
             }
         )
@@ -488,7 +496,7 @@ class TestRunDetectSecrets:
             {
                 "results": {
                     "server/tests/test_auth.py": [
-                        {"type": "Secret Keyword", "line_number": 3}
+                        {"type": "Secret Keyword", "line_number": 3}  # pragma: allowlist secret
                     ]
                 }
             }
@@ -508,7 +516,7 @@ class TestRunDetectSecrets:
             {
                 "results": {
                     "ios/Flutter/ephemeral/generated.xcconfig": [
-                        {"type": "Secret Keyword", "line_number": 1}
+                        {"type": "Secret Keyword", "line_number": 1}  # pragma: allowlist secret
                     ]
                 }
             }
@@ -525,14 +533,16 @@ class TestRunDetectSecrets:
         app_dir = tmp_path / "app"
         app_dir.mkdir()
         (app_dir / "config.py").write_text(
-            'SECRET_KEY = "latest_production_key_abc123"\n'
+            'SECRET_KEY = "latest_production_key_abc123"\n'  # pragma: allowlist secret
         )
         mock_result = MagicMock()
         mock_result.success = True
         mock_result.output = json.dumps(
             {
                 "results": {
-                    "app/config.py": [{"type": "Secret Keyword", "line_number": 1}]
+                    "app/config.py": [
+                        {"type": "Secret Keyword", "line_number": 1}  # pragma: allowlist secret
+                    ]
                 }
             }
         )
