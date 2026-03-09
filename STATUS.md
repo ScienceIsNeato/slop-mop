@@ -1,5 +1,34 @@
 # Project Status
 
+## 2026-03-09 Delta: README Buff Philosophy Rail
+
+### Completed
+
+1. Expanded README to frame `sm buff` as a core product pillar (post-PR closure rail).
+2. Added explicit low-friction design principle:
+  - protocol must be path of least resistance for agents
+  - agents reason about solution space, not workflow mechanics
+3. Added scenario-rail documentation for protocol tracks:
+  - `fixed_in_code`
+  - `invalid_with_explanation`
+  - `no_longer_applicable`
+  - `out_of_scope_ticketed`
+  - `needs_human_feedback`
+4. Documented persistent buff memory model:
+  - `.slopmop/buff-persistent-memory/pr-<N>/loop-<K>/`
+5. Added fail-closed protocol language for classification errors.
+
+### Validation
+
+- Documentation-only update (`README.md`); no runtime code paths changed.
+
+### Follow-up
+
+- Strengthened README language to explicitly target agent incentive alignment:
+  - added "Agent Incentives And Gradient-Descent Behavior" section
+  - clarified that `buff` is execution protocol, not advisory prose
+  - emphasized that slop-mop optimizes for lowest-friction adherence to locked workflow
+
 ## 2026-03-09 Delta: Buff PR Feedback Rail v1 (Didactic + Persistent)
 
 ### Completed

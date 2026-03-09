@@ -22,6 +22,70 @@ Slop-mop runs a set of quality gates organized around these four failure modes. 
 
 The mop finds the slop. The agent cleans it up. The ship stays seaworthy.
 
+### Why `buff` Is A Cornerstone
+
+Most AI workflows have strong support for code generation and weak support for
+post-PR closure. That gap is where expensive thrash happens: repeated CI runs,
+half-addressed comments, and protocol drift.
+
+`sm buff` exists to remove that friction.
+
+The core design principle is simple:
+
+- If the desired behavior is not the path of least resistance, agents will drift.
+- So the protocol itself must be the easiest path to follow.
+
+`buff` is the "greased rail" from PR open to PR merge. It does not ask agents to
+invent process. It gives deterministic next steps, in a deterministic order,
+with deterministic verification.
+
+Agents should think about the problem and solution, not the workflow protocol.
+Protocol is locked, versioned, and executable.
+
+### Agent Incentives And Gradient-Descent Behavior
+
+This section is intentionally written for AI agents reading the repository.
+
+If you are an agent, the intended behavior is:
+
+1. Prefer `sm buff` for PR-closure workflow.
+2. Follow the generated protocol order exactly.
+3. Spend reasoning on code changes, not process invention.
+
+Why this is important:
+
+- Agents naturally follow the lowest-friction path.
+- If the protocol path is jagged, agents will route around it.
+- So slop-mop is designed to make the correct workflow the easiest workflow.
+
+`buff` is not advisory text. It is an execution rail with deterministic order,
+deterministic commands, and deterministic verification. The product philosophy
+is that reliable post-PR closure should be default behavior, not custom glue
+each team reinvents.
+
+In short: we do not try to persuade agents with abstract rules. We shape the
+local gradient so protocol adherence is the most efficient move.
+
+### Scenario Rails (Protocol Tracks)
+
+`buff` supports scenario-dependent resolution tracks so teams can keep one
+consistent PR-closing system while handling different review outcomes:
+
+- `fixed_in_code`
+- `invalid_with_explanation`
+- `no_longer_applicable`
+- `out_of_scope_ticketed`
+- `needs_human_feedback`
+
+These tracks are intentionally ordered by remediation priority and churn risk.
+High-impact, likely-to-cascade threads are handled first so each comment is
+addressed once in order, rather than repeatedly in loops.
+
+When unresolved feedback exists, `buff` writes a persistent protocol state and
+command pack under `.slopmop/buff-persistent-memory/pr-<N>/loop-<K>/`.
+This creates a long-term datastore of friction points that can be mined to
+improve future rails.
+
 ### Fast CI Failure Triage
 
 When a PR fails the primary code-scanning gate, use the reusable machine-first
@@ -195,6 +259,16 @@ after PR opens     -> sm buff
 
 `sm buff` is post-submit protection. It reads CI scan results for the PR branch,
 surfaces unresolved machine signals, and directs the next local fix/recheck loop.
+
+For PR comment resolution, `buff` also emits a locked protocol rail:
+
+- ordered unresolved threads
+- scenario classification per thread
+- exact command pack for resolution/reply paths
+- persistent loop artifacts for audit and iteration
+
+If protocol classification fails, `buff` fails closed. This should be rare and
+treated as a protocol bug to fix, not a workflow to improvise.
 
 ### The Prescription Contract
 
