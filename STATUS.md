@@ -1,5 +1,72 @@
 # Project Status
 
+## 2026-03-09 Delta: Buff PR Feedback Rail v1 (Didactic + Persistent)
+
+### Completed
+
+1. Implemented versioned protocol rail for unresolved PR feedback:
+  - `protocol_version = pr-feedback-v1`
+  - deterministic scenario taxonomy and priority order:
+    - `fixed_in_code`
+    - `invalid_with_explanation`
+    - `no_longer_applicable`
+    - `out_of_scope_ticketed`
+    - `needs_human_feedback`
+2. Added deterministic ordering model for unresolved threads:
+  - primary: scenario priority rank (ascending)
+  - secondary: `max(blast_radius_score, dependency_impact_score)` (descending)
+  - tertiary: `thread_id` (stable deterministic tiebreak)
+3. Added persistent buff protocol datastore (no `/tmp`):
+  - `.slopmop/buff-persistent-memory/pr-<PR>/loop-<N>/`
+  - artifacts:
+    - `pr_<PR>_comments_report.md`
+    - `protocol.json`
+    - `threads_raw.json`
+    - `classified_threads.json`
+    - `commands.sh`
+    - `execution_log.md`
+    - `outcomes.json`
+4. Added command-pack generation with scenario-specific exact command rails.
+5. Added fail-closed classification path:
+  - unknown scenario now returns `UNCLASSIFIED_THREAD_PROTOCOL_BLOCK` via check error.
+6. Kept `buff` wired to block on unresolved PR feedback via `fail_on_unresolved=True` gate path.
+
+### Validation
+
+- `pytest -q tests/unit/test_pr_checks.py tests/unit/test_ci_triage_and_buff.py` -> **49 passed**
+- `python -m slopmop.sm swab -g myopia:string-duplication.py --verbose` -> **passed**
+- `python -m slopmop.sm scour -g myopia:code-sprawl --verbose` -> **passed**
+- `python -m slopmop.sm scour -g overconfidence:missing-annotations.py --verbose` -> **passed**
+- `python -m slopmop.sm buff 85` -> **fails with unresolved PR feedback and emits persistent loop artifacts**
+
+### Notes
+
+- `sm` in shell may resolve to global install; validated implementation via `python -m slopmop.sm ...` for source-of-truth local behavior.
+
+## 2026-03-09 Delta: Buff Blocks Unresolved PR Threads
+
+### Completed
+
+1. Wired `sm buff` to run `myopia:ignored-feedback` in blocking mode:
+  - added PR feedback gate execution in `slopmop/cli/buff.py`
+  - `buff` now fails when unresolved review threads exist (`CheckStatus.FAILED`)
+  - `buff` also fails closed when PR feedback check errors (`CheckStatus.ERROR`)
+2. Added payload enrichment for buff output:
+  - `pr_feedback` object now included in JSON payload with gate/status/detail/error/fix suggestion
+3. Added regression test coverage:
+  - `tests/unit/test_ci_triage_and_buff.py`
+  - new test ensures `cmd_buff` returns non-zero when unresolved PR comments exist
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py` -> **21 passed**
+- `python -m slopmop.sm buff 85` -> **fails with unresolved PR review threads (3 unresolved)**
+
+### Note
+
+- Shell `sm` currently resolves to `/Users/pacey/.local/bin/sm` in this environment, which can diverge from local source edits.
+- Use `python -m slopmop.sm ...` when validating freshly edited local code paths.
+
 ## 2026-03-09 Delta: Lock ETA Metadata + Busy-Wait Estimate
 
 ### Completed

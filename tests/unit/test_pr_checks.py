@@ -298,12 +298,12 @@ class TestPRCommentsCheck:
 
         # Check key elements are present
         assert "PR COMMENT RESOLUTION PROTOCOL" in guidance
-        assert "COMMENTS BY CATEGORY" in guidance
+        assert "LOCKED RESOLUTION ORDER" in guidance
         assert "AI AGENT WORKFLOW" in guidance
         assert "PRRT_456" in guidance
-        assert "@testuser" in guidance
-        assert "OUTDATED" in guidance
-        assert "resolveReviewThread" in guidance
+        assert "no_longer_applicable" in guidance
+        assert "SCENARIO COMMAND MAPPING" in guidance
+        assert "fixed_in_code" in guidance
 
     def test_get_unresolved_threads_parses_response(self, tmp_path):
         """Test _get_unresolved_threads correctly parses GraphQL response."""
@@ -474,3 +474,49 @@ class TestPRCommentsCheck:
         # since it's written to a file, not shown in gate output
         normalized_comment = " ".join(long_comment.split())
         assert normalized_comment in guidance
+
+    def test_run_writes_persistent_protocol_artifacts(self, tmp_path):
+        """Run should emit protocol artifacts under .slopmop/buff-persistent-memory."""
+        (tmp_path / ".git").mkdir()
+
+        threads = [
+            {
+                "thread_id": "PRRT_abc",
+                "is_outdated": False,
+                "body": "Please fix this issue",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 42,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+
+        check = PRCommentsCheck({"fail_on_unresolved": True})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=123),
+            patch.object(check, "_get_repo_info", return_value=("owner", "repo")),
+            patch.object(check, "_get_unresolved_threads", return_value=threads),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+
+        base = tmp_path / ".slopmop" / "buff-persistent-memory" / "pr-123"
+        loop_dir = base / "loop-001"
+        assert loop_dir.is_dir()
+        assert (loop_dir / "protocol.json").exists()
+        assert (loop_dir / "classified_threads.json").exists()
+        assert (loop_dir / "threads_raw.json").exists()
+        assert (loop_dir / "commands.sh").exists()
+        assert (loop_dir / "execution_log.md").exists()
+        assert (loop_dir / "outcomes.json").exists()
+        assert (loop_dir / "pr_123_comments_report.md").exists()
+
+    def test_protocol_loop_directory_increments(self, tmp_path):
+        """Protocol loop directory should increment per run for same PR."""
+        check = PRCommentsCheck({})
+        first = check._next_protocol_loop_dir(str(tmp_path), 85)
+        second = check._next_protocol_loop_dir(str(tmp_path), 85)
+
+        assert first.name == "loop-001"
+        assert second.name == "loop-002"

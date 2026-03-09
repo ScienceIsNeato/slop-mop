@@ -12,6 +12,7 @@ import pytest
 
 from slopmop.cli import buff as buff_mod
 from slopmop.cli import scan_triage as triage
+from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting import rail
 
 
@@ -300,6 +301,18 @@ class TestScanTriageInternals:
 
 
 class TestBuffCommand:
+    @staticmethod
+    def _feedback_result(status: CheckStatus, **kwargs) -> CheckResult:
+        return CheckResult(
+            name="myopia:ignored-feedback",
+            status=status,
+            duration=0.01,
+            output=kwargs.get("output", ""),
+            error=kwargs.get("error"),
+            fix_suggestion=kwargs.get("fix_suggestion"),
+            status_detail=kwargs.get("status_detail"),
+        )
+
     def test_cmd_buff_human_success(self, monkeypatch, capsys):
         args = argparse.Namespace(
             json_output=False,
@@ -318,6 +331,11 @@ class TestBuffCommand:
         )
         monkeypatch.setattr(buff_mod, "write_json_out", Mock())
         monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
+        )
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -347,6 +365,11 @@ class TestBuffCommand:
         )
         monkeypatch.setattr(buff_mod, "write_json_out", Mock())
         monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
+        )
 
         assert buff_mod.cmd_buff(args) == 1
         out = capsys.readouterr().out
@@ -365,6 +388,11 @@ class TestBuffCommand:
 
         payload = {"schema": "slopmop/ci-triage/v1", "summary": {}, "actionable": []}
         monkeypatch.setattr(buff_mod, "run_triage", Mock(return_value=(0, payload)))
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
+        )
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -382,6 +410,11 @@ class TestBuffCommand:
         )
 
         monkeypatch.setattr(buff_mod, "run_triage", Mock(return_value=(0, None)))
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
+        )
         assert buff_mod.cmd_buff(args) == 1
         assert "ERROR: CI triage produced no payload." in capsys.readouterr().out
 
@@ -404,3 +437,40 @@ class TestBuffCommand:
 
         assert buff_mod.cmd_buff(args) == 1
         assert "ERROR: bad triage" in capsys.readouterr().out
+
+    def test_cmd_buff_fails_on_unresolved_feedback(self, monkeypatch, capsys):
+        args = argparse.Namespace(
+            json_output=False,
+            repo=None,
+            run_id=None,
+            pr_number=85,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+        )
+
+        monkeypatch.setattr(
+            buff_mod,
+            "run_triage",
+            Mock(return_value=(0, {"summary": {}, "actionable": [], "next_steps": []})),
+        )
+        monkeypatch.setattr(buff_mod, "write_json_out", Mock())
+        monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(
+                return_value=self._feedback_result(
+                    CheckStatus.FAILED,
+                    status_detail="3 unresolved",
+                    output="PR #85 has unresolved review threads.",
+                    error="3 unresolved PR comment(s)",
+                    fix_suggestion="Read full report: cat /tmp/pr_85_comments_report.md",
+                )
+            ),
+        )
+
+        assert buff_mod.cmd_buff(args) == 1
+        out = capsys.readouterr().out
+        assert "Buff failed: unresolved PR review threads remain." in out
+        assert "PR #85 has unresolved review threads." in out
