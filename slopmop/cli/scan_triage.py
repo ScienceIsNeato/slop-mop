@@ -221,7 +221,9 @@ def build_triage_payload(
     )
 
     results_raw = doc.get("results")
-    results_list: List[Any] = cast(List[Any], results_raw) if isinstance(results_raw, list) else []
+    results_list: List[Any] = (
+        cast(List[Any], results_raw) if isinstance(results_raw, list) else []
+    )
     results: List[Dict[str, Any]] = [
         cast(Dict[str, Any], r) for r in results_list if isinstance(r, dict)
     ]
@@ -262,7 +264,9 @@ def build_triage_payload(
         low_coverage_rows: list[tuple[float, str]] = []
         for row in hard_failures:
             findings_raw = row.get("findings")
-            findings: List[Any] = cast(List[Any], findings_raw) if isinstance(findings_raw, list) else []
+            findings: List[Any] = (
+                cast(List[Any], findings_raw) if isinstance(findings_raw, list) else []
+            )
             for finding in findings:
                 if not isinstance(finding, dict):
                     continue

@@ -587,12 +587,12 @@ Examples:
 def main(args: Optional[List[str]] = None) -> int:
     """Main entry point for sm CLI."""
     from slopmop.cli import (
+        cmd_buff,
         cmd_ci,
         cmd_commit_hooks,
         cmd_config,
         cmd_help,
         cmd_init,
-        cmd_buff,
         cmd_scour,
         cmd_status,
         cmd_swab,

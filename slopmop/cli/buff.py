@@ -12,8 +12,6 @@ import argparse
 import json
 
 from slopmop.cli.scan_triage import (
-    ARTIFACT_NAME,
-    WORKFLOW_NAME,
     TriageError,
     print_triage,
     run_triage,

@@ -6,6 +6,5 @@ Uses the package implementation so behavior matches pipx users.
 
 from slopmop.cli.scan_triage import main
 
-
 if __name__ == "__main__":
     raise SystemExit(main())
