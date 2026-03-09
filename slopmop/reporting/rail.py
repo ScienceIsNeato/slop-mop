@@ -59,13 +59,15 @@ def default_next_steps(pr_number: int | None) -> List[str]:
     """Return shared next-step guidance for the CI triage loop."""
     if pr_number is not None:
         return [
-            f"Re-run triage: sm buff {pr_number}",
             "Fix failed gates locally using targeted gate reruns from output",
-            f"Confirm clean status: sm buff {pr_number}",
+            "Run full validation locally: sm scour",
+            "Push your branch with the fixes",
+            f"Re-run triage: sm buff {pr_number}",
         ]
 
     return [
-        "Re-run triage: sm buff",
         "Fix failed gates locally using targeted gate reruns from output",
-        "Confirm clean status: sm buff",
+        "Run full validation locally: sm scour",
+        "Push your branch with the fixes",
+        "Re-run triage: sm buff",
     ]
