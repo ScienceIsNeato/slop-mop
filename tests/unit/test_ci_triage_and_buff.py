@@ -331,6 +331,7 @@ class TestBuffCommand:
         )
         monkeypatch.setattr(buff_mod, "write_json_out", Mock())
         monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        monkeypatch.setattr(buff_mod, "_project_root_from_cwd", Mock(return_value="/repo"))
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
@@ -365,6 +366,7 @@ class TestBuffCommand:
         )
         monkeypatch.setattr(buff_mod, "write_json_out", Mock())
         monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        monkeypatch.setattr(buff_mod, "_project_root_from_cwd", Mock(return_value="/repo"))
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
@@ -388,6 +390,7 @@ class TestBuffCommand:
 
         payload = {"schema": "slopmop/ci-triage/v1", "summary": {}, "actionable": []}
         monkeypatch.setattr(buff_mod, "run_triage", Mock(return_value=(0, payload)))
+        monkeypatch.setattr(buff_mod, "_project_root_from_cwd", Mock(return_value="/repo"))
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
@@ -426,11 +429,12 @@ class TestBuffCommand:
         )
         monkeypatch.setattr(buff_mod, "write_json_out", Mock())
         monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        monkeypatch.setattr(buff_mod, "_project_root_from_cwd", Mock(return_value="/repo"))
         feedback_gate = Mock(return_value=self._feedback_result(CheckStatus.PASSED))
         monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
 
         assert buff_mod.cmd_buff(args) == 0
-        feedback_gate.assert_called_once_with(85)
+        feedback_gate.assert_called_once_with(85, "/repo")
 
     def test_cmd_buff_no_payload(self, monkeypatch, capsys):
         args = argparse.Namespace(
@@ -444,6 +448,7 @@ class TestBuffCommand:
         )
 
         monkeypatch.setattr(buff_mod, "run_triage", Mock(return_value=(0, None)))
+        monkeypatch.setattr(buff_mod, "_project_root_from_cwd", Mock(return_value="/repo"))
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
@@ -490,6 +495,7 @@ class TestBuffCommand:
         )
         monkeypatch.setattr(buff_mod, "write_json_out", Mock())
         monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        monkeypatch.setattr(buff_mod, "_project_root_from_cwd", Mock(return_value="/repo"))
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
@@ -508,3 +514,22 @@ class TestBuffCommand:
         out = capsys.readouterr().out
         assert "Buff failed: unresolved PR review threads remain." in out
         assert "PR #85 has unresolved review threads." in out
+
+    def test_project_root_from_cwd_uses_git_toplevel(self, monkeypatch):
+        monkeypatch.setattr(
+            buff_mod.subprocess,
+            "run",
+            Mock(return_value=SimpleNamespace(returncode=0, stdout="/repo\n")),
+        )
+
+        assert buff_mod._project_root_from_cwd() == "/repo"
+
+    def test_project_root_from_cwd_falls_back_to_cwd(self, monkeypatch):
+        monkeypatch.setattr(
+            buff_mod.subprocess,
+            "run",
+            Mock(return_value=SimpleNamespace(returncode=1, stdout="")),
+        )
+        monkeypatch.setattr(buff_mod.os, "getcwd", Mock(return_value="/cwd"))
+
+        assert buff_mod._project_root_from_cwd() == "/cwd"

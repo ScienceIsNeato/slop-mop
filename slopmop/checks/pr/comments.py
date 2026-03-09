@@ -652,9 +652,14 @@ class PRCommentsCheck(BaseCheck):
                 continue
             max_loop = max(max_loop, int(match.group(1)))
 
-        loop_dir = root / f"loop-{max_loop + 1:03d}"
-        loop_dir.mkdir(parents=True, exist_ok=False)
-        return loop_dir
+        next_loop = max_loop + 1
+        while True:
+            loop_dir = root / f"loop-{next_loop:03d}"
+            try:
+                loop_dir.mkdir(parents=True, exist_ok=False)
+                return loop_dir
+            except FileExistsError:
+                next_loop += 1
 
     def _build_commands_script(
         self,

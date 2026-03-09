@@ -1,5 +1,23 @@
 # Project Status
 
+## 2026-03-09 Delta: PR #85 Buff Root And Loop-Race Hardening
+
+### Completed
+
+1. Added `_project_root_from_cwd()` in `slopmop/cli/buff.py` so the blocking PR-feedback gate uses the git toplevel instead of raw `os.getcwd()`.
+2. Updated `cmd_buff()` to pass that resolved project root into `_run_pr_feedback_gate(...)`, keeping artifact paths and `.git` detection tied to the actual repo root.
+3. Hardened `PRCommentsCheck._next_protocol_loop_dir()` against concurrent `buff` runs:
+  - if another process creates the next loop directory first, allocation now retries with the next suffix instead of crashing on `FileExistsError`.
+4. Added regression coverage for:
+  - git toplevel project-root resolution fallback behavior
+  - `cmd_buff()` passing the resolved project root to the feedback gate
+  - loop directory retry after a simulated creation race
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py tests/unit/test_pr_checks.py` -> **55 passed**
+- `python -m slopmop.sm swab -g myopia:vulnerability-blindness.py --verbose` -> **passed**
+
 ## 2026-03-09 Delta: PR #85 Buff PR Resolution Consistency
 
 ### Completed

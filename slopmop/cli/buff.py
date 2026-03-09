@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+from pathlib import Path
 
 from slopmop.checks.pr.comments import PRCommentsCheck
 from slopmop.cli.scan_triage import (
@@ -22,7 +24,27 @@ from slopmop.cli.scan_triage import (
 from slopmop.core.result import CheckResult, CheckStatus
 
 
-def _run_pr_feedback_gate(pr_number: int | None) -> CheckResult:
+def _project_root_from_cwd() -> str:
+    """Resolve the git project root for the current working directory."""
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return os.getcwd()
+
+    root = (result.stdout or "").strip()
+    if result.returncode != 0 or not root:
+        return os.getcwd()
+    return str(Path(root))
+
+
+def _run_pr_feedback_gate(pr_number: int | None, project_root: str) -> CheckResult:
     """Run ignored-feedback gate in blocking mode for buff semantics."""
 
     check = PRCommentsCheck({"fail_on_unresolved": True})
@@ -31,7 +53,7 @@ def _run_pr_feedback_gate(pr_number: int | None) -> CheckResult:
     try:
         if pr_number is not None:
             os.environ["GITHUB_PR_NUMBER"] = str(pr_number)
-        return check.run(os.getcwd())
+        return check.run(project_root)
     finally:
         if pr_number is not None:
             if original_pr_env is None:
@@ -66,7 +88,10 @@ def cmd_buff(args: argparse.Namespace) -> int:
         return 1
 
     resolved_pr_number = payload.get("pr_number", args.pr_number)
-    feedback_result = _run_pr_feedback_gate(resolved_pr_number)
+    feedback_result = _run_pr_feedback_gate(
+        resolved_pr_number,
+        _project_root_from_cwd(),
+    )
     payload["pr_feedback"] = {
         "gate": "myopia:ignored-feedback",
         "status": feedback_result.status.value,

@@ -1,6 +1,7 @@
 """Tests for PR comments check."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from slopmop.checks.pr.comments import PRCommentsCheck
@@ -558,3 +559,22 @@ class TestPRCommentsCheck:
 
         assert first.name == "loop-001"
         assert second.name == "loop-002"
+
+    def test_protocol_loop_directory_retries_after_race(self, tmp_path, monkeypatch):
+        """Loop directory allocation should retry if another process creates it first."""
+        check = PRCommentsCheck({})
+        original_mkdir = Path.mkdir
+        collided = False
+
+        def racing_mkdir(self, mode=0o777, parents=False, exist_ok=False):
+            nonlocal collided
+            original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
+            if self.name == "loop-001" and not collided:
+                collided = True
+                raise FileExistsError(str(self))
+
+        monkeypatch.setattr(Path, "mkdir", racing_mkdir)
+
+        loop_dir = check._next_protocol_loop_dir(str(tmp_path), 85)
+
+        assert loop_dir.name == "loop-002"
