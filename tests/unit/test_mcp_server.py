@@ -96,6 +96,24 @@ def test_tools_call_returns_is_error_when_swab_execution_fails(tmp_path):
     assert response["result"]["structuredContent"]["error"] == "boom"
 
 
+def test_tools_call_forwards_no_cache_when_enabled(tmp_path):
+    server = SwabMcpServer(project_root=tmp_path, allow_no_cache=True)
+    with patch(
+        "slopmop.mcp.server._run_swab",
+        return_value=(True, {"summary": {"all_passed": True}}),
+    ) as run_swab:
+        response = server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "tools/call",
+                "params": {"name": "swab", "arguments": {"no_cache": True}},
+            }
+        )
+    assert response is not None
+    run_swab.assert_called_once_with(tmp_path, no_cache=True)
+
+
 def test_tools_call_unknown_tool_returns_rpc_error(tmp_path):
     server = SwabMcpServer(project_root=tmp_path)
     response = server.handle(
@@ -145,6 +163,21 @@ def test_tools_call_requires_object_arguments(tmp_path):
     assert response["error"]["code"] == -32602
 
 
+def test_tools_call_rejects_unknown_arguments(tmp_path):
+    server = SwabMcpServer(project_root=tmp_path, allow_no_cache=False)
+    response = server.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 42,
+            "method": "tools/call",
+            "params": {"name": "swab", "arguments": {"no_cache": True}},
+        }
+    )
+    assert response is not None
+    assert response["error"]["code"] == -32602
+    assert "Unsupported tool argument" in response["error"]["message"]
+
+
 def test_read_and_write_message_round_trip():
     payload = {"jsonrpc": "2.0", "id": 5, "result": {"ok": True}}
     out = io.BytesIO()
@@ -160,10 +193,17 @@ def test_read_message_returns_none_for_bad_headers():
 
 
 def test_read_message_returns_none_for_invalid_json():
-    body = b"{not-json"
-    raw = b"Content-Length: 9\r\n\r\n" + body
-    stream = io.BytesIO(raw)
+    stream = io.BytesIO(b"{not-json\n")
     assert _read_message(stream) is None
+
+
+def test_read_message_skips_invalid_lines_then_reads_valid_json():
+    stream = io.BytesIO(
+        b"not-json\n" b"\n" b'{"jsonrpc":"2.0","id":7,"method":"ping"}\n'
+    )
+    parsed = _read_message(stream)
+    assert parsed is not None
+    assert parsed["method"] == "ping"
 
 
 def test_load_json_payload_fallback_line_parsing():
@@ -277,13 +317,15 @@ def test_initialized_notification_and_ping_without_id_are_noops(tmp_path):
         server.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     )
     assert server.handle({"jsonrpc": "2.0", "method": "ping"}) is None
+    assert (
+        server.handle({"jsonrpc": "2.0", "method": "initialize", "params": {}}) is None
+    )
 
 
 def test_shutdown_and_exit_flags(tmp_path):
     server = SwabMcpServer(project_root=tmp_path)
     shutdown = server.handle({"jsonrpc": "2.0", "id": 60, "method": "shutdown"})
     assert shutdown is not None
-    assert server.shutdown_requested is True
     assert server.should_exit is False
 
     exit_resp = server.handle({"jsonrpc": "2.0", "method": "exit"})

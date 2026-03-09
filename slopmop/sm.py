@@ -3,7 +3,7 @@
 Usage:
     sm swab [--quality-gates GATES] [--verbose] [--quiet]
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
-    sm mcp serve [--project-root PATH]
+    sm mcp serve [--project-root PATH] [--allow-no-cache]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
     sm commit-hooks status

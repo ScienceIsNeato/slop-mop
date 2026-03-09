@@ -20,6 +20,7 @@ _JSONRPC_VERSION = "2.0"
 _PROTOCOL_VERSION = "2024-11-05"
 _SERVER_NAME = "slop-mop"
 _TOOL_NAME = "swab"
+_MAX_MESSAGE_BYTES = 1_000_000
 try:
     _SERVER_VERSION = version("slopmop")
 except PackageNotFoundError:
@@ -43,49 +44,41 @@ def _rpc_error(request_id: object, code: int, message: str) -> Dict[str, Any]:
 
 
 def _read_message(stdin: BinaryIO) -> Optional[Dict[str, Any]]:
-    """Read one framed JSON-RPC message from stdio."""
-    headers: Dict[str, str] = {}
+    """Read one newline-delimited JSON-RPC message from stdio.
+
+    Returns ``None`` only on EOF. Invalid lines are skipped to keep the
+    server alive after malformed input.
+    """
     while True:
-        line = stdin.readline()
-        if line == b"":
+        raw_line = stdin.readline(_MAX_MESSAGE_BYTES + 1)
+        if raw_line == b"":
             return None
-        stripped = line.decode("utf-8", errors="replace").strip()
-        if not stripped:
-            break
-        if ":" not in stripped:
+
+        # Oversized line: drain to newline boundary and skip it.
+        if len(raw_line) > _MAX_MESSAGE_BYTES:
+            while raw_line and not raw_line.endswith(b"\n"):
+                raw_line = stdin.readline(_MAX_MESSAGE_BYTES + 1)
+                if raw_line == b"":
+                    return None
             continue
-        key, value = stripped.split(":", 1)
-        headers[key.lower().strip()] = value.strip()
 
-    length_raw = headers.get("content-length")
-    if not length_raw:
-        return None
+        line = raw_line.strip()
+        if not line:
+            continue
 
-    try:
-        length = int(length_raw)
-    except ValueError:
-        return None
-    if length <= 0:
-        return None
+        try:
+            data = json.loads(line.decode("utf-8"))
+        except json.JSONDecodeError:
+            continue
 
-    payload = stdin.read(length)
-    if len(payload) != length:
-        return None
-
-    try:
-        data = json.loads(payload.decode("utf-8"))
-    except json.JSONDecodeError:
-        return None
-
-    if isinstance(data, dict):
-        return cast(Dict[str, Any], data)
-    return None
+        if isinstance(data, dict):
+            return cast(Dict[str, Any], data)
 
 
 def _write_message(stdout: BinaryIO, payload: Dict[str, Any]) -> None:
-    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    header = f"Content-Length: {len(raw)}\r\n\r\n".encode("ascii")
-    stdout.write(header)
+    raw = (
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n"
+    ).encode("utf-8")
     stdout.write(raw)
     stdout.flush()
 
@@ -184,7 +177,6 @@ class SwabMcpServer:
 
     project_root: Path
     allow_no_cache: bool = False
-    shutdown_requested: bool = False
     should_exit: bool = False
 
     def _tool_schema(self) -> Dict[str, Any]:
@@ -208,10 +200,23 @@ class SwabMcpServer:
             },
         }
 
+    def _validate_swab_arguments(
+        self, arguments: Dict[str, Any]
+    ) -> tuple[bool, Optional[str]]:
+        """Validate tool arguments against runtime capability flags."""
+        allowed_keys: set[str] = {"no_cache"} if self.allow_no_cache else set()
+        unknown_keys = sorted(set(arguments.keys()) - allowed_keys)
+        if unknown_keys:
+            return (
+                False,
+                "Unsupported tool argument(s): " + ", ".join(unknown_keys),
+            )
+        return True, None
+
     def _call_swab_tool(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        no_cache = False
-        if self.allow_no_cache:
-            no_cache = bool(arguments.get("no_cache", False))
+        no_cache = (
+            bool(arguments.get("no_cache", False)) if self.allow_no_cache else False
+        )
 
         ok, payload = _run_swab(self.project_root, no_cache=no_cache)
         if not ok:
@@ -257,6 +262,8 @@ class SwabMcpServer:
             return None
 
         if method == "initialize":
+            if not has_id:
+                return None
             client_version: Optional[str] = None
             if isinstance(params_raw, dict):
                 protocol_raw = cast(Dict[str, Any], params_raw).get("protocolVersion")
@@ -312,6 +319,9 @@ class SwabMcpServer:
                 return _rpc_error(
                     request_id, -32602, "Invalid params: arguments must be an object"
                 )
+            valid, validation_error = self._validate_swab_arguments(arguments)
+            if not valid and validation_error is not None:
+                return _rpc_error(request_id, -32602, validation_error)
             if tool_name != _TOOL_NAME:
                 return _rpc_error(request_id, -32602, f"Unknown tool: {tool_name}")
 
@@ -319,7 +329,6 @@ class SwabMcpServer:
             return _rpc_result(request_id, result)
 
         if method == "shutdown":
-            self.shutdown_requested = True
             if has_id:
                 return _rpc_result(request_id, {})
             return None
