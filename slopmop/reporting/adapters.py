@@ -66,6 +66,24 @@ class JsonAdapter:
         if report.verify_command:
             output["next_steps"] = [report.verify_command]
 
+        # Machine-readable runtime warnings for automation/CI parsers.
+        # Keep this orthogonal to actionable gate failures: these are
+        # execution-context warnings, not check results.
+        skip_reasons = report.summary.skip_reason_summary()
+        budget_skips = skip_reasons.get("time", 0)
+        if budget_skips > 0:
+            output["runtime_warnings"] = [
+                {
+                    "code": "swabbing_time_budget_skipped",
+                    "message": (
+                        "Swabbing-time budget skipped timed checks; "
+                        "run full coverage when needed."
+                    ),
+                    "skipped_timed_checks": budget_skips,
+                    "suggested_command": "sm swab --swabbing-time 0",
+                }
+            ]
+
         return output
 
 

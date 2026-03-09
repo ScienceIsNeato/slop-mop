@@ -39,6 +39,22 @@
 - Deduped repeated literals that were tripping `myopia:string-duplication.py` (shared constants/helpers + Dart command assembly cleanup).
 - `sm swab --swabbing-time 0 --json --output-file .slopmop/precommit_equivalent.json` → **all_passed: true**
 
+### Follow-up: JSON runtime warning payload
+
+1. Added machine-readable runtime warning in JSON output:
+  - `slopmop/reporting/adapters.py`
+  - Emits `runtime_warnings` when checks are skipped due to swabbing-time budget.
+  - Payload includes: `code`, `message`, `skipped_timed_checks`, `suggested_command`.
+
+2. Added unit tests:
+  - `tests/unit/test_run_report.py`
+    - `test_runtime_warning_present_for_time_budget_skips`
+    - `test_runtime_warning_absent_without_time_budget_skips`
+
+3. Smoke-validated CLI output:
+  - `sm swab --swabbing-time 1 --json --output-file .slopmop/runtime_warning_smoke.json`
+  - JSON now includes `runtime_warnings` with `code: swabbing_time_budget_skipped`.
+
 ## 2026-03-08 Delta: Prevent CI Surprise From Budget-Skipped Swab Gates
 
 ### Root Cause Verified

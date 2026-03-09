@@ -270,6 +270,27 @@ class TestJsonAdapter:
         out = JsonAdapter.render(report)
         assert out["results"][0]["role"] == "foundation"
 
+    def test_runtime_warning_present_for_time_budget_skips(self) -> None:
+        summary = _summary(
+            [
+                _result("p", CheckStatus.PASSED),
+                _result("s", CheckStatus.SKIPPED, skip_reason=SkipReason.TIME_BUDGET),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        warnings = out.get("runtime_warnings")
+        assert isinstance(warnings, list)
+        assert warnings[0]["code"] == "swabbing_time_budget_skipped"
+        assert warnings[0]["skipped_timed_checks"] == 1
+        assert warnings[0]["suggested_command"] == "sm swab --swabbing-time 0"
+
+    def test_runtime_warning_absent_without_time_budget_skips(self) -> None:
+        summary = _summary([_result("p", CheckStatus.PASSED)])
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert "runtime_warnings" not in out
+
 
 # ─── SarifAdapter ────────────────────────────────────────────────────────
 
