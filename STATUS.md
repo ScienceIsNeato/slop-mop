@@ -11,6 +11,33 @@
 
 **Status: LOCAL — Flutter gates upstreamed and freshness UX implemented**
 
+## 2026-03-10 Delta: PR Comment Remediation
+
+### Completed
+
+1. Addressed new Dart gate review feedback:
+  - `slopmop/checks/dart/format.py` now treats timeouts separately from formatting drift so timeout failures no longer point users at the wrong fix.
+
+2. Tightened cache provenance semantics:
+  - `slopmop/reporting/report.py` now counts cached denominators consistently for skipped results.
+  - Mixed cached provenance now reports aggregate commits and oldest/newest timestamps instead of copying `cached[0]` into misleading single-source fields.
+
+3. Aligned init-time tool detection with the new Flutter/Dart built-ins:
+  - `slopmop/cli/detection.py` now tracks missing tool requirements for `flutter-analyze`, `flutter-test`, and `dart-format-check`.
+  - Available-tool reporting now deduplicates repeated tool hits.
+
+4. Added regression coverage:
+  - `tests/unit/test_dart_checks.py` covers timeout-specific format failures.
+  - `tests/unit/test_run_report.py` covers skipped-result cache denominators and mixed cache provenance.
+  - `tests/unit/test_sm_cli.py` asserts missing-tool mapping for the new Flutter/Dart gates.
+
+### Validation
+
+- `uv run --with-editable '.[all]' python -m pytest tests/unit/test_dart_checks.py tests/unit/test_run_report.py tests/unit/test_sm_cli.py -q` -> **166 passed**
+- `uv run --with-editable '.[all]' python -m pytest tests/unit/test_cli.py tests/unit/test_dart_checks.py tests/unit/test_run_report.py tests/unit/test_sm_cli.py -q` -> **189 passed**
+- `uv run --with-editable '.[all]' sm swab -g myopia:string-duplication.py --no-cache --no-auto-fix --static` -> **passed**
+- `uv run --with-editable '.[all]' sm scour --no-cache --no-auto-fix --static --no-json` -> **13 checks passed**
+
 ## 2026-03-09 Delta: QueueIt Dogfood Follow-Up Planning
 
 ### Confirmed Baseline

@@ -401,7 +401,7 @@ class TestDetectProjectType:
     def test_dart_detection_omits_flutter_custom_gates_when_tools_missing(
         self, tmp_path
     ):
-        """Dart still gets first-class gate recommendations when tools are missing."""
+        """Dart still gets first-class recommendations and missing-tool mapping."""
         with (
             patch(
                 "slopmop.cli.detection._detect_languages_with_scc",
@@ -417,6 +417,21 @@ class TestDetectProjectType:
         assert "overconfidence:flutter-test" in result["recommended_gates"]
         assert "laziness:dart-format-check" in result["recommended_gates"]
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
+        assert (
+            "flutter",
+            "laziness:flutter-analyze",
+            "Install Flutter SDK: https://docs.flutter.dev/get-started/install",
+        ) in result["missing_tools"]
+        assert (
+            "flutter",
+            "overconfidence:flutter-test",
+            "Install Flutter SDK: https://docs.flutter.dev/get-started/install",
+        ) in result["missing_tools"]
+        assert (
+            "dart",
+            "laziness:dart-format-check",
+            "Install Dart SDK: https://dart.dev/get-dart",
+        ) in result["missing_tools"]
 
 
 class TestPromptFunctions:

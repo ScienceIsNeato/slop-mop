@@ -145,6 +145,19 @@ class TestDartFormatCheck:
         assert result.status == CheckStatus.FAILED
         assert "formatting drift" in (result.error or "").lower()
 
+    def test_fails_with_timeout_specific_error(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = DartFormatCheck({})
+        run_result = MagicMock(success=False, output="", timed_out=True)
+        with (
+            patch("slopmop.checks.dart.format.find_tool", return_value="dart"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "timed out" in (result.error or "").lower()
+        assert "formatting drift" not in (result.error or "").lower()
+
 
 class TestDartCoverageCheck:
     """Tests for DartCoverageCheck."""

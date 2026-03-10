@@ -312,6 +312,51 @@ class TestJsonAdapter:
         assert isinstance(warnings, list)
         assert any(w["code"] == "cached_results_present" for w in warnings)
 
+    def test_cache_block_counts_skipped_results_in_denominator(self) -> None:
+        summary = _summary(
+            [
+                CheckResult(
+                    name="s",
+                    status=CheckStatus.SKIPPED,
+                    duration=0.1,
+                    cached=True,
+                )
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert out["cache"]["cached_results"] == 1
+        assert out["cache"]["total_ran"] == 1
+
+    def test_cache_block_preserves_mixed_provenance(self) -> None:
+        summary = _summary(
+            [
+                CheckResult(
+                    name="a",
+                    status=CheckStatus.PASSED,
+                    duration=0.1,
+                    cached=True,
+                    cache_commit="abc1234",
+                    cache_timestamp="2026-03-09T12:00:00+00:00",
+                ),
+                CheckResult(
+                    name="b",
+                    status=CheckStatus.SKIPPED,
+                    duration=0.1,
+                    cached=True,
+                    cache_commit="def5678",
+                    cache_timestamp="2026-03-10T12:00:00+00:00",
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert out["cache"]["source_commits"] == ["abc1234", "def5678"]
+        assert out["cache"]["oldest_source_timestamp"] == "2026-03-09T12:00:00+00:00"
+        assert out["cache"]["newest_source_timestamp"] == "2026-03-10T12:00:00+00:00"
+        assert "source_commit" not in out["cache"]
+        assert "source_timestamp" not in out["cache"]
+
 
 # ─── SarifAdapter ────────────────────────────────────────────────────────
 

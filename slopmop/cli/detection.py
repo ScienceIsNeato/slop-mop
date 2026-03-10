@@ -24,6 +24,7 @@ _INSTALL_LINT = "pipx install slopmop[lint]"
 _INSTALL_TYPING = "pipx install slopmop[typing]"
 _INSTALL_ANALYSIS = "pipx install slopmop[analysis]"
 _INSTALL_SECURITY = "pipx install slopmop[security]"
+_INSTALL_DART = "Install Dart SDK: https://dart.dev/get-dart"
 _INSTALL_FLUTTER = "Install Flutter SDK: https://docs.flutter.dev/get-started/install"
 
 REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
@@ -44,6 +45,10 @@ REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     ("pip-audit", "myopia:dependency-risk.py", _INSTALL_SECURITY),
     # Complexity scanning → [analysis] extra
     ("radon", "laziness:complexity-creep.py", _INSTALL_ANALYSIS),
+    # Dart/Flutter maintenance gates
+    ("flutter", "laziness:flutter-analyze", _INSTALL_FLUTTER),
+    ("flutter", "overconfidence:flutter-test", _INSTALL_FLUTTER),
+    ("dart", "laziness:dart-format-check", _INSTALL_DART),
     # Dart/Flutter coverage gate
     ("flutter", "overconfidence:coverage-gaps.dart", _INSTALL_FLUTTER),
 ]
@@ -189,11 +194,14 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
     """
     available: List[str] = []
     missing: List[Tuple[str, str, str]] = []
+    seen_available: Set[str] = set()
 
     for tool_name, check_name, install_cmd in REQUIRED_TOOLS:
         found = find_tool(tool_name, str(project_root))
         if found:
-            available.append(tool_name)
+            if tool_name not in seen_available:
+                available.append(tool_name)
+                seen_available.add(tool_name)
         else:
             missing.append((tool_name, check_name, install_cmd))
 

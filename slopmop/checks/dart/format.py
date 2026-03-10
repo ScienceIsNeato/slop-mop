@@ -13,7 +13,7 @@ from slopmop.checks.base import (
     count_source_scope,
     find_tool,
 )
-from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
+from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND, TESTS_TIMED_OUT_MSG
 from slopmop.checks.dart.common import find_pubspec_dirs
 from slopmop.core.result import (
     CheckResult,
@@ -87,6 +87,19 @@ class DartFormatCheck(BaseCheck):
             timeout=120,
         )
         duration = time.time() - start_time
+        if result.timed_out:
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=duration,
+                output=result.output,
+                error=f"{TESTS_TIMED_OUT_MSG} (dart format)",
+                findings=[
+                    Finding(
+                        message="dart format timed out",
+                        level=FindingLevel.ERROR,
+                    )
+                ],
+            )
         if not result.success:
             return self._create_result(
                 status=CheckStatus.FAILED,
