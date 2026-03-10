@@ -344,6 +344,10 @@ class TestPythonTestsCheck:
 
     def test_run_success(self, tmp_path):
         """Test run with passing tests."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text(
+            "def test_ok():\n    pass\n"
+        )
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
             returncode=0, stdout="10 passed in 0.5s", stderr="", duration=1.0
@@ -365,6 +369,10 @@ class TestPythonTestsCheck:
 
     def test_run_tests_fail(self, tmp_path):
         """Test run when tests fail."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text(
+            "def test_ok():\n    pass\n"
+        )
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
             returncode=1,
@@ -384,6 +392,10 @@ class TestPythonTestsCheck:
 
     def test_run_coverage_fail_only(self, tmp_path):
         """Test run passes when only coverage fails (not tests)."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text(
+            "def test_ok():\n    pass\n"
+        )
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
             returncode=1,
@@ -398,6 +410,21 @@ class TestPythonTestsCheck:
 
         # Should pass because tests passed, only coverage failed
         assert result.status == CheckStatus.PASSED
+
+    def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
+        """Skip reason uses the generic applicable message for Python projects."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonTestsCheck({})
+        assert check.skip_reason(str(tmp_path)) == "Python tests check not applicable"
+
+    def test_run_fails_when_no_python_tests_exist(self, tmp_path):
+        """No test files should fail with explicit fix guidance."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonTestsCheck({})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "No Python test files" in (result.error or "")
+        assert result.fix_suggestion is not None
 
     def test_parse_failed_lines_ignores_embedded_failed_token(self):
         """Regex should not match when line doesn't start with FAILED."""
@@ -439,6 +466,10 @@ class TestPythonCoverageCheck:
 
     def test_run_coverage_above_threshold(self, tmp_path):
         """Test run when coverage is above threshold."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text(
+            "def test_ok():\n    pass\n"
+        )
         # Create coverage.xml file
         (tmp_path / "coverage.xml").write_text("<coverage></coverage>")
 
@@ -455,6 +486,10 @@ class TestPythonCoverageCheck:
 
     def test_run_coverage_below_threshold(self, tmp_path):
         """Test run when coverage is below threshold."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text(
+            "def test_ok():\n    pass\n"
+        )
         # Create coverage.xml file
         (tmp_path / "coverage.xml").write_text("<coverage></coverage>")
 
@@ -471,6 +506,10 @@ class TestPythonCoverageCheck:
 
     def test_run_no_coverage_data(self, tmp_path):
         """Test run when no coverage data exists."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text(
+            "def test_ok():\n    pass\n"
+        )
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
             returncode=1, stdout="No data to report", stderr="", duration=1.0
@@ -481,6 +520,23 @@ class TestPythonCoverageCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+    def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
+        """Skip reason uses coverage-specific generic message for Python projects."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonCoverageCheck({})
+        assert (
+            check.skip_reason(str(tmp_path)) == "Python coverage check not applicable"
+        )
+
+    def test_run_fails_when_no_python_tests_exist(self, tmp_path):
+        """No tests should fail before coverage parsing with actionable guidance."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonCoverageCheck({})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "No Python test files" in (result.error or "")
+        assert result.fix_suggestion is not None
 
 
 class TestPythonStaticAnalysisCheck:
@@ -1212,6 +1268,8 @@ class TestPythonDiffCoverageCheck:
         assert check.is_applicable(str(tmp_path)) is True
 
     def test_run_success(self, tmp_path):
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
         (tmp_path / "coverage.xml").write_text("<coverage/>")
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
@@ -1223,6 +1281,8 @@ class TestPythonDiffCoverageCheck:
         assert result.status == CheckStatus.PASSED
 
     def test_run_no_diff(self, tmp_path):
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
         (tmp_path / "coverage.xml").write_text("<coverage/>")
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
@@ -1234,6 +1294,8 @@ class TestPythonDiffCoverageCheck:
         assert result.status == CheckStatus.PASSED
 
     def test_run_failure_with_findings(self, tmp_path):
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
         (tmp_path / "coverage.xml").write_text("<coverage/>")
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
@@ -1249,6 +1311,8 @@ class TestPythonDiffCoverageCheck:
         assert result.findings
 
     def test_run_failure_no_parseable_findings(self, tmp_path):
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
         (tmp_path / "coverage.xml").write_text("<coverage/>")
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
@@ -1264,6 +1328,8 @@ class TestPythonDiffCoverageCheck:
         assert len(result.findings) == 1
 
     def test_run_no_coverage_xml(self, tmp_path):
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
         check = PythonDiffCoverageCheck({})
         with (
             patch.object(check, "check_project_venv_or_warn", return_value=None),
@@ -1274,3 +1340,18 @@ class TestPythonDiffCoverageCheck:
         ):
             result = check.run(str(tmp_path))
         assert result.status == CheckStatus.ERROR
+
+    def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
+        """Skip reason uses diff-coverage specific generic message for Python projects."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonDiffCoverageCheck({})
+        assert check.skip_reason(str(tmp_path)) == "Diff coverage check not applicable"
+
+    def test_run_fails_when_no_python_tests_exist(self, tmp_path):
+        """No tests should fail before invoking diff-cover."""
+        (tmp_path / "requirements.txt").touch()
+        check = PythonDiffCoverageCheck({})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "No Python test files" in (result.error or "")
+        assert result.fix_suggestion is not None

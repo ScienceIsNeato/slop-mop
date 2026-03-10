@@ -1,5 +1,357 @@
 # Project Status
 
+## 2026-03-10 Delta: Buff Finalize Ready (PR #85)
+
+### Completed
+
+1. Resolved the final remaining review thread after reclassifying it from `needs_human_feedback` to `fixed_in_code` based on actual implemented changes.
+2. Re-ran the post-PR rail (`inspect` then `iterate`) and confirmed no unresolved review threads remain.
+3. Executed `sm buff finalize 85` (no push) and confirmed the protocol reports PR #85 as ready to publish.
+
+### Validation
+
+- `python -m slopmop.sm buff finalize 85` -> **ready; no unresolved threads; scour clean**
+- Finalize plan: `.slopmop/buff-persistent-memory/pr-85/loop-016/finalize_plan.json`
+
+## 2026-03-10 Delta: Buff Iterate Live PR-85 Pass
+
+### Completed
+
+1. Exercised the live `sm buff inspect 85` rail and confirmed CI is clean while PR #85 still has 4 unresolved review threads.
+2. Exercised the live `sm buff iterate 85` rail and confirmed the first deterministic frontier is a 3-thread batch covering `slopmop/checks/javascript/coverage.py`, `slopmop/sm.py`, and `README.md`.
+3. Updated `fixed_in_code` draft placeholders so iterate artifacts no longer imply a commit SHA already exists before changes are committed.
+
+### Validation
+
+- Live check: `python -m slopmop.sm buff inspect 85 --output-file .slopmop/last_buff_inspect.json` -> **CI clean, 4 unresolved review threads**
+- Live check: `python -m slopmop.sm buff iterate 85` -> **prepared loop-012 with 3-thread rank-1 frontier**
+- `python -m slopmop.sm swab -g overconfidence:untested-code.py --json --output-file .slopmop/last_swab_iterate_state.json` -> **passed**
+
+## 2026-03-10 Delta: Buff Finalize Plan Hardening
+
+### Completed
+
+1. Made `sm buff finalize` treat finalize-plan persistence as best-effort instead of crashing when the local state root is unavailable or read-only.
+2. Added explicit finalize-plan rendering for the degraded case so the rail still reports status without pretending a plan file was written.
+3. Preserved real artifact writing when the latest PR loop directory exists and is writable.
+
+### Validation
+
+- `python -m slopmop.sm swab -g overconfidence:untested-code.py --json --output-file .slopmop/last_swab_iterate_state.json` -> **passed**
+
+## 2026-03-10 Delta: Buff Inspect And Iterate Loop
+
+### Completed
+
+1. Promoted `sm buff inspect` to the named post-PR rail entrypoint while keeping plain `sm buff` as an alias for the same inspection flow.
+2. Added `sm buff iterate`, which selects one deterministic frontier of review threads from the latest inspect protocol and writes a stable `next_iteration.json` artifact for agents to follow.
+3. Made `iterate` fall through to `scour` automatically when no review threads remain, then steer the loop back toward `swab`, `scour`, `inspect`, or `finalize --push` based on the result.
+4. Added a minimal `sm buff finalize [<pr>] [--push]` step so the rail now has a real last command instead of guidance pointing at a nonexistent verb.
+
+### Validation
+
+- `python -m slopmop.sm swab -g overconfidence:untested-code.py --json --output-file .slopmop/last_swab_inspect_iterate.json` -> **passed**
+
+## 2026-03-10 Delta: Buff Current-PR State
+
+### Completed
+
+1. Added `sm config --current-pr-number <n>` and `sm config --clear-current-pr` so agents can select a working PR once and then run `sm buff` commands without repeating the PR number.
+2. Moved the working PR selection into local `.slopmop/current_pr.json` state instead of repo config, keeping the selection in persistent agent state rather than project configuration.
+3. Updated `sm buff` and CI triage to fail closed when no working PR is selected and to validate that the selected or explicit PR exists and is still open.
+
+### Validation
+
+- `pytest -q tests/unit/test_sm_cli.py tests/unit/test_sm_cli_config.py tests/unit/test_ci_triage_and_buff.py` -> **133 passed**
+- Live check: `sm config --clear-current-pr && sm buff verify` -> **fails closed with no working PR selected**
+- Live check: `sm config --current-pr-number 85 && sm buff verify` -> **uses selected PR without explicit number**
+
+## 2026-03-10 Delta: PR #85 Review Follow-up (Loop 007)
+
+### Completed
+
+1. Extracted the `buff` and `agent` parser setup into dedicated builder classes in `slopmop/cli/parser_builders.py`, keeping agent-facing flow configuration out of the main CLI verb registry.
+2. Updated agent installation templates and README guidance so the documented default workflow now includes `sm buff` alongside `sm swab` and `sm scour`.
+3. Polished the shared JavaScript no-tests fix suggestion wording to use the full `JavaScript/TypeScript` label consistently.
+
+### Validation
+
+- `pytest -q tests/unit/test_agent_install.py tests/unit/test_sm_cli.py tests/unit/test_ci_triage_and_buff.py tests/unit/test_pr_checks.py` -> **159 passed**
+- `pytest -q tests/unit/test_javascript_checks.py tests/unit/test_javascript_coverage_pct.py` -> **91 passed**
+
+## 2026-03-10 Delta: Buff Rail Hardening
+
+### Completed
+
+1. Added first-class `sm buff verify` and `sm buff resolve` verbs while preserving the existing `sm buff <pr>` triage rail.
+2. Reworked PR comment protocol artifacts so generated command packs and report guidance now point to `sm buff ...` commands instead of raw `gh api graphql` review-thread commands.
+3. Added regression coverage to prevent raw GraphQL from leaking back into user-facing buff command packs and guidance.
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py tests/unit/test_pr_checks.py tests/unit/test_sm_cli.py` -> **150 passed**
+
+## 2026-03-10 Delta: Groundhog Day Protocol Trigger
+
+### Completed
+
+1. Hard-stopped active PR-closing work after using direct GraphQL review-thread inspection instead of the repo's `buff` rail.
+2. Performed protocol analysis and logged the recurrence in `cursor-rules/RECURRENT_ANTIPATTERN_LOG.md`.
+
+### Commitment
+
+- PR-closing work in this repo must start from `sm buff`; lower-level GitHub plumbing is no longer an acceptable default path.
+
+## 2026-03-09 Delta: PR #85 Ordered Threads Precision
+
+### Completed
+
+1. Updated `PRCommentsCheck._format_guidance()` to distinguish `ordered_threads is None` from an explicitly provided empty list.
+2. Added a regression test proving `ordered_threads=[]` does not trigger fallback reclassification.
+
+### Validation
+
+- `pytest -q tests/unit/test_pr_checks.py` -> **32 passed**
+
+## 2026-03-09 Delta: PR #85 Buff Root And Loop-Race Hardening
+
+### Completed
+
+1. Added `_project_root_from_cwd()` in `slopmop/cli/buff.py` so the blocking PR-feedback gate uses the git toplevel instead of raw `os.getcwd()`.
+2. Updated `cmd_buff()` to pass that resolved project root into `_run_pr_feedback_gate(...)`, keeping artifact paths and `.git` detection tied to the actual repo root.
+3. Hardened `PRCommentsCheck._next_protocol_loop_dir()` against concurrent `buff` runs:
+  - if another process creates the next loop directory first, allocation now retries with the next suffix instead of crashing on `FileExistsError`.
+4. Added regression coverage for:
+  - git toplevel project-root resolution fallback behavior
+  - `cmd_buff()` passing the resolved project root to the feedback gate
+  - loop directory retry after a simulated creation race
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py tests/unit/test_pr_checks.py` -> **55 passed**
+- `python -m slopmop.sm swab -g myopia:vulnerability-blindness.py --verbose` -> **passed**
+
+## 2026-03-09 Delta: PR #85 Buff PR Resolution Consistency
+
+### Completed
+
+1. Added `pr_number` to the CI triage payload so downstream consumers can reuse the exact PR number triage resolved.
+2. Updated `sm buff` to pass the resolved PR number from the triage payload into the blocking PR-feedback gate instead of relying only on the original CLI argument.
+3. Added regression coverage proving `cmd_buff()` uses the triage-resolved PR number when `args.pr_number` is unset.
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py` -> **22 passed**
+
+## 2026-03-09 Delta: PR #85 Final GraphQL Escape Fix
+
+### Completed
+
+1. Fixed generated `resolveReviewThread` command mutations so thread IDs are emitted as `"PRRT_..."` in GraphQL rather than the invalid over-escaped `\"PRRT_...\"` form.
+2. Extended the existing PR command-pack regression test to assert both:
+  - the fixed-in-code comment rail still expands `$(git rev-parse --short HEAD)`
+  - the generated resolve mutation contains correctly quoted thread IDs without backslashes.
+
+### Validation
+
+- `pytest -q tests/unit/test_pr_checks.py` -> **30 passed**
+
+## 2026-03-09 Delta: PR #85 Final Bugbot Follow-up
+
+### Completed
+
+1. Fixed generated PR-resolution command-pack quoting:
+  - `fixed_in_code` comment rails now use double quotes so `$(git rev-parse --short HEAD)` expands to the actual commit hash instead of being posted literally.
+2. Simplified category grouping to reuse preclassified `thread["category"]` when present instead of redundantly re-categorizing from raw comment text.
+3. Added regression tests for both behaviors in `tests/unit/test_pr_checks.py`.
+
+### Validation
+
+- `pytest -q tests/unit/test_pr_checks.py` -> **30 passed**
+
+## 2026-03-09 Delta: PR #85 Final Lock Follow-up Threads
+
+### Completed
+
+1. Fixed `_pid_looks_like_sm()` to recognize standalone `sm` entrypoint invocations:
+  - commands like `/path/to/venv/bin/python /path/to/venv/bin/sm swab` now count as legitimate `sm` lock holders
+  - avoids false stale-lock detection from PID reuse guard when `sm` is launched via entrypoint script instead of `python -m slopmop`
+2. Corrected `test_override_threshold_marks_old_lock_stale` so it explicitly patches `_pid_looks_like_sm=True` and exercises the age-threshold override path rather than passing via the PID-identity guard.
+3. Added regression coverage for standalone `sm` entrypoint detection in `tests/unit/test_lock.py`.
+4. Tightened buff protocol command-pack permissions from world-executable to owner-only executable to satisfy the security gate.
+
+### Validation
+
+- `pytest -q tests/unit/test_lock.py` -> **36 passed**
+- `pytest -q tests/unit/test_lock.py tests/unit/test_pr_checks.py` -> **64 passed**
+- `python -m slopmop.sm swab -g myopia:vulnerability-blindness.py --verbose` -> **passed**
+
+## 2026-03-09 Delta: PR #85 Follow-up Thread Fixes (Loop 005)
+
+### Completed
+
+1. Addressed lock false-stale behavior when `ps` is unavailable:
+  - `_pid_looks_like_sm` now fails closed (`True`) on command failure/unknown identity.
+2. Fixed lock busy-message newline formatting to remove extra blank lines.
+3. Added public lock API `max_expected_duration()` and switched `validate.py` off private import.
+4. Corrected stale-lock age test path:
+  - `test_alive_pid_old_lock_is_stale` now patches `_pid_looks_like_sm=True` so age logic is explicitly exercised.
+5. Removed dead `_save_report_to_file()` from PR comments check.
+6. Documentation restructure for reviewer feedback:
+  - moved advanced developer-only setup from `README.md` to new `DEVELOPING.md`
+  - added lock behavior section for agents in `DEVELOPING.md`
+  - kept README as user-oriented rail with pointer to `DEVELOPING.md`
+
+### Validation
+
+- `pytest -q tests/unit/test_lock.py tests/unit/test_pr_checks.py tests/unit/test_ci_triage_and_buff.py` -> **84 passed**
+- `python -m slopmop.sm swab` -> **passed**
+- `python -m slopmop.sm scour` -> **passed** (non-blocking `myopia:ignored-feedback` warning expected)
+
+## 2026-03-09 Delta: README Buff Philosophy Rail
+
+### Completed
+
+1. Expanded README to frame `sm buff` as a core product pillar (post-PR closure rail).
+2. Added explicit low-friction design principle:
+  - protocol must be path of least resistance for agents
+  - agents reason about solution space, not workflow mechanics
+3. Added scenario-rail documentation for protocol tracks:
+  - `fixed_in_code`
+  - `invalid_with_explanation`
+  - `no_longer_applicable`
+  - `out_of_scope_ticketed`
+  - `needs_human_feedback`
+4. Documented persistent buff memory model:
+  - `.slopmop/buff-persistent-memory/pr-<N>/loop-<K>/`
+5. Added fail-closed protocol language for classification errors.
+
+### Validation
+
+- Documentation-only update (`README.md`); no runtime code paths changed.
+
+### Follow-up
+
+- Strengthened README language to explicitly target agent incentive alignment:
+  - added "Agent Incentives And Gradient-Descent Behavior" section
+  - clarified that `buff` is execution protocol, not advisory prose
+  - emphasized that slop-mop optimizes for lowest-friction adherence to locked workflow
+
+## 2026-03-09 Delta: Buff PR Feedback Rail v1 (Didactic + Persistent)
+
+### Completed
+
+1. Implemented versioned protocol rail for unresolved PR feedback:
+  - `protocol_version = pr-feedback-v1`
+  - deterministic scenario taxonomy and priority order:
+    - `fixed_in_code`
+    - `invalid_with_explanation`
+    - `no_longer_applicable`
+    - `out_of_scope_ticketed`
+    - `needs_human_feedback`
+2. Added deterministic ordering model for unresolved threads:
+  - primary: scenario priority rank (ascending)
+  - secondary: `max(blast_radius_score, dependency_impact_score)` (descending)
+  - tertiary: `thread_id` (stable deterministic tiebreak)
+3. Added persistent buff protocol datastore (no `/tmp`):
+  - `.slopmop/buff-persistent-memory/pr-<PR>/loop-<N>/`
+  - artifacts:
+    - `pr_<PR>_comments_report.md`
+    - `protocol.json`
+    - `threads_raw.json`
+    - `classified_threads.json`
+    - `commands.sh`
+    - `execution_log.md`
+    - `outcomes.json`
+4. Added command-pack generation with scenario-specific exact command rails.
+5. Added fail-closed classification path:
+  - unknown scenario now returns `UNCLASSIFIED_THREAD_PROTOCOL_BLOCK` via check error.
+6. Kept `buff` wired to block on unresolved PR feedback via `fail_on_unresolved=True` gate path.
+
+### Validation
+
+- `pytest -q tests/unit/test_pr_checks.py tests/unit/test_ci_triage_and_buff.py` -> **49 passed**
+- `python -m slopmop.sm swab -g myopia:string-duplication.py --verbose` -> **passed**
+- `python -m slopmop.sm scour -g myopia:code-sprawl --verbose` -> **passed**
+- `python -m slopmop.sm scour -g overconfidence:missing-annotations.py --verbose` -> **passed**
+- `python -m slopmop.sm buff 85` -> **fails with unresolved PR feedback and emits persistent loop artifacts**
+
+### Notes
+
+- `sm` in shell may resolve to global install; validated implementation via `python -m slopmop.sm ...` for source-of-truth local behavior.
+
+## 2026-03-09 Delta: Buff Blocks Unresolved PR Threads
+
+### Completed
+
+1. Wired `sm buff` to run `myopia:ignored-feedback` in blocking mode:
+  - added PR feedback gate execution in `slopmop/cli/buff.py`
+  - `buff` now fails when unresolved review threads exist (`CheckStatus.FAILED`)
+  - `buff` also fails closed when PR feedback check errors (`CheckStatus.ERROR`)
+2. Added payload enrichment for buff output:
+  - `pr_feedback` object now included in JSON payload with gate/status/detail/error/fix suggestion
+3. Added regression test coverage:
+  - `tests/unit/test_ci_triage_and_buff.py`
+  - new test ensures `cmd_buff` returns non-zero when unresolved PR comments exist
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py` -> **21 passed**
+- `python -m slopmop.sm buff 85` -> **fails with unresolved PR review threads (3 unresolved)**
+
+### Note
+
+- Shell `sm` currently resolves to `/Users/pacey/.local/bin/sm` in this environment, which can diverge from local source edits.
+- Use `python -m slopmop.sm ...` when validating freshly edited local code paths.
+
+## 2026-03-09 Delta: Lock ETA Metadata + Busy-Wait Estimate
+
+### Completed
+
+1. Added expected-finish metadata to repo lock file writes:
+  - `expected_duration_seconds`
+  - `expected_done_at` (epoch)
+  - `expected_done_at_utc` (ISO8601 UTC)
+2. Updated lock contention error messaging to include wait estimate:
+  - when another lock holder exists, message now includes ETA like
+    `~Ns until lock is free` and expected UTC completion time.
+3. Wired validation pipeline to pass expected lock duration from runtime estimates:
+  - computed from timing history medians
+  - constrained by `swabbing-time` budget for `swab` runs
+
+### Files
+
+- `slopmop/core/lock.py`
+- `slopmop/cli/validate.py`
+- `tests/unit/test_lock.py`
+
+### Validation
+
+- `pytest -q tests/unit/test_lock.py tests/unit/test_cli.py` -> **57 passed**
+- `sm swab` -> **no slop detected**
+- `sm scour` -> **no slop detected** (non-blocking warn: `myopia:ignored-feedback`)
+
+## 2026-03-09 Delta: Buff CI State Clarity (No Gate-Level Move)
+
+### Completed
+
+1. Kept `myopia:ignored-feedback` behavior unchanged in `scour` (warning-level triage signal).
+2. Enhanced `sm buff` triage metadata to explicitly report CI run state ambiguity:
+  - latest workflow run id/status
+  - triaged run id (latest completed artifact used for deterministic triage)
+  - `pending_newer_run` boolean when a newer run is still queued/in-progress
+  - human-readable note explaining whether to re-run `sm buff` after completion
+3. Updated buff/triage console output to print CI state and note before actionable gate list.
+
+### Files
+
+- `slopmop/cli/scan_triage.py`
+- `tests/unit/test_ci_triage_and_buff.py`
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py` -> **20 passed**
+
 ## Design Documents
 
 - **NEXT_PHASE.md**: Three-workstream architectural brief for the next phase of slop-mop:
@@ -10,6 +362,41 @@
 ## Active Branch: `feat/flutter-support`
 
 **Status: LOCAL — all 1568 tests pass** ✅
+
+## 2026-03-09 Delta: PR #86 Merge Conflict Resolution (In Progress)
+
+### Completed
+
+1. Resolved merge conflicts from `origin/main` into `feat/mcp-swab-server`:
+  - `slopmop/cli/__init__.py`
+  - `slopmop/sm.py`
+2. Preserved both CLI command families during conflict resolution:
+  - `agent` command wiring/imports
+  - `buff` command wiring/imports
+3. Removed all merge markers and corrected CLI help text/indentation.
+
+### Validation
+
+
+## 2026-03-09 Delta: PR Feedback Fixes (Dead Constants + Shared Dart Helper)
+
+### Completed
+
+1. Removed dead constants from `slopmop/checks/dart/common.py`:
+  - `NO_PUBSPEC_FOUND`
+  - `VERIFY_WITH_PREFIX`
+2. Deduplicated Dart coverage threshold messaging:
+  - `slopmop/checks/dart/coverage.py` now imports and uses shared `coverage_below_threshold_message` from `slopmop/checks/constants.py`.
+3. Added regression tests for coverage branches and no-test paths:
+  - `tests/unit/test_dart_checks.py`
+  - `tests/unit/test_javascript_checks.py`
+  - `tests/unit/test_python_checks.py`
+
+### Validation
+
+- `pytest -q tests/unit/test_dart_checks.py tests/unit/test_javascript_checks.py tests/unit/test_python_checks.py` -> **220 passed**
+- `sm scour -g myopia:just-this-once.py --verbose` -> **passed**
+- `sm scour` -> **no slop detected** (non-blocking warning: `myopia:ignored-feedback`)
 
 ## 2026-03-09 Delta: Shared Rail Helpers For CI Triage + Commentary
 

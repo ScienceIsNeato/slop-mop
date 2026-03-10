@@ -416,7 +416,10 @@ class TestRunDetectSecrets:
             {
                 "results": {
                     "config.py": [
-                        {"type": "Secret Keyword", "line_number": 5}  # pragma: allowlist secret
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 5,
+                        }  # pragma: allowlist secret
                     ]
                 }
             }
@@ -467,12 +470,24 @@ class TestRunDetectSecrets:
                         {"type": "Basic Auth Credentials", "line_number": 3}
                     ],
                     "app/__init__.py": [
-                        {"type": "Secret Keyword", "line_number": 1},  # pragma: allowlist secret
-                        {"type": "Secret Keyword", "line_number": 2},  # pragma: allowlist secret
-                        {"type": "Secret Keyword", "line_number": 3},  # pragma: allowlist secret
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 1,
+                        },  # pragma: allowlist secret
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 2,
+                        },  # pragma: allowlist secret
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 3,
+                        },  # pragma: allowlist secret
                     ],
                     "app/config.py": [
-                        {"type": "Secret Keyword", "line_number": 10}  # pragma: allowlist secret
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 10,
+                        }  # pragma: allowlist secret
                     ],
                 }
             }
@@ -496,7 +511,10 @@ class TestRunDetectSecrets:
             {
                 "results": {
                     "server/tests/test_auth.py": [
-                        {"type": "Secret Keyword", "line_number": 3}  # pragma: allowlist secret
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 3,
+                        }  # pragma: allowlist secret
                     ]
                 }
             }
@@ -516,7 +534,10 @@ class TestRunDetectSecrets:
             {
                 "results": {
                     "ios/Flutter/ephemeral/generated.xcconfig": [
-                        {"type": "Secret Keyword", "line_number": 1}  # pragma: allowlist secret
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 1,
+                        }  # pragma: allowlist secret
                     ]
                 }
             }
@@ -541,7 +562,10 @@ class TestRunDetectSecrets:
             {
                 "results": {
                     "app/config.py": [
-                        {"type": "Secret Keyword", "line_number": 1}  # pragma: allowlist secret
+                        {
+                            "type": "Secret Keyword",
+                            "line_number": 1,
+                        }  # pragma: allowlist secret
                     ]
                 }
             }

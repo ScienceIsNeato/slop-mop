@@ -667,6 +667,26 @@ class TestJavaScriptCheckMixin:
         """Test has_node_modules returns False when node_modules doesn't exist."""
         assert self.mixin.has_node_modules(str(tmp_path)) is False
 
+    def test_has_javascript_test_files_by_pattern(self, tmp_path):
+        """Detect JS tests via *.test.* naming."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "math.test.ts").write_text("test('x', () => {})")
+        assert self.mixin.has_javascript_test_files(str(tmp_path)) is True
+
+    def test_has_javascript_test_files_by_directory(self, tmp_path):
+        """Detect JS tests when files live under test directories."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.js").write_text("test('x', () => {})")
+        assert self.mixin.has_javascript_test_files(str(tmp_path)) is True
+
+    def test_has_javascript_test_files_ignores_node_modules(self, tmp_path):
+        """Do not treat node_modules tests as project tests."""
+        (tmp_path / "node_modules" / "pkg" / "tests").mkdir(parents=True)
+        (tmp_path / "node_modules" / "pkg" / "tests" / "smoke.test.js").write_text(
+            "test('x', () => {})"
+        )
+        assert self.mixin.has_javascript_test_files(str(tmp_path)) is False
+
     def test_skip_reason_no_package_json(self, tmp_path):
         """Test skip_reason returns correct message when no package.json."""
         (tmp_path / "app.py").touch()

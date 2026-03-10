@@ -4,6 +4,7 @@ Usage:
     sm swab [--quality-gates GATES] [--verbose] [--quiet]
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
     sm buff [PR_NUMBER]
+    sm agent install [--target TARGET] [--project-root PATH] [--force]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
     sm commit-hooks status
@@ -18,6 +19,7 @@ Verbs:
     buff          Post-PR CI triage and next-step guidance
     config        View or update configuration
     init          Interactive setup and project configuration
+    agent         Install agent integration templates
     commit-hooks  Manage git pre-commit hooks
     ci            Check CI status for current PR
     help          Show help for quality gates
@@ -34,6 +36,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from slopmop import __version__
+from slopmop.cli.parser_builders import AgentParserBuilder, BuffParserBuilder
 from slopmop.constants import PROJECT_ROOT_HELP
 
 logger = logging.getLogger(__name__)
@@ -236,67 +239,7 @@ def _add_buff_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     """Add the buff subcommand parser (post-PR validation loop)."""
-    buff_parser = subparsers.add_parser(
-        "buff",
-        help="Post-PR CI triage and next-step guidance",
-        description=(
-            "Run post-submit buff checks: CI code-scanning triage "
-            "for the PR branch and actionable guidance."
-        ),
-    )
-    buff_parser.add_argument(
-        "pr_number",
-        nargs="?",
-        type=int,
-        default=None,
-        help="PR number to triage (auto-detect from current branch if omitted)",
-    )
-    buff_parser.add_argument(
-        "--run-id",
-        type=int,
-        default=None,
-        help="Explicit Actions run id for scan triage (overrides PR auto-detect)",
-    )
-    buff_parser.add_argument(
-        "--repo",
-        default=None,
-        help="GitHub repo owner/name (defaults to current repo)",
-    )
-    buff_parser.add_argument(
-        "--workflow",
-        default="slop-mop primary code scanning gate",
-        help="Workflow name used for CI scan triage",
-    )
-    buff_parser.add_argument(
-        "--artifact",
-        default="slopmop-results",
-        help="Artifact name containing JSON scan results",
-    )
-    buff_parser.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-        default=None,
-        help="Output buff results as JSON.",
-    )
-    buff_parser.add_argument(
-        "--no-json",
-        dest="json_output",
-        action="store_false",
-        help="Force human-readable buff output.",
-    )
-    buff_parser.add_argument(
-        "--output-file",
-        "--output",
-        "-o",
-        dest="output_file",
-        default=None,
-        metavar="PATH",
-        help=(
-            "Write machine-readable buff payload to a file while preserving "
-            "stdout output mode."
-        ),
-    )
+    BuffParserBuilder(subparsers).build()
 
 
 def _add_config_parser(
@@ -333,6 +276,17 @@ def _add_config_parser(
         type=int,
         metavar="SECONDS",
         help="Set the swabbing-time budget (seconds). 0 or negative disables the limit.",
+    )
+    config_parser.add_argument(
+        "--current-pr-number",
+        type=int,
+        metavar="PR",
+        help="Set the working pull request number for buff commands.",
+    )
+    config_parser.add_argument(
+        "--clear-current-pr",
+        action="store_true",
+        help="Clear the working pull request number.",
     )
     config_parser.add_argument(
         "--project-root",
@@ -480,6 +434,13 @@ def _add_ci_parser(
     )
 
 
+def _add_agent_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the agent subcommand parser."""
+    AgentParserBuilder(subparsers).build()
+
+
 def _add_status_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -541,6 +502,7 @@ Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
     buff        Post-PR CI triage and next-step guidance
+    agent       Install agent integration templates
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -572,6 +534,7 @@ Examples:
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
     _add_init_parser(subparsers)
+    _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
     _add_ci_parser(subparsers)
 
@@ -587,6 +550,7 @@ Examples:
 def main(args: Optional[List[str]] = None) -> int:
     """Main entry point for sm CLI."""
     from slopmop.cli import (
+        cmd_agent,
         cmd_buff,
         cmd_ci,
         cmd_commit_hooks,
@@ -622,6 +586,8 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_help(parsed_args)
     elif parsed_args.verb == "init":
         return cmd_init(parsed_args)
+    elif parsed_args.verb == "agent":
+        return cmd_agent(parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return cmd_commit_hooks(parsed_args)
     elif parsed_args.verb == "ci":

@@ -1,0 +1,183 @@
+"""Parser builders for agent-facing CLI flows.
+
+Keeps higher-churn, workflow-oriented parser definitions out of the
+main verb registry module.
+"""
+
+from __future__ import annotations
+
+import argparse
+
+from slopmop.constants import PROJECT_ROOT_HELP
+
+
+class BuffParserBuilder:
+    """Build the post-PR buff parser."""
+
+    def __init__(
+        self,
+        subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    ) -> None:
+        self.subparsers = subparsers
+
+    def build(self) -> None:
+        """Register the buff parser."""
+        buff_parser = self.subparsers.add_parser(
+            "buff",
+            help="Post-PR CI triage and next-step guidance",
+            description=(
+                "Run the post-submit buff rail. Default mode is CI code-scanning "
+                "triage for the PR branch. Additional subcommands let agents "
+                "verify unresolved review threads and resolve individual threads "
+                "without dropping to raw GitHub plumbing."
+            ),
+        )
+        self._add_mode_args(buff_parser)
+        self._add_triage_args(buff_parser)
+        self._add_output_args(buff_parser)
+        self._add_resolution_args(buff_parser)
+
+    @staticmethod
+    def _add_mode_args(buff_parser: argparse.ArgumentParser) -> None:
+        buff_parser.add_argument(
+            "pr_or_action",
+            nargs="?",
+            default=None,
+            help=(
+                "PR number for normal inspect mode, or one of: inspect, iterate, "
+                "finalize, verify, resolve. Examples: 'sm buff 85', "
+                "'sm buff inspect 85', 'sm buff iterate 85', "
+                "'sm buff finalize 85 --push', 'sm buff verify 85', "
+                "'sm buff resolve 85 PRRT_xxx --message ...'"
+            ),
+        )
+        buff_parser.add_argument(
+            "action_args",
+            nargs="*",
+            help=argparse.SUPPRESS,
+        )
+
+    @staticmethod
+    def _add_triage_args(buff_parser: argparse.ArgumentParser) -> None:
+        buff_parser.add_argument(
+            "--run-id",
+            type=int,
+            default=None,
+            help="Explicit Actions run id for scan triage (overrides PR auto-detect)",
+        )
+        buff_parser.add_argument(
+            "--repo",
+            default=None,
+            help="GitHub repo owner/name (defaults to current repo)",
+        )
+        buff_parser.add_argument(
+            "--workflow",
+            default="slop-mop primary code scanning gate",
+            help="Workflow name used for CI scan triage",
+        )
+        buff_parser.add_argument(
+            "--artifact",
+            default="slopmop-results",
+            help="Artifact name containing JSON scan results",
+        )
+
+    @staticmethod
+    def _add_output_args(buff_parser: argparse.ArgumentParser) -> None:
+        buff_parser.add_argument(
+            "--json",
+            dest="json_output",
+            action="store_true",
+            default=None,
+            help="Output buff results as JSON.",
+        )
+        buff_parser.add_argument(
+            "--no-json",
+            dest="json_output",
+            action="store_false",
+            help="Force human-readable buff output.",
+        )
+        buff_parser.add_argument(
+            "--output-file",
+            "--output",
+            "-o",
+            dest="output_file",
+            default=None,
+            metavar="PATH",
+            help=(
+                "Write machine-readable buff payload to a file while preserving "
+                "stdout output mode."
+            ),
+        )
+
+    @staticmethod
+    def _add_resolution_args(buff_parser: argparse.ArgumentParser) -> None:
+        buff_parser.add_argument(
+            "--scenario",
+            default=None,
+            help="Resolution scenario used by 'sm buff resolve'.",
+        )
+        buff_parser.add_argument(
+            "--message",
+            default=None,
+            help="Comment body used by 'sm buff resolve'.",
+        )
+        buff_parser.add_argument(
+            "--no-resolve",
+            action="store_true",
+            help="Post the comment but leave the thread unresolved.",
+        )
+        buff_parser.add_argument(
+            "--push",
+            action="store_true",
+            help="Used by 'sm buff finalize' to push after final validation passes.",
+        )
+
+
+class AgentParserBuilder:
+    """Build the agent template installer parser."""
+
+    def __init__(
+        self,
+        subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    ) -> None:
+        self.subparsers = subparsers
+
+    def build(self) -> None:
+        """Register the agent parser."""
+        agent_parser = self.subparsers.add_parser(
+            "agent",
+            help="Install agent integration templates",
+            description=(
+                "Install repo-local templates for AI coding agents so they discover "
+                "and use the slop-mop swab/scour/buff workflow consistently."
+            ),
+        )
+        agent_subparsers = agent_parser.add_subparsers(
+            dest="agent_action",
+            help="Agent action",
+        )
+
+        install_parser = agent_subparsers.add_parser(
+            "install",
+            help="Install Cursor/Claude template files",
+        )
+        install_parser.add_argument(
+            "--target",
+            choices=["all", "cursor", "claude"],
+            default="all",
+            help=(
+                "Which agent templates to install. "
+                "'all' installs both cursor and claude."
+            ),
+        )
+        install_parser.add_argument(
+            "--project-root",
+            type=str,
+            default=".",
+            help=PROJECT_ROOT_HELP,
+        )
+        install_parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Overwrite existing files managed by this command.",
+        )

@@ -26,6 +26,7 @@ import os
 import shutil
 import subprocess
 import sys
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import List, Optional, cast
 
@@ -39,6 +40,29 @@ from slopmop.core.result import (
 )
 
 logger = logging.getLogger(__name__)
+_JS_TEST_DIR_NAMES = {"test", "tests", "spec", "__tests__", "e2e", "integration"}
+_JS_TEST_FILE_PATTERNS = (
+    "*.test.js",
+    "*.spec.js",
+    "*.test.jsx",
+    "*.spec.jsx",
+    "*.test.ts",
+    "*.spec.ts",
+    "*.test.tsx",
+    "*.spec.tsx",
+)
+_JS_TEST_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
+_JS_SCAN_EXCLUDE_DIRS = {
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    ".slopmop",
+    ".next",
+    ".nuxt",
+    ".cache",
+    "coverage",
+}
 
 
 class PythonCheckMixin:
@@ -338,6 +362,32 @@ class JavaScriptCheckMixin:
     def has_node_modules(self, project_root: str) -> bool:
         """Check if node_modules exists."""
         return (Path(project_root) / "node_modules").is_dir()
+
+    def has_javascript_test_files(self, project_root: str) -> bool:
+        """Return True when JS/TS test files are present."""
+        root = Path(project_root)
+        for dirpath, dirnames, filenames in os.walk(root):
+            rel_dir = Path(dirpath).relative_to(root)
+            if set(rel_dir.parts) & _JS_SCAN_EXCLUDE_DIRS:
+                dirnames[:] = []
+                continue
+
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in _JS_SCAN_EXCLUDE_DIRS and not d.startswith(".")
+            ]
+            is_test_dir = bool(set(rel_dir.parts) & _JS_TEST_DIR_NAMES)
+
+            for filename in filenames:
+                suffix = Path(filename).suffix.lower()
+                if suffix not in _JS_TEST_EXTS:
+                    continue
+                if is_test_dir or any(
+                    fnmatch(filename, p) for p in _JS_TEST_FILE_PATTERNS
+                ):
+                    return True
+        return False
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping JavaScript checks."""
