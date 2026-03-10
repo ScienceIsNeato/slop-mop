@@ -64,9 +64,15 @@ def _register_dart_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.dart import (
         DartBogusTestsCheck,
         DartCoverageCheck,
+        DartFormatCheck,
         DartGeneratedArtifactsCheck,
+        FlutterAnalyzeCheck,
+        FlutterTestsCheck,
     )
 
+    registry.register(FlutterAnalyzeCheck)
+    registry.register(FlutterTestsCheck)
+    registry.register(DartFormatCheck)
     registry.register(DartCoverageCheck)
     registry.register(DartBogusTestsCheck)
     registry.register(DartGeneratedArtifactsCheck)

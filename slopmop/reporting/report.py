@@ -291,3 +291,32 @@ class RunReport:
             parts.append(f"({', '.join(detail_parts)})")
 
         return " ".join(parts)
+
+    def cache_metadata(self) -> Optional[Dict[str, object]]:
+        """Structured cache provenance for adapters and machine output."""
+        cached = [r for r in self.summary.results if r.cached]
+        if not cached:
+            return None
+
+        total_ran = len(
+            [
+                r
+                for r in self.summary.results
+                if r.status not in (CheckStatus.NOT_APPLICABLE, CheckStatus.SKIPPED)
+            ]
+        )
+        sample = cached[0]
+        refresh_command = f"sm {self.level or 'swab'} --no-cache"
+        metadata: Dict[str, object] = {
+            "cached_results": len(cached),
+            "total_ran": total_ran,
+            "refresh_command": refresh_command,
+        }
+        if sample.cache_commit:
+            metadata["source_commit"] = sample.cache_commit
+        if sample.cache_timestamp:
+            metadata["source_timestamp"] = sample.cache_timestamp
+            age = _format_age(sample.cache_timestamp)
+            if age:
+                metadata["source_age"] = age
+        return metadata

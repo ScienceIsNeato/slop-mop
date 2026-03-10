@@ -291,6 +291,27 @@ class TestJsonAdapter:
         out = JsonAdapter.render(report)
         assert "runtime_warnings" not in out
 
+    def test_cache_block_and_warning_present_for_cached_results(self) -> None:
+        summary = _summary(
+            [
+                CheckResult(
+                    name="p",
+                    status=CheckStatus.PASSED,
+                    duration=0.1,
+                    cached=True,
+                    cache_commit="abc1234",
+                    cache_timestamp="2026-03-09T12:00:00+00:00",
+                )
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert out["cache"]["cached_results"] == 1
+        assert out["cache"]["refresh_command"] == "sm swab --no-cache"
+        warnings = out.get("runtime_warnings")
+        assert isinstance(warnings, list)
+        assert any(w["code"] == "cached_results_present" for w in warnings)
+
 
 # ─── SarifAdapter ────────────────────────────────────────────────────────
 
@@ -453,6 +474,25 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "Swabbing-time budget skipped 1 timed check(s)" in out
+
+    def test_cache_hint_renders_when_cached_results_present(self, capsys) -> None:
+        summary = _summary(
+            [
+                CheckResult(
+                    name="a",
+                    status=CheckStatus.PASSED,
+                    duration=0.1,
+                    cached=True,
+                    cache_commit="abc1234",
+                    cache_timestamp="2026-03-09T12:00:00+00:00",
+                )
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "from cache" in out
+        assert "sm swab --no-cache" in out
 
 
 # ─── role badge helper ───────────────────────────────────────────────────

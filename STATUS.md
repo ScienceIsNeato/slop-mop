@@ -7,9 +7,44 @@
   2. Didactic gate output (Diagnosis → Prescription → Verification)
   3. Unified output adapter layer (RunReport + adapters replacing ad-hoc branching in _run_validation())
 
-## Active Branch: `feat/flutter-support`
+## Active Branch: `feat/queueit-dogfood-followup`
 
-**Status: LOCAL — all 1568 tests pass** ✅
+**Status: LOCAL — Flutter gates upstreamed and freshness UX implemented**
+
+## 2026-03-09 Delta: QueueIt Dogfood Follow-Up Planning
+
+### Confirmed Baseline
+
+1. Created isolated worktree branch from pulled main:
+  - `feat/queueit-dogfood-followup`
+  - `HEAD` matches `origin/main` at `63bd15c`
+  - worktree is clean before edits
+
+2. Re-synced against the tracked source of truth:
+  - `ScienceIsNeato/slop-mop#88`
+  - issue still accurately captures the QueueIt remediation friction
+
+### Implemented / Active Workstreams
+
+1. Status freshness UX:
+  - `sm status` now prints an explicit historical-dashboard warning and directs users to fresh commands
+  - gate inventory lines now label recorded results as `last: ...` instead of implying live state
+
+2. Cache provenance UX:
+  - cached validation runs now emit stronger human and machine hints, including an explicit `--no-cache` refresh command
+
+3. Flutter support upstreaming:
+  - added first-class built-in gates for `flutter analyze`, `flutter test`, and `dart format`
+  - Dart detection now recommends those gates directly instead of scaffolding them as custom repo gates
+
+4. Same-branch follow-up:
+  - mixed-repo/runtime guidance stays in this branch/PR scope rather than a separate track
+
+### Validation So Far
+
+- `pytest tests/unit/test_run_report.py tests/unit/test_status.py tests/unit/test_dart_checks.py tests/unit/test_sm_cli.py -q` -> **196 passed**
+- `pytest tests/unit -q` -> **1614 passed**
+- `uv run --with-editable '.[all]' sm swab --no-cache --no-auto-fix --static --no-json` -> **13 checks passed**
 
 ## 2026-03-09 Delta: Shared Rail Helpers For CI Triage + Commentary
 

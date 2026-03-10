@@ -376,7 +376,7 @@ class TestDetectProjectType:
         assert _normalize_language_key("C++ Header") == "cplusplusheader"
 
     def test_dart_detection_suggests_flutter_custom_gates(self, tmp_path):
-        """Dart repos should get Flutter custom gates and built-in Dart gates."""
+        """Dart repos should get first-class Flutter gates, not custom shells."""
         with (
             patch(
                 "slopmop.cli.detection._detect_languages_with_scc",
@@ -390,22 +390,10 @@ class TestDetectProjectType:
             result = detect_project_type(tmp_path)
 
         assert result["has_dart"] is True
-        names = {gate["name"] for gate in result["suggested_custom_gates"]}
-        assert "flutter-analyze" in names
-        assert "flutter-test" in names
-        assert "dart-format-check" in names
-
-        by_name = {gate["name"]: gate for gate in result["suggested_custom_gates"]}
-        assert "find . -name pubspec.yaml" in by_name["flutter-analyze"]["command"]
-        assert "find . -name pubspec.yaml" in by_name["flutter-test"]["command"]
-        assert (
-            "dart format --output=none --set-exit-if-changed"
-            in by_name["dart-format-check"]["command"]
-        )
-        assert (
-            "engine.stamp: Operation not permitted"
-            in by_name["dart-format-check"]["command"]
-        )
+        assert result["suggested_custom_gates"] == []
+        assert "laziness:flutter-analyze" in result["recommended_gates"]
+        assert "overconfidence:flutter-test" in result["recommended_gates"]
+        assert "laziness:dart-format-check" in result["recommended_gates"]
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
         assert "deceptiveness:bogus-tests.dart" in result["recommended_gates"]
         assert "laziness:generated-artifacts.dart" in result["recommended_gates"]
@@ -413,7 +401,7 @@ class TestDetectProjectType:
     def test_dart_detection_omits_flutter_custom_gates_when_tools_missing(
         self, tmp_path
     ):
-        """Dart custom gates should not be suggested when flutter/dart tools are missing."""
+        """Dart still gets first-class gate recommendations when tools are missing."""
         with (
             patch(
                 "slopmop.cli.detection._detect_languages_with_scc",
@@ -425,6 +413,9 @@ class TestDetectProjectType:
 
         assert result["has_dart"] is True
         assert result["suggested_custom_gates"] == []
+        assert "laziness:flutter-analyze" in result["recommended_gates"]
+        assert "overconfidence:flutter-test" in result["recommended_gates"]
+        assert "laziness:dart-format-check" in result["recommended_gates"]
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
 
 

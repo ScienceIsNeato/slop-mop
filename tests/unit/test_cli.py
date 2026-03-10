@@ -278,6 +278,36 @@ class TestPrintNextSteps:
         assert "sm config --show" in out
 
 
+class TestPrintDetectionResults:
+    """Tests for init detection summary output."""
+
+    def test_mixed_repo_note_is_printed(self, capsys):
+        from slopmop.cli.init import _print_detection_results
+
+        _print_detection_results(
+            {
+                "has_python": True,
+                "has_javascript": False,
+                "has_typescript": False,
+                "has_go": False,
+                "has_rust": False,
+                "has_c_cpp": False,
+                "has_dart": True,
+                "has_tests_dir": True,
+                "test_dirs": ["client/test", "server/tests"],
+                "has_pytest": True,
+                "has_jest": False,
+                "language_detector": "manifest",
+                "missing_tools": [],
+                "recommended_gates": ["laziness:flutter-analyze"],
+                "package_manager": "npm",
+            }
+        )
+        out = capsys.readouterr().out
+        assert "Mixed repo note" in out
+        assert "repo root" in out
+
+
 class TestInitSuggestedCustomGateRefresh:
     """Tests that rerunning init refreshes suggested custom gate definitions."""
 

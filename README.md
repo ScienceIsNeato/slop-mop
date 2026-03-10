@@ -64,7 +64,7 @@ sm buff                       # post-PR loop: CI triage + next-step guidance
 Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
 `Selective Gate Caching` below for details and `--no-cache` behavior.
 
-`sm init` auto-detects Python, JavaScript/TypeScript, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. For Go, Rust, and C/C++ projects it scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) since built-in gates focus on Python and JS.
+`sm init` auto-detects Python, JavaScript/TypeScript, Dart/Flutter, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. Dart/Flutter projects get first-class `flutter analyze`, `flutter test`, `dart format`, coverage, bogus-test, and generated-artifact gates. For Go, Rust, and C/C++ projects it still scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) where built-in support is intentionally thinner.
 
 ### Installation Options
 
@@ -158,6 +158,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 | Gate | What It Does |
 |------|--------------|
+| `overconfidence:flutter-test` | 🧪 Flutter test execution across discovered packages |
 | `overconfidence:coverage-gaps.dart` | 📊 Dart/Flutter coverage analysis from flutter test --coverage |
 | `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis |
 | `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) |
@@ -192,7 +193,9 @@ Gates aren't organized by language — they're organized by **the failure mode t
 |------|--------------|
 | `laziness:broken-templates.py` | 📄 Jinja2 template validation |
 | `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) |
+| `laziness:dart-format-check` | 🎨 Dart formatting via dart format --set-exit-if-changed |
 | `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) |
+| `laziness:flutter-analyze` | 🧪 Flutter static analysis across discovered packages |
 | `laziness:generated-artifacts.dart` | 🧱 Detects committed Flutter build/tool artifacts |
 | `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists |
 | `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) |

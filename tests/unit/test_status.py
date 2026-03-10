@@ -141,6 +141,7 @@ class TestFormatGateLine:
             history=stats,
             colors_enabled=False,
         )
+        assert "last:" in line
         assert "passed" in line
 
     def test_scour_only_gate(self):
@@ -392,6 +393,7 @@ class TestFormatGateLine:
             history=stats,
             colors_enabled=False,
         )
+        assert "last:" in line
         assert "passed" in line
         assert "swab" in line
 
@@ -408,6 +410,7 @@ class TestFormatGateLine:
             history=stats,
             colors_enabled=False,
         )
+        assert "last:" in line
         assert "failed" in line
 
     def test_no_history(self):
@@ -748,6 +751,7 @@ class TestPrintRecentHistory:
         out = capsys.readouterr().out
         assert "1 failed" in out
         assert "1 passed" in out
+        assert "Last recorded" in out
         assert "2 gates tracked" in out
 
 
@@ -794,6 +798,7 @@ class TestRunStatus:
             run_status(project_root=str(tmp_path), json_output=False)
         out = capsys.readouterr().out
         assert "project dashboard" in out
+        assert "Historical dashboard only" in out
 
     def test_no_executor_used(self, tmp_path):
         """run_status does NOT use CheckExecutor."""

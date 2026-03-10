@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
-from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
 # Used during `sm init` to auto-disable checks whose tools aren't available.
@@ -423,6 +422,9 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     if detected.get("has_dart"):
         recommended.extend(
             [
+                "laziness:flutter-analyze",
+                "overconfidence:flutter-test",
+                "laziness:dart-format-check",
                 "overconfidence:coverage-gaps.dart",
                 "deceptiveness:bogus-tests.dart",
                 "laziness:generated-artifacts.dart",
@@ -519,84 +521,6 @@ def _suggest_custom_gates(
                 "timeout": 600,
             }
         )
-
-    if detected.get("has_dart"):
-        flutter_available = find_tool("flutter", str(project_root)) is not None
-        dart_available = find_tool("dart", str(project_root)) is not None
-        strict_shell_prefix = "sh -c 'set -e; "
-        pubspec_guard = (
-            'pubspecs=$(find . -name pubspec.yaml -not -path "*/.*/*"); '
-            f'[ -n "$pubspecs" ] || {{ echo "{NO_PUBSPEC_YAML_FOUND}"; exit 1; }}; '
-        )
-
-        flutter_preflight = (
-            "if flutter --version 2>&1 | grep -q "
-            '"engine.stamp: Operation not permitted"; '
-            'then echo "Skipping Flutter gate: SDK cache path not writable in this environment"; '
-            "exit 0; fi; "
-        )
-
-        if flutter_available:
-            gates.extend(
-                [
-                    {
-                        "name": "flutter-analyze",
-                        "description": "Run Flutter static analysis",
-                        "category": "laziness",
-                        "command": (
-                            strict_shell_prefix
-                            + flutter_preflight
-                            + pubspec_guard
-                            + "for pubspec in $pubspecs; do "
-                            'dir=$(dirname "$pubspec"); '
-                            'echo "==> flutter analyze ($dir)"; '
-                            '(cd "$dir" && flutter analyze); '
-                            "done'"
-                        ),
-                        "level": "swab",
-                        "timeout": 300,
-                    },
-                    {
-                        "name": "flutter-test",
-                        "description": "Run Flutter tests",
-                        "category": "overconfidence",
-                        "command": (
-                            strict_shell_prefix
-                            + flutter_preflight
-                            + "ran=0; "
-                            + pubspec_guard
-                            + "for pubspec in $pubspecs; do "
-                            'dir=$(dirname "$pubspec"); '
-                            'if [ -d "$dir/test" ]; then '
-                            "ran=1; "
-                            'echo "==> flutter test ($dir)"; '
-                            '(cd "$dir" && flutter test); '
-                            "fi; "
-                            "done; "
-                            '[ "$ran" -eq 1 ] || { echo "No Flutter test directories found"; exit 1; }'
-                            "'"
-                        ),
-                        "level": "swab",
-                        "timeout": 600,
-                    },
-                ]
-            )
-
-        if dart_available:
-            gates.append(
-                {
-                    "name": "dart-format-check",
-                    "description": "Check Dart formatting",
-                    "category": "laziness",
-                    "command": (
-                        strict_shell_prefix
-                        + flutter_preflight
-                        + "dart format --output=none --set-exit-if-changed .'"
-                    ),
-                    "level": "swab",
-                    "timeout": 120,
-                }
-            )
 
     return gates
 
