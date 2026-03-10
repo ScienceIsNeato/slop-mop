@@ -594,8 +594,8 @@ class TestGitHooksFunctions:
         assert "command -v sm" in script
         # Should write structured output for LLM consumption
         assert "--swabbing-time 0" in script
-        assert "--json" in script
-        assert "--output-file .slopmop/last_swab.json" in script
+        assert "--json-file .slopmop/last_swab.json" in script
+        assert "--json --output-file" not in script
         assert "Structured results:" in script
         assert "mkdir -p .slopmop" in script
 
@@ -605,7 +605,7 @@ class TestGitHooksFunctions:
         assert "sm scour" in script
         assert "# Command: sm scour" in script
         assert "--swabbing-time 0" in script
-        assert "--output-file .slopmop/last_scour.json" in script
+        assert "--json-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""
@@ -1171,6 +1171,13 @@ class TestValidateSmLockError:
 
 class TestValidateJsonOutputFile:
     """Regression tests for JSON output-file behavior in validate pipeline."""
+
+    def test_json_mode_defaults_to_console(self):
+        """Validation defaults to human-readable output unless --json is set."""
+        from slopmop.cli.validate import _is_json_mode
+
+        args = argparse.Namespace(json_output=None)
+        assert _is_json_mode(args) is False
 
     @patch("builtins.print")
     @patch("slopmop.cli.validate.RunReport.from_summary")

@@ -55,13 +55,12 @@ def _is_json_mode(args: argparse.Namespace) -> bool:
     Resolution order:
     1. Explicit --json → True
     2. Explicit --no-json → False
-    3. Auto-detect: not a TTY → True (piped to AI agent)
-    4. Default: False (interactive terminal)
+    3. Default: False (human-readable console output)
     """
     explicit = getattr(args, "json_output", None)
     if explicit is not None:
         return explicit
-    return not sys.stdout.isatty()
+    return False
 
 
 def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:

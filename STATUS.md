@@ -1,5 +1,17 @@
 # Project Status
 
+## 2026-03-10 Delta: Human/Machine Output Separation
+
+### Completed
+
+1. Changed validation output-mode defaults so `sm swab`/`sm scour` now produce human-readable console output unless `--json` is explicitly requested.
+2. Updated managed git hook generation to keep stdout human-friendly while still writing machine-readable JSON artifacts via `--json-file .slopmop/last_<verb>.json`.
+3. Updated CLI help text to document explicit JSON behavior and added regression coverage for the new default output-mode policy.
+
+### Validation
+
+- `pytest -q tests/unit/test_sm_cli.py` -> **96 passed**
+
 ## 2026-03-10 Delta: Buff Finalize Ready (PR #85)
 
 ### Completed

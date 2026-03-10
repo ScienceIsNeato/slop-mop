@@ -84,15 +84,15 @@ def _add_output_flags(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         default=None,
         help=(
-            "Output results as JSON. Auto-detected when stdout is not a TTY "
-            "(e.g. piped to an AI agent). Use --no-json to force pretty output."
+            "Output results as JSON. Human-readable console output is the "
+            "default; use --json for machine-oriented stdout."
         ),
     )
     parser.add_argument(
         "--no-json",
         dest="json_output",
         action="store_false",
-        help="Force pretty output even when stdout is not a TTY.",
+        help="Force human-readable console output.",
     )
     parser.add_argument(
         "--sarif",
