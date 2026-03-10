@@ -15,7 +15,11 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND, TESTS_TIMED_OUT_MSG
 from slopmop.checks.dart.common import (
+    FLUTTER_CACHE_NOT_WRITABLE,
     FLUTTER_CACHE_PERMISSION_ERROR,
+    FLUTTER_INSTALL_FIX_SUGGESTION,
+    FLUTTER_NOT_AVAILABLE,
+    NO_FLUTTER_TEST_DIRECTORIES_FOUND,
     find_flutter_test_package_dirs,
     find_pubspec_dirs,
     format_package_label,
@@ -61,7 +65,7 @@ class FlutterTestsCheck(BaseCheck):
     def skip_reason(self, project_root: str) -> str:
         if not find_pubspec_dirs(project_root):
             return NO_PUBSPEC_YAML_FOUND
-        return "No Flutter test directories found"
+        return NO_FLUTTER_TEST_DIRECTORIES_FOUND
 
     def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
         include_dirs = [
@@ -81,10 +85,10 @@ class FlutterTestsCheck(BaseCheck):
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=time.time() - start_time,
-                error="flutter not available",
-                fix_suggestion="Install Flutter SDK and ensure `flutter` is on PATH",
+                error=FLUTTER_NOT_AVAILABLE,
+                fix_suggestion=FLUTTER_INSTALL_FIX_SUGGESTION,
                 findings=[
-                    Finding(message="flutter not available", level=FindingLevel.WARNING)
+                    Finding(message=FLUTTER_NOT_AVAILABLE, level=FindingLevel.WARNING)
                 ],
             )
 
@@ -107,9 +111,7 @@ class FlutterTestsCheck(BaseCheck):
                     ),
                     findings=[
                         Finding(
-                            message=(
-                                "Flutter SDK cache path is not writable in this environment"
-                            ),
+                            message=FLUTTER_CACHE_NOT_WRITABLE,
                             level=FindingLevel.WARNING,
                         )
                     ],

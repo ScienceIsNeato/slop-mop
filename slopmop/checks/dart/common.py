@@ -4,6 +4,12 @@ from pathlib import Path
 from typing import Iterable, List
 
 FLUTTER_CACHE_PERMISSION_ERROR = "engine.stamp: Operation not permitted"
+FLUTTER_NOT_AVAILABLE = "flutter not available"
+FLUTTER_INSTALL_FIX_SUGGESTION = "Install Flutter SDK and ensure `flutter` is on PATH"
+FLUTTER_CACHE_NOT_WRITABLE = (
+    "Flutter SDK cache path is not writable in this environment"
+)
+NO_FLUTTER_TEST_DIRECTORIES_FOUND = "No Flutter test directories found"
 
 
 def find_pubspec_dirs(project_root: str) -> List[Path]:

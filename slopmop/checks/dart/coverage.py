@@ -16,7 +16,13 @@ from slopmop.checks.base import (
     find_tool,
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
-from slopmop.checks.dart.common import find_pubspec_dirs
+from slopmop.checks.dart.common import (
+    FLUTTER_CACHE_NOT_WRITABLE,
+    FLUTTER_INSTALL_FIX_SUGGESTION,
+    FLUTTER_NOT_AVAILABLE,
+    NO_FLUTTER_TEST_DIRECTORIES_FOUND,
+    find_pubspec_dirs,
+)
 from slopmop.constants import COVERAGE_BELOW_THRESHOLD
 from slopmop.core.result import (
     CheckResult,
@@ -96,7 +102,7 @@ class DartCoverageCheck(BaseCheck):
     def skip_reason(self, project_root: str) -> str:
         if not find_pubspec_dirs(project_root):
             return NO_PUBSPEC_YAML_FOUND
-        return "No Flutter test directories found"
+        return NO_FLUTTER_TEST_DIRECTORIES_FOUND
 
     def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
         include_dirs = [
@@ -113,11 +119,11 @@ class DartCoverageCheck(BaseCheck):
         return self._create_result(
             status=CheckStatus.WARNED,
             duration=time.time() - start_time,
-            error="flutter not available",
-            fix_suggestion="Install Flutter SDK and ensure `flutter` is on PATH",
+            error=FLUTTER_NOT_AVAILABLE,
+            fix_suggestion=FLUTTER_INSTALL_FIX_SUGGESTION,
             findings=[
                 Finding(
-                    message="flutter not available",
+                    message=FLUTTER_NOT_AVAILABLE,
                     level=FindingLevel.WARNING,
                 )
             ],
@@ -152,9 +158,7 @@ class DartCoverageCheck(BaseCheck):
                     ),
                     findings=[
                         Finding(
-                            message=(
-                                "Flutter SDK cache path is not writable in this environment"
-                            ),
+                            message=FLUTTER_CACHE_NOT_WRITABLE,
                             level=FindingLevel.WARNING,
                         )
                     ],
@@ -255,7 +259,7 @@ class DartCoverageCheck(BaseCheck):
             return self._create_result(
                 status=CheckStatus.SKIPPED,
                 duration=time.time() - start_time,
-                output="No Flutter test directories found",
+                output=NO_FLUTTER_TEST_DIRECTORIES_FOUND,
             )
 
         aggregate: Dict[str, _FileCoverage] = {}

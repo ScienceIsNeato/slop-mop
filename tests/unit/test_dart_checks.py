@@ -55,6 +55,19 @@ class TestFlutterAnalyzeCheck:
         assert result.status == CheckStatus.FAILED
         assert "flutter analyze failed" in (result.error or "")
 
+    def test_fails_when_analyze_times_out(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = FlutterAnalyzeCheck({})
+        run_result = MagicMock(success=False, output="", timed_out=True)
+        with (
+            patch("slopmop.checks.dart.analyze.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "timed out" in (result.error or "").lower()
+        assert "failed" not in (result.error or "").lower()
+
 
 class TestFlutterTestsCheck:
     """Tests for FlutterTestsCheck."""

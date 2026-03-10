@@ -38,6 +38,28 @@
 - `uv run --with-editable '.[all]' sm swab -g myopia:string-duplication.py --no-cache --no-auto-fix --static` -> **passed**
 - `uv run --with-editable '.[all]' sm scour --no-cache --no-auto-fix --static --no-json` -> **13 checks passed**
 
+## 2026-03-10 Delta: Final PR Green-Up
+
+### Completed
+
+1. Fixed the follow-up review thread on `flutter-analyze`:
+  - `slopmop/checks/dart/analyze.py` now treats timeouts separately from real analyzer failures, matching the newer timeout-handling behavior added to sibling Dart gates.
+
+2. Cleared the blocking CI code-scanning duplication finding:
+  - `slopmop/checks/dart/common.py` now owns shared Flutter gate literals such as missing-tool messages, install guidance, cache-writability text, and missing-test-dir text.
+  - `slopmop/checks/dart/tests.py` and `slopmop/checks/dart/coverage.py` now consume those shared constants instead of repeating the same literals across files.
+
+3. Added regression coverage:
+  - `tests/unit/test_dart_checks.py` now asserts the timeout-specific failure path for `FlutterAnalyzeCheck`.
+
+### Validation
+
+- `uv run --with-editable '.[all]' python -m pytest tests/unit/test_dart_checks.py -q` -> **31 passed**
+- `uv run --with-editable '.[all]' python -m pytest tests/unit/test_dart_checks.py tests/unit/test_run_report.py tests/unit/test_sm_cli.py tests/unit/test_cli.py -q` -> **190 passed**
+- `uv run --with-editable '.[all]' sm scour -g myopia:string-duplication.py --no-cache --no-auto-fix --static --no-json` -> **passed**
+- `uv run --with-editable '.[all]' sm scour -g laziness:sloppy-formatting.py --no-cache --no-auto-fix --static --no-json` -> **passed**
+- `uv run --with-editable '.[all]' sm scour --no-cache --no-auto-fix --static --no-json` -> **13 checks passed**
+
 ## 2026-03-09 Delta: QueueIt Dogfood Follow-Up Planning
 
 ### Confirmed Baseline
