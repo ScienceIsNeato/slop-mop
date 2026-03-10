@@ -1,5 +1,18 @@
 # Project Status
 
+## 2026-03-10 Delta: Disable Pipx `sm` Inside Repo Checkout
+
+### Completed
+
+1. Added a committed `.envrc` that prepends the repo's `scripts/` directory to `PATH`, causing `sm` to resolve to the local wrapper instead of `~/.local/bin/sm` when working in this folder.
+2. Added a root-level `./sm` wrapper that delegates to `scripts/sm`, restoring the explicit local runner path from repo root.
+3. Approved the new `.envrc` for direnv in this checkout and updated maintainer/project guidance to prefer the repo-local runner during framework development.
+
+### Validation
+
+- `source .envrc && type -a sm` -> **local `scripts/sm` resolves before pipx**
+- `./sm buff status 92` -> **passed; local buff command executed**
+
 ## 2026-03-10 Delta: Strengthen Agentic Forward-Motion Rules
 
 ### Completed
