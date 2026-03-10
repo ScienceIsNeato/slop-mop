@@ -180,6 +180,19 @@ class TestScanTriageInternals:
         assert triage.resolve_pr_number("o/r", None) == 85
         triage.validate_open_pr.assert_called_once_with("o/r", 85)
 
+    def test_resolve_pr_number_reads_selection_from_git_root(self, monkeypatch):
+        root = Path("/repo")
+        root_resolver = Mock(return_value=root)
+        selected_pr = Mock(return_value=85)
+        validator = Mock(return_value=85)
+        monkeypatch.setattr(triage, "_project_root_from_cwd", root_resolver)
+        monkeypatch.setattr(triage, "get_current_pr_number", selected_pr)
+        monkeypatch.setattr(triage, "validate_open_pr", validator)
+
+        assert triage.resolve_pr_number("o/r", None) == 85
+        selected_pr.assert_called_once_with(root)
+        validator.assert_called_once_with("o/r", 85)
+
     def test_load_json_and_coverage_value(self, tmp_path):
         path = tmp_path / "ok.json"
         path.write_text('{"k": 1}', encoding="utf-8")

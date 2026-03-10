@@ -67,6 +67,18 @@ def _run_local(cmd: list[str]) -> str:
     return proc.stdout
 
 
+def _project_root_from_cwd() -> Path:
+    """Resolve git project root for cwd, falling back to raw cwd."""
+
+    try:
+        root = _run_local(["git", "rev-parse", "--show-toplevel"]).strip()
+    except TriageError:
+        return Path.cwd()
+    if not root:
+        return Path.cwd()
+    return Path(root)
+
+
 def default_repo() -> str:
     out = _run_gh(["repo", "view", "--json", "nameWithOwner"])
     data = json.loads(out)
@@ -143,7 +155,7 @@ def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
     if explicit_pr_number is not None:
         return validate_open_pr(repo, explicit_pr_number)
 
-    configured_pr = get_current_pr_number(Path.cwd())
+    configured_pr = get_current_pr_number(_project_root_from_cwd())
     if configured_pr is not None:
         return validate_open_pr(repo, configured_pr)
 
