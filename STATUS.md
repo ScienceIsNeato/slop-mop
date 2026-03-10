@@ -1,5 +1,18 @@
 # Project Status
 
+## 2026-03-10 Delta: Buff Finalize Ready (PR #85)
+
+### Completed
+
+1. Resolved the final remaining review thread after reclassifying it from `needs_human_feedback` to `fixed_in_code` based on actual implemented changes.
+2. Re-ran the post-PR rail (`inspect` then `iterate`) and confirmed no unresolved review threads remain.
+3. Executed `sm buff finalize 85` (no push) and confirmed the protocol reports PR #85 as ready to publish.
+
+### Validation
+
+- `python -m slopmop.sm buff finalize 85` -> **ready; no unresolved threads; scour clean**
+- Finalize plan: `.slopmop/buff-persistent-memory/pr-85/loop-016/finalize_plan.json`
+
 ## 2026-03-10 Delta: Buff Iterate Live PR-85 Pass
 
 ### Completed
