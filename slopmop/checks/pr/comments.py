@@ -670,13 +670,20 @@ class PRCommentsCheck(BaseCheck):
     ) -> str:
         """Build deterministic command pack for all protocol scenarios."""
 
-        def resolve_thread_command(thread_id: str) -> str:
-            mutation = (
-                "mutation { resolveReviewThread(input: {threadId: "
-                f'"{thread_id}"'
-                "}) { thread { id isResolved } } }"
+        def resolve_thread_command(
+            thread_id: str,
+            scenario: str,
+            message: str,
+            *,
+            resolve_thread: bool = True,
+        ) -> str:
+            command = (
+                f"sm buff resolve {pr_number} {thread_id} "
+                f"--scenario {scenario} --message {json.dumps(message)}"
             )
-            return f"gh api graphql -f query='{mutation}'"
+            if not resolve_thread:
+                command += " --no-resolve"
+            return command
 
         lines: List[str] = []
         lines.append("#!/usr/bin/env bash")
@@ -698,32 +705,48 @@ class PRCommentsCheck(BaseCheck):
 
             if scenario == "fixed_in_code":
                 lines.append(
-                    f'echo "Fixed in commit $(git rev-parse --short HEAD). [explain the code change]" | gh pr comment {pr_number} --body-file -'
+                    resolve_thread_command(
+                        thread_id,
+                        scenario,
+                        "Fixed in commit $(git rev-parse --short HEAD). [explain the code change]",
+                    )
                 )
-                lines.append(resolve_thread_command(thread_id))
             elif scenario == "invalid_with_explanation":
                 lines.append(
-                    f"echo '[invalid with explanation] [state why this comment no longer applies with evidence]' | gh pr comment {pr_number} --body-file -"
+                    resolve_thread_command(
+                        thread_id,
+                        scenario,
+                        "[state why this comment no longer applies with evidence]",
+                    )
                 )
-                lines.append(resolve_thread_command(thread_id))
             elif scenario == "no_longer_applicable":
                 lines.append(
-                    f"echo '[no longer applicable] Code has changed and this thread is outdated; adding explicit note for reviewer.' | gh pr comment {pr_number} --body-file -"
+                    resolve_thread_command(
+                        thread_id,
+                        scenario,
+                        "Code has changed and this thread is outdated; adding explicit note for reviewer.",
+                    )
                 )
-                lines.append(resolve_thread_command(thread_id))
             elif scenario == "out_of_scope_ticketed":
                 lines.append(
                     "echo 'Create follow-up issue first, capture URL, then comment with [out of scope ticketed] and issue link.'"
                 )
                 lines.append(
-                    f"echo '[out of scope ticketed] Tracking in issue #[ISSUE_NUMBER]: [URL]. Not part of this PR scope.' | gh pr comment {pr_number} --body-file -"
+                    resolve_thread_command(
+                        thread_id,
+                        scenario,
+                        "Tracking in issue #[ISSUE_NUMBER]: [URL]. Not part of this PR scope.",
+                    )
                 )
-                lines.append(resolve_thread_command(thread_id))
             elif scenario == "needs_human_feedback":
                 lines.append(
-                    f"echo '[needs human feedback] Please clarify expected behavior or acceptance criteria before implementation.' | gh pr comment {pr_number} --body-file -"
+                    resolve_thread_command(
+                        thread_id,
+                        scenario,
+                        "Please clarify expected behavior or acceptance criteria before implementation.",
+                        resolve_thread=False,
+                    )
                 )
-                lines.append("# Intentionally do not resolve this thread yet.")
             else:
                 lines.append(
                     "echo 'UNCLASSIFIED_THREAD_PROTOCOL_BLOCK: unexpected scenario; abort and fix classifier.'"
@@ -732,18 +755,8 @@ class PRCommentsCheck(BaseCheck):
 
             lines.append("")
 
-        lines.append(
-            "# Final verification: unresolved thread count should be 0 for completion"
-        )
-        lines.append(
-            "gh api graphql -f query='query { repository(owner: \""
-            + owner
-            + '", name: "'
-            + repo
-            + '") { pullRequest(number: '
-            + str(pr_number)
-            + ") { reviewThreads(first: 100) { nodes { isResolved } } } } }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length'"
-        )
+        lines.append("# Re-enter the post-PR rail after resolving this ordered batch")
+        lines.append(f"sm buff inspect {pr_number}")
         return "\n".join(lines) + "\n"
 
     def _write_protocol_artifacts(
@@ -937,10 +950,11 @@ class PRCommentsCheck(BaseCheck):
         lines.append("📊 VERIFY ALL RESOLVED")
         lines.append("━" * 80)
         lines.append("")
-        lines.append("# Check remaining unresolved count (should return 0):")
-        lines.append(
-            f"gh api graphql -f query='query {{ repository(owner: \"{owner}\", name: \"{repo}\") {{ pullRequest(number: {pr_number}) {{ reviewThreads(first: 100) {{ nodes {{ isResolved }} }} }} }} }}' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length'"
-        )
+        lines.append("# Re-run the post-PR inspection rail:")
+        lines.append(f"sm buff inspect {pr_number}")
+        lines.append("")
+        lines.append("# Thread-only probe if you need the narrow check:")
+        lines.append(f"sm buff verify {pr_number}")
         lines.append("")
         lines.append("# Re-run this check:")
         lines.append("sm scour -g myopia:ignored-feedback")

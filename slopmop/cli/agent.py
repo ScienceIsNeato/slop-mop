@@ -16,6 +16,14 @@ class AgentTemplate:
     content: str
 
 
+_IMPLEMENTATION_LOOP = (
+    "1. Run `sm swab` after meaningful code changes.\n"
+    "2. If swab fails, fix the reported findings before continuing.\n"
+    "3. Re-run `sm swab` until green.\n"
+    "4. Before opening or updating a PR, run `sm scour`.\n"
+    "5. After PR feedback lands or CI finishes on the PR branch, run `sm buff`."
+)
+
 _CURSOR_RULE = """---
 description: Slop-mop workflow guardrails
 globs:
@@ -23,10 +31,7 @@ alwaysApply: false
 ---
 
 Use slop-mop as the repo quality loop:
-1. Run `sm swab` after meaningful code changes.
-2. If swab fails, fix the reported findings before continuing.
-3. Re-run `sm swab` until green.
-4. Before opening or updating a PR, run `sm scour`.
+{workflow_steps}
 
 Do not bypass or silence failing gates as a shortcut.
 """
@@ -40,9 +45,23 @@ Workflow:
 2. Summarize failing gates and the concrete fix strategies.
 3. Apply fixes.
 4. Re-run `sm swab` until the run is clean.
+5. Before opening or updating a PR, run `sm scour`.
+6. After PR feedback lands or CI finishes on the PR branch, run `sm buff`.
 
-Before PR readiness checks, run `sm scour`.
+Do not bypass or silence failing gates as a shortcut.
 """
+
+
+def _cursor_rule() -> str:
+    """Render Cursor workflow guidance."""
+
+    return _CURSOR_RULE.format(workflow_steps=_IMPLEMENTATION_LOOP)
+
+
+def _claude_command() -> str:
+    """Render Claude workflow guidance."""
+
+    return _CLAUDE_COMMAND
 
 
 def _templates_for_target(target: str) -> List[AgentTemplate]:
@@ -51,14 +70,14 @@ def _templates_for_target(target: str) -> List[AgentTemplate]:
         return [
             AgentTemplate(
                 relative_path=".cursor/rules/slopmop-swab.mdc",
-                content=_CURSOR_RULE,
+                content=_cursor_rule(),
             )
         ]
     if target == "claude":
         return [
             AgentTemplate(
                 relative_path=".claude/commands/sm-swab.md",
-                content=_CLAUDE_COMMAND,
+                content=_claude_command(),
             )
         ]
     return []
@@ -128,5 +147,6 @@ def cmd_agent(args: argparse.Namespace) -> int:
     print("  1. Restart your agent session if it caches command/rule discovery")
     print("  2. Use `sm swab` routinely during implementation")
     print("  3. Use `sm scour` before opening/updating PRs")
+    print("  4. Use `sm buff` after PR feedback lands or CI completes")
     print()
     return 0

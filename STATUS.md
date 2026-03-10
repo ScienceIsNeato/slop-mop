@@ -1,5 +1,94 @@
 # Project Status
 
+## 2026-03-10 Delta: Buff Iterate Live PR-85 Pass
+
+### Completed
+
+1. Exercised the live `sm buff inspect 85` rail and confirmed CI is clean while PR #85 still has 4 unresolved review threads.
+2. Exercised the live `sm buff iterate 85` rail and confirmed the first deterministic frontier is a 3-thread batch covering `slopmop/checks/javascript/coverage.py`, `slopmop/sm.py`, and `README.md`.
+3. Updated `fixed_in_code` draft placeholders so iterate artifacts no longer imply a commit SHA already exists before changes are committed.
+
+### Validation
+
+- Live check: `python -m slopmop.sm buff inspect 85 --output-file .slopmop/last_buff_inspect.json` -> **CI clean, 4 unresolved review threads**
+- Live check: `python -m slopmop.sm buff iterate 85` -> **prepared loop-012 with 3-thread rank-1 frontier**
+- `python -m slopmop.sm swab -g overconfidence:untested-code.py --json --output-file .slopmop/last_swab_iterate_state.json` -> **passed**
+
+## 2026-03-10 Delta: Buff Finalize Plan Hardening
+
+### Completed
+
+1. Made `sm buff finalize` treat finalize-plan persistence as best-effort instead of crashing when the local state root is unavailable or read-only.
+2. Added explicit finalize-plan rendering for the degraded case so the rail still reports status without pretending a plan file was written.
+3. Preserved real artifact writing when the latest PR loop directory exists and is writable.
+
+### Validation
+
+- `python -m slopmop.sm swab -g overconfidence:untested-code.py --json --output-file .slopmop/last_swab_iterate_state.json` -> **passed**
+
+## 2026-03-10 Delta: Buff Inspect And Iterate Loop
+
+### Completed
+
+1. Promoted `sm buff inspect` to the named post-PR rail entrypoint while keeping plain `sm buff` as an alias for the same inspection flow.
+2. Added `sm buff iterate`, which selects one deterministic frontier of review threads from the latest inspect protocol and writes a stable `next_iteration.json` artifact for agents to follow.
+3. Made `iterate` fall through to `scour` automatically when no review threads remain, then steer the loop back toward `swab`, `scour`, `inspect`, or `finalize --push` based on the result.
+4. Added a minimal `sm buff finalize [<pr>] [--push]` step so the rail now has a real last command instead of guidance pointing at a nonexistent verb.
+
+### Validation
+
+- `python -m slopmop.sm swab -g overconfidence:untested-code.py --json --output-file .slopmop/last_swab_inspect_iterate.json` -> **passed**
+
+## 2026-03-10 Delta: Buff Current-PR State
+
+### Completed
+
+1. Added `sm config --current-pr-number <n>` and `sm config --clear-current-pr` so agents can select a working PR once and then run `sm buff` commands without repeating the PR number.
+2. Moved the working PR selection into local `.slopmop/current_pr.json` state instead of repo config, keeping the selection in persistent agent state rather than project configuration.
+3. Updated `sm buff` and CI triage to fail closed when no working PR is selected and to validate that the selected or explicit PR exists and is still open.
+
+### Validation
+
+- `pytest -q tests/unit/test_sm_cli.py tests/unit/test_sm_cli_config.py tests/unit/test_ci_triage_and_buff.py` -> **133 passed**
+- Live check: `sm config --clear-current-pr && sm buff verify` -> **fails closed with no working PR selected**
+- Live check: `sm config --current-pr-number 85 && sm buff verify` -> **uses selected PR without explicit number**
+
+## 2026-03-10 Delta: PR #85 Review Follow-up (Loop 007)
+
+### Completed
+
+1. Extracted the `buff` and `agent` parser setup into dedicated builder classes in `slopmop/cli/parser_builders.py`, keeping agent-facing flow configuration out of the main CLI verb registry.
+2. Updated agent installation templates and README guidance so the documented default workflow now includes `sm buff` alongside `sm swab` and `sm scour`.
+3. Polished the shared JavaScript no-tests fix suggestion wording to use the full `JavaScript/TypeScript` label consistently.
+
+### Validation
+
+- `pytest -q tests/unit/test_agent_install.py tests/unit/test_sm_cli.py tests/unit/test_ci_triage_and_buff.py tests/unit/test_pr_checks.py` -> **159 passed**
+- `pytest -q tests/unit/test_javascript_checks.py tests/unit/test_javascript_coverage_pct.py` -> **91 passed**
+
+## 2026-03-10 Delta: Buff Rail Hardening
+
+### Completed
+
+1. Added first-class `sm buff verify` and `sm buff resolve` verbs while preserving the existing `sm buff <pr>` triage rail.
+2. Reworked PR comment protocol artifacts so generated command packs and report guidance now point to `sm buff ...` commands instead of raw `gh api graphql` review-thread commands.
+3. Added regression coverage to prevent raw GraphQL from leaking back into user-facing buff command packs and guidance.
+
+### Validation
+
+- `pytest -q tests/unit/test_ci_triage_and_buff.py tests/unit/test_pr_checks.py tests/unit/test_sm_cli.py` -> **150 passed**
+
+## 2026-03-10 Delta: Groundhog Day Protocol Trigger
+
+### Completed
+
+1. Hard-stopped active PR-closing work after using direct GraphQL review-thread inspection instead of the repo's `buff` rail.
+2. Performed protocol analysis and logged the recurrence in `cursor-rules/RECURRENT_ANTIPATTERN_LOG.md`.
+
+### Commitment
+
+- PR-closing work in this repo must start from `sm buff`; lower-level GitHub plumbing is no longer an acceptable default path.
+
 ## 2026-03-09 Delta: PR #85 Ordered Threads Precision
 
 ### Completed

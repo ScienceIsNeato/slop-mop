@@ -76,7 +76,7 @@ def python_no_tests_fix_suggestion(test_dirs: list[str], verify_command: str) ->
 def js_no_tests_fix_suggestion(verify_command: str) -> str:
     """Build fix suggestion for missing JavaScript/TypeScript tests."""
     return (
-        "Add JS/TS tests (for example under test/, tests/, __tests__, "
+        "Add JavaScript/TypeScript tests (for example under test/, tests/, __tests__, "
         f"or as *.test.ts/*.spec.js). Verify with: {verify_command}"
     )
 

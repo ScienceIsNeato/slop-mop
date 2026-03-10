@@ -167,8 +167,9 @@ Generated files:
 - `.claude/commands/sm-swab.md`
 
 These templates keep the runtime path simple: agents call `sm swab` routinely
-during implementation and `sm scour` before PR updates. No protocol adapter is
-required for the default integration flow.
+during implementation, `sm scour` before PR updates, and `sm buff` after PR
+feedback or CI follow-up. No protocol adapter is required for the default
+integration flow.
 
 Note for agents: this list reflects current defaults. Source of truth for
 install behavior is always `sm agent install --help` and command output.

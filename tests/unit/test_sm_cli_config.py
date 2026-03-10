@@ -21,6 +21,8 @@ class TestCmdConfig:
             show=True,
             enable=None,
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -40,6 +42,7 @@ class TestCmdConfig:
         captured = capsys.readouterr()
         assert "Configuration" in captured.out
         assert "Available Quality Gates" in captured.out
+        assert "Current PR number: none selected" in captured.out
         assert "Run 'sm config --show' to see all gates." not in captured.out
 
     def test_config_no_args_shows_usage_hints(self, tmp_path, capsys):
@@ -49,6 +52,8 @@ class TestCmdConfig:
             show=False,
             enable=None,
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -91,6 +96,8 @@ class TestCmdConfig:
             show=False,
             enable=None,
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -128,6 +135,8 @@ class TestCmdConfig:
             show=False,
             enable=None,
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -159,6 +168,8 @@ class TestCmdConfig:
             show=False,
             enable="myopia:vulnerability-blindness.py",
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -184,6 +195,8 @@ class TestCmdConfig:
             show=False,
             enable="myopia:vulnerability-blindness.py",
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -219,6 +232,8 @@ class TestCmdConfig:
             show=False,
             enable="myopia:vulnerability-blindness.py",
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -255,6 +270,8 @@ class TestCmdConfig:
             show=True,
             enable=None,
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -284,6 +301,8 @@ class TestCmdConfig:
             show=False,
             enable=None,
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -308,6 +327,8 @@ class TestCmdConfig:
             show=False,
             enable=None,
             disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
             include_dir=None,
             exclude_dir=None,
             json=None,
@@ -320,3 +341,49 @@ class TestCmdConfig:
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
         assert "swabbing_time" not in config
+
+    def test_set_current_pr_number(self, tmp_path):
+        """--current-pr-number updates local .slopmop state."""
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=85,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        state = json.loads((tmp_path / ".slopmop" / "current_pr.json").read_text())
+        assert state["current_pr_number"] == 85
+
+    def test_clear_current_pr_number(self, tmp_path):
+        """--clear-current-pr removes the current PR selection."""
+        state_dir = tmp_path / ".slopmop"
+        state_dir.mkdir()
+        (state_dir / "current_pr.json").write_text(
+            json.dumps({"current_pr_number": 85})
+        )
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=True,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        assert not (tmp_path / ".slopmop" / "current_pr.json").exists()

@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from slopmop import __version__
+from slopmop.cli.parser_builders import AgentParserBuilder, BuffParserBuilder
 from slopmop.constants import PROJECT_ROOT_HELP
 
 logger = logging.getLogger(__name__)
@@ -238,67 +239,7 @@ def _add_buff_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     """Add the buff subcommand parser (post-PR validation loop)."""
-    buff_parser = subparsers.add_parser(
-        "buff",
-        help="Post-PR CI triage and next-step guidance",
-        description=(
-            "Run post-submit buff checks: CI code-scanning triage "
-            "for the PR branch and actionable guidance."
-        ),
-    )
-    buff_parser.add_argument(
-        "pr_number",
-        nargs="?",
-        type=int,
-        default=None,
-        help="PR number to triage (auto-detect from current branch if omitted)",
-    )
-    buff_parser.add_argument(
-        "--run-id",
-        type=int,
-        default=None,
-        help="Explicit Actions run id for scan triage (overrides PR auto-detect)",
-    )
-    buff_parser.add_argument(
-        "--repo",
-        default=None,
-        help="GitHub repo owner/name (defaults to current repo)",
-    )
-    buff_parser.add_argument(
-        "--workflow",
-        default="slop-mop primary code scanning gate",
-        help="Workflow name used for CI scan triage",
-    )
-    buff_parser.add_argument(
-        "--artifact",
-        default="slopmop-results",
-        help="Artifact name containing JSON scan results",
-    )
-    buff_parser.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-        default=None,
-        help="Output buff results as JSON.",
-    )
-    buff_parser.add_argument(
-        "--no-json",
-        dest="json_output",
-        action="store_false",
-        help="Force human-readable buff output.",
-    )
-    buff_parser.add_argument(
-        "--output-file",
-        "--output",
-        "-o",
-        dest="output_file",
-        default=None,
-        metavar="PATH",
-        help=(
-            "Write machine-readable buff payload to a file while preserving "
-            "stdout output mode."
-        ),
-    )
+    BuffParserBuilder(subparsers).build()
 
 
 def _add_config_parser(
@@ -335,6 +276,17 @@ def _add_config_parser(
         type=int,
         metavar="SECONDS",
         help="Set the swabbing-time budget (seconds). 0 or negative disables the limit.",
+    )
+    config_parser.add_argument(
+        "--current-pr-number",
+        type=int,
+        metavar="PR",
+        help="Set the working pull request number for buff commands.",
+    )
+    config_parser.add_argument(
+        "--clear-current-pr",
+        action="store_true",
+        help="Clear the working pull request number.",
     )
     config_parser.add_argument(
         "--project-root",
@@ -486,43 +438,7 @@ def _add_agent_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     """Add the agent subcommand parser."""
-    agent_parser = subparsers.add_parser(
-        "agent",
-        help="Install agent integration templates",
-        description=(
-            "Install repo-local templates for AI coding agents so they discover "
-            "and use the slop-mop swab/scour workflow consistently."
-        ),
-    )
-    agent_subparsers = agent_parser.add_subparsers(
-        dest="agent_action",
-        help="Agent action",
-    )
-
-    install_parser = agent_subparsers.add_parser(
-        "install",
-        help="Install Cursor/Claude template files",
-    )
-    install_parser.add_argument(
-        "--target",
-        choices=["all", "cursor", "claude"],
-        default="all",
-        help=(
-            "Which agent templates to install. "
-            "'all' installs both cursor and claude."
-        ),
-    )
-    install_parser.add_argument(
-        "--project-root",
-        type=str,
-        default=".",
-        help=PROJECT_ROOT_HELP,
-    )
-    install_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite existing files managed by this command.",
-    )
+    AgentParserBuilder(subparsers).build()
 
 
 def _add_status_parser(

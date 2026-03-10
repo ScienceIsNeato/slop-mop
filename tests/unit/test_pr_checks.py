@@ -531,9 +531,60 @@ class TestPRCommentsCheck:
             repo="repo",
         )
 
-        assert 'echo "Fixed in commit $(git rev-parse --short HEAD).' in script
-        assert 'threadId: "PRRT_abc"' in script
-        assert '\\"PRRT_abc\\"' not in script
+        assert "sm buff resolve 85 PRRT_abc --scenario fixed_in_code" in script
+        assert "Fixed in commit $(git rev-parse --short HEAD)." in script
+        assert "gh api graphql" not in script
+
+    def test_commands_script_contains_no_raw_graphql(self):
+        """User-facing command pack should stay on the buff rail."""
+        check = PRCommentsCheck({})
+
+        script = check._build_commands_script(
+            [
+                {
+                    "thread_id": "PRRT_fixed",
+                    "resolution_scenario": "fixed_in_code",
+                    "resolution_priority_rank": 1,
+                    "resolution_priority_reason": "logic issue",
+                },
+                {
+                    "thread_id": "PRRT_human",
+                    "resolution_scenario": "needs_human_feedback",
+                    "resolution_priority_rank": 5,
+                    "resolution_priority_reason": "needs clarification",
+                },
+            ],
+            pr_number=85,
+            owner="owner",
+            repo="repo",
+        )
+
+        assert "gh api graphql" not in script
+        assert "reviewThreads" not in script
+        assert "resolveReviewThread" not in script
+        assert "sm buff inspect 85" in script
+
+    def test_format_guidance_contains_no_raw_graphql(self):
+        """Guidance should point agents back to buff, not GitHub primitives."""
+        check = PRCommentsCheck({})
+        threads = [
+            {
+                "thread_id": "PRRT_abc",
+                "is_outdated": False,
+                "body": "Please fix this issue",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 42,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+
+        guidance = check._format_guidance(threads, 85, "owner", "repo")
+
+        assert "sm buff inspect 85" in guidance
+        assert "gh api graphql" not in guidance
+        assert "reviewThreads" not in guidance
+        assert "resolveReviewThread" not in guidance
 
     def test_group_threads_by_category_uses_preclassified_category(self):
         """Grouping should reuse the classifier output when category is preset."""

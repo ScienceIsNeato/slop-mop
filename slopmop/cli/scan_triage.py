@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, TypedDict, cast
 
+from slopmop.core.config import get_current_pr_number
 from slopmop.reporting.rail import (
     default_next_steps,
     filter_actionable_rows,
@@ -108,6 +109,48 @@ def current_pr_number(repo: str) -> int:
     if not isinstance(number, int):
         raise TriageError("Could not resolve current PR number for this branch.")
     return number
+
+
+def validate_open_pr(repo: str, pr_number: int) -> int:
+    """Validate that a PR exists and is open."""
+
+    out = _run_gh(
+        [
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--json",
+            "number,state",
+        ]
+    )
+    data = json.loads(out)
+    number = data.get("number")
+    state = str(data.get("state") or "").upper()
+    if not isinstance(number, int):
+        raise TriageError(f"PR #{pr_number} does not exist in {repo}.")
+    if state != "OPEN":
+        raise TriageError(
+            f"PR #{pr_number} is not open (state={state.lower() or 'unknown'})."
+        )
+    return number
+
+
+def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
+    """Resolve the working PR number from explicit arg or repo config."""
+
+    if explicit_pr_number is not None:
+        return validate_open_pr(repo, explicit_pr_number)
+
+    configured_pr = get_current_pr_number(Path.cwd())
+    if configured_pr is not None:
+        return validate_open_pr(repo, configured_pr)
+
+    raise TriageError(
+        "No working PR selected. Set one with 'sm config --current-pr-number <n>' "
+        "or pass an explicit PR number."
+    )
 
 
 def latest_completed_run_id(repo: str, pr_number: int, workflow: str) -> int:
@@ -397,9 +440,7 @@ def run_triage(
     resolved_pr_number = pr_number
     ci_state: dict[str, Any] | None = None
     if resolved_run_id is None:
-        resolved_pr = (
-            pr_number if pr_number is not None else current_pr_number(resolved_repo)
-        )
+        resolved_pr = resolve_pr_number(resolved_repo, pr_number)
         resolved_pr_number = resolved_pr
         state = _workflow_run_state(resolved_repo, resolved_pr, workflow)
 

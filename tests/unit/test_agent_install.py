@@ -77,6 +77,22 @@ class TestCmdAgent:
             encoding="utf-8"
         )
 
+    def test_installed_templates_include_buff_workflow(self, tmp_path):
+        """Generated agent templates should mention the post-PR buff rail."""
+        args = _make_args(tmp_path)
+
+        result = cmd_agent(args)
+
+        assert result == 0
+        cursor_text = (tmp_path / ".cursor/rules/slopmop-swab.mdc").read_text(
+            encoding="utf-8"
+        )
+        claude_text = (tmp_path / ".claude/commands/sm-swab.md").read_text(
+            encoding="utf-8"
+        )
+        assert "sm buff" in cursor_text
+        assert "sm buff" in claude_text
+
     def test_project_root_missing(self, tmp_path):
         """Returns usage error when project root does not exist."""
         missing = tmp_path / "missing"

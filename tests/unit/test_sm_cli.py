@@ -116,7 +116,33 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["buff", "84"])
         assert args.verb == "buff"
-        assert args.pr_number == 84
+        assert args.pr_or_action == "84"
+        assert args.action_args == []
+
+    def test_buff_inspect_parses(self):
+        """Buff inspect parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "inspect", "84"])
+        assert args.verb == "buff"
+        assert args.pr_or_action == "inspect"
+        assert args.action_args == ["84"]
+
+    def test_buff_iterate_parses(self):
+        """Buff iterate parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "iterate", "84"])
+        assert args.verb == "buff"
+        assert args.pr_or_action == "iterate"
+        assert args.action_args == ["84"]
+
+    def test_buff_finalize_parses(self):
+        """Buff finalize parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "finalize", "84", "--push"])
+        assert args.verb == "buff"
+        assert args.pr_or_action == "finalize"
+        assert args.action_args == ["84"]
+        assert args.push is True
 
     def test_buff_json_and_output_file_flags(self):
         """Buff supports JSON stdout and machine output file mirroring."""
@@ -125,7 +151,8 @@ class TestCreateParser:
             ["buff", "84", "--json", "--output-file", "triage.json"]
         )
         assert args.verb == "buff"
-        assert args.pr_number == 84
+        assert args.pr_or_action == "84"
+        assert args.action_args == []
         assert args.json_output is True
         assert args.output_file == "triage.json"
 
@@ -198,6 +225,20 @@ class TestCreateParser:
         )
         assert args.verb == "config"
         assert args.enable == "myopia:vulnerability-blindness.py"
+
+    def test_config_current_pr_number(self):
+        """Config --current-pr-number parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["config", "--current-pr-number", "85"])
+        assert args.verb == "config"
+        assert args.current_pr_number == 85
+
+    def test_config_clear_current_pr(self):
+        """Config --clear-current-pr parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["config", "--clear-current-pr"])
+        assert args.verb == "config"
+        assert args.clear_current_pr is True
 
     def test_help_subcommand(self):
         """Help subcommand parses correctly."""
