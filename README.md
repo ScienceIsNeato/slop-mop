@@ -636,9 +636,10 @@ as a second safety net.
 ### Check CI Status Locally
 
 ```bash
-sm ci               # current PR
-sm ci 42             # specific PR
-sm ci --watch        # poll until CI completes
+sm buff status        # current PR CI status
+sm buff status 42     # specific PR CI status
+sm buff watch         # poll current PR CI status until complete
+sm buff watch 42      # poll specific PR CI status until complete
 ```
 
 ---

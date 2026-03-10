@@ -28,7 +28,7 @@ class BuffParserBuilder:
             description=(
                 "Run the post-submit buff rail. Default mode is CI code-scanning "
                 "triage for the PR branch. Additional subcommands let agents "
-                "verify unresolved review threads and resolve individual threads "
+                "check CI status, verify unresolved review threads, and resolve individual threads "
                 "without dropping to raw GitHub plumbing."
             ),
         )
@@ -45,10 +45,11 @@ class BuffParserBuilder:
             default=None,
             help=(
                 "PR number for normal inspect mode, or one of: inspect, iterate, "
-                "finalize, verify, resolve. Examples: 'sm buff 85', "
+                "finalize, verify, resolve, status, watch. Examples: 'sm buff 85', "
                 "'sm buff inspect 85', 'sm buff iterate 85', "
                 "'sm buff finalize 85 --push', 'sm buff verify 85', "
-                "'sm buff resolve 85 PRRT_xxx --message ...'"
+                "'sm buff resolve 85 PRRT_xxx --message ...', "
+                "'sm buff status 85', 'sm buff watch 85'"
             ),
         )
         buff_parser.add_argument(
@@ -59,6 +60,12 @@ class BuffParserBuilder:
 
     @staticmethod
     def _add_triage_args(buff_parser: argparse.ArgumentParser) -> None:
+        buff_parser.add_argument(
+            "--interval",
+            type=int,
+            default=30,
+            help="Polling interval in seconds for 'sm buff watch' (default: 30)",
+        )
         buff_parser.add_argument(
             "--run-id",
             type=int,

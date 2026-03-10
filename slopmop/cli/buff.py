@@ -13,10 +13,19 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional, cast
 
 from slopmop.checks.pr.comments import PRCommentsCheck
+from slopmop.cli.ci import (
+    _categorize_checks,
+    _detect_pr_number,
+    _fetch_checks,
+    _print_failed_status,
+    _print_in_progress_status,
+    _print_success_status,
+)
 from slopmop.cli.scan_triage import (
     TriageError,
     print_triage,
@@ -46,6 +55,43 @@ def _parse_optional_int(value: str | None, label: str) -> int | None:
         raise ValueError(f"{label} must be an integer, got: {value}") from exc
 
 
+def _normalize_single_pr_action(
+    raw_mode: str,
+    raw_rest: list[str],
+) -> argparse.Namespace:
+    """Normalize actions that take at most one PR number."""
+
+    if len(raw_rest) > 1:
+        raise ValueError(f"buff {raw_mode} accepts at most one PR number")
+    return argparse.Namespace(
+        action=raw_mode,
+        pr_number=_parse_optional_int(
+            raw_rest[0] if raw_rest else None,
+            "PR number",
+        ),
+    )
+
+
+def _normalize_status_action(
+    mode: str,
+    raw_rest: list[str],
+    interval: int,
+) -> argparse.Namespace:
+    """Normalize buff CI status/watch actions."""
+
+    if len(raw_rest) > 1:
+        raise ValueError(f"buff {mode} accepts at most one PR number")
+    return argparse.Namespace(
+        action="status",
+        pr_number=_parse_optional_int(
+            raw_rest[0] if raw_rest else None,
+            "PR number",
+        ),
+        watch=mode == "watch",
+        interval=interval,
+    )
+
+
 def _normalize_buff_args(args: argparse.Namespace) -> argparse.Namespace:
     """Normalize parser output into an action-oriented namespace."""
 
@@ -56,49 +102,35 @@ def _normalize_buff_args(args: argparse.Namespace) -> argparse.Namespace:
         return argparse.Namespace(action="inspect", pr_number=None)
 
     if raw_mode == "inspect":
-        if len(raw_rest) > 1:
-            raise ValueError("buff inspect accepts at most one PR number")
-        return argparse.Namespace(
-            action="inspect",
-            pr_number=_parse_optional_int(
-                raw_rest[0] if raw_rest else None,
-                "PR number",
-            ),
+        return _normalize_single_pr_action("inspect", raw_rest)
+
+    if raw_mode == "status":
+        return _normalize_status_action(
+            mode="status",
+            raw_rest=raw_rest,
+            interval=int(getattr(args, "interval", 30)),
+        )
+
+    if raw_mode == "watch":
+        return _normalize_status_action(
+            mode="watch",
+            raw_rest=raw_rest,
+            interval=int(getattr(args, "interval", 30)),
         )
 
     if raw_mode == "iterate":
-        if len(raw_rest) > 1:
-            raise ValueError("buff iterate accepts at most one PR number")
-        return argparse.Namespace(
-            action="iterate",
-            pr_number=_parse_optional_int(
-                raw_rest[0] if raw_rest else None,
-                "PR number",
-            ),
-        )
+        return _normalize_single_pr_action("iterate", raw_rest)
 
     if raw_mode == "finalize":
-        if len(raw_rest) > 1:
-            raise ValueError("buff finalize accepts at most one PR number")
+        normalized = _normalize_single_pr_action("finalize", raw_rest)
         return argparse.Namespace(
-            action="finalize",
-            pr_number=_parse_optional_int(
-                raw_rest[0] if raw_rest else None,
-                "PR number",
-            ),
+            action=normalized.action,
+            pr_number=normalized.pr_number,
             push_changes=bool(getattr(args, "push", False)),
         )
 
     if raw_mode == "verify":
-        if len(raw_rest) > 1:
-            raise ValueError("buff verify accepts at most one PR number")
-        return argparse.Namespace(
-            action="verify",
-            pr_number=_parse_optional_int(
-                raw_rest[0] if raw_rest else None,
-                "PR number",
-            ),
-        )
+        return _normalize_single_pr_action("verify", raw_rest)
 
     if raw_mode == "resolve":
         if len(raw_rest) < 2:
@@ -494,6 +526,72 @@ def _cmd_buff_verify(pr_number: int | None) -> int:
     return 1
 
 
+def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
+    """Check PR CI status through the buff rail."""
+
+    project_root = Path(_project_root_from_cwd())
+
+    resolved_pr = pr_number
+    if resolved_pr is None:
+        resolved_pr = _detect_pr_number(project_root)
+
+    if resolved_pr is None:
+        print("ERROR: could not detect PR number")
+        print(
+            "Run from a branch with an open PR, or specify: sm buff status <pr_number>"
+        )
+        return 2
+
+    print()
+    print("🪣 sm buff status - CI Status Check")
+    print("=" * 60)
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
+    print(f"🔀 PR: #{resolved_pr}")
+    if watch:
+        print(f"👀 Watch mode: polling every {interval}s")
+    print("=" * 60)
+    print()
+
+    while True:
+        checks, error = _fetch_checks(project_root, resolved_pr)
+
+        if checks is None:
+            print(f"ERROR: {error}")
+            return 2 if "not found" in error.lower() else 1
+
+        if not checks:
+            print("ℹ️  No CI checks found for this PR")
+            print("   (CI workflow may not be set up yet)")
+            return 0
+
+        completed, in_progress, failed = _categorize_checks(checks)
+        total = len(checks)
+
+        if failed:
+            _print_failed_status(completed, in_progress, failed)
+            if watch and in_progress:
+                print(f"⏳ Waiting {interval}s before next check...")
+                time.sleep(interval)
+                print()
+                continue
+            return 1
+
+        if in_progress:
+            _print_in_progress_status(completed, in_progress)
+            if watch:
+                print(f"⏳ Waiting {interval}s before next check...")
+                time.sleep(interval)
+                print()
+                continue
+            print("💡 Use 'sm buff watch' to poll until complete")
+            return 1
+
+        _print_success_status(completed, total)
+        return 0
+
+
 def _cmd_buff_resolve(
     pr_number: int | None,
     thread_id: str,
@@ -844,6 +942,10 @@ def cmd_buff(args: argparse.Namespace) -> int:
         return _cmd_buff_inspect(args, normalized.pr_number)
     if normalized.action == "iterate":
         return _cmd_buff_iterate(normalized.pr_number)
+    if normalized.action == "status":
+        return _cmd_buff_status(
+            normalized.pr_number, normalized.watch, normalized.interval
+        )
     if normalized.action == "finalize":
         return _cmd_buff_finalize(normalized.pr_number, normalized.push_changes)
     if normalized.action == "verify":

@@ -1,5 +1,35 @@
 # Project Status
 
+## 2026-03-10 Delta: Strengthen Agentic Forward-Motion Rules
+
+### Completed
+
+1. Updated the `cursor-rules` source guidance to make autonomous forward motion explicit instead of implied.
+2. Added direct anti-pattern guidance against permission-seeking closeouts like "If you want, I can..." when the next rail step is already obvious.
+3. Strengthened the slop-mop project workflow rules so agents are expected to continue through validate, commit, push, and PR rail steps unless a real blocker or approval boundary exists.
+4. Regenerated `AGENTS.md` from the updated `cursor-rules` sources.
+
+### Validation
+
+- `./cursor-rules/build_agent_instructions.sh` -> **passed**
+- `sm swab` -> **passed**
+- `sm scour` -> **passed**
+
+## 2026-03-10 Delta: Remove `ci` Verb In Favor Of Buff Rail
+
+### Completed
+
+1. Removed standalone `ci` verb wiring from CLI parser and dispatch (`sm.py`) and from public CLI command exports.
+2. Added `sm buff status` and `sm buff watch` actions so CI status polling remains available inside the buff rail path.
+3. Updated buff action parsing/help text and reused existing CI status categorization/printing logic under buff actions.
+4. Updated README command examples from `sm ci ...` to `sm buff status/watch ...` and migrated unit tests to the new buff-based flow.
+
+### Validation
+
+- `pytest -q tests/unit/test_sm_cli.py tests/unit/test_ci_triage_and_buff.py` -> **135 passed**
+- `sm swab` -> **passed**
+- `sm scour` -> **passed**
+
 ## 2026-03-10 Delta: Human/Machine Output Separation
 
 ### Completed

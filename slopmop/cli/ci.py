@@ -161,8 +161,8 @@ def _print_success_status(completed: List[Any], total: int) -> None:
     print()
 
 
-def cmd_ci(args: argparse.Namespace) -> int:
-    """Handle the ci command - check CI status for current PR."""
+def run_ci_status(args: argparse.Namespace) -> int:
+    """Run CI status checks (used by buff rail status/watch actions)."""
     project_root = Path(args.project_root).resolve()
 
     # Detect PR number if not provided
@@ -172,12 +172,14 @@ def cmd_ci(args: argparse.Namespace) -> int:
 
     if pr_number is None:
         print("❌ Could not detect PR number")
-        print("   Run from a branch with an open PR, or specify: sm ci <pr_number>")
+        print(
+            "   Run from a branch with an open PR, or specify: sm buff status <pr_number>"
+        )
         return 2
 
     # Print header
     print()
-    print("🪣 sm ci - CI Status Check")
+    print("🪣 sm buff status - CI Status Check")
     print("=" * 60)
     from slopmop.reporting import print_project_header
 
