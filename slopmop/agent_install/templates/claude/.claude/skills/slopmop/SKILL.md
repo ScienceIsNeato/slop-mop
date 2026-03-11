@@ -1,22 +1,21 @@
 ---
 name: slop-mop
 description: >-
-  Gradient descent tool and rapid development protocol — treats LLM weaknesses
-  as adversarial patterns causing repo rot, provides greased rails via the
-  swab/scour/buff loop so you can focus on writing great code.
+  Speed multiplier for long-running code generation and slop resolution —
+  provides the swab/scour/buff loop so you always know what to do next.
 ---
 
 # Slop-mop skill
 
-Slop-mop (`sm`) is your procedural cornerstone for development in this repository. It provides a fast, repeatable loop that eliminates the guesswork of "what do I validate next?" — just follow the protocol and focus on code.
+Slop-mop (`sm`) is your procedural backbone for development in this repository. It accelerates long-running code generation by keeping the repo clean as you work, and it accelerates slop resolution by giving you a fast, repeatable loop that tells you exactly what to fix next.
 
 ## When to use
 
-- **During implementation**: Run `sm swab` after every meaningful code change. Each pass is gradient descent — it catches drift and auto-fixes what it can. Keep running until clean.
-- **Before PR**: Run `sm scour` for a comprehensive sweep that surfaces everything before it compounds.
-- **After CI/review**: Run `sm buff <PR_NUMBER>` to convert raw CI results and review feedback into a concrete remediation plan.
+- **During implementation**: Run `sm swab` after every meaningful code change. Keep running until clean.
+- **Before PR**: Run `sm scour` for a comprehensive sweep.
+- **After CI/review**: Run `sm buff <PR_NUMBER>` to convert feedback into next steps.
 
-## The development loop
+## The loop
 
 ```
 Write code → sm swab → fix → repeat (until clean)
@@ -28,10 +27,9 @@ Write code → sm swab → fix → repeat (until clean)
 
 ## Tooling preference
 
-- If MCP tools `sm_swab`, `sm_scour`, `sm_buff` are available, prefer those.
-- Otherwise, run CLI commands directly from the project root.
+- Prefer MCP tools `sm_swab`/`sm_scour`/`sm_buff` if available.
+- Otherwise, run CLI commands from the project root.
 
 ## Safety
 
-- Never bypass, disable, or silence a failing check — that's how repo rot starts.
-- If output is large, summarize and cite the most actionable items first.
+- Never bypass or silence a failing check — that's how repo rot compounds.

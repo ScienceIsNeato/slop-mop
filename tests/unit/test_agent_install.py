@@ -129,17 +129,36 @@ class TestCmdAgent:
             assert "sm buff" in text, f"{label} ({path}) missing 'sm buff'"
 
     def test_skill_description_in_templates(self, tmp_path):
-        """Templates describe sm as a gradient descent development protocol."""
+        """Templates describe sm as a speed multiplier via shared core content."""
         args = _make_args(tmp_path)
         cmd_agent(args)
 
         cursor_text = (tmp_path / ".cursor/rules/slopmop-swab.mdc").read_text(
             encoding="utf-8"
         )
-        assert "development protocol" in cursor_text
-        assert "gradient descent" in cursor_text
+        assert "speed multiplier" in cursor_text
         assert "sm swab" in cursor_text
         assert "sm scour" in cursor_text
+        # Verify {{CORE}} placeholder was substituted
+        assert "{{CORE}}" not in cursor_text
+
+    def test_core_substitution_produces_identical_body(self, tmp_path):
+        """All targets using {{CORE}} get identical shared content."""
+        args = _make_args(tmp_path)
+        cmd_agent(args)
+
+        # Extract the shared body from multiple targets
+        copilot = (tmp_path / ".github/copilot-instructions.md").read_text(
+            encoding="utf-8"
+        )
+        cline = (tmp_path / ".clinerules/slopmop.md").read_text(encoding="utf-8")
+        # Cline has no wrapper, so it should be the pure core content
+        # Copilot has a header line; the core body should be in both
+        assert "speed multiplier" in copilot
+        assert "speed multiplier" in cline
+        # The core table should be identical in both
+        assert "| `sm swab`" in copilot
+        assert "| `sm swab`" in cline
 
     def test_project_root_missing(self, tmp_path):
         """Returns usage error when project root does not exist."""

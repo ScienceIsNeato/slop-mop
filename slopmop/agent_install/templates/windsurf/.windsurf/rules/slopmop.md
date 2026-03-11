@@ -2,27 +2,4 @@
 trigger: always_on
 ---
 
-## Slop-mop — your development protocol
-
-Slop-mop (`sm`) is a gradient descent tool for this repository. It treats common LLM weaknesses — sloppy formatting, dead code, stale docs, untested changes — as adversarial patterns that cause accidental repo rot. Rather than leaving you to figure out what to validate and when, sm provides greased rails: a fast, repeatable development loop that tells you exactly what to do next.
-
-**This is your procedural cornerstone.** Follow the swab/scour/buff loop and focus on writing great code.
-
-| Verb | What it does | When to run it |
-|------|-------------|----------------|
-| `sm swab` | Fast iterative feedback — catches drift and auto-fixes what it can | After every meaningful code change (run early, run often) |
-| `sm scour` | Comprehensive pre-PR sweep — surfaces everything before it compounds | Before opening or updating a pull request |
-| `sm buff` | Post-PR triage — digests CI results and review feedback into actionable steps | After CI completes or review feedback lands |
-
-### The loop
-1. **Write code → `sm swab` → fix → repeat.** This is gradient descent — each pass reduces entropy. Keep running until clean.
-2. **Before PR → `sm scour`.** One comprehensive pass to catch anything swab missed.
-3. **After CI/review → `sm buff <PR_NUMBER>`.** Converts raw feedback into a concrete remediation plan.
-
-### Tooling preference
-- If MCP tools `sm_swab`, `sm_scour`, `sm_buff` are available (e.g. via a configured MCP server), prefer calling those tools.
-- Otherwise, run the CLI commands directly from the project root.
-
-### Safety
-- Never bypass, disable, or silence a failing check — that's how repo rot starts.
-- If output is large, summarize and cite the most actionable items first.
+{{CORE}}

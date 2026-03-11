@@ -7,6 +7,8 @@ from importlib import resources
 from importlib.abc import Traversable
 from typing import Iterator, List
 
+_CORE_PLACEHOLDER = b"{{CORE}}"
+
 
 @dataclass(frozen=True)
 class TemplateAsset:
@@ -18,6 +20,12 @@ class TemplateAsset:
 
 def _templates_package() -> Traversable:
     return resources.files("slopmop.agent_install.templates")
+
+
+def _load_shared_core() -> bytes:
+    """Load the shared core.md content once."""
+    core = _templates_package().joinpath("_shared").joinpath("core.md")
+    return core.read_bytes()
 
 
 def _walk(traversable: Traversable) -> Iterator[Traversable]:
@@ -32,21 +40,28 @@ def _walk(traversable: Traversable) -> Iterator[Traversable]:
 def iter_template_assets(template_dir: str) -> Iterator[TemplateAsset]:
     """Yield all files within a template directory.
 
-    The destination path equals the file path relative to the template dir root.
+    Files containing ``{{CORE}}`` get the shared core.md content
+    substituted in at load time.
     """
     base = _templates_package().joinpath(template_dir)
     if not base.is_dir():
         raise FileNotFoundError(f"Template directory not found: {template_dir}")
 
+    core: bytes | None = None
     base_str = str(base)
     for entry in _walk(base):
         if entry.is_dir():
             continue
         entry_str = str(entry)
         rel = entry_str[len(base_str) :].lstrip("/")
+        raw = entry.read_bytes()
+        if _CORE_PLACEHOLDER in raw:
+            if core is None:
+                core = _load_shared_core()
+            raw = raw.replace(_CORE_PLACEHOLDER, core.rstrip())
         yield TemplateAsset(
             destination_relpath=rel,
-            content=entry.read_bytes(),
+            content=raw,
         )
 
 
