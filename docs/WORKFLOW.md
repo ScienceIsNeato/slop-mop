@@ -1,8 +1,9 @@
 # Slop-Mop Workflow
 
-> **Auto-generated** — do not edit by hand.
 > Source of truth: `slopmop/workflow/state_machine.py`
-> Re-generate: `python scripts/gen_workflow_diagrams.py`
+> Re-generate diagrams:
+> - `python scripts/gen_relationship_diagram.py`
+> - `python scripts/gen_timeline_diagram.py`
 
 The slop-mop development loop is a small state machine.  Every tool
 invocation advances the machine; the terminal `walk-forward` gate in
@@ -12,59 +13,13 @@ invocation advances the machine; the terminal `walk-forward` gate in
 
 ## Relationship diagram
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    coding : During implementation
-    swab_clean : Swab passed
-    buff_iterating : Addressing feedback
-    committed : Changes committed
-    scour_clean : Scour passed
-    pr_open : PR open — awaiting CI/review
-    pr_ready : PR ready to land
-
-    coding --> swab_clean : passes
-    coding --> coding : fails
-    buff_iterating --> swab_clean : passes
-    buff_iterating --> buff_iterating : fails
-    swab_clean --> committed : committed
-    committed --> scour_clean : passes
-    committed --> coding : fails
-    scour_clean --> pr_open : PR opened/updated
-    pr_open --> buff_iterating : has issues
-    pr_open --> pr_ready : all green
-    buff_iterating --> coding : iteration prepared
-    pr_ready --> pr_open : final push
-```
+![Workflow state-machine relationships](relationship_diagram.svg)
 
 ---
 
 ## Developer timeline
 
-```mermaid
-flowchart TD
-    START["During implementation"]
-    SWAB["Run sm swab"]
-    COMMIT["Commit"]
-    BEFORE_PR["Before PR update/open"]
-    SCOUR["Run sm scour"]
-    OPEN_PR["Open/update PR"]
-    AFTER_PR["After PR opens / CI feedback"]
-    BUFF["Run sm buff"]
-    FIX["Fix findings"]
-
-    START --> SWAB
-    SWAB -->|"passes"| COMMIT
-    SWAB -->|"fails"| FIX
-    COMMIT --> BEFORE_PR
-    BEFORE_PR --> SCOUR
-    SCOUR -->|"passes"| OPEN_PR
-    SCOUR -->|"fails"| FIX
-    OPEN_PR --> AFTER_PR
-    AFTER_PR --> BUFF
-    BUFF -->|"actionable guidance"| FIX
-    FIX --> SWAB
-```
+![Developer workflow timeline](timeline_diagram.svg)
 
 ---
 
