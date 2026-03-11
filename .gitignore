@@ -56,3 +56,7 @@ AGENTS.md
 
 # Claude Code session state (hooks, settings, transcripts)
 .claude/
+.cursor
+
+# Allow agent install template files to be tracked
+!slopmop/agent_install/templates/**

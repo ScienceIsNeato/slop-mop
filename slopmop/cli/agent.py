@@ -5,7 +5,12 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List
+from typing import List
+
+from slopmop.agent_install.installer import install_agent_templates
+from slopmop.agent_install.registry import ALL_KEYS, TARGETS, expand_target
+
+ALL_TARGETS = list(ALL_KEYS)
 
 
 @dataclass(frozen=True)
@@ -16,106 +21,32 @@ class AgentTemplate:
     content: str
 
 
-_IMPLEMENTATION_LOOP = (
-    "1. Run `sm swab` after meaningful code changes.\n"
-    "2. If swab fails, fix the reported findings before continuing.\n"
-    "3. Re-run `sm swab` until green.\n"
-    "4. Before opening or updating a PR, run `sm scour`.\n"
-    "5. After PR feedback lands or CI finishes on the PR branch, run `sm buff`."
-)
-
-_CURSOR_RULE = """---
-description: Slop-mop workflow guardrails
-globs:
-alwaysApply: false
----
-
-Use slop-mop as the repo quality loop:
-{workflow_steps}
-
-Do not bypass or silence failing gates as a shortcut.
-"""
-
-_CLAUDE_COMMAND = """# /sm-swab
-
-Run slop-mop quick validation for this repository.
-
-Workflow:
-1. Run `sm swab`.
-2. Summarize failing gates and the concrete fix strategies.
-3. Apply fixes.
-4. Re-run `sm swab` until the run is clean.
-5. Before opening or updating a PR, run `sm scour`.
-6. After PR feedback lands or CI finishes on the PR branch, run `sm buff`.
-
-Do not bypass or silence failing gates as a shortcut.
-"""
-
-
-def _cursor_rule() -> str:
-    """Render Cursor workflow guidance."""
-
-    return _CURSOR_RULE.format(workflow_steps=_IMPLEMENTATION_LOOP)
-
-
-def _claude_command() -> str:
-    """Render Claude workflow guidance."""
-
-    return _CLAUDE_COMMAND
-
-
 def _templates_for_target(target: str) -> List[AgentTemplate]:
-    """Return templates for one install target."""
-    if target == "cursor":
-        return [
-            AgentTemplate(
-                relative_path=".cursor/rules/slopmop-swab.mdc",
-                content=_cursor_rule(),
-            )
-        ]
-    if target == "claude":
-        return [
-            AgentTemplate(
-                relative_path=".claude/commands/sm-swab.md",
-                content=_claude_command(),
-            )
-        ]
-    return []
+    """Return templates for one install target (used by tests)."""
+    from slopmop.agent_install.loader import load_assets
+
+    if target not in TARGETS:
+        return []
+    assets = load_assets(TARGETS[target].template_dir)
+    return [
+        AgentTemplate(relative_path=a.destination_relpath, content=a.content.decode("utf-8"))
+        for a in assets
+    ]
 
 
 def _expand_targets(target: str) -> List[str]:
     """Expand CLI target option into concrete targets."""
-    if target == "all":
-        return ["cursor", "claude"]
-    return [target]
-
-
-def _install_templates(
-    project_root: Path, templates: Iterable[AgentTemplate], force: bool
-) -> tuple[List[Path], List[Path]]:
-    """Write templates to disk and return installed/skipped paths."""
-    installed: List[Path] = []
-    skipped: List[Path] = []
-
-    for template in templates:
-        destination = project_root / template.relative_path
-        if destination.exists() and not force:
-            skipped.append(destination)
-            continue
-
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(template.content, encoding="utf-8")
-        installed.append(destination)
-
-    return installed, skipped
+    return expand_target(target)
 
 
 def cmd_agent(args: argparse.Namespace) -> int:
     """Handle the ``sm agent`` command."""
     if args.agent_action != "install":
+        targets_str = "|".join(["all"] + ALL_TARGETS)
         print(
-            "Usage: sm agent install "
-            "[--target all|cursor|claude] [--project-root PATH] [--force]"
+            f"Usage: sm agent install "
+            f"[--target {targets_str}] "
+            f"[--project-root PATH] [--force]"
         )
         return 2
 
@@ -124,24 +55,27 @@ def cmd_agent(args: argparse.Namespace) -> int:
         print(f"❌ Agent install project root not found: {project_root}")
         return 2
 
-    targets = _expand_targets(args.target)
-    templates: List[AgentTemplate] = []
-    for target in targets:
-        templates.extend(_templates_for_target(target))
+    report = install_agent_templates(
+        target=args.target, project_root=project_root, force=args.force
+    )
 
-    installed, skipped = _install_templates(project_root, templates, args.force)
+    if report.errors:
+        print("❌ Agent templates failed:")
+        for err in report.errors:
+            print(f"  - {err}")
+        return 2
 
     print()
     print("✅ Agent templates processed")
-    print(f"📁 Project: {project_root}")
-    if installed:
+    print(f"📁 Project: {report.project_root}")
+    if report.installed:
         print("Installed/updated:")
-        for path in installed:
-            print(f"  - {path.relative_to(project_root)}")
-    if skipped:
+        for path in report.installed:
+            print(f"  - {path.relative_to(report.project_root)}")
+    if report.skipped:
         print("Skipped (already exists, use --force to overwrite):")
-        for path in skipped:
-            print(f"  - {path.relative_to(project_root)}")
+        for path in report.skipped:
+            print(f"  - {path.relative_to(report.project_root)}")
     print()
     print("Next steps:")
     print("  1. Restart your agent session if it caches command/rule discovery")

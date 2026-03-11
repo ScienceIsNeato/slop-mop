@@ -1,0 +1,26 @@
+# Repository conventions
+
+## Slop-mop skill
+
+Slop-mop (`sm`) is a quality-gate runner for this repository. It provides three verbs that form a continuous validation loop:
+
+| Verb | Purpose | When to use |
+|------|---------|-------------|
+| `sm swab` | Fast validation — runs configured quality gates and auto-fixes | During implementation, after meaningful code changes |
+| `sm scour` | Full PR-readiness check — runs all gates without auto-fix | Before opening or updating a pull request |
+| `sm buff` | Post-PR triage — digests CI results and review feedback | After CI completes or review feedback lands on a PR |
+
+### Required workflow
+1. Run `sm swab` early and often during implementation.
+2. If swab reports failures, summarize the failing gates, apply fixes, and re-run until clean.
+3. Before opening or updating a PR, run `sm scour`.
+4. After CI completes or review feedback lands, run `sm buff <PR_NUMBER>` and follow the guidance.
+
+### Tooling preference
+- If MCP tools `sm_swab`, `sm_scour`, `sm_buff` are available (e.g. via a configured MCP server), prefer calling those tools.
+- Otherwise, run the CLI commands directly from the project root.
+
+### Safety
+- Never bypass, disable, or silence failing gates as a shortcut.
+- Only run `sm` subcommands needed for the swab/scour/buff loop.
+- If output is large, summarize and cite the most actionable items.

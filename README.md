@@ -153,18 +153,29 @@ checkout/venv combinations.
 ### Agent Install (Low-Friction AI Setup)
 
 Use `sm agent install` to scaffold repo-local files that help agents discover
-and follow the slop-mop workflow.
+and follow the slop-mop workflow. Templates describe `sm` as a **skill** with
+capabilities, workflow guidance, and safety rules.
 
 ```bash
-sm agent install                      # install Cursor + Claude templates
-sm agent install --target cursor      # only Cursor templates
-sm agent install --target claude      # only Claude templates
+sm agent install                      # install all 7 agent targets
+sm agent install --target cursor      # only Cursor rules
+sm agent install --target claude      # only Claude Code commands
+sm agent install --target copilot     # only GitHub Copilot instructions
+sm agent install --target windsurf    # only Windsurf rules
+sm agent install --target cline       # only Cline rules
+sm agent install --target roo         # only Roo Code workspace rules
+sm agent install --target aider       # only Aider config + conventions
 sm agent install --force              # overwrite existing managed files
 ```
 
 Generated files:
 - `.cursor/rules/slopmop-swab.mdc`
-- `.claude/commands/sm-swab.md`
+- `.claude/commands/sm-swab.md`, `sm-scour.md`, `sm-buff.md`
+- `.github/copilot-instructions.md`
+- `.windsurf/rules/slopmop.md`
+- `.clinerules/slopmop.md`
+- `.roo/rules/01-slopmop.md`
+- `.aider.conf.yml` + `CONVENTIONS.md`
 
 These templates keep the runtime path simple: agents call `sm swab` routinely
 during implementation, `sm scour` before PR updates, and `sm buff` after PR

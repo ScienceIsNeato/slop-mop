@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 
+from slopmop.agent_install.registry import cli_choices
 from slopmop.constants import PROJECT_ROOT_HELP
 
 
@@ -166,15 +167,15 @@ class AgentParserBuilder:
 
         install_parser = agent_subparsers.add_parser(
             "install",
-            help="Install Cursor/Claude template files",
+            help="Install template files for common agent runtimes",
         )
         install_parser.add_argument(
             "--target",
-            choices=["all", "cursor", "claude"],
+            choices=cli_choices(),
             default="all",
             help=(
                 "Which agent templates to install. "
-                "'all' installs both cursor and claude."
+                "'all' installs cursor, claude, copilot, windsurf, cline, roo, and aider."
             ),
         )
         install_parser.add_argument(

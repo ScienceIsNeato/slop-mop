@@ -304,6 +304,14 @@ class TestCreateParser:
         assert args.target == "cursor"
         assert args.project_root == "."
 
+    def test_agent_install_parses_copilot_target(self):
+        """Agent install accepts the copilot target."""
+        parser = create_parser()
+        args = parser.parse_args(["agent", "install", "--target", "copilot"])
+        assert args.verb == "agent"
+        assert args.agent_action == "install"
+        assert args.target == "copilot"
+
 
 class TestDetectProjectType:
     """Tests for detect_project_type function."""
