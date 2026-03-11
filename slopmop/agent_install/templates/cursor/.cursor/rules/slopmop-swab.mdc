@@ -1,29 +1,29 @@
 ---
-description: Slop-mop quality-gate skill
+description: Slop-mop development protocol — gradient descent for repo health
 alwaysApply: true
 ---
 
-## Slop-mop skill
+## Slop-mop — your development protocol
 
-Slop-mop (`sm`) is a quality-gate runner for this repository. It provides three verbs that form a continuous validation loop:
+Slop-mop (`sm`) is a gradient descent tool for this repository. It treats common LLM weaknesses — sloppy formatting, dead code, stale docs, untested changes — as adversarial patterns that cause accidental repo rot. Rather than leaving you to figure out what to validate and when, sm provides greased rails: a fast, repeatable development loop that tells you exactly what to do next.
 
-| Verb | Purpose | When to use |
-|------|---------|-------------|
-| `sm swab` | Fast validation — runs configured quality gates and auto-fixes | During implementation, after meaningful code changes |
-| `sm scour` | Full PR-readiness check — runs all gates without auto-fix | Before opening or updating a pull request |
-| `sm buff` | Post-PR triage — digests CI results and review feedback | After CI completes or review feedback lands on a PR |
+**This is your procedural cornerstone.** Follow the swab/scour/buff loop and focus on writing great code.
 
-### Required workflow
-1. Run `sm swab` early and often during implementation.
-2. If swab reports failures, summarize the failing gates, apply fixes, and re-run until clean.
-3. Before opening or updating a PR, run `sm scour`.
-4. After CI completes or review feedback lands, run `sm buff <PR_NUMBER>` and follow the guidance.
+| Verb | What it does | When to run it |
+|------|-------------|----------------|
+| `sm swab` | Fast iterative feedback — catches drift and auto-fixes what it can | After every meaningful code change (run early, run often) |
+| `sm scour` | Comprehensive pre-PR sweep — surfaces everything before it compounds | Before opening or updating a pull request |
+| `sm buff` | Post-PR triage — digests CI results and review feedback into actionable steps | After CI completes or review feedback lands |
+
+### The loop
+1. **Write code → `sm swab` → fix → repeat.** This is gradient descent — each pass reduces entropy. Keep running until clean.
+2. **Before PR → `sm scour`.** One comprehensive pass to catch anything swab missed.
+3. **After CI/review → `sm buff <PR_NUMBER>`.** Converts raw feedback into a concrete remediation plan.
 
 ### Tooling preference
 - If MCP tools `sm_swab`, `sm_scour`, `sm_buff` are available (e.g. via a configured MCP server), prefer calling those tools.
 - Otherwise, run the CLI commands directly from the project root.
 
 ### Safety
-- Never bypass, disable, or silence failing gates as a shortcut.
-- Only run `sm` subcommands needed for the swab/scour/buff loop.
-- If output is large, summarize and cite the most actionable items.
+- Never bypass, disable, or silence a failing check — that's how repo rot starts.
+- If output is large, summarize and cite the most actionable items first.

@@ -1,9 +1,9 @@
 # /sm-scour
 
-Run slop-mop full PR-readiness check for this repository.
+Run slop-mop's comprehensive pre-PR sweep for this repository.
 
 1. Run `sm scour`.
-2. Summarize all failing gates, warnings, and remaining issues.
-3. Propose concrete fixes for each failure.
+2. Summarize every issue found — these are the things that would compound if left unchecked.
+3. Propose concrete fixes for each.
 
 Only open or update a PR when `sm scour` reports a clean run.

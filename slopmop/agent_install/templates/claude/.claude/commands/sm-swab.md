@@ -1,10 +1,10 @@
 # /sm-swab
 
-Run slop-mop quick validation for this repository.
+Run slop-mop's iterative development loop for this repository.
 
 1. Run `sm swab`.
-2. Summarize failing gates and the concrete fix strategies.
-3. Apply fixes.
-4. Re-run `sm swab` until the run is clean.
+2. Read the output — each failing check is a gradient to descend.
+3. Apply fixes for each reported issue.
+4. Re-run `sm swab` until clean.
 
-Never bypass or silence failing gates as a shortcut.
+This is your inner development loop. Run it early and often — each pass reduces repo entropy. Never bypass or silence a failing check.

@@ -37,13 +37,14 @@ class TestAgentHelpers:
             templates = _templates_for_target(target)
             assert len(templates) >= 1, f"{target} returned no templates"
 
-    def test_claude_produces_three_commands(self):
-        """Claude target installs swab, scour, and buff commands."""
+    def test_claude_produces_commands_and_skill(self):
+        """Claude target installs swab, scour, buff commands and SKILL.md."""
         templates = _templates_for_target("claude")
         paths = [t.relative_path for t in templates]
         assert ".claude/commands/sm-swab.md" in paths
         assert ".claude/commands/sm-scour.md" in paths
         assert ".claude/commands/sm-buff.md" in paths
+        assert ".claude/skills/slopmop/SKILL.md" in paths
 
     def test_aider_produces_two_files(self):
         """Aider target installs .aider.conf.yml and CONVENTIONS.md."""
@@ -71,6 +72,7 @@ class TestCmdAgent:
         assert (tmp_path / ".claude/commands/sm-swab.md").exists()
         assert (tmp_path / ".claude/commands/sm-scour.md").exists()
         assert (tmp_path / ".claude/commands/sm-buff.md").exists()
+        assert (tmp_path / ".claude/skills/slopmop/SKILL.md").exists()
         assert (tmp_path / ".github/copilot-instructions.md").exists()
         assert (tmp_path / ".windsurf/rules/slopmop.md").exists()
         assert (tmp_path / ".clinerules/slopmop.md").exists()
@@ -102,9 +104,7 @@ class TestCmdAgent:
         result = cmd_agent(args)
 
         assert result == 0
-        assert "Run slop-mop quick validation" in claude_file.read_text(
-            encoding="utf-8"
-        )
+        assert "iterative development loop" in claude_file.read_text(encoding="utf-8")
 
     def test_installed_templates_include_skill_description(self, tmp_path):
         """Generated templates should include the skill description with buff workflow."""
@@ -129,14 +129,15 @@ class TestCmdAgent:
             assert "sm buff" in text, f"{label} ({path}) missing 'sm buff'"
 
     def test_skill_description_in_templates(self, tmp_path):
-        """Templates with skill descriptions should describe sm as a skill."""
+        """Templates describe sm as a gradient descent development protocol."""
         args = _make_args(tmp_path)
         cmd_agent(args)
 
         cursor_text = (tmp_path / ".cursor/rules/slopmop-swab.mdc").read_text(
             encoding="utf-8"
         )
-        assert "Slop-mop skill" in cursor_text
+        assert "development protocol" in cursor_text
+        assert "gradient descent" in cursor_text
         assert "sm swab" in cursor_text
         assert "sm scour" in cursor_text
 
