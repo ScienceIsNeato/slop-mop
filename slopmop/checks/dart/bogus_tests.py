@@ -114,7 +114,7 @@ class DartBogusTestsCheck(BaseCheck):
 
     tool_context = ToolContext.PURE
     role = CheckRole.DIAGNOSTIC
-    remediation_churn = RemediationChurn.HIGH
+    remediation_churn = RemediationChurn.BEHAVIORAL
 
     @property
     def name(self) -> str:

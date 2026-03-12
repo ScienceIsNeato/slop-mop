@@ -177,7 +177,7 @@ class ConfigDebtCheck(BaseCheck):
 
     role = CheckRole.DIAGNOSTIC
     tool_context = ToolContext.PURE
-    remediation_churn = RemediationChurn.HIGH
+    remediation_churn = RemediationChurn.BEHAVIORAL
 
     @property
     def name(self) -> str:

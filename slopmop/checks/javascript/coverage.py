@@ -63,7 +63,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.HIGH
+    remediation_churn = RemediationChurn.ADDITIVE
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)

@@ -61,7 +61,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.HIGH
+    remediation_churn = RemediationChurn.STRUCTURAL
 
     @property
     def name(self) -> str:

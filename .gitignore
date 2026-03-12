@@ -32,6 +32,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Local environment overrides (direnv)
+.envrc
+
 # Logs
 *.log
 logs/

@@ -167,7 +167,8 @@ class WalkForwardCheck(BaseCheck):
             xy, path = line[:2], line[3:]
             x, y = xy[0], xy[1]
 
-            if x in ("U", "A", "D") and y in ("U", "A", "D"):
+            # Git porcelain v1 merge-conflict codes: DD AU UD UA DU AA UU
+            if xy in ("DD", "AU", "UD", "UA", "DU", "AA", "UU"):
                 conflicted.append(path)
             elif x != " " and x != "?":
                 staged.append(path)

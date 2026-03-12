@@ -104,6 +104,12 @@ class TestCheckWorkingTree:
             result = check._check_working_tree(git_root)
         assert "Merge conflicts" in result
 
+    def test_ad_not_classified_as_conflict(self, check, git_root):
+        """AD (added-then-deleted) is not a merge conflict."""
+        with patch.object(check, "_git", return_value=(0, "AD removed.py")):
+            result = check._check_working_tree(git_root)
+        assert result is None or "Merge conflicts" not in result
+
     def test_short_line_skipped(self, check, git_root):
         with patch.object(check, "_git", return_value=(0, "??")):
             assert check._check_working_tree(git_root) is None

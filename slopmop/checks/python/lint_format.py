@@ -72,7 +72,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.LOW
+    remediation_churn = RemediationChurn.COSMETIC
 
     @property
     def name(self) -> str:

@@ -95,23 +95,31 @@ class RemediationChurn(Enum):
     gates like formatting.  Low-churn cosmetic fixes go last so they
     only run once, after the dust has settled.
 
-    HIGH — Structural: refactoring functions, deduplicating across files,
-        removing dead code, fixing security patterns.  The fix reshapes
-        file structure and is likely to invalidate formatting or
-        annotation fixes applied earlier.
+    STRUCTURAL — Reorganises code: refactoring functions, deduplicating
+        across files, removing dead code.  The fix reshapes file
+        structure and is very likely to cascade into other gates.
 
-    MEDIUM — Additive: writing tests, adding type annotations, fixing
-        logic.  Adds code but doesn't drastically reorganize existing
-        code.  Default for all gates.
+    BEHAVIORAL — Changes logic within existing structure: rewriting
+        bogus tests, fixing gate-dodging, resolving config debt.
+        Modifies what code does without reorganising files.
 
-    LOW — Cosmetic: auto-formatting, removing debug statements, cleaning
-        config.  Touches existing code but only superficially.  Cheapest
-        to re-run if an earlier fix invalidates it, so it goes last.
+    ADDITIVE — Adds new code without changing existing: writing tests
+        for coverage, adding type annotations.  Low collision risk.
+        Default for all gates.
+
+    COSMETIC — Auto-fixable surface changes: formatting, linting,
+        removing debug artifacts.  Cheap to re-run if an earlier fix
+        invalidates it.
+
+    METADATA — Generated artifacts, config whitespace, doc-only
+        changes.  Nearly zero interaction with other fixes.
     """
 
-    HIGH = 3
-    MEDIUM = 2
-    LOW = 1
+    STRUCTURAL = 5
+    BEHAVIORAL = 4
+    ADDITIVE = 3
+    COSMETIC = 2
+    METADATA = 1
 
 
 class ToolContext(Enum):
@@ -479,7 +487,7 @@ class BaseCheck(ABC):
     # restructures code (extracts functions, deduplicates, deletes blocks),
     # so it should be fixed FIRST — before lower-churn gates whose fixes
     # would be invalidated by the restructuring.  Default is MEDIUM.
-    remediation_churn: ClassVar[RemediationChurn] = RemediationChurn.MEDIUM
+    remediation_churn: ClassVar[RemediationChurn] = RemediationChurn.ADDITIVE
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None

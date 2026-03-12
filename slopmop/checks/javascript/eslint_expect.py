@@ -83,7 +83,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.HIGH
+    remediation_churn = RemediationChurn.BEHAVIORAL
 
     @property
     def name(self) -> str:

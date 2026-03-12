@@ -89,7 +89,7 @@ class DebuggerArtifactsCheck(BaseCheck):
 
     tool_context: ClassVar[ToolContext] = ToolContext.PURE
     role = CheckRole.DIAGNOSTIC
-    remediation_churn = RemediationChurn.LOW
+    remediation_churn = RemediationChurn.COSMETIC
 
     @property
     def name(self) -> str:
