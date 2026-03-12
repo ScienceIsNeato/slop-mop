@@ -8,6 +8,7 @@ import argparse
 import json
 from unittest.mock import MagicMock, patch
 
+from slopmop.cli.ci import _categorize_checks
 from slopmop.cli.status import (
     _format_gate_line,
     _gather_ci_data,
@@ -929,6 +930,37 @@ class TestBuildWorkflowDict:
 # ---------------------------------------------------------------------------
 
 _CI_MODULE = "slopmop.cli.ci"
+
+
+class TestCategorizeChecks:
+    """Direct tests for _categorize_checks bucket classification."""
+
+    def test_neutral_bucket_treated_as_completed(self):
+        checks = [
+            {
+                "name": "Cursor Bugbot",
+                "bucket": "neutral",
+                "link": "",
+                "state": "NEUTRAL",
+            }
+        ]
+        completed, in_progress, failed = _categorize_checks(checks)
+        assert len(completed) == 1
+        assert len(in_progress) == 0
+        assert completed[0][0] == "Cursor Bugbot"
+
+    def test_all_buckets(self):
+        checks = [
+            {"name": "lint", "bucket": "pass", "link": "", "state": ""},
+            {"name": "test", "bucket": "fail", "link": "http://x", "state": ""},
+            {"name": "deploy", "bucket": "pending", "link": "", "state": "PENDING"},
+            {"name": "bugbot", "bucket": "neutral", "link": "", "state": "NEUTRAL"},
+            {"name": "build", "bucket": "cancel", "link": "http://y", "state": ""},
+        ]
+        completed, in_progress, failed = _categorize_checks(checks)
+        assert len(completed) == 2  # pass + neutral
+        assert len(in_progress) == 1  # pending
+        assert len(failed) == 2  # fail + cancel
 
 
 class TestGatherCiData:
