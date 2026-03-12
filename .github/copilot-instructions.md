@@ -1,5 +1,3 @@
-# Slop-mop — your development protocol
-
 ## Slop-mop — your development protocol
 
 Slop-mop (`sm`) is a speed multiplier. It accelerates long-running code generation by keeping the repo clean as you work, and it accelerates slop resolution by giving you a fast, repeatable loop that tells you exactly what to fix next.

@@ -48,8 +48,8 @@ def _generate_hook_script(verb: str) -> str:
     """
 
     json_file = f".slopmop/last_{verb}.json"
-    return f"""{SB_HOOK_MARKER}
-#!/bin/sh
+    return f"""#!/bin/sh
+{SB_HOOK_MARKER}
 #
 # Pre-commit hook managed by slop-mop
 # Command: sm {verb}
