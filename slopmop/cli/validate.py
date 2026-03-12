@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
@@ -396,25 +396,63 @@ def cmd_swab(args: argparse.Namespace) -> int:
     """Handle the swab command (quick, every-commit validation)."""
     ensure_checks_registered()
 
-    # Explicit -g overrides level-based discovery
+    # Explicit -g overrides level-based discovery; skip state hook for partial runs.
     explicit = _parse_quality_gates(args)
     if explicit:
         return _run_validation(args, explicit, None)
 
     registry = get_registry()
     gate_names = registry.get_gate_names_for_level(GateLevel.SWAB)
-    return _run_validation(args, gate_names, "swab")
+    exit_code = _run_validation(args, gate_names, "swab")
+
+    try:
+        from slopmop.workflow.hooks import on_swab_complete
+
+        on_swab_complete(
+            Path(getattr(args, "project_root", ".")), passed=exit_code == 0
+        )
+    except Exception:
+        pass
+
+    return exit_code
 
 
 def cmd_scour(args: argparse.Namespace) -> int:
     """Handle the scour command (thorough, PR-readiness validation)."""
     ensure_checks_registered()
 
-    # Explicit -g overrides level-based discovery
+    # Explicit -g overrides level-based discovery; skip state hook for partial runs.
     explicit = _parse_quality_gates(args)
     if explicit:
         return _run_validation(args, explicit, None)
 
+    project_root = Path(getattr(args, "project_root", "."))
     registry = get_registry()
     gate_names = registry.get_gate_names_for_level(GateLevel.SCOUR)
-    return _run_validation(args, gate_names, "scour")
+    exit_code = _run_validation(args, gate_names, "scour")
+
+    try:
+        from slopmop.workflow.hooks import on_scour_complete
+
+        config = _load_config_for_hook(project_root)
+        disabled_gates = config.get("disabled_gates")
+        all_gates_enabled = not disabled_gates
+        on_scour_complete(
+            project_root,
+            passed=exit_code == 0,
+            all_gates_enabled=all_gates_enabled,
+        )
+    except Exception:
+        pass
+
+    return exit_code
+
+
+def _load_config_for_hook(project_root: Path) -> Dict[str, Any]:
+    """Load raw config dict for hook use — never raises."""
+    try:
+        from slopmop.sm import load_config
+
+        return load_config(project_root)
+    except Exception:
+        return {}

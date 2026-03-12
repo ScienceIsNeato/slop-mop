@@ -29,7 +29,9 @@ def _templates_for_target(target: str) -> List[AgentTemplate]:
         return []
     assets = load_assets(TARGETS[target].template_dir)
     return [
-        AgentTemplate(relative_path=a.destination_relpath, content=a.content.decode("utf-8"))
+        AgentTemplate(
+            relative_path=a.destination_relpath, content=a.content.decode("utf-8")
+        )
         for a in assets
     ]
 

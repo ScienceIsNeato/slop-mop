@@ -104,9 +104,7 @@ class TestLoader:
             # At least one asset in each target should contain the core body
             texts = [a.content.decode("utf-8") for a in assets]
             combined = "\n".join(texts)
-            assert "speed multiplier" in combined, (
-                f"{key} missing shared core content"
-            )
+            assert "speed multiplier" in combined, f"{key} missing shared core content"
 
     def test_claude_templates_are_independent(self):
         """Claude templates don't use {{CORE}} — they have custom content."""
@@ -150,9 +148,7 @@ class TestClaudeSkill:
     def test_skill_md_has_yaml_frontmatter(self):
         """SKILL.md must have YAML frontmatter with name and description."""
         assets = load_assets(TARGETS["claude"].template_dir)
-        skill_assets = [
-            a for a in assets if a.destination_relpath.endswith("SKILL.md")
-        ]
+        skill_assets = [a for a in assets if a.destination_relpath.endswith("SKILL.md")]
         assert len(skill_assets) == 1
         text = skill_assets[0].content.decode("utf-8")
         assert text.startswith("---\n")
@@ -162,9 +158,7 @@ class TestClaudeSkill:
     def test_skill_md_description_is_accurate(self):
         """SKILL.md description should mention speed multiplier, not quality gates."""
         assets = load_assets(TARGETS["claude"].template_dir)
-        skill = next(
-            a for a in assets if a.destination_relpath.endswith("SKILL.md")
-        )
+        skill = next(a for a in assets if a.destination_relpath.endswith("SKILL.md"))
         text = skill.content.decode("utf-8")
         assert "speed multiplier" in text.lower() or "Speed multiplier" in text
         assert "quality" not in text.lower()

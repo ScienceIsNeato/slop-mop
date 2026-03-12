@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from importlib import resources
-from importlib.abc import Traversable
+
+if sys.version_info >= (3, 11):
+    from importlib.resources.abc import Traversable
+else:
+    from importlib.abc import Traversable  # type: ignore[no-redef]
+
 from typing import Iterator, List
 
 _CORE_PLACEHOLDER = b"{{CORE}}"

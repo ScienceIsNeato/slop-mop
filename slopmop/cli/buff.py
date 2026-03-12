@@ -939,9 +939,19 @@ def cmd_buff(args: argparse.Namespace) -> int:
         )
 
     if normalized.action == "inspect":
-        return _cmd_buff_inspect(args, normalized.pr_number)
+        exit_code = _cmd_buff_inspect(args, normalized.pr_number)
+        _fire_buff_hook(has_issues=exit_code != 0)
+        return exit_code
     if normalized.action == "iterate":
-        return _cmd_buff_iterate(normalized.pr_number)
+        exit_code = _cmd_buff_iterate(normalized.pr_number)
+        if exit_code == 0:
+            try:
+                from slopmop.workflow.hooks import on_iteration_started
+
+                on_iteration_started(_project_root_from_cwd())
+            except Exception:
+                pass
+        return exit_code
     if normalized.action == "status":
         return _cmd_buff_status(
             normalized.pr_number, normalized.watch, normalized.interval
@@ -959,4 +969,15 @@ def cmd_buff(args: argparse.Namespace) -> int:
             normalized.resolve_thread,
         )
 
-    return _cmd_buff_inspect(args, normalized.pr_number)
+    exit_code = _cmd_buff_inspect(args, normalized.pr_number)
+    _fire_buff_hook(has_issues=exit_code != 0)
+    return exit_code
+
+
+def _fire_buff_hook(has_issues: bool) -> None:
+    try:
+        from slopmop.workflow.hooks import on_buff_complete
+
+        on_buff_complete(_project_root_from_cwd(), has_issues=has_issues)
+    except Exception:
+        pass

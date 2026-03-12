@@ -17,6 +17,8 @@ from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory, GateLevel
 from slopmop.core.registry import get_registry
 from slopmop.reporting.timings import TimingStats, load_timings
+from slopmop.workflow.state_machine import WorkflowState
+from slopmop.workflow.state_store import read_phase, read_state
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -271,6 +273,106 @@ def _print_hooks_status(root: Path) -> None:
         print("   Install: sm commit-hooks install")
 
 
+# ── Section: Workflow Position ────────────────────────────────────
+
+
+def _gather_workflow_data(root: Path) -> Dict[str, Any]:
+    """Single source of truth for workflow-position data.
+
+    Returns a canonical dict consumed by both the human-readable
+    printer and the JSON serialiser — no duplicated logic.
+    """
+    state = read_state(root) or WorkflowState.IDLE
+    phase = read_phase(root)
+    return {
+        "state": state.value,
+        "state_id": state.state_id,
+        "position": state.position,
+        "next_action": state.next_action,
+        "phase": phase.value,
+    }
+
+
+def _print_workflow_position(workflow: Dict[str, Any]) -> None:
+    """Human-readable adapter for workflow-position data."""
+    print()
+    print("\U0001f4cd WORKFLOW POSITION")
+    print("\u2500" * 60)
+    print(
+        f"   {workflow['state_id']} ({workflow['state'].upper()}) "
+        f"\u2014 Next: {workflow['next_action']}"
+    )
+    print(f"   Phase: {workflow['phase']}")
+
+
+# ── Section: CI Summary ─────────────────────────────────────────
+
+
+def _gather_ci_data(root: Path) -> Optional[Dict[str, Any]]:
+    """Single source of truth for CI summary data.
+
+    Returns a canonical dict consumed by both the human-readable
+    printer and the JSON serialiser, or ``None`` when no PR is
+    detected / ``gh`` is unavailable.
+    """
+    from slopmop.cli.ci import _categorize_checks, _detect_pr_number, _fetch_checks
+
+    pr = _detect_pr_number(root)
+    if pr is None:
+        return None
+
+    checks, err = _fetch_checks(root, pr)
+    if checks is None or err:
+        return None
+
+    if not checks:
+        return {"pr_number": pr, "passed": 0, "failed": 0, "pending": 0, "failures": []}
+
+    completed, in_progress, failed = _categorize_checks(checks)
+    return {
+        "pr_number": pr,
+        "passed": len(completed),
+        "failed": len(failed),
+        "pending": len(in_progress),
+        "failures": [name for name, _, _, _ in failed],
+    }
+
+
+def _print_ci_summary(ci: Optional[Dict[str, Any]]) -> None:
+    """Human-readable adapter for CI summary data.
+
+    Silently returns when *ci* is ``None`` (no PR detected).
+    This is the lightweight overview — ``sm buff status`` is the
+    detailed view.
+    """
+    if ci is None:
+        return
+
+    pr = ci["pr_number"]
+    total = ci["passed"] + ci["failed"] + ci["pending"]
+    if total == 0:
+        return
+
+    print()
+    print(f"🔄 CI STATUS (PR #{pr})")
+    print("─" * 60)
+
+    parts = [f"✅ {ci['passed']} passed"]
+    if ci["failed"]:
+        parts.append(f"❌ {ci['failed']} failed")
+    if ci["pending"]:
+        parts.append(f"🔄 {ci['pending']} pending")
+    print(f"   {' · '.join(parts)} (of {total})")
+
+    for name in ci["failures"][:3]:
+        print(f"   ✗ {name}")
+    if len(ci["failures"]) > 3:
+        print(f"   … and {len(ci['failures']) - 3} more")
+
+    if not ci["failed"] and not ci["pending"]:
+        print("   All checks green ✨")
+
+
 # ── Section: Recent History ──────────────────────────────────────
 
 
@@ -366,6 +468,12 @@ def _build_status_dict(
     scope = count_source_scope(str(root))
     if scope.files > 0:
         result["scope"] = scope.to_dict()
+
+    result["workflow"] = _gather_workflow_data(root)
+
+    ci = _gather_ci_data(root)
+    if ci is not None:
+        result["ci"] = ci
 
     return result
 
@@ -486,6 +594,12 @@ def run_status(
     _print_recent_history(history)
 
     _print_hooks_status(root)
+
+    workflow = _gather_workflow_data(root)
+    _print_workflow_position(workflow)
+
+    ci = _gather_ci_data(root)
+    _print_ci_summary(ci)
 
     print()
     print("═" * 60)

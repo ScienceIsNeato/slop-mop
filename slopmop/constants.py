@@ -38,6 +38,20 @@ ROLE_BADGES = {
 }
 
 
+# Git / PR skip reasons shared across checks
+NOT_A_GIT_REPO = "Not a git repository"
+
+# Workflow action strings shared between the state machine and checks
+ACTION_FIX_AND_SWAB = "fix the reported findings, re-run sm swab"
+ACTION_BUFF_INSPECT = "sm buff inspect"
+ACTION_GIT_COMMIT = "git commit your changes"
+
+
+def action_buff_inspect_pr(pr_number: int) -> str:
+    """Format the buff inspect command for a specific PR."""
+    return f"sm buff inspect {pr_number}"
+
+
 # Check result messages
 NO_ISSUES_FOUND = "No issues found"
 COVERAGE_XML_NOT_FOUND = "coverage.xml not found"
