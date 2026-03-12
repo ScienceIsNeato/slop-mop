@@ -23,6 +23,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
 )
 from slopmop.checks.constants import tautological_assertion_reason
 from slopmop.checks.mixins import JavaScriptCheckMixin
@@ -350,6 +351,7 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
     """
 
     role = CheckRole.DIAGNOSTIC
+    remediation_churn = RemediationChurn.HIGH
 
     @property
     def name(self) -> str:

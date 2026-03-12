@@ -25,7 +25,14 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, cast
 
-from slopmop.checks.base import BaseCheck, CheckRole, Flaw, GateCategory, ToolContext
+from slopmop.checks.base import (
+    BaseCheck,
+    CheckRole,
+    Flaw,
+    GateCategory,
+    RemediationChurn,
+    ToolContext,
+)
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
@@ -170,6 +177,7 @@ class ConfigDebtCheck(BaseCheck):
 
     role = CheckRole.DIAGNOSTIC
     tool_context = ToolContext.PURE
+    remediation_churn = RemediationChurn.HIGH
 
     @property
     def name(self) -> str:

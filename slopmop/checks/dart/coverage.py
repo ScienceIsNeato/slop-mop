@@ -11,6 +11,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
     count_source_scope,
     find_tool,
@@ -51,6 +52,7 @@ class DartCoverageCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.FOUNDATION
+    remediation_churn = RemediationChurn.HIGH
 
     @property
     def name(self) -> str:

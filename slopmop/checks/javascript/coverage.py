@@ -16,6 +16,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
 )
 from slopmop.checks.constants import (
@@ -62,6 +63,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
+    remediation_churn = RemediationChurn.HIGH
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)

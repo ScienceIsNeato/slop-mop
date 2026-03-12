@@ -12,6 +12,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
     count_source_scope,
 )
@@ -113,6 +114,7 @@ class DartBogusTestsCheck(BaseCheck):
 
     tool_context = ToolContext.PURE
     role = CheckRole.DIAGNOSTIC
+    remediation_churn = RemediationChurn.HIGH
 
     @property
     def name(self) -> str:

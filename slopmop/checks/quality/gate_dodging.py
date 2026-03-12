@@ -23,7 +23,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
-from slopmop.checks.base import BaseCheck, CheckRole, ConfigField, Flaw, GateCategory
+from slopmop.checks.base import (
+    BaseCheck,
+    CheckRole,
+    ConfigField,
+    Flaw,
+    GateCategory,
+    RemediationChurn,
+)
+from slopmop.constants import NOT_A_GIT_REPO
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
@@ -455,6 +463,7 @@ class GateDodgingCheck(BaseCheck):
     """
 
     role = CheckRole.DIAGNOSTIC
+    remediation_churn = RemediationChurn.HIGH
 
     @property
     def name(self) -> str:
@@ -499,7 +508,7 @@ class GateDodgingCheck(BaseCheck):
     def skip_reason(self, project_root: str) -> str:
         git_dir = Path(project_root) / ".git"
         if not git_dir.is_dir():
-            return "Not a git repository"
+            return NOT_A_GIT_REPO
         config_path = Path(project_root) / CONFIG_FILE
         if not config_path.exists():
             return f"No {CONFIG_FILE} found (project uses defaults)"

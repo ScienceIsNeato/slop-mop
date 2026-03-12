@@ -19,6 +19,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ScopeInfo,
     ToolContext,
     count_source_scope,
@@ -61,6 +62,7 @@ class SourceDuplicationCheck(BaseCheck):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
+    remediation_churn = RemediationChurn.HIGH
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)

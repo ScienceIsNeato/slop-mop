@@ -11,6 +11,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
@@ -44,6 +45,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
+    remediation_churn = RemediationChurn.LOW
 
     @property
     def name(self) -> str:

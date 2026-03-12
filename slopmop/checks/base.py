@@ -86,6 +86,34 @@ class CheckRole(Enum):
         return self.value
 
 
+class RemediationChurn(Enum):
+    """Expected code churn from fixing a gate failure.
+
+    Determines fix ordering when multiple gates fail simultaneously.
+    High-churn structural fixes go first because they move, extract,
+    or delete code — changes that are likely to re-trigger low-churn
+    gates like formatting.  Low-churn cosmetic fixes go last so they
+    only run once, after the dust has settled.
+
+    HIGH — Structural: refactoring functions, deduplicating across files,
+        removing dead code, fixing security patterns.  The fix reshapes
+        file structure and is likely to invalidate formatting or
+        annotation fixes applied earlier.
+
+    MEDIUM — Additive: writing tests, adding type annotations, fixing
+        logic.  Adds code but doesn't drastically reorganize existing
+        code.  Default for all gates.
+
+    LOW — Cosmetic: auto-formatting, removing debug statements, cleaning
+        config.  Touches existing code but only superficially.  Cheapest
+        to re-run if an earlier fix invalidates it, so it goes last.
+    """
+
+    HIGH = 3
+    MEDIUM = 2
+    LOW = 1
+
+
 class ToolContext(Enum):
     """How a gate resolves the external tools it needs.
 
@@ -439,6 +467,19 @@ class BaseCheck(ABC):
     # core logic IS the check should override to CheckRole.FOUNDATION.
     # See CheckRole docstring for the full taxonomy.
     role: ClassVar[CheckRole] = CheckRole.DIAGNOSTIC
+
+    # Terminal checks run only after ALL other applicable checks have
+    # completed and passed.  They are the last thing that runs in a
+    # scour pass — typically used for "what's next?" navigation guidance
+    # that only makes sense when the rest of the gate suite is green.
+    # Set to True in subclasses that should behave this way.
+    terminal: ClassVar[bool] = False
+
+    # Expected code churn from fixing this gate.  HIGH means the fix
+    # restructures code (extracts functions, deduplicates, deletes blocks),
+    # so it should be fixed FIRST — before lower-churn gates whose fixes
+    # would be invalidated by the restructuring.  Default is MEDIUM.
+    remediation_churn: ClassVar[RemediationChurn] = RemediationChurn.MEDIUM
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
