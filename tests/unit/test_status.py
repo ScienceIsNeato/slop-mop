@@ -949,16 +949,31 @@ class TestCategorizeChecks:
         assert len(in_progress) == 0
         assert completed[0][0] == "Cursor Bugbot"
 
+    def test_skipping_bucket_with_neutral_state_is_completed(self):
+        """Real-world case: gh returns bucket=skipping, state=NEUTRAL for Bugbot."""
+        checks = [
+            {
+                "name": "Cursor Bugbot",
+                "bucket": "skipping",
+                "link": "https://cursor.com",
+                "state": "NEUTRAL",
+            }
+        ]
+        completed, in_progress, failed = _categorize_checks(checks)
+        assert len(completed) == 1
+        assert len(in_progress) == 0
+        assert completed[0][0] == "Cursor Bugbot"
+
     def test_all_buckets(self):
         checks = [
             {"name": "lint", "bucket": "pass", "link": "", "state": ""},
             {"name": "test", "bucket": "fail", "link": "http://x", "state": ""},
             {"name": "deploy", "bucket": "pending", "link": "", "state": "PENDING"},
-            {"name": "bugbot", "bucket": "neutral", "link": "", "state": "NEUTRAL"},
+            {"name": "bugbot", "bucket": "skipping", "link": "", "state": "NEUTRAL"},
             {"name": "build", "bucket": "cancel", "link": "http://y", "state": ""},
         ]
         completed, in_progress, failed = _categorize_checks(checks)
-        assert len(completed) == 2  # pass + neutral
+        assert len(completed) == 2  # pass + skipping/NEUTRAL
         assert len(in_progress) == 1  # pending
         assert len(failed) == 2  # fail + cancel
 

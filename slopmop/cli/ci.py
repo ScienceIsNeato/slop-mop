@@ -106,10 +106,14 @@ def _categorize_checks(
             failed.append((name, "❌", "failed", url))
         elif bucket == "cancel":
             failed.append((name, "🚫", "cancelled", url))
-        elif bucket in ("pending", "skipping"):
+        elif bucket in ("neutral", "skipping") and state.upper() in (
+            "NEUTRAL",
+            "SKIPPED",
+            "STALE",
+        ):
+            completed.append((name, "⬜", state or bucket))
+        elif bucket == "pending":
             in_progress.append((name, "🔄", state or bucket))
-        elif bucket == "neutral":
-            completed.append((name, "⬜", state or "neutral"))
         else:
             in_progress.append((name, "❓", state or bucket))
 
