@@ -45,7 +45,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.COSMETIC
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 
     @property
     def name(self) -> str:

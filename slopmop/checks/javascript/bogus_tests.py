@@ -351,7 +351,7 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
     """
 
     role = CheckRole.DIAGNOSTIC
-    remediation_churn = RemediationChurn.BEHAVIORAL
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_LIKELY
 
     @property
     def name(self) -> str:

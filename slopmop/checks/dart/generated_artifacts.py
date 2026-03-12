@@ -25,7 +25,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.DIAGNOSTIC
-    remediation_churn = RemediationChurn.METADATA
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 
     @property
     def name(self) -> str:

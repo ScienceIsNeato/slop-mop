@@ -86,7 +86,7 @@ class DeadCodeCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.STRUCTURAL
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
 
     @property
     def name(self) -> str:

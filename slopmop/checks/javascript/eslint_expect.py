@@ -83,7 +83,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.BEHAVIORAL
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_LIKELY
 
     @property
     def name(self) -> str:

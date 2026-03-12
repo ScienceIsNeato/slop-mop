@@ -215,11 +215,10 @@ def gen_gate_priority_table() -> str:
     registry = get_registry()
 
     _CHURN_LABELS = {
-        RemediationChurn.STRUCTURAL: "1 — fix first (structural)",
-        RemediationChurn.BEHAVIORAL: "2 — fix next (behavioral)",
-        RemediationChurn.ADDITIVE: "3 — fix next (additive)",
-        RemediationChurn.COSMETIC: "4 — fix later (cosmetic)",
-        RemediationChurn.METADATA: "5 — fix last (metadata)",
+        RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY: "1 — fix first",
+        RemediationChurn.DOWNSTREAM_CHANGES_LIKELY: "2 — fix next",
+        RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY: "3 — fix later",
+        RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY: "4 — fix last",
     }
 
     # Collect gate metadata from registry
@@ -236,11 +235,10 @@ def gen_gate_priority_table() -> str:
 
         churn = instance.remediation_churn
         tier = {
-            RemediationChurn.STRUCTURAL: 1,
-            RemediationChurn.BEHAVIORAL: 2,
-            RemediationChurn.ADDITIVE: 3,
-            RemediationChurn.COSMETIC: 4,
-            RemediationChurn.METADATA: 5,
+            RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY: 1,
+            RemediationChurn.DOWNSTREAM_CHANGES_LIKELY: 2,
+            RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY: 3,
+            RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY: 4,
         }[churn]
         tier_label = _CHURN_LABELS[churn]
 

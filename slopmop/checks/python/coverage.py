@@ -105,7 +105,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
     tool_context = ToolContext.PROJECT
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.ADDITIVE
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
 
     DEFAULT_THRESHOLD = 80
 

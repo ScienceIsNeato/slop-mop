@@ -87,39 +87,35 @@ class CheckRole(Enum):
 
 
 class RemediationChurn(Enum):
-    """Expected code churn from fixing a gate failure.
+    """Likelihood that fixing this gate will cascade into other gates.
 
     Determines fix ordering when multiple gates fail simultaneously.
-    High-churn structural fixes go first because they move, extract,
-    or delete code — changes that are likely to re-trigger low-churn
-    gates like formatting.  Low-churn cosmetic fixes go last so they
-    only run once, after the dust has settled.
+    Gates whose fixes are very likely to trigger downstream failures
+    go first; gates whose fixes are isolated go last.
 
-    STRUCTURAL — Reorganises code: refactoring functions, deduplicating
-        across files, removing dead code.  The fix reshapes file
-        structure and is very likely to cascade into other gates.
+    DOWNSTREAM_CHANGES_VERY_LIKELY — Restructures code: refactoring
+        functions, deduplicating across files, removing dead code.
+        The fix reshapes file structure and will almost certainly
+        invalidate other gates' fixes.
 
-    BEHAVIORAL — Changes logic within existing structure: rewriting
-        bogus tests, fixing gate-dodging, resolving config debt.
-        Modifies what code does without reorganising files.
+    DOWNSTREAM_CHANGES_LIKELY — Changes logic within existing
+        structure: rewriting bogus tests, fixing gate-dodging,
+        resolving config debt.  Modifies what code does without
+        reorganising files.
 
-    ADDITIVE — Adds new code without changing existing: writing tests
-        for coverage, adding type annotations.  Low collision risk.
-        Default for all gates.
+    DOWNSTREAM_CHANGES_UNLIKELY — Adds new code without changing
+        existing: writing tests for coverage, adding type
+        annotations.  Low collision risk.  Default for all gates.
 
-    COSMETIC — Auto-fixable surface changes: formatting, linting,
-        removing debug artifacts.  Cheap to re-run if an earlier fix
-        invalidates it.
-
-    METADATA — Generated artifacts, config whitespace, doc-only
-        changes.  Nearly zero interaction with other fixes.
+    DOWNSTREAM_CHANGES_VERY_UNLIKELY — Surface-level or generated:
+        auto-formatting, removing debug artifacts, regenerating
+        config.  Nearly zero interaction with other fixes.
     """
 
-    STRUCTURAL = 5
-    BEHAVIORAL = 4
-    ADDITIVE = 3
-    COSMETIC = 2
-    METADATA = 1
+    DOWNSTREAM_CHANGES_VERY_LIKELY = 4
+    DOWNSTREAM_CHANGES_LIKELY = 3
+    DOWNSTREAM_CHANGES_UNLIKELY = 2
+    DOWNSTREAM_CHANGES_VERY_UNLIKELY = 1
 
 
 class ToolContext(Enum):
@@ -483,11 +479,11 @@ class BaseCheck(ABC):
     # Set to True in subclasses that should behave this way.
     terminal: ClassVar[bool] = False
 
-    # Expected code churn from fixing this gate.  HIGH means the fix
-    # restructures code (extracts functions, deduplicates, deletes blocks),
-    # so it should be fixed FIRST — before lower-churn gates whose fixes
-    # would be invalidated by the restructuring.  Default is MEDIUM.
-    remediation_churn: ClassVar[RemediationChurn] = RemediationChurn.ADDITIVE
+    # Likelihood that fixing this gate cascades into other gates.
+    # Gates with high downstream likelihood should be fixed first.
+    remediation_churn: ClassVar[RemediationChurn] = (
+        RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
+    )
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None

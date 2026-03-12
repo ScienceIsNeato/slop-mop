@@ -52,7 +52,7 @@ class DartCoverageCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.ADDITIVE
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
 
     @property
     def name(self) -> str:

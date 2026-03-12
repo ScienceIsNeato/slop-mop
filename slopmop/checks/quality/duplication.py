@@ -62,7 +62,7 @@ class SourceDuplicationCheck(BaseCheck):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
-    remediation_churn = RemediationChurn.STRUCTURAL
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
         super().__init__(config)
