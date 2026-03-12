@@ -1,5 +1,21 @@
 # Project Status
 
+## TODO: Investigate Docker integration test failure
+
+**Added:** 2026-03-11
+**Discovered during:** Phase 1–3 of unified `sm status` work (PR #92)
+**Must address before next `sm buff`.**
+
+When running `pytest tests/` (all tests, not scoped to `tests/unit/`), `tests/integration/test_docker_install.py::TestHappyPath::test_exit_code_is_zero` fails. The test exercises the full Docker-based end-to-end install path (clone bucket-o-slop → pip install → sm init → sm swab). Previous STATUS.md entries (2026-03-08) show it passing with 32/32 — so the failure is a regression somewhere between then and now.
+
+**Next steps:**
+1. Reproduce locally: `./venv/bin/python -m pytest tests/integration/test_docker_install.py::TestHappyPath::test_exit_code_is_zero -x -v`
+2. Check which phase fails (sentinel exit codes: 2=pip install, 3=checkout, 4=init, 5=clone)
+3. Determine if recent source changes (state_machine properties, status.py additions) broke the install or init path
+4. Fix the root cause — do not scope around it
+
+---
+
 ## 2026-03-11 Handoff: Unified `sm status` with State-Machine Position (for STEVE)
 
 ### Context — what we just shipped on branch `chore/display-sync-ai-human` (PR #92)
@@ -15,12 +31,14 @@ This session expanded `sm agent install` to 7 targets, added skill-level Copilot
 - `822c565` — Expand sm agent install to 7 targets
 
 **Uncommitted work on this branch:**
-- `scripts/gen_relationship_diagram.py` — standalone SVG generator for state-machine diagram
-- `scripts/gen_timeline_diagram.py` — standalone SVG generator for developer timeline
-- `docs/relationship_diagram.svg` + `docs/timeline_diagram.svg` — rendered output
-- `docs/WORKFLOW.md` — updated to reference SVGs instead of inline Mermaid
-- Old `scripts/gen_workflow_diagrams.py` — deleted (replaced by the two above)
-- Minor changes across `slopmop/cli/buff.py`, `slopmop/cli/validate.py`, `slopmop/constants.py`, etc.
+- `scripts/gen_workflow_diagrams.py` — single-source-of-truth doc generator (state diagram + developer loop → `docs/WORKFLOW.md`)
+- `scripts/_freshness.py` — shared freshness-check helpers for generated-doc scripts
+- `slopmop/workflow/state_machine.py` — `position`, `state_id`, `next_action` properties on `WorkflowState`
+- `slopmop/cli/status.py` — workflow position + CI summary via source-of-truth/adapter pattern
+- `tests/unit/test_state_machine.py` — 33 tests for WorkflowState properties
+- `tests/unit/test_status.py` — expanded to 51 tests (workflow position + CI summary)
+- `.sb_config.json` — stale-docs gate now checks both README tables and WORKFLOW.md
+- Deleted: `scripts/gen_relationship_diagram.py`, `scripts/gen_timeline_diagram.py`, `docs/relationship_diagram.svg`, `docs/timeline_diagram.svg` (consolidated into single generator)
 
 **These uncommitted changes need to be committed and pushed before starting the work below.**
 
@@ -107,7 +125,7 @@ Every `WorkflowState` gets a formal numbered ID so the diagram and CLI output ca
 | `slopmop/workflow/state_machine.py` | Add `position` and `next_action` properties to `WorkflowState` enum |
 | `slopmop/cli/status.py` | Add workflow position section + CI summary section to output |
 | `slopmop/cli/ci.py` | Potentially extract shared CI summary function for reuse |
-| `scripts/gen_timeline_diagram.py` | Add state ID annotations to diagram |
+| `scripts/gen_workflow_diagrams.py` | Single source of truth for state diagram + developer loop |
 | `tests/unit/test_agent_install.py` | May need updates if state_machine changes affect imports |
 | New test file or existing test file | Tests for new WorkflowState properties and status output |
 
