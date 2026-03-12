@@ -122,12 +122,13 @@ class TestLoader:
             load_assets("does_not_exist")
 
     def test_cursor_preserves_frontmatter(self):
-        """Cursor template retains its YAML frontmatter after substitution."""
+        """Cursor templates retain their YAML frontmatter after substitution."""
         assets = load_assets(TARGETS["cursor"].template_dir)
-        assert len(assets) == 1
-        text = assets[0].content.decode("utf-8")
-        assert text.startswith("---\n")
-        assert "alwaysApply: true" in text
+        assert len(assets) == 3
+        for asset in assets:
+            text = asset.content.decode("utf-8")
+            assert text.startswith("---\n")
+            assert "alwaysApply: true" in text
 
     def test_windsurf_preserves_frontmatter(self):
         """Windsurf template retains its trigger frontmatter."""
@@ -242,6 +243,8 @@ class TestCmdAgent:
 
         assert result == 0
         assert (tmp_path / ".cursor/rules/slopmop-swab.mdc").exists()
+        assert (tmp_path / ".cursor/rules/slopmop-scour.mdc").exists()
+        assert (tmp_path / ".cursor/rules/slopmop-buff.mdc").exists()
         assert (tmp_path / ".claude/commands/sm-swab.md").exists()
         assert (tmp_path / ".claude/commands/sm-scour.md").exists()
         assert (tmp_path / ".claude/commands/sm-buff.md").exists()
