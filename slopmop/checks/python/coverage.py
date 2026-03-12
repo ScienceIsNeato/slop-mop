@@ -20,6 +20,7 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     GateLevel,
+    RemediationChurn,
     ToolContext,
 )
 from slopmop.checks.constants import (
@@ -104,6 +105,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
     tool_context = ToolContext.PROJECT
     role = CheckRole.FOUNDATION
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
 
     DEFAULT_THRESHOLD = 80
 

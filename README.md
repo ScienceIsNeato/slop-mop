@@ -153,18 +153,29 @@ checkout/venv combinations.
 ### Agent Install (Low-Friction AI Setup)
 
 Use `sm agent install` to scaffold repo-local files that help agents discover
-and follow the slop-mop workflow.
+and follow the slop-mop workflow. Templates describe `sm` as a **skill** with
+capabilities, workflow guidance, and safety rules.
 
 ```bash
-sm agent install                      # install Cursor + Claude templates
-sm agent install --target cursor      # only Cursor templates
-sm agent install --target claude      # only Claude templates
+sm agent install                      # install all 7 agent targets
+sm agent install --target cursor      # only Cursor rules
+sm agent install --target claude      # only Claude Code commands
+sm agent install --target copilot     # only GitHub Copilot instructions
+sm agent install --target windsurf    # only Windsurf rules
+sm agent install --target cline       # only Cline rules
+sm agent install --target roo         # only Roo Code workspace rules
+sm agent install --target aider       # only Aider config + conventions
 sm agent install --force              # overwrite existing managed files
 ```
 
 Generated files:
 - `.cursor/rules/slopmop-swab.mdc`
-- `.claude/commands/sm-swab.md`
+- `.claude/commands/sm-swab.md`, `sm-scour.md`, `sm-buff.md`
+- `.github/copilot-instructions.md`
+- `.windsurf/rules/slopmop.md`
+- `.clinerules/slopmop.md`
+- `.roo/rules/01-slopmop.md`
+- `.aider.conf.yml` + `CONVENTIONS.md`
 
 These templates keep the runtime path simple: agents call `sm swab` routinely
 during implementation, `sm scour` before PR updates, and `sm buff` after PR
@@ -319,6 +330,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `myopia:source-duplication` | 📋 Code clone detection (jscpd) |
 | `myopia:string-duplication.py` | 🔤 Duplicate string literal detection |
 | `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets |
+| `myopia:walk-forward` | Terminal gate — inspects working tree, push status, and PR alignment to tell the agent exactly what to do next after all other gates pass. |
 
 <!-- END GATE TABLES -->
 
@@ -636,9 +648,10 @@ as a second safety net.
 ### Check CI Status Locally
 
 ```bash
-sm ci               # current PR
-sm ci 42             # specific PR
-sm ci --watch        # poll until CI completes
+sm buff status        # current PR CI status
+sm buff status 42     # specific PR CI status
+sm buff watch         # poll current PR CI status until complete
+sm buff watch 42      # poll specific PR CI status until complete
 ```
 
 ---

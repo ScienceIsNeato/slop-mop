@@ -99,6 +99,9 @@ where = ["."]
 include = ["slopmop*"]
 exclude = ["tests*"]
 
+[tool.setuptools.package-data]
+"slopmop.agent_install" = ["templates/**/*"]
+
 [tool.black]
 line-length = 88
 target-version = ["py310", "py311", "py312", "py313", "py314"]

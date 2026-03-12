@@ -86,6 +86,38 @@ class CheckRole(Enum):
         return self.value
 
 
+class RemediationChurn(Enum):
+    """Likelihood that fixing this gate will cascade into other gates.
+
+    Determines fix ordering when multiple gates fail simultaneously.
+    Gates whose fixes are very likely to trigger downstream failures
+    go first; gates whose fixes are isolated go last.
+
+    DOWNSTREAM_CHANGES_VERY_LIKELY — Restructures code: refactoring
+        functions, deduplicating across files, removing dead code.
+        The fix reshapes file structure and will almost certainly
+        invalidate other gates' fixes.
+
+    DOWNSTREAM_CHANGES_LIKELY — Changes logic within existing
+        structure: rewriting bogus tests, fixing gate-dodging,
+        resolving config debt.  Modifies what code does without
+        reorganising files.
+
+    DOWNSTREAM_CHANGES_UNLIKELY — Adds new code without changing
+        existing: writing tests for coverage, adding type
+        annotations.  Low collision risk.  Default for all gates.
+
+    DOWNSTREAM_CHANGES_VERY_UNLIKELY — Surface-level or generated:
+        auto-formatting, removing debug artifacts, regenerating
+        config.  Nearly zero interaction with other fixes.
+    """
+
+    DOWNSTREAM_CHANGES_VERY_LIKELY = 4
+    DOWNSTREAM_CHANGES_LIKELY = 3
+    DOWNSTREAM_CHANGES_UNLIKELY = 2
+    DOWNSTREAM_CHANGES_VERY_UNLIKELY = 1
+
+
 class ToolContext(Enum):
     """How a gate resolves the external tools it needs.
 
@@ -439,6 +471,19 @@ class BaseCheck(ABC):
     # core logic IS the check should override to CheckRole.FOUNDATION.
     # See CheckRole docstring for the full taxonomy.
     role: ClassVar[CheckRole] = CheckRole.DIAGNOSTIC
+
+    # Terminal checks run only after ALL other applicable checks have
+    # completed and passed.  They are the last thing that runs in a
+    # scour pass — typically used for "what's next?" navigation guidance
+    # that only makes sense when the rest of the gate suite is green.
+    # Set to True in subclasses that should behave this way.
+    terminal: ClassVar[bool] = False
+
+    # Likelihood that fixing this gate cascades into other gates.
+    # Gates with high downstream likelihood should be fixed first.
+    remediation_churn: ClassVar[RemediationChurn] = (
+        RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
+    )
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None

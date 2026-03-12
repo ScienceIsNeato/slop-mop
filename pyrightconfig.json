@@ -7,17 +7,12 @@
     "**/__pycache__",
     "**/node_modules"
   ],
-  "pythonVersion": "3.9",
+  "pythonVersion": "3.10",
   "venvPath": "/Users/pacey/Documents/SourceCode/slop-mop",
   "venv": "venv",
-  "executionEnvironments": [
-    {
-      "root": "slopmop",
-      "reportUnknownMemberType": "error",
-      "reportUnknownVariableType": "error",
-      "reportUnknownArgumentType": "error",
-      "reportUnknownParameterType": "error",
-      "reportUnknownLambdaType": "error"
-    }
-  ]
+  "reportUnknownMemberType": "error",
+  "reportUnknownVariableType": "error",
+  "reportUnknownArgumentType": "error",
+  "reportUnknownParameterType": "error",
+  "reportUnknownLambdaType": "error"
 }

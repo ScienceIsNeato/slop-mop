@@ -1,5 +1,221 @@
 # Project Status
 
+## TODO: Investigate Docker integration test failure
+
+**Added:** 2026-03-11
+**Discovered during:** Phase 1–3 of unified `sm status` work (PR #92)
+**Must address before next `sm buff`.**
+
+When running `pytest tests/` (all tests, not scoped to `tests/unit/`), `tests/integration/test_docker_install.py::TestHappyPath::test_exit_code_is_zero` fails. The test exercises the full Docker-based end-to-end install path (clone bucket-o-slop → pip install → sm init → sm swab). Previous STATUS.md entries (2026-03-08) show it passing with 32/32 — so the failure is a regression somewhere between then and now.
+
+**Next steps:**
+1. Reproduce locally: `./venv/bin/python -m pytest tests/integration/test_docker_install.py::TestHappyPath::test_exit_code_is_zero -x -v`
+2. Check which phase fails (sentinel exit codes: 2=pip install, 3=checkout, 4=init, 5=clone)
+3. Determine if recent source changes (state_machine properties, status.py additions) broke the install or init path
+4. Fix the root cause — do not scope around it
+
+---
+
+## 2026-03-11 Handoff: Unified `sm status` with State-Machine Position (for STEVE)
+
+### Context — what we just shipped on branch `chore/display-sync-ai-human` (PR #92)
+
+This session expanded `sm agent install` to 7 targets, added skill-level Copilot + Claude integration, deduplicated templates via `_shared/core.md` with `{{CORE}}` substitution, removed dead code from `ci.py`, and refactored the workflow diagrams from inline Mermaid to standalone SVG files.
+
+**Key commits on this branch (newest first):**
+- `9db61c4` — Switch relationship diagram to stateDiagram-v2
+- `be92eaa` — Remove dead `run_ci_status` from ci.py (71 lines)
+- `1c9b6c5` — Comprehensive tests (13→31) for agent install template system
+- `a0b3b20` — Deduplicate templates via `_shared/core.md` with `{{CORE}}` substitution
+- `923e572` — Reframe all templates as gradient descent / speed multiplier
+- `822c565` — Expand sm agent install to 7 targets
+
+**Uncommitted work on this branch:**
+- `scripts/gen_workflow_diagrams.py` — single-source-of-truth doc generator (state diagram + developer loop → `docs/WORKFLOW.md`)
+- `scripts/_freshness.py` — shared freshness-check helpers for generated-doc scripts
+- `slopmop/workflow/state_machine.py` — `position`, `state_id`, `next_action` properties on `WorkflowState`
+- `slopmop/cli/status.py` — workflow position + CI summary via source-of-truth/adapter pattern
+- `tests/unit/test_state_machine.py` — 33 tests for WorkflowState properties
+- `tests/unit/test_status.py` — expanded to 51 tests (workflow position + CI summary)
+- `.sb_config.json` — stale-docs gate now checks both README tables and WORKFLOW.md
+- Deleted: `scripts/gen_relationship_diagram.py`, `scripts/gen_timeline_diagram.py`, `docs/relationship_diagram.svg`, `docs/timeline_diagram.svg` (consolidated into single generator)
+
+**These uncommitted changes need to be committed and pushed before starting the work below.**
+
+### The task: Unified `sm status` with state-machine position and CI awareness
+
+#### Problem
+
+Right now two separate commands cover "status":
+1. **`sm status`** (`slopmop/cli/status.py`, function `cmd_status()` at line 498 → `run_status()` at line 373) — shows config, gate inventory, hook status, recent history. **Does NOT show workflow position or CI status.**
+2. **`sm buff status`** (`slopmop/cli/buff.py`, function `_cmd_buff_status()` at line 529) — shows CI check results only. No workflow context.
+
+An agent that starts a fresh session has no way to ask "where am I in the workflow?" and get a machine-readable answer with the exact next command to run.
+
+#### Design: numbered states
+
+Every `WorkflowState` gets a formal numbered ID so the diagram and CLI output can say "you are at S3, run `sm scour`":
+
+| ID | WorkflowState | Human label | Next action |
+|----|--------------|-------------|-------------|
+| S1 | `CODING` | Editing source code | Run `sm swab` |
+| S2 | `SWAB_CLEAN` | Swab passed | `git commit` |
+| S3 | `COMMITTED` | Changes committed | Run `sm scour` |
+| S4 | `SCOUR_CLEAN` | Scour passed | `git push`, then open/update PR |
+| S5 | `PR_OPEN` | PR open, awaiting CI/review | Run `sm buff status`, then `sm buff inspect` |
+| S6 | `BUFF_ITERATING` | Addressing feedback | Fix findings, then run `sm swab` |
+| S7 | `PR_READY` | All green, ready to land | Run `sm buff finalize --push` |
+
+#### What to build
+
+**Phase 1: Number the states**
+- Add a `position` property to `WorkflowState` in `slopmop/workflow/state_machine.py` (the enum at ~line 54). Map CODING→1, SWAB_CLEAN→2, etc.
+- Add a `next_action` property that returns the human-readable string for what to do next.
+- These are read-only derived properties — the enum values (`"coding"`, `"swab_clean"`, etc.) stay unchanged.
+
+**Phase 2: Enhance `sm status` output with workflow position**
+- In `slopmop/cli/status.py`, after the existing config/gate display, add a **"📍 Workflow position"** section.
+- Read state from `.slopmop/workflow_state.json` via `slopmop/workflow/state_store.py::read_state()`.
+- Output example: `📍 Position: S3 (COMMITTED) — Next: run 'sm scour'`
+- If no state file exists, default to S1 (CODING).
+
+**Phase 3: Fold CI status into `sm status`**
+- When a PR is detected for the current branch (use `_detect_pr_number()` from `slopmop/cli/ci.py`), fetch CI checks and show a summary section.
+- Show: passed count, failed count, pending count, plus the first 3 failure names.
+- `sm buff status` and `sm buff watch` should keep working — they can share the same `_fetch_checks()` and `_categorize_checks()` functions from `ci.py`.
+- Do NOT remove `sm buff status`/`sm buff watch` — they are the detailed view. `sm status` shows the summary.
+
+**Phase 4: Update the timeline diagram**
+- In `scripts/gen_timeline_diagram.py`, prefix each node label with its state ID where applicable. E.g., the "✏️ Edit source code" node becomes "S1: ✏️ Edit source code". The "Run **sm swab**" node stays unlabeled (it's an action, not a state). The "Swab passes → git commit" edge leads to something like "S2→S3" implicitly.
+- Actually, the cleaner approach: add the state IDs as annotations/notes on the diagram, or add a legend. The diagram nodes are actions/decisions — the states are the *positions between* actions. Consider a side legend that maps "after step X you are at state SY."
+- Regenerate both SVGs.
+
+**Phase 5: Tests**
+- Add tests for `WorkflowState.position` and `WorkflowState.next_action` properties.
+- Add tests for the new workflow-position section in status output.
+- Run full suite: `cd /Users/pacey/Documents/SourceCode/slop-mop && ./venv/bin/python -m pytest tests/ -x -q`
+
+### Architecture notes STEVE needs to know
+
+**Critical framing**: slop-mop is a **gradient descent tool and speed multiplier** for code generation. NOT quality control. The swab/scour/buff loop provides greased rails so agents know what to do next. The `sm status` enhancement is the ultimate expression of this — an agent calls `sm status` and immediately knows its position and next action.
+
+**State persistence**: `.slopmop/workflow_state.json` stores `{"state": "coding", "baseline_achieved": true, "phase": "maintenance"}`. Read via `state_store.read_state(project_root)`. Write via `state_store.write_state(project_root, state)`. Best-effort — never crashes on I/O errors.
+
+**CI fetch**: Uses `gh` CLI (GitHub CLI), not REST API directly. Key functions in `slopmop/cli/ci.py`:
+- `_detect_pr_number(project_root)` → `Optional[int]` — gets PR number from current git branch
+- `_fetch_checks(project_root, pr_number)` → `(Optional[List[Dict]], error_str)` — calls `gh pr checks`
+- `_categorize_checks(checks)` → `(completed, in_progress, failed)` — groups by bucket
+
+**Python version**: Use the project venv at `./venv/bin/python` (Python 3.13.12). Do NOT use system Python 3.14 — it has removed `importlib.abc.Traversable` which breaks template loading.
+
+**Loader quirk**: `Traversable.joinpath()` takes one arg in pyright stubs. Chain calls: `.joinpath("_shared").joinpath("core.md")` not `.joinpath("_shared", "core.md")`.
+
+**Test runner**: `./venv/bin/python -m pytest tests/ -x -q` from repo root. Currently 1712+ tests passing.
+
+**Pre-commit hooks**: `sm swab` runs as a pre-commit hook. The hook config lives in `.slopmop/hooks/`. Status currently reports hook installation state.
+
+**CLI registration** (`slopmop/sm.py`):
+- `_add_status_parser(subparsers)` around line 406 — this is where you'd add new flags to `sm status`
+- Verb routing in `main()` around line 535 — `if parsed_args.verb == "status": return cmd_status(parsed_args)`
+- Buff sub-action routing in `cmd_buff()` around line 956
+
+**Key files to modify:**
+| File | What to change |
+|------|---------------|
+| `slopmop/workflow/state_machine.py` | Add `position` and `next_action` properties to `WorkflowState` enum |
+| `slopmop/cli/status.py` | Add workflow position section + CI summary section to output |
+| `slopmop/cli/ci.py` | Potentially extract shared CI summary function for reuse |
+| `scripts/gen_workflow_diagrams.py` | Single source of truth for state diagram + developer loop |
+| `tests/unit/test_agent_install.py` | May need updates if state_machine changes affect imports |
+| New test file or existing test file | Tests for new WorkflowState properties and status output |
+
+### Branch state
+
+- Branch: `chore/display-sync-ai-human`
+- Remote: pushed up to `9db61c4`
+- Uncommitted: diagram refactor (split scripts + SVG output) — **commit this first**
+- PR: #92, open against `main`
+
+---
+
+## 2026-03-10 Delta: Terminal Garble Root-Cause Investigation
+
+### Findings
+
+1. The local VS Code app is on `1.110.1`, which is below the upstream macOS multiline PTY fix release identified during investigation (`1.112.0`).
+2. Local VS Code logs show terminal-subsystem instability during the same period as the garbling reports:
+  - repeated `Shell integration failed to add capabilities within 10 seconds`
+  - repeated `No ptyHost heartbeat after 6 seconds`
+  - repeated orphaned persistent terminal processes and multi-kilobyte terminal replay events
+3. The generated VS Code zsh integration directory exists and contains the expected bootstrap files, so the repeated `pacey-code-zsh` `EEXIST` errors appear to be noisy concurrent initialization rather than the primary root cause.
+4. Interactive zsh startup time is approximately `0.40s`, which makes slow shell startup an unlikely explanation for the observed command-boundary corruption.
+
+### Current Assessment
+
+- The leading root cause is an outdated VS Code terminal/pty transport on macOS, compounded by unhealthy persistent terminal state in the current editor session.
+- Permanent remediation requires moving this install onto a VS Code build that includes the multiline PTY fix and then restarting with fresh terminal state.
+
+### Remediation Progress
+
+1. Downloaded and inspected the current stable VS Code build available from Microsoft: `1.111.0`.
+2. Downloaded and inspected the current Insiders build: `1.112.0-insider`.
+3. Installed `Visual Studio Code - Insiders.app` into `/Applications` and launched this workspace there so a fix-bearing build is now available for validation.
+
+## 2026-03-10 Delta: Disable Pipx `sm` Inside Repo Checkout
+
+### Completed
+
+1. Added a committed `.envrc` that prepends the repo's `scripts/` directory to `PATH`, causing `sm` to resolve to the local wrapper instead of `~/.local/bin/sm` when working in this folder.
+2. Added a root-level `./sm` wrapper that delegates to `scripts/sm`, restoring the explicit local runner path from repo root.
+3. Approved the new `.envrc` for direnv in this checkout and updated maintainer/project guidance to prefer the repo-local runner during framework development.
+
+### Validation
+
+- `source .envrc && type -a sm` -> **local `scripts/sm` resolves before pipx**
+- `./sm buff status 92` -> **passed; local buff command executed**
+
+## 2026-03-10 Delta: Strengthen Agentic Forward-Motion Rules
+
+### Completed
+
+1. Updated the `cursor-rules` source guidance to make autonomous forward motion explicit instead of implied.
+2. Added direct anti-pattern guidance against permission-seeking closeouts like "If you want, I can..." when the next rail step is already obvious.
+3. Strengthened the slop-mop project workflow rules so agents are expected to continue through validate, commit, push, and PR rail steps unless a real blocker or approval boundary exists.
+4. Regenerated `AGENTS.md` from the updated `cursor-rules` sources.
+
+### Validation
+
+- `./cursor-rules/build_agent_instructions.sh` -> **passed**
+- `sm swab` -> **passed**
+- `sm scour` -> **passed**
+
+## 2026-03-10 Delta: Remove `ci` Verb In Favor Of Buff Rail
+
+### Completed
+
+1. Removed standalone `ci` verb wiring from CLI parser and dispatch (`sm.py`) and from public CLI command exports.
+2. Added `sm buff status` and `sm buff watch` actions so CI status polling remains available inside the buff rail path.
+3. Updated buff action parsing/help text and reused existing CI status categorization/printing logic under buff actions.
+4. Updated README command examples from `sm ci ...` to `sm buff status/watch ...` and migrated unit tests to the new buff-based flow.
+
+### Validation
+
+- `pytest -q tests/unit/test_sm_cli.py tests/unit/test_ci_triage_and_buff.py` -> **135 passed**
+- `sm swab` -> **passed**
+- `sm scour` -> **passed**
+
+## 2026-03-10 Delta: Human/Machine Output Separation
+
+### Completed
+
+1. Changed validation output-mode defaults so `sm swab`/`sm scour` now produce human-readable console output unless `--json` is explicitly requested.
+2. Updated managed git hook generation to keep stdout human-friendly while still writing machine-readable JSON artifacts via `--json-file .slopmop/last_<verb>.json`.
+3. Updated CLI help text to document explicit JSON behavior and added regression coverage for the new default output-mode policy.
+
+### Validation
+
+- `pytest -q tests/unit/test_sm_cli.py` -> **96 passed**
+
 ## 2026-03-10 Delta: Buff Finalize Ready (PR #85)
 
 ### Completed

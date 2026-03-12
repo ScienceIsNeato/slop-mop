@@ -22,6 +22,7 @@ from slopmop.checks.base import (
     GateCategory,
     GateLevel,
 )
+from slopmop.constants import NOT_A_GIT_REPO, action_buff_inspect_pr
 from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 
@@ -138,7 +139,7 @@ class PRCommentsCheck(BaseCheck):
         """Return skip reason when git or PR context is unavailable."""
         git_dir = os.path.join(project_root, ".git")
         if not os.path.isdir(git_dir):
-            return "Not a git repository"
+            return NOT_A_GIT_REPO
 
         try:
             result = subprocess.run(
@@ -756,7 +757,7 @@ class PRCommentsCheck(BaseCheck):
             lines.append("")
 
         lines.append("# Re-enter the post-PR rail after resolving this ordered batch")
-        lines.append(f"sm buff inspect {pr_number}")
+        lines.append(action_buff_inspect_pr(pr_number))
         return "\n".join(lines) + "\n"
 
     def _write_protocol_artifacts(
@@ -951,7 +952,7 @@ class PRCommentsCheck(BaseCheck):
         lines.append("━" * 80)
         lines.append("")
         lines.append("# Re-run the post-PR inspection rail:")
-        lines.append(f"sm buff inspect {pr_number}")
+        lines.append(action_buff_inspect_pr(pr_number))
         lines.append("")
         lines.append("# Thread-only probe if you need the narrow check:")
         lines.append(f"sm buff verify {pr_number}")

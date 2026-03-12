@@ -28,6 +28,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
@@ -88,6 +89,7 @@ class DebuggerArtifactsCheck(BaseCheck):
 
     tool_context: ClassVar[ToolContext] = ToolContext.PURE
     role = CheckRole.DIAGNOSTIC
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 
     @property
     def name(self) -> str:

@@ -44,6 +44,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     count_source_scope,
 )
 from slopmop.checks.constants import (
@@ -421,6 +422,7 @@ class BogusTestsCheck(BaseCheck):
     """
 
     role = CheckRole.DIAGNOSTIC
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_LIKELY
 
     @property
     def name(self) -> str:

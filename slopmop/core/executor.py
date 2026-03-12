@@ -415,6 +415,11 @@ class CheckExecutor:
     def _build_dependency_graph(self, checks: List[BaseCheck]) -> Dict[str, Set[str]]:
         """Build dependency graph for checks.
 
+        Terminal checks (``check.terminal == True``) automatically depend on
+        every non-terminal check in the run, so they only execute after all
+        other gates have completed and passed.  No need to enumerate specific
+        ``depends_on`` entries in terminal check classes.
+
         Args:
             checks: List of checks to analyze
 
@@ -422,11 +427,18 @@ class CheckExecutor:
             Dict mapping check full_name to set of dependency full_names
         """
         check_names = {c.full_name for c in checks}
+        non_terminal_names = {
+            c.full_name for c in checks if not getattr(c, "terminal", False)
+        }
         graph: Dict[str, Set[str]] = {}
 
         for check in checks:
-            # Only include dependencies that are in our check list
-            deps = set(check.depends_on) & check_names
+            if getattr(check, "terminal", False):
+                # Terminal checks depend on everything else that is running.
+                deps = non_terminal_names - {check.full_name}
+            else:
+                # Only include explicit dependencies that are in our check list.
+                deps = set(check.depends_on) & check_names
             graph[check.full_name] = deps
 
         return graph

@@ -60,6 +60,35 @@ After that, in each project venv choose one of:
 - stable: `pip install "slopmop==<version>"`
 - active development: `pip install -e /path/to/slop-mop-worktree`
 
+## Working In This Repo
+
+When you are developing `slop-mop` itself, do not let a pipx-installed `sm`
+win command resolution inside this checkout.
+
+This repo now provides two local overrides:
+
+```bash
+source .envrc      # or: activate
+type -a sm         # should show ./scripts/sm before ~/.local/bin/sm
+
+./sm swab
+sm swab
+```
+
+What this does:
+
+- `.envrc` prepends `./scripts` to `PATH`, so `sm` resolves to the repo-local runner
+- `./sm` is a root-level convenience wrapper that delegates to `scripts/sm`
+- pipx remains installed machine-wide, but it is shadowed while you work in this folder
+
+If command resolution still looks wrong:
+
+```bash
+source .envrc
+hash -r
+type -a sm
+```
+
 ## Lock Behavior For Agents
 
 `sm` uses a repo-level lock (`.slopmop/sm.lock`) to prevent overlapping runs in

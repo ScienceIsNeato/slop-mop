@@ -10,7 +10,6 @@ Usage:
     sm commit-hooks status
     sm commit-hooks install
     sm commit-hooks uninstall
-    sm ci [PR_NUMBER] [--watch]
     sm help [GATE]
 
 Verbs:
@@ -21,7 +20,6 @@ Verbs:
     init          Interactive setup and project configuration
     agent         Install agent integration templates
     commit-hooks  Manage git pre-commit hooks
-    ci            Check CI status for current PR
     help          Show help for quality gates
 """
 
@@ -84,15 +82,15 @@ def _add_output_flags(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         default=None,
         help=(
-            "Output results as JSON. Auto-detected when stdout is not a TTY "
-            "(e.g. piped to an AI agent). Use --no-json to force pretty output."
+            "Output results as JSON. Human-readable console output is the "
+            "default; use --json for machine-oriented stdout."
         ),
     )
     parser.add_argument(
         "--no-json",
         dest="json_output",
         action="store_false",
-        help="Force pretty output even when stdout is not a TTY.",
+        help="Force human-readable console output.",
     )
     parser.add_argument(
         "--sarif",
@@ -398,42 +396,6 @@ def _add_hooks_parser(
     )
 
 
-def _add_ci_parser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-) -> None:
-    """Add the ci subcommand parser."""
-    ci_parser = subparsers.add_parser(
-        "ci",
-        help="Check CI status for current PR",
-        description="Check if CI checks are passing on the current PR.",
-    )
-    ci_parser.add_argument(
-        "pr_number",
-        nargs="?",
-        type=int,
-        default=None,
-        help="PR number to check (auto-detects from current branch if omitted)",
-    )
-    ci_parser.add_argument(
-        "--watch",
-        "-w",
-        action="store_true",
-        help="Poll CI status until all checks complete",
-    )
-    ci_parser.add_argument(
-        "--interval",
-        type=int,
-        default=30,
-        help="Polling interval in seconds (default: 30)",
-    )
-    ci_parser.add_argument(
-        "--project-root",
-        type=str,
-        default=".",
-        help=PROJECT_ROOT_HELP,
-    )
-
-
 def _add_agent_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -536,7 +498,6 @@ Examples:
     _add_init_parser(subparsers)
     _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
-    _add_ci_parser(subparsers)
 
     parser.add_argument(
         "--version",
@@ -552,7 +513,6 @@ def main(args: Optional[List[str]] = None) -> int:
     from slopmop.cli import (
         cmd_agent,
         cmd_buff,
-        cmd_ci,
         cmd_commit_hooks,
         cmd_config,
         cmd_help,
@@ -590,8 +550,6 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_agent(parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return cmd_commit_hooks(parsed_args)
-    elif parsed_args.verb == "ci":
-        return cmd_ci(parsed_args)
     else:
         parser.print_help()
         return 0
