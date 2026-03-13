@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g jscpd find-duplicate-strings \
+    && npm install -g jscpd find-duplicate-strings eslint@8 eslint-plugin-jest prettier \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

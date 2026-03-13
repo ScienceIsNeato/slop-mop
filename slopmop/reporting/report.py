@@ -40,21 +40,41 @@ def _format_age(iso_timestamp: str) -> Optional[str]:
 
     Returns e.g. '2m', '1h', '3d', or None on parse failure.
     """
+    then = _parse_iso_timestamp(iso_timestamp)
+    if then is None:
+        return None
+    delta = datetime.now(timezone.utc) - then
+    secs = int(delta.total_seconds())
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m"
+    if secs < 86400:
+        return f"{secs // 3600}h"
+    return f"{secs // 86400}d"
+
+
+def _parse_iso_timestamp(iso_timestamp: str) -> Optional[datetime]:
+    """Parse ISO-8601 timestamps into timezone-aware datetimes."""
     try:
         then = datetime.fromisoformat(iso_timestamp)
         if then.tzinfo is None:
             then = then.replace(tzinfo=timezone.utc)
-        delta = datetime.now(timezone.utc) - then
-        secs = int(delta.total_seconds())
-        if secs < 60:
-            return f"{secs}s"
-        if secs < 3600:
-            return f"{secs // 60}m"
-        if secs < 86400:
-            return f"{secs // 3600}h"
-        return f"{secs // 86400}d"
+        return then
     except (ValueError, TypeError):
         return None
+
+
+def _unique_non_empty(values: List[Optional[str]]) -> List[str]:
+    """Return unique non-empty strings while preserving order."""
+    seen: set[str] = set()
+    unique: List[str] = []
+    for value in values:
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        unique.append(value)
+    return unique
 
 
 def _no_results() -> List[CheckResult]:
@@ -266,28 +286,83 @@ class RunReport:
         if not cached:
             return None
 
-        total_ran = len(
-            [
-                r
-                for r in self.summary.results
-                if r.status not in (CheckStatus.NOT_APPLICABLE, CheckStatus.SKIPPED)
-            ]
-        )
+        total_ran = self._cache_total_ran(cached)
         n_cached = len(cached)
 
         parts = [f"📦 {n_cached}/{total_ran} from cache"]
 
-        # All cached results share the same fingerprint, so pick
-        # commit/timestamp from the first one.
-        sample = cached[0]
         detail_parts: list[str] = []
-        if sample.cache_commit:
-            detail_parts.append(f"commit {sample.cache_commit}")
-        if sample.cache_timestamp:
-            age = _format_age(sample.cache_timestamp)
+        commits = _unique_non_empty([r.cache_commit for r in cached])
+        if len(commits) == 1:
+            detail_parts.append(f"commit {commits[0]}")
+        elif commits:
+            detail_parts.append(f"{len(commits)} commits")
+
+        timestamps = self._cache_timestamps(cached)
+        if len(timestamps) == 1:
+            age = _format_age(timestamps[0])
             if age:
                 detail_parts.append(f"{age} ago")
+        elif len(timestamps) > 1:
+            oldest_age = _format_age(timestamps[0])
+            newest_age = _format_age(timestamps[-1])
+            if oldest_age and newest_age:
+                detail_parts.append(f"{newest_age} to {oldest_age} ago")
         if detail_parts:
             parts.append(f"({', '.join(detail_parts)})")
 
         return " ".join(parts)
+
+    def cache_metadata(self) -> Optional[Dict[str, object]]:
+        """Structured cache provenance for adapters and machine output."""
+        cached = [r for r in self.summary.results if r.cached]
+        if not cached:
+            return None
+
+        refresh_command = f"sm {self.level or 'swab'} --no-cache"
+        metadata: Dict[str, object] = {
+            "cached_results": len(cached),
+            "total_ran": self._cache_total_ran(cached),
+            "refresh_command": refresh_command,
+        }
+
+        commits = _unique_non_empty([r.cache_commit for r in cached])
+        if len(commits) == 1:
+            metadata["source_commit"] = commits[0]
+        elif commits:
+            metadata["source_commits"] = commits
+
+        timestamps = self._cache_timestamps(cached)
+        if len(timestamps) == 1:
+            metadata["source_timestamp"] = timestamps[0]
+            age = _format_age(timestamps[0])
+            if age:
+                metadata["source_age"] = age
+        elif len(timestamps) > 1:
+            metadata["oldest_source_timestamp"] = timestamps[0]
+            metadata["newest_source_timestamp"] = timestamps[-1]
+            oldest_age = _format_age(timestamps[0])
+            newest_age = _format_age(timestamps[-1])
+            if oldest_age:
+                metadata["oldest_source_age"] = oldest_age
+            if newest_age:
+                metadata["newest_source_age"] = newest_age
+        return metadata
+
+    def _cache_total_ran(self, cached: List[CheckResult]) -> int:
+        """Count cache-eligible results with a non-zero denominator."""
+        total = len(
+            [r for r in self.summary.results if r.status != CheckStatus.NOT_APPLICABLE]
+        )
+        return max(total, len(cached))
+
+    def _cache_timestamps(self, cached: List[CheckResult]) -> List[str]:
+        """Return cached timestamps ordered from oldest to newest."""
+        ordered: List[tuple[str, datetime]] = []
+        for raw in _unique_non_empty([r.cache_timestamp for r in cached]):
+            parsed = _parse_iso_timestamp(raw)
+            if parsed is None:
+                continue
+            ordered.append((raw, parsed))
+        ordered.sort(key=lambda item: item[1])
+        return [raw for raw, _ in ordered]

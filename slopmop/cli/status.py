@@ -87,6 +87,9 @@ def _print_config_summary(
 
 
 RECENT_HISTORY_HEADER = "📊 RECENT HISTORY"
+HISTORICAL_STATUS_NOTE = (
+    "Historical dashboard only: uses recorded run history and does not execute gates."
+)
 
 # Shared role → badge map lives in constants.py alongside STATUS_EMOJI —
 # imported rather than duplicated so `sm status` and the ConsoleAdapter
@@ -141,9 +144,9 @@ def _format_gate_line(
         icon = _RESULT_ICONS.get(last_result, "?")
         sparkline = history.sparkline(max_width=10, colors_enabled=colors_enabled)
         # Build suffix from last result + sparkline
-        suffix = last_result
+        suffix = f"last: {last_result}"
         if sparkline:
-            suffix = f"{last_result}  {sparkline}"
+            suffix = f"last: {last_result}  {sparkline}"
     else:
         icon = "·"
         suffix = "no history"
@@ -414,7 +417,7 @@ def _print_recent_history(history: Dict[str, TimingStats]) -> None:
     parts: List[str] = []
     for status, count in sorted(last_results.items()):
         parts.append(f"{count} {status}")
-    print(f"   Last known: {', '.join(parts)} ({total} gates tracked)")
+    print(f"   Last recorded: {', '.join(parts)} ({total} gates tracked)")
 
 
 # ── Main ─────────────────────────────────────────────────────────
@@ -572,6 +575,8 @@ def run_status(
         print()
         print("🪣 slop-mop · project dashboard")
         print("═" * 60)
+        print(f"{HISTORICAL_STATUS_NOTE}")
+        print("Fresh checks: `sm swab` or `sm scour --no-cache`.")
 
     _print_config_summary(
         root=root,

@@ -5,8 +5,8 @@
 > Re-generate: `python scripts/gen_workflow_diagrams.py`
 
 The slop-mop development loop is a small state machine.  Every tool
-invocation advances the machine; the terminal `walk-forward` gate in
-`sm scour` always tells you the next step.
+invocation advances the machine; the swab/scour/buff outputs always
+tell you the next step.
 
 ---
 
@@ -114,15 +114,18 @@ structural changes would undo their fixes.
 | 2 — fix next | `deceptiveness:hand-wavy-tests.js` | Foundation | 🎭 Deceptiveness | no |
 | 2 — fix next | `laziness:silenced-gates` | Diagnostic | 🦥 Laziness | no |
 | 3 — fix later | `laziness:broken-templates.py` | Foundation | 💯 Overconfidence | no |
+| 3 — fix later | `laziness:sloppy-formatting.dart` | Foundation | 🦥 Laziness | no |
 | 3 — fix later | `laziness:sloppy-frontend.js` | Foundation | 🦥 Laziness | no |
 | 3 — fix later | `myopia:string-duplication.py` | Diagnostic | 👓 Myopia | no |
 | 3 — fix later | `myopia:vulnerability-blindness.py` | Foundation | 👓 Myopia | no |
 | 3 — fix later | `overconfidence:coverage-gaps.dart` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:coverage-gaps.js` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:coverage-gaps.py` | Foundation | 💯 Overconfidence | no |
+| 3 — fix later | `overconfidence:missing-annotations.dart` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:missing-annotations.py` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:type-blindness.js` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:type-blindness.py` | Foundation | 💯 Overconfidence | no |
+| 3 — fix later | `overconfidence:untested-code.dart` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:untested-code.js` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:untested-code.py` | Foundation | 💯 Overconfidence | no |
 | 4 — fix last | `deceptiveness:debugger-artifacts` | Diagnostic | 🎭 Deceptiveness | no |

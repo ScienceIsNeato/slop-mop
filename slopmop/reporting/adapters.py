@@ -66,13 +66,18 @@ class JsonAdapter:
         if report.verify_command:
             output["next_steps"] = [report.verify_command]
 
+        cache = report.cache_metadata()
+        if cache:
+            output["cache"] = cache
+
         # Machine-readable runtime warnings for automation/CI parsers.
         # Keep this orthogonal to actionable gate failures: these are
         # execution-context warnings, not check results.
+        warnings: List[Dict[str, object]] = []
         skip_reasons = report.summary.skip_reason_summary()
         budget_skips = skip_reasons.get("time", 0)
         if budget_skips > 0:
-            output["runtime_warnings"] = [
+            warnings.append(
                 {
                     "code": "swabbing_time_budget_skipped",
                     "message": (
@@ -82,7 +87,23 @@ class JsonAdapter:
                     "skipped_timed_checks": budget_skips,
                     "suggested_command": "sm swab --swabbing-time 0",
                 }
-            ]
+            )
+
+        if cache:
+            warnings.append(
+                {
+                    "code": "cached_results_present",
+                    "message": (
+                        "Some results came from cache; rerun with --no-cache "
+                        "for a fresh pass."
+                    ),
+                    "cached_results": cache["cached_results"],
+                    "suggested_command": cache["refresh_command"],
+                }
+            )
+
+        if warnings:
+            output["runtime_warnings"] = warnings
 
         return output
 
@@ -168,6 +189,7 @@ class ConsoleAdapter:
         cache_line = r.cache_summary()
         if cache_line:
             print(f"   {cache_line}")
+            self._render_cache_refresh_hint()
 
         self._render_time_budget_warning()
 
@@ -203,6 +225,7 @@ class ConsoleAdapter:
         cache_line = r.cache_summary()
         if cache_line:
             print(f"   {cache_line}")
+            self._render_cache_refresh_hint()
 
         self._render_time_budget_warning()
 
@@ -277,6 +300,17 @@ class ConsoleAdapter:
             "   ⚠️  Swabbing-time budget skipped "
             f"{skipped_for_budget} timed check(s); "
             "run `sm swab --swabbing-time 0` for full coverage."
+        )
+
+    def _render_cache_refresh_hint(self) -> None:
+        """Print a short freshness hint when cached results were used."""
+        cache = self.report.cache_metadata()
+        if not cache:
+            return
+        print(
+            "   🔄 Fresh run: rerun `"
+            + str(cache["refresh_command"])
+            + "` if you need uncached results."
         )
 
     def _skipped_line(self) -> str:

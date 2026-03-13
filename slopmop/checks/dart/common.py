@@ -3,6 +3,14 @@
 from pathlib import Path
 from typing import Iterable, List
 
+FLUTTER_CACHE_PERMISSION_ERROR = "engine.stamp: Operation not permitted"
+FLUTTER_NOT_AVAILABLE = "flutter not available"
+FLUTTER_INSTALL_FIX_SUGGESTION = "Install Flutter SDK and ensure `flutter` is on PATH"
+FLUTTER_CACHE_NOT_WRITABLE = (
+    "Flutter SDK cache path is not writable in this environment"
+)
+NO_FLUTTER_TEST_DIRECTORIES_FOUND = "No Flutter test directories found"
+
 
 def find_pubspec_dirs(project_root: str) -> List[Path]:
     """Return package directories containing pubspec.yaml.
@@ -36,6 +44,20 @@ def find_dart_test_files(project_root: str) -> List[Path]:
             continue
         files.extend(sorted(test_dir.rglob("*_test.dart")))
     return files
+
+
+def find_flutter_test_package_dirs(project_root: str) -> List[Path]:
+    """Return package directories that contain a Flutter/Dart test directory."""
+    return [pkg for pkg in find_pubspec_dirs(project_root) if (pkg / "test").is_dir()]
+
+
+def format_package_label(project_root: str, package_dir: Path) -> str:
+    """Render a stable relative package label for output messages."""
+    root = Path(project_root).resolve()
+    resolved = package_dir.resolve()
+    if resolved == root:
+        return "."
+    return str(resolved.relative_to(root))
 
 
 def unique_strings(values: Iterable[str]) -> List[str]:

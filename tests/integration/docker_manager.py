@@ -190,7 +190,7 @@ class DockerManager:
         self,
         image_name: str = DEFAULT_IMAGE_NAME,
         rebuild: bool = False,
-        timeout: int = 120,
+        timeout: int = 300,
     ) -> None:
         self.image_name = image_name
         self.rebuild = rebuild

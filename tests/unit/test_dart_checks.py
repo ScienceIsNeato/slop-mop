@@ -2,10 +2,174 @@
 
 from unittest.mock import MagicMock, patch
 
+from slopmop.checks.dart.analyze import FlutterAnalyzeCheck
 from slopmop.checks.dart.bogus_tests import DartBogusTestsCheck
 from slopmop.checks.dart.coverage import DartCoverageCheck
+from slopmop.checks.dart.format import DartFormatCheck
 from slopmop.checks.dart.generated_artifacts import DartGeneratedArtifactsCheck
+from slopmop.checks.dart.tests import FlutterTestsCheck
 from slopmop.core.result import CheckStatus
+
+
+class TestFlutterAnalyzeCheck:
+    """Tests for FlutterAnalyzeCheck."""
+
+    def test_name(self):
+        check = FlutterAnalyzeCheck({})
+        assert check.name == "missing-annotations.dart"
+        assert check.full_name == "overconfidence:missing-annotations.dart"
+
+    def test_is_applicable_requires_pubspec(self, tmp_path):
+        check = FlutterAnalyzeCheck({})
+        assert check.is_applicable(str(tmp_path)) is False
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_warns_when_flutter_missing(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = FlutterAnalyzeCheck({})
+        with patch("slopmop.checks.dart.analyze.find_tool", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.WARNED
+
+    def test_passes_when_analyze_is_clean(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = FlutterAnalyzeCheck({})
+        run_result = MagicMock(success=True, output="No issues found", timed_out=False)
+        with (
+            patch("slopmop.checks.dart.analyze.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_fails_when_analyze_fails(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = FlutterAnalyzeCheck({})
+        run_result = MagicMock(success=False, output="analyze failure", timed_out=False)
+        with (
+            patch("slopmop.checks.dart.analyze.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "flutter analyze failed" in (result.error or "")
+
+    def test_fails_when_analyze_times_out(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = FlutterAnalyzeCheck({})
+        run_result = MagicMock(success=False, output="", timed_out=True)
+        with (
+            patch("slopmop.checks.dart.analyze.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "timed out" in (result.error or "").lower()
+        assert "failed" not in (result.error or "").lower()
+
+
+class TestFlutterTestsCheck:
+    """Tests for FlutterTestsCheck."""
+
+    def test_name(self):
+        check = FlutterTestsCheck({})
+        assert check.name == "untested-code.dart"
+        assert check.full_name == "overconfidence:untested-code.dart"
+
+    def test_is_applicable_requires_test_dir(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = FlutterTestsCheck({})
+        assert check.is_applicable(str(tmp_path)) is False
+        (tmp_path / "test").mkdir()
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_warns_when_flutter_missing(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        (tmp_path / "test").mkdir()
+        check = FlutterTestsCheck({})
+        with patch("slopmop.checks.dart.tests.find_tool", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.WARNED
+
+    def test_passes_when_tests_pass(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        (tmp_path / "test").mkdir()
+        check = FlutterTestsCheck({})
+        run_result = MagicMock(success=True, output="All tests passed", timed_out=False)
+        with (
+            patch("slopmop.checks.dart.tests.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_fails_when_tests_fail(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        (tmp_path / "test").mkdir()
+        check = FlutterTestsCheck({})
+        run_result = MagicMock(success=False, output="test failure", timed_out=False)
+        with (
+            patch("slopmop.checks.dart.tests.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "flutter test failed" in (result.error or "")
+
+
+class TestDartFormatCheck:
+    """Tests for DartFormatCheck."""
+
+    def test_name(self):
+        check = DartFormatCheck({})
+        assert check.name == "sloppy-formatting.dart"
+        assert check.full_name == "laziness:sloppy-formatting.dart"
+
+    def test_warns_when_dart_missing(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = DartFormatCheck({})
+        with patch("slopmop.checks.dart.format.find_tool", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.WARNED
+
+    def test_passes_when_dart_is_formatted(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = DartFormatCheck({})
+        run_result = MagicMock(success=True, output="", timed_out=False)
+        with (
+            patch("slopmop.checks.dart.format.find_tool", return_value="dart"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_fails_when_formatting_drifts(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = DartFormatCheck({})
+        run_result = MagicMock(
+            success=False, output="Changed lib/main.dart", timed_out=False
+        )
+        with (
+            patch("slopmop.checks.dart.format.find_tool", return_value="dart"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "formatting drift" in (result.error or "").lower()
+
+    def test_fails_with_timeout_specific_error(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = DartFormatCheck({})
+        run_result = MagicMock(success=False, output="", timed_out=True)
+        with (
+            patch("slopmop.checks.dart.format.find_tool", return_value="dart"),
+            patch.object(check, "_run_command", return_value=run_result),
+        ):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "timed out" in (result.error or "").lower()
+        assert "formatting drift" not in (result.error or "").lower()
 
 
 class TestDartCoverageCheck:

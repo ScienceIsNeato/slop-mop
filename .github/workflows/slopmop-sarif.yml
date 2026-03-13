@@ -195,3 +195,49 @@ jobs:
           echo "::notice::Local triage command: python scripts/ci_scan_triage.py --run-id ${GITHUB_RUN_ID} --show-low-coverage"
           echo "::error::slopmop scour failed"
           exit 1
+
+  # -------------------------------------------------------------------
+  # Docker integration tests
+  #
+  # Builds the slop-mop Docker image, clones bucket-o-slop inside
+  # containers, and runs `sm swab` against each fixture branch
+  # (all-pass, all-fail, mixed).  Validates install, init, and gate
+  # results match expectations.
+  #
+  # Runs in parallel with the scan job — no dependency.
+  # -------------------------------------------------------------------
+  docker-integration:
+    name: Docker Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -e ".[all]"
+          pip install pytest
+
+      - name: Run Docker integration tests
+        run: |
+          source .venv/bin/activate
+          python -m pytest tests/integration/test_docker_install.py \
+            -v --tb=long -m integration 2>&1 | tee docker-test-output.txt
+
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-integration-output
+          path: docker-test-output.txt

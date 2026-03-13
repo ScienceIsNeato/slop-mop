@@ -453,7 +453,7 @@ class TestDetectProjectType:
         assert _normalize_language_key("C++ Header") == "cplusplusheader"
 
     def test_dart_detection_suggests_flutter_custom_gates(self, tmp_path):
-        """Dart repos should get Flutter custom gates and built-in Dart gates."""
+        """Dart repos should get first-class Flutter gates, not custom shells."""
         with (
             patch(
                 "slopmop.cli.detection._detect_languages_with_scc",
@@ -467,22 +467,10 @@ class TestDetectProjectType:
             result = detect_project_type(tmp_path)
 
         assert result["has_dart"] is True
-        names = {gate["name"] for gate in result["suggested_custom_gates"]}
-        assert "flutter-analyze" in names
-        assert "flutter-test" in names
-        assert "dart-format-check" in names
-
-        by_name = {gate["name"]: gate for gate in result["suggested_custom_gates"]}
-        assert "find . -name pubspec.yaml" in by_name["flutter-analyze"]["command"]
-        assert "find . -name pubspec.yaml" in by_name["flutter-test"]["command"]
-        assert (
-            "dart format --output=none --set-exit-if-changed"
-            in by_name["dart-format-check"]["command"]
-        )
-        assert (
-            "engine.stamp: Operation not permitted"
-            in by_name["dart-format-check"]["command"]
-        )
+        assert result["suggested_custom_gates"] == []
+        assert "overconfidence:missing-annotations.dart" in result["recommended_gates"]
+        assert "overconfidence:untested-code.dart" in result["recommended_gates"]
+        assert "laziness:sloppy-formatting.dart" in result["recommended_gates"]
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
         assert "deceptiveness:bogus-tests.dart" in result["recommended_gates"]
         assert "laziness:generated-artifacts.dart" in result["recommended_gates"]
@@ -490,7 +478,7 @@ class TestDetectProjectType:
     def test_dart_detection_omits_flutter_custom_gates_when_tools_missing(
         self, tmp_path
     ):
-        """Dart custom gates should not be suggested when flutter/dart tools are missing."""
+        """Dart still gets first-class recommendations and missing-tool mapping."""
         with (
             patch(
                 "slopmop.cli.detection._detect_languages_with_scc",
@@ -502,7 +490,25 @@ class TestDetectProjectType:
 
         assert result["has_dart"] is True
         assert result["suggested_custom_gates"] == []
+        assert "overconfidence:missing-annotations.dart" in result["recommended_gates"]
+        assert "overconfidence:untested-code.dart" in result["recommended_gates"]
+        assert "laziness:sloppy-formatting.dart" in result["recommended_gates"]
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
+        assert (
+            "flutter",
+            "overconfidence:missing-annotations.dart",
+            "Install Flutter SDK: https://docs.flutter.dev/get-started/install",
+        ) in result["missing_tools"]
+        assert (
+            "flutter",
+            "overconfidence:untested-code.dart",
+            "Install Flutter SDK: https://docs.flutter.dev/get-started/install",
+        ) in result["missing_tools"]
+        assert (
+            "dart",
+            "laziness:sloppy-formatting.dart",
+            "Install Dart SDK: https://dart.dev/get-dart",
+        ) in result["missing_tools"]
 
 
 class TestPromptFunctions:
@@ -1224,3 +1230,80 @@ class TestValidateJsonOutputFile:
         assert output_file.exists()
         assert output_file.read_text(encoding="utf-8") == '{"ok":true}'
         mock_print.assert_called_once_with('{"ok":true}')
+
+
+class TestUnknownGateValidation:
+    """Explicit -g with unknown gate names must error instead of silently no-oping."""
+
+    @patch("slopmop.sm.load_config", return_value={})
+    @patch("slopmop.cli.validate.get_registry")
+    def test_unknown_gate_returns_error(self, mock_reg, _mock_config, tmp_path):
+        """Unknown gate name passed via -g must return exit code 1."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_registry = MagicMock()
+        mock_registry.list_checks.return_value = [
+            "laziness:sloppy-formatting.py",
+            "overconfidence:coverage-gaps.py",
+        ]
+        mock_reg.return_value = mock_registry
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+            json_output=False,
+            no_cache=False,
+        )
+
+        result = _run_validation(args, ["totally-bogus-gate"], None)
+
+        assert result == 1
+
+    @patch("slopmop.cli.validate.ConsoleAdapter")
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_valid_gate_still_runs(
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
+    ):
+        """Valid gate name passed via -g runs normally (no regression)."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_registry = MagicMock()
+        mock_registry.list_checks.return_value = ["laziness:stale-docs"]
+        mock_reg.return_value = mock_registry
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+            json_output=False,
+            no_cache=False,
+        )
+
+        result = _run_validation(args, ["laziness:stale-docs"], None)
+
+        assert result == 0
+        mock_executor.run_checks.assert_called_once()

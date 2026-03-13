@@ -64,19 +64,18 @@ def _register_dart_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.dart import (
         DartBogusTestsCheck,
         DartCoverageCheck,
+        DartFormatCheck,
         DartGeneratedArtifactsCheck,
+        FlutterAnalyzeCheck,
+        FlutterTestsCheck,
     )
 
+    registry.register(FlutterAnalyzeCheck)
+    registry.register(FlutterTestsCheck)
+    registry.register(DartFormatCheck)
     registry.register(DartCoverageCheck)
     registry.register(DartBogusTestsCheck)
     registry.register(DartGeneratedArtifactsCheck)
-
-
-def _register_workflow_checks(registry: CheckRegistry) -> None:
-    """Register workflow state-machine checks."""
-    from slopmop.checks.workflow.walk_forward import WalkForwardCheck
-
-    registry.register(WalkForwardCheck)
 
 
 def _register_crosscutting_checks(registry: CheckRegistry) -> None:
@@ -123,7 +122,6 @@ def register_all_checks() -> None:
     _register_javascript_checks(registry)
     _register_dart_checks(registry)
     _register_crosscutting_checks(registry)
-    _register_workflow_checks(registry)
 
 
 _checks_registered = False

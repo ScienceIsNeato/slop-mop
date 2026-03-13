@@ -1,6 +1,7 @@
 """JavaScript lint and format check using ESLint and Prettier."""
 
 import json
+import logging
 import os
 import time
 from typing import List, Optional, Tuple
@@ -17,6 +18,8 @@ from slopmop.checks.base import (
 from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+
+logger = logging.getLogger(__name__)
 
 
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
@@ -183,6 +186,13 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         )
 
         if not result.success and result.output.strip():
+            # ESLint exits non-zero when no config is found — not a lint
+            # failure, just an unconfigured project.  Don't count the
+            # error message lines as lint issues.
+            if "couldn't find a configuration file" in result.output.lower():
+                logger.debug("ESLint: no configuration file found — skipping")
+                return None, []
+
             findings: List[Finding] = []
             try:
                 data = json.loads(result.stdout)

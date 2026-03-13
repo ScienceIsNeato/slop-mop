@@ -38,9 +38,9 @@ from tests.integration.docker_manager import DockerManager, RunResult
 # ---------------------------------------------------------------------------
 FIXTURE_REFS: dict[str, str] = {
     # all-pass — Python + JS tests with assertions (gate passes)
-    "all-pass": "37a253ef2d2f2101d00e6a4b2687594ef5463962",  # pragma: allowlist secret
+    "all-pass": "b312df8ab1a6b828bd543ad1c4f679df8acfdc7b",  # pragma: allowlist secret
     # all-fail — Python slop + JS tests without assertions (gate fails)
-    "all-fail": "d9af731be87fa962d0278d59fcb3773be4e6eeb7",  # pragma: allowlist secret
+    "all-fail": "6c25af58fb8b138f055e690944151810dd5b4eec",  # pragma: allowlist secret
     # mixed — Python slop + JS tests with assertions (gate passes)
     "mixed": "a3d0675de0c59b59a7874ebb15860759ae3473f0",  # pragma: allowlist secret
 }

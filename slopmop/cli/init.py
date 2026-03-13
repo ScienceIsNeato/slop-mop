@@ -46,6 +46,19 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
 
 def _print_detection_results(detected: Dict[str, Any]) -> None:
     """Print project detection results."""
+    detected_languages = [
+        label
+        for label, enabled in [
+            ("Python", detected["has_python"]),
+            ("JavaScript", detected["has_javascript"]),
+            ("Dart/Flutter", detected.get("has_dart", False)),
+            ("Go", detected.get("has_go", False)),
+            ("Rust", detected.get("has_rust", False)),
+            ("C/C++", detected.get("has_c_cpp", False)),
+        ]
+        if enabled
+    ]
+
     print()
     print("📊 Detection Results:")
     print("-" * 40)
@@ -83,6 +96,13 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
 
     if detected["recommended_gates"]:
         print(f"  Recommended gates:   {', '.join(detected['recommended_gates'])}")
+    if len(detected_languages) > 1:
+        print()
+        print(
+            "  Mixed repo note: built-in gates run from the repo root. "
+            "If one service needs its own venv, compose stack, or bootstrap "
+            "wrapper, keep that setup in a custom gate or repo script."
+        )
     print()
 
 
