@@ -333,7 +333,6 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `myopia:source-duplication` | 📋 Code clone detection (jscpd) |
 | `myopia:string-duplication.py` | 🔤 Duplicate string literal detection |
 | `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets |
-| `myopia:walk-forward` | Terminal gate — inspects working tree, push status, and PR alignment to tell the agent exactly what to do next after all other gates pass. |
 
 <!-- END GATE TABLES -->
 

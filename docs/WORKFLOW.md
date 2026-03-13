@@ -5,8 +5,8 @@
 > Re-generate: `python scripts/gen_workflow_diagrams.py`
 
 The slop-mop development loop is a small state machine.  Every tool
-invocation advances the machine; the terminal `walk-forward` gate in
-`sm scour` always tells you the next step.
+invocation advances the machine; the swab/scour/buff outputs always
+tell you the next step.
 
 ---
 

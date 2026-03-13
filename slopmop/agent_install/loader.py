@@ -25,7 +25,7 @@ class TemplateAsset:
 
 
 def _templates_package() -> Traversable:
-    return resources.files("slopmop.agent_install.templates")
+    return resources.files("slopmop.agent_install").joinpath("templates")
 
 
 def _load_shared_core() -> bytes:
