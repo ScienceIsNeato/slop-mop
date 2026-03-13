@@ -1230,3 +1230,80 @@ class TestValidateJsonOutputFile:
         assert output_file.exists()
         assert output_file.read_text(encoding="utf-8") == '{"ok":true}'
         mock_print.assert_called_once_with('{"ok":true}')
+
+
+class TestUnknownGateValidation:
+    """Explicit -g with unknown gate names must error instead of silently no-oping."""
+
+    @patch("slopmop.sm.load_config", return_value={})
+    @patch("slopmop.cli.validate.get_registry")
+    def test_unknown_gate_returns_error(self, mock_reg, _mock_config, tmp_path):
+        """Unknown gate name passed via -g must return exit code 1."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_registry = MagicMock()
+        mock_registry.list_checks.return_value = [
+            "laziness:sloppy-formatting.py",
+            "overconfidence:coverage-gaps.py",
+        ]
+        mock_reg.return_value = mock_registry
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+            json_output=False,
+            no_cache=False,
+        )
+
+        result = _run_validation(args, ["totally-bogus-gate"], None)
+
+        assert result == 1
+
+    @patch("slopmop.cli.validate.ConsoleAdapter")
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_valid_gate_still_runs(
+        self,
+        _mock_config,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
+    ):
+        """Valid gate name passed via -g runs normally (no regression)."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_registry = MagicMock()
+        mock_registry.list_checks.return_value = ["laziness:stale-docs"]
+        mock_reg.return_value = mock_registry
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+            json_output=False,
+            no_cache=False,
+        )
+
+        result = _run_validation(args, ["laziness:stale-docs"], None)
+
+        assert result == 0
+        mock_executor.run_checks.assert_called_once()

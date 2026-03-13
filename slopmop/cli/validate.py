@@ -255,6 +255,23 @@ def _run_validation_locked(
     if level_name is not None and custom_names:
         gates = list(gates) + custom_names
 
+    # Validate explicit -g gate names against the registry.
+    # Level-based discovery (level_name != None) uses registry-produced
+    # names, so they're guaranteed valid.  User-supplied names need
+    # checking so typos don't silently produce an empty run.
+    if level_name is None:
+        available = set(registry.list_checks())
+        unknown = [g for g in gates if g not in available]
+        if unknown:
+            print(
+                f"❌ Unknown quality gate(s): {', '.join(unknown)}",
+                file=sys.stderr,
+            )
+            print("\nAvailable gates:", file=sys.stderr)
+            for gate in sorted(available):
+                print(f"  {gate}", file=sys.stderr)
+            return 1
+
     # Determine if we should use dynamic display
     # JSON mode suppresses all interactive output
     # SARIF-to-stdout mode also suppresses console output so the JSON
