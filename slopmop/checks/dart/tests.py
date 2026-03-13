@@ -70,7 +70,7 @@ class FlutterTestsCheck(BaseCheck):
     def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
         include_dirs = [
             str(pkg.relative_to(Path(project_root)))
-            for pkg in find_pubspec_dirs(project_root)
+            for pkg in find_flutter_test_package_dirs(project_root)
         ]
         if not include_dirs:
             include_dirs = ["."]
