@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -14,7 +14,7 @@ from slopmop.checks.base import (
     find_tool,
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
-from slopmop.checks.dart.common import find_pubspec_dirs
+from slopmop.checks.dart.common import find_pubspec_dirs, format_package_label
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -81,44 +81,50 @@ class DartFormatCheck(BaseCheck):
                 ],
             )
 
-        result = self._run_command(
-            [dart_path, "format", "--output=none", "--set-exit-if-changed", "."],
-            cwd=project_root,
-            timeout=120,
-        )
-        duration = time.time() - start_time
-        if result.timed_out:
-            return self._create_result(
-                status=CheckStatus.FAILED,
-                duration=duration,
-                output=result.output,
-                error="dart format timed out after 2 minutes",
-                findings=[
-                    Finding(
-                        message="dart format timed out",
-                        level=FindingLevel.ERROR,
-                    )
-                ],
+        package_dirs = find_pubspec_dirs(project_root)
+        outputs: List[str] = []
+        for package_dir in package_dirs:
+            label = format_package_label(project_root, package_dir)
+            result = self._run_command(
+                [dart_path, "format", "--output=none", "--set-exit-if-changed", "."],
+                cwd=str(package_dir),
+                timeout=120,
             )
-        if not result.success:
-            return self._create_result(
-                status=CheckStatus.FAILED,
-                duration=duration,
-                output=result.output,
-                error="Dart formatting drift detected",
-                findings=[
-                    Finding(
-                        message="Dart formatting drift detected",
-                        level=FindingLevel.ERROR,
-                    )
-                ],
-                fix_suggestion=(
-                    "Run `dart format .` and verify with: " + self.verify_command
-                ),
-            )
+            if result.timed_out:
+                return self._create_result(
+                    status=CheckStatus.FAILED,
+                    duration=time.time() - start_time,
+                    output=result.output,
+                    error=f"{label}: dart format timed out after 2 minutes",
+                    findings=[
+                        Finding(
+                            message=f"{label}: dart format timed out",
+                            level=FindingLevel.ERROR,
+                        )
+                    ],
+                )
+            if not result.success:
+                return self._create_result(
+                    status=CheckStatus.FAILED,
+                    duration=time.time() - start_time,
+                    output=result.output,
+                    error=f"{label}: Dart formatting drift detected",
+                    findings=[
+                        Finding(
+                            message=f"{label}: Dart formatting drift detected",
+                            level=FindingLevel.ERROR,
+                        )
+                    ],
+                    fix_suggestion=(
+                        f"Run `dart format .` in {label} and verify with: "
+                        + self.verify_command
+                    ),
+                )
+            outputs.append(f"{label}: formatting OK")
 
+        duration = time.time() - start_time
         return self._create_result(
             status=CheckStatus.PASSED,
             duration=duration,
-            output="Dart formatting OK",
+            output="\n".join(outputs) or "Dart formatting OK",
         )
