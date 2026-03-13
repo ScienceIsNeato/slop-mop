@@ -106,6 +106,7 @@ class CheckExecutor:
         self._cache: Dict[str, Any] = {}
         self._fingerprint: Optional[str] = None
         self._cache_dirty = False
+        self._skip_cache_reads = False
         self._on_check_complete: Optional[Callable[[CheckResult], None]] = None
         self._on_check_start: Optional[Callable[[str, Optional[str]], None]] = None
         self._on_check_disabled: Optional[Callable[[str], None]] = None
@@ -210,14 +211,23 @@ class CheckExecutor:
         self._stop_event.clear()
         self._results.clear()
 
-        # Load cache and compute fingerprint for this run
+        # Load cache and compute fingerprint for this run.
+        # When --no-cache: load existing cache (to preserve entries for
+        # checks not in this run), compute fingerprint (needed for
+        # storing fresh results), but skip reading from cache.  This
+        # ensures fresh results replace stale entries so subsequent
+        # cached runs see truth, not stale FAILED results.
         if use_cache:
             self._cache = load_cache(project_root)
-            self._fingerprint = compute_fingerprint(project_root)
+            self._skip_cache_reads = False
         else:
-            self._cache = {}
-            self._fingerprint = None
-            logger.debug("Cache disabled via --no-cache")
+            self._cache = load_cache(project_root)
+            self._skip_cache_reads = True
+            logger.debug(
+                "Cache reads disabled via --no-cache; "
+                "fresh results will still be written back"
+            )
+        self._fingerprint = compute_fingerprint(project_root)
         self._cache_dirty = False
 
         # Get check instances
@@ -918,13 +928,14 @@ class CheckExecutor:
         fingerprint: Optional[str] = None
         if self._fingerprint:
             fingerprint = check.cache_inputs(project_root) or self._fingerprint
-            cached = get_cached_result(self._cache, check.full_name, fingerprint)
-            if cached is not None:
-                logger.debug(
-                    f"Cache hit for {check.full_name} "
-                    f"(status={cached.status.value})"
-                )
-                return cached
+            if not self._skip_cache_reads:
+                cached = get_cached_result(self._cache, check.full_name, fingerprint)
+                if cached is not None:
+                    logger.debug(
+                        f"Cache hit for {check.full_name} "
+                        f"(status={cached.status.value})"
+                    )
+                    return cached
 
         logger.debug(f"Running {check.display_name}")
 

@@ -563,8 +563,12 @@ class TestNoCacheFlag:
         assert s3.passed == 1
         assert check_cls.run_count == 2  # Ran again
 
-    def test_no_cache_skips_disk_write(self, tmp_path):
-        """use_cache=False doesn't write cache.json to disk."""
+    def test_no_cache_writes_fresh_results_to_disk(self, tmp_path):
+        """use_cache=False still writes fresh results to cache.json.
+
+        This ensures that subsequent cached runs see fresh results
+        instead of stale entries from a previous run.
+        """
         (tmp_path / "main.py").write_text("x = 1")
 
         check_cls = _make_slow_check_class("no-write")
@@ -575,11 +579,10 @@ class TestNoCacheFlag:
         cache_file = tmp_path / ".slopmop" / "cache.json"
         assert not cache_file.exists()
 
-        # Run with cache disabled
+        # Run with cache disabled — fresh results should still be persisted
         executor.run_checks(str(tmp_path), ["overconfidence:no-write"], use_cache=False)
         assert check_cls.run_count == 1
-        # Cache file should NOT have been created
-        assert not cache_file.exists()
+        assert cache_file.exists()
 
     def test_no_cache_results_not_marked_cached(self, tmp_path):
         """Results from a no-cache run are never marked as cached."""
@@ -602,8 +605,13 @@ class TestNoCacheFlag:
         cached_results = [r for r in s2.results if r.cached]
         assert len(cached_results) == 0
 
-    def test_no_cache_does_not_pollute_future_cached_runs(self, tmp_path):
-        """A no-cache run doesn't affect subsequent cached runs."""
+    def test_no_cache_updates_stale_entries(self, tmp_path):
+        """A no-cache run replaces stale cached results for subsequent runs.
+
+        Regression test: previously --no-cache didn't write results back,
+        so a stale FAILED entry would persist and poison the next cached
+        run even after the check started passing.
+        """
         (tmp_path / "main.py").write_text("x = 1")
 
         check_cls = _make_slow_check_class("no-pollute")
@@ -615,16 +623,70 @@ class TestNoCacheFlag:
         executor.run_checks(str(tmp_path), ["overconfidence:no-pollute"])
         assert check_cls.run_count == 1
 
-        # No-cache run: forces re-run but doesn't write
+        # No-cache run: forces re-run AND writes fresh results back
         executor.run_checks(
             str(tmp_path), ["overconfidence:no-pollute"], use_cache=False
         )
         assert check_cls.run_count == 2
 
-        # Cached run: should still hit original cache (not polluted)
+        # Cached run: should hit the UPDATED cache from the no-cache run
         s3 = executor.run_checks(str(tmp_path), ["overconfidence:no-pollute"])
         assert s3.passed == 1
-        assert check_cls.run_count == 2  # Served from original cache
+        assert check_cls.run_count == 2  # Served from updated cache
+
+    def test_no_cache_replaces_stale_failed_entry(self, tmp_path):
+        """Regression: stale FAILED entry replaced when check now passes.
+
+        Scenario that triggered this bug:
+        1. Check FAILS → FAILED cached with fingerprint F1
+        2. User runs --no-cache → check PASSES (old bug: cache not updated)
+        3. Next cached run serves stale FAILED from step 1
+
+        After fix: step 2 writes the fresh PASSED result, and step 3
+        serves the PASSED result from cache.
+        """
+        (tmp_path / "main.py").write_text("x = 1")
+
+        # A check that fails on first call, then passes on subsequent calls
+        call_count = {"n": 0}
+
+        class FlipCheck(_SlowCheck):
+            _name = "stale-fail"
+            run_count = 0
+
+            def run(self, project_root: str) -> CheckResult:
+                type(self).run_count += 1
+                call_count["n"] += 1
+                status = (
+                    CheckStatus.FAILED if call_count["n"] == 1 else CheckStatus.PASSED
+                )
+                return CheckResult(
+                    name=self.full_name,
+                    status=status,
+                    duration=0.1,
+                    output=f"call {call_count['n']}",
+                )
+
+        registry = CheckRegistry()
+        registry.register(FlipCheck)
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+
+        # Step 1: check FAILS — cached with fingerprint
+        s1 = executor.run_checks(str(tmp_path), ["overconfidence:stale-fail"])
+        assert s1.failed == 1
+        assert FlipCheck.run_count == 1
+
+        # Step 2: --no-cache — check now PASSES, writes fresh result
+        s2 = executor.run_checks(
+            str(tmp_path), ["overconfidence:stale-fail"], use_cache=False
+        )
+        assert s2.passed == 1
+        assert FlipCheck.run_count == 2
+
+        # Step 3: cached run — must serve PASSED (not stale FAILED)
+        s3 = executor.run_checks(str(tmp_path), ["overconfidence:stale-fail"])
+        assert s3.passed == 1  # Would have been s3.failed == 1 before fix
+        assert FlipCheck.run_count == 2  # Served from cache
 
 
 class TestHashFileScope:
