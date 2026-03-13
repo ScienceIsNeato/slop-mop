@@ -101,21 +101,6 @@ class FlutterTestsCheck(BaseCheck):
                 cwd=str(package_dir),
                 timeout=900,
             )
-            if FLUTTER_CACHE_PERMISSION_ERROR in (result.output or ""):
-                return self._create_result(
-                    status=CheckStatus.SKIPPED,
-                    duration=time.time() - start_time,
-                    output=(
-                        "Skipping flutter-test: Flutter SDK cache path is not writable "
-                        "in this environment."
-                    ),
-                    findings=[
-                        Finding(
-                            message=FLUTTER_CACHE_NOT_WRITABLE,
-                            level=FindingLevel.WARNING,
-                        )
-                    ],
-                )
             if result.timed_out:
                 return self._create_result(
                     status=CheckStatus.FAILED,
@@ -130,6 +115,21 @@ class FlutterTestsCheck(BaseCheck):
                     ],
                 )
             if not result.success:
+                if FLUTTER_CACHE_PERMISSION_ERROR in (result.output or ""):
+                    return self._create_result(
+                        status=CheckStatus.SKIPPED,
+                        duration=time.time() - start_time,
+                        output=(
+                            "Skipping flutter-test: Flutter SDK cache path is not "
+                            "writable in this environment."
+                        ),
+                        findings=[
+                            Finding(
+                                message=FLUTTER_CACHE_NOT_WRITABLE,
+                                level=FindingLevel.WARNING,
+                            )
+                        ],
+                    )
                 return self._create_result(
                     status=CheckStatus.FAILED,
                     duration=time.time() - start_time,
