@@ -41,7 +41,7 @@ class FlutterTestsCheck(BaseCheck):
 
     @property
     def name(self) -> str:
-        return "flutter-test"
+        return "untested-code.dart"
 
     @property
     def display_name(self) -> str:
@@ -120,7 +120,7 @@ class FlutterTestsCheck(BaseCheck):
                         status=CheckStatus.SKIPPED,
                         duration=time.time() - start_time,
                         output=(
-                            "Skipping flutter-test: Flutter SDK cache path is not "
+                            "Skipping untested-code.dart: Flutter SDK cache path is not "
                             "writable in this environment."
                         ),
                         findings=[

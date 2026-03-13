@@ -32,7 +32,7 @@ class DartFormatCheck(BaseCheck):
 
     @property
     def name(self) -> str:
-        return "dart-format-check"
+        return "sloppy-formatting.dart"
 
     @property
     def display_name(self) -> str:

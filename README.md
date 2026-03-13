@@ -277,10 +277,11 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `overconfidence:coverage-gaps.dart` | 📊 Dart/Flutter coverage analysis from flutter test --coverage |
 | `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis |
 | `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) |
-| `overconfidence:flutter-test` | 🧪 Flutter test execution across discovered packages |
+| `overconfidence:missing-annotations.dart` | 🧪 Flutter static analysis across discovered packages |
 | `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out |
 | `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) |
 | `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types |
+| `overconfidence:untested-code.dart` | 🧪 Flutter test execution across discovered packages |
 | `overconfidence:untested-code.js` | 🧪 Jest test execution |
 | `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests |
 
@@ -309,11 +310,10 @@ Gates aren't organized by language — they're organized by **the failure mode t
 |------|--------------|
 | `laziness:broken-templates.py` | 📄 Jinja2 template validation |
 | `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) |
-| `laziness:dart-format-check` | 🎨 Dart formatting via dart format --set-exit-if-changed |
 | `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) |
-| `laziness:flutter-analyze` | 🧪 Flutter static analysis across discovered packages |
 | `laziness:generated-artifacts.dart` | 🧱 Detects committed Flutter build/tool artifacts |
 | `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists |
+| `laziness:sloppy-formatting.dart` | 🎨 Dart formatting via dart format --set-exit-if-changed |
 | `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) |
 | `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) |
 | `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check |

@@ -16,8 +16,8 @@ class TestFlutterAnalyzeCheck:
 
     def test_name(self):
         check = FlutterAnalyzeCheck({})
-        assert check.name == "flutter-analyze"
-        assert check.full_name == "laziness:flutter-analyze"
+        assert check.name == "missing-annotations.dart"
+        assert check.full_name == "overconfidence:missing-annotations.dart"
 
     def test_is_applicable_requires_pubspec(self, tmp_path):
         check = FlutterAnalyzeCheck({})
@@ -74,8 +74,8 @@ class TestFlutterTestsCheck:
 
     def test_name(self):
         check = FlutterTestsCheck({})
-        assert check.name == "flutter-test"
-        assert check.full_name == "overconfidence:flutter-test"
+        assert check.name == "untested-code.dart"
+        assert check.full_name == "overconfidence:untested-code.dart"
 
     def test_is_applicable_requires_test_dir(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")
@@ -123,8 +123,8 @@ class TestDartFormatCheck:
 
     def test_name(self):
         check = DartFormatCheck({})
-        assert check.name == "dart-format-check"
-        assert check.full_name == "laziness:dart-format-check"
+        assert check.name == "sloppy-formatting.dart"
+        assert check.full_name == "laziness:sloppy-formatting.dart"
 
     def test_warns_when_dart_missing(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")

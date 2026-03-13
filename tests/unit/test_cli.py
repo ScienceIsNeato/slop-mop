@@ -299,7 +299,7 @@ class TestPrintDetectionResults:
                 "has_jest": False,
                 "language_detector": "manifest",
                 "missing_tools": [],
-                "recommended_gates": ["laziness:flutter-analyze"],
+                "recommended_gates": ["overconfidence:missing-annotations.dart"],
                 "package_manager": "npm",
             }
         )
@@ -323,7 +323,7 @@ class TestInitSuggestedCustomGateRefresh:
         existing = {
             "custom_gates": [
                 {
-                    "name": "flutter-test",
+                    "name": "untested-code.dart",
                     "category": "overconfidence",
                     "command": "flutter test",
                 },
@@ -360,7 +360,7 @@ class TestInitSuggestedCustomGateRefresh:
             "package_manager": "npm",
             "suggested_custom_gates": [
                 {
-                    "name": "flutter-test",
+                    "name": "untested-code.dart",
                     "category": "overconfidence",
                     "command": (
                         "sh -c 'set -e; "
@@ -394,8 +394,8 @@ class TestInitSuggestedCustomGateRefresh:
             if isinstance(gate, dict) and isinstance(gate.get("name"), str)
         }
 
-        assert "flutter-test" in gates
-        assert "find . -name pubspec.yaml" in gates["flutter-test"]["command"]
+        assert "untested-code.dart" in gates
+        assert "find . -name pubspec.yaml" in gates["untested-code.dart"]["command"]
         assert "my-custom" in gates
         assert gates["my-custom"]["command"] == "echo hi"
 

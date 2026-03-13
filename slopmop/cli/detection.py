@@ -46,9 +46,9 @@ REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
     # Complexity scanning → [analysis] extra
     ("radon", "laziness:complexity-creep.py", _INSTALL_ANALYSIS),
     # Dart/Flutter maintenance gates
-    ("flutter", "laziness:flutter-analyze", _INSTALL_FLUTTER),
-    ("flutter", "overconfidence:flutter-test", _INSTALL_FLUTTER),
-    ("dart", "laziness:dart-format-check", _INSTALL_DART),
+    ("flutter", "overconfidence:missing-annotations.dart", _INSTALL_FLUTTER),
+    ("flutter", "overconfidence:untested-code.dart", _INSTALL_FLUTTER),
+    ("dart", "laziness:sloppy-formatting.dart", _INSTALL_DART),
     # Dart/Flutter coverage gate
     ("flutter", "overconfidence:coverage-gaps.dart", _INSTALL_FLUTTER),
 ]
@@ -430,9 +430,9 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
     if detected.get("has_dart"):
         recommended.extend(
             [
-                "laziness:flutter-analyze",
-                "overconfidence:flutter-test",
-                "laziness:dart-format-check",
+                "overconfidence:missing-annotations.dart",
+                "overconfidence:untested-code.dart",
+                "laziness:sloppy-formatting.dart",
                 "overconfidence:coverage-gaps.dart",
                 "deceptiveness:bogus-tests.dart",
                 "laziness:generated-artifacts.dart",

@@ -39,7 +39,7 @@ class FlutterAnalyzeCheck(BaseCheck):
 
     @property
     def name(self) -> str:
-        return "flutter-analyze"
+        return "missing-annotations.dart"
 
     @property
     def display_name(self) -> str:
@@ -51,11 +51,11 @@ class FlutterAnalyzeCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.LAZINESS
+        return GateCategory.OVERCONFIDENCE
 
     @property
     def flaw(self) -> Flaw:
-        return Flaw.LAZINESS
+        return Flaw.OVERCONFIDENCE
 
     def is_applicable(self, project_root: str) -> bool:
         return bool(find_pubspec_dirs(project_root))
@@ -116,7 +116,7 @@ class FlutterAnalyzeCheck(BaseCheck):
                         status=CheckStatus.SKIPPED,
                         duration=time.time() - start_time,
                         output=(
-                            "Skipping flutter-analyze: Flutter SDK cache path is not "
+                            "Skipping missing-annotations.dart: Flutter SDK cache path is not "
                             "writable in this environment."
                         ),
                         findings=[

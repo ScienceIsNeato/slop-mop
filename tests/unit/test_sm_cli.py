@@ -468,9 +468,9 @@ class TestDetectProjectType:
 
         assert result["has_dart"] is True
         assert result["suggested_custom_gates"] == []
-        assert "laziness:flutter-analyze" in result["recommended_gates"]
-        assert "overconfidence:flutter-test" in result["recommended_gates"]
-        assert "laziness:dart-format-check" in result["recommended_gates"]
+        assert "overconfidence:missing-annotations.dart" in result["recommended_gates"]
+        assert "overconfidence:untested-code.dart" in result["recommended_gates"]
+        assert "laziness:sloppy-formatting.dart" in result["recommended_gates"]
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
         assert "deceptiveness:bogus-tests.dart" in result["recommended_gates"]
         assert "laziness:generated-artifacts.dart" in result["recommended_gates"]
@@ -490,23 +490,23 @@ class TestDetectProjectType:
 
         assert result["has_dart"] is True
         assert result["suggested_custom_gates"] == []
-        assert "laziness:flutter-analyze" in result["recommended_gates"]
-        assert "overconfidence:flutter-test" in result["recommended_gates"]
-        assert "laziness:dart-format-check" in result["recommended_gates"]
+        assert "overconfidence:missing-annotations.dart" in result["recommended_gates"]
+        assert "overconfidence:untested-code.dart" in result["recommended_gates"]
+        assert "laziness:sloppy-formatting.dart" in result["recommended_gates"]
         assert "overconfidence:coverage-gaps.dart" in result["recommended_gates"]
         assert (
             "flutter",
-            "laziness:flutter-analyze",
+            "overconfidence:missing-annotations.dart",
             "Install Flutter SDK: https://docs.flutter.dev/get-started/install",
         ) in result["missing_tools"]
         assert (
             "flutter",
-            "overconfidence:flutter-test",
+            "overconfidence:untested-code.dart",
             "Install Flutter SDK: https://docs.flutter.dev/get-started/install",
         ) in result["missing_tools"]
         assert (
             "dart",
-            "laziness:dart-format-check",
+            "laziness:sloppy-formatting.dart",
             "Install Dart SDK: https://dart.dev/get-dart",
         ) in result["missing_tools"]
 
