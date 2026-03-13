@@ -991,15 +991,16 @@ class TestJavaScriptExpectCheck:
             ]
         )
 
-        violations = check._extract_violations(output, project_root)
+        violations, parse_errors = check._extract_violations(output, project_root)
 
         assert violations is not None
         assert len(violations) == 1  # Only jest/expect-expect, not no-unused-vars
         assert violations[0]["file"] == "src/app.test.js"
         assert violations[0]["line"] == 5
+        assert parse_errors == []
 
-    def test_extract_violations_includes_fatal_parse_errors(self):
-        """Test _extract_violations surfaces fatal parse errors as violations."""
+    def test_extract_violations_separates_fatal_parse_errors(self):
+        """Test _extract_violations returns fatal parse errors separately."""
         check = JavaScriptExpectCheck({})
         project_root = "/project"
         output = json.dumps(
@@ -1018,20 +1019,21 @@ class TestJavaScriptExpectCheck:
             ]
         )
 
-        violations = check._extract_violations(output, project_root)
+        violations, parse_errors = check._extract_violations(output, project_root)
 
-        assert violations is not None
-        assert len(violations) == 1
-        assert violations[0]["file"] == "src/broken.test.js"
-        assert violations[0]["line"] == 11
-        assert "Parse error" in violations[0]["message"]
-        assert "Unexpected token" in violations[0]["message"]
+        assert violations == []  # Fatal errors are NOT counted as violations
+        assert len(parse_errors) == 1
+        assert parse_errors[0]["file"] == "src/broken.test.js"
+        assert parse_errors[0]["line"] == 11
+        assert "Parse error" in parse_errors[0]["message"]
+        assert "Unexpected token" in parse_errors[0]["message"]
 
     def test_extract_violations_handles_invalid_json(self):
-        """Test _extract_violations returns None for non-JSON output."""
+        """Test _extract_violations returns (None, None) for non-JSON output."""
         check = JavaScriptExpectCheck({})
-        violations = check._extract_violations("not json", "/project")
+        violations, parse_errors = check._extract_violations("not json", "/project")
         assert violations is None
+        assert parse_errors is None
 
     def test_run_non_parseable_success(self, tmp_path):
         """Test run() treats non-JSON exit-0 as passed."""

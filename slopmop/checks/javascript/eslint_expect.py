@@ -18,7 +18,7 @@ import os
 import shutil
 import tempfile
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -206,7 +206,12 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         # --plugin CLI flags in favour of flat config.
         tmpdir = tempfile.mkdtemp(prefix="sm-eslint-")
         try:
-            install_err = self._install_eslint_deps(tmpdir, project_root, start_time)
+            install_err = self._install_eslint_deps(
+                tmpdir,
+                project_root,
+                start_time,
+                test_files=test_files,
+            )
             if install_err is not None:
                 return install_err
 
@@ -215,13 +220,19 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
 
             # --no-eslintrc prevents the project's own eslint config from
             # interfering. We ONLY want expect-expect.
-            # --parser-options=ecmaVersion:latest is required because
-            # --no-eslintrc resets ecmaVersion to ES5, which can't parse
-            # arrow functions, const/let, template literals, etc.
+            # --parser-options=ecmaVersion:latest,sourceType:module is
+            # required because --no-eslintrc resets ecmaVersion to ES5
+            # and sourceType to "script". Without sourceType:module,
+            # import/export statements cause parse errors.
+            #
+            # For TypeScript files, we use @typescript-eslint/parser
+            # because espree can't parse TS syntax.  The TS parser
+            # handles both .js and .ts files correctly.
             #
             # ESLINT_USE_FLAT_CONFIG=false prevents ESLint 8.21+ from
             # auto-discovering eslint.config.js in the project root and
             # switching to flat config mode (where --no-eslintrc is invalid).
+            has_ts = any(f.endswith((".ts", ".tsx")) for f in test_files)
             cmd = [
                 eslint_bin,
                 "--no-eslintrc",
@@ -229,7 +240,15 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 node_modules,
                 "--plugin",
                 "jest",
-                "--parser-options=ecmaVersion:latest",
+                *(
+                    [
+                        "--parser",
+                        "@typescript-eslint/parser",
+                    ]
+                    if has_ts
+                    else []
+                ),
+                "--parser-options=ecmaVersion:latest,sourceType:module",
                 "--rule",
                 f"jest/expect-expect: {rule_config}",
                 "--format",
@@ -249,12 +268,17 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _install_eslint_deps(
-        self, tmpdir: str, project_root: str, start_time: float
+        self,
+        tmpdir: str,
+        project_root: str,
+        start_time: float,
+        test_files: Optional[List[str]] = None,
     ) -> Optional[CheckResult]:
         """Install eslint@8 + eslint-plugin-jest to a temp directory.
 
         Returns None on success, or a CheckResult on failure.
         """
+        has_ts = any(f.endswith((".ts", ".tsx")) for f in (test_files or []))
         install_cmd = [
             "npm",
             "install",
@@ -262,6 +286,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             tmpdir,
             "eslint@8",
             "eslint-plugin-jest",
+            *(["@typescript-eslint/parser"] if has_ts else []),
             "--no-save",
             "--no-audit",
             "--no-fund",
@@ -310,7 +335,7 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             )
 
         # Try to parse the JSON output
-        violations = self._extract_violations(result.stdout, project_root)
+        violations, parse_errors = self._extract_violations(result.stdout, project_root)
 
         if violations is None:
             # Couldn't parse — maybe eslint gave non-JSON output
@@ -331,13 +356,30 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 "npx eslint --plugin jest --rule 'jest/expect-expect: error' <test-file>",
             )
 
+        # After the None guard above, both are guaranteed non-None.
+        parse_errors = parse_errors or []
+
         violation_count = len(violations)
 
+        # Build parse-error warning block (informational, not counted)
+        parse_warning = ""
+        if parse_errors:
+            pe_lines = [
+                f"⚠️ {len(parse_errors)} file(s) could not be parsed "
+                f"(not counted as violations):",
+            ]
+            for pe in parse_errors:
+                pe_lines.append(f"  {pe['file']}:{pe['line']} — {pe['message']}")
+            parse_warning = "\n".join(pe_lines)
+
         if violation_count == 0:
+            msg = f"✅ All {files_checked} test file(s) have assertions."
+            if parse_warning:
+                msg = f"{msg}\n\n{parse_warning}"
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
-                output=f"✅ All {files_checked} test file(s) have assertions.",
+                output=msg,
             )
 
         # Build human-readable output
@@ -347,6 +389,9 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         ]
         for v in violations:
             output_lines.append(f"  {v['file']}:{v['line']} — {v['message']}")
+
+        if parse_warning:
+            output_lines.extend(["", parse_warning])
 
         output = "\n".join(output_lines)
 
@@ -379,24 +424,39 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                     rule_id=v.get("ruleId"),
                 )
                 for v in violations
+            ]
+            + [
+                Finding(
+                    message=pe["message"],
+                    level=FindingLevel.WARNING,
+                    file=pe["file"] or None,
+                    line=pe["line"] or None,
+                    column=pe.get("column"),
+                    rule_id=None,
+                )
+                for pe in parse_errors
             ],
         )
 
     def _extract_violations(
         self, output: str, project_root: str
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> Tuple[Optional[List[Dict[str, Any]]], Optional[List[Dict[str, Any]]]]:
         """Extract expect-expect violations from ESLint JSON output.
 
         Returns list of {file, line, message} dicts, or None if parsing fails.
-        Fatal parse errors are included as violations to prevent silent passes
-        when ESLint can't analyze the files (e.g., syntax-level issues).
+        Fatal parse errors are returned separately so callers can warn
+        about them without counting them as assertion violations.
+
+        Returns ``(violations, parse_errors)`` or ``(None, None)`` when
+        the output cannot be parsed as JSON.
         """
         try:
             data: List[Dict[str, Any]] = json.loads(output)
         except (json.JSONDecodeError, TypeError):
-            return None
+            return None, None
 
         violations: List[Dict[str, Any]] = []
+        parse_errors: List[Dict[str, Any]] = []
         for file_result in data:
             filepath = file_result.get("filePath", "")
             # Make path relative to project root for readability
@@ -419,8 +479,8 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                     )
                 elif is_fatal:
                     # Fatal parse errors mean the file couldn't be analyzed.
-                    # Surface them so the check doesn't silently pass.
-                    violations.append(
+                    # Tracked separately — not assertion violations.
+                    parse_errors.append(
                         {
                             "file": filepath,
                             "line": message.get("line", 0),
@@ -430,4 +490,4 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                         }
                     )
 
-        return violations
+        return violations, parse_errors
