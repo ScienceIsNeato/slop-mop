@@ -13,7 +13,7 @@ from slopmop.checks.base import (
     count_source_scope,
     find_tool,
 )
-from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND, TESTS_TIMED_OUT_MSG
+from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 from slopmop.checks.dart.common import (
     FLUTTER_CACHE_NOT_WRITABLE,
     FLUTTER_CACHE_PERMISSION_ERROR,
@@ -121,7 +121,7 @@ class FlutterTestsCheck(BaseCheck):
                     status=CheckStatus.FAILED,
                     duration=time.time() - start_time,
                     output=result.output,
-                    error=f"{TESTS_TIMED_OUT_MSG} ({label})",
+                    error=f"Flutter tests timed out after 15 minutes ({label})",
                     findings=[
                         Finding(
                             message=f"Flutter tests timed out in {label}",

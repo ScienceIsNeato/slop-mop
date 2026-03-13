@@ -22,6 +22,7 @@ from slopmop.checks.constants import (
 )
 from slopmop.checks.dart.common import (
     FLUTTER_CACHE_NOT_WRITABLE,
+    FLUTTER_CACHE_PERMISSION_ERROR,
     FLUTTER_INSTALL_FIX_SUGGESTION,
     FLUTTER_NOT_AVAILABLE,
     NO_FLUTTER_TEST_DIRECTORIES_FOUND,
@@ -38,7 +39,6 @@ from slopmop.core.result import (
 
 DEFAULT_THRESHOLD = 80
 MAX_FILES_TO_SHOW = 5
-_FLUTTER_CACHE_PERMISSION_ERROR = "engine.stamp: Operation not permitted"
 
 
 @dataclass
@@ -149,7 +149,7 @@ class DartCoverageCheck(BaseCheck):
             timeout=900,
         )
         if not result.success or result.timed_out:
-            if _FLUTTER_CACHE_PERMISSION_ERROR in (result.output or ""):
+            if FLUTTER_CACHE_PERMISSION_ERROR in (result.output or ""):
                 return self._create_result(
                     status=CheckStatus.SKIPPED,
                     duration=time.time() - start_time,
