@@ -1,0 +1,6 @@
+---
+description: Slop-mop pre-PR comprehensive sweep — run every gate before opening or updating a PR
+alwaysApply: true
+---
+
+{{CORE}}

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from slopmop.cli.ci import cmd_ci
+from slopmop.cli.buff import cmd_buff
 from slopmop.cli.detection import _normalize_language_key, detect_project_type
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
@@ -116,7 +116,50 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["buff", "84"])
         assert args.verb == "buff"
-        assert args.pr_number == 84
+        assert args.pr_or_action == "84"
+        assert args.action_args == []
+
+    def test_buff_inspect_parses(self):
+        """Buff inspect parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "inspect", "84"])
+        assert args.verb == "buff"
+        assert args.pr_or_action == "inspect"
+        assert args.action_args == ["84"]
+
+    def test_buff_iterate_parses(self):
+        """Buff iterate parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "iterate", "84"])
+        assert args.verb == "buff"
+        assert args.pr_or_action == "iterate"
+        assert args.action_args == ["84"]
+
+    def test_buff_finalize_parses(self):
+        """Buff finalize parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "finalize", "84", "--push"])
+        assert args.verb == "buff"
+        assert args.pr_or_action == "finalize"
+        assert args.action_args == ["84"]
+        assert args.push is True
+
+    def test_buff_status_parses(self):
+        """Buff status parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "status", "84"])
+        assert args.verb == "buff"
+        assert args.pr_or_action == "status"
+        assert args.action_args == ["84"]
+
+    def test_buff_watch_parses(self):
+        """Buff watch parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["buff", "watch", "84", "--interval", "10"])
+        assert args.verb == "buff"
+        assert args.pr_or_action == "watch"
+        assert args.action_args == ["84"]
+        assert args.interval == 10
 
     def test_buff_json_and_output_file_flags(self):
         """Buff supports JSON stdout and machine output file mirroring."""
@@ -125,7 +168,8 @@ class TestCreateParser:
             ["buff", "84", "--json", "--output-file", "triage.json"]
         )
         assert args.verb == "buff"
-        assert args.pr_number == 84
+        assert args.pr_or_action == "84"
+        assert args.action_args == []
         assert args.json_output is True
         assert args.output_file == "triage.json"
 
@@ -199,6 +243,20 @@ class TestCreateParser:
         assert args.verb == "config"
         assert args.enable == "myopia:vulnerability-blindness.py"
 
+    def test_config_current_pr_number(self):
+        """Config --current-pr-number parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["config", "--current-pr-number", "85"])
+        assert args.verb == "config"
+        assert args.current_pr_number == 85
+
+    def test_config_clear_current_pr(self):
+        """Config --clear-current-pr parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["config", "--clear-current-pr"])
+        assert args.verb == "config"
+        assert args.clear_current_pr is True
+
     def test_help_subcommand(self):
         """Help subcommand parses correctly."""
         parser = create_parser()
@@ -234,6 +292,25 @@ class TestCreateParser:
         args = parser.parse_args(["commit-hooks", "uninstall"])
         assert args.verb == "commit-hooks"
         assert args.hooks_action == "uninstall"
+
+    def test_agent_install_parses(self):
+        """Agent install subcommand parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(
+            ["agent", "install", "--target", "cursor", "--project-root", "."]
+        )
+        assert args.verb == "agent"
+        assert args.agent_action == "install"
+        assert args.target == "cursor"
+        assert args.project_root == "."
+
+    def test_agent_install_parses_copilot_target(self):
+        """Agent install accepts the copilot target."""
+        parser = create_parser()
+        args = parser.parse_args(["agent", "install", "--target", "copilot"])
+        assert args.verb == "agent"
+        assert args.agent_action == "install"
+        assert args.target == "copilot"
 
 
 class TestDetectProjectType:
@@ -548,8 +625,8 @@ class TestGitHooksFunctions:
         assert "command -v sm" in script
         # Should write structured output for LLM consumption
         assert "--swabbing-time 0" in script
-        assert "--json" in script
-        assert "--output-file .slopmop/last_swab.json" in script
+        assert "--json-file .slopmop/last_swab.json" in script
+        assert "--json --output-file" not in script
         assert "Structured results:" in script
         assert "mkdir -p .slopmop" in script
 
@@ -559,7 +636,7 @@ class TestGitHooksFunctions:
         assert "sm scour" in script
         assert "# Command: sm scour" in script
         assert "--swabbing-time 0" in script
-        assert "--output-file .slopmop/last_scour.json" in script
+        assert "--json-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""
@@ -707,41 +784,38 @@ class TestMain:
             mock_cmd.assert_called_once()
             assert result == 0
 
-    def test_main_ci_calls_cmd_ci(self):
-        """Main routes ci to cmd_ci."""
-        with patch("slopmop.cli.cmd_ci") as mock_cmd:
+    def test_main_agent_calls_cmd_agent(self):
+        """Main routes agent to cmd_agent."""
+        with patch("slopmop.cli.cmd_agent") as mock_cmd:
             mock_cmd.return_value = 0
-            result = main(["ci"])
+            result = main(["agent", "install"])
             mock_cmd.assert_called_once()
             assert result == 0
 
 
-class TestCmdCi:
-    """Tests for cmd_ci function."""
+class TestBuffStatus:
+    """Tests for CI status actions through cmd_buff."""
 
-    def test_ci_no_pr_context(self, tmp_path):
-        """Returns error when no PR context available."""
-        args = argparse.Namespace(
-            pr_number=None,
-            watch=False,
-            interval=30,
-            project_root=str(tmp_path),
+    @staticmethod
+    def _make_args(pr_or_action: str, action_args=None, interval: int = 30):
+        return argparse.Namespace(
+            pr_or_action=pr_or_action,
+            action_args=action_args or [],
+            interval=interval,
         )
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="")
-            result = cmd_ci(args)
+    def test_ci_no_pr_context(self, tmp_path):
+        """Returns error when no PR context is available for buff status."""
+        args = self._make_args("status")
+
+        with patch("slopmop.cli.buff._detect_pr_number", return_value=None):
+            result = cmd_buff(args)
 
         assert result == 2  # No PR context error
 
     def test_ci_with_explicit_pr_number(self, tmp_path, capsys):
-        """Uses explicit PR number when provided."""
-        args = argparse.Namespace(
-            pr_number=42,
-            watch=False,
-            interval=30,
-            project_root=str(tmp_path),
-        )
+        """Uses explicit PR number when provided via buff status."""
+        args = self._make_args("status", ["42"])
 
         # Mock gh pr checks returning all passed
         checks_response = json.dumps(
@@ -754,7 +828,7 @@ class TestCmdCi:
             mock_run.return_value = MagicMock(
                 returncode=0, stdout=checks_response, stderr=""
             )
-            result = cmd_ci(args)
+            result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 0
@@ -762,13 +836,8 @@ class TestCmdCi:
         assert "CI CLEAN" in captured.out
 
     def test_ci_with_failures(self, tmp_path, capsys):
-        """Returns failure when checks fail."""
-        args = argparse.Namespace(
-            pr_number=1,
-            watch=False,
-            interval=30,
-            project_root=str(tmp_path),
-        )
+        """Returns failure when checks fail via buff status."""
+        args = self._make_args("status", ["1"])
 
         checks_response = json.dumps(
             [
@@ -786,7 +855,7 @@ class TestCmdCi:
             mock_run.return_value = MagicMock(
                 returncode=0, stdout=checks_response, stderr=""
             )
-            result = cmd_ci(args)
+            result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 1
@@ -794,13 +863,8 @@ class TestCmdCi:
         assert "failed-check" in captured.out
 
     def test_ci_in_progress_no_watch(self, tmp_path, capsys):
-        """Returns exit code 1 with in-progress checks when not watching."""
-        args = argparse.Namespace(
-            pr_number=1,
-            watch=False,
-            interval=30,
-            project_root=str(tmp_path),
-        )
+        """Returns exit code 1 with in-progress checks in buff status mode."""
+        args = self._make_args("status", ["1"])
 
         checks_response = json.dumps(
             [
@@ -812,42 +876,32 @@ class TestCmdCi:
             mock_run.return_value = MagicMock(
                 returncode=0, stdout=checks_response, stderr=""
             )
-            result = cmd_ci(args)
+            result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 1
         assert "CI IN PROGRESS" in captured.out
-        assert "Use --watch" in captured.out
+        assert "sm buff watch" in captured.out
 
     def test_ci_no_checks(self, tmp_path, capsys):
         """Returns success when no checks found."""
-        args = argparse.Namespace(
-            pr_number=1,
-            watch=False,
-            interval=30,
-            project_root=str(tmp_path),
-        )
+        args = self._make_args("status", ["1"])
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
-            result = cmd_ci(args)
+            result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 0
         assert "No CI checks found" in captured.out
 
     def test_ci_gh_not_found(self, tmp_path, capsys):
-        """Returns error when gh CLI not available."""
-        args = argparse.Namespace(
-            pr_number=1,
-            watch=False,
-            interval=30,
-            project_root=str(tmp_path),
-        )
+        """Returns error when gh CLI is not available."""
+        args = self._make_args("status", ["1"])
 
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError()
-            result = cmd_ci(args)
+            result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 2
@@ -1117,6 +1171,13 @@ class TestValidateSmLockError:
 
 class TestValidateJsonOutputFile:
     """Regression tests for JSON output-file behavior in validate pipeline."""
+
+    def test_json_mode_defaults_to_console(self):
+        """Validation defaults to human-readable output unless --json is set."""
+        from slopmop.cli.validate import _is_json_mode
+
+        args = argparse.Namespace(json_output=None)
+        assert _is_json_mode(args) is False
 
     @patch("builtins.print")
     @patch("slopmop.cli.validate.RunReport.from_summary")

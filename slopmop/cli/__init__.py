@@ -4,8 +4,8 @@ This module contains the implementations of the various sm subcommands,
 extracted from sm.py to keep files under the LOC limit.
 """
 
+from slopmop.cli.agent import cmd_agent
 from slopmop.cli.buff import cmd_buff
-from slopmop.cli.ci import cmd_ci
 from slopmop.cli.config import cmd_config
 from slopmop.cli.detection import detect_project_type
 from slopmop.cli.help import cmd_help
@@ -16,7 +16,7 @@ from slopmop.cli.status import cmd_status, run_status
 from slopmop.cli.validate import cmd_scour, cmd_swab
 
 __all__ = [
-    "cmd_ci",
+    "cmd_agent",
     "cmd_commit_hooks",
     "cmd_config",
     "cmd_help",

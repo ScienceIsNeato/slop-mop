@@ -10,6 +10,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
@@ -24,6 +25,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.DIAGNOSTIC
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 
     @property
     def name(self) -> str:

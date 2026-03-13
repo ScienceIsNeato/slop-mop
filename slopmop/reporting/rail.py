@@ -60,14 +60,14 @@ def default_next_steps(pr_number: int | None) -> List[str]:
     if pr_number is not None:
         return [
             "Fix failed gates locally using targeted gate reruns from output",
+            "If fixes take multiple passes, loop on sm swab until local issues are stable",
             "Run full validation locally: sm scour",
-            "Push your branch with the fixes",
-            f"Re-run triage: sm buff {pr_number}",
+            f"Re-run PR inspection: sm buff inspect {pr_number}",
         ]
 
     return [
         "Fix failed gates locally using targeted gate reruns from output",
+        "If fixes take multiple passes, loop on sm swab until local issues are stable",
         "Run full validation locally: sm scour",
-        "Push your branch with the fixes",
-        "Re-run triage: sm buff",
+        "Re-run PR inspection: sm buff inspect",
     ]

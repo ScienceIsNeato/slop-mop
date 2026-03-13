@@ -11,11 +11,15 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
     count_source_scope,
     find_tool,
 )
-from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
+from slopmop.checks.constants import (
+    NO_PUBSPEC_YAML_FOUND,
+    coverage_below_threshold_message,
+)
 from slopmop.checks.dart.common import (
     FLUTTER_CACHE_NOT_WRITABLE,
     FLUTTER_INSTALL_FIX_SUGGESTION,
@@ -37,10 +41,6 @@ MAX_FILES_TO_SHOW = 5
 _FLUTTER_CACHE_PERMISSION_ERROR = "engine.stamp: Operation not permitted"
 
 
-def _coverage_below_threshold_message(coverage_pct: float, threshold: int) -> str:
-    return f"Coverage {coverage_pct:.1f}% below threshold {threshold}%"
-
-
 @dataclass
 class _FileCoverage:
     total: int = 0
@@ -58,6 +58,7 @@ class DartCoverageCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.FOUNDATION
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
 
     @property
     def name(self) -> str:
@@ -219,7 +220,7 @@ class DartCoverageCheck(BaseCheck):
         ]
 
         lines = [
-            _coverage_below_threshold_message(coverage_pct, threshold),
+            coverage_below_threshold_message(coverage_pct, threshold),
             "",
             "Lowest coverage files:",
         ]
@@ -236,7 +237,7 @@ class DartCoverageCheck(BaseCheck):
             findings=findings
             or [
                 Finding(
-                    message=_coverage_below_threshold_message(coverage_pct, threshold),
+                    message=coverage_below_threshold_message(coverage_pct, threshold),
                     level=FindingLevel.ERROR,
                 )
             ],

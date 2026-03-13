@@ -16,7 +16,13 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
+)
+from slopmop.checks.constants import (
+    JS_NO_TESTS_FOUND_EXPECTED,
+    JS_NO_TESTS_FOUND_JEST,
+    js_no_tests_fix_suggestion,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import (
@@ -57,6 +63,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
 
     def __init__(self, config: Dict[str, Any], threshold: int = DEFAULT_THRESHOLD):
         super().__init__(config)
@@ -109,18 +116,15 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
+        if not self.has_javascript_test_files(project_root):
+            return self._no_tests_result(
+                message=JS_NO_TESTS_FOUND_EXPECTED,
+                duration=time.time() - start_time,
+            )
 
-        # Ensure deps installed
-        if not self.has_node_modules(project_root):
-            npm_cmd = self._get_npm_install_command(project_root)
-            npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
-            if not npm_result.success:
-                return self._create_result(
-                    status=CheckStatus.ERROR,
-                    duration=time.time() - start_time,
-                    error=NPM_INSTALL_FAILED,
-                    output=npm_result.output,
-                )
+        dep_result = self._ensure_dependencies(project_root, start_time)
+        if dep_result is not None:
+            return dep_result
 
         # Run Jest with coverage and JSON reporter
         result = self._run_command(
@@ -129,7 +133,6 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 "jest",
                 "--coverage",
                 "--coverageReporters=json-summary",
-                "--passWithNoTests",
             ],
             cwd=project_root,
             timeout=300,
@@ -143,29 +146,15 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
         # Fallback: parse from console output
         coverage = self._parse_coverage_output(result.output)
-        if coverage is not None:
-            if coverage >= self.threshold:
-                return self._create_result(
-                    status=CheckStatus.PASSED,
-                    duration=duration,
-                    output=COVERAGE_MEETS_THRESHOLD,
-                )
-            return self._create_result(
-                status=CheckStatus.FAILED,
+        fallback_result = self._evaluate_console_coverage(coverage, duration)
+        if fallback_result is not None:
+            return fallback_result
+
+        if "No tests found" in result.output:
+            return self._no_tests_result(
+                message=JS_NO_TESTS_FOUND_JEST,
                 duration=duration,
-                output=(
-                    COVERAGE_STANDARDS_PREFIX
-                    + "Add high-quality test coverage to the codebase.\n\n"
-                    + COVERAGE_GUIDANCE_FOOTER
-                ),
-                error=COVERAGE_BELOW_THRESHOLD,
-                fix_suggestion="Add tests to increase coverage.",
-                findings=[
-                    Finding(
-                        message=f"Coverage {coverage:.1f}% below {self.threshold}%",
-                        level=FindingLevel.ERROR,
-                    )
-                ],
+                output=result.output,
             )
 
         # Can't determine coverage
@@ -182,6 +171,64 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             output=result.output,
             error="Jest tests failed",
             findings=[Finding(message="Jest tests failed", level=FindingLevel.ERROR)],
+        )
+
+    def _no_tests_result(
+        self, message: str, duration: float, output: Optional[str] = None
+    ) -> CheckResult:
+        out = output if output is not None else message
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            error=message,
+            output=out,
+            fix_suggestion=js_no_tests_fix_suggestion(self.verify_command),
+            findings=[Finding(message=message, level=FindingLevel.ERROR)],
+        )
+
+    def _ensure_dependencies(
+        self, project_root: str, start_time: float
+    ) -> Optional[CheckResult]:
+        if self.has_node_modules(project_root):
+            return None
+        npm_cmd = self._get_npm_install_command(project_root)
+        npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
+        if npm_result.success:
+            return None
+        return self._create_result(
+            status=CheckStatus.ERROR,
+            duration=time.time() - start_time,
+            error=NPM_INSTALL_FAILED,
+            output=npm_result.output,
+        )
+
+    def _evaluate_console_coverage(
+        self, coverage: Optional[float], duration: float
+    ) -> Optional[CheckResult]:
+        if coverage is None:
+            return None
+        if coverage >= self.threshold:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output=COVERAGE_MEETS_THRESHOLD,
+            )
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output=(
+                COVERAGE_STANDARDS_PREFIX
+                + "Add high-quality test coverage to the codebase.\n\n"
+                + COVERAGE_GUIDANCE_FOOTER
+            ),
+            error=COVERAGE_BELOW_THRESHOLD,
+            fix_suggestion="Add tests to increase coverage.",
+            findings=[
+                Finding(
+                    message=f"Coverage {coverage:.1f}% below {self.threshold}%",
+                    level=FindingLevel.ERROR,
+                )
+            ],
         )
 
     def _parse_coverage_json(self, project_root: str) -> Optional[Dict[str, Any]]:

@@ -1,6 +1,7 @@
 """Tests for PR comments check."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from slopmop.checks.pr.comments import PRCommentsCheck
@@ -298,12 +299,12 @@ class TestPRCommentsCheck:
 
         # Check key elements are present
         assert "PR COMMENT RESOLUTION PROTOCOL" in guidance
-        assert "COMMENTS BY CATEGORY" in guidance
+        assert "LOCKED RESOLUTION ORDER" in guidance
         assert "AI AGENT WORKFLOW" in guidance
         assert "PRRT_456" in guidance
-        assert "@testuser" in guidance
-        assert "OUTDATED" in guidance
-        assert "resolveReviewThread" in guidance
+        assert "no_longer_applicable" in guidance
+        assert "SCENARIO COMMAND MAPPING" in guidance
+        assert "fixed_in_code" in guidance
 
     def test_get_unresolved_threads_parses_response(self, tmp_path):
         """Test _get_unresolved_threads correctly parses GraphQL response."""
@@ -474,3 +475,183 @@ class TestPRCommentsCheck:
         # since it's written to a file, not shown in gate output
         normalized_comment = " ".join(long_comment.split())
         assert normalized_comment in guidance
+
+    def test_run_writes_persistent_protocol_artifacts(self, tmp_path):
+        """Run should emit protocol artifacts under .slopmop/buff-persistent-memory."""
+        (tmp_path / ".git").mkdir()
+
+        threads = [
+            {
+                "thread_id": "PRRT_abc",
+                "is_outdated": False,
+                "body": "Please fix this issue",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 42,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+
+        check = PRCommentsCheck({"fail_on_unresolved": True})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=123),
+            patch.object(check, "_get_repo_info", return_value=("owner", "repo")),
+            patch.object(check, "_get_unresolved_threads", return_value=threads),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+
+        base = tmp_path / ".slopmop" / "buff-persistent-memory" / "pr-123"
+        loop_dir = base / "loop-001"
+        assert loop_dir.is_dir()
+        assert (loop_dir / "protocol.json").exists()
+        assert (loop_dir / "classified_threads.json").exists()
+        assert (loop_dir / "threads_raw.json").exists()
+        assert (loop_dir / "commands.sh").exists()
+        assert (loop_dir / "execution_log.md").exists()
+        assert (loop_dir / "outcomes.json").exists()
+        assert (loop_dir / "pr_123_comments_report.md").exists()
+
+    def test_commands_script_uses_expandable_fixed_in_code_comment(self):
+        """Fixed-in-code rail should allow shell command substitution expansion."""
+        check = PRCommentsCheck({})
+
+        script = check._build_commands_script(
+            [
+                {
+                    "thread_id": "PRRT_abc",
+                    "resolution_scenario": "fixed_in_code",
+                    "resolution_priority_rank": 1,
+                    "resolution_priority_reason": "logic issue",
+                }
+            ],
+            pr_number=85,
+            owner="owner",
+            repo="repo",
+        )
+
+        assert "sm buff resolve 85 PRRT_abc --scenario fixed_in_code" in script
+        assert "Fixed in commit $(git rev-parse --short HEAD)." in script
+        assert "gh api graphql" not in script
+
+    def test_commands_script_contains_no_raw_graphql(self):
+        """User-facing command pack should stay on the buff rail."""
+        check = PRCommentsCheck({})
+
+        script = check._build_commands_script(
+            [
+                {
+                    "thread_id": "PRRT_fixed",
+                    "resolution_scenario": "fixed_in_code",
+                    "resolution_priority_rank": 1,
+                    "resolution_priority_reason": "logic issue",
+                },
+                {
+                    "thread_id": "PRRT_human",
+                    "resolution_scenario": "needs_human_feedback",
+                    "resolution_priority_rank": 5,
+                    "resolution_priority_reason": "needs clarification",
+                },
+            ],
+            pr_number=85,
+            owner="owner",
+            repo="repo",
+        )
+
+        assert "gh api graphql" not in script
+        assert "reviewThreads" not in script
+        assert "resolveReviewThread" not in script
+        assert "sm buff inspect 85" in script
+
+    def test_format_guidance_contains_no_raw_graphql(self):
+        """Guidance should point agents back to buff, not GitHub primitives."""
+        check = PRCommentsCheck({})
+        threads = [
+            {
+                "thread_id": "PRRT_abc",
+                "is_outdated": False,
+                "body": "Please fix this issue",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 42,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+
+        guidance = check._format_guidance(threads, 85, "owner", "repo")
+
+        assert "sm buff inspect 85" in guidance
+        assert "gh api graphql" not in guidance
+        assert "reviewThreads" not in guidance
+        assert "resolveReviewThread" not in guidance
+
+    def test_group_threads_by_category_uses_preclassified_category(self):
+        """Grouping should reuse the classifier output when category is preset."""
+        check = PRCommentsCheck({})
+        threads = [
+            {
+                "thread_id": "PRRT_abc",
+                "body": "this text would normally look like a question?",
+                "category": "🐛 Logic/Correctness",
+            }
+        ]
+
+        grouped = check._group_threads_by_category(threads)
+
+        assert list(grouped) == ["🐛 Logic/Correctness"]
+        assert grouped["🐛 Logic/Correctness"][0]["thread_id"] == "PRRT_abc"
+
+    def test_format_guidance_preserves_explicit_empty_ordered_threads(self):
+        """Explicit empty ordered_threads should not trigger reclassification."""
+        check = PRCommentsCheck({})
+        threads = [
+            {
+                "thread_id": "PRRT_abc",
+                "body": "Please fix this issue",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 42,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+
+        with patch.object(check, "_classify_and_order_threads") as classify:
+            guidance = check._format_guidance(
+                threads,
+                85,
+                "owner",
+                "repo",
+                ordered_threads=[],
+            )
+
+        classify.assert_not_called()
+        assert "LOCKED RESOLUTION ORDER" in guidance
+
+    def test_protocol_loop_directory_increments(self, tmp_path):
+        """Protocol loop directory should increment per run for same PR."""
+        check = PRCommentsCheck({})
+        first = check._next_protocol_loop_dir(str(tmp_path), 85)
+        second = check._next_protocol_loop_dir(str(tmp_path), 85)
+
+        assert first.name == "loop-001"
+        assert second.name == "loop-002"
+
+    def test_protocol_loop_directory_retries_after_race(self, tmp_path, monkeypatch):
+        """Loop directory allocation should retry if another process creates it first."""
+        check = PRCommentsCheck({})
+        original_mkdir = Path.mkdir
+        collided = False
+
+        def racing_mkdir(self, mode=0o777, parents=False, exist_ok=False):
+            nonlocal collided
+            original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
+            if self.name == "loop-001" and not collided:
+                collided = True
+                raise FileExistsError(str(self))
+
+        monkeypatch.setattr(Path, "mkdir", racing_mkdir)
+
+        loop_dir = check._next_protocol_loop_dir(str(tmp_path), 85)
+
+        assert loop_dir.name == "loop-002"

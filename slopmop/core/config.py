@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 # Config file name
 CONFIG_FILE = ".sb_config.json"
+CURRENT_PR_NUMBER_KEY = "current_pr_number"
+STATE_DIR = ".slopmop"
+CURRENT_PR_STATE_FILE = "current_pr.json"
 
 
 class ConfigError(Exception):
@@ -258,6 +261,82 @@ class SlopmopConfig:
             category_key, gate_name = category_key.split(":", 1)
         cat_config = self.get_category_config(category_key)
         return cat_config.is_gate_enabled(gate_name)
+
+
+def config_file_path(project_root: str | Path) -> Path:
+    """Return the config file path for a project root."""
+
+    return Path(project_root) / CONFIG_FILE
+
+
+def state_dir_path(project_root: str | Path) -> Path:
+    """Return the local slop-mop state directory for a project root."""
+
+    return Path(project_root) / STATE_DIR
+
+
+def current_pr_state_path(project_root: str | Path) -> Path:
+    """Return the local state file containing the selected working PR."""
+
+    return state_dir_path(project_root) / CURRENT_PR_STATE_FILE
+
+
+def load_raw_config(project_root: str | Path) -> Dict[str, Any]:
+    """Load raw JSON config for lightweight CLI helpers."""
+
+    path = config_file_path(project_root)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+    if isinstance(data, dict):
+        return cast(Dict[str, Any], data)
+    return {}
+
+
+def get_current_pr_number(project_root: str | Path) -> Optional[int]:
+    """Return the configured working PR number, if any."""
+
+    state_path = current_pr_state_path(project_root)
+    if state_path.exists():
+        try:
+            data = json.loads(state_path.read_text())
+        except json.JSONDecodeError:
+            data = {}
+        if isinstance(data, dict):
+            state_data = cast(dict[str, object], data)
+            state_value_obj: object = state_data.get(CURRENT_PR_NUMBER_KEY)
+            value = state_value_obj
+            if isinstance(value, int):
+                return value
+
+    cfg = load_raw_config(project_root)
+    config_value_obj: object = cfg.get(CURRENT_PR_NUMBER_KEY)
+    value = config_value_obj
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def set_current_pr_number(project_root: str | Path, pr_number: int) -> None:
+    """Persist the selected working PR into local .slopmop state."""
+
+    state_dir = state_dir_path(project_root)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    current_pr_state_path(project_root).write_text(
+        json.dumps({CURRENT_PR_NUMBER_KEY: pr_number}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def clear_current_pr_number(project_root: str | Path) -> None:
+    """Clear the selected working PR from local .slopmop state."""
+
+    state_path = current_pr_state_path(project_root)
+    if state_path.exists():
+        state_path.unlink()
 
 
 def validate_threshold(

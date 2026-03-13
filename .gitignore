@@ -32,6 +32,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Local environment overrides (direnv)
+.envrc
+
 # Logs
 *.log
 logs/
@@ -56,3 +59,7 @@ AGENTS.md
 
 # Claude Code session state (hooks, settings, transcripts)
 .claude/
+.cursor
+
+# Allow agent install template files to be tracked
+!slopmop/agent_install/templates/**

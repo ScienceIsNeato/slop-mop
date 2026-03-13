@@ -116,15 +116,9 @@ class CommandValidator:
             ";",  # Command separator
             "&&",  # Logical AND
             "||",  # Logical OR
-            "|",  # Pipe
             "`",  # Command substitution (backtick)
             "$(",  # Command substitution
             "${",  # Variable expansion
-            ">",  # Output redirection
-            "<",  # Input redirection
-            ">>",  # Append redirection
-            "2>",  # Stderr redirection
-            "&>",  # Combined redirection
         }
     )
 
@@ -134,6 +128,13 @@ class CommandValidator:
         re.compile(r"\$\(.*\)"),  # Command substitution $(...)
         re.compile(r"`.*`"),  # Command substitution `...`
         re.compile(r";\s*\w"),  # Semicolon followed by command
+        # Shell operators only when used as operators (space/token delimited).
+        # This avoids false positives on legitimate regex args like /(a|b)/.
+        re.compile(r"(^|\s)(\||>>?|2>|&>|<)(\s|$)"),
+        # Operators at arg start without surrounding spaces (e.g. "|cat", "2>/tmp").
+        re.compile(r"^(\||>>?|2>|&>|<)\S"),
+        # Operators at arg end without surrounding spaces (e.g. "foo|", "bar>>").
+        re.compile(r"\S(\||>>?|2>|&>|<)$"),
     ]
 
     def __init__(self, additional_allowed: Optional[Set[str]] = None):

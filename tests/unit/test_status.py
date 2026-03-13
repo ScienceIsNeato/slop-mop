@@ -8,12 +8,17 @@ import argparse
 import json
 from unittest.mock import MagicMock, patch
 
+from slopmop.cli.ci import _categorize_checks
 from slopmop.cli.status import (
     _format_gate_line,
+    _gather_ci_data,
+    _gather_workflow_data,
+    _print_ci_summary,
     _print_config_summary,
     _print_gate_inventory,
     _print_hooks_status,
     _print_recent_history,
+    _print_workflow_position,
     cmd_status,
     run_status,
 )
@@ -841,3 +846,278 @@ class TestInitCallsStatus:
         mock_run_status.assert_called_once()
         call_kwargs = mock_run_status.call_args[1]
         assert call_kwargs["project_root"] == str(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Workflow Position
+# ---------------------------------------------------------------------------
+
+
+class TestPrintWorkflowPosition:
+    """Tests for the workflow-position section in sm status output."""
+
+    def test_default_state_is_idle(self, tmp_path, capsys):
+        """When no state file exists, defaults to S1 IDLE."""
+        data = _gather_workflow_data(tmp_path)
+        _print_workflow_position(data)
+        out = capsys.readouterr().out
+        assert "S1" in out
+        assert "IDLE" in out
+        assert "sm swab" in out
+
+    def test_reads_persisted_state(self, tmp_path, capsys):
+        """When a state file exists, displays the persisted state."""
+        sm_dir = tmp_path / ".slopmop"
+        sm_dir.mkdir()
+        (sm_dir / "workflow_state.json").write_text(
+            '{"state": "scour_failing", "phase": "maintenance"}'
+        )
+        data = _gather_workflow_data(tmp_path)
+        _print_workflow_position(data)
+        out = capsys.readouterr().out
+        assert "S4" in out
+        assert "SCOUR_FAILING" in out
+        assert "sm swab" in out
+
+    def test_phase_displayed(self, tmp_path, capsys):
+        """Phase is shown in the output."""
+        data = _gather_workflow_data(tmp_path)
+        _print_workflow_position(data)
+        out = capsys.readouterr().out
+        assert "Phase:" in out
+
+    def test_section_header(self, tmp_path, capsys):
+        """The section has a header line."""
+        data = _gather_workflow_data(tmp_path)
+        _print_workflow_position(data)
+        out = capsys.readouterr().out
+        assert "WORKFLOW POSITION" in out
+
+
+class TestBuildWorkflowDict:
+    """Tests for the JSON workflow section."""
+
+    def test_default_state(self, tmp_path):
+        """No state file -> defaults to idle/S1."""
+        d = _gather_workflow_data(tmp_path)
+        assert d["state"] == "idle"
+        assert d["state_id"] == "S1"
+        assert d["position"] == 1
+        assert "sm swab" in d["next_action"]
+
+    def test_persisted_state(self, tmp_path):
+        """Reads persisted state from disk."""
+        sm_dir = tmp_path / ".slopmop"
+        sm_dir.mkdir()
+        (sm_dir / "workflow_state.json").write_text(
+            '{"state": "scour_clean", "phase": "maintenance"}'
+        )
+        d = _gather_workflow_data(tmp_path)
+        assert d["state"] == "scour_clean"
+        assert d["state_id"] == "S5"
+        assert d["position"] == 5
+        assert d["phase"] == "maintenance"
+
+    def test_all_keys_present(self, tmp_path):
+        """JSON dict has all required keys."""
+        d = _gather_workflow_data(tmp_path)
+        assert set(d.keys()) == {
+            "state",
+            "state_id",
+            "position",
+            "next_action",
+            "phase",
+        }
+
+
+# ---------------------------------------------------------------------------
+# CI summary — source-of-truth + adapter tests
+# ---------------------------------------------------------------------------
+
+_CI_MODULE = "slopmop.cli.ci"
+
+
+class TestCategorizeChecks:
+    """Direct tests for _categorize_checks bucket classification."""
+
+    def test_neutral_bucket_treated_as_completed(self):
+        checks = [
+            {
+                "name": "Cursor Bugbot",
+                "bucket": "neutral",
+                "link": "",
+                "state": "NEUTRAL",
+            }
+        ]
+        completed, in_progress, failed = _categorize_checks(checks)
+        assert len(completed) == 1
+        assert len(in_progress) == 0
+        assert completed[0][0] == "Cursor Bugbot"
+
+    def test_skipping_bucket_with_neutral_state_is_completed(self):
+        """Real-world case: gh returns bucket=skipping, state=NEUTRAL for Bugbot."""
+        checks = [
+            {
+                "name": "Cursor Bugbot",
+                "bucket": "skipping",
+                "link": "https://cursor.com",
+                "state": "NEUTRAL",
+            }
+        ]
+        completed, in_progress, failed = _categorize_checks(checks)
+        assert len(completed) == 1
+        assert len(in_progress) == 0
+        assert completed[0][0] == "Cursor Bugbot"
+
+    def test_all_buckets(self):
+        checks = [
+            {"name": "lint", "bucket": "pass", "link": "", "state": ""},
+            {"name": "test", "bucket": "fail", "link": "http://x", "state": ""},
+            {"name": "deploy", "bucket": "pending", "link": "", "state": "PENDING"},
+            {"name": "bugbot", "bucket": "skipping", "link": "", "state": "NEUTRAL"},
+            {"name": "build", "bucket": "cancel", "link": "http://y", "state": ""},
+        ]
+        completed, in_progress, failed = _categorize_checks(checks)
+        assert len(completed) == 2  # pass + skipping/NEUTRAL
+        assert len(in_progress) == 1  # pending
+        assert len(failed) == 2  # fail + cancel
+
+
+class TestGatherCiData:
+    """Tests for the CI data source-of-truth function."""
+
+    @patch(f"{_CI_MODULE}._detect_pr_number", return_value=None)
+    def test_no_pr_returns_none(self, _mock, tmp_path):
+        assert _gather_ci_data(tmp_path) is None
+
+    @patch(f"{_CI_MODULE}._categorize_checks", return_value=([], [], []))
+    @patch(f"{_CI_MODULE}._fetch_checks", return_value=([], ""))
+    @patch(f"{_CI_MODULE}._detect_pr_number", return_value=42)
+    def test_empty_checks(self, _pr, _fetch, _cat, tmp_path):
+        result = _gather_ci_data(tmp_path)
+        assert result == {
+            "pr_number": 42,
+            "passed": 0,
+            "failed": 0,
+            "pending": 0,
+            "failures": [],
+        }
+
+    @patch(f"{_CI_MODULE}._fetch_checks", return_value=(None, "gh not found"))
+    @patch(f"{_CI_MODULE}._detect_pr_number", return_value=42)
+    def test_fetch_error_returns_none(self, _pr, _fetch, tmp_path):
+        assert _gather_ci_data(tmp_path) is None
+
+    @patch(
+        f"{_CI_MODULE}._categorize_checks",
+        return_value=(
+            [("lint", "pass", "", "")],
+            [("deploy", "pending", "", "")],
+            [("test", "fail", "", ""), ("e2e", "fail", "", "")],
+        ),
+    )
+    @patch(f"{_CI_MODULE}._fetch_checks", return_value=([{"name": "x"}], ""))
+    @patch(f"{_CI_MODULE}._detect_pr_number", return_value=99)
+    def test_mixed_results(self, _pr, _fetch, _cat, tmp_path):
+        d = _gather_ci_data(tmp_path)
+        assert d["pr_number"] == 99
+        assert d["passed"] == 1
+        assert d["failed"] == 2
+        assert d["pending"] == 1
+        assert d["failures"] == ["test", "e2e"]
+
+    @patch(
+        f"{_CI_MODULE}._categorize_checks",
+        return_value=(
+            [("lint", "pass", "", ""), ("test", "pass", "", "")],
+            [],
+            [],
+        ),
+    )
+    @patch(f"{_CI_MODULE}._fetch_checks", return_value=([{"name": "x"}], ""))
+    @patch(f"{_CI_MODULE}._detect_pr_number", return_value=10)
+    def test_all_green(self, _pr, _fetch, _cat, tmp_path):
+        d = _gather_ci_data(tmp_path)
+        assert d["passed"] == 2
+        assert d["failed"] == 0
+        assert d["pending"] == 0
+        assert d["failures"] == []
+
+
+class TestPrintCiSummary:
+    """Tests for the human-readable CI adapter."""
+
+    def test_none_is_silent(self, capsys):
+        _print_ci_summary(None)
+        assert capsys.readouterr().out == ""
+
+    def test_zero_total_is_silent(self, capsys):
+        _print_ci_summary(
+            {
+                "pr_number": 1,
+                "passed": 0,
+                "failed": 0,
+                "pending": 0,
+                "failures": [],
+            }
+        )
+        assert capsys.readouterr().out == ""
+
+    def test_all_green_shows_sparkle(self, capsys):
+        _print_ci_summary(
+            {
+                "pr_number": 5,
+                "passed": 3,
+                "failed": 0,
+                "pending": 0,
+                "failures": [],
+            }
+        )
+        out = capsys.readouterr().out
+        assert "PR #5" in out
+        assert "3 passed" in out
+        assert "✨" in out
+
+    def test_failures_listed(self, capsys):
+        _print_ci_summary(
+            {
+                "pr_number": 7,
+                "passed": 2,
+                "failed": 2,
+                "pending": 0,
+                "failures": ["test-unit", "test-e2e"],
+            }
+        )
+        out = capsys.readouterr().out
+        assert "2 failed" in out
+        assert "test-unit" in out
+        assert "test-e2e" in out
+
+    def test_more_than_3_failures_truncated(self, capsys):
+        _print_ci_summary(
+            {
+                "pr_number": 7,
+                "passed": 0,
+                "failed": 5,
+                "pending": 0,
+                "failures": ["a", "b", "c", "d", "e"],
+            }
+        )
+        out = capsys.readouterr().out
+        assert "a" in out
+        assert "b" in out
+        assert "c" in out
+        assert "2 more" in out
+
+    def test_pending_shown(self, capsys):
+        _print_ci_summary(
+            {
+                "pr_number": 3,
+                "passed": 1,
+                "failed": 0,
+                "pending": 2,
+                "failures": [],
+            }
+        )
+        out = capsys.readouterr().out
+        assert "2 pending" in out

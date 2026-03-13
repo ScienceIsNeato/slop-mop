@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slopmop"
-version = "0.7.0"
+version = "0.8.0"
 description = "Quality gates for AI-assisted codebases — catch the slop LLMs leave behind."
 readme = "README.md"
 license = {text = "Slop-Mop Attribution License v1.0"}
@@ -98,6 +98,9 @@ Changelog = "https://github.com/ScienceIsNeato/slop-mop/releases"
 where = ["."]
 include = ["slopmop*"]
 exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"slopmop.agent_install" = ["templates/**/*"]
 
 [tool.black]
 line-length = 88

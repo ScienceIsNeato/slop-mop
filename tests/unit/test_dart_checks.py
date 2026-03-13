@@ -180,12 +180,10 @@ class TestDartCoverageCheck:
         assert check.name == "coverage-gaps.dart"
         assert check.full_name == "overconfidence:coverage-gaps.dart"
 
-    def test_is_applicable_requires_test_dir(self, tmp_path):
+    def test_is_applicable_requires_pubspec(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")
-        check = DartCoverageCheck({})
-        assert check.is_applicable(str(tmp_path)) is False
-
         (tmp_path / "test").mkdir()
+        check = DartCoverageCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
     def test_warns_when_flutter_missing(self, tmp_path):
@@ -196,6 +194,15 @@ class TestDartCoverageCheck:
         with patch("slopmop.checks.dart.coverage.find_tool", return_value=None):
             result = check.run(str(tmp_path))
         assert result.status == CheckStatus.WARNED
+
+    def test_fails_when_no_test_dirs_exist(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        check = DartCoverageCheck({})
+
+        with patch("slopmop.checks.dart.coverage.find_tool", return_value="flutter"):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.SKIPPED
+        assert "No Flutter test directories found" in (result.output or "")
 
     def test_fails_when_flutter_test_fails(self, tmp_path):
         (tmp_path / "pubspec.yaml").write_text("name: app\n")
@@ -281,6 +288,35 @@ class TestDartCoverageCheck:
             result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
         assert "below threshold" in (result.error or "")
+
+    def test_uses_shared_coverage_message_helper(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: app\n")
+        (tmp_path / "test").mkdir()
+        coverage_dir = tmp_path / "coverage"
+        coverage_dir.mkdir()
+        (coverage_dir / "lcov.info").write_text(
+            "SF:lib/main.dart\n" "DA:1,1\n" "DA:2,0\n" "DA:3,0\n" "end_of_record\n"
+        )
+        check = DartCoverageCheck({"threshold": 80})
+
+        run_result = MagicMock()
+        run_result.success = True
+        run_result.timed_out = False
+        run_result.output = ""
+
+        with (
+            patch("slopmop.checks.dart.coverage.find_tool", return_value="flutter"),
+            patch.object(check, "_run_command", return_value=run_result),
+            patch(
+                "slopmop.checks.dart.coverage.coverage_below_threshold_message",
+                return_value="shared helper message",
+            ) as shared_msg,
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "shared helper message" in (result.output or "")
+        shared_msg.assert_called()
 
 
 class TestDartBogusTestsCheck:

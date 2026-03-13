@@ -8,6 +8,11 @@ from typing import Any, Dict, cast
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
 from slopmop.constants import ROLE_BADGES
+from slopmop.core.config import clear_current_pr_number as clear_current_pr_selection
+from slopmop.core.config import (
+    get_current_pr_number,
+)
+from slopmop.core.config import set_current_pr_number as set_current_pr_selection
 from slopmop.core.registry import get_registry
 
 
@@ -227,6 +232,11 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         print(f"⏱️  Swabbing-time budget: {int(swabbing_time)}s")
     else:
         print("⏱️  Swabbing-time budget: no limit")
+    current_pr_number = get_current_pr_number(project_root)
+    if isinstance(current_pr_number, int):
+        print(f"🔀 Current PR number: {current_pr_number}")
+    else:
+        print("🔀 Current PR number: none selected")
     print()
 
     registry = get_registry()
@@ -279,6 +289,35 @@ def _set_swabbing_time(config_file: Path, config: dict[str, Any], seconds: int) 
     return 0
 
 
+def _set_current_pr_number(
+    config_file: Path,
+    config: dict[str, Any],
+    pr_number: int,
+) -> int:
+    """Set the repo's working PR number."""
+
+    if pr_number <= 0:
+        print("❌ Current PR number must be a positive integer")
+        return 1
+    set_current_pr_selection(config_file.parent, pr_number)
+    if "current_pr_number" in config:
+        config.pop("current_pr_number", None)
+        config_file.write_text(json.dumps(config, indent=2))
+    print(f"✅ Current PR number set to {pr_number}")
+    return 0
+
+
+def _clear_current_pr_number(config_file: Path, config: dict[str, Any]) -> int:
+    """Clear the repo's working PR number."""
+
+    clear_current_pr_selection(config_file.parent)
+    if "current_pr_number" in config:
+        config.pop("current_pr_number", None)
+        config_file.write_text(json.dumps(config, indent=2))
+    print("✅ Current PR number cleared")
+    return 0
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     """Handle the config command."""
     ensure_checks_registered()
@@ -311,6 +350,12 @@ def cmd_config(args: argparse.Namespace) -> int:
     if getattr(args, "swabbing_time", None) is not None:
         return _set_swabbing_time(config_file, config, args.swabbing_time)
 
+    if getattr(args, "current_pr_number", None) is not None:
+        return _set_current_pr_number(config_file, config, args.current_pr_number)
+
+    if getattr(args, "clear_current_pr", False):
+        return _clear_current_pr_number(config_file, config)
+
     if args.show:
         return _show_config(project_root, config_file, config)
 
@@ -326,6 +371,8 @@ def cmd_config(args: argparse.Namespace) -> int:
     print("  sm config --enable  <gate>         Enable a gate")
     print("  sm config --disable <gate>         Disable a gate")
     print("  sm config --swabbing-time <secs>   Set time budget")
+    print("  sm config --current-pr-number <n>  Select working PR")
+    print("  sm config --clear-current-pr       Clear selected PR")
     print("  sm config --json <file>            Merge config JSON")
     print()
 

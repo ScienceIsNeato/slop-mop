@@ -58,6 +58,8 @@ class TestJavaScriptTestsCheck:
     def test_run_with_node_modules(self, tmp_path):
         """Test run() when node_modules exists."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
         (tmp_path / "node_modules").mkdir()
         check = JavaScriptTestsCheck({})
 
@@ -74,6 +76,8 @@ class TestJavaScriptTestsCheck:
     def test_run_without_node_modules_installs(self, tmp_path):
         """Test run() installs deps when node_modules missing."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
         check = JavaScriptTestsCheck({})
 
         npm_install_result = MagicMock()
@@ -94,6 +98,8 @@ class TestJavaScriptTestsCheck:
     def test_run_npm_install_fails(self, tmp_path):
         """Test run() when npm install fails."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
         check = JavaScriptTestsCheck({})
 
         npm_install_result = MagicMock()
@@ -109,6 +115,8 @@ class TestJavaScriptTestsCheck:
     def test_run_tests_timeout(self, tmp_path):
         """Test run() when tests timeout."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
         (tmp_path / "node_modules").mkdir()
         check = JavaScriptTestsCheck({})
 
@@ -120,6 +128,116 @@ class TestJavaScriptTestsCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+    def test_run_fails_when_no_test_files(self, tmp_path):
+        """Test run() fails when no JS/TS test files are present."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTestsCheck({})
+
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "No JavaScript/TypeScript tests found" in (result.error or "")
+
+    def test_run_no_tests_found_from_jest_output(self, tmp_path):
+        """When Jest reports no tests, surface the explicit no-tests message."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTestsCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.timed_out = False
+        mock_result.output = "No tests found, exiting with code 1"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "No JavaScript/TypeScript tests found" in (result.error or "")
+
+    def test_has_javascript_test_files_skips_excluded_dir_walk_entries(self, tmp_path):
+        """Excluded directory entries from os.walk are ignored safely."""
+        check = JavaScriptTestsCheck({})
+        excluded_root = tmp_path / "node_modules"
+
+        with patch(
+            "slopmop.checks.mixins.os.walk",
+            return_value=[(str(excluded_root), ["pkg"], ["foo.test.js"])],
+        ):
+            assert check.has_javascript_test_files(str(tmp_path)) is False
+
+
+class TestJavaScriptCoverageCheckBranches:
+    """Branch-focused tests for JS coverage orchestration."""
+
+    def test_run_returns_dependency_result_when_install_fails(self, tmp_path):
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
+        check = JavaScriptCoverageCheck({})
+
+        dep_result = check._create_result(
+            status=CheckStatus.ERROR,
+            duration=0.1,
+            error="npm install failed",
+        )
+        with (
+            patch.object(check, "has_javascript_test_files", return_value=True),
+            patch.object(check, "_ensure_dependencies", return_value=dep_result),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result is dep_result
+
+    def test_run_uses_console_fallback_result_when_available(self, tmp_path):
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
+        check = JavaScriptCoverageCheck({"threshold": 80})
+
+        run_result = MagicMock()
+        run_result.success = True
+        run_result.output = "coverage output"
+        fallback = check._create_result(status=CheckStatus.PASSED, duration=0.1)
+
+        with (
+            patch.object(check, "has_javascript_test_files", return_value=True),
+            patch.object(check, "_ensure_dependencies", return_value=None),
+            patch.object(check, "_run_command", return_value=run_result),
+            patch.object(check, "_parse_coverage_json", return_value=None),
+            patch.object(check, "_parse_coverage_output", return_value=95.0),
+            patch.object(check, "_evaluate_console_coverage", return_value=fallback),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result is fallback
+
+    def test_run_no_tests_found_when_coverage_unavailable(self, tmp_path):
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
+        check = JavaScriptCoverageCheck({})
+
+        run_result = MagicMock()
+        run_result.success = False
+        run_result.output = "No tests found, exiting"
+
+        with (
+            patch.object(check, "has_javascript_test_files", return_value=True),
+            patch.object(check, "_ensure_dependencies", return_value=None),
+            patch.object(check, "_run_command", return_value=run_result),
+            patch.object(check, "_parse_coverage_json", return_value=None),
+            patch.object(check, "_parse_coverage_output", return_value=None),
+            patch.object(check, "_evaluate_console_coverage", return_value=None),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "No JavaScript/TypeScript tests found" in (result.error or "")
 
 
 class TestJavaScriptLintFormatCheck:
@@ -304,6 +422,17 @@ class TestJavaScriptCoverageCheck:
         (tmp_path / "package.json").write_text('{"name": "test"}')
         check = JavaScriptCoverageCheck({})
         assert check.is_applicable(str(tmp_path)) is True
+
+    def test_run_fails_when_no_test_files(self, tmp_path):
+        """Coverage gate fails when no JS/TS test files are present."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptCoverageCheck({})
+
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "No JavaScript/TypeScript tests found" in (result.error or "")
 
 
 class TestFrontendCheck:

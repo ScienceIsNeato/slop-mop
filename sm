@@ -1,0 +1,8 @@
+#!/bin/bash
+# Root-level convenience wrapper for local slop-mop development.
+# Prefer this repo copy over any pipx-installed `sm` on PATH.
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$ROOT_DIR/scripts/sm" "$@"

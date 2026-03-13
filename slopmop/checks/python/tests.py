@@ -16,6 +16,7 @@ from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
     TESTS_TIMED_OUT_MSG,
     has_python_test_files,
+    python_no_tests_fix_suggestion,
     skip_reason_no_test_files,
 )
 from slopmop.checks.mixins import PythonCheckMixin
@@ -144,22 +145,31 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        """Applicable only if there are Python test files to run."""
-        if not self.is_python_project(project_root):
-            return False
-        test_dirs = self.config.get("test_dirs", ["tests"])
-        return has_python_test_files(project_root, test_dirs)
+        """Applicable to Python projects; run() enforces test presence."""
+        return self.is_python_project(project_root)
 
     def skip_reason(self, project_root: str) -> str:
         """Return skip reason when test prerequisites are missing."""
         if not self.is_python_project(project_root):
             return SKIP_NOT_PYTHON_PROJECT
-        test_dirs = self.config.get("test_dirs", ["tests"])
-        return skip_reason_no_test_files(test_dirs)
+        return "Python tests check not applicable"
 
     def run(self, project_root: str) -> CheckResult:
         """Run pytest."""
         start_time = time.time()
+        test_dirs = self.config.get("test_dirs", ["tests"])
+        if not has_python_test_files(project_root, test_dirs):
+            message = skip_reason_no_test_files(test_dirs)
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=time.time() - start_time,
+                error=message,
+                output=message,
+                fix_suggestion=python_no_tests_fix_suggestion(
+                    test_dirs, self.verify_command
+                ),
+                findings=[Finding(message=message, level=FindingLevel.ERROR)],
+            )
 
         # PROJECT check: bail early when no project venv exists
         venv_warn = self.check_project_venv_or_warn(project_root, start_time)

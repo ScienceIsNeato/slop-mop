@@ -18,6 +18,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     ToolContext,
 )
 from slopmop.checks.mixins import PythonCheckMixin
@@ -71,6 +72,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
     tool_context = ToolContext.SM_TOOL
     role = CheckRole.FOUNDATION
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 
     @property
     def name(self) -> str:

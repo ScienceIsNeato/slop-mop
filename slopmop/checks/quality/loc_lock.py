@@ -22,6 +22,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     count_source_scope,
 )
 from slopmop.core.result import (
@@ -314,6 +315,7 @@ class LocLockCheck(BaseCheck):
     """
 
     role = CheckRole.DIAGNOSTIC
+    remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
 
     @property
     def name(self) -> str:
