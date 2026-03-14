@@ -30,9 +30,12 @@ Actions annotations) slot in without touching enrichment logic.
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+
+if TYPE_CHECKING:
+    from slopmop.core.registry import CheckRegistry
 
 
 def _format_age(iso_timestamp: str) -> Optional[str]:
@@ -99,6 +102,25 @@ def _no_logs() -> Dict[str, str]:
     return {}
 
 
+def _sort_results_for_remediation_display(
+    results: List[CheckResult],
+    registry: "CheckRegistry",
+) -> List[CheckResult]:
+    """Sort display rows by remediation order while preserving unknown-name order."""
+    indexed = list(enumerate(results))
+    return [
+        result
+        for _index, result in sorted(
+            indexed,
+            key=lambda item: (
+                registry.remediation_sort_key_for_name(item[1].name)
+                or (999_999, 999_999, f"{item[0]:06d}"),
+                item[0],
+            ),
+        )
+    ]
+
+
 # Single source of truth for the JSON schema identifier.  Bump when
 # output shape changes (new required fields, removed fields, renamed
 # keys).  Additive-only changes (new optional fields) are a judgement
@@ -149,6 +171,8 @@ class RunReport:
     # from per-gate fix_suggestion — this is "how to confirm you fixed
     # it", not "how to fix it".  None when everything passed.
     verify_command: Optional[str] = None
+    first_to_fix: Optional[str] = None
+    baseline_filter: Optional[Dict[str, object]] = None
 
     @classmethod
     def from_summary(
@@ -157,6 +181,8 @@ class RunReport:
         *,
         level: Optional[str] = None,
         project_root: Optional[str] = None,
+        registry: Optional["CheckRegistry"] = None,
+        sort_actionable_by_remediation_order: bool = False,
     ) -> "RunReport":
         """Build a RunReport from a raw ExecutionSummary.
 
@@ -181,14 +207,18 @@ class RunReport:
             status_buckets.setdefault(r.status, []).append(r)
 
         failed = status_buckets[CheckStatus.FAILED]
+        warned = status_buckets[CheckStatus.WARNED]
         errored = status_buckets[CheckStatus.ERROR]
 
+        if sort_actionable_by_remediation_order and registry is not None:
+            failed = _sort_results_for_remediation_display(failed, registry)
+            warned = _sort_results_for_remediation_display(warned, registry)
+            errored = _sort_results_for_remediation_display(errored, registry)
+
         # Verify command targets the first blocking result.  "First"
-        # is execution order — the thing most likely to be the root
-        # cause, since fail-fast ordering puts dependencies first.
-        # FAILED beats ERROR because an infrastructure error (tool
-        # missing) often resolves itself once a real failure is fixed
-        # (e.g. fixing a syntax error lets pytest actually run).
+        # follows the surfaced failure order. When remediation ordering
+        # is enabled for display, this keeps the verify hint aligned with
+        # the first gate users are told to fix.
         first_blocking = failed[0] if failed else (errored[0] if errored else None)
         verify = None
         if first_blocking is not None:
@@ -201,11 +231,12 @@ class RunReport:
             project_root=project_root,
             passed=status_buckets[CheckStatus.PASSED],
             failed=failed,
-            warned=status_buckets[CheckStatus.WARNED],
+            warned=warned,
             errored=errored,
             skipped=status_buckets[CheckStatus.SKIPPED],
             not_applicable=status_buckets[CheckStatus.NOT_APPLICABLE],
             verify_command=verify,
+            first_to_fix=first_blocking.name if first_blocking is not None else None,
         )
 
     def write_logs(self) -> Dict[str, str]:

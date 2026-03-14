@@ -7,7 +7,14 @@ import argparse
 import pytest
 
 from slopmop.agent_install.loader import _load_shared_core, load_assets
-from slopmop.agent_install.registry import ALL_KEYS, TARGETS, cli_choices, expand_target
+from slopmop.agent_install.registry import (
+    ALL_KEYS,
+    INSTALL_HELP_PREVIEW_ROOT,
+    TARGETS,
+    cli_choices,
+    expand_target,
+    preview_install_paths,
+)
 from slopmop.cli.agent import (
     ALL_TARGETS,
     _expand_targets,
@@ -215,6 +222,19 @@ class TestAgentHelpers:
         assert ".claude/commands/sm-buff.md" in paths
         assert ".claude/skills/slopmop/SKILL.md" in paths
 
+    def test_copilot_produces_instructions_and_skill(self):
+        """Copilot target installs instructions plus repo-local skill."""
+        templates = _templates_for_target("copilot")
+        paths = [t.relative_path for t in templates]
+        assert ".github/copilot-instructions.md" in paths
+        assert ".copilot/skills/slopmop/SKILL.md" in paths
+
+    def test_copilot_preview_paths_use_repo_local_tmp_root(self):
+        """Help preview paths should use the deterministic .slopmop/tmp root."""
+        paths = preview_install_paths("copilot")
+        assert f"{INSTALL_HELP_PREVIEW_ROOT}/.github/copilot-instructions.md" in paths
+        assert f"{INSTALL_HELP_PREVIEW_ROOT}/.copilot/skills/slopmop/SKILL.md" in paths
+
     def test_aider_produces_two_files(self):
         """Aider target installs .aider.conf.yml and CONVENTIONS.md."""
         templates = _templates_for_target("aider")
@@ -250,6 +270,7 @@ class TestCmdAgent:
         assert (tmp_path / ".claude/commands/sm-buff.md").exists()
         assert (tmp_path / ".claude/skills/slopmop/SKILL.md").exists()
         assert (tmp_path / ".github/copilot-instructions.md").exists()
+        assert (tmp_path / ".copilot/skills/slopmop/SKILL.md").exists()
         assert (tmp_path / ".windsurf/rules/slopmop.md").exists()
         assert (tmp_path / ".clinerules/slopmop.md").exists()
         assert (tmp_path / ".roo/rules/01-slopmop.md").exists()
@@ -347,6 +368,7 @@ class TestCmdAgent:
 
         assert result == 0
         assert (tmp_path / ".github/copilot-instructions.md").exists()
+        assert (tmp_path / ".copilot/skills/slopmop/SKILL.md").exists()
         # Other targets should not be present
         assert not (tmp_path / ".cursor/rules/slopmop-swab.mdc").exists()
         assert not (tmp_path / ".claude/commands/sm-swab.md").exists()

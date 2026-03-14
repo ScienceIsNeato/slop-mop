@@ -89,6 +89,7 @@ class CheckExecutor:
         registry: Optional[CheckRegistry] = None,
         max_workers: int = DEFAULT_MAX_WORKERS,
         fail_fast: bool = True,
+        process_results_in_remediation_order: bool = False,
     ):
         """Initialize the executor.
 
@@ -96,10 +97,18 @@ class CheckExecutor:
             registry: Check registry to use (default: global registry)
             max_workers: Maximum parallel workers
             fail_fast: Stop on first failure
+            process_results_in_remediation_order: Buffer completed check results
+                and process them in remediation order instead of completion
+                order. Dispatch order is unchanged. In practice this matters
+                for remediation-mode runs; maintenance mode leaves results in
+                race-to-completion order.
         """
         self._registry = registry or get_registry()
         self._max_workers = max_workers
         self._fail_fast = fail_fast
+        self._process_results_in_remediation_order = (
+            process_results_in_remediation_order
+        )
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._results: Dict[str, CheckResult] = {}
@@ -115,6 +124,7 @@ class CheckExecutor:
         self._on_pending_checks: Optional[
             Callable[[List[tuple[str, Optional[str], bool, Optional[str]]]], None]
         ] = None
+        self._processing_priority: Dict[str, Tuple[int, int, str]] = {}
 
     def set_progress_callback(self, callback: Callable[[CheckResult], None]) -> None:
         """Set callback for check completion events.
@@ -365,6 +375,9 @@ class CheckExecutor:
 
         # Build dependency graph
         dep_graph = self._build_dependency_graph(applicable)
+        self._processing_priority = {
+            c.full_name: self._registry.remediation_sort_key(c) for c in applicable
+        }
 
         # Execute checks respecting dependencies
         self._execute_with_dependencies(
@@ -453,6 +466,51 @@ class CheckExecutor:
 
         return graph
 
+    def _ordered_buffer_names(self, names: List[str]) -> List[str]:
+        """Sort buffered names in remediation order when enabled."""
+        if not self._process_results_in_remediation_order:
+            return names
+        return sorted(
+            names, key=lambda name: self._processing_priority.get(name, (0, 0, name))
+        )
+
+    def _drain_completed_buffer(
+        self,
+        buffered_results: Dict[str, CheckResult],
+        pending: Set[str],
+        futures: Dict[concurrent.futures.Future[CheckResult], str],
+    ) -> None:
+        """Process buffered results in completion order or remediation order.
+
+        In remediation mode we wait for the highest remediation-priority
+        unresolved gate to complete before processing lower-priority results.
+        In maintenance mode, results are processed as soon as they arrive.
+        """
+        while buffered_results:
+            if self._process_results_in_remediation_order:
+                unresolved = (
+                    set(pending) | set(futures.values()) | set(buffered_results)
+                )
+                next_name = min(
+                    unresolved,
+                    key=lambda name: self._processing_priority.get(name, (0, 0, name)),
+                )
+                if next_name not in buffered_results:
+                    break
+            else:
+                next_name = next(iter(buffered_results))
+
+            result = buffered_results.pop(next_name)
+            self._results[next_name] = result
+
+            if self._on_check_complete:
+                self._on_check_complete(result)
+
+            if self._fail_fast and result.failed and not self._stop_event.is_set():
+                logger.debug(f"Fail-fast triggered by {next_name}")
+                self._stop_event.set()
+                break
+
     def _execute_with_dependencies(
         self,
         checks: List[BaseCheck],
@@ -495,6 +553,8 @@ class CheckExecutor:
         completed: Set[str] = set()
         pending = set(check_map.keys())
         timings = timings or {}
+        available_results: Dict[str, CheckResult] = {}
+        buffered_results: Dict[str, CheckResult] = {}
 
         budget_active = swabbing_time is not None and swabbing_time > 0
         budget_start = time.time()
@@ -517,7 +577,7 @@ class CheckExecutor:
                     if deps <= completed:
                         # Check if dependencies all passed
                         deps_passed = all(
-                            self._results.get(
+                            available_results.get(
                                 d, CheckResult(d, CheckStatus.PASSED, 0)
                             ).passed
                             for d in deps
@@ -537,12 +597,10 @@ class CheckExecutor:
                         output="Skipped due to failed dependency",
                         skip_reason=SkipReason.FAILED_DEPENDENCY,
                     )
-                    self._results[name] = result
+                    available_results[name] = result
+                    buffered_results[name] = result
                     pending.discard(name)
                     completed.add(name)
-                    # Notify display so progress bar reaches 100%
-                    if self._on_check_complete:
-                        self._on_check_complete(result)
 
                 # ── Wall-clock budget check ────────────────────────
                 if budget_active and not budget_expired:
@@ -590,28 +648,24 @@ class CheckExecutor:
                         try:
                             result = future.result()
                             with self._lock:
-                                self._results[name] = result
+                                available_results[name] = result
+                                buffered_results[name] = result
                             completed.add(name)
-
-                            # Notify callback
-                            if self._on_check_complete:
-                                self._on_check_complete(result)
-
-                            # Fail fast
-                            if self._fail_fast and result.failed:
-                                logger.debug(f"Fail-fast triggered by {name}")
-                                self._stop_event.set()
 
                         except Exception as e:
                             logger.error(f"Check {name} raised exception: {e}")
+                            result = CheckResult(
+                                name=name,
+                                status=CheckStatus.ERROR,
+                                duration=0,
+                                error=str(e),
+                            )
                             with self._lock:
-                                self._results[name] = CheckResult(
-                                    name=name,
-                                    status=CheckStatus.ERROR,
-                                    duration=0,
-                                    error=str(e),
-                                )
+                                available_results[name] = result
+                                buffered_results[name] = result
                             completed.add(name)
+
+                    self._drain_completed_buffer(buffered_results, pending, futures)
 
                 elif not ready:
                     # No checks ready and no futures pending - deadlock or done
@@ -648,6 +702,9 @@ class CheckExecutor:
                 self._results[name] = result
                 if self._on_check_complete:
                     self._on_check_complete(result)
+
+        if buffered_results:
+            self._drain_completed_buffer(buffered_results, pending, futures)
 
         # Handle submitted-but-cancelled futures (fail-fast cancelled them after submission)
         for future, name in list(futures.items()):

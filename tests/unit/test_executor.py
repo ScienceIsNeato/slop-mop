@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock
 
-from slopmop.checks.base import BaseCheck, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, Flaw, GateCategory, RemediationChurn
 from slopmop.core.executor import CheckExecutor, run_quality_checks
 from slopmop.core.registry import CheckRegistry
 from slopmop.core.result import CheckResult, CheckStatus, SkipReason
@@ -66,6 +66,8 @@ def make_mock_check_class(
     depends_on: list = None,
     applicable: bool = True,
     can_fix: bool = False,
+    remediation_churn: RemediationChurn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY,
+    remediation_priority: int | None = None,
 ):
     """Factory to create mock check classes with specific behavior."""
 
@@ -78,6 +80,9 @@ def make_mock_check_class(
         _mock_duration = duration
         _mock_can_fix = can_fix
         run_count = 0  # Reset counter for each class
+
+    DynamicMockCheck.remediation_churn = remediation_churn
+    DynamicMockCheck.remediation_priority = remediation_priority
 
     return DynamicMockCheck
 
@@ -151,6 +156,239 @@ class TestCheckExecutor:
         assert summary.total_checks == 2
         assert check_class1.run_count == 1
         assert check_class2.run_count == 1
+
+    def test_remediation_mode_processes_results_in_priority_order(self, tmp_path):
+        """Completed results are processed by remediation order, not finish order."""
+        registry = CheckRegistry()
+        high = make_mock_check_class(
+            "high",
+            status=CheckStatus.PASSED,
+            duration=0.10,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY,
+        )
+        medium = make_mock_check_class(
+            "medium",
+            status=CheckStatus.PASSED,
+            duration=0.02,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_LIKELY,
+        )
+        low = make_mock_check_class(
+            "low",
+            status=CheckStatus.FAILED,
+            duration=0.01,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY,
+        )
+        registry.register(high)
+        registry.register(medium)
+        registry.register(low)
+
+        executor = CheckExecutor(
+            registry=registry,
+            fail_fast=True,
+            max_workers=2,
+            process_results_in_remediation_order=True,
+        )
+        summary = executor.run_checks(
+            str(tmp_path),
+            [
+                "overconfidence:high",
+                "overconfidence:medium",
+                "overconfidence:low",
+            ],
+            timings={
+                "overconfidence:high": 10.0,
+                "overconfidence:medium": 0.5,
+                "overconfidence:low": 1.0,
+            },
+        )
+
+        names = [
+            result.name
+            for result in summary.results
+            if result.status != CheckStatus.SKIPPED
+        ]
+        assert names[:3] == ["high", "medium", "low"]
+        assert high.run_count == 1
+        assert medium.run_count == 1
+        assert low.run_count == 1
+
+    def test_remediation_mode_fail_fast_waits_for_higher_priority_gate(self, tmp_path):
+        """A fast low-priority failure must not block a higher-priority gate."""
+        registry = CheckRegistry()
+        high = make_mock_check_class(
+            "high-priority",
+            status=CheckStatus.PASSED,
+            duration=0.10,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY,
+        )
+        low = make_mock_check_class(
+            "low-priority",
+            status=CheckStatus.FAILED,
+            duration=0.01,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY,
+        )
+        queued = make_mock_check_class(
+            "queued",
+            status=CheckStatus.PASSED,
+            duration=0.02,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_LIKELY,
+        )
+        registry.register(high)
+        registry.register(low)
+        registry.register(queued)
+
+        executor = CheckExecutor(
+            registry=registry,
+            fail_fast=True,
+            max_workers=2,
+            process_results_in_remediation_order=True,
+        )
+        summary = executor.run_checks(
+            str(tmp_path),
+            [
+                "overconfidence:high-priority",
+                "overconfidence:low-priority",
+                "overconfidence:queued",
+            ],
+            timings={
+                "overconfidence:high-priority": 10.0,
+                "overconfidence:low-priority": 1.0,
+                "overconfidence:queued": 0.5,
+            },
+        )
+
+        assert high.run_count == 1
+        assert queued.run_count == 1
+        assert summary.failed == 1
+
+    def test_remediation_mode_fail_fast_preserves_completed_buffered_results(
+        self, tmp_path
+    ):
+        """Fail-fast should not relabel already-completed buffered results as skipped."""
+        registry = CheckRegistry()
+        high = make_mock_check_class(
+            "high-priority",
+            status=CheckStatus.FAILED,
+            duration=0.10,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY,
+        )
+        low = make_mock_check_class(
+            "low-priority",
+            status=CheckStatus.FAILED,
+            duration=0.01,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY,
+        )
+        pending = make_mock_check_class(
+            "pending",
+            status=CheckStatus.PASSED,
+            duration=0.20,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_LIKELY,
+        )
+        registry.register(high)
+        registry.register(low)
+        registry.register(pending)
+
+        executor = CheckExecutor(
+            registry=registry,
+            fail_fast=True,
+            max_workers=2,
+            process_results_in_remediation_order=True,
+        )
+        summary = executor.run_checks(
+            str(tmp_path),
+            [
+                "overconfidence:high-priority",
+                "overconfidence:low-priority",
+                "overconfidence:pending",
+            ],
+            timings={
+                "overconfidence:high-priority": 10.0,
+                "overconfidence:low-priority": 1.0,
+                "overconfidence:pending": 5.0,
+            },
+        )
+
+        results = {result.name: result for result in summary.results}
+        assert results["high-priority"].status == CheckStatus.FAILED
+        assert results["low-priority"].status == CheckStatus.FAILED
+        assert results["pending"].status in {
+            CheckStatus.PASSED,
+            CheckStatus.SKIPPED,
+        }
+
+    def test_maintenance_mode_processes_results_in_completion_order(self, tmp_path):
+        """Maintenance mode should surface results as soon as they complete."""
+        registry = CheckRegistry()
+        slow = make_mock_check_class(
+            "slow",
+            status=CheckStatus.PASSED,
+            duration=0.10,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY,
+        )
+        fast = make_mock_check_class(
+            "fast",
+            status=CheckStatus.PASSED,
+            duration=0.01,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY,
+        )
+        registry.register(slow)
+        registry.register(fast)
+
+        executor = CheckExecutor(
+            registry=registry,
+            fail_fast=False,
+            max_workers=2,
+            process_results_in_remediation_order=False,
+        )
+        summary = executor.run_checks(
+            str(tmp_path),
+            ["overconfidence:slow", "overconfidence:fast"],
+        )
+
+        names = [result.name for result in summary.results]
+        assert names[:2] == ["fast", "slow"]
+
+    def test_explicit_remediation_priority_allows_fine_grained_order(self, tmp_path):
+        """Explicit remediation_priority overrides coarse churn bands."""
+        registry = CheckRegistry()
+        first = make_mock_check_class(
+            "first",
+            duration=0.05,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY,
+            remediation_priority=120,
+        )
+        second = make_mock_check_class(
+            "second",
+            duration=0.01,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY,
+            remediation_priority=130,
+        )
+        third = make_mock_check_class(
+            "third",
+            duration=0.02,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY,
+            remediation_priority=140,
+        )
+        registry.register(first)
+        registry.register(second)
+        registry.register(third)
+
+        executor = CheckExecutor(
+            registry=registry,
+            fail_fast=False,
+            process_results_in_remediation_order=True,
+        )
+        summary = executor.run_checks(
+            str(tmp_path),
+            [
+                "overconfidence:first",
+                "overconfidence:second",
+                "overconfidence:third",
+            ],
+        )
+
+        ordered_names = [result.name for result in summary.results]
+        assert ordered_names[:3] == ["first", "second", "third"]
 
     def test_skips_inapplicable_checks(self, tmp_path):
         """Test that inapplicable checks are marked not applicable."""

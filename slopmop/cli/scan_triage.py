@@ -23,6 +23,7 @@ from slopmop.reporting.rail import (
     filter_hard_failures,
     format_actionable_line,
     normalize_actionable_row,
+    sort_rows_by_remediation_order,
 )
 
 ARTIFACT_NAME = "slopmop-results"
@@ -155,14 +156,29 @@ def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
     if explicit_pr_number is not None:
         return validate_open_pr(repo, explicit_pr_number)
 
-    configured_pr = get_current_pr_number(_project_root_from_cwd())
+    branch_error: TriageError | None = None
+    try:
+        return current_pr_number(repo)
+    except TriageError as exc:
+        branch_error = exc
+
+    project_root = _project_root_from_cwd()
+    configured_pr = get_current_pr_number(project_root)
     if configured_pr is not None:
-        return validate_open_pr(repo, configured_pr)
+        try:
+            return validate_open_pr(repo, configured_pr)
+        except TriageError as exc:
+            raise TriageError(
+                f"Selected working PR #{configured_pr} is stale: {exc} "
+                "Open a PR for the current branch, pass an explicit PR number, "
+                "or clear the stale selection with 'sm config --clear-current-pr'."
+            ) from exc
 
     raise TriageError(
-        "No working PR selected. Set one with 'sm config --current-pr-number <n>' "
-        "or pass an explicit PR number."
-    )
+        "No open PR found for the current branch and no working PR is selected. "
+        "Open a PR first, set one with 'sm config --current-pr-number <n>', or "
+        "pass an explicit PR number."
+    ) from branch_error
 
 
 def latest_completed_run_id(repo: str, pr_number: int, workflow: str) -> int:
@@ -314,7 +330,7 @@ def build_triage_payload(
         cast(Dict[str, Any], r) for r in results_list if isinstance(r, dict)
     ]
 
-    actionable = filter_actionable_rows(results)
+    actionable = sort_rows_by_remediation_order(filter_actionable_rows(results))
     hard_failures = filter_hard_failures(actionable)
 
     payload: dict[str, Any] = {
@@ -340,6 +356,18 @@ def build_triage_payload(
 
     for row in actionable:
         payload["actionable"].append(normalize_actionable_row(row))
+
+    if hard_failures:
+        first_gate = str(hard_failures[0].get("name", "unknown"))
+        payload["first_to_fix"] = {
+            "gate": first_gate,
+            "detail": str(
+                hard_failures[0].get("error")
+                or hard_failures[0].get("status_detail")
+                or hard_failures[0].get("fix_suggestion")
+                or ""
+            ),
+        }
 
     for row in hard_failures:
         payload["hard_failures"].append(
@@ -412,6 +440,17 @@ def print_triage(payload: dict[str, Any], show_low_coverage: bool) -> None:
     if not actionable:
         print("No actionable gate results found.")
         return
+
+    first_to_fix = payload.get("first_to_fix")
+    if isinstance(first_to_fix, dict):
+        first_to_fix_obj = cast(Dict[str, Any], first_to_fix)
+        gate = str(first_to_fix_obj.get("gate") or "")
+        detail = str(first_to_fix_obj.get("detail") or "")
+        if gate:
+            line = f"\nFix First: {gate}"
+            if detail:
+                line += f" :: {detail}"
+            print(line)
 
     print("\nActionable Gates:")
     for row in actionable:

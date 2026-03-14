@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, cast
 
 from slopmop.checks import ensure_checks_registered
-from slopmop.checks.base import GateCategory
+from slopmop.checks.base import GateCategory, GateLevel
 from slopmop.constants import ROLE_BADGES
 from slopmop.core.config import clear_current_pr_number as clear_current_pr_selection
 from slopmop.core.config import (
@@ -85,6 +85,39 @@ def _set_gate_enabled(cfg: dict[str, Any], full_name: str, enabled: bool) -> Non
     elif full_name not in disabled:
         disabled.append(full_name)
     cfg["disabled_gates"] = disabled
+
+
+def _gate_cfg_dict(cfg: dict[str, Any], full_name: str) -> dict[str, Any] | None:
+    """Return the nested gate config dict, creating parents as needed."""
+    if ":" not in full_name:
+        return None
+    category, gate = full_name.split(":", 1)
+    category_cfg = _as_dict(cfg.get(category))
+    if category_cfg is None:
+        category_cfg = {}
+        cfg[category] = category_cfg
+    gates_cfg = _as_dict(category_cfg.get("gates"))
+    if gates_cfg is None:
+        gates_cfg = {}
+        category_cfg["gates"] = gates_cfg
+    gate_cfg = _as_dict(gates_cfg.get(gate))
+    if gate_cfg is None:
+        gate_cfg = {}
+        gates_cfg[gate] = gate_cfg
+    return gate_cfg
+
+
+def _set_gate_run_on(cfg: dict[str, Any], full_name: str, level: GateLevel) -> None:
+    """Set the configured swab/scour membership for a gate."""
+    gate_cfg = _gate_cfg_dict(cfg, full_name)
+    if gate_cfg is not None:
+        gate_cfg["run_on"] = level.value
+
+
+def _configured_run_on(check: Any) -> str:
+    """Human-readable swab/scour membership for a check instance."""
+    level = getattr(check, "effective_level", getattr(check, "level", GateLevel.SWAB))
+    return "scour only" if level == GateLevel.SCOUR else "swab + scour"
 
 
 def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -268,6 +301,8 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
             badge = ""
         print(f"  {status}  {badge}{display}")
         print(f"             gate: {name}")
+        if check is not None:
+            print(f"             runs: {_configured_run_on(check)}")
 
     if not checks:
         print("  (No applicable gates for this repository)")
@@ -286,6 +321,32 @@ def _set_swabbing_time(config_file: Path, config: dict[str, Any], seconds: int) 
         config["swabbing_time"] = seconds
         config_file.write_text(json.dumps(config, indent=2))
         print(f"✅ Swabbing-time budget set to {seconds}s")
+    return 0
+
+
+def _set_gate_swab_membership(
+    config_file: Path,
+    config: dict[str, Any],
+    gate_name: str,
+    level: GateLevel,
+    project_root: Path,
+) -> int:
+    """Keep a gate in swab+scour or move it to scour-only."""
+    registry = get_registry()
+    check = registry.get_check(gate_name, config)
+    if check is None:
+        print(f"❌ Unknown gate: {gate_name}")
+        return 1
+    if not check.is_applicable(str(project_root)):
+        reason = check.skip_reason(str(project_root))
+        print(f"❌ Cannot update {gate_name}: not applicable for this repo ({reason})")
+        return 1
+    _set_gate_run_on(config, gate_name, level)
+    config_file.write_text(json.dumps(config, indent=2))
+    if level == GateLevel.SCOUR:
+        print(f"✅ {gate_name} will now skip swab and still run during scour")
+    else:
+        print(f"✅ {gate_name} will now run during both swab and scour")
     return 0
 
 
@@ -315,6 +376,56 @@ def _clear_current_pr_number(config_file: Path, config: dict[str, Any]) -> int:
         config.pop("current_pr_number", None)
         config_file.write_text(json.dumps(config, indent=2))
     print("✅ Current PR number cleared")
+    return 0
+
+
+def _show_usage_hints(project_root: Path, config: dict[str, Any]) -> int:
+    """Print the compact no-args config help screen."""
+    print("\n📋 Slop-Mop Configuration")
+    print("=" * 60)
+    from slopmop.reporting import print_project_header
+
+    print_project_header(str(project_root))
+    print()
+    print("Usage:")
+    print("  sm config --show                   Show full config")
+    print("  sm config --enable  <gate>         Enable a gate")
+    print("  sm config --disable <gate>         Disable a gate")
+    print("  sm config --swab-off <gate>        Keep gate out of swab")
+    print("  sm config --swab-on  <gate>        Run gate in swab + scour")
+    print("  sm config --swabbing-time <secs>   Set time budget")
+    print("  sm config --current-pr-number <n>  Select working PR")
+    print("  sm config --clear-current-pr       Clear selected PR")
+    print("  sm config --json <file>            Merge config JSON")
+    print()
+
+    registry = get_registry()
+    checks = [
+        name
+        for name_any in registry.list_checks()
+        if isinstance(name_any, str)
+        for name in [name_any]
+        if (check := registry.get_check(name, config)) is not None
+        and check.is_applicable(str(project_root))
+    ]
+    n_disabled = sum(
+        1 for gate_name in checks if not _is_gate_enabled(config, gate_name)
+    )
+
+    print(
+        f"  {len(checks)} applicable gates"
+        f" ({len(checks) - n_disabled} enabled,"
+        f" {n_disabled} disabled)"
+    )
+    print()
+    print("Examples:")
+    if checks:
+        example = checks[0]
+        print(f"  sm config --disable {example}")
+        print(f"  sm config --enable  {example}")
+    print()
+    print("Run 'sm config --show' to see all gates.")
+    print()
     return 0
 
 
@@ -350,6 +461,24 @@ def cmd_config(args: argparse.Namespace) -> int:
     if getattr(args, "swabbing_time", None) is not None:
         return _set_swabbing_time(config_file, config, args.swabbing_time)
 
+    if getattr(args, "swab_off", None):
+        return _set_gate_swab_membership(
+            config_file,
+            config,
+            args.swab_off,
+            GateLevel.SCOUR,
+            project_root,
+        )
+
+    if getattr(args, "swab_on", None):
+        return _set_gate_swab_membership(
+            config_file,
+            config,
+            args.swab_on,
+            GateLevel.SWAB,
+            project_root,
+        )
+
     if getattr(args, "current_pr_number", None) is not None:
         return _set_current_pr_number(config_file, config, args.current_pr_number)
 
@@ -359,49 +488,4 @@ def cmd_config(args: argparse.Namespace) -> int:
     if args.show:
         return _show_config(project_root, config_file, config)
 
-    # Default: show usage hints
-    print("\n📋 Slop-Mop Configuration")
-    print("=" * 60)
-    from slopmop.reporting import print_project_header
-
-    print_project_header(str(project_root))
-    print()
-    print("Usage:")
-    print("  sm config --show                   Show full config")
-    print("  sm config --enable  <gate>         Enable a gate")
-    print("  sm config --disable <gate>         Disable a gate")
-    print("  sm config --swabbing-time <secs>   Set time budget")
-    print("  sm config --current-pr-number <n>  Select working PR")
-    print("  sm config --clear-current-pr       Clear selected PR")
-    print("  sm config --json <file>            Merge config JSON")
-    print()
-
-    registry = get_registry()
-    checks: list[str] = []
-    check_names: list[str] = []
-    for name_any in registry.list_checks():
-        if isinstance(name_any, str):
-            check_names.append(name_any)
-    for name in sorted(check_names):
-        check = registry.get_check(name, config)
-        if check is None:
-            continue
-        if check.is_applicable(str(project_root)):
-            checks.append(name)
-    n_disabled = sum(1 for c in checks if not _is_gate_enabled(config, c))
-
-    print(
-        f"  {len(checks)} applicable gates"
-        f" ({len(checks) - n_disabled} enabled,"
-        f" {n_disabled} disabled)"
-    )
-    print()
-    print("Examples:")
-    if checks:
-        example = checks[0]
-        print(f"  sm config --disable {example}")
-        print(f"  sm config --enable  {example}")
-    print()
-    print("Run 'sm config --show' to see all gates.")
-    print()
-    return 0
+    return _show_usage_hints(project_root, config)

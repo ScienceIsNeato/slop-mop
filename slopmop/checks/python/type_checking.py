@@ -28,7 +28,7 @@ import shutil
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -53,6 +53,38 @@ TYPE_COMPLETENESS_RULES: Dict[str, str] = {
 # Maximum errors to show before truncating
 MAX_ERRORS_TO_SHOW = 5
 MAX_FILES_TO_SHOW = 10
+
+
+def _fix_strategy_for_pyright(rule: str, message: str) -> Optional[str]:
+    """Return a prescriptive remediation for common pyright rules."""
+    if rule == "reportUnknownVariableType":
+        return (
+            "Annotate this variable with its concrete type so later reads stop "
+            "propagating Unknown."
+        )
+    if rule == "reportUnknownMemberType":
+        return (
+            "Tighten the object's annotation at its source so pyright can resolve "
+            "the member type instead of treating it as Unknown."
+        )
+    if rule == "reportUnknownArgumentType":
+        return (
+            "Annotate or narrow the value passed into this call so the callee sees "
+            "a concrete argument type."
+        )
+    if rule == "reportUnknownParameterType":
+        return (
+            "Add a concrete parameter annotation to this function so callers and "
+            "implementations share the same type contract."
+        )
+    if rule == "reportUnknownLambdaType":
+        return (
+            "Add an explicit type context for this lambda, usually by annotating "
+            "the variable or callback parameter that receives it."
+        )
+    if message:
+        return "Add or tighten the type annotation at this location so pyright can resolve the reported Unknown type."
+    return None
 
 
 def _find_pyright(project_root: str = "") -> Optional[str]:
@@ -214,10 +246,38 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                 ),
                 permissiveness="true_is_stricter",
             ),
+            ConfigField(
+                name="pyright_config_file",
+                field_type="string",
+                default=None,
+                description=(
+                    "Path to an existing pyright config file relative to the "
+                    "project root. When present, slop-mop generates a temporary "
+                    "overlay config that extends it instead of overwriting it."
+                ),
+            ),
+            ConfigField(
+                name="include_dirs",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Directories to type-check (relative to project root). "
+                    "When empty, falls back to heuristic detection (src/, "
+                    "slopmop/, lib/, or packages with __init__.py)."
+                ),
+                permissiveness="fewer_is_stricter",
+            ),
         ]
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
+
+    def init_config(self, project_root: str) -> Dict[str, Any]:
+        """Discover an existing pyright config owned by the project."""
+        config_path = Path(project_root) / "pyrightconfig.json"
+        if config_path.exists():
+            return {"pyright_config_file": config_path.name}
+        return {}
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping (delegates to PythonCheckMixin)."""
@@ -228,13 +288,21 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         source_dirs = _detect_source_dirs(project_root)
         python_version = _detect_python_version(project_root)
         venv_path, venv_name = _detect_venv_path(project_root)
+        base_config_file = self.config.get("pyright_config_file")
+        explicit_include_dirs = self.config.get("include_dirs", [])
+        include_dirs: List[str] = source_dirs
+        if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
+            include_dirs = cast(List[str], explicit_include_dirs)
 
-        config: Dict[str, Any] = {
-            "typeCheckingMode": "standard",
-            "include": source_dirs,
-            "exclude": ["**/__pycache__", "**/node_modules"],
-            "pythonVersion": python_version,
-        }
+        config: Dict[str, Any] = {"typeCheckingMode": "standard"}
+
+        if isinstance(base_config_file, str) and base_config_file:
+            config["extends"] = base_config_file
+            config["include"] = include_dirs
+        else:
+            config["include"] = include_dirs
+            config["exclude"] = ["**/__pycache__", "**/node_modules"]
+            config["pythonVersion"] = python_version
 
         if venv_path and venv_name:
             config["venvPath"] = venv_path
@@ -262,25 +330,21 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                 findings=[Finding(message=msg, level=FindingLevel.WARNING)],
             )
 
-        # Generate pyrightconfig.json in project root
-        # (pyright resolves paths relative to config location)
-        config_path = Path(project_root) / "pyrightconfig.json"
-        had_existing_config = config_path.exists()
-        backup_path: Optional[Path] = None
+        # Generate a hidden overlay config in the project root so any relative
+        # include/extends paths resolve exactly the same way pyright expects.
+        # This preserves the project's own pyrightconfig.json without moving the
+        # effective config root into .slopmop/.
+        config_path = Path(project_root) / ".pyrightconfig.generated.json"
         wrote_temp_config = False
 
         try:
-            if had_existing_config:
-                backup_path = config_path.with_suffix(".json.sm_backup")
-                config_path.rename(backup_path)
-
             pyright_config = self._build_pyright_config(project_root)
             config_path.write_text(json.dumps(pyright_config, indent=2))
             wrote_temp_config = True
 
             # Run pyright with JSON output
             result = self._run_command(
-                [pyright_path, "--outputjson"],
+                [pyright_path, "--outputjson", "--project", str(config_path)],
                 cwd=project_root,
                 timeout=120,
             )
@@ -297,14 +361,13 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                     findings=[Finding(message=msg, level=FindingLevel.ERROR)],
                 )
 
-            return self._process_output(result.output, duration, project_root)
+            parseable_output = result.stdout or result.output
+            return self._process_output(parseable_output, duration, project_root)
 
         finally:
-            # Cleanup: only remove the config we wrote, not a pre-existing one
+            # Cleanup: only remove the generated overlay config.
             if wrote_temp_config and config_path.exists():
                 config_path.unlink()
-            if backup_path and backup_path.exists():
-                backup_path.rename(config_path)
 
     def _process_output(
         self, raw_output: str, duration: float, project_root: str = ""
@@ -368,7 +431,8 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         cwd_prefix = root.rstrip("/") + "/"
         findings: List[Finding] = []
         for diag in diagnostics:
-            if diag.get("severity") != "error":
+            severity = diag.get("severity")
+            if severity not in ("error", 1):
                 continue
             filepath = diag.get("file", "")
             if filepath.startswith(cwd_prefix):
@@ -385,6 +449,9 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                     line=line + 1 if isinstance(line, int) else None,
                     column=col + 1 if isinstance(col, int) else None,
                     rule_id=diag.get("rule"),
+                    fix_strategy=_fix_strategy_for_pyright(
+                        str(diag.get("rule") or ""), msg
+                    ),
                 )
             )
         return findings

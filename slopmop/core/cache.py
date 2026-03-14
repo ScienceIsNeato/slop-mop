@@ -58,7 +58,10 @@ _EXCLUDED_DIRS = {
 }
 
 # Source extensions to include in the fingerprint.
+# Markdown is intentionally included because some gates read generated docs
+# and README state; excluding docs would let those gates return stale cache hits.
 _SOURCE_EXTENSIONS = {
+    ".md",
     ".py",
     ".js",
     ".ts",
