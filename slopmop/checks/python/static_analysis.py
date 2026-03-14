@@ -147,14 +147,6 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     def depends_on(self) -> List[str]:
         return ["laziness:sloppy-formatting.py"]
 
-    @property
-    def why_it_matters(self) -> Optional[str]:
-        return (
-            "Missing or incorrect annotations hide interface mistakes until "
-            "runtime. Catching them here keeps type contracts explicit and stops "
-            "type noise from cascading through the codebase."
-        )
-
     def is_applicable(self, project_root: str) -> bool:
         """Applicable only if there are Python source directories to type-check."""
         if not self.is_python_project(project_root):

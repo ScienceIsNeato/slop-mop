@@ -1040,7 +1040,64 @@ class TestPythonTypeCheckingCheck:
         config = check._build_pyright_config(str(tmp_path))
 
         assert config["extends"] == "pyrightconfig.json"
+        assert config["include"] == ["src"]
         assert "pythonVersion" not in config
+
+    def test_build_pyright_config_prefers_explicit_include_dirs(self, tmp_path):
+        """Explicit include_dirs should override heuristic source dirs."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+        (tmp_path / "scripts").mkdir()
+        (tmp_path / "scripts" / "worker.py").write_text("x = 1\n")
+
+        check = PythonTypeCheckingCheck({"include_dirs": ["scripts"]})
+        config = check._build_pyright_config(str(tmp_path))
+
+        assert config["include"] == ["scripts"]
+
+    def test_build_pyright_config_extends_project_config_with_explicit_include_dirs(
+        self, tmp_path
+    ):
+        """Overlay config should preserve user-configured include_dirs when extending."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+        (tmp_path / "scripts").mkdir()
+        (tmp_path / "scripts" / "worker.py").write_text("x = 1\n")
+
+        check = PythonTypeCheckingCheck(
+            {
+                "pyright_config_file": "pyrightconfig.json",
+                "include_dirs": ["scripts"],
+            }
+        )
+        config = check._build_pyright_config(str(tmp_path))
+
+        assert config["extends"] == "pyrightconfig.json"
+        assert config["include"] == ["scripts"]
+
+    def test_missing_annotations_uses_builtin_why_text(self):
+        """mypy gate should inherit shared why text from built-in metadata."""
+        from slopmop.checks.metadata import builtin_gate_why
+        from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
+
+        check = PythonStaticAnalysisCheck({})
+        assert check.why_it_matters == builtin_gate_why(
+            "overconfidence:missing-annotations.py"
+        )
+
+    def test_type_blindness_uses_builtin_why_text(self):
+        """pyright gate should inherit shared why text from built-in metadata."""
+        from slopmop.checks.metadata import builtin_gate_why
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        check = PythonTypeCheckingCheck({})
+        assert check.why_it_matters == builtin_gate_why(
+            "overconfidence:type-blindness.py"
+        )
 
     def test_build_pyright_config_strict_mode(self, tmp_path):
         """Test _build_pyright_config includes type-completeness rules in strict mode."""

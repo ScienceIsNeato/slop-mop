@@ -28,7 +28,7 @@ import shutil
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -272,14 +272,6 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
 
-    @property
-    def why_it_matters(self) -> Optional[str]:
-        return (
-            "Unknown types force humans and agents to guess about data shape. "
-            "Eliminating them makes interfaces self-describing and lets static "
-            "analysis catch mistakes before they become runtime bugs."
-        )
-
     def init_config(self, project_root: str) -> Dict[str, Any]:
         """Discover an existing pyright config owned by the project."""
         config_path = Path(project_root) / "pyrightconfig.json"
@@ -298,15 +290,17 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         venv_path, venv_name = _detect_venv_path(project_root)
         base_config_file = self.config.get("pyright_config_file")
         explicit_include_dirs = self.config.get("include_dirs", [])
+        include_dirs: List[str] = source_dirs
+        if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
+            include_dirs = cast(List[str], explicit_include_dirs)
 
         config: Dict[str, Any] = {"typeCheckingMode": "standard"}
 
         if isinstance(base_config_file, str) and base_config_file:
             config["extends"] = base_config_file
-            if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
-                config["include"] = source_dirs
+            config["include"] = include_dirs
         else:
-            config["include"] = source_dirs
+            config["include"] = include_dirs
             config["exclude"] = ["**/__pycache__", "**/node_modules"]
             config["pythonVersion"] = python_version
 
