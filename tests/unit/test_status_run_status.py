@@ -11,7 +11,7 @@ def _mock_registry(all_gates=None, swab_gates=None, scour_gates=None):
     mock_reg = MagicMock()
     mock_reg.list_checks.return_value = all_gates or []
 
-    def _gate_names_for_level(level):
+    def _gate_names_for_level(level, _config=None):
         from slopmop.checks.base import GateLevel
 
         if level == GateLevel.SWAB:

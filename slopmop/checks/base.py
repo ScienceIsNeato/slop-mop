@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
 
+from slopmop.checks.metadata import builtin_gate_why
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -430,6 +431,16 @@ STANDARD_CONFIG_FIELDS = [
         default=False,
         description="Automatically fix issues when possible",
     ),
+    ConfigField(
+        name="run_on",
+        field_type="string",
+        default=None,
+        choices=[GateLevel.SWAB.value, GateLevel.SCOUR.value],
+        description=(
+            "Execution rail for this gate. 'swab' runs it in both swab and scour; "
+            "'scour' keeps it out of swab but still runs it during scour."
+        ),
+    ),
 ]
 
 
@@ -567,8 +578,19 @@ class BaseCheck(ABC):
         verify their fix.  Centralised here to avoid string duplication
         across every gate that wants the pattern.
         """
-        verb = self.level.value
+        verb = self.effective_level.value
         return f"sm {verb} -g {self.full_name} --verbose"
+
+    @property
+    def effective_level(self) -> GateLevel:
+        """Configured execution level for this gate instance."""
+        run_on = self.config.get("run_on")
+        if isinstance(run_on, str):
+            try:
+                return GateLevel(run_on)
+            except ValueError:
+                pass
+        return self.level
 
     @property
     def depends_on(self) -> List[str]:
@@ -704,7 +726,7 @@ class BaseCheck(ABC):
     @property
     def why_it_matters(self) -> Optional[str]:
         """Gate-level context explaining why this failure category matters."""
-        return None
+        return builtin_gate_why(self.full_name)
 
     def _create_result(
         self,

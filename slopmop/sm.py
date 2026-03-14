@@ -284,6 +284,16 @@ def _add_config_parser(
         help="Set the swabbing-time budget (seconds). 0 or negative disables the limit.",
     )
     config_parser.add_argument(
+        "--swab-off",
+        metavar="GATE",
+        help="Keep a gate out of swab while still running it during scour.",
+    )
+    config_parser.add_argument(
+        "--swab-on",
+        metavar="GATE",
+        help="Make a gate run during both swab and scour.",
+    )
+    config_parser.add_argument(
         "--current-pr-number",
         type=int,
         metavar="PR",

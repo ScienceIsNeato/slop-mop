@@ -864,6 +864,23 @@ class TestRegisterCustomGatesEdgeCases:
         assert len(result) == 1
         assert "stale-docs.py" in result[0]
 
+    def test_fix_command_enables_auto_fix(self, tmp_path) -> None:
+        """Custom gates with fix_command should support auto-fix."""
+        from slopmop.checks.custom import make_custom_check_class
+
+        check_class = make_custom_check_class(
+            gate_name="docs-refresh",
+            description="Refresh docs",
+            category_key="laziness",
+            command="exit 1",
+            fix_command="touch fixed.txt",
+        )
+        check = check_class({})
+
+        assert check.can_auto_fix() is True
+        assert check.auto_fix(str(tmp_path)) is True
+        assert (tmp_path / "fixed.txt").exists()
+
     def test_very_long_name(self) -> None:
         long_name = "x" * 500
         config: Dict[str, Any] = {

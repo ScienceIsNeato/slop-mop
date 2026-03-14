@@ -214,7 +214,25 @@ class CheckRegistry:
         """List all registered check names."""
         return list(self._check_classes.keys())
 
-    def get_gate_names_for_level(self, level: GateLevel) -> List[str]:
+    @staticmethod
+    def _resolved_level(
+        check_class: Type[BaseCheck],
+        gate_config: Optional[Dict[str, Any]] = None,
+    ) -> GateLevel:
+        """Return the effective run level after applying config overrides."""
+        run_on = (gate_config or {}).get("run_on")
+        if isinstance(run_on, str):
+            try:
+                return GateLevel(run_on)
+            except ValueError:
+                pass
+        return check_class.level
+
+    def get_gate_names_for_level(
+        self,
+        level: GateLevel,
+        config: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
         """Get all registered gate names appropriate for a given level.
 
         Swab returns only SWAB-level gates.
@@ -228,7 +246,9 @@ class CheckRegistry:
         """
         names: List[str] = []
         for name, check_class in self._check_classes.items():
-            if level == GateLevel.SCOUR or check_class.level == GateLevel.SWAB:
+            gate_config = self._extract_gate_config(name, config or {})
+            resolved_level = self._resolved_level(check_class, gate_config)
+            if level == GateLevel.SCOUR or resolved_level == GateLevel.SWAB:
                 names.append(name)
         return names
 

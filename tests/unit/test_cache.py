@@ -97,6 +97,19 @@ class TestComputeFingerprint:
         fp2 = compute_fingerprint(str(tmp_path))
         assert fp1 == fp2
 
+    def test_markdown_changes_fingerprint(self, tmp_path):
+        """Markdown docs should invalidate the global fingerprint."""
+        doc = tmp_path / "README.md"
+        doc.write_text("# one\n")
+        fp1 = compute_fingerprint(str(tmp_path))
+
+        time.sleep(0.05)
+        doc.write_text("# two\n")
+        os.utime(doc, (time.time() + 1, time.time() + 1))
+        fp2 = compute_fingerprint(str(tmp_path))
+
+        assert fp1 != fp2
+
     def test_empty_project(self, tmp_path):
         """Empty project produces a valid fingerprint."""
         fp = compute_fingerprint(str(tmp_path))

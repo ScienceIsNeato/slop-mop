@@ -38,7 +38,7 @@ dependencies = [
 [project.optional-dependencies]
 # Formatting & linting
 lint = [
-    "black>=25.11.0",
+    "black>=26.3.1",
     "isort>=5.12.0",
     "autoflake>=2.0.0",
     "flake8>=6.0.0",

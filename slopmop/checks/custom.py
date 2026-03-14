@@ -92,6 +92,7 @@ def make_custom_check_class(
     command: str,
     level_str: str = "swab",
     timeout: int = DEFAULT_CUSTOM_TIMEOUT,
+    fix_command: Optional[str] = None,
 ) -> Type[BaseCheck]:
     """Dynamically create a BaseCheck subclass for a user-defined gate.
 
@@ -134,6 +135,7 @@ def make_custom_check_class(
         _description: ClassVar[str] = description
         _category: ClassVar[GateCategory] = resolved_category
         _command: ClassVar[str] = command
+        _fix_command: ClassVar[Optional[str]] = fix_command
         _timeout: ClassVar[int] = timeout
         _flaw: ClassVar[Any] = resolved_flaw
         is_custom_gate: ClassVar[bool] = True
@@ -174,6 +176,19 @@ def make_custom_check_class(
             # Custom gates are always applicable — the user defined
             # them for this specific repo.
             return True
+
+        def can_auto_fix(self) -> bool:
+            return bool(self._fix_command)
+
+        def auto_fix(self, project_root: str) -> bool:
+            if not self._fix_command:
+                return False
+            result = self._runner.run(
+                ["sh", "-c", self._fix_command],
+                cwd=project_root,
+                timeout=self._timeout,
+            )
+            return bool(result.returncode == 0 and not result.timed_out)
 
         def run(self, project_root: str) -> CheckResult:
             start = time.time()
@@ -277,6 +292,10 @@ def register_custom_gates(config: Dict[str, Any]) -> List[str]:
         description: str = str(gate_def.get("description", name))
         category_key: str = str(gate_def.get("category", "general"))
         level_str: str = str(gate_def.get("level", "swab"))
+        fix_command: Optional[str] = None
+        raw_fix_command: Any = gate_def.get("fix_command")
+        if isinstance(raw_fix_command, str) and raw_fix_command.strip():
+            fix_command = raw_fix_command.strip()
         raw_timeout: Any = gate_def.get("timeout", DEFAULT_CUSTOM_TIMEOUT)
 
         # Validate timeout
@@ -297,6 +316,7 @@ def register_custom_gates(config: Dict[str, Any]) -> List[str]:
                 command=command,
                 level_str=level_str,
                 timeout=timeout_val,
+                fix_command=fix_command,
             )
             registry.register(check_class)
 

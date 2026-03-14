@@ -92,6 +92,7 @@ CATEGORY_ORDER = [
 class GateRow(NamedTuple):
     full_name: str
     description: str
+    why: str
 
 
 class RemediationRow(NamedTuple):
@@ -119,6 +120,7 @@ def generate_tables(registry: "CheckRegistry") -> str:
             GateRow(
                 full_name=instance.full_name,
                 description=instance.gate_description,
+                why=instance.why_it_matters or "",
             )
         )
 
@@ -148,10 +150,10 @@ def generate_tables(registry: "CheckRegistry") -> str:
 
         # Table
         sections.append("")
-        sections.append("| Gate | What It Does |")
-        sections.append("|------|--------------|")
+        sections.append("| Gate | What It Does | Why It Matters |")
+        sections.append("|------|--------------|----------------|")
         for row in rows:
-            sections.append(f"| `{row.full_name}` | {row.description} |")
+            sections.append(f"| `{row.full_name}` | {row.description} | {row.why} |")
 
         sections.append("")
 

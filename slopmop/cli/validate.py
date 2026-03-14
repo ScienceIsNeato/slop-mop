@@ -257,13 +257,7 @@ def _run_validation_locked(
     # Register user-defined custom gates from config
     from slopmop.checks.custom import register_custom_gates
 
-    custom_names = register_custom_gates(config)
-
-    # Custom gates are registered AFTER the initial gate_names list was
-    # computed by cmd_swab/cmd_scour.  Append any newly registered names
-    # so they actually run.  (Explicit -g lists are left untouched.)
-    if level_name is not None and custom_names:
-        gates = list(gates) + custom_names
+    register_custom_gates(config)
 
     # Validate explicit -g gate names against the registry.
     # Level-based discovery (level_name != None) uses registry-produced
@@ -455,8 +449,14 @@ def cmd_swab(args: argparse.Namespace) -> int:
     if getattr(args, "json_file", None) is None:
         args.json_file = ".slopmop/last_swab.json"
 
+    from slopmop.checks.custom import register_custom_gates
+    from slopmop.sm import load_config
+
+    project_root = Path(getattr(args, "project_root", "."))
+    config = load_config(project_root)
+    register_custom_gates(config)
     registry = get_registry()
-    gate_names = registry.get_gate_names_for_level(GateLevel.SWAB)
+    gate_names = registry.get_gate_names_for_level(GateLevel.SWAB, config)
     exit_code = _run_validation(args, gate_names, "swab")
 
     try:
@@ -484,8 +484,13 @@ def cmd_scour(args: argparse.Namespace) -> int:
         args.json_file = ".slopmop/last_scour.json"
 
     project_root = Path(getattr(args, "project_root", "."))
+    from slopmop.checks.custom import register_custom_gates
+    from slopmop.sm import load_config
+
+    config = load_config(project_root)
+    register_custom_gates(config)
     registry = get_registry()
-    gate_names = registry.get_gate_names_for_level(GateLevel.SCOUR)
+    gate_names = registry.get_gate_names_for_level(GateLevel.SCOUR, config)
     exit_code = _run_validation(args, gate_names, "scour")
 
     try:

@@ -1,6 +1,6 @@
 """Tests for check registry."""
 
-from slopmop.checks.base import BaseCheck, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, Flaw, GateCategory, GateLevel
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import CheckDefinition, CheckResult, CheckStatus
 
@@ -242,6 +242,37 @@ class TestCheckRegistry:
         registry = CheckRegistry()
         applicable = registry.get_applicable_checks(str(tmp_path), {})
         assert applicable == []
+
+    def test_get_gate_names_for_level_respects_run_on_override(self):
+        """Config can move a gate from swab membership to scour-only."""
+        registry = CheckRegistry()
+
+        class SwabCheck(MockCheck):
+            _mock_name = "swab-check"
+
+        class ScourCheck(MockCheck):
+            _mock_name = "scour-check"
+            level = GateLevel.SCOUR
+
+        registry.register(SwabCheck)
+        registry.register(ScourCheck)
+
+        config = {
+            "overconfidence": {
+                "gates": {
+                    "swab-check": {"run_on": "scour"},
+                    "scour-check": {"run_on": "swab"},
+                }
+            }
+        }
+
+        swab = registry.get_gate_names_for_level(GateLevel.SWAB, config)
+        scour = registry.get_gate_names_for_level(GateLevel.SCOUR, config)
+
+        assert "overconfidence:swab-check" not in swab
+        assert "overconfidence:scour-check" in swab
+        assert "overconfidence:swab-check" in scour
+        assert "overconfidence:scour-check" in scour
 
     def test_curated_remediation_priority_beats_fallbacks(self):
         """Built-in curated order should be the primary remediation source."""

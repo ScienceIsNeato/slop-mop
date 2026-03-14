@@ -523,17 +523,40 @@ def _load_latest_run_artifact(root: Path) -> Optional[Dict[str, Any]]:
     return artifact
 
 
+def _load_persisted_run_artifacts(root: Path) -> List[Dict[str, Any]]:
+    """Load all canonical persisted run artifacts, newest first."""
+    artifacts: List[Dict[str, Any]] = []
+    for name in ("last_swab.json", "last_scour.json"):
+        artifact_path = root / ".slopmop" / name
+        if not artifact_path.exists() or not artifact_path.is_file():
+            continue
+        try:
+            raw = json.loads(artifact_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(raw, dict):
+            continue
+        artifact = cast(Dict[str, Any], raw)
+        artifact["source_file"] = artifact_path.name
+        artifact["source_mtime"] = artifact_path.stat().st_mtime
+        artifacts.append(artifact)
+    artifacts.sort(
+        key=lambda artifact: float(cast(Any, artifact.get("source_mtime", 0.0))),
+        reverse=True,
+    )
+    return artifacts
+
+
 def _load_latest_gate_results(
     root: Path, history: Dict[str, TimingStats]
 ) -> Dict[str, str]:
-    """Return the latest per-gate statuses from artifact, with history fallback."""
+    """Return the latest per-gate statuses from artifacts, with history fallback."""
     results: Dict[str, str] = {}
-    artifact = _load_latest_run_artifact(root)
-    if artifact is not None:
+    for artifact in _load_persisted_run_artifacts(root):
         passed = artifact.get("passed_gates")
         if isinstance(passed, list):
             for item in cast(List[object], passed):
-                if isinstance(item, str):
+                if isinstance(item, str) and item not in results:
                     results[item] = "passed"
 
         raw_results = artifact.get("results")
@@ -544,7 +567,11 @@ def _load_latest_gate_results(
                 entry = cast(Dict[str, Any], raw_entry)
                 name = entry.get("name")
                 status = entry.get("status")
-                if isinstance(name, str) and isinstance(status, str):
+                if (
+                    isinstance(name, str)
+                    and isinstance(status, str)
+                    and name not in results
+                ):
                     results[name] = status
 
     for gate_name, stats in history.items():
@@ -802,9 +829,9 @@ def run_status(
 
     # ── Gate lists ────────────────────────────────────────────────
     all_gates = registry.list_checks()
-    swab_gates = set(registry.get_gate_names_for_level(GateLevel.SWAB))
+    swab_gates = set(registry.get_gate_names_for_level(GateLevel.SWAB, config))
     scour_only_gates = (
-        set(registry.get_gate_names_for_level(GateLevel.SCOUR)) - swab_gates
+        set(registry.get_gate_names_for_level(GateLevel.SCOUR, config)) - swab_gates
     )
     disabled = config.get("disabled_gates", [])
 
@@ -872,7 +899,7 @@ def run_status(
     _print_gate_inventory(
         all_gates=all_gates,
         swab_gates=swab_gates,
-        scour_gates=set(registry.get_gate_names_for_level(GateLevel.SCOUR)),
+        scour_gates=set(registry.get_gate_names_for_level(GateLevel.SCOUR, config)),
         applicability=applicability,
         roles=roles,
         history=history,

@@ -15,6 +15,7 @@ from slopmop.cli.status import (
     _gather_baseline_snapshot_data,
     _gather_ci_data,
     _gather_workflow_data,
+    _load_latest_gate_results,
     _print_baseline_snapshot,
     _print_ci_summary,
     _print_config_summary,
@@ -37,7 +38,7 @@ def _mock_registry(all_gates=None, swab_gates=None, scour_gates=None):
     mock_reg = MagicMock()
     mock_reg.list_checks.return_value = all_gates or []
 
-    def _gate_names_for_level(level):
+    def _gate_names_for_level(level, _config=None):
         from slopmop.checks.base import GateLevel
 
         if level == GateLevel.SWAB:
@@ -760,6 +761,50 @@ class TestPrintRecentHistory:
         _print_recent_history({})
         out = capsys.readouterr().out
         assert "No gate run history found" in out
+
+
+class TestLatestGateResults:
+    """Tests for persisted per-gate status lookup."""
+
+    def test_scour_only_gate_uses_last_scour_even_when_last_swab_is_newer(
+        self, tmp_path
+    ):
+        """Status should not let a newer swab artifact hide scour-only results."""
+        sm_dir = tmp_path / ".slopmop"
+        sm_dir.mkdir()
+
+        last_scour = sm_dir / "last_scour.json"
+        last_scour.write_text(
+            json.dumps(
+                {
+                    "passed_gates": ["myopia:dependency-risk.py"],
+                    "results": [],
+                }
+            )
+        )
+
+        last_swab = sm_dir / "last_swab.json"
+        last_swab.write_text(
+            json.dumps(
+                {
+                    "passed_gates": ["overconfidence:untested-code.py"],
+                    "results": [],
+                }
+            )
+        )
+
+        newer = last_scour.stat().st_mtime + 10
+        import os
+
+        os.utime(last_swab, (newer, newer))
+
+        history = {
+            "myopia:dependency-risk.py": _stats(results=("failed",)),
+        }
+
+        results = _load_latest_gate_results(tmp_path, history)
+
+        assert results["myopia:dependency-risk.py"] == "passed"
 
     def test_with_history(self, capsys):
         """Shows last-known status counts."""
