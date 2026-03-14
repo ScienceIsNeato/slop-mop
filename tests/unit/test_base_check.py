@@ -70,6 +70,19 @@ class TestBaseCheck:
         check = ConcreteCheck({})
         assert check.can_auto_fix() is False
 
+    def test_init_config_default_is_empty(self, tmp_path):
+        """BaseCheck opt-in init discovery should default to no overrides."""
+        check = ConcreteCheck({})
+        assert check.init_config(str(tmp_path)) == {}
+
+    def test_full_config_schema_no_longer_includes_global_config_path(self):
+        """Native config-file lookup is gate-owned, not universal."""
+        check = ConcreteCheck({})
+        field_names = [field.name for field in check.get_full_config_schema()]
+        assert "enabled" in field_names
+        assert "auto_fix" in field_names
+        assert "config_file_path" not in field_names
+
     def test_auto_fix_default(self, tmp_path):
         """Test default auto_fix returns False."""
         check = ConcreteCheck({})

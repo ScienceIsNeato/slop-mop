@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any, Callable, List, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -170,17 +170,69 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 permissiveness="fewer_is_stricter",
             ),
             ConfigField(
+                name="config_file_path",
+                field_type="string",
+                default=None,
+                description=(
+                    "Path to detect-secrets baseline file (typically "
+                    ".secrets.baseline)"
+                ),
+                required=False,
+            ),
+            ConfigField(
                 name="bandit_config_file",
                 field_type="string",
                 default=None,
                 description=(
                     "Path to bandit config file (e.g. .bandit, pyproject.toml). "
-                    "Separate from the standard config_file_path which is used "
-                    "by detect-secrets (.secrets.baseline)"
+                    "Separate from config_file_path which is used by "
+                    "detect-secrets (.secrets.baseline)"
                 ),
                 required=False,
             ),
         ]
+
+    def init_config(self, project_root: str) -> Dict[str, Any]:
+        """Discover native config files this gate knows how to use.
+
+        Security checks own their own lookup rules because they know which
+        files are meaningful to each underlying scanner.
+        """
+        root = Path(project_root)
+        overrides: Dict[str, Any] = {}
+
+        baseline_path = root / ".secrets.baseline"
+        if baseline_path.exists():
+            overrides["config_file_path"] = baseline_path.name
+
+        bandit_config = self._discover_bandit_config(root)
+        if bandit_config is not None:
+            overrides["bandit_config_file"] = bandit_config
+
+        return overrides
+
+    def _discover_bandit_config(self, root: Path) -> Optional[str]:
+        """Return the most likely bandit config file for this repo."""
+        direct_candidates = [".bandit", "bandit.yaml", "bandit.yml"]
+        for name in direct_candidates:
+            candidate = root / name
+            if candidate.exists():
+                return name
+
+        pyproject = root / "pyproject.toml"
+        if pyproject.exists() and "[tool.bandit]" in pyproject.read_text(
+            encoding="utf-8", errors="ignore"
+        ):
+            return "pyproject.toml"
+
+        for name, marker in [("setup.cfg", "[bandit]"), ("tox.ini", "[bandit]")]:
+            candidate = root / name
+            if candidate.exists() and marker in candidate.read_text(
+                encoding="utf-8", errors="ignore"
+            ):
+                return name
+
+        return None
 
     def is_applicable(self, project_root: str) -> bool:
         """Check if there are any source files to scan."""

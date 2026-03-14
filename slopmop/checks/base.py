@@ -430,13 +430,6 @@ STANDARD_CONFIG_FIELDS = [
         default=False,
         description="Automatically fix issues when possible",
     ),
-    ConfigField(
-        name="config_file_path",
-        field_type="string",
-        default=None,
-        description="Path to tool's native config file (e.g., pytest.ini, .bandit)",
-        required=False,
-    ),
 ]
 
 
@@ -454,6 +447,7 @@ class BaseCheck(ABC):
     - tool_context: ToolContext declaring how tools are resolved
     - depends_on: List of check names this depends on
     - config_schema: Additional config fields beyond standard ones
+    - init_config(): init-time config discovery for this gate only
     - can_auto_fix(): Whether issues can be auto-fixed
     - auto_fix(): Attempt to fix issues automatically
     """
@@ -617,6 +611,19 @@ class BaseCheck(ABC):
             List of all ConfigField definitions (standard + check-specific)
         """
         return STANDARD_CONFIG_FIELDS + self.config_schema
+
+    def init_config(self, project_root: str) -> Dict[str, Any]:
+        """Return init-time config overrides discovered by this gate.
+
+        This hook is the gate-owned seam for `sm init`. Gates that know how
+        to discover their own native config or baseline files should override
+        it and return only the gate-specific fields they own. The default is
+        empty because most gates do not need repo-specific config-file lookup.
+
+        `sm init` treats these values as discovered defaults, not hard
+        overrides: existing non-empty gate config wins.
+        """
+        return {}
 
     @abstractmethod
     def is_applicable(self, project_root: str) -> bool:

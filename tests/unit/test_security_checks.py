@@ -55,8 +55,27 @@ class TestSecurityLocalCheck:
         check = SecurityLocalCheck({})
         schema = check.config_schema
         field_names = [f.name for f in schema]
+        assert "config_file_path" in field_names
         assert "scanners" in field_names
         assert "exclude_dirs" in field_names
+
+    def test_init_config_discovers_detect_secrets_and_bandit_files(self, tmp_path):
+        (tmp_path / ".secrets.baseline").write_text("{}")
+        (tmp_path / ".bandit").write_text("[bandit]\n")
+
+        check = SecurityLocalCheck({})
+        overrides = check.init_config(str(tmp_path))
+
+        assert overrides["config_file_path"] == ".secrets.baseline"
+        assert overrides["bandit_config_file"] == ".bandit"
+
+    def test_init_config_detects_bandit_section_in_pyproject(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[tool.bandit]\nskips = ['B101']\n")
+
+        check = SecurityLocalCheck({})
+        overrides = check.init_config(str(tmp_path))
+
+        assert overrides["bandit_config_file"] == "pyproject.toml"
 
     def test_is_applicable_with_python_files(self, tmp_path):
         """Test is_applicable returns True for Python projects."""

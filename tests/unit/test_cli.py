@@ -261,6 +261,25 @@ class TestCmdInitNonInteractiveDetection:
         out = capsys.readouterr().out
         assert "Non-interactive mode: using detected defaults" in out
 
+    def test_cmd_init_applies_gate_owned_init_config(self, tmp_path):
+        """sm init delegates repo-specific config discovery to the gate."""
+        import json
+        from unittest.mock import patch
+
+        (tmp_path / "setup.py").write_text("")
+        (tmp_path / ".secrets.baseline").write_text("{}")
+        args = self._make_args(tmp_path, non_interactive=True)
+
+        with patch("slopmop.cli.status.run_status", return_value=0):
+            from slopmop.cli.init import cmd_init
+
+            result = cmd_init(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        gate = config["myopia"]["gates"]["vulnerability-blindness.py"]
+        assert gate["config_file_path"] == ".secrets.baseline"
+
 
 class TestPrintNextSteps:
     """Tests for _print_next_steps output."""

@@ -82,6 +82,7 @@ class TestGenerateGateConfig:
         assert "auto_fix" in config
         assert config["enabled"] is False
         assert config["auto_fix"] is False
+        assert "config_file_path" not in config
 
     def test_includes_check_specific_fields(self):
         """Test that check-specific config fields are included."""

@@ -139,16 +139,45 @@ Every `BaseCheck` subclass declares a `role: ClassVar[CheckRole]`. The classific
 
 Status: still open.
 
-The `sm init` command currently auto-detects project type and generates a config. It should also:
+The original version of this plan pushed too much responsibility into `sm init`
+itself. That was the wrong cut. `sm init` should not become a giant central
+scanner that knows where every possible tool config might live.
 
-1. **Discover existing tooling**: Scan for `.eslintrc`, `pyproject.toml [tool.black]`, `mypy.ini`, `setup.cfg [flake8]`, `jest.config.js`, `.prettierrc`, etc.
+Canonical direction:
 
-2. **For each discovered tool**, determine if it overlaps with a Foundation check. If so:
-   - Default to *delegating* to the existing config (don't install a second linter)
-   - Record the delegation in `.sb_config.json` so slop-mop knows "this repo already has eslint; my `sloppy-formatting.js` check should invoke *their* eslint with *their* config"
-   - If the existing tool covers a *subset* of what slop-mop checks, note the gap
+1. **Gate-owned init hooks**: the gate primitive exposes an init-time hook that
+  returns gate-specific config defaults discovered from the repo.
+2. **Gate-owned config fields**: if a gate needs a native config path or
+  baseline file, that field belongs in the gate's own `config_schema`, not in
+  the universal base schema.
+3. **Thin init orchestrator**: `sm init` generates the template config,
+  delegates discovery to gates that implement the hook, and merges discovered
+  defaults without hardcoding per-gate file hunts.
 
-3. **For missing tools**, offer to install them as slop-mop-managed dependencies (the current behavior, but now explicit rather than implicit)
+That means the work here is:
+
+1. **Move config-file discovery into gates**:
+  - A security gate can look for `.secrets.baseline`, `.bandit`, or
+    `[tool.bandit]` in `pyproject.toml` because it knows those files mean
+    something.
+  - A formatting gate can look for `.prettierrc` or `pyproject.toml [tool.black]`
+    if and when that discovery is useful.
+  - Gates without a meaningful native config concept implement nothing.
+
+2. **Teach `sm init` to delegate, not inspect broadly**:
+  - Iterate the enabled gates.
+  - Ask each gate for init-time config overrides.
+  - Apply discovered values as defaults, not hard overrides.
+
+3. **Keep project-type detection coarse**:
+  - `detect_project_type()` should stay about repo-wide facts (Python present,
+    JS present, test dirs, missing tools), not gate-specific config trivia.
+
+4. **Only after that, consider richer delegation metadata**:
+  - Whether a gate is using project-managed tooling vs slop-mop-managed tooling
+    can still be modeled later.
+  - But that decision should be informed by gate-owned discovery, not by a
+    monolithic `sm init` decision tree.
 
 This moves slop-mop from "batteries-included heavy install" to "smart, adaptive, efficient overlay." The eventual `sm doctor` verb (out of scope here, but worth noting in the architecture) will extend this to runtime dependency health checks.
 

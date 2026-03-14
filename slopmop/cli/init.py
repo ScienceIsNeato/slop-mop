@@ -397,6 +397,49 @@ def _disable_non_applicable_by_applicability(
             gate_cfg["enabled"] = False
 
 
+def _is_unset_config_value(value: Any) -> bool:
+    """Return True when a discovered init value should fill this slot."""
+    return value is None or value == "" or value == []
+
+
+def _apply_gate_init_config(base_config: Dict[str, Any], project_root: Path) -> None:
+    """Let each gate contribute its own init-time config discovery.
+
+    `sm init` orchestrates; gates own the file lookup details they understand.
+    Discovered values are defaults only — existing non-empty values win.
+    """
+    from slopmop.checks import ensure_checks_registered
+    from slopmop.core.registry import get_registry
+
+    ensure_checks_registered()
+    registry = get_registry()
+
+    for full_name_any in registry.list_checks():
+        if not isinstance(full_name_any, str) or ":" not in full_name_any:
+            continue
+        full_name = full_name_any
+        category, gate_name = full_name.split(":", 1)
+
+        section = _as_dict(base_config.get(category))
+        if section is None:
+            continue
+        gates = _as_dict(section.get("gates"))
+        if gates is None:
+            continue
+        gate_cfg = _as_dict(gates.get(gate_name))
+        if gate_cfg is None or not bool(gate_cfg.get("enabled", False)):
+            continue
+
+        check = registry.get_check(full_name, base_config)
+        if check is None:
+            continue
+
+        discovered = check.init_config(str(project_root))
+        for key, value in discovered.items():
+            if key not in gate_cfg or _is_unset_config_value(gate_cfg.get(key)):
+                gate_cfg[key] = value
+
+
 def _print_next_steps(config: Dict[str, Any]) -> None:
     """Print next steps after setup completion."""
     print()
@@ -489,6 +532,10 @@ def _write_config(
     # Re-apply suggested gates after merge so rerunning init refreshes gate
     # definitions (and still keeps user-defined custom gates intact).
     _refresh_suggested_custom_gates(base_config, suggested_custom)
+
+    # Let gates populate their own init-time config defaults (native config
+    # files, baselines, etc.) without centralizing per-gate file hunts here.
+    _apply_gate_init_config(base_config, project_root)
 
     # Re-apply disable passes after merge so stale enabled flags from prior
     # config cannot override current applicability/tool detection.
