@@ -227,6 +227,24 @@ class TestCreateParser:
         args = parser.parse_args(["scour", "--no-cache"])
         assert args.no_cache is True
 
+    def test_ignore_baseline_failures_flag_on_swab(self):
+        """--ignore-baseline-failures parses correctly on swab."""
+        parser = create_parser()
+        args = parser.parse_args(["swab", "--ignore-baseline-failures"])
+        assert args.ignore_baseline_failures is True
+
+    def test_ignore_baseline_failures_flag_on_scour(self):
+        """--ignore-baseline-failures parses correctly on scour."""
+        parser = create_parser()
+        args = parser.parse_args(["scour", "--ignore-baseline-failures"])
+        assert args.ignore_baseline_failures is True
+
+    def test_status_generate_baseline_snapshot_flag(self):
+        """--generate-baseline-snapshot parses correctly on status."""
+        parser = create_parser()
+        args = parser.parse_args(["status", "--generate-baseline-snapshot"])
+        assert args.generate_baseline_snapshot is True
+
     def test_config_subcommand(self):
         """Config subcommand parses correctly."""
         parser = create_parser()

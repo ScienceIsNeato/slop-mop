@@ -66,6 +66,9 @@ class JsonAdapter:
         if report.verify_command:
             output["next_steps"] = [report.verify_command]
 
+        if report.baseline_filter:
+            output["baseline_filter"] = report.baseline_filter
+
         cache = report.cache_metadata()
         if cache:
             output["cache"] = cache
@@ -191,6 +194,8 @@ class ConsoleAdapter:
             print(f"   {cache_line}")
             self._render_cache_refresh_hint()
 
+        self._render_baseline_filter_note()
+
         self._render_time_budget_warning()
 
         print("═" * 60)
@@ -226,6 +231,8 @@ class ConsoleAdapter:
         if cache_line:
             print(f"   {cache_line}")
             self._render_cache_refresh_hint()
+
+        self._render_baseline_filter_note()
 
         self._render_time_budget_warning()
 
@@ -311,6 +318,31 @@ class ConsoleAdapter:
             "   🔄 Fresh run: rerun `"
             + str(cache["refresh_command"])
             + "` if you need uncached results."
+        )
+
+    def _render_baseline_filter_note(self) -> None:
+        """Print a short note when baseline filtering was applied."""
+        baseline = self.report.baseline_filter
+        if not baseline:
+            return
+        raw_filtered_failed = baseline.get("filtered_failed", 0)
+        raw_net_new_failed = baseline.get("net_new_failed", 0)
+        filtered_failed = (
+            int(raw_filtered_failed)
+            if isinstance(raw_filtered_failed, (int, float))
+            else 0
+        )
+        net_new_failed = (
+            int(raw_net_new_failed)
+            if isinstance(raw_net_new_failed, (int, float))
+            else 0
+        )
+        if filtered_failed <= 0:
+            return
+        print(
+            "   🧷 Baseline filter: "
+            f"ignored {filtered_failed} previously-known failed gate(s); "
+            f"{net_new_failed} net-new failure(s) remain"
         )
 
     def _skipped_line(self) -> str:

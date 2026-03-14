@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from slopmop.baseline import baseline_snapshot_path, filter_summary_against_baseline
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
 from slopmop.core.executor import CheckExecutor
@@ -347,11 +348,33 @@ def _run_validation_locked(
         # Adapters below are pure-transform: they format, they don't
         # compute.  Log writing is a side-effect owned by RunReport
         # (not adapters) so every format can reference the same files.
+        baseline_metadata: Optional[Dict[str, object]] = None
+        effective_summary = summary
+        if getattr(args, "ignore_baseline_failures", False):
+            from slopmop.baseline import load_baseline_snapshot
+
+            snapshot = load_baseline_snapshot(project_root)
+            if snapshot is None:
+                print(
+                    "❌ No baseline snapshot found. Run `sm status "
+                    "--generate-baseline-snapshot` first.",
+                    file=sys.stderr,
+                )
+                return 1
+            filtered = filter_summary_against_baseline(
+                summary,
+                snapshot,
+                snapshot_path=baseline_snapshot_path(project_root),
+            )
+            effective_summary = filtered.filtered_summary
+            baseline_metadata = filtered.metadata
+
         report = RunReport.from_summary(
-            summary,
+            effective_summary,
             level=level_name,
             project_root=str(project_root),
         )
+        report.baseline_filter = baseline_metadata
 
         sarif_requested = getattr(args, "sarif_output", False)
         output_file = getattr(args, "output_file", None)
@@ -386,7 +409,7 @@ def _run_validation_locked(
                 # SARIF went to a file — human output continues below.
             else:
                 print(payload)
-                return 0 if summary.all_passed else 1
+                return 0 if effective_summary.all_passed else 1
 
         if json_mode:
             output = JsonAdapter.render(report)
@@ -399,7 +422,7 @@ def _run_validation_locked(
         else:
             ConsoleAdapter(report).render()
 
-        return 0 if summary.all_passed else 1
+        return 0 if effective_summary.all_passed else 1
     finally:
         # Ensure display is stopped on any exit
         if dynamic_display:

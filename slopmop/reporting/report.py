@@ -149,6 +149,7 @@ class RunReport:
     # from per-gate fix_suggestion — this is "how to confirm you fixed
     # it", not "how to fix it".  None when everything passed.
     verify_command: Optional[str] = None
+    baseline_filter: Optional[Dict[str, object]] = None
 
     @classmethod
     def from_summary(

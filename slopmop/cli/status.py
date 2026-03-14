@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from slopmop.baseline import generate_baseline_snapshot
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory, GateLevel
 from slopmop.core.registry import get_registry
@@ -486,6 +487,7 @@ def run_status(
     quiet: bool = False,
     verbose: bool = False,
     json_output: Optional[bool] = None,
+    generate_baseline_snapshot_flag: bool = False,
 ) -> int:
     """Show project dashboard without running any gates.
 
@@ -519,6 +521,18 @@ def run_status(
 
     registry = get_registry()
     config = load_config(root)
+
+    snapshot_info: Optional[Dict[str, str]] = None
+    if generate_baseline_snapshot_flag:
+        try:
+            snapshot_path, source_path = generate_baseline_snapshot(root)
+            snapshot_info = {
+                "snapshot_path": str(snapshot_path),
+                "source_path": str(source_path),
+            }
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"❌ {exc}")
+            return 1
 
     # Register user-defined custom gates from config
     from slopmop.checks.custom import register_custom_gates
@@ -565,6 +579,8 @@ def run_status(
             roles,
             history,
         )
+        if snapshot_info is not None:
+            data["baseline_snapshot"] = snapshot_info
         print(json.dumps(data, separators=(",", ":")))
         return 0
 
@@ -606,6 +622,13 @@ def run_status(
     ci = _gather_ci_data(root)
     _print_ci_summary(ci)
 
+    if snapshot_info is not None:
+        print()
+        print("🧷 BASELINE SNAPSHOT")
+        print("─" * 60)
+        print(f"   Saved: {snapshot_info['snapshot_path']}")
+        print(f"   Source: {snapshot_info['source_path']}")
+
     print()
     print("═" * 60)
     print("Run `sm swab` to validate or `sm scour` for thorough check.")
@@ -621,4 +644,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         quiet=args.quiet,
         verbose=args.verbose,
         json_output=getattr(args, "json_output", None),
+        generate_baseline_snapshot_flag=getattr(
+            args, "generate_baseline_snapshot", False
+        ),
     )
