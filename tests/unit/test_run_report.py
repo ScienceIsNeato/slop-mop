@@ -7,6 +7,7 @@ no side effects beyond the contract.
 """
 
 import json
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
@@ -98,6 +99,33 @@ class TestRunReportCategorisation:
         )
         report = RunReport.from_summary(summary)
         assert [r.name for r in report.failed] == ["f1", "f2", "f3"]
+
+    def test_can_sort_failures_by_remediation_order_for_display(self) -> None:
+        registry = SimpleNamespace(
+            remediation_sort_key_for_name=lambda name: {
+                "overconfidence:high": (0, 10, name),
+                "overconfidence:low": (0, 20, name),
+            }.get(name)
+        )
+
+        summary = _summary(
+            [
+                _result("overconfidence:low", CheckStatus.FAILED),
+                _result("overconfidence:high", CheckStatus.FAILED),
+            ]
+        )
+        report = RunReport.from_summary(
+            summary,
+            level="swab",
+            registry=registry,
+            sort_actionable_by_remediation_order=True,
+        )
+
+        assert [r.name for r in report.failed] == [
+            "overconfidence:high",
+            "overconfidence:low",
+        ]
+        assert report.verify_command == "sm swab -g overconfidence:high --verbose"
 
     def test_verify_command_targets_first_failure(self) -> None:
         summary = _summary(
@@ -224,6 +252,30 @@ class TestJsonAdapter:
         report = RunReport.from_summary(summary, level="swab")
         out = JsonAdapter.render(report)
         assert out["next_steps"] == ["sm swab -g f --verbose"]
+
+    def test_first_to_fix_present_with_verify_command(self) -> None:
+        summary = _summary([_result("f", CheckStatus.FAILED)])
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert out["first_to_fix"] == {
+            "gate": "f",
+            "verify_command": "sm swab -g f --verbose",
+        }
+
+    def test_results_follow_report_actionable_order(self) -> None:
+        summary = _summary(
+            [
+                _result("f2", CheckStatus.FAILED),
+                _result("w1", CheckStatus.WARNED),
+                _result("f1", CheckStatus.FAILED),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        report.failed = [report.failed[1], report.failed[0]]
+        out = JsonAdapter.render(report)
+        results = out["results"]
+        assert isinstance(results, list)
+        assert [row["name"] for row in results] == ["f1", "f2", "w1"]
 
     def test_next_steps_absent_when_all_passed(self) -> None:
         summary = _summary([_result("p", CheckStatus.PASSED)])
@@ -466,6 +518,8 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "SLOP DETECTED" in out
+        assert "Fix First: myopia:code-sprawl" in out
+        assert "start with: sm swab -g myopia:code-sprawl --verbose" in out
         assert "myopia:code-sprawl" in out
         assert "Move BigClass" in out
         assert "verify: sm swab -g myopia:code-sprawl --verbose" in out

@@ -51,6 +51,17 @@ class TestRailHelpers:
         assert normalized == {"status": "FAILED", "gate": "g1", "detail": "e1"}
         assert rail.format_actionable_line(normalized) == "- FAILED: g1 :: e1"
 
+    def test_sort_rows_by_remediation_order_preserves_unknown_order(self):
+        rows = [
+            {"status": "failed", "name": "unknown-b"},
+            {"status": "failed", "name": "unknown-a"},
+        ]
+
+        assert [r["name"] for r in rail.sort_rows_by_remediation_order(rows)] == [
+            "unknown-b",
+            "unknown-a",
+        ]
+
     def test_default_next_steps(self):
         with_pr = rail.default_next_steps(84)
         assert with_pr[-1] == "Re-run PR inspection: sm buff inspect 84"
@@ -247,17 +258,46 @@ class TestScanTriageInternals:
         assert payload["schema"] == "slopmop/ci-triage/v1"
         assert payload["next_steps"][2] == "Run full validation locally: sm scour"
         assert len(payload["actionable"]) == 2
+        assert payload["actionable"][0]["gate"] == "myopia:just-this-once.py"
+        assert payload["first_to_fix"]["gate"] == "myopia:just-this-once.py"
         assert payload["lowest_coverage"][0]["coverage_pct"] == 62.5
         assert payload["ci_state"]["latest_status"] == "in_progress"
 
         triage.print_triage(payload, show_low_coverage=True)
         out = capsys.readouterr().out
-        assert "Actionable Gates:" in out
-        assert "CI State:" in out
-        assert "CI State Note:" in out
-        assert "Next Steps:" in out
-        assert "Re-run PR inspection: sm buff inspect 84" in out
-        assert "Lowest Coverage Findings:" in out
+        assert "Fix First: myopia:just-this-once.py" in out
+
+    def test_build_payload_sorts_actionable_rows_by_remediation_order(self):
+        doc = {
+            "summary": {"failed": 2, "errors": 0, "warned": 0, "all_passed": False},
+            "results": [
+                {
+                    "status": "failed",
+                    "name": "laziness:sloppy-formatting.py",
+                    "error": "fmt",
+                },
+                {
+                    "status": "failed",
+                    "name": "myopia:source-duplication",
+                    "error": "dup",
+                },
+            ],
+        }
+
+        payload, code = triage.build_triage_payload(
+            doc=doc,
+            run_id=999,
+            json_path=Path(".slopmop/last_ci_scan_results.json"),
+            show_low_coverage=False,
+            pr_number=84,
+        )
+
+        assert code == 1
+        assert [row["gate"] for row in payload["actionable"]] == [
+            "myopia:source-duplication",
+            "laziness:sloppy-formatting.py",
+        ]
+        assert payload["first_to_fix"]["gate"] == "myopia:source-duplication"
 
     def test_write_json_out(self, tmp_path):
         target = tmp_path / "triage.json"

@@ -43,6 +43,11 @@ class JsonAdapter:
         # for per-result serialisation.
         output = report.summary.to_dict()
 
+        # Preserve the established top-level schema, but replace actionable
+        # results with the report-derived display order so JSON consumers see
+        # the same fix sequence as the console summary.
+        output["results"] = [result.to_dict() for result in report.actionable]
+
         output["schema"] = report.schema_version
         if report.level:
             output["level"] = report.level
@@ -63,8 +68,14 @@ class JsonAdapter:
         # multi-step guidance later without schema churn.  Present
         # only when there IS something to verify — all-passed runs
         # have no next step beyond "commit".
+        if report.first_to_fix:
+            output["first_to_fix"] = {"gate": report.first_to_fix}
         if report.verify_command:
             output["next_steps"] = [report.verify_command]
+            if isinstance(output.get("first_to_fix"), dict):
+                cast(Dict[str, object], output["first_to_fix"])[
+                    "verify_command"
+                ] = report.verify_command
 
         if report.baseline_filter:
             output["baseline_filter"] = report.baseline_filter
@@ -238,6 +249,8 @@ class ConsoleAdapter:
 
         print("─" * 60)
 
+        self._render_first_to_fix_hint()
+
         self._render_failure_details()
         if r.warned:
             self._render_warnings()
@@ -285,6 +298,16 @@ class ConsoleAdapter:
                 if log_path:
                     print(f"   📄 {log_path}")
                 print(f"   ▸ verify: {rerun}")
+
+    def _render_first_to_fix_hint(self) -> None:
+        """Call out the first blocking gate explicitly when one exists."""
+        first_gate = self.report.first_to_fix
+        if not first_gate:
+            return
+        print(f"🎯 Fix First: {first_gate}")
+        if self.report.verify_command:
+            print(f"   ▸ start with: {self.report.verify_command}")
+        print()
 
     def _render_warnings(self) -> None:
         print()

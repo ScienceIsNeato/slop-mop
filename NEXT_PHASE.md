@@ -1,5 +1,28 @@
 # Next Phase: Foundation, Diagnosis, and the Unified Voice
 
+## Progress Since Draft
+
+This document started as a forward-looking design memo. Parts of it are now
+already shipped in the current tree, so treat it as a mixed document: some
+items below are still roadmap, others are historical design context.
+
+Already landed relative to this draft:
+- The two-tier architecture vocabulary is in the code: `BaseCheck.role` defaults
+  to diagnostic, foundation-vs-diagnostic badges surface in status/output, and
+  tests cover the distinction.
+- The unified output adapter direction is largely implemented: `RunReport` is
+  the shared enriched representation feeding console, JSON, and SARIF output.
+- Remediation-aware output now exists in user-facing flows: remediation ordering,
+  explicit `first_to_fix` guidance, and aligned verify commands show up in
+  `swab`, `scour`, and `buff` output.
+
+Still genuinely open:
+- Work Item 1b: smart init / existing-tool discovery and delegation.
+- Work Item 2: deeper didactic output so gates explain not just what failed,
+  but why it matters and exactly what to do in a fully structured way.
+- Remaining gaps in Work Item 3 are mostly about enriching the structured
+  diagnosis protocol, not building the adapter layer from scratch.
+
 ## Philosophical Context
 
 Slop-mop exists because LLMs were trained to close tickets, not to steward codebases. The tool provides "Tyrion in a box" — automated strategic oversight for AI-generated code. It works. But a recurring criticism from models during design sessions reveals a legitimate architectural gap:
@@ -39,6 +62,8 @@ These checks have no equivalent in the traditional tooling ecosystem. They exist
 ---
 
 ## Work Item 1: Formalize the Two-Tier Architecture
+
+Status: mostly shipped, except Work Item 1b.
 
 ### Current State
 
@@ -112,6 +137,8 @@ Every `BaseCheck` subclass declares a `role: ClassVar[CheckRole]`. The classific
 
 ### Work Item 1b: Smart Init and Tool Discovery
 
+Status: still open.
+
 The `sm init` command currently auto-detects project type and generates a config. It should also:
 
 1. **Discover existing tooling**: Scan for `.eslintrc`, `pyproject.toml [tool.black]`, `mypy.ini`, `setup.cfg [flake8]`, `jest.config.js`, `.prettierrc`, etc.
@@ -148,6 +175,17 @@ This moves slop-mop from "batteries-included heavy install" to "smart, adaptive,
 ---
 
 ## Work Item 2: Didactic, Prescriptive Output
+
+Status: partially shipped.
+
+What is already present:
+- Per-finding `fix_strategy` exists in `Finding`.
+- `RunReport` and adapters already surface a single verify command and explicit
+  `first_to_fix` guidance.
+
+What remains is the stronger version proposed here: a consistent
+Diagnosis → Prescription → Verification protocol across gates, rather than
+today's mix of gate-level suggestions and selectively structured findings.
 
 ### The Problem
 
@@ -239,6 +277,16 @@ This ties directly into Work Item 3:
 ---
 
 ## Work Item 3: Unified Output Adapter Layer
+
+Status: largely shipped.
+
+The core architectural move proposed here already happened: `RunReport` sits
+between execution summary and output adapters, and console/JSON/SARIF now share
+that enriched representation instead of independently re-deriving state.
+
+The remaining value in this section is as design guidance for future enrichment
+of the structured diagnosis protocol, not as a pending refactor of raw output
+branching from scratch.
 
 ### The Problem
 

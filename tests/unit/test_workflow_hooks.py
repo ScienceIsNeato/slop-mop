@@ -48,6 +48,7 @@ class TestCmdSwabHook:
         mock_hook.assert_called_once()
         _, kwargs = mock_hook.call_args
         assert kwargs["passed"] is True
+        assert args.json_file == ".slopmop/last_swab.json"
 
     def test_hook_called_when_swab_fails(self, tmp_path):
         """on_swab_complete is called with passed=False when exit_code!=0."""
@@ -84,6 +85,7 @@ class TestCmdSwabHook:
             cmd_swab(args)
 
         mock_hook.assert_not_called()
+        assert not hasattr(args, "json_file") or args.json_file is None
 
     def test_hook_error_is_suppressed(self, tmp_path):
         """A failing hook never propagates to the caller."""
@@ -143,6 +145,7 @@ class TestCmdScourHook:
         mock_hook.assert_called_once()
         _, kwargs = mock_hook.call_args
         assert kwargs["passed"] is True
+        assert args.json_file == ".slopmop/last_scour.json"
 
     def test_hook_called_when_scour_fails(self, tmp_path):
         """on_scour_complete is called with passed=False when exit_code!=0."""

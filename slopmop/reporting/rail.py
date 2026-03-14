@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from slopmop.checks import ensure_checks_registered
+from slopmop.core.registry import get_registry
+
 ACTIONABLE_STATUSES = {"failed", "error", "warned"}
 HARD_FAILURE_STATUSES = {"failed", "error"}
 
@@ -53,6 +56,24 @@ def normalize_actionable_row(row: Dict[str, Any]) -> Dict[str, str]:
 def format_actionable_line(row: Dict[str, str]) -> str:
     """Format a normalized actionable row as a single guidance line."""
     return f"- {row['status']}: {row['gate']} :: {row['detail']}"
+
+
+def sort_rows_by_remediation_order(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sort gate-like rows by remediation order, preserving unknown-row order."""
+    ensure_checks_registered()
+    registry = get_registry()
+    indexed_rows = list(enumerate(rows))
+    return [
+        row
+        for _index, row in sorted(
+            indexed_rows,
+            key=lambda item: (
+                registry.remediation_sort_key_for_name(str(item[1].get("name", "")))
+                or (999_999, 999_999, f"{item[0]:06d}"),
+                item[0],
+            ),
+        )
+    ]
 
 
 def default_next_steps(pr_number: int | None) -> List[str]:

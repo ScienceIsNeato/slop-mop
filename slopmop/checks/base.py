@@ -481,9 +481,21 @@ class BaseCheck(ABC):
 
     # Likelihood that fixing this gate cascades into other gates.
     # Gates with high downstream likelihood should be fixed first.
+    # This is a coarse default, not the final ordering mechanism.
     remediation_churn: ClassVar[RemediationChurn] = (
         RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
     )
+
+    # Fine-grained remediation ordering.
+    # Lower numbers are fixed first. ``None`` means "derive a default from
+    # remediation_churn". This keeps the broad churn taxonomy for docs while
+    # allowing precise ordering when multiple gates share a churn band.
+    #
+    # This is remediation order, not execution order: checks may still be
+    # dispatched concurrently, but in REMEDIATION phase the executor processes
+    # completed results and applies fail-fast according to registry-derived
+    # remediation priority.
+    remediation_priority: ClassVar[Optional[int]] = None
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None

@@ -94,6 +94,14 @@ class GateRow(NamedTuple):
     description: str
 
 
+class RemediationRow(NamedTuple):
+    order: int
+    full_name: str
+    priority: int
+    source: str
+    churn: str
+
+
 def generate_tables(registry: "CheckRegistry") -> str:
     """Generate the complete markdown for all gate tables.
 
@@ -147,7 +155,61 @@ def generate_tables(registry: "CheckRegistry") -> str:
 
         sections.append("")
 
+    sections.extend(_generate_remediation_order_section(registry))
+
     return "\n".join(sections).rstrip() + "\n"
+
+
+def _generate_remediation_order_section(registry: "CheckRegistry") -> List[str]:
+    """Generate the remediation-order table from registry metadata."""
+    checks = [check_class({}) for _name, check_class in registry._check_classes.items()]
+    ordered_checks = registry.sort_checks_for_remediation(checks)
+    rows: List[RemediationRow] = []
+    for index, check in enumerate(ordered_checks, start=1):
+        rows.append(
+            RemediationRow(
+                order=index,
+                full_name=check.full_name,
+                priority=registry.remediation_priority_for_check(check),
+                source=registry.remediation_priority_source_for_check(check),
+                churn=check.remediation_churn.name.replace("DOWNSTREAM_CHANGES_", "")
+                .lower()
+                .replace("_", "-"),
+            )
+        )
+
+    sections: List[str] = []
+    sections.append("### 🧭 Remediation Order")
+    sections.append("")
+    sections.append(
+        "Execution order is not remediation order. In remediation mode, slop-mop "
+        "validates finished gates using this registry-derived order to minimize "
+        "overall remediation time. In maintenance mode, it evaluates results as "
+        "soon as they come in to minimize dev-cycle time."
+    )
+    sections.append("")
+    sections.append(
+        "Reasoning: fix the dragons before polishing the armor. The order tries "
+        "to clear dangerous or high-churn changes first, then repair deceptive "
+        "tests, then rebuild confidence in correctness signals, and only then "
+        "spend time on low-churn cleanup like formatting and artifacts."
+    )
+    sections.append("")
+    sections.append(
+        "`curated` means the registry intentionally pins that gate's place in the "
+        "sequence. `explicit` means the gate class set its own numeric priority. "
+        "`churn-default` means no exact order was provided, so slop-mop falls back "
+        "to the broad churn band."
+    )
+    sections.append("")
+    sections.append("| # | Gate | Priority | Source | Churn Band |")
+    sections.append("|---|------|----------|--------|------------|")
+    for row in rows:
+        sections.append(
+            f"| {row.order} | `{row.full_name}` | {row.priority} | {row.source} | {row.churn} |"
+        )
+    sections.append("")
+    return sections
 
 
 def splice_tables(readme_text: str, tables: str) -> str:

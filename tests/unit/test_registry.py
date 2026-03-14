@@ -243,6 +243,40 @@ class TestCheckRegistry:
         applicable = registry.get_applicable_checks(str(tmp_path), {})
         assert applicable == []
 
+    def test_curated_remediation_priority_beats_fallbacks(self):
+        """Built-in curated order should be the primary remediation source."""
+        from slopmop.checks import ensure_checks_registered
+        from slopmop.core.registry import (
+            CURATED_REMEDIATION_ORDER,
+            get_registry,
+        )
+
+        ensure_checks_registered()
+        registry = get_registry()
+        check = registry.get_check("myopia:source-duplication", {})
+        expected_priority = (
+            CURATED_REMEDIATION_ORDER.index("myopia:source-duplication") + 1
+        ) * 10
+
+        assert check is not None
+        assert registry.remediation_priority_for_check(check) == expected_priority
+        assert registry.remediation_priority_source_for_check(check) == "curated"
+
+    def test_explicit_remediation_priority_used_when_not_curated(self):
+        """Non-curated checks can still provide explicit priority."""
+        registry = CheckRegistry()
+
+        class ExplicitPriorityCheck(MockCheck):
+            _mock_name = "explicit-priority"
+            remediation_priority = 17
+
+        registry.register(ExplicitPriorityCheck)
+        check = registry.get_check("overconfidence:explicit-priority", {})
+
+        assert check is not None
+        assert registry.remediation_priority_for_check(check) == 17
+        assert registry.remediation_priority_source_for_check(check) == "explicit"
+
 
 class TestRegisterCheckDecorator:
     """Tests for @register_check decorator."""

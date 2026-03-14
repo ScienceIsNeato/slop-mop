@@ -658,6 +658,11 @@ class TestSecurityCheck:
         assert "Security Audit" in check.display_name
         assert "pip-audit" in check.display_name
 
+    def test_not_superseded_by_itself(self):
+        """Dependency-risk is the superseding gate and must still run during scour."""
+        check = SecurityCheck({})
+        assert check.superseded_by is None
+
     def test_run_all_checks_passed(self, tmp_path):
         """Test run() when all checks including pip-audit pass."""
         (tmp_path / "app.py").write_text("print('hello')")

@@ -130,6 +130,24 @@ Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
 
 `sm init` auto-detects Python, JavaScript/TypeScript, Dart/Flutter, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. Dart/Flutter projects get first-class `flutter analyze`, `flutter test`, `dart format`, coverage, bogus-test, and generated-artifact gates. For Go, Rust, and C/C++ projects it still scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) where built-in support is intentionally thinner.
 
+### Baseline Snapshot Flow
+
+When you inherit a repo that is already dirty, slop-mop can track the current
+failure set as a baseline without changing how gates execute.
+
+```bash
+sm status --generate-baseline-snapshot
+sm swab --ignore-baseline-failures
+sm scour --ignore-baseline-failures
+```
+
+What this does:
+- `sm status --generate-baseline-snapshot` saves a local snapshot from the newest persisted `last_swab.json` or `last_scour.json` artifact.
+- `--ignore-baseline-failures` still runs every gate normally, then downgrades failures already present in that snapshot.
+- New failures stay loud. Old failures stop blocking while you dig out of the hole.
+
+This is for controlled remediation, not denial. The goal is to surface net-new slop while you pay down the existing mess deliberately.
+
 ### Installation Options
 
 | Command | What You Get |
@@ -193,6 +211,19 @@ Development with slop-mop follows a single repeated cycle:
 ```
 sm swab → see what fails → fix it → repeat → commit
 ```
+
+Important: execution order is not remediation order.
+
+- Checks may execute concurrently and may finish in any order.
+- In `RepoPhase.REMEDIATION`, slop-mop processes results in remediation order,
+  using registry-derived remediation priority.
+- Gates can declare an explicit fine-grained `remediation_priority`; when they
+  do not, slop-mop derives a default priority band from `remediation_churn`.
+- In that mode, fail-fast means "stop at the first failure in remediation
+  order", not "stop at whichever check happened to finish failing first".
+
+This prevents a fast, low-priority failure from blocking validation of a more
+important gate that should be fixed first.
 
 When a gate fails, the output tells the agent exactly what to do next:
 
@@ -333,6 +364,49 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `myopia:source-duplication` | 📋 Code clone detection (jscpd) |
 | `myopia:string-duplication.py` | 🔤 Duplicate string literal detection |
 | `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets |
+
+### 🧭 Remediation Order
+
+Execution order is not remediation order. In remediation mode, slop-mop validates finished gates using this registry-derived order to minimize overall remediation time. In maintenance mode, it evaluates results as soon as they come in to minimize dev-cycle time.
+
+Reasoning: fix the dragons before polishing the armor. The order tries to clear dangerous or high-churn changes first, then repair deceptive tests, then rebuild confidence in correctness signals, and only then spend time on low-churn cleanup like formatting and artifacts.
+
+`curated` means the registry intentionally pins that gate's place in the sequence. `explicit` means the gate class set its own numeric priority. `churn-default` means no exact order was provided, so slop-mop falls back to the broad churn band.
+
+| # | Gate | Priority | Source | Churn Band |
+|---|------|----------|--------|------------|
+| 1 | `myopia:vulnerability-blindness.py` | 10 | curated | unlikely |
+| 2 | `myopia:dependency-risk.py` | 20 | curated | unlikely |
+| 3 | `myopia:source-duplication` | 30 | curated | very-likely |
+| 4 | `laziness:dead-code.py` | 40 | curated | very-likely |
+| 5 | `myopia:string-duplication.py` | 50 | curated | unlikely |
+| 6 | `deceptiveness:gate-dodging` | 60 | curated | likely |
+| 7 | `deceptiveness:bogus-tests.py` | 70 | curated | likely |
+| 8 | `deceptiveness:bogus-tests.js` | 80 | curated | likely |
+| 9 | `deceptiveness:bogus-tests.dart` | 90 | curated | likely |
+| 10 | `deceptiveness:hand-wavy-tests.js` | 100 | curated | likely |
+| 11 | `overconfidence:missing-annotations.py` | 110 | curated | unlikely |
+| 12 | `overconfidence:missing-annotations.dart` | 120 | curated | unlikely |
+| 13 | `overconfidence:type-blindness.py` | 130 | curated | unlikely |
+| 14 | `overconfidence:type-blindness.js` | 140 | curated | unlikely |
+| 15 | `myopia:code-sprawl` | 150 | curated | very-likely |
+| 16 | `laziness:complexity-creep.py` | 160 | curated | very-likely |
+| 17 | `overconfidence:untested-code.py` | 170 | curated | unlikely |
+| 18 | `overconfidence:untested-code.js` | 180 | curated | unlikely |
+| 19 | `overconfidence:untested-code.dart` | 190 | curated | unlikely |
+| 20 | `overconfidence:coverage-gaps.py` | 200 | curated | unlikely |
+| 21 | `overconfidence:coverage-gaps.js` | 210 | curated | unlikely |
+| 22 | `overconfidence:coverage-gaps.dart` | 220 | curated | unlikely |
+| 23 | `myopia:just-this-once.py` | 230 | curated | unlikely |
+| 24 | `laziness:silenced-gates` | 240 | curated | likely |
+| 25 | `myopia:ignored-feedback` | 250 | curated | unlikely |
+| 26 | `laziness:sloppy-frontend.js` | 260 | curated | unlikely |
+| 27 | `laziness:broken-templates.py` | 270 | curated | unlikely |
+| 28 | `laziness:sloppy-formatting.py` | 280 | curated | very-unlikely |
+| 29 | `laziness:sloppy-formatting.js` | 290 | curated | very-unlikely |
+| 30 | `laziness:sloppy-formatting.dart` | 300 | curated | unlikely |
+| 31 | `laziness:generated-artifacts.dart` | 310 | curated | very-unlikely |
+| 32 | `deceptiveness:debugger-artifacts` | 320 | curated | very-unlikely |
 
 <!-- END GATE TABLES -->
 

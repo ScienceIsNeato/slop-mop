@@ -219,3 +219,18 @@ class TestRunResultExtracted:
         )
         assert r.extracted is None
         assert r.output == "outputerrors"  # .output property still works
+
+
+class TestBuildImageTimeout:
+    def test_build_image_uses_build_timeout_not_run_timeout(self) -> None:
+        dm = DockerManager(timeout=123, build_timeout=789)
+
+        with patch("tests.integration.docker_manager.subprocess.run") as mock_run:
+            mock_run.return_value = SimpleNamespace(
+                returncode=0,
+                stdout="built",
+                stderr="",
+            )
+            dm.build_image(force=True)
+
+        assert mock_run.call_args.kwargs["timeout"] == 789

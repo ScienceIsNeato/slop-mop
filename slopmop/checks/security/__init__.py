@@ -685,6 +685,11 @@ class SecurityCheck(SecurityLocalCheck):
     def gate_description(self) -> str:
         return "🔒 Full security audit (code + pip-audit)"
 
+    @property
+    def superseded_by(self) -> Optional[str]:
+        """Full security audit is the superseding gate, not the superseded one."""
+        return None
+
     def run(self, project_root: str) -> CheckResult:
         """Run all security checks including dependency scanning."""
         start_time = time.time()

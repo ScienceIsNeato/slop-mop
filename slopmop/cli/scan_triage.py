@@ -23,6 +23,7 @@ from slopmop.reporting.rail import (
     filter_hard_failures,
     format_actionable_line,
     normalize_actionable_row,
+    sort_rows_by_remediation_order,
 )
 
 ARTIFACT_NAME = "slopmop-results"
@@ -314,7 +315,7 @@ def build_triage_payload(
         cast(Dict[str, Any], r) for r in results_list if isinstance(r, dict)
     ]
 
-    actionable = filter_actionable_rows(results)
+    actionable = sort_rows_by_remediation_order(filter_actionable_rows(results))
     hard_failures = filter_hard_failures(actionable)
 
     payload: dict[str, Any] = {
@@ -340,6 +341,18 @@ def build_triage_payload(
 
     for row in actionable:
         payload["actionable"].append(normalize_actionable_row(row))
+
+    if hard_failures:
+        first_gate = str(hard_failures[0].get("name", "unknown"))
+        payload["first_to_fix"] = {
+            "gate": first_gate,
+            "detail": str(
+                hard_failures[0].get("error")
+                or hard_failures[0].get("status_detail")
+                or hard_failures[0].get("fix_suggestion")
+                or ""
+            ),
+        }
 
     for row in hard_failures:
         payload["hard_failures"].append(
@@ -412,6 +425,17 @@ def print_triage(payload: dict[str, Any], show_low_coverage: bool) -> None:
     if not actionable:
         print("No actionable gate results found.")
         return
+
+    first_to_fix = payload.get("first_to_fix")
+    if isinstance(first_to_fix, dict):
+        first_to_fix_obj = cast(Dict[str, Any], first_to_fix)
+        gate = str(first_to_fix_obj.get("gate") or "")
+        detail = str(first_to_fix_obj.get("detail") or "")
+        if gate:
+            line = f"\nFix First: {gate}"
+            if detail:
+                line += f" :: {detail}"
+            print(line)
 
     print("\nActionable Gates:")
     for row in actionable:

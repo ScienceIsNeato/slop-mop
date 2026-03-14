@@ -23,6 +23,8 @@ from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.report import RunReport
 from slopmop.reporting.timings import clear_timings, load_timing_averages
+from slopmop.workflow.state_machine import RepoPhase
+from slopmop.workflow.state_store import read_phase
 
 
 def _resolve_swabbing_time(
@@ -228,14 +230,21 @@ def _run_validation_locked(
             if not args.quiet and not json_mode:
                 print("🗑️  Timing history cleared")
 
-    # Create executor
+    # Create executor.
     # Scour never uses fail-fast — it runs every gate to give the full picture.
     # Swab respects the --no-fail-fast flag (default: fail-fast ON).
+    # In REMEDIATION phase, result processing follows remediation order rather
+    # than race-to-completion order. In MAINTENANCE, results are evaluated as
+    # soon as they complete. Dispatch order stays unchanged in both modes.
     registry = get_registry()
     use_fail_fast = False if level_name == "scour" else not args.no_fail_fast
+    process_results_in_remediation_order = (
+        read_phase(project_root) == RepoPhase.REMEDIATION
+    )
     executor = CheckExecutor(
         registry=registry,
         fail_fast=use_fail_fast,
+        process_results_in_remediation_order=process_results_in_remediation_order,
     )
 
     # Set up progress reporting (per-check status lines during the run;
@@ -373,6 +382,8 @@ def _run_validation_locked(
             effective_summary,
             level=level_name,
             project_root=str(project_root),
+            registry=registry,
+            sort_actionable_by_remediation_order=True,
         )
         report.baseline_filter = baseline_metadata
 
@@ -441,6 +452,9 @@ def cmd_swab(args: argparse.Namespace) -> int:
     if explicit:
         return _run_validation(args, explicit, None)
 
+    if getattr(args, "json_file", None) is None:
+        args.json_file = ".slopmop/last_swab.json"
+
     registry = get_registry()
     gate_names = registry.get_gate_names_for_level(GateLevel.SWAB)
     exit_code = _run_validation(args, gate_names, "swab")
@@ -465,6 +479,9 @@ def cmd_scour(args: argparse.Namespace) -> int:
     explicit = _parse_quality_gates(args)
     if explicit:
         return _run_validation(args, explicit, None)
+
+    if getattr(args, "json_file", None) is None:
+        args.json_file = ".slopmop/last_scour.json"
 
     project_root = Path(getattr(args, "project_root", "."))
     registry = get_registry()

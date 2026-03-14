@@ -139,6 +139,32 @@ class TestGenerateTables:
         assert "complexity-creep" in tables
         assert "sloppy-formatting" in tables
 
+    def test_tables_include_generated_remediation_order(self) -> None:
+        """Generated output includes the remediation-order section."""
+        from slopmop.core.registry import get_registry
+        from slopmop.utils.readme_tables import generate_tables
+
+        self._ensure_fresh_registry()
+        registry = get_registry()
+        tables = generate_tables(registry)
+
+        assert "### 🧭 Remediation Order" in tables
+        assert "| # | Gate | Priority | Source | Churn Band |" in tables
+
+    def test_remediation_order_uses_curated_sequence(self) -> None:
+        """Source duplication should appear before formatting in the generated order."""
+        from slopmop.core.registry import get_registry
+        from slopmop.utils.readme_tables import generate_tables
+
+        self._ensure_fresh_registry()
+        registry = get_registry()
+        tables = generate_tables(registry)
+        remediation_section = tables.split("### 🧭 Remediation Order", 1)[1]
+
+        assert remediation_section.index(
+            "`myopia:source-duplication`"
+        ) < remediation_section.index("`laziness:sloppy-formatting.py`")
+
     def test_stale_docs_not_in_generated_tables(self) -> None:
         """stale-docs is a custom gate and should NOT appear in built-in tables."""
         from slopmop.core.registry import get_registry

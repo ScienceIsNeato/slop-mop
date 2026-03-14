@@ -5,12 +5,77 @@ check discovery and configuration-based selection.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
-from slopmop.checks.base import BaseCheck, GateLevel
+from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
 from slopmop.core.result import CheckDefinition
 
 logger = logging.getLogger(__name__)
+
+
+# Built-in remediation order.
+# Lower positions are fixed first. This list is the single source of truth for
+# intentional built-in ordering; anything omitted falls back to explicit
+# per-check priority, then to the churn-band defaults below.
+#
+# Ordering principle:
+# 1. Remove high-risk/security hazards first.
+# 2. Fix structural churn before proving correctness on shifting sand.
+# 3. Repair deceptive tests before trusting test-derived signals.
+# 4. Re-establish correctness proofs (types/tests/coverage).
+# 5. Leave polish and low-churn cleanup for the end.
+CURATED_REMEDIATION_ORDER: List[str] = [
+    # Security hazards first: these can change library APIs.
+    "myopia:vulnerability-blindness.py",
+    "myopia:dependency-risk.py",
+    # Structural reshaping next: fix the big tectonic plates before repainting.
+    "myopia:source-duplication",
+    "laziness:dead-code.py",
+    "myopia:string-duplication.py",
+    # Test deception and gate avoidance come before trusting verification output.
+    "deceptiveness:gate-dodging",
+    "deceptiveness:bogus-tests.py",
+    "deceptiveness:bogus-tests.js",
+    "deceptiveness:bogus-tests.dart",
+    "deceptiveness:hand-wavy-tests.js",
+    # Correctness proof chain: types before tests, tests before coverage.
+    "overconfidence:missing-annotations.py",
+    "overconfidence:missing-annotations.dart",
+    "overconfidence:type-blindness.py",
+    "overconfidence:type-blindness.js",
+    "myopia:code-sprawl",
+    "laziness:complexity-creep.py",
+    "overconfidence:untested-code.py",
+    "overconfidence:untested-code.js",
+    "overconfidence:untested-code.dart",
+    "overconfidence:coverage-gaps.py",
+    "overconfidence:coverage-gaps.js",
+    "overconfidence:coverage-gaps.dart",
+    # Contextual and workflow checks once the code/test surface is credible.
+    "myopia:just-this-once.py",
+    "laziness:silenced-gates",
+    "myopia:ignored-feedback",
+    # Low-churn cleanup and polish last.
+    "laziness:sloppy-frontend.js",
+    "laziness:broken-templates.py",
+    "laziness:sloppy-formatting.py",
+    "laziness:sloppy-formatting.js",
+    "laziness:sloppy-formatting.dart",
+    "laziness:generated-artifacts.dart",
+    "deceptiveness:debugger-artifacts",
+]
+
+_CURATED_REMEDIATION_PRIORITY: Dict[str, int] = {
+    name: (index + 1) * 10 for index, name in enumerate(CURATED_REMEDIATION_ORDER)
+}
+
+
+_DEFAULT_REMEDIATION_PRIORITY_BY_CHURN: Dict[RemediationChurn, int] = {
+    RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY: 100,
+    RemediationChurn.DOWNSTREAM_CHANGES_LIKELY: 200,
+    RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY: 300,
+    RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY: 400,
+}
 
 
 class CheckRegistry:
@@ -185,6 +250,54 @@ class CheckRegistry:
             if check.is_applicable(project_root):
                 applicable.append(check)
         return applicable
+
+    def remediation_priority_for_check(self, check: BaseCheck) -> int:
+        """Return the fine-grained remediation priority for a check.
+
+        Explicit ``check.remediation_priority`` wins. Otherwise we derive a
+        default band from ``check.remediation_churn`` with intentional gaps so
+        new explicit priorities can be inserted cleanly.
+        """
+        curated = _CURATED_REMEDIATION_PRIORITY.get(check.full_name)
+        if curated is not None:
+            return curated
+        explicit = getattr(check, "remediation_priority", None)
+        if explicit is not None:
+            return int(explicit)
+        return _DEFAULT_REMEDIATION_PRIORITY_BY_CHURN[check.remediation_churn]
+
+    def remediation_priority_source_for_check(self, check: BaseCheck) -> str:
+        """Return where a check's remediation priority came from."""
+        if check.full_name in _CURATED_REMEDIATION_PRIORITY:
+            return "curated"
+        if getattr(check, "remediation_priority", None) is not None:
+            return "explicit"
+        return "churn-default"
+
+    def remediation_sort_key(self, check: BaseCheck) -> Tuple[int, int, str]:
+        """Return the canonical remediation ordering key for a check."""
+        return (
+            1 if getattr(check, "terminal", False) else 0,
+            self.remediation_priority_for_check(check),
+            check.full_name,
+        )
+
+    def remediation_sort_key_for_name(
+        self, name: str
+    ) -> Optional[Tuple[int, int, str]]:
+        """Return remediation ordering for a registered gate name.
+
+        Unknown names return ``None`` so callers can preserve original order for
+        non-gate rows instead of inventing a fake priority.
+        """
+        check_class = self._check_classes.get(name)
+        if check_class is None:
+            return None
+        return self.remediation_sort_key(check_class({}))
+
+    def sort_checks_for_remediation(self, checks: List[BaseCheck]) -> List[BaseCheck]:
+        """Sort instantiated checks in canonical remediation order."""
+        return sorted(checks, key=self.remediation_sort_key)
 
 
 # Default registry instance
