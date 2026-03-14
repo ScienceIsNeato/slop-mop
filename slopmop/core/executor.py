@@ -506,29 +506,10 @@ class CheckExecutor:
             if self._on_check_complete:
                 self._on_check_complete(result)
 
-            if self._fail_fast and result.failed:
+            if self._fail_fast and result.failed and not self._stop_event.is_set():
                 logger.debug(f"Fail-fast triggered by {next_name}")
                 self._stop_event.set()
-                self._record_fail_fast_skips_for_buffer(buffered_results)
                 break
-
-    def _record_fail_fast_skips_for_buffer(
-        self,
-        buffered_results: Dict[str, CheckResult],
-    ) -> None:
-        """Convert buffered lower-priority results into fail-fast skips."""
-        for name in self._ordered_buffer_names(list(buffered_results.keys())):
-            buffered_results.pop(name, None)
-            result = CheckResult(
-                name=name,
-                status=CheckStatus.SKIPPED,
-                duration=0,
-                output=_SKIP_FAIL_FAST,
-                skip_reason=SkipReason.FAIL_FAST,
-            )
-            self._results[name] = result
-            if self._on_check_complete:
-                self._on_check_complete(result)
 
     def _execute_with_dependencies(
         self,
@@ -722,7 +703,7 @@ class CheckExecutor:
                 if self._on_check_complete:
                     self._on_check_complete(result)
 
-        if buffered_results and not self._stop_event.is_set():
+        if buffered_results:
             self._drain_completed_buffer(buffered_results, pending, futures)
 
         # Handle submitted-but-cancelled futures (fail-fast cancelled them after submission)

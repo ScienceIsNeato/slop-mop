@@ -27,6 +27,11 @@ from slopmop.workflow.state_machine import RepoPhase
 from slopmop.workflow.state_store import read_phase
 
 
+def _default_json_artifact_path(project_root: Path, artifact_name: str) -> str:
+    """Return the default JSON artifact path anchored to the project root."""
+    return str(project_root / ".slopmop" / artifact_name)
+
+
 def _resolve_swabbing_time(
     args: argparse.Namespace,
     project_root: Path,
@@ -397,7 +402,9 @@ def _run_validation_locked(
         # run.
         if json_file:
             json_output = JsonAdapter.render(report)
-            Path(json_file).write_text(
+            json_path = Path(json_file)
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+            json_path.write_text(
                 json.dumps(json_output, separators=(",", ":")),
                 encoding="utf-8",
             )
@@ -446,13 +453,13 @@ def cmd_swab(args: argparse.Namespace) -> int:
     if explicit:
         return _run_validation(args, explicit, None)
 
-    if getattr(args, "json_file", None) is None:
-        args.json_file = ".slopmop/last_swab.json"
-
     from slopmop.checks.custom import register_custom_gates
     from slopmop.sm import load_config
 
     project_root = Path(getattr(args, "project_root", "."))
+    if getattr(args, "json_file", None) is None:
+        args.json_file = _default_json_artifact_path(project_root, "last_swab.json")
+
     config = load_config(project_root)
     register_custom_gates(config)
     registry = get_registry()
@@ -480,10 +487,10 @@ def cmd_scour(args: argparse.Namespace) -> int:
     if explicit:
         return _run_validation(args, explicit, None)
 
-    if getattr(args, "json_file", None) is None:
-        args.json_file = ".slopmop/last_scour.json"
-
     project_root = Path(getattr(args, "project_root", "."))
+    if getattr(args, "json_file", None) is None:
+        args.json_file = _default_json_artifact_path(project_root, "last_scour.json")
+
     from slopmop.checks.custom import register_custom_gates
     from slopmop.sm import load_config
 

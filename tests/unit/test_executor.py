@@ -261,6 +261,61 @@ class TestCheckExecutor:
         assert queued.run_count == 1
         assert summary.failed == 1
 
+    def test_remediation_mode_fail_fast_preserves_completed_buffered_results(
+        self, tmp_path
+    ):
+        """Fail-fast should not relabel already-completed buffered results as skipped."""
+        registry = CheckRegistry()
+        high = make_mock_check_class(
+            "high-priority",
+            status=CheckStatus.FAILED,
+            duration=0.10,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY,
+        )
+        low = make_mock_check_class(
+            "low-priority",
+            status=CheckStatus.FAILED,
+            duration=0.01,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY,
+        )
+        pending = make_mock_check_class(
+            "pending",
+            status=CheckStatus.PASSED,
+            duration=0.20,
+            remediation_churn=RemediationChurn.DOWNSTREAM_CHANGES_LIKELY,
+        )
+        registry.register(high)
+        registry.register(low)
+        registry.register(pending)
+
+        executor = CheckExecutor(
+            registry=registry,
+            fail_fast=True,
+            max_workers=2,
+            process_results_in_remediation_order=True,
+        )
+        summary = executor.run_checks(
+            str(tmp_path),
+            [
+                "overconfidence:high-priority",
+                "overconfidence:low-priority",
+                "overconfidence:pending",
+            ],
+            timings={
+                "overconfidence:high-priority": 10.0,
+                "overconfidence:low-priority": 1.0,
+                "overconfidence:pending": 5.0,
+            },
+        )
+
+        results = {result.name: result for result in summary.results}
+        assert results["high-priority"].status == CheckStatus.FAILED
+        assert results["low-priority"].status == CheckStatus.FAILED
+        assert results["pending"].status in {
+            CheckStatus.PASSED,
+            CheckStatus.SKIPPED,
+        }
+
     def test_maintenance_mode_processes_results_in_completion_order(self, tmp_path):
         """Maintenance mode should surface results as soon as they complete."""
         registry = CheckRegistry()

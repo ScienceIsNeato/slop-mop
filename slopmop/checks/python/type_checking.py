@@ -304,7 +304,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             config["exclude"] = ["**/__pycache__", "**/node_modules"]
             config["pythonVersion"] = python_version
 
-        if venv_path and venv_name and "extends" not in config:
+        if venv_path and venv_name:
             config["venvPath"] = venv_path
             config["venv"] = venv_name
 
