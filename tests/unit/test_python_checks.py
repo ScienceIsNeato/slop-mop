@@ -764,6 +764,9 @@ class TestPythonStaticAnalysisCheck:
         result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+        assert result.why_it_matters is not None
+        assert result.findings
+        assert result.findings[0].fix_strategy is not None
         assert "1 type error(s)" in result.error
 
     def test_run_type_arg_errors_include_fix_suggestion(self, tmp_path):
@@ -982,6 +985,9 @@ class TestPythonTypeCheckingCheck:
         assert result.status == CheckStatus.FAILED
         assert "1 type-completeness error" in result.error
         assert result.fix_suggestion is not None
+        assert result.why_it_matters is not None
+        assert result.findings
+        assert result.findings[0].fix_strategy is not None
 
     @patch(
         "slopmop.checks.python.type_checking._find_pyright",

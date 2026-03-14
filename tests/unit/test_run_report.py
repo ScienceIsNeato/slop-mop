@@ -38,6 +38,7 @@ def _result(
     error: str = "",
     output: str = "",
     fix_suggestion: str = "",
+    why_it_matters: str = "",
     skip_reason: Optional[SkipReason] = None,
     findings: Optional[list[Finding]] = None,
 ) -> CheckResult:
@@ -49,6 +50,7 @@ def _result(
         output=output,
         fix_suggestion=fix_suggestion or None,
         role=role,
+        why_it_matters=why_it_matters or None,
         skip_reason=skip_reason,
         findings=findings or [],
     )
@@ -322,6 +324,22 @@ class TestJsonAdapter:
         out = JsonAdapter.render(report)
         assert out["results"][0]["role"] == "foundation"
 
+    def test_why_it_matters_appears_in_results(self) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "f",
+                    CheckStatus.FAILED,
+                    why_it_matters="Static typing catches interface bugs early.",
+                )
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        out = JsonAdapter.render(report)
+        assert out["results"][0]["why_it_matters"] == (
+            "Static typing catches interface bugs early."
+        )
+
     def test_runtime_warning_present_for_time_budget_skips(self) -> None:
         summary = _summary(
             [
@@ -548,6 +566,36 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "→ fix: Do the thing" in out
+
+    def test_structured_guidance_renders_when_present(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "overconfidence:type-blindness.py",
+                    CheckStatus.FAILED,
+                    why_it_matters="Unknown types force readers to guess about data shape.",
+                    fix_suggestion="Fallback gate-level guidance",
+                    findings=[
+                        Finding(
+                            message='Type of "x" is "Unknown"',
+                            file="src/app.py",
+                            line=11,
+                            fix_strategy="Annotate x with its concrete type.",
+                        )
+                    ],
+                )
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "WHAT'S BROKEN:" in out
+        assert "WHY IT MATTERS:" in out
+        assert "EXACTLY WHAT TO DO:" in out
+        assert (
+            "VERIFY THE FIX: sm swab -g overconfidence:type-blindness.py --verbose"
+            in out
+        )
 
     def test_success_path_warns_on_time_budget_skips(self, capsys) -> None:
         summary = _summary(

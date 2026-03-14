@@ -211,6 +211,10 @@ What is already present:
 - Per-finding `fix_strategy` exists in `Finding`.
 - `RunReport` and adapters already surface a single verify command and explicit
   `first_to_fix` guidance.
+- The first structured-output slice is now live for Python type gates:
+  `CheckResult` can carry gate-level `why_it_matters`, console output renders a
+  compact Diagnosis -> Prescription -> Verification block when that structure is
+  present, and the mypy/pyright gates now emit per-finding remediation text.
 
 What remains is the stronger version proposed here: a consistent
 Diagnosis → Prescription → Verification protocol across gates, rather than

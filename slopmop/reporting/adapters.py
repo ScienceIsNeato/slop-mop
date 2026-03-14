@@ -15,11 +15,45 @@ If you find yourself writing ``[r for r in summary.results if ...]``
 inside an adapter, that's RunReport's job — add a property there.
 """
 
+import textwrap
 from typing import Dict, List, cast
 
 from slopmop.constants import ROLE_BADGES, format_duration_suffix
-from slopmop.core.result import CheckResult
+from slopmop.core.result import CheckResult, Finding
 from slopmop.reporting.report import RunReport
+
+
+def _finding_location(finding: Finding) -> str:
+    if not finding.file:
+        return "(location unknown)"
+    if finding.line is None:
+        return finding.file
+    return f"{finding.file}:{finding.line}"
+
+
+def _structured_lines(result: CheckResult, verify_command: str) -> List[str]:
+    findings = result.findings[:5]
+    lines: List[str] = ["   WHAT'S BROKEN:"]
+    for finding in findings:
+        lines.append(f"     {_finding_location(finding)} — {finding.message}")
+    if len(result.findings) > len(findings):
+        lines.append(f"     ... and {len(result.findings) - len(findings)} more")
+
+    if result.why_it_matters:
+        lines.append("   WHY IT MATTERS:")
+        for wrapped in textwrap.wrap(result.why_it_matters, width=66):
+            lines.append(f"     {wrapped}")
+
+    instructions = [f.fix_strategy for f in findings if f.fix_strategy]
+    if not instructions and result.fix_suggestion:
+        instructions = [result.fix_suggestion]
+    if instructions:
+        lines.append("   EXACTLY WHAT TO DO:")
+        for index, instruction in enumerate(instructions[:5], start=1):
+            lines.append(f"     {index}. {instruction}")
+
+    lines.append(f"   VERIFY THE FIX: {verify_command}")
+    return lines
 
 
 class JsonAdapter:
@@ -274,7 +308,13 @@ class ConsoleAdapter:
                     header += f" — {detail}"
                 print(header)
 
-                if res.output:
+                verb = r.level or "swab"
+                rerun = f"sm {verb} -g {res.name} --verbose"
+
+                if res.why_it_matters and res.findings:
+                    for line in _structured_lines(res, rerun):
+                        print(line)
+                elif res.output:
                     all_lines = res.output.strip().split("\n")
                     lines = [
                         ln for ln in all_lines if "✅" not in ln and ln.strip()
@@ -286,18 +326,17 @@ class ConsoleAdapter:
                             f"   ... ({len(lines) - max_preview}" " more lines in log)"
                         )
 
-                if res.fix_suggestion:
+                if res.fix_suggestion and not (res.why_it_matters and res.findings):
                     print(f"   💡 {res.fix_suggestion}")
 
                 # Verify hint — the command to re-check THIS gate.
                 # Different from report.verify_command, which is the
                 # overall "first thing to fix" hint; this is per-gate.
-                verb = r.level or "swab"
-                rerun = f"sm {verb} -g {res.name} --verbose"
                 log_path = r.log_files.get(res.name)
                 if log_path:
                     print(f"   📄 {log_path}")
-                print(f"   ▸ verify: {rerun}")
+                if not (res.why_it_matters and res.findings):
+                    print(f"   ▸ verify: {rerun}")
 
     def _render_first_to_fix_hint(self) -> None:
         """Call out the first blocking gate explicitly when one exists."""

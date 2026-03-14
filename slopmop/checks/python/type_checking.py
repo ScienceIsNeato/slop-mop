@@ -55,6 +55,38 @@ MAX_ERRORS_TO_SHOW = 5
 MAX_FILES_TO_SHOW = 10
 
 
+def _fix_strategy_for_pyright(rule: str, message: str) -> Optional[str]:
+    """Return a prescriptive remediation for common pyright rules."""
+    if rule == "reportUnknownVariableType":
+        return (
+            "Annotate this variable with its concrete type so later reads stop "
+            "propagating Unknown."
+        )
+    if rule == "reportUnknownMemberType":
+        return (
+            "Tighten the object's annotation at its source so pyright can resolve "
+            "the member type instead of treating it as Unknown."
+        )
+    if rule == "reportUnknownArgumentType":
+        return (
+            "Annotate or narrow the value passed into this call so the callee sees "
+            "a concrete argument type."
+        )
+    if rule == "reportUnknownParameterType":
+        return (
+            "Add a concrete parameter annotation to this function so callers and "
+            "implementations share the same type contract."
+        )
+    if rule == "reportUnknownLambdaType":
+        return (
+            "Add an explicit type context for this lambda, usually by annotating "
+            "the variable or callback parameter that receives it."
+        )
+    if message:
+        return "Add or tighten the type annotation at this location so pyright can resolve the reported Unknown type."
+    return None
+
+
 def _find_pyright(project_root: str = "") -> Optional[str]:
     """Find pyright executable, checking project venv first."""
     if project_root:
@@ -240,6 +272,14 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
 
+    @property
+    def why_it_matters(self) -> Optional[str]:
+        return (
+            "Unknown types force humans and agents to guess about data shape. "
+            "Eliminating them makes interfaces self-describing and lets static "
+            "analysis catch mistakes before they become runtime bugs."
+        )
+
     def init_config(self, project_root: str) -> Dict[str, Any]:
         """Discover an existing pyright config owned by the project."""
         config_path = Path(project_root) / "pyrightconfig.json"
@@ -397,7 +437,8 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         cwd_prefix = root.rstrip("/") + "/"
         findings: List[Finding] = []
         for diag in diagnostics:
-            if diag.get("severity") != "error":
+            severity = diag.get("severity")
+            if severity not in ("error", 1):
                 continue
             filepath = diag.get("file", "")
             if filepath.startswith(cwd_prefix):
@@ -414,6 +455,9 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                     line=line + 1 if isinstance(line, int) else None,
                     column=col + 1 if isinstance(col, int) else None,
                     rule_id=diag.get("rule"),
+                    fix_strategy=_fix_strategy_for_pyright(
+                        str(diag.get("rule") or ""), msg
+                    ),
                 )
             )
         return findings

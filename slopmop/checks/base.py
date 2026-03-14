@@ -701,6 +701,11 @@ class BaseCheck(ABC):
         """
         return False
 
+    @property
+    def why_it_matters(self) -> Optional[str]:
+        """Gate-level context explaining why this failure category matters."""
+        return None
+
     def _create_result(
         self,
         status: CheckStatus,
@@ -762,6 +767,7 @@ class BaseCheck(ABC):
             category=self.category.key if self.category else None,
             status_detail=status_detail,
             role=self.role.value,
+            why_it_matters=self.why_it_matters,
             findings=findings or [],
         )
 

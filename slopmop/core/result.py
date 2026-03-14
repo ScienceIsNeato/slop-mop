@@ -264,6 +264,7 @@ class CheckResult:
     skip_reason: Optional["SkipReason"] = None
     status_detail: Optional[str] = None
     role: Optional[str] = None
+    why_it_matters: Optional[str] = None
     findings: List[Finding] = field(default_factory=lambda: cast(List[Finding], []))
     cached: bool = False
     cache_timestamp: Optional[str] = (
@@ -296,6 +297,8 @@ class CheckResult:
             d["status_detail"] = self.status_detail
         if self.role:
             d["role"] = self.role
+        if self.why_it_matters:
+            d["why_it_matters"] = self.why_it_matters
         if self.findings:
             d["findings"] = [f.to_dict() for f in self.findings]
         if self.cached:
@@ -396,6 +399,7 @@ class CheckResult:
             skip_reason=skip_reason,
             status_detail=d.get("status_detail"),  # type: ignore[arg-type]
             role=d.get("role"),  # type: ignore[arg-type]
+            why_it_matters=d.get("why_it_matters"),  # type: ignore[arg-type]
             findings=findings,
             cached=bool(d.get("cached", False)),
             cache_timestamp=d.get("cache_timestamp"),  # type: ignore[arg-type]
