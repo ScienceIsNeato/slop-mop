@@ -537,6 +537,13 @@ class TestJavaScriptTypesCheck:
         # type_check_command should NOT be in schema (it was removed)
         assert "type_check_command" not in field_names
 
+    def test_init_config_prefers_tsconfig_ci(self, tmp_path):
+        """Gate-owned init hook should surface tsconfig.ci.json when present."""
+        (tmp_path / "tsconfig.ci.json").write_text('{"compilerOptions": {}}')
+        check = JavaScriptTypesCheck({})
+
+        assert check.init_config(str(tmp_path)) == {"tsconfig": "tsconfig.ci.json"}
+
     def test_is_applicable_with_tsconfig(self, tmp_path):
         """Test is_applicable returns True for TS projects with tsconfig.json."""
         (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')

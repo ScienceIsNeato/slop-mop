@@ -402,6 +402,14 @@ def _is_unset_config_value(value: Any) -> bool:
     return value is None or value == "" or value == []
 
 
+def _field_default(check: Any, key: str) -> Any:
+    """Return the declared default for a gate config field, if any."""
+    for field in check.get_full_config_schema():
+        if field.name == key:
+            return field.default
+    return None
+
+
 def _apply_gate_init_config(base_config: Dict[str, Any], project_root: Path) -> None:
     """Let each gate contribute its own init-time config discovery.
 
@@ -436,7 +444,13 @@ def _apply_gate_init_config(base_config: Dict[str, Any], project_root: Path) -> 
 
         discovered = check.init_config(str(project_root))
         for key, value in discovered.items():
-            if key not in gate_cfg or _is_unset_config_value(gate_cfg.get(key)):
+            current_value = gate_cfg.get(key)
+            default_value = _field_default(check, key)
+            if (
+                key not in gate_cfg
+                or _is_unset_config_value(current_value)
+                or current_value == default_value
+            ):
                 gate_cfg[key] = value
 
 

@@ -280,6 +280,26 @@ class TestCmdInitNonInteractiveDetection:
         gate = config["myopia"]["gates"]["vulnerability-blindness.py"]
         assert gate["config_file_path"] == ".secrets.baseline"
 
+    def test_cmd_init_applies_type_gate_init_config(self, tmp_path):
+        """sm init should persist gate-owned typing config discovery too."""
+        import json
+        from unittest.mock import patch
+
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "index.ts").write_text("export const x: number = 1;\n")
+        (tmp_path / "tsconfig.ci.json").write_text('{"compilerOptions": {}}')
+        args = self._make_args(tmp_path, non_interactive=True)
+
+        with patch("slopmop.cli.status.run_status", return_value=0):
+            from slopmop.cli.init import cmd_init
+
+            result = cmd_init(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        gate = config["overconfidence"]["gates"]["type-blindness.js"]
+        assert gate["tsconfig"] == "tsconfig.ci.json"
+
 
 class TestPrintNextSteps:
     """Tests for _print_next_steps output."""

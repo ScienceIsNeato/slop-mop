@@ -107,6 +107,15 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
             ),
         ]
 
+    def init_config(self, project_root: str) -> dict[str, str]:
+        """Discover the repo's preferred TypeScript config for this gate."""
+        import os
+
+        tsconfig_ci_path = os.path.join(project_root, "tsconfig.ci.json")
+        if os.path.exists(tsconfig_ci_path):
+            return {"tsconfig": "tsconfig.ci.json"}
+        return {}
+
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping — delegate to JavaScriptCheckMixin."""
         return JavaScriptCheckMixin.skip_reason(self, project_root)

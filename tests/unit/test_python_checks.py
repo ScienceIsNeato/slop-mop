@@ -859,6 +859,17 @@ class TestPythonTypeCheckingCheck:
         assert "Type" in check.display_name
         assert "pyright" in check.display_name
 
+    def test_init_config_discovers_existing_pyrightconfig(self, tmp_path):
+        """Gate-owned init hook should surface project pyright config."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "pyrightconfig.json").write_text("{}")
+
+        check = PythonTypeCheckingCheck({})
+        assert check.init_config(str(tmp_path)) == {
+            "pyright_config_file": "pyrightconfig.json"
+        }
+
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project."""
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
@@ -1012,6 +1023,19 @@ class TestPythonTypeCheckingCheck:
         assert "pythonVersion" in config
         assert config["typeCheckingMode"] == "standard"
 
+    def test_build_pyright_config_extends_project_config(self, tmp_path):
+        """Generated overlay should extend an existing project pyright config."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        check = PythonTypeCheckingCheck({"pyright_config_file": "pyrightconfig.json"})
+        config = check._build_pyright_config(str(tmp_path))
+
+        assert config["extends"] == "pyrightconfig.json"
+        assert "pythonVersion" not in config
+
     def test_build_pyright_config_strict_mode(self, tmp_path):
         """Test _build_pyright_config includes type-completeness rules in strict mode."""
         from slopmop.checks.python.type_checking import (
@@ -1029,8 +1053,8 @@ class TestPythonTypeCheckingCheck:
         for rule in TYPE_COMPLETENESS_RULES:
             assert rule in config
 
-    def test_preserves_existing_pyrightconfig(self, tmp_path):
-        """Test run backs up and restores existing pyrightconfig.json."""
+    def test_run_uses_generated_overlay_without_mutating_pyrightconfig(self, tmp_path):
+        """Run should extend existing pyright config without overwriting it."""
         import json
 
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
@@ -1055,13 +1079,22 @@ class TestPythonTypeCheckingCheck:
             returncode=0, stdout=success_output, stderr="", duration=1.0
         )
 
-        check = PythonTypeCheckingCheck({}, runner=mock_runner)
+        check = PythonTypeCheckingCheck(
+            {"pyright_config_file": "pyrightconfig.json"}, runner=mock_runner
+        )
         check.run(str(tmp_path))
 
-        # Original config should be restored
+        command = mock_runner.run.call_args.args[0]
+        assert "--project" in command
+        assert any(".pyrightconfig.generated.json" in str(part) for part in command)
+
+        # Original config should remain untouched
         assert config_path.exists()
         restored = json.loads(config_path.read_text())
         assert restored == existing_config
+
+        generated = tmp_path / ".pyrightconfig.generated.json"
+        assert not generated.exists()
 
 
 # ─── coverage.py helper functions ────────────────────────────────────────
