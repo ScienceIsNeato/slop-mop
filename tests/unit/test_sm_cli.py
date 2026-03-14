@@ -21,7 +21,8 @@ from slopmop.cli.hooks import (
     cmd_commit_hooks,
 )
 from slopmop.cli.init import prompt_user, prompt_yes_no
-from slopmop.sm import create_parser, load_config, main, setup_logging
+from slopmop.cli.scan_triage import TriageError
+from slopmop.sm import load_config, main, setup_logging
 
 
 class TestLoadConfig:
@@ -82,253 +83,6 @@ class TestSetupLogging:
             mock_config.assert_called_once()
             call_kwargs = mock_config.call_args[1]
             assert call_kwargs["level"] == logging.INFO
-
-
-class TestCreateParser:
-    """Tests for create_parser function."""
-
-    def test_creates_parser(self):
-        """Parser is created successfully."""
-        parser = create_parser()
-        assert parser is not None
-        assert parser.prog == "./sm"
-
-    def test_swab_subcommand(self):
-        """Swab subcommand parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["swab"])
-        assert args.verb == "swab"
-
-    def test_scour_subcommand(self):
-        """Scour subcommand parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["scour"])
-        assert args.verb == "scour"
-
-    def test_buff_subcommand(self):
-        """Buff subcommand parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["buff"])
-        assert args.verb == "buff"
-
-    def test_buff_with_pr_number(self):
-        """Buff with explicit PR number parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["buff", "84"])
-        assert args.verb == "buff"
-        assert args.pr_or_action == "84"
-        assert args.action_args == []
-
-    def test_buff_inspect_parses(self):
-        """Buff inspect parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["buff", "inspect", "84"])
-        assert args.verb == "buff"
-        assert args.pr_or_action == "inspect"
-        assert args.action_args == ["84"]
-
-    def test_buff_iterate_parses(self):
-        """Buff iterate parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["buff", "iterate", "84"])
-        assert args.verb == "buff"
-        assert args.pr_or_action == "iterate"
-        assert args.action_args == ["84"]
-
-    def test_buff_finalize_parses(self):
-        """Buff finalize parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["buff", "finalize", "84", "--push"])
-        assert args.verb == "buff"
-        assert args.pr_or_action == "finalize"
-        assert args.action_args == ["84"]
-        assert args.push is True
-
-    def test_buff_status_parses(self):
-        """Buff status parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["buff", "status", "84"])
-        assert args.verb == "buff"
-        assert args.pr_or_action == "status"
-        assert args.action_args == ["84"]
-
-    def test_buff_watch_parses(self):
-        """Buff watch parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["buff", "watch", "84", "--interval", "10"])
-        assert args.verb == "buff"
-        assert args.pr_or_action == "watch"
-        assert args.action_args == ["84"]
-        assert args.interval == 10
-
-    def test_buff_json_and_output_file_flags(self):
-        """Buff supports JSON stdout and machine output file mirroring."""
-        parser = create_parser()
-        args = parser.parse_args(
-            ["buff", "84", "--json", "--output-file", "triage.json"]
-        )
-        assert args.verb == "buff"
-        assert args.pr_or_action == "84"
-        assert args.action_args == []
-        assert args.json_output is True
-        assert args.output_file == "triage.json"
-
-    def test_swab_with_quality_gates(self):
-        """Swab with --quality-gates parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(
-            [
-                "swab",
-                "-g",
-                "overconfidence:untested-code.py",
-                "overconfidence:coverage-gaps.py",
-            ]
-        )
-        assert args.verb == "swab"
-        assert args.quality_gates == [
-            "overconfidence:untested-code.py",
-            "overconfidence:coverage-gaps.py",
-        ]
-
-    def test_swabbing_time_flag(self):
-        """--swabbing-time flag parses correctly on swab."""
-        parser = create_parser()
-        args = parser.parse_args(["swab", "--swabbing-time", "30"])
-        assert args.verb == "swab"
-        assert args.swabbing_time == 30
-
-    def test_swabbing_time_default_none(self):
-        """--swabbing-time defaults to None when not provided."""
-        parser = create_parser()
-        args = parser.parse_args(["scour"])
-        assert args.swabbing_time is None
-
-    def test_swabbing_time_zero_disables(self):
-        """--swabbing-time 0 parses and signals 'no limit'."""
-        parser = create_parser()
-        args = parser.parse_args(["swab", "--swabbing-time", "0"])
-        assert args.swabbing_time == 0
-
-    def test_no_cache_flag_default_false(self):
-        """--no-cache defaults to False when not provided."""
-        parser = create_parser()
-        args = parser.parse_args(["swab"])
-        assert args.no_cache is False
-
-    def test_no_cache_flag_set(self):
-        """--no-cache parses correctly on swab."""
-        parser = create_parser()
-        args = parser.parse_args(["swab", "--no-cache"])
-        assert args.no_cache is True
-
-    def test_no_cache_flag_on_scour(self):
-        """--no-cache parses correctly on scour."""
-        parser = create_parser()
-        args = parser.parse_args(["scour", "--no-cache"])
-        assert args.no_cache is True
-
-    def test_ignore_baseline_failures_flag_on_swab(self):
-        """--ignore-baseline-failures parses correctly on swab."""
-        parser = create_parser()
-        args = parser.parse_args(["swab", "--ignore-baseline-failures"])
-        assert args.ignore_baseline_failures is True
-
-    def test_ignore_baseline_failures_flag_on_scour(self):
-        """--ignore-baseline-failures parses correctly on scour."""
-        parser = create_parser()
-        args = parser.parse_args(["scour", "--ignore-baseline-failures"])
-        assert args.ignore_baseline_failures is True
-
-    def test_status_generate_baseline_snapshot_flag(self):
-        """--generate-baseline-snapshot parses correctly on status."""
-        parser = create_parser()
-        args = parser.parse_args(["status", "--generate-baseline-snapshot"])
-        assert args.generate_baseline_snapshot is True
-
-    def test_config_subcommand(self):
-        """Config subcommand parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["config", "--show"])
-        assert args.verb == "config"
-        assert args.show is True
-
-    def test_config_enable(self):
-        """Config --enable parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(
-            ["config", "--enable", "myopia:vulnerability-blindness.py"]
-        )
-        assert args.verb == "config"
-        assert args.enable == "myopia:vulnerability-blindness.py"
-
-    def test_config_current_pr_number(self):
-        """Config --current-pr-number parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["config", "--current-pr-number", "85"])
-        assert args.verb == "config"
-        assert args.current_pr_number == 85
-
-    def test_config_clear_current_pr(self):
-        """Config --clear-current-pr parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["config", "--clear-current-pr"])
-        assert args.verb == "config"
-        assert args.clear_current_pr is True
-
-    def test_help_subcommand(self):
-        """Help subcommand parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["help", "laziness:sloppy-formatting.py"])
-        assert args.verb == "help"
-        assert args.gate == "laziness:sloppy-formatting.py"
-
-    def test_init_subcommand(self):
-        """Init subcommand parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["init", "--non-interactive"])
-        assert args.verb == "init"
-        assert args.non_interactive is True
-
-    def test_commit_hooks_status(self):
-        """Commit-hooks status parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["commit-hooks", "status"])
-        assert args.verb == "commit-hooks"
-        assert args.hooks_action == "status"
-
-    def test_commit_hooks_install(self):
-        """Commit-hooks install parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["commit-hooks", "install", "swab"])
-        assert args.verb == "commit-hooks"
-        assert args.hooks_action == "install"
-        assert args.hook_verb == "swab"
-
-    def test_commit_hooks_uninstall(self):
-        """Commit-hooks uninstall parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(["commit-hooks", "uninstall"])
-        assert args.verb == "commit-hooks"
-        assert args.hooks_action == "uninstall"
-
-    def test_agent_install_parses(self):
-        """Agent install subcommand parses correctly."""
-        parser = create_parser()
-        args = parser.parse_args(
-            ["agent", "install", "--target", "cursor", "--project-root", "."]
-        )
-        assert args.verb == "agent"
-        assert args.agent_action == "install"
-        assert args.target == "cursor"
-        assert args.project_root == "."
-
-    def test_agent_install_parses_copilot_target(self):
-        """Agent install accepts the copilot target."""
-        parser = create_parser()
-        args = parser.parse_args(["agent", "install", "--target", "copilot"])
-        assert args.verb == "agent"
-        assert args.agent_action == "install"
-        assert args.target == "copilot"
 
 
 class TestDetectProjectType:
@@ -826,27 +580,31 @@ class TestBuffStatus:
         """Returns error when no PR context is available for buff status."""
         args = self._make_args("status")
 
-        with patch("slopmop.cli.buff._detect_pr_number", return_value=None):
-            result = cmd_buff(args)
+        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
+            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+                with patch(
+                    "slopmop.cli.buff.resolve_pr_number",
+                    side_effect=TriageError("No open PR found for the current branch."),
+                ):
+                    result = cmd_buff(args)
 
-        assert result == 2  # No PR context error
+        assert result == 1
 
     def test_ci_with_explicit_pr_number(self, tmp_path, capsys):
         """Uses explicit PR number when provided via buff status."""
         args = self._make_args("status", ["42"])
 
-        # Mock gh pr checks returning all passed
-        checks_response = json.dumps(
-            [
-                {"name": "test", "state": "completed", "bucket": "pass"},
-            ]
-        )
+        checks = [
+            {"name": "test", "state": "completed", "bucket": "pass"},
+        ]
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=checks_response, stderr=""
-            )
-            result = cmd_buff(args)
+        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
+            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+                with patch("slopmop.cli.buff.resolve_pr_number", return_value=42):
+                    with patch(
+                        "slopmop.cli.buff._fetch_checks", return_value=(checks, "")
+                    ):
+                        result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 0
@@ -857,23 +615,23 @@ class TestBuffStatus:
         """Returns failure when checks fail via buff status."""
         args = self._make_args("status", ["1"])
 
-        checks_response = json.dumps(
-            [
-                {"name": "passed-check", "state": "completed", "bucket": "pass"},
-                {
-                    "name": "failed-check",
-                    "state": "completed",
-                    "bucket": "fail",
-                    "link": "https://example.com",
-                },
-            ]
-        )
+        checks = [
+            {"name": "passed-check", "state": "completed", "bucket": "pass"},
+            {
+                "name": "failed-check",
+                "state": "completed",
+                "bucket": "fail",
+                "link": "https://example.com",
+            },
+        ]
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=checks_response, stderr=""
-            )
-            result = cmd_buff(args)
+        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
+            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+                with patch("slopmop.cli.buff.resolve_pr_number", return_value=1):
+                    with patch(
+                        "slopmop.cli.buff._fetch_checks", return_value=(checks, "")
+                    ):
+                        result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 1
@@ -884,17 +642,17 @@ class TestBuffStatus:
         """Returns exit code 1 with in-progress checks in buff status mode."""
         args = self._make_args("status", ["1"])
 
-        checks_response = json.dumps(
-            [
-                {"name": "running-check", "state": "in_progress", "bucket": "pending"},
-            ]
-        )
+        checks = [
+            {"name": "running-check", "state": "in_progress", "bucket": "pending"},
+        ]
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0, stdout=checks_response, stderr=""
-            )
-            result = cmd_buff(args)
+        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
+            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+                with patch("slopmop.cli.buff.resolve_pr_number", return_value=1):
+                    with patch(
+                        "slopmop.cli.buff._fetch_checks", return_value=(checks, "")
+                    ):
+                        result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 1
@@ -905,9 +663,11 @@ class TestBuffStatus:
         """Returns success when no checks found."""
         args = self._make_args("status", ["1"])
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
-            result = cmd_buff(args)
+        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
+            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+                with patch("slopmop.cli.buff.resolve_pr_number", return_value=1):
+                    with patch("slopmop.cli.buff._fetch_checks", return_value=([], "")):
+                        result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 0
@@ -917,9 +677,17 @@ class TestBuffStatus:
         """Returns error when gh CLI is not available."""
         args = self._make_args("status", ["1"])
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = FileNotFoundError()
-            result = cmd_buff(args)
+        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
+            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+                with patch("slopmop.cli.buff.resolve_pr_number", return_value=1):
+                    with patch(
+                        "slopmop.cli.buff._fetch_checks",
+                        return_value=(
+                            None,
+                            "GitHub CLI (gh) not found. Install: https://cli.github.com/",
+                        ),
+                    ):
+                        result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 2

@@ -34,6 +34,8 @@ def _detect_pr_number(project_root: Path) -> Optional[int]:
                 "list",
                 "--head",
                 current_branch,
+                "--state",
+                "open",
                 "--json",
                 "number",
                 "--limit",

@@ -156,14 +156,29 @@ def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
     if explicit_pr_number is not None:
         return validate_open_pr(repo, explicit_pr_number)
 
-    configured_pr = get_current_pr_number(_project_root_from_cwd())
+    branch_error: TriageError | None = None
+    try:
+        return current_pr_number(repo)
+    except TriageError as exc:
+        branch_error = exc
+
+    project_root = _project_root_from_cwd()
+    configured_pr = get_current_pr_number(project_root)
     if configured_pr is not None:
-        return validate_open_pr(repo, configured_pr)
+        try:
+            return validate_open_pr(repo, configured_pr)
+        except TriageError as exc:
+            raise TriageError(
+                f"Selected working PR #{configured_pr} is stale: {exc} "
+                "Open a PR for the current branch, pass an explicit PR number, "
+                "or clear the stale selection with 'sm config --clear-current-pr'."
+            ) from exc
 
     raise TriageError(
-        "No working PR selected. Set one with 'sm config --current-pr-number <n>' "
-        "or pass an explicit PR number."
-    )
+        "No open PR found for the current branch and no working PR is selected. "
+        "Open a PR first, set one with 'sm config --current-pr-number <n>', or "
+        "pass an explicit PR number."
+    ) from branch_error
 
 
 def latest_completed_run_id(repo: str, pr_number: int, workflow: str) -> int:

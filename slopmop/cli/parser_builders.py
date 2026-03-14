@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import argparse
 
-from slopmop.agent_install.registry import cli_choices
+from slopmop.agent_install.registry import (
+    INSTALL_HELP_PREVIEW_ROOT,
+    TARGETS,
+    cli_choices,
+    preview_install_paths,
+)
 from slopmop.constants import PROJECT_ROOT_HELP
 
 
@@ -168,6 +173,13 @@ class AgentParserBuilder:
         install_parser = agent_subparsers.add_parser(
             "install",
             help="Install template files for common agent runtimes",
+            description=(
+                "Install template files for common agent runtimes.\n\n"
+                "Preview install destinations (using the help preview root "
+                f"{INSTALL_HELP_PREVIEW_ROOT}):\n"
+                f"{self._preview_install_summary()}"
+            ),
+            formatter_class=argparse.RawTextHelpFormatter,
         )
         install_parser.add_argument(
             "--target",
@@ -189,3 +201,13 @@ class AgentParserBuilder:
             action="store_true",
             help="Overwrite existing files managed by this command.",
         )
+
+    @staticmethod
+    def _preview_install_summary() -> str:
+        """Render deterministic preview install paths for help output."""
+        lines: list[str] = []
+        for key in sorted(TARGETS):
+            lines.append(f"  {key}:")
+            for path in preview_install_paths(key):
+                lines.append(f"    - {path}")
+        return "\n".join(lines)

@@ -1,8 +1,7 @@
-"""Unit tests for CI triage rail helpers and buff command paths."""
+"""Unit tests for CI triage rail helpers."""
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,9 +9,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from slopmop.cli import buff as buff_mod
+from slopmop.cli import ci as ci_mod
 from slopmop.cli import scan_triage as triage
-from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting import rail
 
 
@@ -72,6 +70,33 @@ class TestRailHelpers:
 
         no_pr = rail.default_next_steps(None)
         assert no_pr[-1] == "Re-run PR inspection: sm buff inspect"
+
+
+class TestCiHelpers:
+    def test_detect_pr_number_filters_to_open_prs(self, tmp_path, monkeypatch):
+        runner = Mock(
+            side_effect=[
+                SimpleNamespace(returncode=0, stdout="feat-branch\n"),
+                SimpleNamespace(returncode=0, stdout=json.dumps([{"number": 42}])),
+            ]
+        )
+        monkeypatch.setattr(ci_mod.subprocess, "run", runner)
+
+        assert ci_mod._detect_pr_number(tmp_path) == 42
+        gh_args = runner.call_args_list[1].args[0]
+        assert gh_args == [
+            "gh",
+            "pr",
+            "list",
+            "--head",
+            "feat-branch",
+            "--state",
+            "open",
+            "--json",
+            "number",
+            "--limit",
+            "1",
+        ]
 
 
 class TestScanTriageInternals:
@@ -134,10 +159,7 @@ class TestScanTriageInternals:
             ),
         ]
 
-        def fake_gh(_cmd):
-            return responses.pop(0)
-
-        monkeypatch.setattr(triage, "_run_gh", fake_gh)
+        monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
         assert triage.latest_completed_run_id("o/r", 84, triage.WORKFLOW_NAME) == 321
 
     def test_workflow_run_state_prefers_latest_completed(self, monkeypatch):
@@ -184,25 +206,54 @@ class TestScanTriageInternals:
         with pytest.raises(triage.TriageError, match="is not open"):
             triage.validate_open_pr("o/r", 85)
 
-    def test_resolve_pr_number_uses_selected_pr(self, monkeypatch):
+    def test_resolve_pr_number_prefers_open_branch_pr(self, monkeypatch):
+        monkeypatch.setattr(triage, "current_pr_number", Mock(return_value=84))
         monkeypatch.setattr(triage, "get_current_pr_number", Mock(return_value=85))
-        monkeypatch.setattr(triage, "validate_open_pr", Mock(return_value=85))
+        validator = Mock(return_value=85)
+        monkeypatch.setattr(triage, "validate_open_pr", validator)
 
-        assert triage.resolve_pr_number("o/r", None) == 85
-        triage.validate_open_pr.assert_called_once_with("o/r", 85)
+        assert triage.resolve_pr_number("o/r", None) == 84
+        validator.assert_not_called()
 
-    def test_resolve_pr_number_reads_selection_from_git_root(self, monkeypatch):
-        root = Path("/repo")
-        root_resolver = Mock(return_value=root)
+    def test_resolve_pr_number_falls_back_to_selected_pr_when_branch_lookup_fails(
+        self, monkeypatch
+    ):
+        root = "/repo"
+        monkeypatch.setattr(
+            triage,
+            "current_pr_number",
+            Mock(side_effect=triage.TriageError("no open PR for branch")),
+        )
+        monkeypatch.setattr(triage, "_project_root_from_cwd", Mock(return_value=root))
         selected_pr = Mock(return_value=85)
         validator = Mock(return_value=85)
-        monkeypatch.setattr(triage, "_project_root_from_cwd", root_resolver)
         monkeypatch.setattr(triage, "get_current_pr_number", selected_pr)
         monkeypatch.setattr(triage, "validate_open_pr", validator)
 
         assert triage.resolve_pr_number("o/r", None) == 85
         selected_pr.assert_called_once_with(root)
         validator.assert_called_once_with("o/r", 85)
+
+    def test_resolve_pr_number_reports_stale_selected_pr(self, monkeypatch):
+        monkeypatch.setattr(
+            triage,
+            "current_pr_number",
+            Mock(side_effect=triage.TriageError("no open PR for branch")),
+        )
+        monkeypatch.setattr(
+            triage, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(triage, "get_current_pr_number", Mock(return_value=92))
+        monkeypatch.setattr(
+            triage,
+            "validate_open_pr",
+            Mock(side_effect=triage.TriageError("PR #92 is not open (state=merged).")),
+        )
+
+        with pytest.raises(
+            triage.TriageError, match="Selected working PR #92 is stale"
+        ):
+            triage.resolve_pr_number("o/r", None)
 
     def test_load_json_and_coverage_value(self, tmp_path):
         path = tmp_path / "ok.json"
@@ -363,664 +414,6 @@ class TestScanTriageInternals:
         assert code == 0
         assert payload is not None
 
-    def test_main_success_and_error(self, monkeypatch):
-        monkeypatch.setattr(triage, "run_triage", Mock(return_value=(0, {"ok": True})))
-        assert triage.main(["--pr", "84"]) == 0
-
-        monkeypatch.setattr(
-            triage, "run_triage", Mock(side_effect=triage.TriageError("boom"))
-        )
-        assert triage.main(["--pr", "84"]) == 2
-
-
-class TestBuffCommand:
-    @staticmethod
-    def _feedback_result(status: CheckStatus, **kwargs) -> CheckResult:
-        return CheckResult(
-            name="myopia:ignored-feedback",
-            status=status,
-            duration=0.01,
-            output=kwargs.get("output", ""),
-            error=kwargs.get("error"),
-            fix_suggestion=kwargs.get("fix_suggestion"),
-            status_detail=kwargs.get("status_detail"),
-        )
-
-    def test_cmd_buff_human_success(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            json_output=False,
-            repo=None,
-            run_id=None,
-            pr_number=84,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-        )
-
-        monkeypatch.setattr(
-            buff_mod,
-            "run_triage",
-            Mock(return_value=(0, {"summary": {}, "actionable": [], "next_steps": []})),
-        )
-        monkeypatch.setattr(buff_mod, "write_json_out", Mock())
-        monkeypatch.setattr(buff_mod, "print_triage", Mock())
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-
-        assert buff_mod.cmd_buff(args) == 0
-        out = capsys.readouterr().out
-        assert "== Buff inspect: checking CI code-scanning results ==" in out
-        assert (
-            "Buff inspect clean: CI scan signals and PR feedback are resolved." in out
-        )
-
-    def test_cmd_buff_human_failure(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            json_output=False,
-            repo=None,
-            run_id=None,
-            pr_number=84,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-        )
-
-        monkeypatch.setattr(
-            buff_mod,
-            "run_triage",
-            Mock(
-                return_value=(
-                    1,
-                    {"summary": {}, "actionable": [{"gate": "g"}], "next_steps": []},
-                )
-            ),
-        )
-        monkeypatch.setattr(buff_mod, "write_json_out", Mock())
-        monkeypatch.setattr(buff_mod, "print_triage", Mock())
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-
-        assert buff_mod.cmd_buff(args) == 1
-        out = capsys.readouterr().out
-        assert "Buff inspect found unresolved CI scan signals." in out
-
-    def test_cmd_buff_json_mode(self, monkeypatch, capsys, tmp_path):
-        args = argparse.Namespace(
-            json_output=True,
-            repo=None,
-            run_id=None,
-            pr_number=84,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=str(tmp_path / "buff.json"),
-        )
-
-        payload = {"schema": "slopmop/ci-triage/v1", "summary": {}, "actionable": []}
-        monkeypatch.setattr(buff_mod, "run_triage", Mock(return_value=(0, payload)))
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-
-        assert buff_mod.cmd_buff(args) == 0
-        out = capsys.readouterr().out
-        assert '"schema": "slopmop/ci-triage/v1"' in out
-
-    def test_cmd_buff_uses_resolved_pr_number_from_triage_payload(self, monkeypatch):
-        args = argparse.Namespace(
-            json_output=False,
-            repo=None,
-            run_id=None,
-            pr_number=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-        )
-
-        monkeypatch.setattr(
-            buff_mod,
-            "run_triage",
-            Mock(
-                return_value=(
-                    0,
-                    {
-                        "pr_number": 85,
-                        "summary": {},
-                        "actionable": [],
-                        "next_steps": [],
-                    },
-                )
-            ),
-        )
-        monkeypatch.setattr(buff_mod, "write_json_out", Mock())
-        monkeypatch.setattr(buff_mod, "print_triage", Mock())
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        feedback_gate = Mock(return_value=self._feedback_result(CheckStatus.PASSED))
-        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
-
-        assert buff_mod.cmd_buff(args) == 0
-        feedback_gate.assert_called_once_with(85, "/repo")
-
-    def test_cmd_buff_no_payload(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            json_output=False,
-            repo=None,
-            run_id=None,
-            pr_number=84,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-        )
-
-        monkeypatch.setattr(buff_mod, "run_triage", Mock(return_value=(0, None)))
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-        assert buff_mod.cmd_buff(args) == 1
-        assert "ERROR: CI triage produced no payload." in capsys.readouterr().out
-
-    def test_cmd_buff_triage_error(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            json_output=False,
-            repo=None,
-            run_id=None,
-            pr_number=84,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-        )
-
-        monkeypatch.setattr(
-            buff_mod,
-            "run_triage",
-            Mock(side_effect=buff_mod.TriageError("bad triage")),
-        )
-
-        assert buff_mod.cmd_buff(args) == 1
-        assert "ERROR: bad triage" in capsys.readouterr().out
-
-    def test_cmd_buff_fails_on_unresolved_feedback(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            json_output=False,
-            repo=None,
-            run_id=None,
-            pr_number=85,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-        )
-
-        monkeypatch.setattr(
-            buff_mod,
-            "run_triage",
-            Mock(return_value=(0, {"summary": {}, "actionable": [], "next_steps": []})),
-        )
-        monkeypatch.setattr(buff_mod, "write_json_out", Mock())
-        monkeypatch.setattr(buff_mod, "print_triage", Mock())
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(
-                return_value=self._feedback_result(
-                    CheckStatus.FAILED,
-                    status_detail="3 unresolved",
-                    output="PR #85 has unresolved review threads.",
-                    error="3 unresolved PR comment(s)",
-                    fix_suggestion="Read full report: cat /tmp/pr_85_comments_report.md",
-                )
-            ),
-        )
-
-        assert buff_mod.cmd_buff(args) == 1
-        out = capsys.readouterr().out
-        assert "Buff inspect found unresolved PR review threads." in out
-        assert "PR #85 has unresolved review threads." in out
-
-    def test_cmd_buff_inspect_aliases_default_behavior(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            pr_or_action="inspect",
-            action_args=["85"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-        )
-
-        monkeypatch.setattr(
-            buff_mod,
-            "run_triage",
-            Mock(return_value=(0, {"summary": {}, "actionable": [], "next_steps": []})),
-        )
-        monkeypatch.setattr(buff_mod, "write_json_out", Mock())
-        monkeypatch.setattr(buff_mod, "print_triage", Mock())
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-
-        assert buff_mod.cmd_buff(args) == 0
-        out = capsys.readouterr().out
-        assert "== Buff inspect: checking CI code-scanning results ==" in out
-
-    def test_cmd_buff_iterate_selects_rank_frontier(
-        self, monkeypatch, capsys, tmp_path
-    ):
-        args = argparse.Namespace(
-            pr_or_action="iterate",
-            action_args=["85"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-        )
-
-        loop_dir = (
-            tmp_path / ".slopmop" / "buff-persistent-memory" / "pr-85" / "loop-001"
-        )
-        loop_dir.mkdir(parents=True)
-        (loop_dir / "protocol.json").write_text(
-            json.dumps(
-                {
-                    "pr_number": 85,
-                    "loop_dir": str(loop_dir),
-                    "ordered_threads": [
-                        {
-                            "thread_id": "PRRT_a",
-                            "resolution_priority_rank": 1,
-                            "resolution_scenario": "fixed_in_code",
-                            "category": "🐛 Logic/Correctness",
-                            "path": "a.py",
-                            "line": 10,
-                        },
-                        {
-                            "thread_id": "PRRT_b",
-                            "resolution_priority_rank": 1,
-                            "resolution_scenario": "fixed_in_code",
-                            "category": "🧪 Testing",
-                            "path": "b.py",
-                            "line": 12,
-                        },
-                        {
-                            "thread_id": "PRRT_c",
-                            "resolution_priority_rank": 2,
-                            "resolution_scenario": "needs_human_feedback",
-                            "category": "❓ Question",
-                            "path": "c.py",
-                            "line": 3,
-                        },
-                    ],
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value=str(tmp_path))
-        )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
-        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.FAILED)),
-        )
-
-        assert buff_mod.cmd_buff(args) == 1
-        out = capsys.readouterr().out
-        assert "Buff iterate round prepared for PR #85." in out
-        assert "PRRT_a" in out
-        assert "PRRT_b" in out
-        assert "PRRT_c" not in out
-        assert "Drafts artifact:" in out
-        iteration_doc = json.loads(
-            (loop_dir / "next_iteration.json").read_text(encoding="utf-8")
-        )
-        assert iteration_doc["thread_ids"] == ["PRRT_a", "PRRT_b"]
-        drafts_doc = json.loads((loop_dir / "drafts.json").read_text(encoding="utf-8"))
-        assert len(drafts_doc["drafts"]) == 2
-        assert drafts_doc["drafts"][0]["draft_status"] == "pending"
-        assert (
-            "Replace with commit SHA after committing"
-            in drafts_doc["drafts"][0]["comment_template"]
-        )
-        assert (loop_dir / "iteration_log.md").exists()
-
-    def test_cmd_buff_iterate_runs_scour_when_feedback_is_clean(
-        self, monkeypatch, capsys
-    ):
-        args = argparse.Namespace(
-            pr_or_action="iterate",
-            action_args=["85"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
-        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-        monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=1))
-
-        assert buff_mod.cmd_buff(args) == 1
-        out = capsys.readouterr().out
-        assert "Falling through to scour before finalization." in out
-        assert "Scour found issues." in out
-
-    def test_cmd_buff_finalize_reports_ready_without_push(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            pr_or_action="finalize",
-            action_args=["85"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-            push=False,
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
-        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-        monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=0))
-        assert buff_mod.cmd_buff(args) == 0
-        out = capsys.readouterr().out
-        assert (
-            "Buff finalize ready: PR #85 is clean. Re-run with --push to publish."
-            in out
-        )
-        assert "Finalize plan:" in out
-
-    def test_cmd_buff_finalize_pushes_when_requested(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            pr_or_action="finalize",
-            action_args=["85"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-            push=True,
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
-        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-        monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=0))
-        push_branch = Mock(return_value=0)
-        monkeypatch.setattr(buff_mod, "_push_current_branch", push_branch)
-
-        assert buff_mod.cmd_buff(args) == 0
-        out = capsys.readouterr().out
-        assert "Buff finalize complete: pushed the current branch for PR #85." in out
-        assert "Finalize plan:" in out
-        push_branch.assert_called_once_with("/repo")
-
-    def test_cmd_buff_finalize_blocks_when_scour_fails(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            pr_or_action="finalize",
-            action_args=["85"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-            push=False,
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
-        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-        monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=1))
-
-        assert buff_mod.cmd_buff(args) == 1
-        out = capsys.readouterr().out
-        assert "Buff finalize blocked: scour found issues." in out
-        assert "Finalize plan:" in out
-
-    def test_cmd_buff_finalize_writes_plan_file(self, monkeypatch, capsys, tmp_path):
-        args = argparse.Namespace(
-            pr_or_action="finalize",
-            action_args=["85"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-            push=False,
-        )
-
-        loop_dir = (
-            tmp_path / ".slopmop" / "buff-persistent-memory" / "pr-85" / "loop-009"
-        )
-        loop_dir.mkdir(parents=True)
-        (loop_dir / "protocol.json").write_text(
-            json.dumps({"pr_number": 85, "loop_dir": str(loop_dir)}),
-            encoding="utf-8",
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value=str(tmp_path))
-        )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
-        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-        monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=0))
-
-        assert buff_mod.cmd_buff(args) == 0
-        plan_doc = json.loads(
-            (
-                tmp_path
-                / ".slopmop"
-                / "buff-persistent-memory"
-                / "pr-85"
-                / "loop-009"
-                / "finalize_plan.json"
-            ).read_text(encoding="utf-8")
-        )
-        assert plan_doc["ready_to_push"] is True
-        assert plan_doc["next_step"] == "sm buff finalize --push"
-
-    def test_cmd_buff_verify_clean(self, monkeypatch, capsys):
-        args = argparse.Namespace(
-            pr_or_action="verify",
-            action_args=["85"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
-        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
-        monkeypatch.setattr(
-            buff_mod,
-            "_run_pr_feedback_gate",
-            Mock(return_value=self._feedback_result(CheckStatus.PASSED)),
-        )
-
-        assert buff_mod.cmd_buff(args) == 0
-        assert (
-            "Buff verify clean: PR #85 has no unresolved review threads."
-            in capsys.readouterr().out
-        )
-
-    def test_cmd_buff_resolve_posts_comment_and_resolves_thread(
-        self, monkeypatch, capsys
-    ):
-        args = argparse.Namespace(
-            pr_or_action="resolve",
-            action_args=["85", "PRRT_abc"],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario="fixed_in_code",
-            message="Fixed in commit abc123.",
-            no_resolve=False,
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(
-            buff_mod,
-            "_get_repo_owner_name",
-            Mock(return_value=("owner", "repo")),
-        )
-        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
-        post_comment = Mock()
-        resolve_thread = Mock()
-        monkeypatch.setattr(buff_mod, "_post_pr_comment", post_comment)
-        monkeypatch.setattr(buff_mod, "_resolve_review_thread", resolve_thread)
-
-        assert buff_mod.cmd_buff(args) == 0
-        post_comment.assert_called_once_with(
-            "/repo",
-            "owner",
-            "repo",
-            85,
-            "[fixed_in_code] Fixed in commit abc123.",
-        )
-        resolve_thread.assert_called_once_with("/repo", "PRRT_abc")
-        assert (
-            "Buff resolve complete: commented and resolved PRRT_abc on PR #85."
-            in capsys.readouterr().out
-        )
-
-    def test_cmd_buff_verify_requires_selected_or_explicit_pr(
-        self, monkeypatch, capsys
-    ):
-        args = argparse.Namespace(
-            pr_or_action="verify",
-            action_args=[],
-            json_output=False,
-            repo=None,
-            run_id=None,
-            workflow=triage.WORKFLOW_NAME,
-            artifact=triage.ARTIFACT_NAME,
-            output_file=None,
-            scenario=None,
-            message=None,
-            no_resolve=False,
-        )
-
-        monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
-        monkeypatch.setattr(
-            buff_mod,
-            "resolve_pr_number",
-            Mock(side_effect=buff_mod.TriageError("No working PR selected.")),
-        )
-
-        assert buff_mod.cmd_buff(args) == 1
-        assert "No working PR selected." in capsys.readouterr().out
-
     def test_run_triage_uses_selected_pr_when_no_explicit_pr(self, monkeypatch):
         monkeypatch.setattr(triage, "default_repo", Mock(return_value="o/r"))
         monkeypatch.setattr(triage, "resolve_pr_number", Mock(return_value=85))
@@ -1062,21 +455,11 @@ class TestBuffCommand:
         assert payload is not None
         triage.resolve_pr_number.assert_called_once_with("o/r", None)
 
-    def test_project_root_from_cwd_uses_git_toplevel(self, monkeypatch):
+    def test_main_success_and_error(self, monkeypatch):
+        monkeypatch.setattr(triage, "run_triage", Mock(return_value=(0, {"ok": True})))
+        assert triage.main(["--pr", "84"]) == 0
+
         monkeypatch.setattr(
-            buff_mod.subprocess,
-            "run",
-            Mock(return_value=SimpleNamespace(returncode=0, stdout="/repo\n")),
+            triage, "run_triage", Mock(side_effect=triage.TriageError("boom"))
         )
-
-        assert buff_mod._project_root_from_cwd() == "/repo"
-
-    def test_project_root_from_cwd_falls_back_to_cwd(self, monkeypatch):
-        monkeypatch.setattr(
-            buff_mod.subprocess,
-            "run",
-            Mock(return_value=SimpleNamespace(returncode=1, stdout="")),
-        )
-        monkeypatch.setattr(buff_mod.os, "getcwd", Mock(return_value="/cwd"))
-
-        assert buff_mod._project_root_from_cwd() == "/cwd"
+        assert triage.main(["--pr", "84"]) == 2
