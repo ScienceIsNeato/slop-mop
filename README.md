@@ -309,9 +309,9 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis | Uncovered JavaScript paths can regress silently because no test proves the behavior. |
 | `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) | Uncovered Python paths can regress silently because no test proves the behavior. |
 | `overconfidence:missing-annotations.dart` | 🧪 Flutter static analysis across discovered packages | Missing Dart type information weakens static guarantees and hides interface mistakes. |
-| `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out | Missing or incorrect annotations hide interface mistakes until runtime. Catching them here keeps type contracts explicit and stops type noise from cascading through the codebase. |
+| `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out | Missing Python annotations weaken static guarantees and hide interface mistakes. |
 | `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) | Unresolved TypeScript types force callers to guess instead of relying on checked contracts. |
-| `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types | Unknown types force humans and agents to guess about data shape. Eliminating them makes interfaces self-describing and lets static analysis catch mistakes before they become runtime bugs. |
+| `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types | Unknown Python types force humans and agents to guess about data shape and contracts. |
 | `overconfidence:untested-code.dart` | 🧪 Flutter test execution across discovered packages | Passing compilation is not proof; Dart behavior is only credible when tests execute it. |
 | `overconfidence:untested-code.js` | 🧪 Jest test execution | Passing compilation is not proof; JavaScript behavior is only credible when tests execute it. |
 | `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests | Passing compilation is not proof; Python behavior is only credible when tests execute it. |
