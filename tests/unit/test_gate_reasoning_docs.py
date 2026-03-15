@@ -104,11 +104,8 @@ class TestGateReasoningDocs:
 
 class TestStaleDocsWiring:
     def test_stale_docs_custom_gate_checks_reasoning_doc(self) -> None:
-        config = json.loads(
-            Path(
-                "/Users/pacey/Documents/SourceCode/slop-mop/.sb_config.json"
-            ).read_text()
-        )
+        repo_root = Path(__file__).resolve().parents[2]
+        config = json.loads((repo_root / ".sb_config.json").read_text())
         stale_docs_gate = next(
             gate for gate in config["custom_gates"] if gate["name"] == "stale-docs"
         )
