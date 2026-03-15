@@ -8,6 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
+from slopmop.checks.metadata import builtin_gate_reasoning
 from slopmop.core.result import CheckDefinition
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,11 @@ class CheckRegistry:
 
         # Re-registration is expected (idempotent), no warning needed
         self._check_classes[name] = check_class
+
+        if getattr(check_class, "REASONING", None) is None:
+            reasoning = builtin_gate_reasoning(name)
+            if reasoning is not None:
+                check_class.REASONING = reasoning
 
         # Create definition if not provided
         if definition is None:

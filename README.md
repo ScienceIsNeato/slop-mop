@@ -305,16 +305,16 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 | Gate | What It Does | Why It Matters |
 |------|--------------|----------------|
-| `overconfidence:coverage-gaps.dart` | 📊 Dart/Flutter coverage analysis from flutter test --coverage | Uncovered Dart paths can regress silently because no test proves the behavior. |
-| `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis | Uncovered JavaScript paths can regress silently because no test proves the behavior. |
-| `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) | Uncovered Python paths can regress silently because no test proves the behavior. |
-| `overconfidence:missing-annotations.dart` | 🧪 Flutter static analysis across discovered packages | Missing Dart type information weakens static guarantees and hides interface mistakes. |
-| `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out | Missing Python annotations weaken static guarantees and hide interface mistakes. |
-| `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) | Unresolved TypeScript types force callers to guess instead of relying on checked contracts. |
-| `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types | Unknown Python types force humans and agents to guess about data shape and contracts. |
-| `overconfidence:untested-code.dart` | 🧪 Flutter test execution across discovered packages | Passing compilation is not proof; Dart behavior is only credible when tests execute it. |
-| `overconfidence:untested-code.js` | 🧪 Jest test execution | Passing compilation is not proof; JavaScript behavior is only credible when tests execute it. |
-| `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests | Passing compilation is not proof; Python behavior is only credible when tests execute it. |
+| `overconfidence:coverage-gaps.dart` | 📊 Dart/Flutter coverage analysis from flutter test --coverage | If changed Dart code can land without tests proving it, coverage turns decorative and the hole just moves around the repo. |
+| `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis | If changed JavaScript code can land without tests proving it, coverage turns decorative and the hole just moves around the repo. |
+| `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) | If changed Python code can land without tests proving it, coverage turns decorative and the hole just moves around the repo. |
+| `overconfidence:missing-annotations.dart` | 🧪 Flutter static analysis across discovered packages | Missing Dart annotations turn interfaces into vibes and push type noise downstream for somebody else to untangle. |
+| `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out | Missing Python annotations turn interfaces into vibes and push type noise downstream for somebody else to untangle. |
+| `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) | If the type checker cannot tell what something is in TypeScript, humans and agents are left guessing too. |
+| `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types | If the type checker cannot tell what something is in Python, humans and agents are left guessing too. |
+| `overconfidence:untested-code.dart` | 🧪 Flutter test execution across discovered packages | Passing compilation is not proof; if Dart code never executes under test, you are still guessing. |
+| `overconfidence:untested-code.js` | 🧪 Jest test execution | Passing compilation is not proof; if JavaScript code never executes under test, you are still guessing. |
+| `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests | Passing compilation is not proof; if Python code never executes under test, you are still guessing. |
 
 ### 🟡 Deceptiveness
 
@@ -324,12 +324,12 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 | Gate | What It Does | Why It Matters |
 |------|--------------|----------------|
-| `deceptiveness:bogus-tests.dart` | 🧪 Detects empty or non-assertive Dart/Flutter tests | Fake or empty tests manufacture confidence without proving Dart behavior. |
-| `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS | Fake or empty tests manufacture confidence without proving JavaScript behavior. |
-| `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing | Fake or empty tests manufacture confidence without proving Python behavior. |
-| `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C | Leftover debug code changes runtime behavior, leaks internals, and pollutes diffs. |
-| `deceptiveness:gate-dodging` | 🚨 Detects loosened quality thresholds | Weakened gates silently erase protection and teach agents to optimize around the rules. |
-| `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement | Assertion-free tests let JavaScript code look verified while real behavior stays unchecked. |
+| `deceptiveness:bogus-tests.dart` | 🧪 Detects empty or non-assertive Dart/Flutter tests | A fake Dart test suite is worse than no test suite because it teaches people to trust green lies. |
+| `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS | A fake JavaScript test suite is worse than no test suite because it teaches people to trust green lies. |
+| `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing | A fake Python test suite is worse than no test suite because it teaches people to trust green lies. |
+| `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C | Leftover breakpoints are the kind of tiny accident that can wreck a real run in embarrassingly expensive ways. |
+| `deceptiveness:gate-dodging` | 🚨 Detects loosened quality thresholds | If the fix is 'turn the smoke alarm down,' the repo learns the wrong lesson and the next regression walks right in. |
+| `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement | If JavaScript tests never assert, the suite is just theater with npm around it. |
 
 ### 🟠 Laziness
 
@@ -339,15 +339,15 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 | Gate | What It Does | Why It Matters |
 |------|--------------|----------------|
-| `laziness:broken-templates.py` | 📄 Jinja2 template validation | Template syntax failures usually surface late, on user paths, instead of during development. |
-| `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) | High complexity hides edge cases and makes every later change riskier to reason about. |
-| `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) | Dead code creates false paths, confuses readers, and keeps obsolete behavior alive in the tree. |
-| `laziness:generated-artifacts.dart` | 🧱 Detects committed Flutter build/tool artifacts | Generated-file drift creates noisy churn and invites edits that will be overwritten later. |
-| `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists | Disabled gates normalize lower standards and let regressions slip through quietly. |
-| `laziness:sloppy-formatting.dart` | 🎨 Dart formatting via dart format --set-exit-if-changed | Inconsistent formatting hides semantic changes inside noisy diffs and slows review. |
-| `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) | Inconsistent formatting hides semantic changes inside noisy diffs and slows review. |
-| `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) | Inconsistent formatting hides semantic changes inside noisy diffs and slows review. |
-| `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check | Frontend lint violations often become user-visible state, accessibility, or rendering defects. |
+| `laziness:broken-templates.py` | 📄 Jinja2 template validation | Template bugs like to wait until a user path hits them, which is a lousy time to discover syntax errors. |
+| `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) | Big branching functions are where edge cases go to hide and future fixes go to die. |
+| `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) | Dead code makes the map lie. People read paths that do not matter and miss the ones that do. |
+| `laziness:generated-artifacts.dart` | 🧱 Detects committed Flutter build/tool artifacts | Checking in generated junk is how you turn diffs into static and invite edits that get wiped later. |
+| `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists | A disabled gate is usually debt with a welcome mat on it. |
+| `laziness:sloppy-formatting.dart` | 🎨 Dart formatting via dart format --set-exit-if-changed | Formatting noise hides the real change and makes review slower than it needs to be. |
+| `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
+| `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
+| `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check | Frontend lint issues have a habit of turning into visible bugs, state leaks, or accessibility damage. |
 
 ### 🔵 Myopia
 
@@ -357,13 +357,13 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 | Gate | What It Does | Why It Matters |
 |------|--------------|----------------|
-| `myopia:code-sprawl` | 📏 File and function length limits | Oversized code units exceed local reasoning limits and make safe edits much harder. |
-| `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) | A clean codebase can still ship exploitable risk through vulnerable dependencies. |
-| `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads | Unresolved review feedback creates looped CI churn and leaves known concerns unclosed. |
-| `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) | Temporary shortcuts calcify into permanent debt when TODOs, hacks, and exemptions go stale. |
-| `myopia:source-duplication` | 📋 Code clone detection (jscpd) | Duplicated logic diverges over time, so each bug fix has to be rediscovered in multiple places. |
-| `myopia:string-duplication.py` | 🔤 Duplicate string literal detection | Repeated literals hide shared rules and drift into inconsistent behavior across files. |
-| `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets | Insecure code patterns can be exploitable even when tests and types are green. |
+| `myopia:code-sprawl` | 📏 File and function length limits | Once files and functions get too big, nobody can safely reason about them in one pass, including the model. |
+| `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) | Your code can be clean and still ship someone else's CVE to production. |
+| `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads | Unresolved review threads turn the PR loop into Groundhog Day and hide known concerns in plain sight. |
+| `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) | If changed lines can land untested, overall coverage becomes a nice story the PR does not actually obey. |
+| `myopia:source-duplication` | 📋 Code clone detection (jscpd) | Copy-pasted logic diverges in slow motion until every bug fix becomes a scavenger hunt. |
+| `myopia:string-duplication.py` | 🔤 Duplicate string literal detection | Repeated literals hide shared rules and make the repo drift by typo instead of design. |
+| `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets | Code can pass tests and types and still be an own-goal from a security perspective. |
 
 ### 🧭 Remediation Order
 

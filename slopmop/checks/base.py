@@ -15,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
 
-from slopmop.checks.metadata import builtin_gate_why
+from slopmop.checks.metadata import Reasoning, builtin_gate_reasoning
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -502,6 +502,11 @@ class BaseCheck(ABC):
     # remediation priority.
     remediation_priority: ClassVar[Optional[int]] = None
 
+    # Structured gate-level reasoning metadata. Built-in gates are populated from
+    # the shared metadata registry during registration; custom gates can set this
+    # directly on the class when they have equivalent context.
+    REASONING: ClassVar[Optional[Reasoning]] = None
+
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
     ):
@@ -726,7 +731,17 @@ class BaseCheck(ABC):
     @property
     def why_it_matters(self) -> Optional[str]:
         """Gate-level context explaining why this failure category matters."""
-        return builtin_gate_why(self.full_name)
+        reasoning = self.reasoning
+        if reasoning is None:
+            return None
+        return reasoning.rationale
+
+    @property
+    def reasoning(self) -> Optional[Reasoning]:
+        """Structured gate-level reasoning metadata."""
+        if self.REASONING is not None:
+            return self.REASONING
+        return builtin_gate_reasoning(self.full_name)
 
     def _create_result(
         self,
