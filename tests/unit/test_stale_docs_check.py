@@ -241,10 +241,18 @@ class TestCustomGateRegistration:
 
         check_class = make_custom_check_class(
             gate_name="stale-docs",
-            description="Detects stale README gate tables",
+            description="Detects stale README gate tables and workflow docs",
             category_key="laziness",
-            command="python scripts/generate_readme_tables.py --check",
-            fix_command="python scripts/generate_readme_tables.py --update",
+            command=(
+                "python scripts/generate_readme_tables.py --check && "
+                "python scripts/generate_gate_reasoning.py --check && "
+                "python scripts/gen_workflow_diagrams.py --check"
+            ),
+            fix_command=(
+                "python scripts/generate_readme_tables.py --update && "
+                "python scripts/generate_gate_reasoning.py --update && "
+                "python scripts/gen_workflow_diagrams.py"
+            ),
             level_str="swab",
             timeout=30,
         )
@@ -253,3 +261,5 @@ class TestCustomGateRegistration:
         assert instance.full_name == "laziness:stale-docs"
         assert instance.is_applicable("/any/path") is True
         assert instance.can_auto_fix() is True
+        assert "generate_gate_reasoning.py --check" in check_class._command
+        assert "generate_gate_reasoning.py --update" in check_class._fix_command

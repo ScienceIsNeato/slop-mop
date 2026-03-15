@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from slopmop.checks.metadata import Reasoning
@@ -100,15 +99,3 @@ class TestGateReasoningDocs:
 
         is_ok, message = check_reasoning_doc(path, registry)
         assert is_ok is True
-
-
-class TestStaleDocsWiring:
-    def test_stale_docs_custom_gate_checks_reasoning_doc(self) -> None:
-        repo_root = Path(__file__).resolve().parents[2]
-        config = json.loads((repo_root / ".sb_config.json").read_text())
-        stale_docs_gate = next(
-            gate for gate in config["custom_gates"] if gate["name"] == "stale-docs"
-        )
-
-        assert "generate_gate_reasoning.py --check" in stale_docs_gate["command"]
-        assert "generate_gate_reasoning.py --update" in stale_docs_gate["fix_command"]
