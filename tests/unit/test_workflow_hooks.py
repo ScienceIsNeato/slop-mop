@@ -108,6 +108,32 @@ class TestCmdSwabHook:
 
         assert result == 0  # error did not propagate
 
+    def test_full_swab_preloads_config_for_validation(self, tmp_path):
+        """Full swab should not make validation re-load config or re-register gates."""
+        args = self._make_args(tmp_path)
+
+        with (
+            patch("slopmop.cli.validate._run_validation", return_value=0) as mock_run,
+            patch("slopmop.cli.validate.ensure_checks_registered"),
+            patch("slopmop.cli.validate.get_registry") as mock_reg,
+            patch(
+                "slopmop.sm.load_config", return_value={"custom_gates": []}
+            ) as mock_load,
+            patch("slopmop.checks.custom.register_custom_gates") as mock_register,
+            patch("slopmop.workflow.hooks.on_swab_complete"),
+        ):
+            mock_reg.return_value.get_gate_names_for_level.return_value = []
+
+            from slopmop.cli.validate import cmd_swab
+
+            result = cmd_swab(args)
+
+        assert result == 0
+        mock_load.assert_called_once()
+        mock_register.assert_called_once_with({"custom_gates": []})
+        assert mock_run.call_args.kwargs["preloaded_config"] == {"custom_gates": []}
+        assert mock_run.call_args.kwargs["custom_gates_registered"] is True
+
 
 class TestCmdScourHook:
     """on_scour_complete is called after a full (non -g) scour run."""
@@ -225,6 +251,33 @@ class TestCmdScourHook:
             cmd_scour(args)
 
         mock_hook.assert_not_called()
+
+    def test_full_scour_preloads_config_for_validation(self, tmp_path):
+        """Full scour should not make validation re-load config or re-register gates."""
+        args = self._make_args(tmp_path)
+
+        with (
+            patch("slopmop.cli.validate._run_validation", return_value=0) as mock_run,
+            patch("slopmop.cli.validate.ensure_checks_registered"),
+            patch("slopmop.cli.validate.get_registry") as mock_reg,
+            patch(
+                "slopmop.sm.load_config", return_value={"custom_gates": []}
+            ) as mock_load,
+            patch("slopmop.checks.custom.register_custom_gates") as mock_register,
+            patch("slopmop.cli.validate._load_config_for_hook", return_value={}),
+            patch("slopmop.workflow.hooks.on_scour_complete"),
+        ):
+            mock_reg.return_value.get_gate_names_for_level.return_value = []
+
+            from slopmop.cli.validate import cmd_scour
+
+            result = cmd_scour(args)
+
+        assert result == 0
+        mock_load.assert_called_once()
+        mock_register.assert_called_once_with({"custom_gates": []})
+        assert mock_run.call_args.kwargs["preloaded_config"] == {"custom_gates": []}
+        assert mock_run.call_args.kwargs["custom_gates_registered"] is True
 
 
 class TestLoadConfigForHook:

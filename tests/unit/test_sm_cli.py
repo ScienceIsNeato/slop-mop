@@ -1141,3 +1141,62 @@ class TestUnknownGateValidation:
 
         assert result == 0
         mock_executor.run_checks.assert_called_once()
+
+
+class TestPreloadedValidationConfig:
+    """Validation should reuse preloaded config/custom-gate registration when provided."""
+
+    @patch("slopmop.cli.validate.ConsoleAdapter")
+    @patch("slopmop.cli.validate.RunReport.from_summary")
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.checks.custom.register_custom_gates")
+    @patch("slopmop.sm.load_config")
+    def test_preloaded_config_skips_reload_and_reregistration(
+        self,
+        mock_load_config,
+        mock_register_custom_gates,
+        _mock_registry,
+        mock_executor_cls,
+        _mock_reporter,
+        mock_from_summary,
+        _mock_console_adapter,
+        tmp_path,
+    ):
+        """When config is preloaded, _run_validation should not reload or re-register."""
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+        mock_report = MagicMock()
+        mock_from_summary.return_value = mock_report
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_time=None,
+            json_output=False,
+            no_cache=False,
+            sarif_output=False,
+            output_file=None,
+            json_file=None,
+        )
+
+        result = _run_validation(
+            args,
+            ["gate1"],
+            "swab",
+            preloaded_config={"custom_gates": []},
+            custom_gates_registered=True,
+        )
+
+        assert result == 0
+        mock_load_config.assert_not_called()
+        mock_register_custom_gates.assert_not_called()

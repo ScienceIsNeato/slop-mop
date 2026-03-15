@@ -316,6 +316,38 @@ class TestCheckExecutor:
             CheckStatus.SKIPPED,
         }
 
+    def test_drain_completed_buffer_ignores_pending_names_already_recorded(self):
+        """Pending names already converted to results must not block buffered drains."""
+        executor = CheckExecutor(
+            registry=CheckRegistry(),
+            fail_fast=True,
+            process_results_in_remediation_order=True,
+        )
+        executor._processing_priority = {
+            "pending": (100, 0, "pending"),
+            "low": (200, 0, "low"),
+        }
+        executor._results["pending"] = CheckResult(
+            name="pending",
+            status=CheckStatus.SKIPPED,
+            duration=0,
+            skip_reason=SkipReason.FAIL_FAST,
+        )
+        buffered_low = CheckResult(
+            name="low",
+            status=CheckStatus.FAILED,
+            duration=0.1,
+            error="late buffered failure",
+        )
+
+        executor._drain_completed_buffer(
+            buffered_results={"low": buffered_low},
+            pending={"pending"},
+            futures={},
+        )
+
+        assert executor._results["low"] is buffered_low
+
     def test_maintenance_mode_processes_results_in_completion_order(self, tmp_path):
         """Maintenance mode should surface results as soon as they complete."""
         registry = CheckRegistry()

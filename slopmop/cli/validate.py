@@ -35,6 +35,7 @@ def _default_json_artifact_path(project_root: Path, artifact_name: str) -> str:
 def _resolve_swabbing_time(
     args: argparse.Namespace,
     project_root: Path,
+    preloaded_config: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
     """Resolve effective swabbing-time budget for this run.
 
@@ -45,9 +46,12 @@ def _resolve_swabbing_time(
     """
     swabbing_time: Optional[int] = getattr(args, "swabbing_time", None)
     if swabbing_time is None:
-        from slopmop.sm import load_config
+        if preloaded_config is not None:
+            config = preloaded_config
+        else:
+            from slopmop.sm import load_config
 
-        config = load_config(project_root)
+            config = load_config(project_root)
         config_val = config.get("swabbing_time")
         if isinstance(config_val, (int, float)) and config_val > 0:
             swabbing_time = int(config_val)
@@ -151,6 +155,9 @@ def _run_validation(
     args: argparse.Namespace,
     gates: List[str],
     level_name: Optional[str],
+    *,
+    preloaded_config: Optional[Dict[str, Any]] = None,
+    custom_gates_registered: bool = False,
 ) -> int:
     """Core validation pipeline shared by swab and scour.
 
@@ -186,7 +193,11 @@ def _run_validation(
     )
 
     if level_name == "swab":
-        resolved_swabbing_time = _resolve_swabbing_time(args, project_root)
+        resolved_swabbing_time = _resolve_swabbing_time(
+            args,
+            project_root,
+            preloaded_config=preloaded_config,
+        )
         if resolved_swabbing_time is not None:
             lock_stale_after = float(resolved_swabbing_time * 3)
             lock_expected_duration = min(
@@ -211,6 +222,8 @@ def _run_validation(
                 level_name,
                 project_root,
                 resolved_swabbing_time=resolved_swabbing_time,
+                preloaded_config=preloaded_config,
+                custom_gates_registered=custom_gates_registered,
             )
     except SmLockError as exc:
         print(str(exc), file=sys.stderr)
@@ -223,6 +236,9 @@ def _run_validation_locked(
     level_name: Optional[str],
     project_root: Path,
     resolved_swabbing_time: Optional[int] = None,
+    *,
+    preloaded_config: Optional[Dict[str, Any]] = None,
+    custom_gates_registered: bool = False,
 ) -> int:
     """Inner validation pipeline, called while holding the repo lock."""
     from slopmop.sm import load_config
@@ -257,12 +273,15 @@ def _run_validation_locked(
     reporter = ConsoleReporter(quiet=args.quiet, verbose=args.verbose)
 
     # Load configuration (must happen early — swabbing-time default lives here)
-    config = load_config(project_root)
+    config = (
+        preloaded_config if preloaded_config is not None else load_config(project_root)
+    )
 
     # Register user-defined custom gates from config
-    from slopmop.checks.custom import register_custom_gates
+    if not custom_gates_registered:
+        from slopmop.checks.custom import register_custom_gates
 
-    register_custom_gates(config)
+        register_custom_gates(config)
 
     # Validate explicit -g gate names against the registry.
     # Level-based discovery (level_name != None) uses registry-produced
@@ -302,7 +321,11 @@ def _run_validation_locked(
     # fall back to config value.  <= 0 means no limit.
     swabbing_time: Optional[int] = resolved_swabbing_time
     if swabbing_time is None:
-        swabbing_time = _resolve_swabbing_time(args, project_root)
+        swabbing_time = _resolve_swabbing_time(
+            args,
+            project_root,
+            preloaded_config=preloaded_config,
+        )
 
     # Only enforce for swab runs
     if level_name != "swab":
@@ -464,7 +487,13 @@ def cmd_swab(args: argparse.Namespace) -> int:
     register_custom_gates(config)
     registry = get_registry()
     gate_names = registry.get_gate_names_for_level(GateLevel.SWAB, config)
-    exit_code = _run_validation(args, gate_names, "swab")
+    exit_code = _run_validation(
+        args,
+        gate_names,
+        "swab",
+        preloaded_config=config,
+        custom_gates_registered=True,
+    )
 
     try:
         from slopmop.workflow.hooks import on_swab_complete
@@ -498,7 +527,13 @@ def cmd_scour(args: argparse.Namespace) -> int:
     register_custom_gates(config)
     registry = get_registry()
     gate_names = registry.get_gate_names_for_level(GateLevel.SCOUR, config)
-    exit_code = _run_validation(args, gate_names, "scour")
+    exit_code = _run_validation(
+        args,
+        gate_names,
+        "scour",
+        preloaded_config=config,
+        custom_gates_registered=True,
+    )
 
     try:
         from slopmop.workflow.hooks import on_scour_complete

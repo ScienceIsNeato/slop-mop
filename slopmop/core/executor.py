@@ -466,14 +466,6 @@ class CheckExecutor:
 
         return graph
 
-    def _ordered_buffer_names(self, names: List[str]) -> List[str]:
-        """Sort buffered names in remediation order when enabled."""
-        if not self._process_results_in_remediation_order:
-            return names
-        return sorted(
-            names, key=lambda name: self._processing_priority.get(name, (0, 0, name))
-        )
-
     def _drain_completed_buffer(
         self,
         buffered_results: Dict[str, CheckResult],
@@ -489,7 +481,9 @@ class CheckExecutor:
         while buffered_results:
             if self._process_results_in_remediation_order:
                 unresolved = (
-                    set(pending) | set(futures.values()) | set(buffered_results)
+                    (set(pending) - set(self._results))
+                    | set(futures.values())
+                    | set(buffered_results)
                 )
                 next_name = min(
                     unresolved,
@@ -690,7 +684,7 @@ class CheckExecutor:
                 executor.shutdown(wait=True)
 
         # Handle any remaining pending checks (due to fail-fast)
-        for name in pending:
+        for name in list(pending):
             if name not in self._results:
                 result = CheckResult(
                     name=name,
@@ -702,6 +696,7 @@ class CheckExecutor:
                 self._results[name] = result
                 if self._on_check_complete:
                     self._on_check_complete(result)
+            pending.discard(name)
 
         if buffered_results:
             self._drain_completed_buffer(buffered_results, pending, futures)
