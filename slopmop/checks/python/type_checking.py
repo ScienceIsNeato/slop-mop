@@ -298,7 +298,8 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
 
         if isinstance(base_config_file, str) and base_config_file:
             config["extends"] = base_config_file
-            config["include"] = include_dirs
+            if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
+                config["include"] = include_dirs
         else:
             config["include"] = include_dirs
             config["exclude"] = ["**/__pycache__", "**/node_modules"]

@@ -187,7 +187,7 @@ class TestPythonTypeCheckingCheck:
         config = check._build_pyright_config(str(tmp_path))
 
         assert config["extends"] == "pyrightconfig.json"
-        assert config["include"] == ["src"]
+        assert "include" not in config
         assert config["venvPath"] == str(tmp_path)
         assert config["venv"] == "venv"
         assert "pythonVersion" not in config
