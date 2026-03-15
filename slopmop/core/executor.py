@@ -487,7 +487,9 @@ class CheckExecutor:
                 )
                 next_name = min(
                     unresolved,
-                    key=lambda name: self._processing_priority.get(name, (0, 0, name)),
+                    key=lambda name: self._processing_priority.get(
+                        name, (0, 999_999, name)
+                    ),
                 )
                 if next_name not in buffered_results:
                     break

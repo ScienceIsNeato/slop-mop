@@ -348,6 +348,35 @@ class TestCheckExecutor:
 
         assert executor._results["low"] is buffered_low
 
+    def test_drain_completed_buffer_sorts_unknown_names_after_known_priorities(self):
+        """Unknown names should not jump ahead of known remediation priorities."""
+        executor = CheckExecutor(
+            registry=CheckRegistry(),
+            fail_fast=False,
+            process_results_in_remediation_order=True,
+        )
+        executor._processing_priority = {
+            "known": (0, 100, "known"),
+        }
+        known = CheckResult(
+            name="known",
+            status=CheckStatus.PASSED,
+            duration=0.1,
+        )
+        unknown = CheckResult(
+            name="unknown",
+            status=CheckStatus.PASSED,
+            duration=0.1,
+        )
+
+        executor._drain_completed_buffer(
+            buffered_results={"known": known, "unknown": unknown},
+            pending=set(),
+            futures={},
+        )
+
+        assert list(executor._results)[:2] == ["known", "unknown"]
+
     def test_maintenance_mode_processes_results_in_completion_order(self, tmp_path):
         """Maintenance mode should surface results as soon as they complete."""
         registry = CheckRegistry()
