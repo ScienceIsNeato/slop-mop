@@ -22,6 +22,7 @@ from slopmop.baseline import (
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory, GateLevel
 from slopmop.core.registry import get_registry
+from slopmop.core.result import CheckStatus
 from slopmop.reporting.timings import TimingStats, load_timings
 from slopmop.workflow.state_machine import WorkflowState
 from slopmop.workflow.state_store import read_phase, read_state
@@ -50,7 +51,8 @@ def _get_category_display(category_key: str) -> Tuple[str, str]:
     return "❓", category_key.title()
 
 
-# ── Section: Config Summary ─────────────────────────────────────
+_PASSED_STATUS = CheckStatus.PASSED.value
+_FAILED_STATUS = CheckStatus.FAILED.value
 
 
 def _print_config_summary(
@@ -87,9 +89,6 @@ def _print_config_summary(
         print(f"🚫 Disabled: {len(disabled)} gate(s)")
         for name in sorted(disabled):
             print(f"      {name}")
-
-
-# ── Section: Gate Inventory ──────────────────────────────────────
 
 
 RECENT_HISTORY_HEADER = "📊 RECENT HISTORY"
@@ -245,9 +244,6 @@ def _print_gate_inventory(
         print(wrapped)
 
 
-# ── Section: Hook Status ────────────────────────────────────────
-
-
 def _print_hooks_status(root: Path) -> None:
     """Print git hook installation status."""
     git_dir = root / ".git"
@@ -295,9 +291,6 @@ def _print_hooks_status(root: Path) -> None:
         print("   Install: sm commit-hooks install")
 
 
-# ── Section: Workflow Position ────────────────────────────────────
-
-
 def _gather_workflow_data(root: Path) -> Dict[str, Any]:
     """Single source of truth for workflow-position data.
 
@@ -325,9 +318,6 @@ def _print_workflow_position(workflow: Dict[str, Any]) -> None:
         f"\u2014 Next: {workflow['next_action']}"
     )
     print(f"   Phase: {workflow['phase']}")
-
-
-# ── Section: CI Summary ─────────────────────────────────────────
 
 
 def _gather_ci_data(root: Path) -> Optional[Dict[str, Any]]:
@@ -393,9 +383,6 @@ def _print_ci_summary(ci: Optional[Dict[str, Any]]) -> None:
 
     if not ci["failed"] and not ci["pending"]:
         print("   All checks green ✨")
-
-
-# ── Section: Baseline Snapshot ──────────────────────────────────
 
 
 def _gather_baseline_snapshot_data(root: Path) -> Optional[Dict[str, Any]]:
@@ -487,7 +474,7 @@ def _failure_counts_from_artifact(
         if not isinstance(raw_entry, dict):
             continue
         entry = cast(Dict[str, Any], raw_entry)
-        if entry.get("status") != "failed":
+        if entry.get("status") != _FAILED_STATUS:
             continue
 
         name = entry.get("name")
@@ -557,7 +544,7 @@ def _load_latest_gate_results(
         if isinstance(passed, list):
             for item in cast(List[object], passed):
                 if isinstance(item, str) and item not in results:
-                    results[item] = "passed"
+                    results[item] = _PASSED_STATUS
 
         raw_results = artifact.get("results")
         if isinstance(raw_results, list):
@@ -596,9 +583,6 @@ def _gather_recent_run_data(root: Path) -> Optional[Dict[str, Any]]:
         "summary": cast(Dict[str, Any], summary),
         "failure_counts": _failure_counts_from_artifact(artifact),
     }
-
-
-# ── Section: Recent History ──────────────────────────────────────
 
 
 def _print_recent_history(

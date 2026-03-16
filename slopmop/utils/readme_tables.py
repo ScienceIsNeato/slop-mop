@@ -92,7 +92,7 @@ CATEGORY_ORDER = [
 class GateRow(NamedTuple):
     full_name: str
     description: str
-    why: str
+    reasoning: str
 
 
 class RemediationRow(NamedTuple):
@@ -120,7 +120,11 @@ def generate_tables(registry: "CheckRegistry") -> str:
             GateRow(
                 full_name=instance.full_name,
                 description=instance.gate_description,
-                why=instance.why_it_matters or "",
+                reasoning=(
+                    instance.reasoning.rationale
+                    if instance.reasoning is not None
+                    else instance.why_it_matters or ""
+                ),
             )
         )
 
@@ -150,10 +154,12 @@ def generate_tables(registry: "CheckRegistry") -> str:
 
         # Table
         sections.append("")
-        sections.append("| Gate | What It Does | Why It Matters |")
+        sections.append("| Gate | What It Does | Reasoning |")
         sections.append("|------|--------------|----------------|")
         for row in rows:
-            sections.append(f"| `{row.full_name}` | {row.description} | {row.why} |")
+            sections.append(
+                f"| `{row.full_name}` | {row.description} | {row.reasoning} |"
+            )
 
         sections.append("")
 
@@ -191,10 +197,9 @@ def _generate_remediation_order_section(registry: "CheckRegistry") -> List[str]:
     )
     sections.append("")
     sections.append(
-        "Reasoning: fix the dragons before polishing the armor. The order tries "
-        "to clear dangerous or high-churn changes first, then repair deceptive "
-        "tests, then rebuild confidence in correctness signals, and only then "
-        "spend time on low-churn cleanup like formatting and artifacts."
+        "Reasoning: handle the changes most likely to reshape other work first. "
+        "High-risk or high-churn fixes go first, confidence-building checks sit "
+        "in the middle, and isolated cleanup like formatting goes last."
     )
     sections.append("")
     sections.append(

@@ -1,28 +1,5 @@
 # Next Phase: Foundation, Diagnosis, and the Unified Voice
 
-## Progress Since Draft
-
-This document started as a forward-looking design memo. Parts of it are now
-already shipped in the current tree, so treat it as a mixed document: some
-items below are still roadmap, others are historical design context.
-
-Already landed relative to this draft:
-- The two-tier architecture vocabulary is in the code: `BaseCheck.role` defaults
-  to diagnostic, foundation-vs-diagnostic badges surface in status/output, and
-  tests cover the distinction.
-- The unified output adapter direction is largely implemented: `RunReport` is
-  the shared enriched representation feeding console, JSON, and SARIF output.
-- Remediation-aware output now exists in user-facing flows: remediation ordering,
-  explicit `first_to_fix` guidance, and aligned verify commands show up in
-  `swab`, `scour`, and `buff` output.
-
-Still genuinely open:
-- Work Item 1b: smart init / existing-tool discovery and delegation.
-- Work Item 2: deeper didactic output so gates explain not just what failed,
-  but why it matters and exactly what to do in a fully structured way.
-- Remaining gaps in Work Item 3 are mostly about enriching the structured
-  diagnosis protocol, not building the adapter layer from scratch.
-
 ## Philosophical Context
 
 Slop-mop exists because LLMs were trained to close tickets, not to steward codebases. The tool provides "Tyrion in a box" — automated strategic oversight for AI-generated code. It works. But a recurring criticism from models during design sessions reveals a legitimate architectural gap:
@@ -62,8 +39,6 @@ These checks have no equivalent in the traditional tooling ecosystem. They exist
 ---
 
 ## Work Item 1: Formalize the Two-Tier Architecture
-
-Status: mostly shipped, except Work Item 1b.
 
 ### Current State
 
@@ -137,48 +112,6 @@ Every `BaseCheck` subclass declares a `role: ClassVar[CheckRole]`. The classific
 
 ### Work Item 1b: Smart Init and Tool Discovery
 
-Status: still open.
-
-The original version of this plan pushed too much responsibility into `sm init`
-itself. That was the wrong cut. `sm init` should not become a giant central
-scanner that knows where every possible tool config might live.
-
-Canonical direction:
-
-1. **Gate-owned init hooks**: the gate primitive exposes an init-time hook that
-  returns gate-specific config defaults discovered from the repo.
-2. **Gate-owned config fields**: if a gate needs a native config path or
-  baseline file, that field belongs in the gate's own `config_schema`, not in
-  the universal base schema.
-3. **Thin init orchestrator**: `sm init` generates the template config,
-  delegates discovery to gates that implement the hook, and merges discovered
-  defaults without hardcoding per-gate file hunts.
-
-That means the work here is:
-
-1. **Move config-file discovery into gates**:
-  - A security gate can look for `.secrets.baseline`, `.bandit`, or
-    `[tool.bandit]` in `pyproject.toml` because it knows those files mean
-    something.
-  - A formatting gate can look for `.prettierrc` or `pyproject.toml [tool.black]`
-    if and when that discovery is useful.
-  - Gates without a meaningful native config concept implement nothing.
-
-2. **Teach `sm init` to delegate, not inspect broadly**:
-  - Iterate the enabled gates.
-  - Ask each gate for init-time config overrides.
-  - Apply discovered values as defaults, not hard overrides.
-
-3. **Keep project-type detection coarse**:
-  - `detect_project_type()` should stay about repo-wide facts (Python present,
-    JS present, test dirs, missing tools), not gate-specific config trivia.
-
-4. **Only after that, consider richer delegation metadata**:
-  - Whether a gate is using project-managed tooling vs slop-mop-managed tooling
-    can still be modeled later.
-  - But that decision should be informed by gate-owned discovery, not by a
-    monolithic `sm init` decision tree.
-
 This moves slop-mop from "batteries-included heavy install" to "smart, adaptive, efficient overlay." The eventual `sm doctor` verb (out of scope here, but worth noting in the architecture) will extend this to runtime dependency health checks.
 
 **Config shape** (strawman):
@@ -204,21 +137,6 @@ This moves slop-mop from "batteries-included heavy install" to "smart, adaptive,
 ---
 
 ## Work Item 2: Didactic, Prescriptive Output
-
-Status: partially shipped.
-
-What is already present:
-- Per-finding `fix_strategy` exists in `Finding`.
-- `RunReport` and adapters already surface a single verify command and explicit
-  `first_to_fix` guidance.
-- The first structured-output slice is now live for Python type gates:
-  `CheckResult` can carry gate-level `why_it_matters`, console output renders a
-  compact Diagnosis -> Prescription -> Verification block when that structure is
-  present, and the mypy/pyright gates now emit per-finding remediation text.
-
-What remains is the stronger version proposed here: a consistent
-Diagnosis → Prescription → Verification protocol across gates, rather than
-today's mix of gate-level suggestions and selectively structured findings.
 
 ### The Problem
 
@@ -310,16 +228,6 @@ This ties directly into Work Item 3:
 ---
 
 ## Work Item 3: Unified Output Adapter Layer
-
-Status: largely shipped.
-
-The core architectural move proposed here already happened: `RunReport` sits
-between execution summary and output adapters, and console/JSON/SARIF now share
-that enriched representation instead of independently re-deriving state.
-
-The remaining value in this section is as design guidance for future enrichment
-of the structured diagnosis protocol, not as a pending refactor of raw output
-branching from scratch.
 
 ### The Problem
 

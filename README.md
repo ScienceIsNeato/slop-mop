@@ -303,7 +303,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 >
 > The LLM generates code that looks right, passes a syntax check, and silently breaks at runtime. These gates verify that the code actually works.
 
-| Gate | What It Does | Why It Matters |
+| Gate | What It Does | Reasoning |
 |------|--------------|----------------|
 | `overconfidence:coverage-gaps.dart` | 📊 Dart/Flutter coverage analysis from flutter test --coverage | If changed Dart code can land without tests proving it, coverage turns decorative and the hole just moves around the repo. |
 | `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis | If changed JavaScript code can land without tests proving it, coverage turns decorative and the hole just moves around the repo. |
@@ -322,7 +322,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 >
 > The LLM writes tests that assert nothing, mock everything, or cover the happy path and call it done. Coverage numbers look great. The code is still broken.
 
-| Gate | What It Does | Why It Matters |
+| Gate | What It Does | Reasoning |
 |------|--------------|----------------|
 | `deceptiveness:bogus-tests.dart` | 🧪 Detects empty or non-assertive Dart/Flutter tests | A fake Dart test suite is worse than no test suite because it teaches people to trust green lies. |
 | `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS | A fake JavaScript test suite is worse than no test suite because it teaches people to trust green lies. |
@@ -337,7 +337,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 >
 > The LLM solves the immediate problem and moves on. Formatting is inconsistent, dead code accumulates, complexity creeps upward, and nobody notices until the codebase is incomprehensible.
 
-| Gate | What It Does | Why It Matters |
+| Gate | What It Does | Reasoning |
 |------|--------------|----------------|
 | `laziness:broken-templates.py` | 📄 Jinja2 template validation | Template bugs like to wait until a user path hits them, which is a lousy time to discover syntax errors. |
 | `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) | Big branching functions are where edge cases go to hide and future fixes go to die. |
@@ -355,28 +355,28 @@ Gates aren't organized by language — they're organized by **the failure mode t
 >
 > The LLM has a 200k-token context window and still manages tunnel vision. It duplicates code across files, ignores security implications, and lets functions grow unbounded because it can't see the pattern.
 
-| Gate | What It Does | Why It Matters |
+| Gate | What It Does | Reasoning |
 |------|--------------|----------------|
 | `myopia:code-sprawl` | 📏 File and function length limits | Once files and functions get too big, nobody can safely reason about them in one pass, including the model. |
-| `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) | Your code can be clean and still ship someone else's CVE to production. |
+| `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) | Code can pass tests and types and still be an own-goal from a security perspective. |
 | `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads | Unresolved review threads turn the PR loop into Groundhog Day and hide known concerns in plain sight. |
 | `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) | If changed lines can land untested, overall coverage becomes a nice story the PR does not actually obey. |
 | `myopia:source-duplication` | 📋 Code clone detection (jscpd) | Copy-pasted logic diverges in slow motion until every bug fix becomes a scavenger hunt. |
 | `myopia:string-duplication.py` | 🔤 Duplicate string literal detection | Repeated literals hide shared rules and make the repo drift by typo instead of design. |
-| `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets | Code can pass tests and types and still be an own-goal from a security perspective. |
+| `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets | Your code can be clean and still ship someone else's CVE to production. |
 
 ### 🧭 Remediation Order
 
 Execution order is not remediation order. In remediation mode, slop-mop validates finished gates using this registry-derived order to minimize overall remediation time. In maintenance mode, it evaluates results as soon as they come in to minimize dev-cycle time.
 
-Reasoning: fix the dragons before polishing the armor. The order tries to clear dangerous or high-churn changes first, then repair deceptive tests, then rebuild confidence in correctness signals, and only then spend time on low-churn cleanup like formatting and artifacts.
+Reasoning: handle the changes most likely to reshape other work first. High-risk or high-churn fixes go first, confidence-building checks sit in the middle, and isolated cleanup like formatting goes last.
 
 `curated` means the registry intentionally pins that gate's place in the sequence. `explicit` means the gate class set its own numeric priority. `churn-default` means no exact order was provided, so slop-mop falls back to the broad churn band.
 
 | # | Gate | Priority | Source | Churn Band |
 |---|------|----------|--------|------------|
-| 1 | `myopia:vulnerability-blindness.py` | 10 | curated | unlikely |
-| 2 | `myopia:dependency-risk.py` | 20 | curated | unlikely |
+| 1 | `myopia:dependency-risk.py` | 10 | curated | unlikely |
+| 2 | `myopia:vulnerability-blindness.py` | 20 | curated | unlikely |
 | 3 | `myopia:source-duplication` | 30 | curated | very-likely |
 | 4 | `laziness:dead-code.py` | 40 | curated | very-likely |
 | 5 | `myopia:string-duplication.py` | 50 | curated | unlikely |

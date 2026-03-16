@@ -278,7 +278,7 @@ class TestCheckRegistry:
         """Built-in curated order should be the primary remediation source."""
         from slopmop.checks import ensure_checks_registered
         from slopmop.core.registry import (
-            CURATED_REMEDIATION_ORDER,
+            curated_remediation_order_names,
             get_registry,
         )
 
@@ -286,7 +286,7 @@ class TestCheckRegistry:
         registry = get_registry()
         check = registry.get_check("myopia:source-duplication", {})
         expected_priority = (
-            CURATED_REMEDIATION_ORDER.index("myopia:source-duplication") + 1
+            curated_remediation_order_names().index("myopia:source-duplication") + 1
         ) * 10
 
         assert check is not None

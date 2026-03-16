@@ -5,10 +5,11 @@ check discovery and configuration-based selection.
 """
 
 import logging
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
-from slopmop.checks.metadata import builtin_gate_reasoning
+from slopmop.checks.metadata import builtin_reasoning_for_check_class
 from slopmop.core.result import CheckDefinition
 
 logger = logging.getLogger(__name__)
@@ -25,50 +26,97 @@ logger = logging.getLogger(__name__)
 # 3. Repair deceptive tests before trusting test-derived signals.
 # 4. Re-establish correctness proofs (types/tests/coverage).
 # 5. Leave polish and low-churn cleanup for the end.
-CURATED_REMEDIATION_ORDER: List[str] = [
-    # Security hazards first: these can change library APIs.
-    "myopia:vulnerability-blindness.py",
-    "myopia:dependency-risk.py",
-    # Structural reshaping next: fix the big tectonic plates before repainting.
-    "myopia:source-duplication",
-    "laziness:dead-code.py",
-    "myopia:string-duplication.py",
-    # Test deception and gate avoidance come before trusting verification output.
-    "deceptiveness:gate-dodging",
-    "deceptiveness:bogus-tests.py",
-    "deceptiveness:bogus-tests.js",
-    "deceptiveness:bogus-tests.dart",
-    "deceptiveness:hand-wavy-tests.js",
-    # Correctness proof chain: types before tests, tests before coverage.
-    "overconfidence:missing-annotations.py",
-    "overconfidence:missing-annotations.dart",
-    "overconfidence:type-blindness.py",
-    "overconfidence:type-blindness.js",
-    "myopia:code-sprawl",
-    "laziness:complexity-creep.py",
-    "overconfidence:untested-code.py",
-    "overconfidence:untested-code.js",
-    "overconfidence:untested-code.dart",
-    "overconfidence:coverage-gaps.py",
-    "overconfidence:coverage-gaps.js",
-    "overconfidence:coverage-gaps.dart",
-    # Contextual and workflow checks once the code/test surface is credible.
-    "myopia:just-this-once.py",
-    "laziness:silenced-gates",
-    "myopia:ignored-feedback",
-    # Low-churn cleanup and polish last.
-    "laziness:sloppy-frontend.js",
-    "laziness:broken-templates.py",
-    "laziness:sloppy-formatting.py",
-    "laziness:sloppy-formatting.js",
-    "laziness:sloppy-formatting.dart",
-    "laziness:generated-artifacts.dart",
-    "deceptiveness:debugger-artifacts",
-]
+@lru_cache(maxsize=1)
+def curated_remediation_order_classes() -> Tuple[Type[BaseCheck], ...]:
+    """Return the curated remediation order keyed by check classes."""
+    from slopmop.checks.dart import (
+        DartBogusTestsCheck,
+        DartCoverageCheck,
+        DartFormatCheck,
+        DartGeneratedArtifactsCheck,
+        FlutterAnalyzeCheck,
+        FlutterTestsCheck,
+    )
+    from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
+    from slopmop.checks.javascript.bogus_tests import JavaScriptBogusTestsCheck
+    from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
+    from slopmop.checks.javascript.eslint_expect import JavaScriptExpectCheck
+    from slopmop.checks.javascript.eslint_quick import FrontendCheck
+    from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
+    from slopmop.checks.javascript.tests import JavaScriptTestsCheck
+    from slopmop.checks.javascript.types import JavaScriptTypesCheck
+    from slopmop.checks.pr.comments import PRCommentsCheck
+    from slopmop.checks.python.coverage import (
+        PythonCoverageCheck,
+        PythonDiffCoverageCheck,
+    )
+    from slopmop.checks.python.lint_format import PythonLintFormatCheck
+    from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
+    from slopmop.checks.python.tests import PythonTestsCheck
+    from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+    from slopmop.checks.quality import (
+        BogusTestsCheck,
+        ComplexityCheck,
+        ConfigDebtCheck,
+        DeadCodeCheck,
+        DebuggerArtifactsCheck,
+        GateDodgingCheck,
+        LocLockCheck,
+        SourceDuplicationCheck,
+        StringDuplicationCheck,
+    )
+    from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
 
-_CURATED_REMEDIATION_PRIORITY: Dict[str, int] = {
-    name: (index + 1) * 10 for index, name in enumerate(CURATED_REMEDIATION_ORDER)
-}
+    return (
+        SecurityCheck,
+        SecurityLocalCheck,
+        SourceDuplicationCheck,
+        DeadCodeCheck,
+        StringDuplicationCheck,
+        GateDodgingCheck,
+        BogusTestsCheck,
+        JavaScriptBogusTestsCheck,
+        DartBogusTestsCheck,
+        JavaScriptExpectCheck,
+        PythonStaticAnalysisCheck,
+        FlutterAnalyzeCheck,
+        PythonTypeCheckingCheck,
+        JavaScriptTypesCheck,
+        LocLockCheck,
+        ComplexityCheck,
+        PythonTestsCheck,
+        JavaScriptTestsCheck,
+        FlutterTestsCheck,
+        PythonCoverageCheck,
+        JavaScriptCoverageCheck,
+        DartCoverageCheck,
+        PythonDiffCoverageCheck,
+        ConfigDebtCheck,
+        PRCommentsCheck,
+        FrontendCheck,
+        TemplateValidationCheck,
+        PythonLintFormatCheck,
+        JavaScriptLintFormatCheck,
+        DartFormatCheck,
+        DartGeneratedArtifactsCheck,
+        DebuggerArtifactsCheck,
+    )
+
+
+@lru_cache(maxsize=1)
+def curated_remediation_order_names() -> Tuple[str, ...]:
+    """Return curated remediation gate names derived from the class order."""
+    return tuple(
+        check_class({}).full_name for check_class in curated_remediation_order_classes()
+    )
+
+
+@lru_cache(maxsize=1)
+def _curated_remediation_priority() -> Dict[Type[BaseCheck], int]:
+    return {
+        check_class: (index + 1) * 10
+        for index, check_class in enumerate(curated_remediation_order_classes())
+    }
 
 
 _DEFAULT_REMEDIATION_PRIORITY_BY_CHURN: Dict[RemediationChurn, int] = {
@@ -113,7 +161,7 @@ class CheckRegistry:
         self._check_classes[name] = check_class
 
         if getattr(check_class, "REASONING", None) is None:
-            reasoning = builtin_gate_reasoning(name)
+            reasoning = builtin_reasoning_for_check_class(check_class)
             if reasoning is not None:
                 check_class.REASONING = reasoning
 
@@ -284,7 +332,7 @@ class CheckRegistry:
         default band from ``check.remediation_churn`` with intentional gaps so
         new explicit priorities can be inserted cleanly.
         """
-        curated = _CURATED_REMEDIATION_PRIORITY.get(check.full_name)
+        curated = _curated_remediation_priority().get(type(check))
         if curated is not None:
             return curated
         explicit = getattr(check, "remediation_priority", None)
@@ -294,7 +342,7 @@ class CheckRegistry:
 
     def remediation_priority_source_for_check(self, check: BaseCheck) -> str:
         """Return where a check's remediation priority came from."""
-        if check.full_name in _CURATED_REMEDIATION_PRIORITY:
+        if type(check) in _curated_remediation_priority():
             return "curated"
         if getattr(check, "remediation_priority", None) is not None:
             return "explicit"

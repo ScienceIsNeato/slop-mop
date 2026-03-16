@@ -168,9 +168,9 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 
 ### `myopia:dependency-risk.py`
 
-- Rationale: Your code can be clean and still ship someone else's CVE to production.
-- Tradeoffs: Dependency audits can produce noisy or low-signal findings, especially when advisories lag behind reality.
-- Override When: Temporarily waive only with a conscious risk call, usually during incident work or when the upstream fix path is outside your control.
+- Rationale: Code can pass tests and types and still be an own-goal from a security perspective.
+- Tradeoffs: Security scanners throw false positives and sometimes demand context they cannot infer from static analysis.
+- Override When: Waive only with a specific risk decision and rationale, not because the scanner is inconvenient.
 
 ### `myopia:ignored-feedback`
 
@@ -198,6 +198,6 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 
 ### `myopia:vulnerability-blindness.py`
 
-- Rationale: Code can pass tests and types and still be an own-goal from a security perspective.
-- Tradeoffs: Security scanners throw false positives and sometimes demand context they cannot infer from static analysis.
-- Override When: Waive only with a specific risk decision and rationale, not because the scanner is inconvenient.
+- Rationale: Your code can be clean and still ship someone else's CVE to production.
+- Tradeoffs: Dependency audits can produce noisy or low-signal findings, especially when advisories lag behind reality.
+- Override When: Temporarily waive only with a conscious risk call, usually during incident work or when the upstream fix path is outside your control.

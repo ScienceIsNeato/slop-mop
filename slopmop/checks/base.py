@@ -15,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
 
-from slopmop.checks.metadata import Reasoning, builtin_gate_reasoning
+from slopmop.checks.metadata import Reasoning, builtin_reasoning_for_check_class
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -741,7 +741,7 @@ class BaseCheck(ABC):
         """Structured gate-level reasoning metadata."""
         if self.REASONING is not None:
             return self.REASONING
-        return builtin_gate_reasoning(self.full_name)
+        return builtin_reasoning_for_check_class(type(self))
 
     def _create_result(
         self,

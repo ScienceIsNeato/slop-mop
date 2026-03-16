@@ -230,20 +230,20 @@ class TestPythonTypeCheckingCheck:
         assert config["venv"] == ".venv"
 
     def test_missing_annotations_uses_builtin_why_text(self):
-        from slopmop.checks.metadata import builtin_gate_why
+        from slopmop.checks.metadata import builtin_gate_rationale
         from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
 
         check = PythonStaticAnalysisCheck({})
-        assert check.why_it_matters == builtin_gate_why(
+        assert check.why_it_matters == builtin_gate_rationale(
             "overconfidence:missing-annotations.py"
         )
 
     def test_type_blindness_uses_builtin_why_text(self):
-        from slopmop.checks.metadata import builtin_gate_why
+        from slopmop.checks.metadata import builtin_gate_rationale
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         check = PythonTypeCheckingCheck({})
-        assert check.why_it_matters == builtin_gate_why(
+        assert check.why_it_matters == builtin_gate_rationale(
             "overconfidence:type-blindness.py"
         )
 

@@ -125,7 +125,7 @@ class TestGenerateTables:
         tables = generate_tables(registry)
         assert len(tables) > 0
         assert "| Gate |" in tables
-        assert "Why It Matters" in tables
+        assert "Reasoning" in tables
 
     def test_tables_contain_known_gates(self) -> None:
         """Generated tables include well-known built-in gates."""
@@ -176,8 +176,8 @@ class TestGenerateTables:
         tables = generate_tables(registry)
         assert "stale-docs" not in tables
 
-    def test_all_builtin_gates_have_why_text(self) -> None:
-        """Every built-in gate should surface why text for docs/runtime."""
+    def test_all_builtin_gates_have_reasoning(self) -> None:
+        """Every built-in gate should surface reasoning for docs/runtime."""
         from slopmop.core.registry import get_registry
 
         self._ensure_fresh_registry()
@@ -185,7 +185,7 @@ class TestGenerateTables:
         missing: list[str] = []
         for name in registry.list_checks():
             check = registry.get_check(name, {})
-            if check is None or not check.why_it_matters:
+            if check is None or check.reasoning is None:
                 missing.append(name)
 
         assert missing == []
