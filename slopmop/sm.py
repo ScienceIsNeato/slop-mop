@@ -3,6 +3,7 @@
 Usage:
     sm swab [--quality-gates GATES] [--verbose] [--quiet]
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
+    sm upgrade [--check] [--to-version VERSION]
     sm buff [PR_NUMBER]
     sm agent install [--target TARGET] [--project-root PATH] [--force]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
@@ -15,6 +16,7 @@ Usage:
 Verbs:
     swab          Quick validation (every commit)
     scour         Thorough validation (PR readiness — superset of swab)
+    upgrade       Upgrade slop-mop and validate the result
     buff          Post-PR CI triage and next-step guidance
     config        View or update configuration
     init          Interactive setup and project configuration
@@ -246,6 +248,42 @@ def _add_buff_parser(
 ) -> None:
     """Add the buff subcommand parser (post-PR validation loop)."""
     BuffParserBuilder(subparsers).build()
+
+
+def _add_upgrade_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the upgrade subcommand parser."""
+    upgrade_parser = subparsers.add_parser(
+        "upgrade",
+        help="Upgrade slop-mop and validate the result",
+        description=(
+            "Upgrade the installed slop-mop package, back up local config/state, "
+            "run built-in upgrade migrations, and validate the upgraded install."
+        ),
+    )
+    upgrade_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Show the upgrade plan without changing anything.",
+    )
+    upgrade_parser.add_argument(
+        "--to-version",
+        metavar="VERSION",
+        help="Upgrade to a specific published slop-mop version.",
+    )
+    upgrade_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+    upgrade_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed upgrade steps and validation command output.",
+    )
 
 
 def _add_config_parser(
@@ -489,6 +527,7 @@ both human developers and AI coding assistants.
 Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
+    upgrade     Upgrade slop-mop and validate the result
     buff        Post-PR CI triage and next-step guidance
     agent       Install agent integration templates
   config      View or update quality gate configuration
@@ -503,6 +542,7 @@ Quick Start:
 Examples:
   sm swab                               Quick validation (every commit)
   sm scour                              Thorough validation (PR readiness)
+    sm upgrade --check                    Preview an upgrade without mutating
     sm buff                               Post-PR CI triage
   sm swab -g python,quality             Run specific gate groups
   sm scour --verbose                    Thorough with details
@@ -517,6 +557,7 @@ Examples:
 
     _add_swab_parser(subparsers)
     _add_scour_parser(subparsers)
+    _add_upgrade_parser(subparsers)
     _add_buff_parser(subparsers)
     _add_status_parser(subparsers)
     _add_config_parser(subparsers)
@@ -546,6 +587,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_scour,
         cmd_status,
         cmd_swab,
+        cmd_upgrade,
     )
 
     parser = create_parser()
@@ -562,6 +604,8 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_swab(parsed_args)
     elif parsed_args.verb == "scour":
         return cmd_scour(parsed_args)
+    elif parsed_args.verb == "upgrade":
+        return cmd_upgrade(parsed_args)
     elif parsed_args.verb == "buff":
         return cmd_buff(parsed_args)
     elif parsed_args.verb == "status":

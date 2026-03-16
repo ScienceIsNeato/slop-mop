@@ -175,7 +175,7 @@ and follow the slop-mop workflow. Templates describe `sm` as a **skill** with
 capabilities, workflow guidance, and safety rules.
 
 ```bash
-sm agent install                      # install all 7 agent targets
+sm agent install                      # install all 8 agent targets
 sm agent install --target cursor      # only Cursor rules
 sm agent install --target claude      # only Claude Code commands
 sm agent install --target copilot     # only GitHub Copilot instructions
@@ -183,6 +183,7 @@ sm agent install --target windsurf    # only Windsurf rules
 sm agent install --target cline       # only Cline rules
 sm agent install --target roo         # only Roo Code workspace rules
 sm agent install --target aider       # only Aider config + conventions
+sm agent install --target antigravity # only Google Antigravity workspace rules
 sm agent install --force              # overwrite existing managed files
 ```
 
@@ -194,6 +195,7 @@ Generated files:
 - `.clinerules/slopmop.md`
 - `.roo/rules/01-slopmop.md`
 - `.aider.conf.yml` + `CONVENTIONS.md`
+- `.agents/rules/slopmop.md`
 
 These templates keep the runtime path simple: agents call `sm swab` routinely
 during implementation, `sm scour` before PR updates, and `sm buff` after PR
