@@ -507,6 +507,46 @@ class CheckExecutor:
                 self._stop_event.set()
                 break
 
+    def _dependency_results_for_scheduler(
+        self,
+        available_results: Dict[str, CheckResult],
+    ) -> Dict[str, CheckResult]:
+        """Return the result view that dependency scheduling should trust.
+
+        In remediation mode, downstream gates should only see results that have
+        been logically committed via ``self._results``. In maintenance mode,
+        completed futures can unblock dependents immediately.
+        """
+        if self._process_results_in_remediation_order:
+            return self._results
+        return available_results
+
+    def _collect_remaining_futures(
+        self,
+        futures: Dict[concurrent.futures.Future[CheckResult], str],
+        available_results: Dict[str, CheckResult],
+        buffered_results: Dict[str, CheckResult],
+        completed: Set[str],
+    ) -> None:
+        """Harvest any leftover submitted futures into the normal result buffers."""
+        for future, name in list(futures.items()):
+            if name in available_results:
+                continue
+            try:
+                result = future.result(timeout=0)
+            except Exception:
+                result = CheckResult(
+                    name=name,
+                    status=CheckStatus.SKIPPED,
+                    duration=0,
+                    output=_SKIP_FAIL_FAST,
+                    skip_reason=SkipReason.FAIL_FAST,
+                )
+
+            available_results[name] = result
+            buffered_results[name] = result
+            completed.add(name)
+
     def _execute_with_dependencies(
         self,
         checks: List[BaseCheck],
@@ -565,15 +605,19 @@ class CheckExecutor:
 
         try:
             while (pending or futures) and not self._stop_event.is_set():
+                dependency_results = self._dependency_results_for_scheduler(
+                    available_results
+                )
+                satisfied_dependencies = set(dependency_results)
                 # Find checks whose dependencies are all completed
                 ready: List[str] = []
                 skipped_due_to_deps: List[str] = []
                 for name in list(pending):  # Iterate over a copy
                     deps = dep_graph.get(name, set())
-                    if deps <= completed:
+                    if deps <= satisfied_dependencies:
                         # Check if dependencies all passed
                         deps_passed = all(
-                            available_results.get(
+                            dependency_results.get(
                                 d, CheckResult(d, CheckStatus.PASSED, 0)
                             ).passed
                             for d in deps
@@ -700,26 +744,17 @@ class CheckExecutor:
                     self._on_check_complete(result)
             pending.discard(name)
 
+        if futures:
+            self._collect_remaining_futures(
+                futures,
+                available_results,
+                buffered_results,
+                completed,
+            )
+            futures.clear()
+
         if buffered_results:
             self._drain_completed_buffer(buffered_results, pending, futures)
-
-        # Handle submitted-but-cancelled futures (fail-fast cancelled them after submission)
-        for future, name in list(futures.items()):
-            if name not in self._results:
-                try:
-                    # Future may have completed before cancel took effect
-                    result = future.result(timeout=0)
-                except Exception:
-                    result = CheckResult(
-                        name=name,
-                        status=CheckStatus.SKIPPED,
-                        duration=0,
-                        output=_SKIP_FAIL_FAST,
-                        skip_reason=SkipReason.FAIL_FAST,
-                    )
-                self._results[name] = result
-                if self._on_check_complete:
-                    self._on_check_complete(result)
 
     def _select_gates_for_submission(
         self,

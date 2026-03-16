@@ -377,6 +377,56 @@ class TestCheckExecutor:
 
         assert list(executor._results)[:2] == ["known", "unknown"]
 
+    def test_dependency_scheduler_uses_committed_results_in_remediation_mode(self):
+        """Completed-but-buffered dependencies must not unblock downstream gates."""
+        executor = CheckExecutor(
+            registry=CheckRegistry(),
+            fail_fast=False,
+            process_results_in_remediation_order=True,
+        )
+        available = {
+            "dep": CheckResult(
+                name="dep",
+                status=CheckStatus.PASSED,
+                duration=0.1,
+            )
+        }
+
+        dependency_results = executor._dependency_results_for_scheduler(available)
+
+        assert dependency_results == {}
+
+    def test_collect_remaining_futures_buffers_before_final_drain(self):
+        """Leftover futures should be harvested into the buffer before final ordering."""
+        executor = CheckExecutor(
+            registry=CheckRegistry(),
+            fail_fast=False,
+            process_results_in_remediation_order=True,
+        )
+        executor._processing_priority = {
+            "high": (0, 100, "high"),
+            "low": (0, 200, "low"),
+        }
+        low = CheckResult(name="low", status=CheckStatus.PASSED, duration=0.1)
+        high = CheckResult(name="high", status=CheckStatus.PASSED, duration=0.1)
+
+        future = MagicMock()
+        future.result.return_value = high
+
+        available_results: dict[str, CheckResult] = {}
+        buffered_results = {"low": low}
+        completed: set[str] = set()
+
+        executor._collect_remaining_futures(
+            {future: "high"},
+            available_results,
+            buffered_results,
+            completed,
+        )
+        executor._drain_completed_buffer(buffered_results, pending=set(), futures={})
+
+        assert list(executor._results)[:2] == ["high", "low"]
+
     def test_maintenance_mode_processes_results_in_completion_order(self, tmp_path):
         """Maintenance mode should surface results as soon as they complete."""
         registry = CheckRegistry()
