@@ -130,6 +130,24 @@ Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
 
 `sm init` auto-detects Python, JavaScript/TypeScript, Dart/Flutter, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. Dart/Flutter projects get first-class `flutter analyze`, `flutter test`, `dart format`, coverage, bogus-test, and generated-artifact gates. For Go, Rust, and C/C++ projects it still scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) where built-in support is intentionally thinner.
 
+### Baseline Snapshot Flow
+
+When you inherit a repo that is already dirty, slop-mop can track the current
+failure set as a baseline without changing how gates execute.
+
+```bash
+sm status --generate-baseline-snapshot
+sm swab --ignore-baseline-failures
+sm scour --ignore-baseline-failures
+```
+
+What this does:
+- `sm status --generate-baseline-snapshot` saves a local snapshot from the newest persisted `last_swab.json` or `last_scour.json` artifact.
+- `--ignore-baseline-failures` still runs every gate normally, then downgrades failures already present in that snapshot.
+- New failures stay loud. Old failures stop blocking while you dig out of the hole.
+
+This is for controlled remediation, not denial. The goal is to surface net-new slop while you pay down the existing mess deliberately.
+
 ### Installation Options
 
 | Command | What You Get |
@@ -193,6 +211,19 @@ Development with slop-mop follows a single repeated cycle:
 ```
 sm swab → see what fails → fix it → repeat → commit
 ```
+
+Important: execution order is not remediation order.
+
+- Checks may execute concurrently and may finish in any order.
+- In `RepoPhase.REMEDIATION`, slop-mop processes results in remediation order,
+  using registry-derived remediation priority.
+- Gates can declare an explicit fine-grained `remediation_priority`; when they
+  do not, slop-mop derives a default priority band from `remediation_churn`.
+- In that mode, fail-fast means "stop at the first failure in remediation
+  order", not "stop at whichever check happened to finish failing first".
+
+This prevents a fast, low-priority failure from blocking validation of a more
+important gate that should be fixed first.
 
 When a gate fails, the output tells the agent exactly what to do next:
 
@@ -272,18 +303,18 @@ Gates aren't organized by language — they're organized by **the failure mode t
 >
 > The LLM generates code that looks right, passes a syntax check, and silently breaks at runtime. These gates verify that the code actually works.
 
-| Gate | What It Does |
-|------|--------------|
-| `overconfidence:coverage-gaps.dart` | 📊 Dart/Flutter coverage analysis from flutter test --coverage |
-| `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis |
-| `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) |
-| `overconfidence:missing-annotations.dart` | 🧪 Flutter static analysis across discovered packages |
-| `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out |
-| `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) |
-| `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types |
-| `overconfidence:untested-code.dart` | 🧪 Flutter test execution across discovered packages |
-| `overconfidence:untested-code.js` | 🧪 Jest test execution |
-| `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests |
+| Gate | What It Does | Reasoning |
+|------|--------------|----------------|
+| `overconfidence:coverage-gaps.dart` | 📊 Dart/Flutter coverage analysis from flutter test --coverage | If changed Dart code can land without tests proving it, coverage turns decorative and the hole just moves around the repo. |
+| `overconfidence:coverage-gaps.js` | 📊 JavaScript coverage analysis | If changed JavaScript code can land without tests proving it, coverage turns decorative and the hole just moves around the repo. |
+| `overconfidence:coverage-gaps.py` | 📊 Whole-repo coverage (80% default threshold) | If changed Python code can land without tests proving it, coverage turns decorative and the hole just moves around the repo. |
+| `overconfidence:missing-annotations.dart` | 🧪 Flutter static analysis across discovered packages | Missing Dart annotations turn interfaces into vibes and push type noise downstream for somebody else to untangle. |
+| `overconfidence:missing-annotations.py` | 🔍 mypy strict — types must check out | Missing Python annotations turn interfaces into vibes and push type noise downstream for somebody else to untangle. |
+| `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) | If the type checker cannot tell what something is in TypeScript, humans and agents are left guessing too. |
+| `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types | If the type checker cannot tell what something is in Python, humans and agents are left guessing too. |
+| `overconfidence:untested-code.dart` | 🧪 Flutter test execution across discovered packages | Passing compilation is not proof; if Dart code never executes under test, you are still guessing. |
+| `overconfidence:untested-code.js` | 🧪 Jest test execution | Passing compilation is not proof; if JavaScript code never executes under test, you are still guessing. |
+| `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests | Passing compilation is not proof; if Python code never executes under test, you are still guessing. |
 
 ### 🟡 Deceptiveness
 
@@ -291,14 +322,14 @@ Gates aren't organized by language — they're organized by **the failure mode t
 >
 > The LLM writes tests that assert nothing, mock everything, or cover the happy path and call it done. Coverage numbers look great. The code is still broken.
 
-| Gate | What It Does |
-|------|--------------|
-| `deceptiveness:bogus-tests.dart` | 🧪 Detects empty or non-assertive Dart/Flutter tests |
-| `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS |
-| `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing |
-| `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C |
-| `deceptiveness:gate-dodging` | 🚨 Detects loosened quality thresholds |
-| `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement |
+| Gate | What It Does | Reasoning |
+|------|--------------|----------------|
+| `deceptiveness:bogus-tests.dart` | 🧪 Detects empty or non-assertive Dart/Flutter tests | A fake Dart test suite is worse than no test suite because it teaches people to trust green lies. |
+| `deceptiveness:bogus-tests.js` | 🎭 Bogus test detection for JS/TS | A fake JavaScript test suite is worse than no test suite because it teaches people to trust green lies. |
+| `deceptiveness:bogus-tests.py` | 🧟 AST analysis for tests that assert nothing | A fake Python test suite is worse than no test suite because it teaches people to trust green lies. |
+| `deceptiveness:debugger-artifacts` | 🐞 Catches leftover breakpoint()/debugger;/dbg!()/runtime.Breakpoint() across Python, JS, Rust, Go, C | Leftover breakpoints are the kind of tiny accident that can wreck a real run in embarrassingly expensive ways. |
+| `deceptiveness:gate-dodging` | 🚨 Detects loosened quality thresholds | If the fix is 'turn the smoke alarm down,' the repo learns the wrong lesson and the next regression walks right in. |
+| `deceptiveness:hand-wavy-tests.js` | 🔍 ESLint expect-expect assertion enforcement | If JavaScript tests never assert, the suite is just theater with npm around it. |
 
 ### 🟠 Laziness
 
@@ -306,17 +337,17 @@ Gates aren't organized by language — they're organized by **the failure mode t
 >
 > The LLM solves the immediate problem and moves on. Formatting is inconsistent, dead code accumulates, complexity creeps upward, and nobody notices until the codebase is incomprehensible.
 
-| Gate | What It Does |
-|------|--------------|
-| `laziness:broken-templates.py` | 📄 Jinja2 template validation |
-| `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) |
-| `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) |
-| `laziness:generated-artifacts.dart` | 🧱 Detects committed Flutter build/tool artifacts |
-| `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists |
-| `laziness:sloppy-formatting.dart` | 🎨 Dart formatting via dart format --set-exit-if-changed |
-| `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) |
-| `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) |
-| `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check |
+| Gate | What It Does | Reasoning |
+|------|--------------|----------------|
+| `laziness:broken-templates.py` | 📄 Jinja2 template validation | Template bugs like to wait until a user path hits them, which is a lousy time to discover syntax errors. |
+| `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) | Big branching functions are where edge cases go to hide and future fixes go to die. |
+| `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) | Dead code makes the map lie. People read paths that do not matter and miss the ones that do. |
+| `laziness:generated-artifacts.dart` | 🧱 Detects committed Flutter build/tool artifacts | Checking in generated junk is how you turn diffs into static and invite edits that get wiped later. |
+| `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists | A disabled gate is usually debt with a welcome mat on it. |
+| `laziness:sloppy-formatting.dart` | 🎨 Dart formatting via dart format --set-exit-if-changed | Formatting noise hides the real change and makes review slower than it needs to be. |
+| `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
+| `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
+| `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check | Frontend lint issues have a habit of turning into visible bugs, state leaks, or accessibility damage. |
 
 ### 🔵 Myopia
 
@@ -324,15 +355,58 @@ Gates aren't organized by language — they're organized by **the failure mode t
 >
 > The LLM has a 200k-token context window and still manages tunnel vision. It duplicates code across files, ignores security implications, and lets functions grow unbounded because it can't see the pattern.
 
-| Gate | What It Does |
-|------|--------------|
-| `myopia:code-sprawl` | 📏 File and function length limits |
-| `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) |
-| `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads |
-| `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) |
-| `myopia:source-duplication` | 📋 Code clone detection (jscpd) |
-| `myopia:string-duplication.py` | 🔤 Duplicate string literal detection |
-| `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets |
+| Gate | What It Does | Reasoning |
+|------|--------------|----------------|
+| `myopia:code-sprawl` | 📏 File and function length limits | Once files and functions get too big, nobody can safely reason about them in one pass, including the model. |
+| `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) | Code can pass tests and types and still be an own-goal from a security perspective. |
+| `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads | Unresolved review threads turn the PR loop into Groundhog Day and hide known concerns in plain sight. |
+| `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) | If changed lines can land untested, overall coverage becomes a nice story the PR does not actually obey. |
+| `myopia:source-duplication` | 📋 Code clone detection (jscpd) | Copy-pasted logic diverges in slow motion until every bug fix becomes a scavenger hunt. |
+| `myopia:string-duplication.py` | 🔤 Duplicate string literal detection | Repeated literals hide shared rules and make the repo drift by typo instead of design. |
+| `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets | Your code can be clean and still ship someone else's CVE to production. |
+
+### 🧭 Remediation Order
+
+Execution order is not remediation order. In remediation mode, slop-mop validates finished gates using this registry-derived order to minimize overall remediation time. In maintenance mode, it evaluates results as soon as they come in to minimize dev-cycle time.
+
+Reasoning: handle the changes most likely to reshape other work first. High-risk or high-churn fixes go first, confidence-building checks sit in the middle, and isolated cleanup like formatting goes last.
+
+`curated` means the registry intentionally pins that gate's place in the sequence. `explicit` means the gate class set its own numeric priority. `churn-default` means no exact order was provided, so slop-mop falls back to the broad churn band.
+
+| # | Gate | Priority | Source | Churn Band |
+|---|------|----------|--------|------------|
+| 1 | `myopia:dependency-risk.py` | 10 | curated | unlikely |
+| 2 | `myopia:vulnerability-blindness.py` | 20 | curated | unlikely |
+| 3 | `myopia:source-duplication` | 30 | curated | very-likely |
+| 4 | `laziness:dead-code.py` | 40 | curated | very-likely |
+| 5 | `myopia:string-duplication.py` | 50 | curated | unlikely |
+| 6 | `deceptiveness:gate-dodging` | 60 | curated | likely |
+| 7 | `deceptiveness:bogus-tests.py` | 70 | curated | likely |
+| 8 | `deceptiveness:bogus-tests.js` | 80 | curated | likely |
+| 9 | `deceptiveness:bogus-tests.dart` | 90 | curated | likely |
+| 10 | `deceptiveness:hand-wavy-tests.js` | 100 | curated | likely |
+| 11 | `overconfidence:missing-annotations.py` | 110 | curated | unlikely |
+| 12 | `overconfidence:missing-annotations.dart` | 120 | curated | unlikely |
+| 13 | `overconfidence:type-blindness.py` | 130 | curated | unlikely |
+| 14 | `overconfidence:type-blindness.js` | 140 | curated | unlikely |
+| 15 | `myopia:code-sprawl` | 150 | curated | very-likely |
+| 16 | `laziness:complexity-creep.py` | 160 | curated | very-likely |
+| 17 | `overconfidence:untested-code.py` | 170 | curated | unlikely |
+| 18 | `overconfidence:untested-code.js` | 180 | curated | unlikely |
+| 19 | `overconfidence:untested-code.dart` | 190 | curated | unlikely |
+| 20 | `overconfidence:coverage-gaps.py` | 200 | curated | unlikely |
+| 21 | `overconfidence:coverage-gaps.js` | 210 | curated | unlikely |
+| 22 | `overconfidence:coverage-gaps.dart` | 220 | curated | unlikely |
+| 23 | `myopia:just-this-once.py` | 230 | curated | unlikely |
+| 24 | `laziness:silenced-gates` | 240 | curated | likely |
+| 25 | `myopia:ignored-feedback` | 250 | curated | unlikely |
+| 26 | `laziness:sloppy-frontend.js` | 260 | curated | unlikely |
+| 27 | `laziness:broken-templates.py` | 270 | curated | unlikely |
+| 28 | `laziness:sloppy-formatting.py` | 280 | curated | very-unlikely |
+| 29 | `laziness:sloppy-formatting.js` | 290 | curated | very-unlikely |
+| 30 | `laziness:sloppy-formatting.dart` | 300 | curated | unlikely |
+| 31 | `laziness:generated-artifacts.dart` | 310 | curated | very-unlikely |
+| 32 | `deceptiveness:debugger-artifacts` | 320 | curated | very-unlikely |
 
 <!-- END GATE TABLES -->
 
@@ -356,6 +430,15 @@ sm swab -g overconfidence:coverage-gaps.py     # re-check just coverage
 sm swab -g laziness:complexity-creep.py        # re-check just complexity
 ```
 
+### Unblocking Swab Cycles
+
+There are two different levers for keeping local iteration fast:
+
+1. `--swabbing-time` or `sm config --swabbing-time` limits how much wall-clock time `sm swab` spends on a pass.
+2. `sm config --swab-off <gate>` keeps a gate enabled, but moves it out of swab and leaves it in scour.
+
+Use the budget when you want a fixed time envelope. Use `--swab-off` when a specific gate is valuable before PR, but too expensive or noisy for every local loop.
+
 ### Time Budget
 
 Use `--swabbing-time` to set a time budget in seconds. Gates with historical
@@ -376,6 +459,26 @@ sm config --swabbing-time 0   # disable the limit entirely
 ```
 
 Time budgets only apply to swab. Scour runs always execute every gate.
+
+### Swab Membership
+
+If a gate is useful, but not useful on every single local pass, keep it in scour and take it out of swab:
+
+```bash
+sm config --swab-off myopia:source-duplication        # keep out of local swab
+sm config --swab-off laziness:complexity-creep.py     # only check during scour
+sm config --swab-on myopia:source-duplication         # put it back into swab
+```
+
+Semantics:
+- `--swab-off` means: skip during `sm swab`, still run during `sm scour`.
+- `--swab-on` means: run during both `sm swab` and `sm scour`.
+- `--disable` means: do not run the gate at all.
+
+That gives you a practical escalation path:
+- budgeted swab when you want a bounded maintenance loop,
+- scour-only gates when a check matters but is too onerous for every iteration,
+- full disable only when the project is not ready for that signal yet.
 
 ### Selective Gate Caching
 
@@ -425,6 +528,13 @@ sm config --disable overconfidence:coverage-gaps.py  # coverage is at 30%, not 8
 sm swab                                        # get the rest green first
 ```
 
+If the gate should still matter before PR, prefer scour-only instead of disable:
+
+```bash
+sm config --swab-off laziness:complexity-creep.py    # not every local loop
+sm config --swab-off myopia:source-duplication       # still enforced in scour
+```
+
 ### 4. Fix Everything That's Left
 
 Iterate: run `sm swab`, fix a failure, run again. The iteration guidance tells the agent exactly what to do after each failure.
@@ -455,6 +565,8 @@ With hooks in place, every commit runs through slop-mop. Gates that aren't ready
 sm config --show              # show all gates and their status
 sm config --enable <gate>     # enable a disabled gate
 sm config --disable <gate>    # disable a gate
+sm config --swab-off <gate>   # keep gate out of swab, but in scour
+sm config --swab-on <gate>    # run gate in both swab and scour
 sm config --json <file>       # bulk update from JSON
 ```
 
@@ -479,7 +591,7 @@ Edit directly for per-gate configuration. Gates are organized by flaw category:
   "overconfidence": {
     "enabled": true,
     "gates": {
-      "coverage-gaps.py": { "enabled": true, "threshold": 80 },
+      "coverage-gaps.py": { "enabled": true, "threshold": 80, "run_on": "scour" },
       "untested-code.py": { "enabled": true, "test_dirs": ["tests"], "timeout": 300 }
     }
   },
@@ -491,6 +603,10 @@ Edit directly for per-gate configuration. Gates are organized by flaw category:
   }
 }
 ```
+
+`run_on` is the per-gate execution rail:
+- `"swab"`: run in both `sm swab` and `sm scour`
+- `"scour"`: skip `sm swab`, still run in `sm scour`
 
 ### Custom Gates
 
@@ -509,6 +625,7 @@ Custom gates are an escape hatch and a proving ground, not a replacement for `ma
       "description": "Run clippy lints",
       "category": "laziness",
       "command": "cargo clippy -- -D warnings 2>&1",
+      "fix_command": "cargo fmt --all",
       "level": "swab",
       "timeout": 300
     },
@@ -524,7 +641,7 @@ Custom gates are an escape hatch and a proving ground, not a replacement for `ma
 }
 ```
 
-Custom gates run alongside built-in gates and respect the same enable/disable, timeout, and time-budget mechanics. Exit code 0 means pass, anything else is a failure. `sm init` auto-scaffolds appropriate custom gates when it detects Go, Rust, or C/C++ projects.
+Custom gates run alongside built-in gates and respect the same enable/disable, timeout, and time-budget mechanics. Exit code 0 means pass, anything else is a failure. If `fix_command` is present, the gate can auto-fix before checking. `sm init` auto-scaffolds appropriate custom gates when it detects Go, Rust, or C/C++ projects.
 
 ### Why Wrapper Gates?
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Dict, List, Tuple
 
 
@@ -54,6 +55,7 @@ TARGETS: Dict[str, InstallTarget] = {
 }
 
 ALL_KEYS: Tuple[str, ...] = tuple(TARGETS.keys())
+INSTALL_HELP_PREVIEW_ROOT = PurePosixPath(".slopmop/tmp")
 
 ALIASES: Dict[str, List[str]] = {
     "all": list(ALL_KEYS),
@@ -72,3 +74,23 @@ def expand_target(target: str) -> List[str]:
     if target in TARGETS:
         return [target]
     raise ValueError(f"Unknown agent install target: {target}")
+
+
+def preview_install_paths(
+    target: str,
+    preview_root: PurePosixPath = INSTALL_HELP_PREVIEW_ROOT,
+) -> List[str]:
+    """Return preview install destinations for one target.
+
+    The CLI help uses a repo-local preview root instead of OS temp paths so the
+    displayed destinations are deterministic and easy to reason about.
+    """
+    from slopmop.agent_install.loader import load_assets
+
+    if target not in TARGETS:
+        return []
+
+    return [
+        str(preview_root / PurePosixPath(asset.destination_relpath))
+        for asset in load_assets(TARGETS[target].template_dir)
+    ]

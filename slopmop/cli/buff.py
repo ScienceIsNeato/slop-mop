@@ -20,7 +20,6 @@ from typing import Any, Optional, cast
 from slopmop.checks.pr.comments import PRCommentsCheck
 from slopmop.cli.ci import (
     _categorize_checks,
-    _detect_pr_number,
     _fetch_checks,
     _print_failed_status,
     _print_in_progress_status,
@@ -530,17 +529,11 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
     """Check PR CI status through the buff rail."""
 
     project_root = Path(_project_root_from_cwd())
-
-    resolved_pr = pr_number
-    if resolved_pr is None:
-        resolved_pr = _detect_pr_number(project_root)
-
-    if resolved_pr is None:
-        print("ERROR: could not detect PR number")
-        print(
-            "Run from a branch with an open PR, or specify: sm buff status <pr_number>"
-        )
-        return 2
+    try:
+        resolved_pr = resolve_pr_number(_get_repo_slug(str(project_root)), pr_number)
+    except TriageError as exc:
+        print(f"ERROR: {exc}")
+        return 1
 
     print()
     print("🪣 sm buff status - CI Status Check")

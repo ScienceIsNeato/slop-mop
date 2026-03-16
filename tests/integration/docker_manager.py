@@ -38,6 +38,7 @@ INTEGRATION_DIR = Path(__file__).parent
 DOCKERFILE = INTEGRATION_DIR / "Dockerfile"
 
 DEFAULT_IMAGE_NAME = "slop-mop-integration-test"
+DEFAULT_BUILD_TIMEOUT = 900
 
 # The fixture repo is cloned from GitHub inside each container.
 BUCKET_O_SLOP_REPO = "https://github.com/ScienceIsNeato/bucket-o-slop.git"
@@ -191,10 +192,12 @@ class DockerManager:
         image_name: str = DEFAULT_IMAGE_NAME,
         rebuild: bool = False,
         timeout: int = 300,
+        build_timeout: int = DEFAULT_BUILD_TIMEOUT,
     ) -> None:
         self.image_name = image_name
         self.rebuild = rebuild
         self.timeout = timeout
+        self.build_timeout = build_timeout
         self._image_built = False
 
     # ------------------------------------------------------------------
@@ -231,6 +234,14 @@ class DockerManager:
         ----------
         force:
             Rebuild even if already built this session.
+
+        Notes
+        -----
+        Image builds need a longer timeout than individual container runs.
+        The first pull of ``python:3.12-slim`` can spend several minutes in
+        registry metadata/download work on Docker Desktop before a single layer
+        executes. Using the same 300s timeout as ``docker run`` made the happy-
+        path integration test flaky during cache-cold runs.
         """
         if self._image_built and not force and not self.rebuild:
             return
@@ -247,7 +258,7 @@ class DockerManager:
             ],
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=self.build_timeout,
         )
         if result.returncode != 0:
             raise RuntimeError(

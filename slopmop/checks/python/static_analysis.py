@@ -23,6 +23,43 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 _MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
 
 
+def _fix_strategy_for_mypy(code: str, message: str) -> Optional[str]:
+    """Return a prescriptive remediation for common mypy error codes."""
+    if code == "type-arg":
+        return (
+            "Add explicit type parameters to the generic at this location, "
+            "for example Dict[str, Any] instead of bare Dict."
+        )
+    if code == "no-untyped-def":
+        return (
+            "Add parameter and return annotations to this function signature so "
+            "mypy can verify callers and return values."
+        )
+    if code == "arg-type":
+        return (
+            "Make the argument type match the callee contract, or update the "
+            "callee annotation if the current call shape is intentional."
+        )
+    if code == "return-value":
+        return (
+            "Make the returned expression match the annotated return type, or "
+            "adjust the annotation if the implementation is correct."
+        )
+    if code == "assignment":
+        return (
+            "Align the variable annotation and assigned value so both describe "
+            "the same concrete type."
+        )
+    if code == "attr-defined":
+        return (
+            "Use an attribute that exists on this type, or tighten the upstream "
+            "annotation so mypy knows the concrete subtype here."
+        )
+    if message:
+        return "Update the annotation or signature at this location so the reported type mismatch disappears."
+    return None
+
+
 class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     """Static type checking with mypy.
 
@@ -226,6 +263,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                         file=match.group(1),
                         line=int(match.group(2)),
                         rule_id=match.group(4),
+                        fix_strategy=_fix_strategy_for_mypy(code, match.group(3)),
                     )
                 )
 

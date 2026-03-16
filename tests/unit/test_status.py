@@ -10,9 +10,13 @@ from unittest.mock import MagicMock, patch
 
 from slopmop.cli.ci import _categorize_checks
 from slopmop.cli.status import (
+    _failure_counts_from_artifact,
     _format_gate_line,
+    _gather_baseline_snapshot_data,
     _gather_ci_data,
     _gather_workflow_data,
+    _load_latest_gate_results,
+    _print_baseline_snapshot,
     _print_ci_summary,
     _print_config_summary,
     _print_gate_inventory,
@@ -20,7 +24,6 @@ from slopmop.cli.status import (
     _print_recent_history,
     _print_workflow_position,
     cmd_status,
-    run_status,
 )
 from slopmop.reporting.timings import TimingStats
 from slopmop.sm import create_parser, main
@@ -35,7 +38,7 @@ def _mock_registry(all_gates=None, swab_gates=None, scour_gates=None):
     mock_reg = MagicMock()
     mock_reg.list_checks.return_value = all_gates or []
 
-    def _gate_names_for_level(level):
+    def _gate_names_for_level(level, _config=None):
         from slopmop.checks.base import GateLevel
 
         if level == GateLevel.SWAB:
@@ -161,6 +164,19 @@ class TestFormatGateLine:
             colors_enabled=False,
         )
         assert "scour" in line
+
+    def test_scour_only_no_history_shows_helpful_hint(self):
+        line = _format_gate_line(
+            "dependency-risk.py",
+            role="foundation",
+            in_swab=False,
+            in_scour=True,
+            is_applicable=True,
+            skip_reason="",
+            history=None,
+            colors_enabled=False,
+        )
+        assert "run sm scour" in line
 
     def test_role_badge_included(self):
         line = _format_gate_line(
@@ -746,6 +762,50 @@ class TestPrintRecentHistory:
         out = capsys.readouterr().out
         assert "No gate run history found" in out
 
+
+class TestLatestGateResults:
+    """Tests for persisted per-gate status lookup."""
+
+    def test_scour_only_gate_uses_last_scour_even_when_last_swab_is_newer(
+        self, tmp_path
+    ):
+        """Status should not let a newer swab artifact hide scour-only results."""
+        sm_dir = tmp_path / ".slopmop"
+        sm_dir.mkdir()
+
+        last_scour = sm_dir / "last_scour.json"
+        last_scour.write_text(
+            json.dumps(
+                {
+                    "passed_gates": ["myopia:dependency-risk.py"],
+                    "results": [],
+                }
+            )
+        )
+
+        last_swab = sm_dir / "last_swab.json"
+        last_swab.write_text(
+            json.dumps(
+                {
+                    "passed_gates": ["overconfidence:untested-code.py"],
+                    "results": [],
+                }
+            )
+        )
+
+        newer = last_scour.stat().st_mtime + 10
+        import os
+
+        os.utime(last_swab, (newer, newer))
+
+        history = {
+            "myopia:dependency-risk.py": _stats(results=("failed",)),
+        }
+
+        results = _load_latest_gate_results(tmp_path, history)
+
+        assert results["myopia:dependency-risk.py"] == "passed"
+
     def test_with_history(self, capsys):
         """Shows last-known status counts."""
         history = {
@@ -759,64 +819,152 @@ class TestPrintRecentHistory:
         assert "Last recorded" in out
         assert "2 gates tracked" in out
 
+    def test_prefers_recent_run_artifact_with_failed_gate_table(self, capsys):
+        recent_run = {
+            "source_file": "last_scour.json",
+            "summary": {
+                "passed": 10,
+                "failed": 2,
+                "warned": 1,
+                "errors": 0,
+                "skipped": 0,
+            },
+            "failure_counts": [
+                {"name": "myopia:dependency-risk.py", "count": 3},
+                {"name": "laziness:dead-code.py", "count": 1},
+            ],
+        }
 
-# ---------------------------------------------------------------------------
-# run_status direct invocation
-# ---------------------------------------------------------------------------
-
-
-class TestRunStatus:
-    """Tests for the run_status() function called directly."""
-
-    def _run(self, tmp_path):
-        """Helper: call run_status with standard mocks."""
-        (tmp_path / ".sb_config.json").write_text(json.dumps({}))
-        registry = _mock_registry()
-        with (
-            patch("slopmop.cli.status.get_registry", return_value=registry),
-            patch("slopmop.cli.status.load_timings", return_value={}),
-        ):
-            result = run_status(project_root=str(tmp_path), json_output=False)
-        return result, registry
-
-    def test_always_returns_0(self, tmp_path):
-        """run_status always returns 0 (observatory)."""
-        result, _ = self._run(tmp_path)
-        assert result == 0
-
-    def test_invalid_project_root(self, tmp_path, capsys):
-        """run_status returns 1 for non-existent path."""
-        result = run_status(
-            project_root=str(tmp_path / "nonexistent"), json_output=False
-        )
-        assert result == 1
-        assert "not found" in capsys.readouterr().out
-
-    def test_shows_dashboard_header(self, tmp_path, capsys):
-        """run_status shows dashboard header."""
-        (tmp_path / ".sb_config.json").write_text(json.dumps({}))
-        registry = _mock_registry()
-        with (
-            patch("slopmop.cli.status.get_registry", return_value=registry),
-            patch("slopmop.cli.status.load_timings", return_value={}),
-        ):
-            run_status(project_root=str(tmp_path), json_output=False)
+        _print_recent_history({}, recent_run)
         out = capsys.readouterr().out
-        assert "project dashboard" in out
-        assert "Historical dashboard only" in out
 
-    def test_no_executor_used(self, tmp_path):
-        """run_status does NOT use CheckExecutor."""
-        (tmp_path / ".sb_config.json").write_text(json.dumps({}))
-        registry = _mock_registry()
-        with (
-            patch("slopmop.cli.status.get_registry", return_value=registry),
-            patch("slopmop.cli.status.load_timings", return_value={}),
-            patch("slopmop.core.executor.CheckExecutor", side_effect=AssertionError),
-        ):
-            # Should NOT raise — executor is never imported or used
-            result = run_status(project_root=str(tmp_path), json_output=False)
-            assert result == 0
+        assert "Source: last_scour.json" in out
+        assert "10 passed, 2 failed, 1 warned" in out
+        assert "Failed gates: 2" in out
+        assert "myopia:dependency-risk.py" in out
+        assert "3" in out
+
+
+class TestBaselineSnapshotStatus:
+    """Tests for baseline snapshot status visibility."""
+
+    def test_gather_returns_missing_snapshot_guidance(self, tmp_path):
+        data = _gather_baseline_snapshot_data(tmp_path)
+        assert data is not None
+        assert data["present"] is False
+        assert "generate-baseline-snapshot" in data["help"]
+
+    def test_gather_reads_snapshot_metadata(self, tmp_path):
+        sm_dir = tmp_path / ".slopmop"
+        sm_dir.mkdir()
+        (sm_dir / "baseline_snapshot.json").write_text(
+            json.dumps(
+                {
+                    "source_file": "last_scour.json",
+                    "captured_at": "2026-03-13T00:00:00+00:00",
+                    "failure_fingerprints": ["a", "b", "c"],
+                    "source_artifact": {
+                        "results": [
+                            {
+                                "name": "myopia:dependency-risk.py",
+                                "status": "failed",
+                                "findings": [{"message": "one"}, {"message": "two"}],
+                            },
+                            {
+                                "name": "laziness:dead-code.py",
+                                "status": "failed",
+                                "output": "dead code",
+                            },
+                        ]
+                    },
+                }
+            )
+        )
+
+        data = _gather_baseline_snapshot_data(tmp_path)
+
+        assert data is not None
+        assert data["present"] is True
+        assert data["source_file"] == "last_scour.json"
+        assert data["tracked_failures"] == 3
+        assert data["failed_gates"] == 2
+        assert data["failure_counts"] == [
+            {"name": "myopia:dependency-risk.py", "count": 2},
+            {"name": "laziness:dead-code.py", "count": 1},
+        ]
+
+    def test_print_missing_baseline_snapshot_guidance(self, tmp_path, capsys):
+        data = _gather_baseline_snapshot_data(tmp_path)
+        _print_baseline_snapshot(data)
+
+        out = capsys.readouterr().out
+        assert "BASELINE SNAPSHOT" in out
+        assert "Missing" in out
+        assert "generate-baseline-snapshot" in out
+
+    def test_print_baseline_snapshot(self, tmp_path, capsys):
+        sm_dir = tmp_path / ".slopmop"
+        sm_dir.mkdir()
+        (sm_dir / "baseline_snapshot.json").write_text(
+            json.dumps(
+                {
+                    "source_file": "last_swab.json",
+                    "captured_at": "2026-03-13T00:00:00+00:00",
+                    "failure_fingerprints": ["a"],
+                    "source_artifact": {
+                        "results": [
+                            {
+                                "name": "laziness:dead-code.py",
+                                "status": "failed",
+                                "output": "dead code",
+                            }
+                        ]
+                    },
+                }
+            )
+        )
+
+        data = _gather_baseline_snapshot_data(tmp_path)
+        _print_baseline_snapshot(data)
+
+        out = capsys.readouterr().out
+        assert "BASELINE SNAPSHOT" in out
+        assert "last_swab.json" in out
+        assert "Failed gates: 1" in out
+        assert "Tracked failures: 1" in out
+        assert "laziness:dead-code.py" in out
+
+
+class TestBaselineFailureCounts:
+    """Tests for failure count extraction from baseline artifacts."""
+
+    def test_counts_findings_per_failed_gate(self):
+        artifact = {
+            "results": [
+                {
+                    "name": "a:gate.py",
+                    "status": "failed",
+                    "findings": [{"message": "one"}, {"message": "two"}],
+                },
+                {
+                    "name": "b:gate.py",
+                    "status": "failed",
+                    "output": "oops",
+                },
+                {
+                    "name": "c:gate.py",
+                    "status": "warned",
+                    "findings": [{"message": "ignored"}],
+                },
+            ]
+        }
+
+        result = _failure_counts_from_artifact(artifact)
+
+        assert result == [
+            {"name": "a:gate.py", "count": 2},
+            {"name": "b:gate.py", "count": 1},
+        ]
 
 
 # ---------------------------------------------------------------------------

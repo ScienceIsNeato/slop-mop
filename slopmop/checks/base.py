@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
 
+from slopmop.checks.metadata import Reasoning, builtin_reasoning_for_check_class
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -431,11 +432,14 @@ STANDARD_CONFIG_FIELDS = [
         description="Automatically fix issues when possible",
     ),
     ConfigField(
-        name="config_file_path",
+        name="run_on",
         field_type="string",
         default=None,
-        description="Path to tool's native config file (e.g., pytest.ini, .bandit)",
-        required=False,
+        choices=[GateLevel.SWAB.value, GateLevel.SCOUR.value],
+        description=(
+            "Execution rail for this gate. 'swab' runs it in both swab and scour; "
+            "'scour' keeps it out of swab but still runs it during scour."
+        ),
     ),
 ]
 
@@ -454,6 +458,7 @@ class BaseCheck(ABC):
     - tool_context: ToolContext declaring how tools are resolved
     - depends_on: List of check names this depends on
     - config_schema: Additional config fields beyond standard ones
+    - init_config(): init-time config discovery for this gate only
     - can_auto_fix(): Whether issues can be auto-fixed
     - auto_fix(): Attempt to fix issues automatically
     """
@@ -481,9 +486,26 @@ class BaseCheck(ABC):
 
     # Likelihood that fixing this gate cascades into other gates.
     # Gates with high downstream likelihood should be fixed first.
+    # This is a coarse default, not the final ordering mechanism.
     remediation_churn: ClassVar[RemediationChurn] = (
         RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
     )
+
+    # Fine-grained remediation ordering.
+    # Lower numbers are fixed first. ``None`` means "derive a default from
+    # remediation_churn". This keeps the broad churn taxonomy for docs while
+    # allowing precise ordering when multiple gates share a churn band.
+    #
+    # This is remediation order, not execution order: checks may still be
+    # dispatched concurrently, but in REMEDIATION phase the executor processes
+    # completed results and applies fail-fast according to registry-derived
+    # remediation priority.
+    remediation_priority: ClassVar[Optional[int]] = None
+
+    # Structured gate-level reasoning metadata. Built-in gates are populated from
+    # the shared metadata registry during registration; custom gates can set this
+    # directly on the class when they have equivalent context.
+    REASONING: ClassVar[Optional[Reasoning]] = None
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
@@ -561,8 +583,19 @@ class BaseCheck(ABC):
         verify their fix.  Centralised here to avoid string duplication
         across every gate that wants the pattern.
         """
-        verb = self.level.value
+        verb = self.effective_level.value
         return f"sm {verb} -g {self.full_name} --verbose"
+
+    @property
+    def effective_level(self) -> GateLevel:
+        """Configured execution level for this gate instance."""
+        run_on = self.config.get("run_on")
+        if isinstance(run_on, str):
+            try:
+                return GateLevel(run_on)
+            except ValueError:
+                pass
+        return self.level
 
     @property
     def depends_on(self) -> List[str]:
@@ -605,6 +638,19 @@ class BaseCheck(ABC):
             List of all ConfigField definitions (standard + check-specific)
         """
         return STANDARD_CONFIG_FIELDS + self.config_schema
+
+    def init_config(self, project_root: str) -> Dict[str, Any]:
+        """Return init-time config overrides discovered by this gate.
+
+        This hook is the gate-owned seam for `sm init`. Gates that know how
+        to discover their own native config or baseline files should override
+        it and return only the gate-specific fields they own. The default is
+        empty because most gates do not need repo-specific config-file lookup.
+
+        `sm init` treats these values as discovered defaults, not hard
+        overrides: existing non-empty gate config wins.
+        """
+        return {}
 
     @abstractmethod
     def is_applicable(self, project_root: str) -> bool:
@@ -682,6 +728,21 @@ class BaseCheck(ABC):
         """
         return False
 
+    @property
+    def why_it_matters(self) -> Optional[str]:
+        """Gate-level context explaining why this failure category matters."""
+        reasoning = self.reasoning
+        if reasoning is None:
+            return None
+        return reasoning.rationale
+
+    @property
+    def reasoning(self) -> Optional[Reasoning]:
+        """Structured gate-level reasoning metadata."""
+        if self.REASONING is not None:
+            return self.REASONING
+        return builtin_reasoning_for_check_class(type(self))
+
     def _create_result(
         self,
         status: CheckStatus,
@@ -743,6 +804,7 @@ class BaseCheck(ABC):
             category=self.category.key if self.category else None,
             status_detail=status_detail,
             role=self.role.value,
+            why_it_matters=self.why_it_matters,
             findings=findings or [],
         )
 

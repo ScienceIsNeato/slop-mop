@@ -112,17 +112,6 @@ Every `BaseCheck` subclass declares a `role: ClassVar[CheckRole]`. The classific
 
 ### Work Item 1b: Smart Init and Tool Discovery
 
-The `sm init` command currently auto-detects project type and generates a config. It should also:
-
-1. **Discover existing tooling**: Scan for `.eslintrc`, `pyproject.toml [tool.black]`, `mypy.ini`, `setup.cfg [flake8]`, `jest.config.js`, `.prettierrc`, etc.
-
-2. **For each discovered tool**, determine if it overlaps with a Foundation check. If so:
-   - Default to *delegating* to the existing config (don't install a second linter)
-   - Record the delegation in `.sb_config.json` so slop-mop knows "this repo already has eslint; my `sloppy-formatting.js` check should invoke *their* eslint with *their* config"
-   - If the existing tool covers a *subset* of what slop-mop checks, note the gap
-
-3. **For missing tools**, offer to install them as slop-mop-managed dependencies (the current behavior, but now explicit rather than implicit)
-
 This moves slop-mop from "batteries-included heavy install" to "smart, adaptive, efficient overlay." The eventual `sm doctor` verb (out of scope here, but worth noting in the architecture) will extend this to runtime dependency health checks.
 
 **Config shape** (strawman):

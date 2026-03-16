@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from slopmop.baseline import baseline_snapshot_path, filter_summary_against_baseline
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateLevel
 from slopmop.core.executor import CheckExecutor
@@ -22,11 +23,19 @@ from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.report import RunReport
 from slopmop.reporting.timings import clear_timings, load_timing_averages
+from slopmop.workflow.state_machine import RepoPhase
+from slopmop.workflow.state_store import read_phase
+
+
+def _default_json_artifact_path(project_root: Path, artifact_name: str) -> str:
+    """Return the default JSON artifact path anchored to the project root."""
+    return str(project_root / ".slopmop" / artifact_name)
 
 
 def _resolve_swabbing_time(
     args: argparse.Namespace,
     project_root: Path,
+    preloaded_config: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
     """Resolve effective swabbing-time budget for this run.
 
@@ -37,9 +46,12 @@ def _resolve_swabbing_time(
     """
     swabbing_time: Optional[int] = getattr(args, "swabbing_time", None)
     if swabbing_time is None:
-        from slopmop.sm import load_config
+        if preloaded_config is not None:
+            config = preloaded_config
+        else:
+            from slopmop.sm import load_config
 
-        config = load_config(project_root)
+            config = load_config(project_root)
         config_val = config.get("swabbing_time")
         if isinstance(config_val, (int, float)) and config_val > 0:
             swabbing_time = int(config_val)
@@ -143,6 +155,9 @@ def _run_validation(
     args: argparse.Namespace,
     gates: List[str],
     level_name: Optional[str],
+    *,
+    preloaded_config: Optional[Dict[str, Any]] = None,
+    custom_gates_registered: bool = False,
 ) -> int:
     """Core validation pipeline shared by swab and scour.
 
@@ -178,7 +193,11 @@ def _run_validation(
     )
 
     if level_name == "swab":
-        resolved_swabbing_time = _resolve_swabbing_time(args, project_root)
+        resolved_swabbing_time = _resolve_swabbing_time(
+            args,
+            project_root,
+            preloaded_config=preloaded_config,
+        )
         if resolved_swabbing_time is not None:
             lock_stale_after = float(resolved_swabbing_time * 3)
             lock_expected_duration = min(
@@ -203,6 +222,8 @@ def _run_validation(
                 level_name,
                 project_root,
                 resolved_swabbing_time=resolved_swabbing_time,
+                preloaded_config=preloaded_config,
+                custom_gates_registered=custom_gates_registered,
             )
     except SmLockError as exc:
         print(str(exc), file=sys.stderr)
@@ -215,6 +236,9 @@ def _run_validation_locked(
     level_name: Optional[str],
     project_root: Path,
     resolved_swabbing_time: Optional[int] = None,
+    *,
+    preloaded_config: Optional[Dict[str, Any]] = None,
+    custom_gates_registered: bool = False,
 ) -> int:
     """Inner validation pipeline, called while holding the repo lock."""
     from slopmop.sm import load_config
@@ -227,14 +251,21 @@ def _run_validation_locked(
             if not args.quiet and not json_mode:
                 print("🗑️  Timing history cleared")
 
-    # Create executor
+    # Create executor.
     # Scour never uses fail-fast — it runs every gate to give the full picture.
     # Swab respects the --no-fail-fast flag (default: fail-fast ON).
+    # In REMEDIATION phase, result processing follows remediation order rather
+    # than race-to-completion order. In MAINTENANCE, results are evaluated as
+    # soon as they complete. Dispatch order stays unchanged in both modes.
     registry = get_registry()
     use_fail_fast = False if level_name == "scour" else not args.no_fail_fast
+    process_results_in_remediation_order = (
+        read_phase(project_root) == RepoPhase.REMEDIATION
+    )
     executor = CheckExecutor(
         registry=registry,
         fail_fast=use_fail_fast,
+        process_results_in_remediation_order=process_results_in_remediation_order,
     )
 
     # Set up progress reporting (per-check status lines during the run;
@@ -242,18 +273,15 @@ def _run_validation_locked(
     reporter = ConsoleReporter(quiet=args.quiet, verbose=args.verbose)
 
     # Load configuration (must happen early — swabbing-time default lives here)
-    config = load_config(project_root)
+    config = (
+        preloaded_config if preloaded_config is not None else load_config(project_root)
+    )
 
     # Register user-defined custom gates from config
-    from slopmop.checks.custom import register_custom_gates
+    if not custom_gates_registered:
+        from slopmop.checks.custom import register_custom_gates
 
-    custom_names = register_custom_gates(config)
-
-    # Custom gates are registered AFTER the initial gate_names list was
-    # computed by cmd_swab/cmd_scour.  Append any newly registered names
-    # so they actually run.  (Explicit -g lists are left untouched.)
-    if level_name is not None and custom_names:
-        gates = list(gates) + custom_names
+        register_custom_gates(config)
 
     # Validate explicit -g gate names against the registry.
     # Level-based discovery (level_name != None) uses registry-produced
@@ -293,7 +321,11 @@ def _run_validation_locked(
     # fall back to config value.  <= 0 means no limit.
     swabbing_time: Optional[int] = resolved_swabbing_time
     if swabbing_time is None:
-        swabbing_time = _resolve_swabbing_time(args, project_root)
+        swabbing_time = _resolve_swabbing_time(
+            args,
+            project_root,
+            preloaded_config=preloaded_config,
+        )
 
     # Only enforce for swab runs
     if level_name != "swab":
@@ -347,11 +379,35 @@ def _run_validation_locked(
         # Adapters below are pure-transform: they format, they don't
         # compute.  Log writing is a side-effect owned by RunReport
         # (not adapters) so every format can reference the same files.
+        baseline_metadata: Optional[Dict[str, object]] = None
+        effective_summary = summary
+        if getattr(args, "ignore_baseline_failures", False):
+            from slopmop.baseline import load_baseline_snapshot
+
+            snapshot = load_baseline_snapshot(project_root)
+            if snapshot is None:
+                print(
+                    "❌ No baseline snapshot found. Run `sm status "
+                    "--generate-baseline-snapshot` first.",
+                    file=sys.stderr,
+                )
+                return 1
+            filtered = filter_summary_against_baseline(
+                summary,
+                snapshot,
+                snapshot_path=baseline_snapshot_path(project_root),
+            )
+            effective_summary = filtered.filtered_summary
+            baseline_metadata = filtered.metadata
+
         report = RunReport.from_summary(
-            summary,
+            effective_summary,
             level=level_name,
             project_root=str(project_root),
+            registry=registry,
+            sort_actionable_by_remediation_order=True,
         )
+        report.baseline_filter = baseline_metadata
 
         sarif_requested = getattr(args, "sarif_output", False)
         output_file = getattr(args, "output_file", None)
@@ -369,7 +425,9 @@ def _run_validation_locked(
         # run.
         if json_file:
             json_output = JsonAdapter.render(report)
-            Path(json_file).write_text(
+            json_path = Path(json_file)
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+            json_path.write_text(
                 json.dumps(json_output, separators=(",", ":")),
                 encoding="utf-8",
             )
@@ -386,7 +444,7 @@ def _run_validation_locked(
                 # SARIF went to a file — human output continues below.
             else:
                 print(payload)
-                return 0 if summary.all_passed else 1
+                return 0 if effective_summary.all_passed else 1
 
         if json_mode:
             output = JsonAdapter.render(report)
@@ -399,7 +457,7 @@ def _run_validation_locked(
         else:
             ConsoleAdapter(report).render()
 
-        return 0 if summary.all_passed else 1
+        return 0 if effective_summary.all_passed else 1
     finally:
         # Ensure display is stopped on any exit
         if dynamic_display:
@@ -418,9 +476,24 @@ def cmd_swab(args: argparse.Namespace) -> int:
     if explicit:
         return _run_validation(args, explicit, None)
 
+    from slopmop.checks.custom import register_custom_gates
+    from slopmop.sm import load_config
+
+    project_root = Path(getattr(args, "project_root", "."))
+    if getattr(args, "json_file", None) is None:
+        args.json_file = _default_json_artifact_path(project_root, "last_swab.json")
+
+    config = load_config(project_root)
+    register_custom_gates(config)
     registry = get_registry()
-    gate_names = registry.get_gate_names_for_level(GateLevel.SWAB)
-    exit_code = _run_validation(args, gate_names, "swab")
+    gate_names = registry.get_gate_names_for_level(GateLevel.SWAB, config)
+    exit_code = _run_validation(
+        args,
+        gate_names,
+        "swab",
+        preloaded_config=config,
+        custom_gates_registered=True,
+    )
 
     try:
         from slopmop.workflow.hooks import on_swab_complete
@@ -444,9 +517,23 @@ def cmd_scour(args: argparse.Namespace) -> int:
         return _run_validation(args, explicit, None)
 
     project_root = Path(getattr(args, "project_root", "."))
+    if getattr(args, "json_file", None) is None:
+        args.json_file = _default_json_artifact_path(project_root, "last_scour.json")
+
+    from slopmop.checks.custom import register_custom_gates
+    from slopmop.sm import load_config
+
+    config = load_config(project_root)
+    register_custom_gates(config)
     registry = get_registry()
-    gate_names = registry.get_gate_names_for_level(GateLevel.SCOUR)
-    exit_code = _run_validation(args, gate_names, "scour")
+    gate_names = registry.get_gate_names_for_level(GateLevel.SCOUR, config)
+    exit_code = _run_validation(
+        args,
+        gate_names,
+        "scour",
+        preloaded_config=config,
+        custom_gates_registered=True,
+    )
 
     try:
         from slopmop.workflow.hooks import on_scour_complete

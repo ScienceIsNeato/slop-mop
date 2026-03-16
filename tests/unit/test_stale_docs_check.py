@@ -125,6 +125,7 @@ class TestGenerateTables:
         tables = generate_tables(registry)
         assert len(tables) > 0
         assert "| Gate |" in tables
+        assert "Reasoning" in tables
 
     def test_tables_contain_known_gates(self) -> None:
         """Generated tables include well-known built-in gates."""
@@ -139,6 +140,32 @@ class TestGenerateTables:
         assert "complexity-creep" in tables
         assert "sloppy-formatting" in tables
 
+    def test_tables_include_generated_remediation_order(self) -> None:
+        """Generated output includes the remediation-order section."""
+        from slopmop.core.registry import get_registry
+        from slopmop.utils.readme_tables import generate_tables
+
+        self._ensure_fresh_registry()
+        registry = get_registry()
+        tables = generate_tables(registry)
+
+        assert "### 🧭 Remediation Order" in tables
+        assert "| # | Gate | Priority | Source | Churn Band |" in tables
+
+    def test_remediation_order_uses_curated_sequence(self) -> None:
+        """Source duplication should appear before formatting in the generated order."""
+        from slopmop.core.registry import get_registry
+        from slopmop.utils.readme_tables import generate_tables
+
+        self._ensure_fresh_registry()
+        registry = get_registry()
+        tables = generate_tables(registry)
+        remediation_section = tables.split("### 🧭 Remediation Order", 1)[1]
+
+        assert remediation_section.index(
+            "`myopia:source-duplication`"
+        ) < remediation_section.index("`laziness:sloppy-formatting.py`")
+
     def test_stale_docs_not_in_generated_tables(self) -> None:
         """stale-docs is a custom gate and should NOT appear in built-in tables."""
         from slopmop.core.registry import get_registry
@@ -148,6 +175,20 @@ class TestGenerateTables:
         registry = get_registry()
         tables = generate_tables(registry)
         assert "stale-docs" not in tables
+
+    def test_all_builtin_gates_have_reasoning(self) -> None:
+        """Every built-in gate should surface reasoning for docs/runtime."""
+        from slopmop.core.registry import get_registry
+
+        self._ensure_fresh_registry()
+        registry = get_registry()
+        missing: list[str] = []
+        for name in registry.list_checks():
+            check = registry.get_check(name, {})
+            if check is None or check.reasoning is None:
+                missing.append(name)
+
+        assert missing == []
 
 
 class TestSpliceTables:
@@ -200,9 +241,18 @@ class TestCustomGateRegistration:
 
         check_class = make_custom_check_class(
             gate_name="stale-docs",
-            description="Detects stale README gate tables",
+            description="Detects stale README gate tables and workflow docs",
             category_key="laziness",
-            command="python scripts/generate_readme_tables.py --check",
+            command=(
+                "python scripts/generate_readme_tables.py --check && "
+                "python scripts/generate_gate_reasoning.py --check && "
+                "python scripts/gen_workflow_diagrams.py --check"
+            ),
+            fix_command=(
+                "python scripts/generate_readme_tables.py --update && "
+                "python scripts/generate_gate_reasoning.py --update && "
+                "python scripts/gen_workflow_diagrams.py"
+            ),
             level_str="swab",
             timeout=30,
         )
@@ -210,3 +260,6 @@ class TestCustomGateRegistration:
         assert instance.name == "stale-docs"
         assert instance.full_name == "laziness:stale-docs"
         assert instance.is_applicable("/any/path") is True
+        assert instance.can_auto_fix() is True
+        assert "generate_gate_reasoning.py --check" in check_class._command
+        assert "generate_gate_reasoning.py --update" in check_class._fix_command

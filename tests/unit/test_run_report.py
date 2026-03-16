@@ -7,6 +7,7 @@ no side effects beyond the contract.
 """
 
 import json
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
@@ -37,6 +38,7 @@ def _result(
     error: str = "",
     output: str = "",
     fix_suggestion: str = "",
+    why_it_matters: str = "",
     skip_reason: Optional[SkipReason] = None,
     findings: Optional[list[Finding]] = None,
 ) -> CheckResult:
@@ -48,6 +50,7 @@ def _result(
         output=output,
         fix_suggestion=fix_suggestion or None,
         role=role,
+        why_it_matters=why_it_matters or None,
         skip_reason=skip_reason,
         findings=findings or [],
     )
@@ -98,6 +101,33 @@ class TestRunReportCategorisation:
         )
         report = RunReport.from_summary(summary)
         assert [r.name for r in report.failed] == ["f1", "f2", "f3"]
+
+    def test_can_sort_failures_by_remediation_order_for_display(self) -> None:
+        registry = SimpleNamespace(
+            remediation_sort_key_for_name=lambda name: {
+                "overconfidence:high": (0, 10, name),
+                "overconfidence:low": (0, 20, name),
+            }.get(name)
+        )
+
+        summary = _summary(
+            [
+                _result("overconfidence:low", CheckStatus.FAILED),
+                _result("overconfidence:high", CheckStatus.FAILED),
+            ]
+        )
+        report = RunReport.from_summary(
+            summary,
+            level="swab",
+            registry=registry,
+            sort_actionable_by_remediation_order=True,
+        )
+
+        assert [r.name for r in report.failed] == [
+            "overconfidence:high",
+            "overconfidence:low",
+        ]
+        assert report.verify_command == "sm swab -g overconfidence:high --verbose"
 
     def test_verify_command_targets_first_failure(self) -> None:
         summary = _summary(
@@ -225,6 +255,30 @@ class TestJsonAdapter:
         out = JsonAdapter.render(report)
         assert out["next_steps"] == ["sm swab -g f --verbose"]
 
+    def test_first_to_fix_present_with_verify_command(self) -> None:
+        summary = _summary([_result("f", CheckStatus.FAILED)])
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert out["first_to_fix"] == {
+            "gate": "f",
+            "verify_command": "sm swab -g f --verbose",
+        }
+
+    def test_results_follow_report_actionable_order(self) -> None:
+        summary = _summary(
+            [
+                _result("f2", CheckStatus.FAILED),
+                _result("w1", CheckStatus.WARNED),
+                _result("f1", CheckStatus.FAILED),
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        report.failed = [report.failed[1], report.failed[0]]
+        out = JsonAdapter.render(report)
+        results = out["results"]
+        assert isinstance(results, list)
+        assert [row["name"] for row in results] == ["f1", "f2", "w1"]
+
     def test_next_steps_absent_when_all_passed(self) -> None:
         summary = _summary([_result("p", CheckStatus.PASSED)])
         report = RunReport.from_summary(summary)
@@ -269,6 +323,22 @@ class TestJsonAdapter:
         report = RunReport.from_summary(summary)
         out = JsonAdapter.render(report)
         assert out["results"][0]["role"] == "foundation"
+
+    def test_why_it_matters_appears_in_results(self) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "f",
+                    CheckStatus.FAILED,
+                    why_it_matters="Static typing catches interface bugs early.",
+                )
+            ]
+        )
+        report = RunReport.from_summary(summary)
+        out = JsonAdapter.render(report)
+        assert out["results"][0]["why_it_matters"] == (
+            "Static typing catches interface bugs early."
+        )
 
     def test_runtime_warning_present_for_time_budget_skips(self) -> None:
         summary = _summary(
@@ -466,6 +536,8 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "SLOP DETECTED" in out
+        assert "Fix First: myopia:code-sprawl" in out
+        assert "start with: sm swab -g myopia:code-sprawl --verbose" in out
         assert "myopia:code-sprawl" in out
         assert "Move BigClass" in out
         assert "verify: sm swab -g myopia:code-sprawl --verbose" in out
@@ -494,6 +566,36 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "→ fix: Do the thing" in out
+
+    def test_structured_guidance_renders_when_present(self, capsys) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "overconfidence:type-blindness.py",
+                    CheckStatus.FAILED,
+                    why_it_matters="Unknown types force readers to guess about data shape.",
+                    fix_suggestion="Fallback gate-level guidance",
+                    findings=[
+                        Finding(
+                            message='Type of "x" is "Unknown"',
+                            file="src/app.py",
+                            line=11,
+                            fix_strategy="Annotate x with its concrete type.",
+                        )
+                    ],
+                )
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "WHAT'S BROKEN:" in out
+        assert "WHY IT MATTERS:" in out
+        assert "EXACTLY WHAT TO DO:" in out
+        assert (
+            "VERIFY THE FIX: sm swab -g overconfidence:type-blindness.py --verbose"
+            in out
+        )
 
     def test_success_path_warns_on_time_budget_skips(self, capsys) -> None:
         summary = _summary(

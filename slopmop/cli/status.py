@@ -11,11 +11,18 @@ import sys
 import textwrap
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
+from slopmop.baseline import (
+    baseline_snapshot_path,
+    generate_baseline_snapshot,
+    latest_run_artifact_path,
+    load_baseline_snapshot,
+)
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory, GateLevel
 from slopmop.core.registry import get_registry
+from slopmop.core.result import CheckStatus
 from slopmop.reporting.timings import TimingStats, load_timings
 from slopmop.workflow.state_machine import WorkflowState
 from slopmop.workflow.state_store import read_phase, read_state
@@ -44,7 +51,8 @@ def _get_category_display(category_key: str) -> Tuple[str, str]:
     return "❓", category_key.title()
 
 
-# ── Section: Config Summary ─────────────────────────────────────
+_PASSED_STATUS = CheckStatus.PASSED.value
+_FAILED_STATUS = CheckStatus.FAILED.value
 
 
 def _print_config_summary(
@@ -83,9 +91,6 @@ def _print_config_summary(
             print(f"      {name}")
 
 
-# ── Section: Gate Inventory ──────────────────────────────────────
-
-
 RECENT_HISTORY_HEADER = "📊 RECENT HISTORY"
 HISTORICAL_STATUS_NOTE = (
     "Historical dashboard only: uses recorded run history and does not execute gates."
@@ -108,6 +113,7 @@ def _format_gate_line(
     skip_reason: str,
     history: Optional[TimingStats],
     colors_enabled: bool,
+    latest_result: Optional[str] = None,
 ) -> str:
     """Format a single gate line for the inventory.
 
@@ -128,11 +134,15 @@ def _format_gate_line(
     role_badge = _ROLE_BADGES.get(role, "")
 
     # Applicability / history-based status
+    history_result: Optional[str] = None
+    if history is not None and history.results:
+        history_result = history.results[-1]
+
     if not is_applicable:
         icon = "⊘"
         suffix = f"n/a ({skip_reason})"
-    elif history and history.results:
-        last_result = history.results[-1]
+    elif latest_result or history_result:
+        last_result = latest_result or history_result or "unknown"
         _RESULT_ICONS = {
             "passed": "✅",
             "failed": "❌",
@@ -142,14 +152,20 @@ def _format_gate_line(
             "not_applicable": "⊘",
         }
         icon = _RESULT_ICONS.get(last_result, "?")
-        sparkline = history.sparkline(max_width=10, colors_enabled=colors_enabled)
+        sparkline = (
+            history.sparkline(max_width=10, colors_enabled=colors_enabled)
+            if history is not None
+            else ""
+        )
         # Build suffix from last result + sparkline
         suffix = f"last: {last_result}"
         if sparkline:
             suffix = f"last: {last_result}  {sparkline}"
     else:
         icon = "·"
-        suffix = "no history"
+        suffix = (
+            "no history (run sm scour)" if in_scour and not in_swab else "no history"
+        )
 
     # Use dynamic width — gate names can exceed 28 chars
     name_width = max(len(gate_name), 28)
@@ -164,6 +180,7 @@ def _print_gate_inventory(
     roles: Dict[str, str],
     history: Dict[str, TimingStats],
     colors_enabled: bool,
+    latest_results: Optional[Dict[str, str]] = None,
 ) -> None:
     """Print the full gate inventory grouped by category.
 
@@ -208,6 +225,7 @@ def _print_gate_inventory(
                 is_applicable=True,
                 skip_reason="",
                 history=history.get(gate),
+                latest_result=(latest_results or {}).get(gate),
                 colors_enabled=colors_enabled,
             )
             print(line)
@@ -224,9 +242,6 @@ def _print_gate_inventory(
         )
         print()
         print(wrapped)
-
-
-# ── Section: Hook Status ────────────────────────────────────────
 
 
 def _print_hooks_status(root: Path) -> None:
@@ -276,9 +291,6 @@ def _print_hooks_status(root: Path) -> None:
         print("   Install: sm commit-hooks install")
 
 
-# ── Section: Workflow Position ────────────────────────────────────
-
-
 def _gather_workflow_data(root: Path) -> Dict[str, Any]:
     """Single source of truth for workflow-position data.
 
@@ -306,9 +318,6 @@ def _print_workflow_position(workflow: Dict[str, Any]) -> None:
         f"\u2014 Next: {workflow['next_action']}"
     )
     print(f"   Phase: {workflow['phase']}")
-
-
-# ── Section: CI Summary ─────────────────────────────────────────
 
 
 def _gather_ci_data(root: Path) -> Optional[Dict[str, Any]]:
@@ -376,11 +385,264 @@ def _print_ci_summary(ci: Optional[Dict[str, Any]]) -> None:
         print("   All checks green ✨")
 
 
-# ── Section: Recent History ──────────────────────────────────────
+def _gather_baseline_snapshot_data(root: Path) -> Optional[Dict[str, Any]]:
+    """Return baseline snapshot metadata for status display."""
+    snapshot = load_baseline_snapshot(root)
+    if snapshot is None:
+        return {
+            "present": False,
+            "help": "Collect baseline via `sm status --generate-baseline-snapshot` after `sm scour`.",
+        }
+
+    data: Dict[str, Any] = {
+        "present": True,
+        "path": str(baseline_snapshot_path(root)),
+        "source_file": snapshot.get("source_file"),
+    }
+    captured_at = snapshot.get("captured_at")
+    if isinstance(captured_at, str) and captured_at:
+        data["captured_at"] = captured_at
+    fingerprints: object = snapshot.get("failure_fingerprints")
+    if isinstance(fingerprints, list):
+        fingerprint_list = cast(List[object], fingerprints)
+        data["tracked_failures"] = len(fingerprint_list)
+
+    source_artifact = snapshot.get("source_artifact")
+    if isinstance(source_artifact, dict):
+        failure_counts = _failure_counts_from_artifact(
+            cast(Dict[str, Any], source_artifact)
+        )
+        if failure_counts:
+            data["failed_gates"] = len(failure_counts)
+            data["failure_counts"] = failure_counts
+    return data
 
 
-def _print_recent_history(history: Dict[str, TimingStats]) -> None:
+def _print_baseline_snapshot(baseline: Optional[Dict[str, Any]]) -> None:
+    """Human-readable baseline snapshot adapter."""
+    if baseline is None:
+        return
+
+    print()
+    print("🧷 BASELINE SNAPSHOT")
+    print("─" * 60)
+    if baseline.get("present") is False:
+        help_msg = baseline.get("help")
+        print("   Missing")
+        if isinstance(help_msg, str) and help_msg:
+            print(f"   {help_msg}")
+        return
+
+    print(f"   Path: {baseline['path']}")
+    source_file = baseline.get("source_file")
+    if isinstance(source_file, str) and source_file:
+        print(f"   Source: {source_file}")
+    failed_gates = baseline.get("failed_gates")
+    if isinstance(failed_gates, int):
+        print(f"   Failed gates: {failed_gates}")
+    tracked_failures = baseline.get("tracked_failures")
+    if isinstance(tracked_failures, int):
+        print(f"   Tracked failures: {tracked_failures}")
+    captured_at = baseline.get("captured_at")
+    if isinstance(captured_at, str) and captured_at:
+        print(f"   Captured: {captured_at}")
+    failure_counts = baseline.get("failure_counts")
+    if isinstance(failure_counts, list) and failure_counts:
+        print()
+        print("   Gate                               Failures")
+        print("   ───────────────────────────────────────────")
+        for row in cast(List[object], failure_counts):
+            if not isinstance(row, dict):
+                continue
+            typed_row = cast(Dict[str, Any], row)
+            name = typed_row.get("name")
+            count = typed_row.get("count")
+            if isinstance(name, str) and isinstance(count, int):
+                print(f"   {name:<34} {count:>8}")
+
+
+def _failure_counts_from_artifact(
+    source_artifact: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Build per-gate failure counts from a persisted run artifact."""
+    raw_results = source_artifact.get("results")
+    if not isinstance(raw_results, list):
+        return []
+
+    failure_rows: List[Dict[str, Any]] = []
+    for raw_entry in cast(List[object], raw_results):
+        if not isinstance(raw_entry, dict):
+            continue
+        entry = cast(Dict[str, Any], raw_entry)
+        if entry.get("status") != _FAILED_STATUS:
+            continue
+
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+
+        count = 1
+        findings = entry.get("findings")
+        if isinstance(findings, list) and findings:
+            count = len(cast(List[object], findings))
+
+        failure_rows.append({"name": name, "count": count})
+
+    failure_rows.sort(
+        key=lambda row: (-(cast(int, row["count"])), cast(str, row["name"]))
+    )
+    return failure_rows
+
+
+def _load_latest_run_artifact(root: Path) -> Optional[Dict[str, Any]]:
+    """Load the newest canonical full-run artifact, if present."""
+    artifact_path = latest_run_artifact_path(root)
+    if artifact_path is None:
+        return None
+    try:
+        raw = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    artifact = cast(Dict[str, Any], raw)
+    artifact["source_file"] = artifact_path.name
+    return artifact
+
+
+def _load_persisted_run_artifacts(root: Path) -> List[Dict[str, Any]]:
+    """Load all canonical persisted run artifacts, newest first."""
+    artifacts: List[Dict[str, Any]] = []
+    for name in ("last_swab.json", "last_scour.json"):
+        artifact_path = root / ".slopmop" / name
+        if not artifact_path.exists() or not artifact_path.is_file():
+            continue
+        try:
+            raw = json.loads(artifact_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(raw, dict):
+            continue
+        artifact = cast(Dict[str, Any], raw)
+        artifact["source_file"] = artifact_path.name
+        artifact["source_mtime"] = artifact_path.stat().st_mtime
+        artifacts.append(artifact)
+    artifacts.sort(
+        key=lambda artifact: float(cast(Any, artifact.get("source_mtime", 0.0))),
+        reverse=True,
+    )
+    return artifacts
+
+
+def _load_latest_gate_results(
+    root: Path, history: Dict[str, TimingStats]
+) -> Dict[str, str]:
+    """Return the latest per-gate statuses from artifacts, with history fallback."""
+    results: Dict[str, str] = {}
+    for artifact in _load_persisted_run_artifacts(root):
+        passed = artifact.get("passed_gates")
+        if isinstance(passed, list):
+            for item in cast(List[object], passed):
+                if isinstance(item, str) and item not in results:
+                    results[item] = _PASSED_STATUS
+
+        raw_results = artifact.get("results")
+        if isinstance(raw_results, list):
+            for raw_entry in cast(List[object], raw_results):
+                if not isinstance(raw_entry, dict):
+                    continue
+                entry = cast(Dict[str, Any], raw_entry)
+                name = entry.get("name")
+                status = entry.get("status")
+                if (
+                    isinstance(name, str)
+                    and isinstance(status, str)
+                    and name not in results
+                ):
+                    results[name] = status
+
+    for gate_name, stats in history.items():
+        if gate_name not in results and stats.results:
+            results[gate_name] = stats.results[-1]
+
+    return results
+
+
+def _gather_recent_run_data(root: Path) -> Optional[Dict[str, Any]]:
+    """Return the newest canonical run artifact summary for status display."""
+    artifact = _load_latest_run_artifact(root)
+    if artifact is None:
+        return None
+
+    summary = artifact.get("summary")
+    if not isinstance(summary, dict):
+        return None
+
+    return {
+        "source_file": artifact.get("source_file"),
+        "summary": cast(Dict[str, Any], summary),
+        "failure_counts": _failure_counts_from_artifact(artifact),
+    }
+
+
+def _print_recent_history(
+    history: Dict[str, TimingStats],
+    recent_run: Optional[Dict[str, Any]] = None,
+) -> None:
     """Print a compact summary of recent gate runs."""
+    if recent_run is not None:
+        recent_run_dict = cast(Dict[str, Any], recent_run)
+        summary = recent_run_dict.get("summary")
+        if isinstance(summary, dict):
+            summary_dict = cast(Dict[str, Any], summary)
+            passed = int(summary_dict.get("passed", 0))
+            failed = int(summary_dict.get("failed", 0))
+            warned = int(summary_dict.get("warned", 0))
+            errors = int(summary_dict.get("errors", 0))
+            skipped = int(summary_dict.get("skipped", 0))
+            tracked = passed + failed + warned + errors + skipped
+
+            print()
+            print(RECENT_HISTORY_HEADER)
+            print("─" * 60)
+
+            source_file = recent_run_dict.get("source_file")
+            if isinstance(source_file, str) and source_file:
+                print(f"   Source: {source_file}")
+
+            summary_parts: List[str] = []
+            if passed:
+                summary_parts.append(f"{passed} passed")
+            if failed:
+                summary_parts.append(f"{failed} failed")
+            if warned:
+                summary_parts.append(f"{warned} warned")
+            if errors:
+                summary_parts.append(f"{errors} errored")
+            if skipped:
+                summary_parts.append(f"{skipped} skipped")
+            print(
+                f"   Last recorded: {', '.join(summary_parts)} ({tracked} gates tracked)"
+            )
+
+            failure_counts = recent_run_dict.get("failure_counts")
+            if isinstance(failure_counts, list):
+                rows = cast(List[object], failure_counts)
+                print(f"   Failed gates: {len(rows)}")
+                if rows:
+                    print()
+                    print("   Gate                               Failures")
+                    print("   ───────────────────────────────────────────")
+                    for raw_row in rows:
+                        if not isinstance(raw_row, dict):
+                            continue
+                        row = cast(Dict[str, Any], raw_row)
+                        name = row.get("name")
+                        count = row.get("count")
+                        if isinstance(name, str) and isinstance(count, int):
+                            print(f"   {name:<34} {count:>8}")
+                return
+
     if not history:
         print()
         print(RECENT_HISTORY_HEADER)
@@ -433,6 +695,8 @@ def _build_status_dict(
     applicability: Dict[str, Tuple[bool, str]],
     roles: Dict[str, str],
     history: Dict[str, TimingStats],
+    latest_results: Dict[str, str],
+    recent_run: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Build a JSON-serializable dict of project status."""
     gate_list: List[Dict[str, Any]] = []
@@ -448,8 +712,12 @@ def _build_status_dict(
         }
         if not is_app:
             entry["skip_reason"] = reason
-        if hist and hist.results:
+        latest_result = latest_results.get(gate)
+        if latest_result:
+            entry["last_result"] = latest_result
+        elif hist and hist.results:
             entry["last_result"] = hist.results[-1]
+        if hist and hist.results:
             entry["history"] = hist.results[-10:]
         gate_list.append(entry)
 
@@ -478,6 +746,9 @@ def _build_status_dict(
     if ci is not None:
         result["ci"] = ci
 
+    if recent_run is not None:
+        result["recent_run"] = recent_run
+
     return result
 
 
@@ -486,6 +757,7 @@ def run_status(
     quiet: bool = False,
     verbose: bool = False,
     json_output: Optional[bool] = None,
+    generate_baseline_snapshot_flag: bool = False,
 ) -> int:
     """Show project dashboard without running any gates.
 
@@ -520,6 +792,20 @@ def run_status(
     registry = get_registry()
     config = load_config(root)
 
+    snapshot_info: Optional[Dict[str, str]] = None
+    if generate_baseline_snapshot_flag:
+        try:
+            snapshot_path, source_path = generate_baseline_snapshot(root)
+            snapshot_info = {
+                "snapshot_path": str(snapshot_path),
+                "source_path": str(source_path),
+            }
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"❌ {exc}")
+            return 1
+
+    baseline = _gather_baseline_snapshot_data(root)
+
     # Register user-defined custom gates from config
     from slopmop.checks.custom import register_custom_gates
 
@@ -527,9 +813,9 @@ def run_status(
 
     # ── Gate lists ────────────────────────────────────────────────
     all_gates = registry.list_checks()
-    swab_gates = set(registry.get_gate_names_for_level(GateLevel.SWAB))
+    swab_gates = set(registry.get_gate_names_for_level(GateLevel.SWAB, config))
     scour_only_gates = (
-        set(registry.get_gate_names_for_level(GateLevel.SCOUR)) - swab_gates
+        set(registry.get_gate_names_for_level(GateLevel.SCOUR, config)) - swab_gates
     )
     disabled = config.get("disabled_gates", [])
 
@@ -551,6 +837,8 @@ def run_status(
 
     # ── Historical timing data ────────────────────────────────────
     history = load_timings(str(root))
+    latest_results = _load_latest_gate_results(root, history)
+    recent_run = _gather_recent_run_data(root)
 
     # ── JSON output ───────────────────────────────────────────────
     if json_mode:
@@ -564,7 +852,13 @@ def run_status(
             applicability,
             roles,
             history,
+            latest_results,
+            recent_run,
         )
+        if baseline is not None:
+            data["baseline_snapshot"] = baseline
+        if snapshot_info is not None:
+            data["baseline_snapshot_generated"] = snapshot_info
         print(json.dumps(data, separators=(",", ":")))
         return 0
 
@@ -589,14 +883,15 @@ def run_status(
     _print_gate_inventory(
         all_gates=all_gates,
         swab_gates=swab_gates,
-        scour_gates=set(registry.get_gate_names_for_level(GateLevel.SCOUR)),
+        scour_gates=set(registry.get_gate_names_for_level(GateLevel.SCOUR, config)),
         applicability=applicability,
         roles=roles,
         history=history,
+        latest_results=latest_results,
         colors_enabled=colors_enabled,
     )
 
-    _print_recent_history(history)
+    _print_recent_history(history, recent_run)
 
     _print_hooks_status(root)
 
@@ -605,6 +900,15 @@ def run_status(
 
     ci = _gather_ci_data(root)
     _print_ci_summary(ci)
+
+    _print_baseline_snapshot(baseline)
+
+    if snapshot_info is not None:
+        print()
+        print("🧷 BASELINE SNAPSHOT GENERATED")
+        print("─" * 60)
+        print(f"   Saved: {snapshot_info['snapshot_path']}")
+        print(f"   Source: {snapshot_info['source_path']}")
 
     print()
     print("═" * 60)
@@ -621,4 +925,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         quiet=args.quiet,
         verbose=args.verbose,
         json_output=getattr(args, "json_output", None),
+        generate_baseline_snapshot_flag=getattr(
+            args, "generate_baseline_snapshot", False
+        ),
     )

@@ -48,6 +48,7 @@ class TestCmdSwabHook:
         mock_hook.assert_called_once()
         _, kwargs = mock_hook.call_args
         assert kwargs["passed"] is True
+        assert args.json_file == str(tmp_path / ".slopmop" / "last_swab.json")
 
     def test_hook_called_when_swab_fails(self, tmp_path):
         """on_swab_complete is called with passed=False when exit_code!=0."""
@@ -84,6 +85,7 @@ class TestCmdSwabHook:
             cmd_swab(args)
 
         mock_hook.assert_not_called()
+        assert not hasattr(args, "json_file") or args.json_file is None
 
     def test_hook_error_is_suppressed(self, tmp_path):
         """A failing hook never propagates to the caller."""
@@ -105,6 +107,32 @@ class TestCmdSwabHook:
             result = cmd_swab(args)
 
         assert result == 0  # error did not propagate
+
+    def test_full_swab_preloads_config_for_validation(self, tmp_path):
+        """Full swab should not make validation re-load config or re-register gates."""
+        args = self._make_args(tmp_path)
+
+        with (
+            patch("slopmop.cli.validate._run_validation", return_value=0) as mock_run,
+            patch("slopmop.cli.validate.ensure_checks_registered"),
+            patch("slopmop.cli.validate.get_registry") as mock_reg,
+            patch(
+                "slopmop.sm.load_config", return_value={"custom_gates": []}
+            ) as mock_load,
+            patch("slopmop.checks.custom.register_custom_gates") as mock_register,
+            patch("slopmop.workflow.hooks.on_swab_complete"),
+        ):
+            mock_reg.return_value.get_gate_names_for_level.return_value = []
+
+            from slopmop.cli.validate import cmd_swab
+
+            result = cmd_swab(args)
+
+        assert result == 0
+        mock_load.assert_called_once()
+        mock_register.assert_called_once_with({"custom_gates": []})
+        assert mock_run.call_args.kwargs["preloaded_config"] == {"custom_gates": []}
+        assert mock_run.call_args.kwargs["custom_gates_registered"] is True
 
 
 class TestCmdScourHook:
@@ -143,6 +171,7 @@ class TestCmdScourHook:
         mock_hook.assert_called_once()
         _, kwargs = mock_hook.call_args
         assert kwargs["passed"] is True
+        assert args.json_file == str(tmp_path / ".slopmop" / "last_scour.json")
 
     def test_hook_called_when_scour_fails(self, tmp_path):
         """on_scour_complete is called with passed=False when exit_code!=0."""
@@ -222,6 +251,33 @@ class TestCmdScourHook:
             cmd_scour(args)
 
         mock_hook.assert_not_called()
+
+    def test_full_scour_preloads_config_for_validation(self, tmp_path):
+        """Full scour should not make validation re-load config or re-register gates."""
+        args = self._make_args(tmp_path)
+
+        with (
+            patch("slopmop.cli.validate._run_validation", return_value=0) as mock_run,
+            patch("slopmop.cli.validate.ensure_checks_registered"),
+            patch("slopmop.cli.validate.get_registry") as mock_reg,
+            patch(
+                "slopmop.sm.load_config", return_value={"custom_gates": []}
+            ) as mock_load,
+            patch("slopmop.checks.custom.register_custom_gates") as mock_register,
+            patch("slopmop.cli.validate._load_config_for_hook", return_value={}),
+            patch("slopmop.workflow.hooks.on_scour_complete"),
+        ):
+            mock_reg.return_value.get_gate_names_for_level.return_value = []
+
+            from slopmop.cli.validate import cmd_scour
+
+            result = cmd_scour(args)
+
+        assert result == 0
+        mock_load.assert_called_once()
+        mock_register.assert_called_once_with({"custom_gates": []})
+        assert mock_run.call_args.kwargs["preloaded_config"] == {"custom_gates": []}
+        assert mock_run.call_args.kwargs["custom_gates_registered"] is True
 
 
 class TestLoadConfigForHook:

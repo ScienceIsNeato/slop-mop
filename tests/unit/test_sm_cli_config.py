@@ -292,6 +292,20 @@ class TestCmdConfig:
         assert args.verb == "config"
         assert args.swabbing_time == 45
 
+    def test_config_swab_off_parser(self):
+        """config --swab-off flag parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["config", "--swab-off", "myopia:code-sprawl"])
+        assert args.verb == "config"
+        assert args.swab_off == "myopia:code-sprawl"
+
+    def test_config_swab_on_parser(self):
+        """config --swab-on flag parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["config", "--swab-on", "myopia:code-sprawl"])
+        assert args.verb == "config"
+        assert args.swab_on == "myopia:code-sprawl"
+
     def test_set_swabbing_time(self, tmp_path):
         """--swabbing-time updates config file."""
         (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
@@ -341,6 +355,67 @@ class TestCmdConfig:
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
         assert "swabbing_time" not in config
+
+    def test_swab_off_gate(self, tmp_path):
+        """--swab-off keeps a gate out of swab while leaving it enabled."""
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+            swab_off="myopia:vulnerability-blindness.py",
+            swab_on=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert (
+            config["myopia"]["gates"]["vulnerability-blindness.py"]["run_on"] == "scour"
+        )
+
+    def test_swab_on_gate(self, tmp_path):
+        """--swab-on promotes a gate into the swab rail."""
+        (tmp_path / "main.py").write_text("print('hello')\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "myopia": {"gates": {"dependency-risk.py": {"run_on": "scour"}}},
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+            swab_off=None,
+            swab_on="myopia:dependency-risk.py",
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert config["myopia"]["gates"]["dependency-risk.py"]["run_on"] == "swab"
 
     def test_set_current_pr_number(self, tmp_path):
         """--current-pr-number updates local .slopmop state."""

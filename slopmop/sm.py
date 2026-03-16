@@ -143,6 +143,14 @@ def _add_output_flags(parser: argparse.ArgumentParser) -> None:
 def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
     """Add the common validation flags shared by swab, scour, and validate."""
     parser.add_argument(
+        "--ignore-baseline-failures",
+        action="store_true",
+        help=(
+            "After the run completes, downgrade failures already present "
+            "in the local baseline snapshot. Checks still execute normally."
+        ),
+    )
+    parser.add_argument(
         "--quality-gates",
         "-g",
         nargs="+",
@@ -274,6 +282,16 @@ def _add_config_parser(
         type=int,
         metavar="SECONDS",
         help="Set the swabbing-time budget (seconds). 0 or negative disables the limit.",
+    )
+    config_parser.add_argument(
+        "--swab-off",
+        metavar="GATE",
+        help="Keep a gate out of swab while still running it during scour.",
+    )
+    config_parser.add_argument(
+        "--swab-on",
+        metavar="GATE",
+        help="Make a gate run during both swab and scour.",
     )
     config_parser.add_argument(
         "--current-pr-number",
@@ -446,6 +464,14 @@ def _add_status_parser(
         dest="json_output",
         action="store_false",
         help="Force pretty output even when stdout is not a TTY.",
+    )
+    status_parser.add_argument(
+        "--generate-baseline-snapshot",
+        action="store_true",
+        help=(
+            "Capture a local baseline snapshot from the latest persisted "
+            "run artifact (.slopmop/last_*.json)."
+        ),
     )
 
 

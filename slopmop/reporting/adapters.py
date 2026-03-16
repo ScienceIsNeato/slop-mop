@@ -15,11 +15,45 @@ If you find yourself writing ``[r for r in summary.results if ...]``
 inside an adapter, that's RunReport's job — add a property there.
 """
 
+import textwrap
 from typing import Dict, List, cast
 
 from slopmop.constants import ROLE_BADGES, format_duration_suffix
-from slopmop.core.result import CheckResult
+from slopmop.core.result import CheckResult, Finding
 from slopmop.reporting.report import RunReport
+
+
+def _finding_location(finding: Finding) -> str:
+    if not finding.file:
+        return "(location unknown)"
+    if finding.line is None:
+        return finding.file
+    return f"{finding.file}:{finding.line}"
+
+
+def _structured_lines(result: CheckResult, verify_command: str) -> List[str]:
+    findings = result.findings[:5]
+    lines: List[str] = ["   WHAT'S BROKEN:"]
+    for finding in findings:
+        lines.append(f"     {_finding_location(finding)} — {finding.message}")
+    if len(result.findings) > len(findings):
+        lines.append(f"     ... and {len(result.findings) - len(findings)} more")
+
+    if result.why_it_matters:
+        lines.append("   WHY IT MATTERS:")
+        for wrapped in textwrap.wrap(result.why_it_matters, width=66):
+            lines.append(f"     {wrapped}")
+
+    instructions = [f.fix_strategy for f in findings if f.fix_strategy]
+    if not instructions and result.fix_suggestion:
+        instructions = [result.fix_suggestion]
+    if instructions:
+        lines.append("   EXACTLY WHAT TO DO:")
+        for index, instruction in enumerate(instructions[:5], start=1):
+            lines.append(f"     {index}. {instruction}")
+
+    lines.append(f"   VERIFY THE FIX: {verify_command}")
+    return lines
 
 
 class JsonAdapter:
@@ -43,6 +77,11 @@ class JsonAdapter:
         # for per-result serialisation.
         output = report.summary.to_dict()
 
+        # Preserve the established top-level schema, but replace actionable
+        # results with the report-derived display order so JSON consumers see
+        # the same fix sequence as the console summary.
+        output["results"] = [result.to_dict() for result in report.actionable]
+
         output["schema"] = report.schema_version
         if report.level:
             output["level"] = report.level
@@ -63,8 +102,17 @@ class JsonAdapter:
         # multi-step guidance later without schema churn.  Present
         # only when there IS something to verify — all-passed runs
         # have no next step beyond "commit".
+        if report.first_to_fix:
+            output["first_to_fix"] = {"gate": report.first_to_fix}
         if report.verify_command:
             output["next_steps"] = [report.verify_command]
+            if isinstance(output.get("first_to_fix"), dict):
+                cast(Dict[str, object], output["first_to_fix"])[
+                    "verify_command"
+                ] = report.verify_command
+
+        if report.baseline_filter:
+            output["baseline_filter"] = report.baseline_filter
 
         cache = report.cache_metadata()
         if cache:
@@ -191,6 +239,8 @@ class ConsoleAdapter:
             print(f"   {cache_line}")
             self._render_cache_refresh_hint()
 
+        self._render_baseline_filter_note()
+
         self._render_time_budget_warning()
 
         print("═" * 60)
@@ -227,9 +277,13 @@ class ConsoleAdapter:
             print(f"   {cache_line}")
             self._render_cache_refresh_hint()
 
+        self._render_baseline_filter_note()
+
         self._render_time_budget_warning()
 
         print("─" * 60)
+
+        self._render_first_to_fix_hint()
 
         self._render_failure_details()
         if r.warned:
@@ -254,7 +308,13 @@ class ConsoleAdapter:
                     header += f" — {detail}"
                 print(header)
 
-                if res.output:
+                verb = r.level or "swab"
+                rerun = f"sm {verb} -g {res.name} --verbose"
+
+                if res.why_it_matters and res.findings:
+                    for line in _structured_lines(res, rerun):
+                        print(line)
+                elif res.output:
                     all_lines = res.output.strip().split("\n")
                     lines = [
                         ln for ln in all_lines if "✅" not in ln and ln.strip()
@@ -266,18 +326,27 @@ class ConsoleAdapter:
                             f"   ... ({len(lines) - max_preview}" " more lines in log)"
                         )
 
-                if res.fix_suggestion:
+                if res.fix_suggestion and not (res.why_it_matters and res.findings):
                     print(f"   💡 {res.fix_suggestion}")
 
                 # Verify hint — the command to re-check THIS gate.
                 # Different from report.verify_command, which is the
                 # overall "first thing to fix" hint; this is per-gate.
-                verb = r.level or "swab"
-                rerun = f"sm {verb} -g {res.name} --verbose"
                 log_path = r.log_files.get(res.name)
                 if log_path:
                     print(f"   📄 {log_path}")
-                print(f"   ▸ verify: {rerun}")
+                if not (res.why_it_matters and res.findings):
+                    print(f"   ▸ verify: {rerun}")
+
+    def _render_first_to_fix_hint(self) -> None:
+        """Call out the first blocking gate explicitly when one exists."""
+        first_gate = self.report.first_to_fix
+        if not first_gate:
+            return
+        print(f"🎯 Fix First: {first_gate}")
+        if self.report.verify_command:
+            print(f"   ▸ start with: {self.report.verify_command}")
+        print()
 
     def _render_warnings(self) -> None:
         print()
@@ -311,6 +380,31 @@ class ConsoleAdapter:
             "   🔄 Fresh run: rerun `"
             + str(cache["refresh_command"])
             + "` if you need uncached results."
+        )
+
+    def _render_baseline_filter_note(self) -> None:
+        """Print a short note when baseline filtering was applied."""
+        baseline = self.report.baseline_filter
+        if not baseline:
+            return
+        raw_filtered_failed = baseline.get("filtered_failed", 0)
+        raw_net_new_failed = baseline.get("net_new_failed", 0)
+        filtered_failed = (
+            int(raw_filtered_failed)
+            if isinstance(raw_filtered_failed, (int, float))
+            else 0
+        )
+        net_new_failed = (
+            int(raw_net_new_failed)
+            if isinstance(raw_net_new_failed, (int, float))
+            else 0
+        )
+        if filtered_failed <= 0:
+            return
+        print(
+            "   🧷 Baseline filter: "
+            f"ignored {filtered_failed} previously-known failed gate(s); "
+            f"{net_new_failed} net-new failure(s) remain"
         )
 
     def _skipped_line(self) -> str:

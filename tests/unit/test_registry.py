@@ -1,6 +1,6 @@
 """Tests for check registry."""
 
-from slopmop.checks.base import BaseCheck, Flaw, GateCategory
+from slopmop.checks.base import BaseCheck, Flaw, GateCategory, GateLevel
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import CheckDefinition, CheckResult, CheckStatus
 
@@ -242,6 +242,71 @@ class TestCheckRegistry:
         registry = CheckRegistry()
         applicable = registry.get_applicable_checks(str(tmp_path), {})
         assert applicable == []
+
+    def test_get_gate_names_for_level_respects_run_on_override(self):
+        """Config can move a gate from swab membership to scour-only."""
+        registry = CheckRegistry()
+
+        class SwabCheck(MockCheck):
+            _mock_name = "swab-check"
+
+        class ScourCheck(MockCheck):
+            _mock_name = "scour-check"
+            level = GateLevel.SCOUR
+
+        registry.register(SwabCheck)
+        registry.register(ScourCheck)
+
+        config = {
+            "overconfidence": {
+                "gates": {
+                    "swab-check": {"run_on": "scour"},
+                    "scour-check": {"run_on": "swab"},
+                }
+            }
+        }
+
+        swab = registry.get_gate_names_for_level(GateLevel.SWAB, config)
+        scour = registry.get_gate_names_for_level(GateLevel.SCOUR, config)
+
+        assert "overconfidence:swab-check" not in swab
+        assert "overconfidence:scour-check" in swab
+        assert "overconfidence:swab-check" in scour
+        assert "overconfidence:scour-check" in scour
+
+    def test_curated_remediation_priority_beats_fallbacks(self):
+        """Built-in curated order should be the primary remediation source."""
+        from slopmop.checks import ensure_checks_registered
+        from slopmop.core.registry import (
+            curated_remediation_order_names,
+            get_registry,
+        )
+
+        ensure_checks_registered()
+        registry = get_registry()
+        check = registry.get_check("myopia:source-duplication", {})
+        expected_priority = (
+            curated_remediation_order_names().index("myopia:source-duplication") + 1
+        ) * 10
+
+        assert check is not None
+        assert registry.remediation_priority_for_check(check) == expected_priority
+        assert registry.remediation_priority_source_for_check(check) == "curated"
+
+    def test_explicit_remediation_priority_used_when_not_curated(self):
+        """Non-curated checks can still provide explicit priority."""
+        registry = CheckRegistry()
+
+        class ExplicitPriorityCheck(MockCheck):
+            _mock_name = "explicit-priority"
+            remediation_priority = 17
+
+        registry.register(ExplicitPriorityCheck)
+        check = registry.get_check("overconfidence:explicit-priority", {})
+
+        assert check is not None
+        assert registry.remediation_priority_for_check(check) == 17
+        assert registry.remediation_priority_source_for_check(check) == "explicit"
 
 
 class TestRegisterCheckDecorator:
