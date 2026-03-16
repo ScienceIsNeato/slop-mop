@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import sys
+import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -517,7 +518,9 @@ def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser for sm CLI."""
     parser = argparse.ArgumentParser(
         prog="./sm",
-        description="""
+        description=(
+            textwrap.dedent(
+                """
 🪣 sm - Slop-Mop Quality Gate Framework
 
 A language-agnostic, bolt-on code validation tool designed to catch AI-generated
@@ -549,7 +552,14 @@ Examples:
   sm config --show                      Show current configuration
   sm config --enable python-security    Enable a quality gate
   sm help python-lint-format            Show help for specific gate
-""",
+"""
+                        )
+                        .replace("\n    upgrade", "\n  upgrade")
+                        .replace("\n    buff", "\n  buff")
+                        .replace("\n    agent", "\n  agent")
+                        .replace("\n    sm upgrade", "\n  sm upgrade")
+                        .replace("\n    sm buff", "\n  sm buff")
+                ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
