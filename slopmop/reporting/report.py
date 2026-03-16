@@ -28,6 +28,7 @@ Actions annotations) slot in without touching enrichment logic.
 """
 
 import os
+import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Dict, List, Optional
@@ -130,6 +131,41 @@ def _sort_results_for_remediation_display(
 JSON_SCHEMA_VERSION = "slopmop/v2"
 
 
+def _structured_console_lines(
+    result: CheckResult,
+    verify_command: str,
+    *,
+    max_findings: int,
+    max_instructions: int,
+) -> List[str]:
+    """Return compact structured guidance lines for console output."""
+    findings = result.findings[:max_findings]
+    lines: List[str] = ["   WHAT'S BROKEN:"]
+    for finding in findings:
+        location = finding.file or "(location unknown)"
+        if finding.file and finding.line is not None:
+            location = f"{finding.file}:{finding.line}"
+        lines.append(f"     {location} — {finding.message}")
+    if len(result.findings) > len(findings):
+        lines.append(f"     ... and {len(result.findings) - len(findings)} more")
+
+    if result.why_it_matters:
+        lines.append("   WHY IT MATTERS:")
+        for wrapped in textwrap.wrap(result.why_it_matters, width=66):
+            lines.append(f"     {wrapped}")
+
+    instructions = [f.fix_strategy for f in findings if f.fix_strategy]
+    if not instructions and result.fix_suggestion:
+        instructions = [result.fix_suggestion]
+    if instructions:
+        lines.append("   EXACTLY WHAT TO DO:")
+        for index, instruction in enumerate(instructions[:max_instructions], start=1):
+            lines.append(f"     {index}. {instruction}")
+
+    lines.append(f"   VERIFY THE FIX: {verify_command}")
+    return lines
+
+
 @dataclass
 class RunReport:
     """Canonical enriched view of a validation run.
@@ -142,6 +178,7 @@ class RunReport:
     summary: ExecutionSummary
     level: Optional[str]
     project_root: Optional[str]
+    verbose: bool = False
     schema_version: str = JSON_SCHEMA_VERSION
 
     # --- Derived categorisations ------------------------------------
@@ -183,6 +220,7 @@ class RunReport:
         project_root: Optional[str] = None,
         registry: Optional["CheckRegistry"] = None,
         sort_actionable_by_remediation_order: bool = False,
+        verbose: bool = False,
     ) -> "RunReport":
         """Build a RunReport from a raw ExecutionSummary.
 
@@ -229,6 +267,7 @@ class RunReport:
             summary=summary,
             level=level,
             project_root=project_root,
+            verbose=verbose,
             passed=status_buckets[CheckStatus.PASSED],
             failed=failed,
             warned=warned,
@@ -238,6 +277,42 @@ class RunReport:
             verify_command=verify,
             first_to_fix=first_blocking.name if first_blocking is not None else None,
         )
+
+    def per_gate_verify_command(self, gate_name: str) -> str:
+        """Return the canonical rerun command for one gate."""
+        return f"sm {self.level or 'swab'} -g {gate_name} --verbose"
+
+    def console_detail_lines(self, result: CheckResult) -> List[str]:
+        """Return compact, console-ready detail lines for one actionable result."""
+        if result.why_it_matters and result.findings:
+            return _structured_console_lines(
+                result,
+                self.per_gate_verify_command(result.name),
+                max_findings=5 if self.verbose else 3,
+                max_instructions=5 if self.verbose else 3,
+            )
+        return self._output_preview_lines(result)
+
+    def _output_preview_lines(self, result: CheckResult) -> List[str]:
+        """Return a short preview of raw gate output for console rendering."""
+        if not result.output:
+            return []
+
+        all_lines = result.output.strip().splitlines()
+        filtered = [line for line in all_lines if "✅" not in line and line.strip()]
+        lines = filtered or [line for line in all_lines if line.strip()]
+        if not lines:
+            return []
+
+        limit = 10 if self.verbose else 3
+        preview = [f"   {line}" for line in lines[:limit]]
+        if len(lines) > limit:
+            hidden = len(lines) - limit
+            if self.log_files.get(result.name):
+                preview.append(f"   ... ({hidden} more lines in log)")
+            else:
+                preview.append(f"   ... ({hidden} more lines)")
+        return preview
 
     def write_logs(self) -> Dict[str, str]:
         """Write per-gate log files for failed/errored checks.

@@ -15,45 +15,11 @@ If you find yourself writing ``[r for r in summary.results if ...]``
 inside an adapter, that's RunReport's job — add a property there.
 """
 
-import textwrap
 from typing import Dict, List, cast
 
 from slopmop.constants import ROLE_BADGES, format_duration_suffix
-from slopmop.core.result import CheckResult, Finding
+from slopmop.core.result import CheckResult
 from slopmop.reporting.report import RunReport
-
-
-def _finding_location(finding: Finding) -> str:
-    if not finding.file:
-        return "(location unknown)"
-    if finding.line is None:
-        return finding.file
-    return f"{finding.file}:{finding.line}"
-
-
-def _structured_lines(result: CheckResult, verify_command: str) -> List[str]:
-    findings = result.findings[:5]
-    lines: List[str] = ["   WHAT'S BROKEN:"]
-    for finding in findings:
-        lines.append(f"     {_finding_location(finding)} — {finding.message}")
-    if len(result.findings) > len(findings):
-        lines.append(f"     ... and {len(result.findings) - len(findings)} more")
-
-    if result.why_it_matters:
-        lines.append("   WHY IT MATTERS:")
-        for wrapped in textwrap.wrap(result.why_it_matters, width=66):
-            lines.append(f"     {wrapped}")
-
-    instructions = [f.fix_strategy for f in findings if f.fix_strategy]
-    if not instructions and result.fix_suggestion:
-        instructions = [result.fix_suggestion]
-    if instructions:
-        lines.append("   EXACTLY WHAT TO DO:")
-        for index, instruction in enumerate(instructions[:5], start=1):
-            lines.append(f"     {index}. {instruction}")
-
-    lines.append(f"   VERIFY THE FIX: {verify_command}")
-    return lines
 
 
 class JsonAdapter:
@@ -294,7 +260,6 @@ class ConsoleAdapter:
     def _render_failure_details(self) -> None:
         """Per-gate breakdown of failures and errors."""
         r = self.report
-        max_preview = 10
 
         for emoji, default_detail, bucket in [
             ("❌", "", r.failed),
@@ -308,23 +273,10 @@ class ConsoleAdapter:
                     header += f" — {detail}"
                 print(header)
 
-                verb = r.level or "swab"
-                rerun = f"sm {verb} -g {res.name} --verbose"
+                rerun = r.per_gate_verify_command(res.name)
 
-                if res.why_it_matters and res.findings:
-                    for line in _structured_lines(res, rerun):
-                        print(line)
-                elif res.output:
-                    all_lines = res.output.strip().split("\n")
-                    lines = [
-                        ln for ln in all_lines if "✅" not in ln and ln.strip()
-                    ] or all_lines
-                    for ln in lines[:max_preview]:
-                        print(f"   {ln}")
-                    if r.log_files and len(lines) > max_preview:
-                        print(
-                            f"   ... ({len(lines) - max_preview}" " more lines in log)"
-                        )
+                for line in r.console_detail_lines(res):
+                    print(line)
 
                 if res.fix_suggestion and not (res.why_it_matters and res.findings):
                     print(f"   💡 {res.fix_suggestion}")

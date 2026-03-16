@@ -753,6 +753,7 @@ class BaseCheck(ABC):
         auto_fixed: bool = False,
         status_detail: Optional[str] = None,
         findings: Optional[List[Finding]] = None,
+        suppress_sarif: bool = False,
     ) -> CheckResult:
         """Helper to create a CheckResult for this check.
 
@@ -768,6 +769,8 @@ class BaseCheck(ABC):
                 GitHub Code Scanning.  Omitting them triggers a
                 UserWarning (see rail below).  PASSED/SKIPPED/ERROR
                 don't emit SARIF and can leave this at ``None``.
+            suppress_sarif: Suppress this result from SARIF/code-scanning
+                output while preserving normal local reporting.
 
         Returns:
             CheckResult instance
@@ -806,6 +809,7 @@ class BaseCheck(ABC):
             role=self.role.value,
             why_it_matters=self.why_it_matters,
             findings=findings or [],
+            suppress_sarif=suppress_sarif,
         )
 
     def _run_command(

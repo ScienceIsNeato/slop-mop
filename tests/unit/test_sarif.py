@@ -527,6 +527,19 @@ class TestUnmigratedGate:
         loc = results[0]["locations"][0]["physicalLocation"]
         assert loc["artifactLocation"]["uri"] == "."
 
+    def test_sarif_suppressed_warned_gate_emits_nothing(self) -> None:
+        """Some local prerequisite warnings should never become code-scanning alerts."""
+        r = CheckResult(
+            name="soft:gate",
+            status=CheckStatus.WARNED,
+            duration=0.1,
+            error="local prerequisite missing",
+            suppress_sarif=True,
+        )
+        doc = _emit(_make_summary(r))
+        assert doc["runs"][0]["results"] == []
+        assert doc["runs"][0]["tool"]["driver"]["rules"] == []
+
     def test_every_emitted_result_has_locations(self) -> None:
         """The invariant GitHub enforces: if it's in results[], it has
         locations[].  All findings — with or without file — must carry

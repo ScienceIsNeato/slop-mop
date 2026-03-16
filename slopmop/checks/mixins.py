@@ -150,11 +150,15 @@ class PythonCheckMixin:
     def check_project_venv_or_warn(
         self, project_root: str, start_time: float
     ) -> Optional[CheckResult]:
-        """Return a WARNED result when no project venv is found.
+        """Return a local warning result when no project venv is found.
 
         PROJECT-context checks should call this at the top of ``run()``.
         If a venv *does* exist, returns ``None`` so the caller can
         continue with normal execution.
+
+        The warning is intentionally suppressed from SARIF/code-scanning
+        output. Missing project dependencies are a local prerequisite
+        problem, not a repository code defect.
 
         Usage::
 
@@ -178,6 +182,7 @@ class PythonCheckMixin:
                     f"  cd {project_root} && {self.suggest_venv_command(project_root)}"
                 ),
                 findings=[Finding(message=msg, level=FindingLevel.WARNING)],
+                suppress_sarif=True,
             )
         return None
 

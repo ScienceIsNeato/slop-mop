@@ -795,5 +795,24 @@ class TestConsoleAdapterWarnings:
         report.log_files = {"g": "logs/g.log"}
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
+        assert "line 0" in out
+        assert "line 2" in out
+        assert "line 3" not in out
         assert "more lines in log" in out
         assert "logs/g.log" in out
+
+    def test_verbose_output_preview_shows_more_lines(self, capsys) -> None:
+        long_output = "\n".join(f"line {i}" for i in range(20))
+        summary = _summary(
+            [
+                _result("g", CheckStatus.FAILED, error="big", output=long_output),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab", verbose=True)
+        report.log_files = {"g": "logs/g.log"}
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "line 0" in out
+        assert "line 9" in out
+        assert "line 10" not in out
+        assert "more lines in log" in out
