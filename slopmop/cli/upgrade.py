@@ -25,7 +25,6 @@ PACKAGE_NAME = "slopmop"
 PYPI_URL = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
 BACKUP_DIR_NAME = "backups"
 VALIDATION_VERB = "scour"
-SUPPORTED_INSTALL_TYPES = {"pipx", "venv"}
 STATE_BACKUP_FILES = (
     "cache.json",
     "timings.json",
