@@ -427,6 +427,28 @@ class TestCheckExecutor:
 
         assert list(executor._results)[:2] == ["high", "low"]
 
+    def test_drain_completed_buffer_commits_buffered_dependency_first(self):
+        """Buffered prerequisites should unblock higher-priority pending gates."""
+        executor = CheckExecutor(
+            registry=CheckRegistry(),
+            fail_fast=False,
+            process_results_in_remediation_order=True,
+        )
+        executor._processing_priority = {
+            "high": (0, 100, "high"),
+            "low": (0, 200, "low"),
+        }
+        low = CheckResult(name="low", status=CheckStatus.PASSED, duration=0.1)
+
+        executor._drain_completed_buffer(
+            buffered_results={"low": low},
+            pending={"high"},
+            futures={},
+            dep_graph={"high": {"low"}},
+        )
+
+        assert executor._results["low"] is low
+
     def test_maintenance_mode_processes_results_in_completion_order(self, tmp_path):
         """Maintenance mode should surface results as soon as they complete."""
         registry = CheckRegistry()

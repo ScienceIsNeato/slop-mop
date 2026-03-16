@@ -471,6 +471,7 @@ class CheckExecutor:
         buffered_results: Dict[str, CheckResult],
         pending: Set[str],
         futures: Dict[concurrent.futures.Future[CheckResult], str],
+        dep_graph: Optional[Dict[str, Set[str]]] = None,
     ) -> None:
         """Process buffered results in completion order or remediation order.
 
@@ -480,18 +481,13 @@ class CheckExecutor:
         """
         while buffered_results:
             if self._process_results_in_remediation_order:
-                unresolved = (
-                    (set(pending) - set(self._results))
-                    | set(futures.values())
-                    | set(buffered_results)
+                next_name = self._select_next_buffered_result_name(
+                    buffered_results,
+                    pending,
+                    futures,
+                    dep_graph or {},
                 )
-                next_name = min(
-                    unresolved,
-                    key=lambda name: self._processing_priority.get(
-                        name, (0, 999_999, name)
-                    ),
-                )
-                if next_name not in buffered_results:
+                if next_name is None:
                     break
             else:
                 next_name = next(iter(buffered_results))
@@ -506,6 +502,45 @@ class CheckExecutor:
                 logger.debug(f"Fail-fast triggered by {next_name}")
                 self._stop_event.set()
                 break
+
+    def _select_next_buffered_result_name(
+        self,
+        buffered_results: Dict[str, CheckResult],
+        pending: Set[str],
+        futures: Dict[concurrent.futures.Future[CheckResult], str],
+        dep_graph: Dict[str, Set[str]],
+    ) -> Optional[str]:
+        """Choose the next buffered result to commit in remediation mode.
+
+        Normally we wait for the highest-priority unresolved gate. But if that
+        gate is still pending and depends on a buffered result, we must commit
+        the buffered prerequisite first or the scheduler deadlocks.
+        """
+        unresolved = sorted(
+            (
+                (set(pending) - set(self._results))
+                | set(futures.values())
+                | set(buffered_results)
+            ),
+            key=lambda name: self._processing_priority.get(name, (0, 999_999, name)),
+        )
+
+        for name in unresolved:
+            if name in buffered_results:
+                return name
+
+            buffered_deps = sorted(
+                set(dep_graph.get(name, set())) & set(buffered_results),
+                key=lambda dep_name: self._processing_priority.get(
+                    dep_name, (0, 999_999, dep_name)
+                ),
+            )
+            if buffered_deps:
+                return buffered_deps[0]
+
+            break
+
+        return None
 
     def _dependency_results_for_scheduler(
         self,
@@ -705,7 +740,12 @@ class CheckExecutor:
                                 buffered_results[name] = result
                             completed.add(name)
 
-                    self._drain_completed_buffer(buffered_results, pending, futures)
+                    self._drain_completed_buffer(
+                        buffered_results,
+                        pending,
+                        futures,
+                        dep_graph,
+                    )
 
                 elif not ready:
                     # No checks ready and no futures pending - deadlock or done
@@ -754,7 +794,7 @@ class CheckExecutor:
             futures.clear()
 
         if buffered_results:
-            self._drain_completed_buffer(buffered_results, pending, futures)
+            self._drain_completed_buffer(buffered_results, pending, futures, dep_graph)
 
     def _select_gates_for_submission(
         self,
