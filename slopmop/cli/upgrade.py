@@ -56,6 +56,17 @@ class PypiResponse(TypedDict):
     info: PypiInfo
 
 
+def _module_root() -> Path:
+    import slopmop
+
+    return Path(slopmop.__file__).resolve().parent.parent
+
+
+def _running_from_source_checkout() -> bool:
+    root = _module_root()
+    return (root / "pyproject.toml").exists() and (root / ".git").exists()
+
+
 def _installed_version() -> str:
     try:
         return version(PACKAGE_NAME)
@@ -279,6 +290,12 @@ def _print_check_plan(
 def cmd_upgrade(args: argparse.Namespace) -> int:
     """Upgrade the installed slop-mop package and validate the result."""
     project_root = Path(getattr(args, "project_root", ".")).resolve()
+    if _running_from_source_checkout():
+        print(
+            "❌ sm upgrade must be run from an installed slopmop package, not from a source checkout.",
+            file=sys.stderr,
+        )
+        return 1
     try:
         current_version = _installed_version()
         install_type = _detect_install_type()
