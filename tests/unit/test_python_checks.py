@@ -315,6 +315,21 @@ class TestPythonLintFormatCheck:
         assert "--skip=ephemeral" in command
 
 
+class TestPythonProjectVenvWarning:
+    def test_missing_project_venv_warns_locally_but_suppresses_sarif(self, tmp_path):
+        check = PythonTestsCheck({})
+
+        with patch.object(check, "has_project_venv", return_value=False):
+            result = check.check_project_venv_or_warn(str(tmp_path), start_time=0.0)
+
+        assert result is not None
+        assert result.status == CheckStatus.WARNED
+        assert result.error == "No project virtual environment found"
+        assert result.suppress_sarif is True
+        assert result.fix_suggestion is not None
+        assert "Create a venv" in result.fix_suggestion
+
+
 class TestPythonTestsCheck:
     """Tests for PythonTestsCheck."""
 

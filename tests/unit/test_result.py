@@ -320,6 +320,7 @@ class TestCompactJsonSchema:
         assert "scope" not in d
         assert "skip_reason" not in d
         assert "status_detail" not in d
+        assert "suppress_sarif" not in d
         # output is empty string — also omitted
         assert "output" not in d
 

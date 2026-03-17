@@ -153,6 +153,8 @@ class SarifReporter:
         for check in summary.results:
             if check.status not in _EMITTING_STATUSES:
                 continue
+            if check.suppress_sarif:
+                continue
 
             findings = list(check.findings or ())
 

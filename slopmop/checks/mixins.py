@@ -100,24 +100,21 @@ class PythonCheckMixin:
             return "unknown version"
 
     def has_project_venv(self, project_root: str) -> bool:
-        """Check if the project has a discoverable virtual environment.
+        """Check if the project has a local discoverable virtual environment.
 
         Returns True if any of these exist:
         1. project_root/venv/
         2. project_root/.venv/
-        3. VIRTUAL_ENV environment variable is set
+
+        An externally activated ``VIRTUAL_ENV`` is a useful fallback runtime, but
+        it is not evidence that the repository has its own local dependency
+        environment.
         """
         root = Path(project_root)
         for venv_dir in ["venv", ".venv"]:
             if (root / venv_dir / "bin" / "python").exists():
                 return True
             if (root / venv_dir / "Scripts" / "python.exe").exists():
-                return True
-        if os.environ.get("VIRTUAL_ENV"):
-            venv_path = Path(os.environ["VIRTUAL_ENV"])
-            if (venv_path / "bin" / "python").exists():
-                return True
-            if (venv_path / "Scripts" / "python.exe").exists():
                 return True
         return False
 
@@ -150,11 +147,15 @@ class PythonCheckMixin:
     def check_project_venv_or_warn(
         self, project_root: str, start_time: float
     ) -> Optional[CheckResult]:
-        """Return a WARNED result when no project venv is found.
+        """Return a local warning result when no project venv is found.
 
         PROJECT-context checks should call this at the top of ``run()``.
         If a venv *does* exist, returns ``None`` so the caller can
         continue with normal execution.
+
+        The warning is intentionally suppressed from SARIF/code-scanning
+        output. Missing project dependencies are a local prerequisite
+        problem, not a repository code defect.
 
         Usage::
 
@@ -178,6 +179,7 @@ class PythonCheckMixin:
                     f"  cd {project_root} && {self.suggest_venv_command(project_root)}"
                 ),
                 findings=[Finding(message=msg, level=FindingLevel.WARNING)],
+                suppress_sarif=True,
             )
         return None
 

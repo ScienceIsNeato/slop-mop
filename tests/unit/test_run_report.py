@@ -127,7 +127,7 @@ class TestRunReportCategorisation:
             "overconfidence:high",
             "overconfidence:low",
         ]
-        assert report.verify_command == "sm swab -g overconfidence:high --verbose"
+        assert report.verify_command == "sm swab -g overconfidence:high"
 
     def test_verify_command_targets_first_failure(self) -> None:
         summary = _summary(
@@ -138,7 +138,7 @@ class TestRunReportCategorisation:
             ]
         )
         report = RunReport.from_summary(summary, level="swab")
-        assert report.verify_command == "sm swab -g f1 --verbose"
+        assert report.verify_command == "sm swab -g f1"
 
     def test_verify_command_falls_back_to_error(self) -> None:
         summary = _summary(
@@ -148,7 +148,7 @@ class TestRunReportCategorisation:
             ]
         )
         report = RunReport.from_summary(summary, level="scour")
-        assert report.verify_command == "sm scour -g e1 --verbose"
+        assert report.verify_command == "sm scour -g e1"
 
     def test_verify_command_none_when_all_passed(self) -> None:
         summary = _summary([_result("p1", CheckStatus.PASSED)])
@@ -214,6 +214,24 @@ class TestRunReportLogs:
         assert "Check: myopia:code-sprawl" in content
         assert "too big" in content
 
+    def test_write_logs_creates_files_for_warnings(self, tmp_path) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "python:missing-venv",
+                    CheckStatus.WARNED,
+                    output="warn details",
+                    error="warning",
+                )
+            ]
+        )
+        report = RunReport.from_summary(summary, project_root=str(tmp_path))
+        logs = report.write_logs()
+        assert "python:missing-venv" in logs
+        log_file = tmp_path / ".slopmop" / "logs" / "python_missing-venv.log"
+        assert log_file.exists()
+        assert "warn details" in log_file.read_text()
+
     def test_write_logs_no_op_without_project_root(self) -> None:
         summary = _summary([_result("f", CheckStatus.FAILED)])
         report = RunReport.from_summary(summary, project_root=None)
@@ -249,19 +267,29 @@ class TestJsonAdapter:
         out = JsonAdapter.render(report)
         assert "level" not in out
 
-    def test_next_steps_from_verify_command(self) -> None:
-        summary = _summary([_result("f", CheckStatus.FAILED)])
-        report = RunReport.from_summary(summary, level="swab")
+    def test_next_steps_point_to_log_then_verify(self, tmp_path) -> None:
+        summary = _summary([_result("f", CheckStatus.FAILED, output="boom")])
+        report = RunReport.from_summary(
+            summary, level="swab", project_root=str(tmp_path)
+        )
+        report.write_logs()
         out = JsonAdapter.render(report)
-        assert out["next_steps"] == ["sm swab -g f --verbose"]
+        assert out["next_steps"] == [
+            "Inspect failure details in .slopmop/logs/f.log",
+            "After fixing, rerun sm swab -g f",
+        ]
 
-    def test_first_to_fix_present_with_verify_command(self) -> None:
-        summary = _summary([_result("f", CheckStatus.FAILED)])
-        report = RunReport.from_summary(summary, level="swab")
+    def test_first_to_fix_includes_log_file_and_verify_command(self, tmp_path) -> None:
+        summary = _summary([_result("f", CheckStatus.FAILED, output="boom")])
+        report = RunReport.from_summary(
+            summary, level="swab", project_root=str(tmp_path)
+        )
+        report.write_logs()
         out = JsonAdapter.render(report)
         assert out["first_to_fix"] == {
             "gate": "f",
-            "verify_command": "sm swab -g f --verbose",
+            "log_file": ".slopmop/logs/f.log",
+            "verify_command": "sm swab -g f",
         }
 
     def test_results_follow_report_actionable_order(self) -> None:
@@ -519,7 +547,7 @@ class TestConsoleAdapter:
         assert "foundation" in out
         assert "diagnostic" in out
 
-    def test_failure_path_shows_gate_detail(self, capsys) -> None:
+    def test_failure_path_shows_gate_detail(self, capsys, tmp_path) -> None:
         summary = _summary(
             [
                 _result(
@@ -532,15 +560,19 @@ class TestConsoleAdapter:
                 ),
             ]
         )
-        report = RunReport.from_summary(summary, level="swab")
+        report = RunReport.from_summary(
+            summary, level="swab", project_root=str(tmp_path)
+        )
+        report.write_logs()
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "SLOP DETECTED" in out
         assert "Fix First: myopia:code-sprawl" in out
-        assert "start with: sm swab -g myopia:code-sprawl --verbose" in out
+        assert "inspect details: .slopmop/logs/myopia_code-sprawl.log" in out
+        assert "after fixing: sm swab -g myopia:code-sprawl" in out
         assert "myopia:code-sprawl" in out
         assert "Move BigClass" in out
-        assert "verify: sm swab -g myopia:code-sprawl --verbose" in out
+        assert "📄 full details: .slopmop/logs/myopia_code-sprawl.log" in out
 
     def test_role_badge_in_failure_header(self, capsys) -> None:
         summary = _summary([_result("f", CheckStatus.FAILED, role="foundation")])
@@ -567,7 +599,7 @@ class TestConsoleAdapter:
         out = capsys.readouterr().out
         assert "→ fix: Do the thing" in out
 
-    def test_structured_guidance_renders_when_present(self, capsys) -> None:
+    def test_structured_guidance_renders_when_present(self, capsys, tmp_path) -> None:
         summary = _summary(
             [
                 _result(
@@ -586,16 +618,17 @@ class TestConsoleAdapter:
                 )
             ]
         )
-        report = RunReport.from_summary(summary, level="swab")
+        report = RunReport.from_summary(
+            summary, level="swab", project_root=str(tmp_path)
+        )
+        report.write_logs()
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "WHAT'S BROKEN:" in out
         assert "WHY IT MATTERS:" in out
         assert "EXACTLY WHAT TO DO:" in out
-        assert (
-            "VERIFY THE FIX: sm swab -g overconfidence:type-blindness.py --verbose"
-            in out
-        )
+        assert "FULL DETAILS: .slopmop/logs/overconfidence_type-blindness.py.log" in out
+        assert "AFTER FIXING: sm swab -g overconfidence:type-blindness.py" in out
 
     def test_success_path_warns_on_time_budget_skips(self, capsys) -> None:
         summary = _summary(
@@ -783,6 +816,26 @@ class TestConsoleAdapterWarnings:
         assert "something off" in out
         assert "try this fix" in out
 
+    def test_warning_renders_log_path_when_available(self, capsys, tmp_path) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "w",
+                    CheckStatus.WARNED,
+                    error="something off",
+                    output="warn body",
+                ),
+                _result("f", CheckStatus.FAILED, error="broken"),
+            ]
+        )
+        report = RunReport.from_summary(
+            summary, level="swab", project_root=str(tmp_path)
+        )
+        report.write_logs()
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "📄 full details: .slopmop/logs/w.log" in out
+
     def test_output_truncation_with_log_file(self, capsys) -> None:
         long_output = "\n".join(f"line {i}" for i in range(20))
         summary = _summary(
@@ -795,5 +848,24 @@ class TestConsoleAdapterWarnings:
         report.log_files = {"g": "logs/g.log"}
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
+        assert "line 0" in out
+        assert "line 2" in out
+        assert "line 3" not in out
         assert "more lines in log" in out
         assert "logs/g.log" in out
+
+    def test_verbose_output_preview_shows_more_lines(self, capsys) -> None:
+        long_output = "\n".join(f"line {i}" for i in range(20))
+        summary = _summary(
+            [
+                _result("g", CheckStatus.FAILED, error="big", output=long_output),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab", verbose=True)
+        report.log_files = {"g": "logs/g.log"}
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "line 0" in out
+        assert "line 9" in out
+        assert "line 10" not in out
+        assert "more lines in log" in out

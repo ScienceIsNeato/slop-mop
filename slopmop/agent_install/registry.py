@@ -52,6 +52,11 @@ TARGETS: Dict[str, InstallTarget] = {
         display_name="Aider repo config + conventions",
         template_dir="aider",
     ),
+    "antigravity": InstallTarget(
+        key="antigravity",
+        display_name="Google Antigravity workspace rules",
+        template_dir="antigravity",
+    ),
 }
 
 ALL_KEYS: Tuple[str, ...] = tuple(TARGETS.keys())

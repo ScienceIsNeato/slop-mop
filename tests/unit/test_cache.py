@@ -301,6 +301,7 @@ class TestCheckResultFromDict:
             scope=ScopeInfo(files=10, lines=500),
             status_detail="detail",
             role="foundation",
+            suppress_sarif=True,
             findings=[
                 Finding(
                     message="issue",
@@ -327,6 +328,7 @@ class TestCheckResultFromDict:
         assert restored.scope.lines == 500
         assert restored.status_detail == original.status_detail
         assert restored.role == original.role
+        assert restored.suppress_sarif is True
         assert len(restored.findings) == 1
         assert restored.findings[0].message == "issue"
         assert restored.findings[0].level == FindingLevel.WARNING

@@ -271,6 +271,7 @@ class CheckResult:
         None  # ISO 8601 when result was originally produced
     )
     cache_commit: Optional[str] = None  # Short commit hash when result was produced
+    suppress_sarif: bool = False
 
     def to_dict(self) -> Dict[str, object]:
         """Serialize to a plain dict for JSON output."""
@@ -307,6 +308,8 @@ class CheckResult:
             d["cache_timestamp"] = self.cache_timestamp
         if self.cache_commit:
             d["cache_commit"] = self.cache_commit
+        if self.suppress_sarif:
+            d["suppress_sarif"] = True
         return d
 
     @classmethod
@@ -404,6 +407,7 @@ class CheckResult:
             cached=bool(d.get("cached", False)),
             cache_timestamp=d.get("cache_timestamp"),  # type: ignore[arg-type]
             cache_commit=d.get("cache_commit"),  # type: ignore[arg-type]
+            suppress_sarif=bool(d.get("suppress_sarif", False)),
         )
 
     @property

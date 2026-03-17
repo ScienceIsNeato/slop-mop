@@ -175,7 +175,7 @@ and follow the slop-mop workflow. Templates describe `sm` as a **skill** with
 capabilities, workflow guidance, and safety rules.
 
 ```bash
-sm agent install                      # install all 7 agent targets
+sm agent install                      # install all 8 agent targets
 sm agent install --target cursor      # only Cursor rules
 sm agent install --target claude      # only Claude Code commands
 sm agent install --target copilot     # only GitHub Copilot instructions
@@ -183,6 +183,7 @@ sm agent install --target windsurf    # only Windsurf rules
 sm agent install --target cline       # only Cline rules
 sm agent install --target roo         # only Roo Code workspace rules
 sm agent install --target aider       # only Aider config + conventions
+sm agent install --target antigravity # only Google Antigravity workspace rules
 sm agent install --force              # overwrite existing managed files
 ```
 
@@ -194,11 +195,32 @@ Generated files:
 - `.clinerules/slopmop.md`
 - `.roo/rules/01-slopmop.md`
 - `.aider.conf.yml` + `CONVENTIONS.md`
+- `.agents/rules/slopmop.md`
 
 These templates keep the runtime path simple: agents call `sm swab` routinely
 during implementation, `sm scour` before PR updates, and `sm buff` after PR
 feedback or CI follow-up. No protocol adapter is required for the default
 integration flow.
+
+### Upgrading slop-mop
+
+Use `sm upgrade` from an installed `slopmop` environment, not from a source
+checkout. The command is intentionally conservative:
+
+```bash
+sm upgrade --check                  # preview target version, backup path, migrations
+sm upgrade                          # upgrade, run built-in migrations, then validate
+sm upgrade --to-version 0.10.0      # pin an exact target version
+```
+
+Upgrade migrations are stepwise. If you jump from `0.8.0` to `0.13.0`,
+slop-mop will plan and run each registered migration boundary in ascending
+version order rather than treating the upgrade as one opaque leap.
+
+Current constraints:
+- supported install types are `pipx` and non-editable installs inside an active virtual environment
+- source-checkout and editable installs are rejected on purpose
+- every mutating upgrade writes a backup under `.slopmop/backups/upgrade_*` before changing anything
 
 Note for agents: this list reflects current defaults. Source of truth for
 install behavior is always `sm agent install --help` and command output.

@@ -524,6 +524,14 @@ class TestMain:
             mock_cmd.assert_called_once()
             assert result == 0
 
+    def test_main_upgrade_calls_cmd_upgrade(self):
+        """Main routes upgrade to cmd_upgrade."""
+        with patch("slopmop.cli.cmd_upgrade") as mock_cmd:
+            mock_cmd.return_value = 0
+            result = main(["upgrade", "--check"])
+            mock_cmd.assert_called_once()
+            assert result == 0
+
     def test_main_buff_calls_cmd_buff(self):
         """Main routes buff to cmd_buff."""
         with patch("slopmop.cli.cmd_buff") as mock_cmd:

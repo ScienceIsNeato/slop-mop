@@ -406,6 +406,7 @@ def _run_validation_locked(
             project_root=str(project_root),
             registry=registry,
             sort_actionable_by_remediation_order=True,
+            verbose=args.verbose,
         )
         report.baseline_filter = baseline_metadata
 

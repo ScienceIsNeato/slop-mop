@@ -263,12 +263,12 @@ class TestHasProjectVenv:
         assert self.mixin.has_project_venv(str(tmp_path)) is True
 
     def test_virtual_env_envvar(self, tmp_path, monkeypatch):
-        """Returns True when VIRTUAL_ENV points to a real venv."""
+        """Returns False when only an external VIRTUAL_ENV exists."""
         venv_dir = tmp_path / "some_env"
         (venv_dir / "bin").mkdir(parents=True)
         (venv_dir / "bin" / "python").touch()
         monkeypatch.setenv("VIRTUAL_ENV", str(venv_dir))
-        assert self.mixin.has_project_venv(str(tmp_path)) is True
+        assert self.mixin.has_project_venv(str(tmp_path)) is False
 
     def test_empty_venv_dir_no_python(self, tmp_path, monkeypatch):
         """Bare venv/ dir without bin/python and no VIRTUAL_ENV → False."""
@@ -367,6 +367,22 @@ class TestCheckProjectVenvOrWarn:
 
         result = check.check_project_venv_or_warn(str(tmp_path), time.time())
         assert result is None
+
+    def test_active_external_virtual_env_does_not_count_as_project_venv(
+        self, tmp_path, monkeypatch
+    ):
+        external_venv = tmp_path / "external" / "bin"
+        external_venv.mkdir(parents=True)
+        (external_venv / "python").touch()
+        monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "external"))
+
+        check = self._make_check()
+        import time
+
+        result = check.check_project_venv_or_warn(str(tmp_path), time.time())
+        assert result is not None
+        assert result.status is CheckStatus.WARNED
+        assert "No project virtual environment" in result.error
 
     def test_fix_suggestion_contains_command(self, tmp_path, monkeypatch):
         """Fix suggestion includes the suggest_venv_command output."""
