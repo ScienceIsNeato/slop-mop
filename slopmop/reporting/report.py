@@ -133,8 +133,9 @@ JSON_SCHEMA_VERSION = "slopmop/v2"
 
 def _structured_console_lines(
     result: CheckResult,
-    verify_command: str,
     *,
+    details_path: Optional[str],
+    verify_command: str,
     max_findings: int,
     max_instructions: int,
 ) -> List[str]:
@@ -162,7 +163,9 @@ def _structured_console_lines(
         for index, instruction in enumerate(instructions[:max_instructions], start=1):
             lines.append(f"     {index}. {instruction}")
 
-    lines.append(f"   VERIFY THE FIX: {verify_command}")
+    if details_path:
+        lines.append(f"   FULL DETAILS: {details_path}")
+    lines.append(f"   AFTER FIXING: {verify_command}")
     return lines
 
 
@@ -261,7 +264,7 @@ class RunReport:
         verify = None
         if first_blocking is not None:
             verb = level or "swab"
-            verify = f"sm {verb} -g {first_blocking.name} --verbose"
+            verify = f"sm {verb} -g {first_blocking.name}"
 
         return cls(
             summary=summary,
@@ -280,14 +283,19 @@ class RunReport:
 
     def per_gate_verify_command(self, gate_name: str) -> str:
         """Return the canonical rerun command for one gate."""
-        return f"sm {self.level or 'swab'} -g {gate_name} --verbose"
+        return f"sm {self.level or 'swab'} -g {gate_name}"
+
+    def per_gate_log_file(self, gate_name: str) -> Optional[str]:
+        """Return the persisted log path for one gate, if available."""
+        return self.log_files.get(gate_name)
 
     def console_detail_lines(self, result: CheckResult) -> List[str]:
         """Return compact, console-ready detail lines for one actionable result."""
         if result.why_it_matters and result.findings:
             return _structured_console_lines(
                 result,
-                self.per_gate_verify_command(result.name),
+                details_path=self.per_gate_log_file(result.name),
+                verify_command=self.per_gate_verify_command(result.name),
                 max_findings=5 if self.verbose else 3,
                 max_instructions=5 if self.verbose else 3,
             )
@@ -315,7 +323,7 @@ class RunReport:
         return preview
 
     def write_logs(self) -> Dict[str, str]:
-        """Write per-gate log files for failed/errored checks.
+        """Write per-gate log files for actionable checks.
 
         Populates and returns :attr:`log_files`.  Idempotent — calling
         twice overwrites the same files with the same content.  No-op
@@ -330,7 +338,7 @@ class RunReport:
         log_dir = os.path.join(self.project_root, ".slopmop", "logs")
         os.makedirs(log_dir, exist_ok=True)
 
-        for result in self.failed + self.errored:
+        for result in self.actionable:
             # Gate names use "category:check-name" format. Replacing ":"
             # with "_" is safe because no two registered gates would
             # produce the same sanitized filename.

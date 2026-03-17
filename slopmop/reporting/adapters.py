@@ -64,14 +64,23 @@ class JsonAdapter:
                 if gate_name in report.log_files:
                     entry["log_file"] = report.log_files[gate_name]
 
-        # Verify command → next_steps.  A list to leave room for
-        # multi-step guidance later without schema churn.  Present
-        # only when there IS something to verify — all-passed runs
-        # have no next step beyond "commit".
+        # Next steps should point at already-captured logs first, then
+        # tell the caller how to rerun after fixing.  The old verbose
+        # rerun loop threw away the first failing run's detail and made
+        # users pay an extra command just to inspect data we already had.
         if report.first_to_fix:
             output["first_to_fix"] = {"gate": report.first_to_fix}
+            log_file = report.per_gate_log_file(report.first_to_fix)
+            if log_file:
+                cast(Dict[str, object], output["first_to_fix"])["log_file"] = log_file
         if report.verify_command:
-            output["next_steps"] = [report.verify_command]
+            next_steps: List[str] = []
+            if report.first_to_fix:
+                log_file = report.per_gate_log_file(report.first_to_fix)
+                if log_file:
+                    next_steps.append(f"Inspect failure details in {log_file}")
+            next_steps.append(f"After fixing, rerun {report.verify_command}")
+            output["next_steps"] = next_steps
             if isinstance(output.get("first_to_fix"), dict):
                 cast(Dict[str, object], output["first_to_fix"])[
                     "verify_command"
@@ -273,22 +282,17 @@ class ConsoleAdapter:
                     header += f" — {detail}"
                 print(header)
 
-                rerun = r.per_gate_verify_command(res.name)
-
                 for line in r.console_detail_lines(res):
                     print(line)
 
                 if res.fix_suggestion and not (res.why_it_matters and res.findings):
                     print(f"   💡 {res.fix_suggestion}")
 
-                # Verify hint — the command to re-check THIS gate.
-                # Different from report.verify_command, which is the
-                # overall "first thing to fix" hint; this is per-gate.
                 log_path = r.log_files.get(res.name)
                 if log_path:
-                    print(f"   📄 {log_path}")
+                    print(f"   📄 full details: {log_path}")
                 if not (res.why_it_matters and res.findings):
-                    print(f"   ▸ verify: {rerun}")
+                    print("   ▸ after fixing: " + r.per_gate_verify_command(res.name))
 
     def _render_first_to_fix_hint(self) -> None:
         """Call out the first blocking gate explicitly when one exists."""
@@ -296,8 +300,11 @@ class ConsoleAdapter:
         if not first_gate:
             return
         print(f"🎯 Fix First: {first_gate}")
+        log_path = self.report.per_gate_log_file(first_gate)
+        if log_path:
+            print(f"   ▸ inspect details: {log_path}")
         if self.report.verify_command:
-            print(f"   ▸ start with: {self.report.verify_command}")
+            print(f"   ▸ after fixing: {self.report.verify_command}")
         print()
 
     def _render_warnings(self) -> None:
@@ -307,6 +314,9 @@ class ConsoleAdapter:
             print(f"   • {_role_badge(res)}{res.name}")
             if res.error:
                 print(f"     └─ {res.error}")
+            log_path = self.report.per_gate_log_file(res.name)
+            if log_path:
+                print(f"     📄 full details: {log_path}")
             if res.fix_suggestion:
                 print(f"     💡 {res.fix_suggestion}")
 

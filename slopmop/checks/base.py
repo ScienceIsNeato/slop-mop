@@ -584,7 +584,7 @@ class BaseCheck(ABC):
         across every gate that wants the pattern.
         """
         verb = self.effective_level.value
-        return f"sm {verb} -g {self.full_name} --verbose"
+        return f"sm {verb} -g {self.full_name}"
 
     @property
     def effective_level(self) -> GateLevel:
