@@ -100,24 +100,21 @@ class PythonCheckMixin:
             return "unknown version"
 
     def has_project_venv(self, project_root: str) -> bool:
-        """Check if the project has a discoverable virtual environment.
+        """Check if the project has a local discoverable virtual environment.
 
         Returns True if any of these exist:
         1. project_root/venv/
         2. project_root/.venv/
-        3. VIRTUAL_ENV environment variable is set
+
+        An externally activated ``VIRTUAL_ENV`` is a useful fallback runtime, but
+        it is not evidence that the repository has its own local dependency
+        environment.
         """
         root = Path(project_root)
         for venv_dir in ["venv", ".venv"]:
             if (root / venv_dir / "bin" / "python").exists():
                 return True
             if (root / venv_dir / "Scripts" / "python.exe").exists():
-                return True
-        if os.environ.get("VIRTUAL_ENV"):
-            venv_path = Path(os.environ["VIRTUAL_ENV"])
-            if (venv_path / "bin" / "python").exists():
-                return True
-            if (venv_path / "Scripts" / "python.exe").exists():
                 return True
         return False
 

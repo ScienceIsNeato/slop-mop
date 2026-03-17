@@ -25,6 +25,15 @@ PACKAGE_NAME = "slopmop"
 PYPI_URL = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
 BACKUP_DIR_NAME = "backups"
 VALIDATION_VERB = "scour"
+NO_MIGRATIONS = "none"
+SOURCE_CHECKOUT_UPGRADE_ERROR = (
+    "sm upgrade must be run from an installed slopmop package, not from a "
+    "source checkout."
+)
+UNSUPPORTED_INSTALL_ERROR = (
+    "sm upgrade currently supports pipx installs or pip installs inside an "
+    "active virtual environment."
+)
 STATE_BACKUP_FILES = (
     "cache.json",
     "timings.json",
@@ -75,6 +84,30 @@ def _installed_version() -> str:
         ) from exc
 
 
+def _installed_version_fresh() -> str:
+    """Read installed package metadata in a fresh Python process."""
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "from importlib.metadata import version; "
+            f"print(version({PACKAGE_NAME!r}))"
+        ),
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True)
+    if completed.returncode != 0:
+        details = (
+            completed.stderr.strip()
+            or completed.stdout.strip()
+            or "unable to read installed package metadata"
+        )
+        raise UpgradeError(f"Failed to read upgraded {PACKAGE_NAME} version: {details}")
+    installed = completed.stdout.strip()
+    if not installed:
+        raise UpgradeError(f"Failed to read upgraded {PACKAGE_NAME} version.")
+    return installed
+
+
 def _distribution_direct_url() -> Optional[DirectUrlPayload]:
     try:
         dist = distribution(PACKAGE_NAME)
@@ -110,6 +143,9 @@ def _detect_install_type(
     virtual_env: Optional[str] = None,
     direct_url: Optional[DirectUrlPayload] = None,
 ) -> str:
+    # VIRTUAL_ENV is the standard environment variable exported by Python venv
+    # and virtualenv activation scripts. We use it only as a fallback signal for
+    # an already-active environment; project-local venv discovery is stricter.
     exe = (executable or sys.executable).replace("\\", "/")
     prefix_val = prefix or sys.prefix
     base_prefix_val = base_prefix or getattr(sys, "base_prefix", prefix_val)
@@ -129,9 +165,7 @@ def _detect_install_type(
     if virtual_env_val or prefix_val != base_prefix_val:
         return "venv"
 
-    raise UpgradeError(
-        "sm upgrade currently supports pipx installs or pip installs inside an active virtual environment."
-    )
+    raise UpgradeError(UNSUPPORTED_INSTALL_ERROR)
 
 
 def _validated_pypi_url() -> str:
@@ -282,7 +316,7 @@ def _print_check_plan(
     if planned:
         print(f"Migrations:      {', '.join(planned)}")
     else:
-        print("Migrations:      none")
+        print(f"Migrations:      {NO_MIGRATIONS}")
     print(f"Validation:      sm {VALIDATION_VERB}")
 
 
@@ -290,10 +324,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
     """Upgrade the installed slop-mop package and validate the result."""
     project_root = Path(getattr(args, "project_root", ".")).resolve()
     if _running_from_source_checkout():
-        print(
-            "❌ sm upgrade must be run from an installed slopmop package, not from a source checkout.",
-            file=sys.stderr,
-        )
+        print(f"❌ {SOURCE_CHECKOUT_UPGRADE_ERROR}", file=sys.stderr)
         return 1
     try:
         current_version = _installed_version()
@@ -325,7 +356,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
             install_type=install_type,
         )
         _run_upgrade_install(install_type, target_version)
-        installed_version = _installed_version()
+        installed_version = _installed_version_fresh()
         applied_migrations = run_upgrade_migrations(
             project_root, current_version, installed_version
         )
@@ -351,6 +382,6 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
     if applied_migrations:
         print(f"🔄 Migrations: {', '.join(applied_migrations)}")
     else:
-        print("🔄 Migrations: none")
+        print(f"🔄 Migrations: {NO_MIGRATIONS}")
     print(f"✔️  Validation: sm {VALIDATION_VERB}")
     return 0

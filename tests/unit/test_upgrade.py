@@ -13,6 +13,7 @@ from slopmop.cli.upgrade import (
     _detect_install_type,
     _distribution_direct_url,
     _fetch_latest_pypi_version,
+    _installed_version_fresh,
     _is_editable_install,
     _run_upgrade_install,
     _running_from_source_checkout,
@@ -41,6 +42,16 @@ class TestDetectInstallType:
             prefix="/tmp/project/.venv",
             base_prefix="/opt/homebrew/Cellar/python/3.13",
             virtual_env="/tmp/project/.venv",
+            direct_url=None,
+        )
+        assert detected == "venv"
+
+    def test_detects_active_virtualenv_without_virtual_env_var(self):
+        detected = _detect_install_type(
+            executable="/tmp/project/.venv/bin/python",
+            prefix="/tmp/project/.venv",
+            base_prefix="/opt/homebrew/Cellar/python/3.13",
+            virtual_env=None,
             direct_url=None,
         )
         assert detected == "venv"
@@ -81,6 +92,25 @@ class TestMetadataHelpers:
 
     def test_is_editable_install_false_without_payload(self):
         assert _is_editable_install(None) is False
+
+    @patch("slopmop.cli.upgrade.subprocess.run")
+    def test_installed_version_fresh_reads_version_in_subprocess(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["python"], returncode=0, stdout="0.9.1\n", stderr=""
+        )
+        assert _installed_version_fresh() == "0.9.1"
+
+    @patch("slopmop.cli.upgrade.subprocess.run")
+    def test_installed_version_fresh_raises_on_failure(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["python"], returncode=1, stdout="", stderr="boom"
+        )
+        try:
+            _installed_version_fresh()
+        except UpgradeError as exc:
+            assert "Failed to read upgraded slopmop version" in str(exc)
+        else:
+            raise AssertionError("expected fresh version lookup to fail")
 
     def test_running_from_source_checkout_true_when_repo_markers_exist(
         self, tmp_path: Path
@@ -276,12 +306,14 @@ class TestUpgradeCommand:
     @patch("slopmop.cli.upgrade._validate_target_version")
     @patch("slopmop.cli.upgrade._resolve_target_version", return_value="0.9.1")
     @patch("slopmop.cli.upgrade._detect_install_type", return_value="venv")
-    @patch("slopmop.cli.upgrade._installed_version", side_effect=["0.9.0", "0.9.1"])
+    @patch("slopmop.cli.upgrade._installed_version_fresh", return_value="0.9.1")
+    @patch("slopmop.cli.upgrade._installed_version", return_value="0.9.0")
     @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
     def test_upgrade_runs_backup_install_migrations_and_validation(
         self,
         _mock_checkout,
         _mock_installed,
+        _mock_installed_fresh,
         _mock_detect,
         _mock_target,
         _mock_validate_version,
@@ -345,12 +377,14 @@ class TestUpgradeCommand:
     @patch("slopmop.cli.upgrade._validate_target_version")
     @patch("slopmop.cli.upgrade._resolve_target_version", return_value="0.9.1")
     @patch("slopmop.cli.upgrade._detect_install_type", return_value="venv")
-    @patch("slopmop.cli.upgrade._installed_version", side_effect=["0.9.0", "0.9.1"])
+    @patch("slopmop.cli.upgrade._installed_version_fresh", return_value="0.9.1")
+    @patch("slopmop.cli.upgrade._installed_version", return_value="0.9.0")
     @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
     def test_upgrade_reports_validation_failure(
         self,
         _mock_checkout,
         _mock_installed,
+        _mock_installed_fresh,
         _mock_detect,
         _mock_target,
         _mock_validate_version,
