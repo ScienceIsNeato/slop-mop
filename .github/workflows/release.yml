@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -52,6 +52,8 @@ jobs:
 
       - name: Detect version bump in pyproject.toml
         id: detect
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           python <<'PY'
           import os
@@ -62,31 +64,37 @@ jobs:
           current = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
 
           previous = current
-          try:
+          before_sha = os.environ.get("GITHUB_EVENT_BEFORE", "")
+          null_sha = "0" * 40
+          if before_sha and before_sha != null_sha:
+            try:
               previous_text = subprocess.run(
-                  ["git", "show", "HEAD^:pyproject.toml"],
-                  capture_output=True,
-                  text=True,
-                  check=True,
+                ["git", "show", f"{before_sha}:pyproject.toml"],
+                capture_output=True,
+                text=True,
+                check=True,
               ).stdout
               previous = tomllib.loads(previous_text)["project"]["version"]
-          except subprocess.CalledProcessError:
-              pass
+            except subprocess.CalledProcessError:
+              previous = ""
 
           should_release = "true" if current != previous else "false"
           tag = f"v{current}"
+          previous_for_output = previous or "(missing)"
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"should_release={should_release}\n")
               fh.write(f"version={current}\n")
-              fh.write(f"previous_version={previous}\n")
+            fh.write(f"previous_version={previous_for_output}\n")
               fh.write(f"tag={tag}\n")
 
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary:
               with open(summary, "a", encoding="utf-8") as fh:
                   if should_release == "true":
-                      fh.write(f"Release detected: {previous} -> {current} ({tag})\n")
+                fh.write(
+                  f"Release detected: {previous_for_output} -> {current} ({tag})\n"
+                )
                   else:
                       fh.write(f"No release version bump detected in pyproject.toml ({current}).\n")
           PY

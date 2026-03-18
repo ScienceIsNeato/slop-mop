@@ -158,10 +158,10 @@ ${CHANGELOG}
 
 After merging this PR, GitHub Actions will automatically detect the version
 bump on \`main\` and run \`release.yml\`, which will:
-1. Runs quality gates
-2. Builds the package
-3. Publishes to PyPI
-4. Creates the version tag and GitHub Release with auto-generated notes"
+1. Run quality gates
+2. Build the package
+3. Publish to PyPI
+4. Create the version tag and GitHub Release with auto-generated notes"
 
 echo "$PR_BODY" > /tmp/release_pr_body.md
 
