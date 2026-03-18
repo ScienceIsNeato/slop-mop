@@ -14,7 +14,8 @@
 #   5. Commits, pushes, and opens a PR
 #
 # The PR merge is still manual — you review the changelog, then merge.
-# Once merged, push the tag (or let CI do it) to trigger release.yml.
+# Once merged, release.yml detects the version bump on main and publishes
+# automatically.
 #
 # Can also be called from CI via the prepare-release workflow.
 
@@ -155,18 +156,12 @@ ${CHANGELOG}
 
 ### Post-merge steps
 
-After merging this PR, the release is triggered by pushing the tag:
-
-\`\`\`bash
-git checkout main && git pull
-git tag ${TAG_NAME} && git push origin ${TAG_NAME}
-\`\`\`
-
-This will trigger the \`release.yml\` workflow which:
+After merging this PR, GitHub Actions will automatically detect the version
+bump on \`main\` and run \`release.yml\`, which will:
 1. Runs quality gates
 2. Builds the package
 3. Publishes to PyPI
-4. Creates a GitHub Release with auto-generated notes"
+4. Creates the version tag and GitHub Release with auto-generated notes"
 
 echo "$PR_BODY" > /tmp/release_pr_body.md
 
@@ -184,5 +179,5 @@ echo "✅ Release v${NEW_VERSION} prepared!"
 echo ""
 echo "   PR:     $PR_URL"
 echo "   Branch: $BRANCH_NAME"
-echo "   Tag:    $TAG_NAME (push after PR merges)"
+echo "   Tag:    $TAG_NAME (created automatically after PR merge)"
 echo "════════════════════════════════════════════════════════════"
