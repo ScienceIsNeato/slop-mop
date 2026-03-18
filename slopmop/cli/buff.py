@@ -42,6 +42,8 @@ _RESOLUTION_SCENARIOS = {
     "needs_human_feedback",
 }
 
+_POST_CI_FEEDBACK_CHECK_NAMES = {"cursor bugbot"}
+
 
 def _parse_optional_int(value: str | None, label: str) -> int | None:
     """Parse an optional integer CLI token."""
@@ -547,6 +549,8 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
     print("=" * 60)
     print()
 
+    settled_post_ci_feedback = False
+
     while True:
         checks, error = _fetch_checks(project_root, resolved_pr)
 
@@ -574,11 +578,44 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
         if in_progress:
             _print_in_progress_status(completed, in_progress)
             if watch:
+                settled_post_ci_feedback = False
                 print(f"⏳ Waiting {interval}s before next check...")
                 time.sleep(interval)
                 print()
                 continue
             print("💡 Use 'sm buff watch' to poll until complete")
+            return 1
+
+        if (
+            watch
+            and not settled_post_ci_feedback
+            and any(
+                str(check.get("name", "")).strip().lower()
+                in _POST_CI_FEEDBACK_CHECK_NAMES
+                for check in checks
+            )
+        ):
+            settled_post_ci_feedback = True
+            print(
+                "⏳ CI checks are complete. Waiting one extra interval for review feedback to settle..."
+            )
+            time.sleep(interval)
+            print()
+            continue
+
+        feedback_result = _run_pr_feedback_gate(resolved_pr, str(project_root))
+        if feedback_result.status == CheckStatus.FAILED:
+            print(
+                "Buff status blocked: CI checks are clean, but unresolved PR review threads remain."
+            )
+            if feedback_result.output:
+                print(feedback_result.output)
+            print("Next step: run 'sm buff inspect' to take the next review batch.")
+            return 1
+        if feedback_result.status == CheckStatus.ERROR:
+            print("Buff status error: could not verify unresolved PR feedback.")
+            if feedback_result.error:
+                print(f"ERROR: {feedback_result.error}")
             return 1
 
         _print_success_status(completed, total)
