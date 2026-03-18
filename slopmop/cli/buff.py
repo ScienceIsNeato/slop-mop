@@ -45,6 +45,40 @@ _RESOLUTION_SCENARIOS = {
 _POST_CI_FEEDBACK_CHECK_NAMES = {"cursor bugbot"}
 
 
+def _has_post_ci_feedback_check(checks: list[dict[str, Any]]) -> bool:
+    """Return whether a late-comment review bot is present in the check set."""
+
+    return any(
+        str(check.get("name", "")).strip().lower() in _POST_CI_FEEDBACK_CHECK_NAMES
+        for check in checks
+    )
+
+
+def _render_status_feedback_blocker(
+    feedback_result: CheckResult, *, no_checks: bool
+) -> int:
+    """Render unresolved or unverifiable feedback for buff status/watch."""
+
+    if feedback_result.status == CheckStatus.FAILED:
+        if no_checks:
+            print(
+                "Buff status blocked: no CI checks found, but unresolved PR review threads remain."
+            )
+        else:
+            print(
+                "Buff status blocked: CI checks are clean, but unresolved PR review threads remain."
+            )
+        if feedback_result.output:
+            print(feedback_result.output)
+        print("Next step: run 'sm buff inspect' to take the next review batch.")
+        return 1
+
+    print("Buff status error: could not verify unresolved PR feedback.")
+    if feedback_result.error:
+        print(f"ERROR: {feedback_result.error}")
+    return 1
+
+
 def _parse_optional_int(value: str | None, label: str) -> int | None:
     """Parse an optional integer CLI token."""
 
@@ -559,6 +593,13 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
             return 2 if "not found" in error.lower() else 1
 
         if not checks:
+            feedback_result = _run_pr_feedback_gate(resolved_pr, str(project_root))
+            if feedback_result.status != CheckStatus.PASSED:
+                return _render_status_feedback_blocker(
+                    feedback_result,
+                    no_checks=True,
+                )
+
             print("ℹ️  No CI checks found for this PR")
             print("   (CI workflow may not be set up yet)")
             return 0
@@ -569,6 +610,7 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
         if failed:
             _print_failed_status(completed, in_progress, failed)
             if watch and in_progress:
+                settled_post_ci_feedback = False
                 print(f"⏳ Waiting {interval}s before next check...")
                 time.sleep(interval)
                 print()
@@ -589,11 +631,7 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
         if (
             watch
             and not settled_post_ci_feedback
-            and any(
-                str(check.get("name", "")).strip().lower()
-                in _POST_CI_FEEDBACK_CHECK_NAMES
-                for check in checks
-            )
+            and _has_post_ci_feedback_check(checks)
         ):
             settled_post_ci_feedback = True
             print(
@@ -604,19 +642,11 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
             continue
 
         feedback_result = _run_pr_feedback_gate(resolved_pr, str(project_root))
-        if feedback_result.status == CheckStatus.FAILED:
-            print(
-                "Buff status blocked: CI checks are clean, but unresolved PR review threads remain."
+        if feedback_result.status != CheckStatus.PASSED:
+            return _render_status_feedback_blocker(
+                feedback_result,
+                no_checks=False,
             )
-            if feedback_result.output:
-                print(feedback_result.output)
-            print("Next step: run 'sm buff inspect' to take the next review batch.")
-            return 1
-        if feedback_result.status == CheckStatus.ERROR:
-            print("Buff status error: could not verify unresolved PR feedback.")
-            if feedback_result.error:
-                print(f"ERROR: {feedback_result.error}")
-            return 1
 
         _print_success_status(completed, total)
         return 0
