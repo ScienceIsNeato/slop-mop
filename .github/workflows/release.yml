@@ -85,18 +85,20 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"should_release={should_release}\n")
               fh.write(f"version={current}\n")
-            fh.write(f"previous_version={previous_for_output}\n")
+              fh.write(f"previous_version={previous_for_output}\n")
               fh.write(f"tag={tag}\n")
 
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary:
               with open(summary, "a", encoding="utf-8") as fh:
-                  if should_release == "true":
-                fh.write(
-                  f"Release detected: {previous_for_output} -> {current} ({tag})\n"
-                )
-                  else:
-                      fh.write(f"No release version bump detected in pyproject.toml ({current}).\n")
+                if should_release == "true":
+                  fh.write(
+                    f"Release detected: {previous_for_output} -> {current} ({tag})\n"
+                  )
+                else:
+                  fh.write(
+                    f"No release version bump detected in pyproject.toml ({current}).\n"
+                  )
           PY
 
   quality-gate:
