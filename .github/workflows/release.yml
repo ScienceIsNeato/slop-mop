@@ -75,7 +75,11 @@ jobs:
                 check=True,
               ).stdout
               previous = tomllib.loads(previous_text)["project"]["version"]
-            except subprocess.CalledProcessError:
+            except (
+              subprocess.CalledProcessError,
+              tomllib.TOMLDecodeError,
+              KeyError,
+            ):
               previous = ""
 
           should_release = "true" if current != previous else "false"
