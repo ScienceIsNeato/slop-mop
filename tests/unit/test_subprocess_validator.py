@@ -153,3 +153,72 @@ class TestCommandValidator:
         """Test that find-duplicate-strings is whitelisted."""
         validator = CommandValidator()
         assert validator.validate(["find-duplicate-strings", "--help"]) is True
+
+
+class TestWindowsExecutableNormalization:
+    """Windows tool resolution hands back .exe/.cmd/.bat paths.
+
+    The validator must normalize those before whitelist comparison, or
+    every resolved tool on Windows gets rejected.
+    """
+
+    def test_allows_exe_suffix(self):
+        validator = CommandValidator()
+        assert validator.validate(["black.exe", "--check", "."]) is True
+
+    def test_allows_exe_suffix_with_full_windows_path(self):
+        validator = CommandValidator()
+        assert (
+            validator.validate([r"C:\repo\.venv\Scripts\python.exe", "-m", "pytest"])
+            is True
+        )
+
+    def test_allows_cmd_suffix(self):
+        validator = CommandValidator()
+        assert (
+            validator.validate([r"C:\repo\node_modules\.bin\eslint.cmd", "src/"])
+            is True
+        )
+
+    def test_allows_bat_suffix(self):
+        validator = CommandValidator()
+        assert validator.validate(["npx.bat", "prettier", "--check"]) is True
+
+    def test_suffix_stripping_is_case_insensitive(self):
+        validator = CommandValidator()
+        assert validator.validate(["Python.EXE", "-V"]) is True
+        assert validator.validate(["NPM.CMD", "install"]) is True
+
+    def test_does_not_strip_non_suffix_dot(self):
+        """python3.11 must not become python3."""
+        validator = CommandValidator()
+        assert validator.validate(["python3.11", "-m", "pytest"]) is True
+
+    def test_versioned_python_with_exe_suffix(self):
+        """python3.11.exe → python3.11 → allowed."""
+        validator = CommandValidator()
+        assert validator.validate(["python3.11.exe", "-m", "pytest"]) is True
+
+    def test_rejects_unknown_exe(self):
+        validator = CommandValidator()
+        with pytest.raises(SecurityError) as exc_info:
+            validator.validate(["evil.exe", "--payload"])
+        assert "not in whitelist" in str(exc_info.value)
+
+    def test_rejects_unknown_cmd(self):
+        validator = CommandValidator()
+        with pytest.raises(SecurityError) as exc_info:
+            validator.validate([r"C:\temp\malware.cmd"])
+        assert "not in whitelist" in str(exc_info.value)
+
+    def test_only_strips_final_suffix(self):
+        """black.exe.txt is not black — do not over-strip."""
+        validator = CommandValidator()
+        with pytest.raises(SecurityError):
+            validator.validate(["black.exe.txt", "."])
+
+    def test_is_allowed_normalizes_windows_paths(self):
+        validator = CommandValidator()
+        assert validator.is_allowed(r"C:\py\Scripts\black.exe") is True
+        assert validator.is_allowed("eslint.cmd") is True
+        assert validator.is_allowed("unknown.exe") is False
