@@ -165,7 +165,9 @@ class CommandValidator:
         """
         self._allowed = set(self.ALLOWED_EXECUTABLES)
         if additional_allowed:
-            self._allowed.update(additional_allowed)
+            self._allowed.update(
+                _normalize_executable_name(e) for e in additional_allowed
+            )
 
     def validate(self, command: List[str]) -> bool:
         """Validate that a command is safe to execute.
@@ -239,7 +241,7 @@ class CommandValidator:
         Args:
             executable: Name of executable to allow
         """
-        self._allowed.add(executable)
+        self._allowed.add(_normalize_executable_name(executable))
 
     def is_allowed(self, executable: str) -> bool:
         """Check if an executable is in the whitelist.

@@ -646,9 +646,13 @@ def run_doctor(
 
     report = DoctorReport(project_root=str(root))
 
-    # Normalize filter: empty list means run all
+    # Normalize filter: empty list means run all.
+    # Strip "gate:" prefix so copy-paste from --list-checks or result names works.
     has_filter = checks_filter is not None and len(checks_filter) > 0
-    filter_set: set[str] = set(checks_filter) if has_filter and checks_filter else set()
+    filter_set: set[str] = set()
+    if has_filter and checks_filter:
+        for f in checks_filter:
+            filter_set.add(f.removeprefix("gate:") if f.startswith("gate:") else f)
 
     # ── Environment checks ──────────────────────────────────────
     env_check_names = {name for name, _ in _ENV_CHECKS}
@@ -716,7 +720,7 @@ def _print_list_checks(
         ctx = check.tool_context
         checks_list.append(
             {
-                "name": f"gate:{gate_name}",
+                "name": gate_name,
                 "type": "gate",
                 "description": f"{ctx.value} gate readiness",
                 "gate": gate_name,

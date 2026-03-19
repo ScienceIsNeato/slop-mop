@@ -18,8 +18,8 @@ permissions:
 jobs:
   unit-tests-windows:
     name: Unit tests (Windows)
-    # Run on PRs directly — doesn't need the code-scanning gate.
-    if: ${{ github.event_name == 'pull_request' || (github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success') }}
+    # Triggered via workflow_run after the primary code-scanning gate succeeds for a PR.
+    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-latest
 
     steps:

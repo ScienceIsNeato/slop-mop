@@ -215,3 +215,16 @@ class TestWindowsExecutableNormalization:
     def test_dart_exe_passes(self):
         validator = CommandValidator()
         assert validator.validate(["dart.exe", "format", "."]) is True
+
+    def test_add_allowed_normalizes_exe(self):
+        """add_allowed('tool.exe') should be reachable via validate(['tool.exe', ...])."""
+        validator = CommandValidator()
+        validator.add_allowed("mytool.exe")
+        assert validator.is_allowed("mytool") is True
+        assert validator.is_allowed("mytool.exe") is True
+
+    def test_init_additional_allowed_normalizes(self):
+        """additional_allowed={'tool.cmd'} should be reachable via validate(['tool', ...])."""
+        validator = CommandValidator(additional_allowed={"mytool.cmd"})
+        assert validator.is_allowed("mytool") is True
+        assert validator.is_allowed("mytool.cmd") is True

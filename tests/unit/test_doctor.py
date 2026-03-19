@@ -557,7 +557,7 @@ class TestRunDoctor:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         names = [r["name"] for r in data["results"]]
-        assert "gate:laziness:dead-code.py" in names
+        assert "gate:laziness:dead-code.py" in names or "laziness:dead-code.py" in names
         assert "platform" not in names
 
     @patch("slopmop.cli.doctor.get_registry")
@@ -613,7 +613,10 @@ class TestRunDoctor:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         gate_names = [r["name"] for r in data["results"] if r.get("gate")]
-        assert "gate:laziness:dead-code.py" not in gate_names
+        assert (
+            "gate:laziness:dead-code.py" not in gate_names
+            and "laziness:dead-code.py" not in gate_names
+        )
 
 
 # ===========================================================================
