@@ -509,6 +509,81 @@ def _add_agent_parser(
     AgentParserBuilder(subparsers).build()
 
 
+def _add_doctor_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the doctor subcommand parser.
+
+    ``sm doctor`` diagnoses environment problems (missing tools, PATH
+    collisions, stale locks, broken config) using the same resolution
+    logic the gates use, so it reports what the gates will actually
+    experience.  ``--fix`` repairs state that slop-mop itself owns —
+    never project venvs, never node_modules.
+    """
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Diagnose environment health and optionally fix owned state",
+        description=(
+            "Run environment diagnostics: runtime/platform summary, "
+            "active sm resolution, tool inventory, project dependency "
+            "health, and .slopmop/ state integrity.  Read-only by default; "
+            "--fix repairs stale locks, missing state dirs, and "
+            "restorable broken config.  Output pastes cleanly into "
+            "bug reports."
+        ),
+    )
+    doctor_parser.add_argument(
+        "checks",
+        nargs="*",
+        metavar="CHECK",
+        help=(
+            "Check name(s) or glob pattern(s) to run "
+            "(e.g. state.lock, state.*, sm_env.tool_inventory). "
+            "Defaults to all checks."
+        ),
+    )
+    doctor_parser.add_argument(
+        "--list-checks",
+        action="store_true",
+        dest="list_checks",
+        help="List check names and descriptions, then exit.",
+    )
+    doctor_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help=(
+            "Attempt safe repair of slop-mop-owned state: remove stale "
+            "sm.lock, create/repair .slopmop/, restore config from "
+            "backup.  Never touches project venvs or node_modules."
+        ),
+    )
+    doctor_parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="Skip the --fix confirmation prompt.",
+    )
+    doctor_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=None,
+        help="Output results as JSON. Auto-detected when stdout is not a TTY.",
+    )
+    doctor_parser.add_argument(
+        "--no-json",
+        dest="json_output",
+        action="store_false",
+        help="Force human-readable output even when stdout is not a TTY.",
+    )
+    doctor_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+
+
 def _add_status_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -614,6 +689,7 @@ Examples:
     _add_sail_parser(subparsers)
     _add_refit_parser(subparsers)
     _add_status_parser(subparsers)
+    _add_doctor_parser(subparsers)
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
     _add_init_parser(subparsers)
@@ -637,6 +713,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_buff,
         cmd_commit_hooks,
         cmd_config,
+        cmd_doctor,
         cmd_help,
         cmd_init,
         cmd_refit,
@@ -699,6 +776,8 @@ def _dispatch(
         return handlers["cmd_refit"](parsed_args)
     elif parsed_args.verb == "status":
         return handlers["cmd_status"](parsed_args)
+    elif parsed_args.verb == "doctor":
+        return handlers["cmd_doctor"](parsed_args)
     elif parsed_args.verb == "config":
         return handlers["cmd_config"](parsed_args)
     elif parsed_args.verb == "help":
