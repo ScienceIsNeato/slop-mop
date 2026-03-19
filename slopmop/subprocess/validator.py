@@ -12,8 +12,37 @@ Security Principles:
 """
 
 import re
-from pathlib import Path
 from typing import FrozenSet, List, Optional, Set
+
+# Windows wrapper suffixes that tool resolution commonly returns.
+# ``find_tool()`` and friends hand back paths like ``Scripts\black.exe`` or
+# ``node_modules\.bin\eslint.cmd``.  The whitelist stores bare names, so we
+# strip these at comparison time.  We deliberately do *not* use
+# ``Path.stem`` here: that would turn ``python3.11`` into ``python3``.
+_WINDOWS_EXE_SUFFIXES = (".exe", ".cmd", ".bat")
+
+
+def _normalize_executable_name(raw: str) -> str:
+    """Return *raw* executable name with Windows wrapper suffixes removed.
+
+    Handles both POSIX and Windows path separators regardless of the
+    host platform, so a Windows-style path resolved on a mounted share
+    (or simply passed through from config) is still recognized when
+    validated on POSIX — and vice-versa.
+
+    Only strips the last suffix when it exactly matches a known wrapper
+    extension.  Case-insensitive on the suffix, preserves case on the
+    base name (so ``Python.EXE`` → ``Python``, then callers lower-case
+    for set membership).
+    """
+    # Last component across either separator — ``pathlib`` alone can't do
+    # this because ``PurePosixPath`` treats ``\`` as a literal character.
+    name = raw.replace("\\", "/").rsplit("/", 1)[-1]
+    lowered = name.lower()
+    for suffix in _WINDOWS_EXE_SUFFIXES:
+        if lowered.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
 
 
 class SecurityError(Exception):
@@ -143,9 +172,15 @@ class CommandValidator:
         Args:
             additional_allowed: Extra executables to add to the whitelist
         """
-        self._allowed = set(self.ALLOWED_EXECUTABLES)
+        # Lookup (``validate``/``is_allowed``) lower-cases the executable
+        # name, so the set must also be lower-cased or mixed-case inserts
+        # via ``additional_allowed``/``add_allowed`` fail the lookup.
+        self._allowed = {
+            _normalize_executable_name(x).lower() for x in self.ALLOWED_EXECUTABLES
+        }
         if additional_allowed:
-            self._allowed.update(additional_allowed)
+            for executable in additional_allowed:
+                self.add_allowed(executable)
 
     def validate(self, command: List[str]) -> bool:
         """Validate that a command is safe to execute.
@@ -169,8 +204,8 @@ class CommandValidator:
             if not isinstance(arg, str):
                 raise SecurityError(f"Argument {i} is not a string: {type(arg)}")
 
-        # Extract executable name (handle full paths)
-        executable = Path(command[0]).name
+        # Extract executable name (handle full paths and Windows suffixes)
+        executable = _normalize_executable_name(command[0]).lower()
 
         # Check if executable is in whitelist
         if executable not in self._allowed:
@@ -219,7 +254,7 @@ class CommandValidator:
         Args:
             executable: Name of executable to allow
         """
-        self._allowed.add(executable)
+        self._allowed.add(_normalize_executable_name(executable).lower())
 
     def is_allowed(self, executable: str) -> bool:
         """Check if an executable is in the whitelist.
@@ -230,7 +265,7 @@ class CommandValidator:
         Returns:
             True if executable is allowed
         """
-        return Path(executable).name in self._allowed
+        return _normalize_executable_name(executable).lower() in self._allowed
 
 
 # Module-level singleton for convenience

@@ -1,9 +1,12 @@
-# /sm-scour
+# /sm-scour — replaces `pytest --cov`, `bandit`, `pip-audit`, `detect-secrets`, `jscpd`
 
-Run slop-mop's comprehensive pre-PR sweep for this repository.
+Comprehensive pre-PR sweep.  Run instead of any security scanner,
+coverage tool, or duplication detector.  Superset of swab plus the
+heavy gates.
 
 1. Run `sm scour`.
-2. Summarize every issue found — these are the things that would compound if left unchecked.
-3. Propose concrete fixes for each.
+2. Fix everything it names.  These are the things that compound if
+   you ship them.
+3. Only open or update a PR when `sm scour` reports clean.
 
-Only open or update a PR when `sm scour` reports a clean run.
+Do not push while scour is red.

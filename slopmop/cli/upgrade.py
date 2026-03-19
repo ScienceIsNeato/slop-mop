@@ -14,7 +14,7 @@ import urllib.request
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
-from typing import Dict, List, Optional, TypedDict, cast
+from typing import Dict, List, Literal, Optional, TypedDict, cast
 
 from packaging.version import InvalidVersion, Version
 
@@ -135,6 +135,46 @@ def _is_editable_install(direct_url: Optional[DirectUrlPayload] = None) -> bool:
     return False
 
 
+InstallMode = Literal["pipx", "venv", "editable", "system", "unknown"]
+
+
+def classify_install(
+    *,
+    executable: Optional[str] = None,
+    prefix: Optional[str] = None,
+    base_prefix: Optional[str] = None,
+    virtual_env: Optional[str] = None,
+    direct_url: Optional[DirectUrlPayload] = None,
+) -> InstallMode:
+    """Classify how slopmop was installed, never raising.
+
+    ``sm upgrade`` needs to refuse certain modes, but ``sm doctor`` just
+    wants to *report* the mode.  This is the non-raising core; the
+    upgrade path calls ``_detect_install_type()`` which wraps this and
+    raises on unsupported modes.
+    """
+    exe = (executable or sys.executable or "").replace("\\", "/")
+    prefix_val = prefix or sys.prefix
+    base_prefix_val = base_prefix or getattr(sys, "base_prefix", prefix_val)
+    virtual_env_val = (
+        virtual_env if virtual_env is not None else os.environ.get("VIRTUAL_ENV")
+    )
+
+    if _is_editable_install(direct_url):
+        return "editable"
+
+    if "/pipx/venvs/" in exe:
+        return "pipx"
+
+    if virtual_env_val or prefix_val != base_prefix_val:
+        return "venv"
+
+    if exe:
+        return "system"
+
+    return "unknown"
+
+
 def _detect_install_type(
     *,
     executable: Optional[str] = None,
@@ -146,24 +186,22 @@ def _detect_install_type(
     # VIRTUAL_ENV is the standard environment variable exported by Python venv
     # and virtualenv activation scripts. We use it only as a fallback signal for
     # an already-active environment; project-local venv discovery is stricter.
-    exe = (executable or sys.executable).replace("\\", "/")
-    prefix_val = prefix or sys.prefix
-    base_prefix_val = base_prefix or getattr(sys, "base_prefix", prefix_val)
-    virtual_env_val = (
-        virtual_env if virtual_env is not None else os.environ.get("VIRTUAL_ENV")
+    mode = classify_install(
+        executable=executable,
+        prefix=prefix,
+        base_prefix=base_prefix,
+        virtual_env=virtual_env,
+        direct_url=direct_url,
     )
 
-    if _is_editable_install(direct_url):
+    if mode == "editable":
         raise UpgradeError(
             "sm upgrade does not support editable/source-checkout installs yet. "
             "Use pipx or a non-editable virtualenv install."
         )
 
-    if "/pipx/venvs/" in exe:
-        return "pipx"
-
-    if virtual_env_val or prefix_val != base_prefix_val:
-        return "venv"
+    if mode in ("pipx", "venv"):
+        return mode
 
     raise UpgradeError(UNSUPPORTED_INSTALL_ERROR)
 

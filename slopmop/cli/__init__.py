@@ -8,6 +8,7 @@ from slopmop.cli.agent import cmd_agent
 from slopmop.cli.buff import cmd_buff
 from slopmop.cli.config import cmd_config
 from slopmop.cli.detection import detect_project_type
+from slopmop.cli.doctor import cmd_doctor
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import cmd_commit_hooks
 from slopmop.cli.init import cmd_init
@@ -20,6 +21,7 @@ __all__ = [
     "cmd_agent",
     "cmd_commit_hooks",
     "cmd_config",
+    "cmd_doctor",
     "cmd_help",
     "cmd_init",
     "cmd_buff",

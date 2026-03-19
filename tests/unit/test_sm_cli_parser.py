@@ -227,3 +227,61 @@ class TestCreateParser:
         out = capsys.readouterr().out
         assert ".slopmop/tmp/.github/copilot-instructions.md" in out
         assert ".slopmop/tmp/.copilot/skills/slopmop/SKILL.md" in out
+
+    def test_doctor_subcommand(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor"])
+        assert args.verb == "doctor"
+        assert args.checks == []
+        assert args.list_checks is False
+        assert args.fix is False
+        assert args.yes is False
+        assert args.json_output is None  # tri-state: auto-detect
+
+    def test_doctor_with_check_names(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "state.lock", "sm_env.pip_check"])
+        assert args.checks == ["state.lock", "sm_env.pip_check"]
+
+    def test_doctor_with_glob_pattern(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "state.*"])
+        assert args.checks == ["state.*"]
+
+    def test_doctor_list_checks_flag(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "--list-checks"])
+        assert args.list_checks is True
+
+    def test_doctor_fix_flag(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "--fix"])
+        assert args.fix is True
+
+    def test_doctor_fix_with_yes_shorthand(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "--fix", "-y"])
+        assert args.fix is True
+        assert args.yes is True
+
+    def test_doctor_json_flag_explicit(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "--json"])
+        assert args.json_output is True
+
+    def test_doctor_no_json_flag_explicit(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "--no-json"])
+        assert args.json_output is False
+
+    def test_doctor_project_root(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "--project-root", "/tmp/elsewhere"])
+        assert args.project_root == "/tmp/elsewhere"
+
+    def test_doctor_fix_with_check_subset(self):
+        parser = create_parser()
+        args = parser.parse_args(["doctor", "--fix", "--yes", "state.lock"])
+        assert args.fix is True
+        assert args.yes is True
+        assert args.checks == ["state.lock"]
