@@ -412,7 +412,7 @@ class TestCmdDoctor:
         assert payload["fixes"]["state.lock"]["status"] == "ok"
 
     def test_fix_aborts_on_no(self, capsys, tmp_path, monkeypatch):
-        """Interactive --fix prompt: 'n' → nothing touched."""
+        """Interactive --fix prompt: 'n' → nothing touched, report still printed."""
         lock_file = _mk_lock(
             tmp_path,
             {"pid": 99999999, "verb": "swab", "started_at": 0},
@@ -427,8 +427,38 @@ class TestCmdDoctor:
                 project_root=str(tmp_path),
             )
         )
+        captured = capsys.readouterr()
         assert rc == 1  # still failing — fix aborted
         assert lock_file.exists()
+        # Declining the prompt must still show the diagnostic report —
+        # early-returning before output defeats the point of running
+        # doctor at all.
+        assert "sm doctor —" in captured.out
+        assert "state.lock" in captured.out
+        assert "Aborted" in captured.err
+
+    def test_fix_json_mode_still_prompts(self, capsys, tmp_path, monkeypatch):
+        """--fix --json must still confirm: no silent mutation without --yes."""
+        lock_file = _mk_lock(
+            tmp_path,
+            {"pid": 99999999, "verb": "swab", "started_at": 0},
+        )
+        monkeypatch.setattr("sys.stdin", MagicMock(isatty=lambda: True))
+        monkeypatch.setattr("sys.stdin.readline", lambda: "n\n")
+        rc = cmd_doctor(
+            _doctor_args(
+                checks=["state.lock"],
+                fix=True,
+                json_output=True,  # JSON on, --yes NOT passed
+                project_root=str(tmp_path),
+            )
+        )
+        captured = capsys.readouterr()
+        assert lock_file.exists()  # declined → not removed
+        assert rc == 1
+        # Prompt went to stderr, stdout stayed valid JSON.
+        assert "Proceed?" in captured.err
+        json.loads(captured.out)
 
     def test_fix_skipped_when_nothing_fixable(self, capsys, tmp_path):
         """--fix on an OK result is a no-op, not an error."""

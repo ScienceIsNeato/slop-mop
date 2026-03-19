@@ -98,32 +98,33 @@ class StateLockCheck(DoctorCheck):
         if state == "none":
             return self._ok("no lock held", data=data)
 
+        def _header(*extra: str) -> str:
+            return "\n".join((f"Lock file: {lock_file}", *extra))
+
+        fix_hint = f"sm doctor --fix state.lock\n(or: rm {lock_file})"
+
         if state == "unreadable":
             return self._fail(
                 "lock sidecar present but unparseable",
-                detail=(
-                    f"Lock file: {lock_file}\n"
+                detail=_header(
                     "Sidecar JSON could not be read — likely a crashed run."
                 ),
-                fix_hint=f"sm doctor --fix state.lock\n(or: rm {lock_file})",
+                fix_hint=fix_hint,
                 data=data,
             )
 
         pid = data.get("pid", "?")
         verb = data.get("verb", "?")
         age = _format_age(cast(float, data.get("age_seconds", 0.0)))
+        holder = f"Holder:    pid={pid} verb={verb} (age {age})"
 
         if state == "stale":
             alive = data.get("pid_alive")
             reason = "PID not running" if not alive else "age exceeds threshold"
             return self._fail(
                 f"stale lock held by PID {pid}",
-                detail=(
-                    f"Lock file: {lock_file}\n"
-                    f"Holder:    pid={pid} verb={verb} (age {age})\n"
-                    f"Reason:    {reason}"
-                ),
-                fix_hint=f"sm doctor --fix state.lock\n(or: rm {lock_file})",
+                detail=_header(holder, f"Reason:    {reason}"),
+                fix_hint=fix_hint,
                 data=data,
             )
 
@@ -131,11 +132,11 @@ class StateLockCheck(DoctorCheck):
         # something the user should know.
         return self._warn(
             f"live lock: sm {verb} running (pid {pid}, {age})",
-            detail=(
-                f"Lock file: {lock_file}\n"
-                f"Holder:    pid={pid} verb={verb} (age {age})\n\n"
+            detail=_header(
+                holder,
+                "",
                 "Another ``sm`` process is active.  Wait for it to "
-                "finish, or kill it if it has hung."
+                "finish, or kill it if it has hung.",
             ),
             data=data,
         )
