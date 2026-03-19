@@ -46,6 +46,7 @@ def _mock_check(
     tool_context_value="sm_tool",
     required_tools=None,
     is_applicable=True,
+    install_hint="pip",
 ):
     """Build a mock gate check for doctor tests."""
     from slopmop.checks.base import ToolContext
@@ -60,6 +61,7 @@ def _mock_check(
     check.full_name = full_name
     check.tool_context = ctx_map.get(tool_context_value, ToolContext.SM_TOOL)
     check.required_tools = required_tools or []
+    check.install_hint = install_hint
     check.is_applicable.return_value = is_applicable
     check.skip_reason.return_value = "Not applicable"
     return check
@@ -362,6 +364,22 @@ class TestGateReadiness:
             _check_gate_readiness(report, check, Path("/tmp"))
         assert report.results[0].status == DoctorStatus.FAIL
         assert "vulture" in report.results[0].summary
+        # Default install_hint is "pip", so suggested action should use pip
+        assert any("pip install" in a for a in report.results[0].suggested_actions)
+
+    def test_sm_tool_missing_non_pip_hint(self):
+        report = _empty_report()
+        check = _mock_check(
+            required_tools=["flutter"],
+            install_hint="path",
+            full_name="laziness:formatting.dart",
+        )
+        with patch("slopmop.cli.doctor.find_tool", return_value=None):
+            _check_gate_readiness(report, check, Path("/tmp"))
+        assert report.results[0].status == DoctorStatus.FAIL
+        # Non-pip hint should NOT suggest pip install
+        assert not any("pip install" in a for a in report.results[0].suggested_actions)
+        assert any("Install flutter" in a for a in report.results[0].suggested_actions)
 
     def test_sm_tool_empty_required_tools(self):
         report = _empty_report()
@@ -558,7 +576,7 @@ class TestRunDoctor:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         names = [r["name"] for r in data["results"]]
-        assert "gate:laziness:dead-code.py" in names or "laziness:dead-code.py" in names
+        assert "laziness:dead-code.py" in names
         assert "platform" not in names
 
     @patch("slopmop.cli.doctor.get_registry")
@@ -614,10 +632,7 @@ class TestRunDoctor:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         gate_names = [r["name"] for r in data["results"] if r.get("gate")]
-        assert (
-            "gate:laziness:dead-code.py" not in gate_names
-            and "laziness:dead-code.py" not in gate_names
-        )
+        assert "laziness:dead-code.py" not in gate_names
 
 
 # ===========================================================================

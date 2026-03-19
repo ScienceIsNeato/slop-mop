@@ -58,6 +58,7 @@ class DartCoverageCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     required_tools = ["flutter"]
+    install_hint = "path"
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
 

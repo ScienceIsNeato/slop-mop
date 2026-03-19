@@ -374,7 +374,7 @@ def _check_gate_readiness(
     if ctx == ToolContext.PURE:
         report.add(
             DoctorCheckResult(
-                name=f"gate:{gate_name}",
+                name=gate_name,
                 status=DoctorStatus.OK,
                 summary="Pure analysis — no external dependencies",
                 gate=gate_name,
@@ -387,7 +387,7 @@ def _check_gate_readiness(
         if not required:
             report.add(
                 DoctorCheckResult(
-                    name=f"gate:{gate_name}",
+                    name=gate_name,
                     status=DoctorStatus.OK,
                     summary="SM_TOOL gate (no specific tools declared)",
                     gate=gate_name,
@@ -405,32 +405,18 @@ def _check_gate_readiness(
                 found.append(tool_name)
 
         if missing:
-            # Build tool-aware install hints: pip for Python tools, generic for others.
-            _PIP_TOOLS = frozenset(
-                {
-                    "black",
-                    "isort",
-                    "autoflake",
-                    "flake8",
-                    "mypy",
-                    "pyright",
-                    "vulture",
-                    "radon",
-                    "bandit",
-                    "detect-secrets",
-                }
-            )
-            pip_missing = [t for t in missing if t in _PIP_TOOLS]
-            other_missing = [t for t in missing if t not in _PIP_TOOLS]
+            # Build install hints from the check's declared install_hint.
+            hint = getattr(check, "install_hint", "pip")
             actions: list[str] = []
-            if pip_missing:
-                actions.append(f"pip install {' '.join(pip_missing)}")
-            for t in other_missing:
-                actions.append(f"Install {t} and ensure it is on PATH")
+            if hint == "pip":
+                actions.append(f"pip install {' '.join(missing)}")
+            else:
+                for t in missing:
+                    actions.append(f"Install {t} and ensure it is on PATH")
 
             report.add(
                 DoctorCheckResult(
-                    name=f"gate:{gate_name}",
+                    name=gate_name,
                     status=DoctorStatus.FAIL,
                     summary=f"Missing tools: {', '.join(missing)}",
                     details=(
@@ -443,7 +429,7 @@ def _check_gate_readiness(
         else:
             report.add(
                 DoctorCheckResult(
-                    name=f"gate:{gate_name}",
+                    name=gate_name,
                     status=DoctorStatus.OK,
                     summary=f"All tools found: {', '.join(found)}",
                     gate=gate_name,
@@ -459,7 +445,7 @@ def _check_gate_readiness(
         if mixin.has_project_venv(pr):
             report.add(
                 DoctorCheckResult(
-                    name=f"gate:{gate_name}",
+                    name=gate_name,
                     status=DoctorStatus.OK,
                     summary="Project venv found",
                     gate=gate_name,
@@ -469,7 +455,7 @@ def _check_gate_readiness(
             # PROJECT gates warn+skip at runtime, so doctor should WARN not FAIL.
             report.add(
                 DoctorCheckResult(
-                    name=f"gate:{gate_name}",
+                    name=gate_name,
                     status=DoctorStatus.WARN,
                     summary="No project virtual environment found (gate will skip at runtime)",
                     suggested_actions=[
@@ -491,7 +477,7 @@ def _check_gate_readiness(
         if not has_pkg:
             report.add(
                 DoctorCheckResult(
-                    name=f"gate:{gate_name}",
+                    name=gate_name,
                     status=DoctorStatus.FAIL,
                     summary="No package.json found",
                     gate=gate_name,
@@ -501,7 +487,7 @@ def _check_gate_readiness(
             pm = js_mixin._detect_package_manager(pr)
             report.add(
                 DoctorCheckResult(
-                    name=f"gate:{gate_name}",
+                    name=gate_name,
                     status=DoctorStatus.FAIL,
                     summary="node_modules/ not found",
                     suggested_actions=[f"{pm} install"],
@@ -511,7 +497,7 @@ def _check_gate_readiness(
         else:
             report.add(
                 DoctorCheckResult(
-                    name=f"gate:{gate_name}",
+                    name=gate_name,
                     status=DoctorStatus.OK,
                     summary="package.json and node_modules present",
                     gate=gate_name,
@@ -522,7 +508,7 @@ def _check_gate_readiness(
     # Unknown tool_context — report as OK with note
     report.add(
         DoctorCheckResult(
-            name=f"gate:{gate_name}",
+            name=gate_name,
             status=DoctorStatus.OK,
             summary=f"tool_context={ctx.value} (no specific doctor check)",
             gate=gate_name,
@@ -671,12 +657,8 @@ def run_doctor(
     report = DoctorReport(project_root=str(root))
 
     # Normalize filter: empty list means run all.
-    # Strip "gate:" prefix so copy-paste from --list-checks or result names works.
     has_filter = checks_filter is not None and len(checks_filter) > 0
-    filter_set: set[str] = set()
-    if has_filter and checks_filter:
-        for f in checks_filter:
-            filter_set.add(f.removeprefix("gate:") if f.startswith("gate:") else f)
+    filter_set: set[str] = set(checks_filter) if has_filter and checks_filter else set()
 
     # ── Environment checks ──────────────────────────────────────
     env_check_names = {name for name, _ in _ENV_CHECKS}

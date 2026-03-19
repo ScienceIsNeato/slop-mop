@@ -36,6 +36,7 @@ class FlutterAnalyzeCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     required_tools = ["flutter"]
+    install_hint = "path"
     role = CheckRole.FOUNDATION
 
     @property

@@ -25,6 +25,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     required_tools = ["flutter"]
+    install_hint = "path"
     role = CheckRole.DIAGNOSTIC
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 

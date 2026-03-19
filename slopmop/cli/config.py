@@ -248,7 +248,7 @@ def _enable_gate(
                     print(f"     → {action}")
             elif r.status == DoctorStatus.WARN:
                 print(f"\n  💡 {r.summary}")
-    except Exception as exc:
+    except (ImportError, KeyError, ValueError, OSError) as exc:
         import logging
 
         logging.getLogger("slopmop.cli.config").debug(
