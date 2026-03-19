@@ -22,6 +22,7 @@ from slopmop.cli.hooks import (
 )
 from slopmop.cli.init import prompt_user, prompt_yes_no
 from slopmop.cli.scan_triage import TriageError
+from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.sm import load_config, main, setup_logging
 
 
@@ -612,7 +613,15 @@ class TestBuffStatus:
                     with patch(
                         "slopmop.cli.buff._fetch_checks", return_value=(checks, "")
                     ):
-                        result = cmd_buff(args)
+                        with patch(
+                            "slopmop.cli.buff._run_pr_feedback_gate",
+                            return_value=CheckResult(
+                                name="myopia:ignored-feedback",
+                                status=CheckStatus.PASSED,
+                                duration=0.01,
+                            ),
+                        ):
+                            result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 0
@@ -675,7 +684,15 @@ class TestBuffStatus:
             with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
                 with patch("slopmop.cli.buff.resolve_pr_number", return_value=1):
                     with patch("slopmop.cli.buff._fetch_checks", return_value=([], "")):
-                        result = cmd_buff(args)
+                        with patch(
+                            "slopmop.cli.buff._run_pr_feedback_gate",
+                            return_value=CheckResult(
+                                name="myopia:ignored-feedback",
+                                status=CheckStatus.PASSED,
+                                duration=0.01,
+                            ),
+                        ):
+                            result = cmd_buff(args)
 
         captured = capsys.readouterr()
         assert result == 0

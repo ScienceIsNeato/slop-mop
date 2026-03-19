@@ -8,7 +8,7 @@
 #   2. Select bump type (patch/minor/major)
 #   3. Workflow creates the release branch + PR
 #   4. Review and merge the PR
-#   5. Push the tag to trigger release.yml
+#   5. release.yml detects the version bump on main and publishes automatically
 
 name: Prepare Release
 
@@ -36,8 +36,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Use the default GITHUB_TOKEN — it can push branches + create PRs
-          # but cannot push tags (by design — tag push is the final manual step)
+          # Use the default GITHUB_TOKEN — it can push branches + create PRs.
+          # Post-merge publishing is handled by release.yml on main, so there is
+          # no manual tag-push handoff in this workflow.
 
       - uses: actions/setup-python@v5
         with:
