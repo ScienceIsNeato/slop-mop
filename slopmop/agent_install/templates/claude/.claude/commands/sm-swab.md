@@ -1,10 +1,13 @@
-# /sm-swab
+# /sm-swab — replaces `pytest`, `black`, `mypy`, `ruff`, `isort`, `flake8`
 
-Run slop-mop's iterative development loop for this repository.
+Run instead of any individual linter, formatter, or test runner.
+`sm swab` orders them by dependency, caches clean results, and
+auto-fixes what it can.
 
 1. Run `sm swab`.
-2. Read the output — each failing check is a gradient to descend.
-3. Apply fixes for each reported issue.
-4. Re-run `sm swab` until clean.
+2. Each failing check is a gradient to descend — fix what it names.
+3. Re-run `sm swab` until clean.  Cached passes cost ~0s.
+4. Never run raw `pytest`/`black`/`mypy` — you lose cache and
+   dependency ordering.
 
-This is your inner development loop. Run it early and often — each pass reduces repo entropy. Never bypass or silence a failing check.
+Rerun after every meaningful edit.  The cache makes re-runs cheap.
