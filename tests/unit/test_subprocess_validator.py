@@ -222,3 +222,24 @@ class TestWindowsExecutableNormalization:
         assert validator.is_allowed(r"C:\py\Scripts\black.exe") is True
         assert validator.is_allowed("eslint.cmd") is True
         assert validator.is_allowed("unknown.exe") is False
+
+    def test_add_allowed_normalizes_case(self):
+        """Lookup lowercases; insert must too, or mixed-case adds fail."""
+        validator = CommandValidator()
+        validator.add_allowed("MyTool")
+        assert validator.validate(["mytool", "--version"]) is True
+        assert validator.validate(["MYTOOL", "--version"]) is True
+        assert validator.validate(["MyTool", "--version"]) is True
+
+    def test_add_allowed_normalizes_windows_suffix(self):
+        """Adding a .exe name should allow the bare name and vice versa."""
+        validator = CommandValidator()
+        validator.add_allowed("MyScanner.EXE")
+        assert validator.is_allowed("myscanner") is True
+        assert validator.is_allowed(r"C:\bin\MyScanner.exe") is True
+
+    def test_additional_allowed_normalizes_case(self):
+        """Constructor-supplied entries get the same normalization."""
+        validator = CommandValidator(additional_allowed={"CamelTool"})
+        assert validator.validate(["cameltool", "arg"]) is True
+        assert validator.is_allowed("CAMELTOOL") is True

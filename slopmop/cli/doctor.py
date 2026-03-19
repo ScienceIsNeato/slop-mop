@@ -197,15 +197,20 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             r for r in results if r.can_fix and r.status != DoctorStatus.OK
         ]
         if fix_candidates:
-            if not args.yes and sys.stdin.isatty() and not json_mode:
+            proceed = True
+            # Prompt goes to stderr so stdout stays clean for --json
+            # consumers.  Still gate on stdin tty — piped input means
+            # no human to answer.
+            if not args.yes and sys.stdin.isatty():
                 names = ", ".join(r.name for r in fix_candidates)
-                sys.stderr.write(f"Will attempt to fix: {names}\n" "Proceed? [y/N] ")
+                sys.stderr.write(f"Will attempt to fix: {names}\nProceed? [y/N] ")
                 sys.stderr.flush()
                 ans = sys.stdin.readline().strip().lower()
                 if ans not in ("y", "yes"):
                     sys.stderr.write("Aborted — nothing changed.\n")
-                    return _exit_code(results)
-            fixed = run_fixes(ctx, results)
+                    proceed = False
+            if proceed:
+                fixed = run_fixes(ctx, results)
 
     if json_mode:
         print(_format_json(results, fixed))

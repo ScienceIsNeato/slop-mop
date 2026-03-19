@@ -311,6 +311,67 @@ class TestToolInventoryCheck:
         assert len(lines) == 2
         assert lines[0] == "pipx install slopmop[lint]"
 
+    def test_tool_seen_by_multiple_gates_counted_once(self, ctx):
+        """A tool that guards several gates shows up once, not N times."""
+        fake_required = [
+            ("black", "gate.format", "install-cmd"),
+            ("black", "gate.lint", "install-cmd"),
+            ("black", "gate.complex", "install-cmd"),
+        ]
+        with (
+            patch("slopmop.doctor.sm_env.REQUIRED_TOOLS", fake_required),
+            patch("slopmop.doctor.sm_env.find_tool", return_value=None),
+        ):
+            r = ToolInventoryCheck().run(ctx)
+        assert r.status is DoctorStatus.FAIL
+        # Previously overcounted — tuple-membership check on a tuple
+        # that included the per-gate check_name never matched.
+        assert len(r.data["missing"]) == 1
+        assert r.data["missing"][0]["tool"] == "black"
+
+    def test_validator_rejects_and_missing_both_reported(self, ctx):
+        """Mixed failures: both classes must surface in one report.
+
+        Early-returning on validator_rejects hid missing tools — user
+        would fix the validator issue, re-run, then discover the missing
+        ones.  Wasteful.  Report both.
+        """
+        from slopmop.subprocess.validator import SecurityError
+
+        fake_required = [
+            ("black", "gate.a", "pipx install slopmop[lint]"),
+            ("notatool", "gate.b", "pipx install slopmop[misc]"),
+        ]
+
+        def fake_validate(self, cmd):
+            raise SecurityError(f"Executable '{cmd[0]}' not in whitelist")
+
+        def fake_find(name, root):
+            # black resolves (then gets rejected); notatool doesn't.
+            return "/bin/black" if name == "black" else None
+
+        with (
+            patch("slopmop.doctor.sm_env.REQUIRED_TOOLS", fake_required),
+            patch("slopmop.doctor.sm_env.find_tool", side_effect=fake_find),
+            patch(
+                "slopmop.subprocess.validator.CommandValidator.validate",
+                fake_validate,
+            ),
+        ):
+            r = ToolInventoryCheck().run(ctx)
+
+        assert r.status is DoctorStatus.FAIL
+        assert "rejected" in r.summary and "missing" in r.summary
+        # Both sections present in human detail.
+        assert "REJECTED by the subprocess allowlist" in r.detail
+        assert "Missing tools block these gates" in r.detail
+        # And in the machine data.
+        assert len(r.data["validator_rejects"]) == 1
+        assert len(r.data["missing"]) == 1
+        # Fix hint covers both.
+        assert "slopmop bug" in r.fix_hint
+        assert "pipx install slopmop[misc]" in r.fix_hint
+
 
 # ── project.* ────────────────────────────────────────────────────────────
 

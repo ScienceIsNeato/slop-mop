@@ -152,12 +152,8 @@ class ToolInventoryCheck(DoctorCheck):
 
         for tool_name, check_name, install_cmd in REQUIRED_TOOLS:
             if tool_name in seen_tools:
-                # Same tool guards multiple gates — record once.
-                if (
-                    tool_name not in resolved
-                    and (tool_name, check_name, install_cmd) not in missing
-                ):
-                    missing.append((tool_name, check_name, install_cmd))
+                # Same tool guards multiple gates — first encounter
+                # already classified it.  Skip entirely.
                 continue
             seen_tools.add(tool_name)
 
@@ -182,41 +178,51 @@ class ToolInventoryCheck(DoctorCheck):
             ],
         }
 
+        if not missing and not validator_rejects:
+            return self._ok(
+                f"all {len(resolved)} gate tools resolvable",
+                detail="\n".join(f"  {t:<16} {p}" for t, p in sorted(resolved.items())),
+                data=data,
+            )
+
+        # Build a combined report so validator rejects don't hide
+        # missing tools — the user would otherwise fix one, re-run, then
+        # discover the other.
+        summary_bits: List[str] = []
+        detail_lines: List[str] = []
+        fix_lines: List[str] = []
+
         if validator_rejects:
-            detail_lines = [
+            summary_bits.append(
+                f"{len(validator_rejects)} tool(s) rejected by allowlist"
+            )
+            detail_lines.append(
                 "Tools resolved on disk but REJECTED by the subprocess "
-                "allowlist — gates will fail at invocation:",
-                "",
-            ]
+                "allowlist — gates will fail at invocation:"
+            )
+            detail_lines.append("")
             for tool, err in validator_rejects:
                 detail_lines.append(f"  {tool:<16} {resolved[tool]}")
                 detail_lines.append(f"                   {err}")
-            return self._fail(
-                f"{len(validator_rejects)} resolved tool(s) rejected by allowlist",
-                detail="\n".join(detail_lines),
-                fix_hint=(
-                    "This is a slopmop bug — please file an issue with this "
-                    "output at https://github.com/ScienceIsNeato/slopmop/issues"
-                ),
-                data=data,
+            fix_lines.append(
+                "Validator rejects are a slopmop bug — please file an "
+                "issue with this output at "
+                "https://github.com/ScienceIsNeato/slopmop/issues"
             )
 
         if missing:
-            detail_lines = [
-                "Missing tools block these gates:",
-                "",
-            ]
-            for tool, gate, cmd in missing:
+            summary_bits.append(f"{len(missing)} tool(s) missing")
+            if detail_lines:
+                detail_lines.append("")
+            detail_lines.append("Missing tools block these gates:")
+            detail_lines.append("")
+            for tool, gate, _ in missing:
                 detail_lines.append(f"  {tool:<16} → {gate}")
-            return self._fail(
-                f"{len(missing)} gate tool(s) missing",
-                detail="\n".join(detail_lines),
-                fix_hint=_group_install_hints(missing),
-                data=data,
-            )
+            fix_lines.append(_group_install_hints(missing))
 
-        return self._ok(
-            f"all {len(resolved)} gate tools resolvable",
-            detail="\n".join(f"  {t:<16} {p}" for t, p in sorted(resolved.items())),
+        return self._fail(
+            "; ".join(summary_bits),
+            detail="\n".join(detail_lines),
+            fix_hint="\n".join(fix_lines),
             data=data,
         )

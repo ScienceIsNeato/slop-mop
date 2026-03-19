@@ -172,9 +172,15 @@ class CommandValidator:
         Args:
             additional_allowed: Extra executables to add to the whitelist
         """
-        self._allowed = set(self.ALLOWED_EXECUTABLES)
+        # Lookup (``validate``/``is_allowed``) lower-cases the executable
+        # name, so the set must also be lower-cased or mixed-case inserts
+        # via ``additional_allowed``/``add_allowed`` fail the lookup.
+        self._allowed = {
+            _normalize_executable_name(x).lower() for x in self.ALLOWED_EXECUTABLES
+        }
         if additional_allowed:
-            self._allowed.update(additional_allowed)
+            for executable in additional_allowed:
+                self.add_allowed(executable)
 
     def validate(self, command: List[str]) -> bool:
         """Validate that a command is safe to execute.
@@ -248,7 +254,7 @@ class CommandValidator:
         Args:
             executable: Name of executable to allow
         """
-        self._allowed.add(executable)
+        self._allowed.add(_normalize_executable_name(executable).lower())
 
     def is_allowed(self, executable: str) -> bool:
         """Check if an executable is in the whitelist.
