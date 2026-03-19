@@ -24,6 +24,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
     """Fail when Flutter build/tool artifacts are committed."""
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["flutter"]
     role = CheckRole.DIAGNOSTIC
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 

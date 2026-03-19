@@ -153,3 +153,65 @@ class TestCommandValidator:
         """Test that find-duplicate-strings is whitelisted."""
         validator = CommandValidator()
         assert validator.validate(["find-duplicate-strings", "--help"]) is True
+
+
+class TestWindowsExecutableNormalization:
+    """Tests for Windows .exe/.cmd/.bat suffix normalization.
+
+    The CommandValidator allowlist contains bare names like "python",
+    but on Windows ``Path("C:/Python/python.exe").name`` yields
+    "python.exe".  The normalization layer strips Windows-specific
+    suffixes so validation works cross-platform.
+    """
+
+    def test_python_exe_passes_validation(self):
+        validator = CommandValidator()
+        assert validator.validate(["python.exe", "-m", "pytest"]) is True
+
+    def test_black_cmd_passes_validation(self):
+        validator = CommandValidator()
+        assert validator.validate(["black.cmd", "--check", "."]) is True
+
+    def test_eslint_bat_passes_validation(self):
+        validator = CommandValidator()
+        assert validator.validate(["eslint.bat", "--fix", "."]) is True
+
+    def test_is_allowed_python_exe(self):
+        validator = CommandValidator()
+        assert validator.is_allowed("python.exe") is True
+
+    def test_is_allowed_unknown_exe(self):
+        validator = CommandValidator()
+        assert validator.is_allowed("unknown.exe") is False
+
+    def test_versioned_python_not_truncated(self):
+        """python3.11 should NOT have .11 stripped — it's not a Windows suffix."""
+        validator = CommandValidator()
+        assert validator.validate(["python3.11", "-m", "mypy"]) is True
+
+    def test_full_unix_path_with_exe(self):
+        """Forward-slash path with .exe suffix should normalize correctly."""
+        validator = CommandValidator()
+        assert validator.validate(["/opt/python/python.exe", "-m", "pytest"]) is True
+
+    def test_full_unix_path_scripts_dir(self):
+        """Scripts/black.exe — forward-slash equivalent of Windows find_tool path."""
+        validator = CommandValidator()
+        assert (
+            validator.validate(["/project/.venv/Scripts/black.exe", "--check", "."])
+            is True
+        )
+
+    def test_injection_still_rejected_after_normalization(self):
+        """Argument injection patterns must still be caught."""
+        validator = CommandValidator()
+        with pytest.raises(SecurityError):
+            validator.validate(["python.exe", "-c", "$(whoami)"])
+
+    def test_flutter_exe_passes(self):
+        validator = CommandValidator()
+        assert validator.validate(["flutter.bat", "test"]) is True
+
+    def test_dart_exe_passes(self):
+        validator = CommandValidator()
+        assert validator.validate(["dart.exe", "format", "."]) is True

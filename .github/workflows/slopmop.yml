@@ -16,6 +16,27 @@ permissions:
   contents: read
 
 jobs:
+  unit-tests-windows:
+    name: Unit tests (Windows)
+    # Run on PRs directly — doesn't need the code-scanning gate.
+    if: ${{ github.event_name == 'pull_request' || (github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -e ".[all]"
+
+      - name: Run validator and doctor unit tests
+        run: python -m pytest tests/unit/test_subprocess_validator.py tests/unit/test_doctor.py -v
+
   dogfood:
     name: Final Dogfood Sanity Check (blocking)
     # Only run for PR-triggered code-scanning runs that succeeded.

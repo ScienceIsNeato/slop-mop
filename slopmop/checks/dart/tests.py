@@ -37,6 +37,7 @@ class FlutterTestsCheck(BaseCheck):
     """Run flutter test across all discovered test packages."""
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["flutter"]
     role = CheckRole.FOUNDATION
 
     @property

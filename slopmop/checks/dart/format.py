@@ -28,6 +28,7 @@ class DartFormatCheck(BaseCheck):
     """Check canonical Dart formatting across the repo."""
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["dart"]
     role = CheckRole.FOUNDATION
 
     @property

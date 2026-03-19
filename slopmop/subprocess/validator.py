@@ -15,6 +15,26 @@ import re
 from pathlib import Path
 from typing import FrozenSet, List, Optional, Set
 
+_WINDOWS_EXE_SUFFIXES = frozenset({".exe", ".cmd", ".bat"})
+
+
+def _normalize_executable_name(name: str) -> str:
+    """Strip Windows executable suffixes for allowlist comparison.
+
+    On Windows, ``Path("C:/Python/python.exe").name`` yields
+    ``"python.exe"``.  The ALLOWED_EXECUTABLES set contains ``"python"``,
+    not ``"python.exe"``.  Strip the suffix so the comparison works
+    cross-platform.
+
+    Only ``.exe``, ``.cmd``, and ``.bat`` are stripped.  Versioned names
+    like ``python3.11`` are left intact because ``.11`` is not a Windows
+    executable suffix.
+    """
+    p = Path(name)
+    if p.suffix.lower() in _WINDOWS_EXE_SUFFIXES:
+        return p.stem
+    return name
+
 
 class SecurityError(Exception):
     """Raised when a command fails security validation."""
@@ -169,8 +189,8 @@ class CommandValidator:
             if not isinstance(arg, str):
                 raise SecurityError(f"Argument {i} is not a string: {type(arg)}")
 
-        # Extract executable name (handle full paths)
-        executable = Path(command[0]).name
+        # Extract executable name (handle full paths and Windows suffixes)
+        executable = _normalize_executable_name(Path(command[0]).name)
 
         # Check if executable is in whitelist
         if executable not in self._allowed:
@@ -230,7 +250,7 @@ class CommandValidator:
         Returns:
             True if executable is allowed
         """
-        return Path(executable).name in self._allowed
+        return _normalize_executable_name(Path(executable).name) in self._allowed
 
 
 # Module-level singleton for convenience
