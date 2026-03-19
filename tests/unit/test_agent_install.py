@@ -81,10 +81,11 @@ class TestLoader:
         """_shared/core.md loads and contains the key phrases."""
         core = _load_shared_core()
         text = core.decode("utf-8")
-        assert "speed multiplier" in text
+        assert "substitution table" in text
         assert "sm swab" in text
         assert "sm scour" in text
         assert "sm buff" in text
+        assert "sm doctor" in text
 
     def test_shared_core_has_no_placeholder(self):
         """core.md itself should not contain {{CORE}}."""
@@ -104,24 +105,45 @@ class TestLoader:
     def test_core_content_present_in_wrapper_targets(self):
         """Targets that use {{CORE}} should contain the shared body."""
         core_text = _load_shared_core().decode("utf-8").strip()
-        # These targets use {{CORE}} wrappers
-        wrapper_targets = ["cursor", "copilot", "windsurf", "cline", "roo", "aider"]
+        wrapper_targets = [
+            "cursor",
+            "copilot",
+            "windsurf",
+            "cline",
+            "roo",
+            "aider",
+            "claude",
+        ]
         for key in wrapper_targets:
             assets = load_assets(TARGETS[key].template_dir)
-            # At least one asset in each target should contain the core body
             texts = [a.content.decode("utf-8") for a in assets]
             combined = "\n".join(texts)
-            assert "speed multiplier" in combined, f"{key} missing shared core content"
+            assert core_text in combined, f"{key} missing shared core content"
 
-    def test_claude_templates_are_independent(self):
-        """Claude templates don't use {{CORE}} — they have custom content."""
+    def test_core_has_substitution_table(self):
+        """Core must redirect agent impulses — the instead-of table."""
+        core = _load_shared_core().decode("utf-8")
+        # Anchors: the table is the contract.
+        assert "Your impulse" in core
+        assert "Run instead" in core
+        # One redirect per verb family, minimum.
+        assert "`pytest`" in core and "`sm swab`" in core
+        assert "`gh pr checks" in core and "`sm buff" in core
+        assert "`sm doctor`" in core
+
+    def test_core_has_negative_instructions(self):
+        """Positive guidance loses to habit — core needs explicit NEVERs."""
+        core = _load_shared_core().decode("utf-8")
+        assert "NEVER" in core
+        assert "raw `pytest`" in core
+        assert "`gh pr checks`" in core
+
+    def test_claude_templates_all_mention_sm(self):
+        """Every claude template mentions sm (directly or via CORE)."""
         assets = load_assets(TARGETS["claude"].template_dir)
         for asset in assets:
             text = asset.content.decode("utf-8")
-            if asset.destination_relpath.endswith("SKILL.md"):
-                assert "speed multiplier" in text.lower()
-            else:
-                assert "sm" in text.lower()
+            assert "sm " in text.lower(), asset.destination_relpath
 
     def test_load_nonexistent_template_dir(self):
         """Loading a nonexistent template dir raises FileNotFoundError."""
@@ -163,12 +185,24 @@ class TestClaudeSkill:
         assert "name: slop-mop" in text
         assert "description:" in text
 
-    def test_skill_md_description_is_accurate(self):
-        """SKILL.md description should mention speed multiplier, not quality gates."""
+    def test_skill_md_description_is_a_trigger(self):
+        """SKILL.md description must name the tools sm substitutes.
+
+        The frontmatter ``description`` is what Claude reads when deciding
+        whether to invoke the skill.  A pitch ("speed multiplier") won't
+        trigger; a substitution list ("instead of gh / pytest / mypy")
+        hooks the exact moment the agent is about to reach for those.
+        """
         assets = load_assets(TARGETS["claude"].template_dir)
         skill = next(a for a in assets if a.destination_relpath.endswith("SKILL.md"))
         text = skill.content.decode("utf-8")
-        assert "speed multiplier" in text.lower() or "Speed multiplier" in text
+        fm_end = text.index("---", 3)  # skip leading ---
+        frontmatter = text[:fm_end]
+        # Must name at least one familiar tool so the impulse matches.
+        assert any(t in frontmatter for t in ("pytest", "gh", "mypy", "black"))
+        # And the redirect target.
+        assert "sm swab" in frontmatter or "sm buff" in frontmatter
+        # Still avoid "quality gates" framing.
         assert "quality" not in text.lower()
 
     def test_skill_md_path(self):
@@ -213,14 +247,20 @@ class TestAgentHelpers:
             templates = _templates_for_target(target)
             assert len(templates) >= 1, f"{target} returned no templates"
 
-    def test_claude_produces_commands_and_skill(self):
-        """Claude target installs swab, scour, buff commands and SKILL.md."""
+    def test_claude_produces_commands_skill_and_claude_md(self):
+        """Claude target installs commands, SKILL.md, and a root CLAUDE.md.
+
+        CLAUDE.md is the always-loaded context.  Skills are opt-in; an
+        agent that never invokes the skill never sees the substitution
+        table.  CLAUDE.md closes that gap.
+        """
         templates = _templates_for_target("claude")
         paths = [t.relative_path for t in templates]
         assert ".claude/commands/sm-swab.md" in paths
         assert ".claude/commands/sm-scour.md" in paths
         assert ".claude/commands/sm-buff.md" in paths
         assert ".claude/skills/slopmop/SKILL.md" in paths
+        assert "CLAUDE.md" in paths
 
     def test_copilot_produces_instructions_and_skill(self):
         """Copilot target installs instructions plus repo-local skill."""
@@ -269,6 +309,7 @@ class TestCmdAgent:
         assert (tmp_path / ".claude/commands/sm-scour.md").exists()
         assert (tmp_path / ".claude/commands/sm-buff.md").exists()
         assert (tmp_path / ".claude/skills/slopmop/SKILL.md").exists()
+        assert (tmp_path / "CLAUDE.md").exists()
         assert (tmp_path / ".github/copilot-instructions.md").exists()
         assert (tmp_path / ".copilot/skills/slopmop/SKILL.md").exists()
         assert (tmp_path / ".windsurf/rules/slopmop.md").exists()
@@ -301,7 +342,7 @@ class TestCmdAgent:
         result = cmd_agent(args)
 
         assert result == 0
-        assert "iterative development loop" in claude_file.read_text(encoding="utf-8")
+        assert "sm swab" in claude_file.read_text(encoding="utf-8")
 
     def test_installed_templates_include_buff(self, tmp_path):
         """Every target mentions sm buff somewhere in its templates."""
@@ -324,19 +365,22 @@ class TestCmdAgent:
             text = (tmp_path / path).read_text(encoding="utf-8")
             assert "sm buff" in text, f"{label} ({path}) missing 'sm buff'"
 
-    def test_installed_content_has_correct_framing(self, tmp_path):
-        """Installed files describe sm as a speed multiplier, not quality gates."""
+    def test_installed_content_has_substitution_framing(self, tmp_path):
+        """Installed files redirect tool impulses — the instead-of table."""
         args = _make_args(tmp_path)
         cmd_agent(args)
 
-        # Check a wrapper target
+        # Wrapper target gets the shared core.
         cursor_text = (tmp_path / ".cursor/rules/slopmop-swab.mdc").read_text(
             encoding="utf-8"
         )
-        assert "speed multiplier" in cursor_text
+        assert "Your impulse" in cursor_text
+        assert "Run instead" in cursor_text
         assert "{{CORE}}" not in cursor_text
 
-        # Check Claude SKILL.md
+        # Claude gets it via CLAUDE.md (always-on) and SKILL.md (opt-in).
+        claude_md = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "Your impulse" in claude_md
         skill_text = (tmp_path / ".claude/skills/slopmop/SKILL.md").read_text(
             encoding="utf-8"
         )
