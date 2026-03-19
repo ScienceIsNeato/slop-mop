@@ -248,8 +248,12 @@ def _enable_gate(
                     print(f"     → {action}")
             elif r.status == DoctorStatus.WARN:
                 print(f"\n  💡 {r.summary}")
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("slopmop.cli.config").debug(
+            "Doctor readiness check failed for %s: %s", gate_name, exc
+        )
 
     return 0
 

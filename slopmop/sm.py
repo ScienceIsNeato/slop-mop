@@ -477,7 +477,6 @@ def _add_doctor_parser(
     doctor_parser.add_argument(
         "checks",
         nargs="*",
-        default=None,
         metavar="CHECK",
         help="Specific checks or gate names to run (default: all)",
     )

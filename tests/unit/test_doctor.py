@@ -383,7 +383,8 @@ class TestGateReadiness:
         report = _empty_report()
         check = _mock_check(tool_context_value="project")
         _check_gate_readiness(report, check, tmp_path)
-        assert report.results[0].status == DoctorStatus.FAIL
+        # PROJECT gates warn+skip at runtime, so doctor reports WARN not FAIL.
+        assert report.results[0].status == DoctorStatus.WARN
         assert "virtual environment" in report.results[0].summary
 
     def test_node_gate_with_package_and_modules(self, tmp_path):

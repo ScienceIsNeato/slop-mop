@@ -405,6 +405,29 @@ def _check_gate_readiness(
                 found.append(tool_name)
 
         if missing:
+            # Build tool-aware install hints: pip for Python tools, generic for others.
+            _PIP_TOOLS = frozenset(
+                {
+                    "black",
+                    "isort",
+                    "autoflake",
+                    "flake8",
+                    "mypy",
+                    "pyright",
+                    "vulture",
+                    "radon",
+                    "bandit",
+                    "detect-secrets",
+                }
+            )
+            pip_missing = [t for t in missing if t in _PIP_TOOLS]
+            other_missing = [t for t in missing if t not in _PIP_TOOLS]
+            actions: list[str] = []
+            if pip_missing:
+                actions.append(f"pip install {' '.join(pip_missing)}")
+            for t in other_missing:
+                actions.append(f"Install {t} and ensure it is on PATH")
+
             report.add(
                 DoctorCheckResult(
                     name=f"gate:{gate_name}",
@@ -413,7 +436,7 @@ def _check_gate_readiness(
                     details=(
                         f"Found: {', '.join(found)}" if found else "No tools found"
                     ),
-                    suggested_actions=[f"pip install {' '.join(missing)}"],
+                    suggested_actions=actions,
                     gate=gate_name,
                 )
             )
@@ -443,11 +466,12 @@ def _check_gate_readiness(
                 )
             )
         else:
+            # PROJECT gates warn+skip at runtime, so doctor should WARN not FAIL.
             report.add(
                 DoctorCheckResult(
                     name=f"gate:{gate_name}",
-                    status=DoctorStatus.FAIL,
-                    summary="No project virtual environment found",
+                    status=DoctorStatus.WARN,
+                    summary="No project virtual environment found (gate will skip at runtime)",
                     suggested_actions=[
                         PythonCheckMixin.suggest_venv_command(pr),
                     ],
