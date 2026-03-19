@@ -35,6 +35,8 @@ class FlutterAnalyzeCheck(BaseCheck):
     """Run flutter analyze across all discovered pubspec packages."""
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["flutter"]
+    install_hint = "path"
     role = CheckRole.FOUNDATION
 
     @property

@@ -85,6 +85,7 @@ class DeadCodeCheck(BaseCheck):
     """
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["vulture"]
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
 

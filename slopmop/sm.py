@@ -460,6 +460,69 @@ def _add_agent_parser(
     AgentParserBuilder(subparsers).build()
 
 
+def _add_doctor_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the doctor subcommand parser."""
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Diagnose environment and toolchain issues",
+        description=(
+            "Check that your environment can run all enabled quality gates. "
+            "Reports missing tools, broken venvs, stale locks, and other "
+            "issues that block gates. Default mode is read-only. "
+            "Use --fix to auto-repair sm-owned state."
+        ),
+    )
+    doctor_parser.add_argument(
+        "checks",
+        nargs="*",
+        metavar="CHECK",
+        help="Specific checks or gate names to run (default: all)",
+    )
+    doctor_parser.add_argument(
+        "--list-checks",
+        action="store_true",
+        help="List all available doctor checks and exit",
+    )
+    doctor_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Auto-repair sm-owned state (stale locks, missing .slopmop/ dir)",
+    )
+    doctor_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+    doctor_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed diagnostic output",
+    )
+    doctor_parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Minimal output",
+    )
+    doctor_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=None,
+        help="Output results as JSON",
+    )
+    doctor_parser.add_argument(
+        "--no-json",
+        dest="json_output",
+        action="store_false",
+        help="Force human-readable output",
+    )
+
+
 def _add_status_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -567,6 +630,7 @@ Examples:
     _add_scour_parser(subparsers)
     _add_upgrade_parser(subparsers)
     _add_buff_parser(subparsers)
+    _add_doctor_parser(subparsers)
     _add_status_parser(subparsers)
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
@@ -590,6 +654,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_buff,
         cmd_commit_hooks,
         cmd_config,
+        cmd_doctor,
         cmd_help,
         cmd_init,
         cmd_scour,
@@ -616,6 +681,8 @@ def main(args: Optional[List[str]] = None) -> int:
         return cmd_upgrade(parsed_args)
     elif parsed_args.verb == "buff":
         return cmd_buff(parsed_args)
+    elif parsed_args.verb == "doctor":
+        return cmd_doctor(parsed_args)
     elif parsed_args.verb == "status":
         return cmd_status(parsed_args)
     elif parsed_args.verb == "config":

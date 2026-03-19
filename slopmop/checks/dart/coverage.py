@@ -57,6 +57,8 @@ class DartCoverageCheck(BaseCheck):
     """Flutter test coverage gate (parses coverage/lcov.info)."""
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["flutter"]
+    install_hint = "path"
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
 

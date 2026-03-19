@@ -233,6 +233,28 @@ def _enable_gate(
         print(f"✅ Enabled: {gate_name}")
     else:
         print(f"ℹ️  {gate_name} is already enabled")
+
+    # Run doctor readiness check for the gate so the user sees what's
+    # missing before their first run.  Informational only — never
+    # blocks enable, and a bug in doctor must not break config.
+    try:
+        from slopmop.cli.doctor import DoctorStatus, check_single_gate_readiness
+
+        readiness = check_single_gate_readiness(gate_name, project_root, config)
+        for r in readiness.results:
+            if r.status == DoctorStatus.FAIL:
+                print(f"\n  ⚠️  {r.summary}")
+                for action in r.suggested_actions:
+                    print(f"     → {action}")
+            elif r.status == DoctorStatus.WARN:
+                print(f"\n  💡 {r.summary}")
+    except (ImportError, KeyError, ValueError, OSError) as exc:
+        import logging
+
+        logging.getLogger("slopmop.cli.config").debug(
+            "Doctor readiness check failed for %s: %s", gate_name, exc
+        )
+
     return 0
 
 

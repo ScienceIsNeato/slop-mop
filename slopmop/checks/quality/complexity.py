@@ -60,6 +60,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["radon"]
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
 

@@ -126,6 +126,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["bandit", "detect-secrets"]
     role = CheckRole.FOUNDATION
 
     @property
