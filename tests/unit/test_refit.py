@@ -893,6 +893,26 @@ class TestCmdRefitContinue:
         ]
 
 
+class TestCommitCurrentChanges:
+    def test_git_add_excludes_slopmop_directory(self, monkeypatch, tmp_path: Path):
+        captured_args: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            captured_args.append(list(cmd))
+            result = Mock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        monkeypatch.setattr(refit_mod.subprocess, "run", fake_run)
+        code, _ = refit_mod._commit_current_changes(tmp_path, "test commit")
+
+        assert code == 0
+        git_add_cmd = captured_args[0]
+        assert git_add_cmd == ["git", "add", "-A", "--", ".", ":!.slopmop"]
+
+
 class TestRunScour:
     def test_run_scour_sets_internal_lock_bypass_env(
         self, monkeypatch, tmp_path: Path

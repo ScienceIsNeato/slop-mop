@@ -482,21 +482,6 @@ def _render_plan_summary(plan: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _print_plan(plan: Dict[str, Any]) -> None:
-    items = cast(List[Dict[str, Any]], plan.get("items", []))
-    print("Refit plan generated.")
-    print(_plan_file_line(plan))
-    print(f"Summary: {_plan_summary_path(_plan_project_root(plan))}")
-    print(f"Protocol: {_protocol_path(_plan_project_root(plan))}")
-    print(f"Plan items: {len(items)}")
-    if items:
-        current = items[0]
-        print(f"Next gate: {current['gate']}")
-        print(f"Next command: sm refit --continue")
-    else:
-        print("No failing scour gates remain. Refit has nothing to do.")
-
-
 def _plan_generated_lines(plan: Dict[str, Any]) -> List[str]:
     items = cast(List[Dict[str, Any]], plan.get("items", []))
     lines = [
@@ -524,17 +509,13 @@ def _completion_lines(plan: Dict[str, Any]) -> List[str]:
     ]
 
 
-def _status_changed(before: List[str], after: List[str]) -> bool:
-    return before != after
-
-
 def _status_is_same(before: List[str], after: List[str]) -> bool:
     return before == after
 
 
 def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]:
     add_result = subprocess.run(
-        ["git", "add", "-A"],
+        ["git", "add", "-A", "--", ".", ":!.slopmop"],
         cwd=project_root,
         capture_output=True,
         text=True,
@@ -566,13 +547,6 @@ def _advance_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
         plan["current_gate"] = items[next_index].get("gate")
         plan["status"] = "ready"
     return plan
-
-
-def _print_continue_completion(plan: Dict[str, Any]) -> None:
-    print("Refit plan complete.")
-    print("Next step: run `sm scour --no-auto-fix` and resume the normal workflow.")
-    print(_plan_file_line(plan))
-    print(f"Protocol: {_protocol_path(_plan_project_root(plan))}")
 
 
 def _load_continue_plan(
