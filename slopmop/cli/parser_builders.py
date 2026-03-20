@@ -208,6 +208,70 @@ class AgentParserBuilder:
         lines: list[str] = []
         for key in sorted(TARGETS):
             lines.append(f"  {key}:")
-            for path in preview_install_paths(key):
+            try:
+                paths = preview_install_paths(key)
+            except FileNotFoundError as exc:
+                lines.append(f"    - unavailable ({exc})")
+                continue
+            for path in paths:
                 lines.append(f"    - {path}")
         return "\n".join(lines)
+
+
+class RefitParserBuilder:
+    """Build the remediation refit parser."""
+
+    def __init__(
+        self,
+        subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    ) -> None:
+        self.subparsers = subparsers
+
+    def build(self) -> None:
+        """Register the refit parser."""
+        refit_parser = self.subparsers.add_parser(
+            "refit",
+            help="Structured remediation planning and continuation",
+            description=(
+                "Run the remediation rail. Generate a one-gate-at-a-time plan "
+                "from the current scour results, then continue that plan until "
+                "the next blocker."
+            ),
+        )
+        mode_group = refit_parser.add_mutually_exclusive_group(required=True)
+        mode_group.add_argument(
+            "--generate-plan",
+            action="store_true",
+            help="Capture the current scour failure set and persist a refit plan.",
+        )
+        mode_group.add_argument(
+            "--continue",
+            dest="continue_run",
+            action="store_true",
+            help="Resume the persisted refit plan until the next blocker.",
+        )
+        refit_parser.add_argument(
+            "--project-root",
+            type=str,
+            default=".",
+            help=PROJECT_ROOT_HELP,
+        )
+        refit_parser.add_argument(
+            "--json",
+            dest="json_output",
+            action="store_true",
+            default=False,
+            help="Output refit status as JSON.",
+        )
+        refit_parser.add_argument(
+            "--output-file",
+            "--output",
+            "-o",
+            dest="output_file",
+            default=None,
+            metavar="PATH",
+            help=(
+                "Write machine-readable refit status to a file while preserving "
+                "stdout output mode."
+            ),
+        )

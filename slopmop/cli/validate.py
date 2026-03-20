@@ -209,6 +209,25 @@ def _run_validation(
     else:
         lock_expected_duration = max(float(historical_estimate), 1.0)
 
+    # Internal nested validation runs, such as refit re-checking a single gate
+    # while already holding the repo lock, can opt out of reacquiring here.
+    skip_repo_lock = os.environ.get("SLOPMOP_SKIP_REPO_LOCK", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if skip_repo_lock:
+        return _run_validation_locked(
+            args,
+            gates,
+            level_name,
+            project_root,
+            resolved_swabbing_time=resolved_swabbing_time,
+            preloaded_config=preloaded_config,
+            custom_gates_registered=custom_gates_registered,
+        )
+
     try:
         with sm_lock(
             project_root,

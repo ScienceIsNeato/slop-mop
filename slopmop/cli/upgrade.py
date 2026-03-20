@@ -16,7 +16,11 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Dict, List, Optional, TypedDict, cast
 
-from packaging.version import InvalidVersion, Version
+try:
+    from packaging.version import InvalidVersion, Version
+except ModuleNotFoundError:
+    Version = None  # type: ignore[assignment,misc]
+    InvalidVersion = None  # type: ignore[assignment,misc]
 
 from slopmop.core.config import config_file_path, state_dir_path
 from slopmop.migrations import planned_upgrade_migrations, run_upgrade_migrations
@@ -198,10 +202,12 @@ def _resolve_target_version(requested_version: Optional[str]) -> str:
 
 
 def _validate_target_version(current_version: str, target_version: str) -> None:
+    version_class = _packaging_version_class()
+    invalid_version_class = _packaging_invalid_version_class()
     try:
-        current = Version(current_version)
-        target = Version(target_version)
-    except InvalidVersion as exc:
+        current = version_class(current_version)
+        target = version_class(target_version)
+    except invalid_version_class as exc:
         raise UpgradeError(f"Invalid version value: {exc}") from exc
     if target < current:
         raise UpgradeError(
@@ -320,8 +326,32 @@ def _print_check_plan(
     print(f"Validation:      sm {VALIDATION_VERB}")
 
 
+def _require_packaging() -> None:
+    """Raise ``MissingDependencyError`` when packaging is not installed."""
+    if Version is None:
+        from slopmop import MissingDependencyError
+
+        raise MissingDependencyError(
+            package="packaging",
+            verb="upgrade",
+            reason="needed for version comparison",
+        )
+
+
+def _packaging_version_class() -> type:
+    _require_packaging()
+    return cast(type, Version)
+
+
+def _packaging_invalid_version_class() -> type[Exception]:
+    _require_packaging()
+    return cast(type[Exception], InvalidVersion)
+
+
 def cmd_upgrade(args: argparse.Namespace) -> int:
     """Upgrade the installed slop-mop package and validate the result."""
+    _require_packaging()
+    version_class = _packaging_version_class()
     project_root = Path(getattr(args, "project_root", ".")).resolve()
     if _running_from_source_checkout():
         print(f"❌ {SOURCE_CHECKOUT_UPGRADE_ERROR}", file=sys.stderr)
@@ -344,7 +374,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         )
         return 0
 
-    if Version(target_version) == Version(current_version):
+    if version_class(target_version) == version_class(current_version):
         print(f"slopmop is already at {current_version}; nothing to upgrade.")
         return 0
 

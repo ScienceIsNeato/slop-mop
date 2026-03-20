@@ -2,6 +2,7 @@
 
 import pytest
 
+import slopmop.cli.parser_builders as parser_builders
 from slopmop.sm import create_parser
 
 
@@ -82,6 +83,40 @@ class TestCreateParser:
         assert args.action_args == []
         assert args.json_output is True
         assert args.output_file == "triage.json"
+
+    def test_refit_generate_plan_parses(self):
+        parser = create_parser()
+        args = parser.parse_args(["refit", "--generate-plan"])
+        assert args.verb == "refit"
+        assert args.generate_plan is True
+        assert args.continue_run is False
+
+    def test_refit_continue_parses(self):
+        parser = create_parser()
+        args = parser.parse_args(["refit", "--continue"])
+        assert args.verb == "refit"
+        assert args.generate_plan is False
+        assert args.continue_run is True
+
+    def test_refit_json_and_output_file_flags(self):
+        parser = create_parser()
+        args = parser.parse_args(
+            ["refit", "--generate-plan", "--json", "--output-file", "refit.json"]
+        )
+        assert args.verb == "refit"
+        assert args.generate_plan is True
+        assert args.json_output is True
+        assert args.output_file == "refit.json"
+
+    def test_refit_requires_exactly_one_mode(self):
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["refit"])
+
+    def test_refit_modes_are_mutually_exclusive(self):
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["refit", "--generate-plan", "--continue"])
 
     def test_swab_with_quality_gates(self):
         parser = create_parser()
@@ -227,3 +262,21 @@ class TestCreateParser:
         out = capsys.readouterr().out
         assert ".slopmop/tmp/.github/copilot-instructions.md" in out
         assert ".slopmop/tmp/.copilot/skills/slopmop/SKILL.md" in out
+
+    def test_agent_install_help_tolerates_missing_template_preview(
+        self, monkeypatch, capsys
+    ):
+        def _preview_paths(target):
+            if target == "antigravity":
+                raise FileNotFoundError("Template directory not found: antigravity")
+            return [f".slopmop/tmp/{target}"]
+
+        monkeypatch.setattr(parser_builders, "preview_install_paths", _preview_paths)
+
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["agent", "install", "--help"])
+
+        out = capsys.readouterr().out
+        assert "antigravity:" in out
+        assert "unavailable (Template directory not found: antigravity)" in out

@@ -8,6 +8,21 @@ pytest tests/integration/ -m integration -v
 
 Requires Docker running. No other local setup needed — the fixture repo is cloned from GitHub inside the container.
 
+## Refit Scenario Foundations
+
+Higher-level `refit` integration work now uses a checked-in scenario manifest
+contract under `tests/integration/scenarios/`.
+
+- `happy-path-small.json` is the first Option A scenario contract
+- `tests/integration/scenario_manifest.py` validates reserved refs, patch-ladder
+  linearity, and run-branch naming
+- `DockerManager.run_scripted_scenario(...)` is the persistent single-container
+  seam for multi-step `sm refit --continue` loops
+
+This is intentionally still a foundation layer. The actual agent-shim loop and
+patch application logic will build on top of these helpers rather than bypass
+them.
+
 ## Manual Walkthrough
 
 ### 1. Build the image

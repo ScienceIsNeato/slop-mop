@@ -46,6 +46,33 @@ def _capture_shell_script(**run_sm_kwargs: object) -> str:
         return docker_cmd[-1]
 
 
+def _capture_scenario_shell_script(**run_kwargs: object) -> str:
+    """Call run_scripted_scenario with subprocess mocked, return the bash."""
+    dm = DockerManager()
+    dm._image_built = True
+    with patch("tests.integration.docker_manager.subprocess.run") as mock_run:
+        mock_run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        dm.run_scripted_scenario(branch="x", scenario_script="echo scenario", **run_kwargs)  # type: ignore[arg-type]
+        docker_cmd = mock_run.call_args.args[0]
+        return docker_cmd[-1]
+
+
+def _capture_refit_scenario_shell_script(**run_kwargs: object) -> str:
+    """Call run_refit_scenario with subprocess mocked, return the bash."""
+    dm = DockerManager()
+    dm._image_built = True
+    with patch("tests.integration.docker_manager.subprocess.run") as mock_run:
+        mock_run.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        dm.run_refit_scenario(
+            branch="x",
+            scenario="happy-path-small",
+            run_branch="run/refit/happy-path-small/20260319-abcdef1-run01",
+            **run_kwargs,
+        )
+        docker_cmd = mock_run.call_args.args[0]
+        return docker_cmd[-1]
+
+
 class TestExtractFileShellScript:
     """The bash appendix ``extract_file`` adds to the four-phase script."""
 
@@ -112,6 +139,44 @@ class TestExtractFileShellScript:
         assert "sm scour --sarif" in script
         assert "sm swab" not in script  # default not leaked in
         assert "_SM_RC=$?" in script
+
+
+class TestScenarioShellScript:
+    def test_scripted_scenario_runs_after_bootstrap(self) -> None:
+        script = _capture_scenario_shell_script()
+        init_pos = script.find("sm init --non-interactive")
+        scenario_pos = script.find("echo scenario")
+        assert init_pos != -1 and scenario_pos != -1
+        assert scenario_pos > init_pos, (
+            "scenario script must run after clone/install/init bootstrap\n" + script
+        )
+
+    def test_scripted_scenario_respects_extract_file(self) -> None:
+        script = _capture_scenario_shell_script(extract_file="/tmp/protocol.json")
+        assert 'cat "/tmp/protocol.json"' in script
+        assert "_SM_RC=$?" in script
+
+    def test_scripted_scenario_uses_custom_ref_for_checkout(self) -> None:
+        script = _capture_scenario_shell_script(ref="deadbeef")
+        assert "git checkout deadbeef" in script
+
+
+class TestRefitScenarioShellScript:
+    def test_refit_scenario_invokes_driver_script(self) -> None:
+        script = _capture_refit_scenario_shell_script()
+        assert "/tmp/slopmop-build/tests/integration/refit_scenario_driver.py" in script
+        assert "--scenario happy-path-small" in script
+        assert (
+            "--run-branch run/refit/happy-path-small/20260319-abcdef1-run01" in script
+        )
+
+    def test_refit_scenario_extracts_summary_file(self) -> None:
+        script = _capture_refit_scenario_shell_script()
+        assert 'cat "/tmp/refit-scenario-summary.json"' in script
+
+    def test_refit_scenario_respects_custom_checkout_ref(self) -> None:
+        script = _capture_refit_scenario_shell_script(ref="deadbeef")
+        assert "git checkout deadbeef" in script
 
 
 # ---------------------------------------------------------------------------

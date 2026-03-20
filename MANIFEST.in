@@ -1,0 +1,2 @@
+recursive-include slopmop/agent_install/templates *
+recursive-include slopmop/agent_install/templates .* 

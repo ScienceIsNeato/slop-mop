@@ -271,6 +271,91 @@ class DockerManager:
     # Running sm
     # ------------------------------------------------------------------
 
+    def _docker_base_command(
+        self,
+        *,
+        extra_env: Optional[dict[str, str]] = None,
+    ) -> list[str]:
+        docker_cmd = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{REPO_ROOT}:/slopmop-src:ro",
+            "--workdir",
+            "/test-repo",
+        ]
+        for key, val in (extra_env or {}).items():
+            docker_cmd += ["-e", f"{key}={val}"]
+        return docker_cmd
+
+    def _bootstrap_script(self, checkout_target: str) -> str:
+        return (
+            f"git clone {BUCKET_O_SLOP_REPO} . 2>&1 "
+            f"|| {{ echo 'REPO_CLONE_FAILED'; exit {CLONE_FAILED_EXIT}; }}; "
+            f"git checkout {checkout_target} 2>&1 "
+            f"|| {{ echo 'BRANCH_CHECKOUT_FAILED'; exit {CHECKOUT_FAILED_EXIT}; }}; "
+            f"cp -r /slopmop-src /tmp/slopmop-build 2>&1 "
+            f"&& pip install /tmp/slopmop-build --quiet 2>&1 "
+            f"|| {{ echo 'SLOPMOP_INSTALL_FAILED'; exit {INSTALL_FAILED_EXIT}; }}; "
+            f"[ -f .sb_config.json ] && cp .sb_config.json /tmp/repo_config.json; "
+            f"sm init --non-interactive 2>&1 "
+            f"|| {{ echo 'SM_INIT_FAILED'; exit {INIT_FAILED_EXIT}; }}; "
+            f"[ -f /tmp/repo_config.json ] && cp /tmp/repo_config.json .sb_config.json; "
+            f"rm -f .sb_config.json.template .sb_config.json.backup.*; "
+        )
+
+    def _append_extract_clause(
+        self, shell_script: str, extract_file: Optional[str]
+    ) -> str:
+        if not extract_file:
+            return shell_script
+        return (
+            shell_script
+            + f"; _SM_RC=$?"
+            + f'; echo "{_EXTRACT_MARKER}"'
+            + f'; cat "{extract_file}" 2>/dev/null || true'
+            + f"; exit $_SM_RC"
+        )
+
+    def _run_container_script(
+        self,
+        *,
+        branch: str,
+        command_label: list[str],
+        checkout_target: str,
+        phase_c_script: str,
+        extra_env: Optional[dict[str, str]] = None,
+        extract_file: Optional[str] = None,
+    ) -> RunResult:
+        docker_cmd = self._docker_base_command(extra_env=extra_env)
+        shell_script = self._append_extract_clause(
+            self._bootstrap_script(checkout_target) + phase_c_script,
+            extract_file,
+        )
+        docker_cmd += [self.image_name, "bash", "-c", shell_script]
+
+        proc = subprocess.run(
+            docker_cmd,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+        )
+
+        stdout, extracted = proc.stdout, None
+        if extract_file and _EXTRACT_MARKER in stdout:
+            stdout, tail = stdout.split(_EXTRACT_MARKER, 1)
+            extracted = tail[1:] if tail.startswith("\n") else tail
+
+        return RunResult(
+            exit_code=proc.returncode,
+            stdout=stdout,
+            stderr=proc.stderr,
+            branch=branch,
+            command=command_label,
+            extracted=extracted,
+        )
+
     def run_sm(
         self,
         branch: str,
@@ -313,97 +398,79 @@ class DockerManager:
             self.build_image()
 
         sm_command = command or ["sm", "swab", "--no-fail-fast", "--no-json"]
-
-        docker_cmd = [
-            "docker",
-            "run",
-            "--rm",
-            # Mount slop-mop source read-only so the install reflects current code
-            "-v",
-            f"{REPO_ROOT}:/slopmop-src:ro",
-            "--workdir",
-            "/test-repo",
-        ]
-
-        # Inject any extra env vars the caller wants
-        for key, val in (extra_env or {}).items():
-            docker_cmd += ["-e", f"{key}={val}"]
-
-        # Resolve the checkout target: explicit ref (SHA/tag) or branch name.
         checkout_target = ref or branch
-
-        # Four-phase shell script.  Each phase has a distinct sentinel exit
-        # code so tests can pinpoint where something went wrong.
-        #
-        #  Phase 0 (exit 5): git clone bucket-o-slop
-        #  Phase A (exit 2): pip install slopmop
-        #  Phase B (exit 4): sm init --non-interactive
-        #  Phase C (exit 0 or 1): sm swab  ← becomes container exit
-        #
-        # Copy source to a writable location first: the read-only bind-mount
-        # prevents pip from creating slopmop.egg-info inside /slopmop-src.
-        #
-        # The repo's committed .sb_config.json is saved before init and
-        # restored after, because init overwrites it with auto-detected
-        # defaults.  Validate should run with the repo's intended thresholds.
-        shell_script = (
-            f"git clone {BUCKET_O_SLOP_REPO} . 2>&1 "
-            f"|| {{ echo 'REPO_CLONE_FAILED'; exit {CLONE_FAILED_EXIT}; }}; "
-            f"git checkout {checkout_target} 2>&1 "
-            f"|| {{ echo 'BRANCH_CHECKOUT_FAILED'; exit {CHECKOUT_FAILED_EXIT}; }}; "
-            f"cp -r /slopmop-src /tmp/slopmop-build 2>&1 "
-            f"&& pip install /tmp/slopmop-build --quiet 2>&1 "
-            f"|| {{ echo 'SLOPMOP_INSTALL_FAILED'; exit {INSTALL_FAILED_EXIT}; }}; "
-            # Save the repo's committed config before init overwrites it
-            f"[ -f .sb_config.json ] && cp .sb_config.json /tmp/repo_config.json; "
-            f"sm init --non-interactive 2>&1 "
-            f"|| {{ echo 'SM_INIT_FAILED'; exit {INIT_FAILED_EXIT}; }}; "
-            # Restore the repo's committed config (custom thresholds etc.)
-            f"[ -f /tmp/repo_config.json ] && cp /tmp/repo_config.json .sb_config.json; "
-            + " ".join(sm_command)
-        )
-
-        if extract_file:
-            # Preserve the sm command's exit code across the extraction
-            # appendix — without this, `cat` succeeding would turn every
-            # failing gate run into exit 0 and break assert_prerequisites.
-            # `cat` failing (file never written) is swallowed: the
-            # missing-marker case below handles it more informatively.
-            shell_script += (
-                f"; _SM_RC=$?"
-                f'; echo "{_EXTRACT_MARKER}"'
-                f'; cat "{extract_file}" 2>/dev/null || true'
-                f"; exit $_SM_RC"
-            )
-
-        docker_cmd += [self.image_name, "bash", "-c", shell_script]
-
-        proc = subprocess.run(
-            docker_cmd,
-            capture_output=True,
-            text=True,
-            timeout=self.timeout,
-        )
-
-        stdout, extracted = proc.stdout, None
-        if extract_file and _EXTRACT_MARKER in stdout:
-            stdout, tail = stdout.split(_EXTRACT_MARKER, 1)
-            # Strip exactly ONE leading newline (echo adds it); leave the
-            # payload's own whitespace alone in case it's significant.
-            extracted = tail[1:] if tail.startswith("\n") else tail
-        # When extract_file was requested but marker is absent: the
-        # container died before phase C ran.  Leave extracted=None and
-        # stdout untouched — the caller's assert_prerequisites() will
-        # surface the real failure (clone/install/init) with a useful
-        # message.  Failing here would shadow that.
-
-        return RunResult(
-            exit_code=proc.returncode,
-            stdout=stdout,
-            stderr=proc.stderr,
+        return self._run_container_script(
             branch=branch,
-            command=sm_command,
-            extracted=extracted,
+            command_label=sm_command,
+            checkout_target=checkout_target,
+            phase_c_script=" ".join(sm_command),
+            extra_env=extra_env,
+            extract_file=extract_file,
+        )
+
+    def run_scripted_scenario(
+        self,
+        branch: str,
+        scenario_script: str,
+        *,
+        ref: Optional[str] = None,
+        extra_env: Optional[dict[str, str]] = None,
+        extract_file: Optional[str] = None,
+    ) -> RunResult:
+        """Run an arbitrary multi-step scenario after clone/install/init.
+
+        This is the seam for higher-level refit integration tests that need to
+        keep repo state alive across multiple `sm refit --continue` calls in one
+        container run. The scenario script becomes phase C while clone, install,
+        and init stay identical to the standard integration harness.
+        """
+        if not self._image_built:
+            self.build_image()
+        checkout_target = ref or branch
+        return self._run_container_script(
+            branch=branch,
+            command_label=["bash", "-lc", scenario_script],
+            checkout_target=checkout_target,
+            phase_c_script=scenario_script,
+            extra_env=extra_env,
+            extract_file=extract_file,
+        )
+
+    def run_refit_scenario(
+        self,
+        *,
+        branch: str,
+        scenario: str,
+        run_branch: str,
+        ref: Optional[str] = None,
+        extra_env: Optional[dict[str, str]] = None,
+    ) -> RunResult:
+        """Run the deterministic refit scenario driver inside the container.
+
+        The driver lives in the mounted slop-mop source tree copied to
+        `/tmp/slopmop-build` during bootstrap, so it can reuse the checked-in
+        scenario manifests and helper code even though tests/ is not installed
+        as a Python package in the fixture repo.
+        """
+        summary_file = "/tmp/refit-scenario-summary.json"
+        scenario_script = " ".join(
+            [
+                "python",
+                "/tmp/slopmop-build/tests/integration/refit_scenario_driver.py",
+                "--scenario",
+                scenario,
+                "--run-branch",
+                run_branch,
+                "--summary-file",
+                summary_file,
+            ]
+        )
+        return self.run_scripted_scenario(
+            branch=branch,
+            scenario_script=scenario_script,
+            ref=ref,
+            extra_env=extra_env,
+            extract_file=summary_file,
         )
 
     # ------------------------------------------------------------------
