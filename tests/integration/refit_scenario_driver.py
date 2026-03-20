@@ -76,14 +76,11 @@ def _git_status(cwd: Path) -> list[str]:
 
 
 def _is_slopmop_artifact(status_line: str) -> bool:
-    try:
-        _status, path_part = status_line.split(" ", 1)
-    except ValueError:
+    if len(status_line) < 4:
         return False
-    if " -> " in path_part:
-        path = path_part.split(" -> ", 1)[1]
-    else:
-        path = path_part
+    path = status_line[3:]
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
     path = path.strip().strip('"')
     return path == ".slopmop" or path.startswith(".slopmop/")
 

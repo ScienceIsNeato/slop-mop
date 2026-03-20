@@ -893,6 +893,46 @@ class TestCmdRefitContinue:
         ]
 
 
+class TestIsSlopmopArtifact:
+    def test_filters_slopmop_directory(self):
+        assert refit_mod._is_slopmop_artifact(" M .slopmop/refit/plan.json") is True
+
+    def test_filters_added_slopmop_file(self):
+        assert refit_mod._is_slopmop_artifact("?? .slopmop/") is True
+
+    def test_passes_through_normal_files(self):
+        assert refit_mod._is_slopmop_artifact("M  src/main.py") is False
+
+    def test_handles_short_lines(self):
+        assert refit_mod._is_slopmop_artifact("M") is False
+
+    def test_handles_rename_to_slopmop(self):
+        assert refit_mod._is_slopmop_artifact("R  old.txt -> .slopmop/new.txt") is True
+
+    def test_handles_rename_from_slopmop(self):
+        assert refit_mod._is_slopmop_artifact("R  .slopmop/old.txt -> new.txt") is False
+
+
+class TestWorktreeStatusFiltersSlopmop:
+    def test_filters_slopmop_artifacts(self, monkeypatch):
+        monkeypatch.setattr(
+            refit_mod,
+            "_git_output",
+            Mock(return_value=(0, " M .slopmop/refit/plan.json\nM  src/main.py\n", "")),
+        )
+        status = refit_mod._worktree_status(Path("/fake"))
+        assert status == ["M  src/main.py"]
+
+    def test_returns_empty_when_only_slopmop_changes(self, monkeypatch):
+        monkeypatch.setattr(
+            refit_mod,
+            "_git_output",
+            Mock(return_value=(0, " M .slopmop/refit/plan.json\n?? .slopmop/\n", "")),
+        )
+        status = refit_mod._worktree_status(Path("/fake"))
+        assert status == []
+
+
 class TestCommitCurrentChanges:
     def test_git_add_excludes_slopmop_directory(self, monkeypatch, tmp_path: Path):
         captured_args: list[list[str]] = []

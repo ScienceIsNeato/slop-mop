@@ -122,6 +122,16 @@ def _current_head(project_root: Path) -> Optional[str]:
     return _git_output_or_none(project_root, "rev-parse", "HEAD")
 
 
+def _is_slopmop_artifact(status_line: str) -> bool:
+    if len(status_line) < 4:
+        return False
+    path = status_line[3:]
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
+    path = path.strip().strip('"')
+    return path == ".slopmop" or path.startswith(".slopmop/")
+
+
 def _worktree_status(project_root: Path) -> List[str]:
     code, stdout, stderr = _git_output(project_root, "status", "--porcelain")
     if code != 0:
@@ -131,7 +141,11 @@ def _worktree_status(project_root: Path) -> List[str]:
         )
     if not stdout:
         return []
-    return [line for line in stdout.splitlines() if line.strip()]
+    return [
+        line
+        for line in stdout.splitlines()
+        if line.strip() and not _is_slopmop_artifact(line)
+    ]
 
 
 def _ensure_remediation_phase(project_root: Path) -> bool:
@@ -1003,7 +1017,8 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
         )
         return 1
 
-    if _worktree_status(project_root):
+    worktree = _worktree_status(project_root)
+    if worktree:
         _emit_standalone_protocol(
             args,
             project_root,
@@ -1017,7 +1032,7 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
                 "Refit preflight failed: working tree is not clean. "
                 "Commit, stash, or discard local changes before generating a plan."
             ],
-            details={"worktree_status": _worktree_status(project_root)},
+            details={"worktree_status": worktree},
         )
         return 1
 
