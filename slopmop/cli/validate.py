@@ -217,7 +217,14 @@ def _run_validation(
         "yes",
         "on",
     }
+    nested_validate_owner = os.environ.get("SLOPMOP_NESTED_VALIDATE_OWNER", "").strip()
     if skip_repo_lock:
+        if nested_validate_owner != "refit":
+            print(
+                "SLOPMOP_SKIP_REPO_LOCK is reserved for internal nested validation runs.",
+                file=sys.stderr,
+            )
+            return 1
         return _run_validation_locked(
             args,
             gates,

@@ -39,6 +39,7 @@ _POST_REFIT_NEXT_ACTION = (
     "Run `sm scour --no-auto-fix` and continue with the normal workflow."
 )
 _CONTINUE_LOOP = 2
+_NESTED_VALIDATE_OWNER = "refit"
 
 
 def _project_root(args: argparse.Namespace) -> Path:
@@ -122,8 +123,13 @@ def _current_head(project_root: Path) -> Optional[str]:
 
 
 def _worktree_status(project_root: Path) -> List[str]:
-    code, stdout, _stderr = _git_output(project_root, "status", "--porcelain")
-    if code != 0 or not stdout:
+    code, stdout, stderr = _git_output(project_root, "status", "--porcelain")
+    if code != 0:
+        detail = stderr or stdout or "unknown git status failure"
+        raise RuntimeError(
+            f"'git status --porcelain' failed with exit code {code}: {detail}"
+        )
+    if not stdout:
         return []
     return [line for line in stdout.splitlines() if line.strip()]
 
@@ -164,6 +170,7 @@ def _run_scour(
         command.extend(["-g", gate])
     env = os.environ.copy()
     env["SLOPMOP_SKIP_REPO_LOCK"] = "1"
+    env["SLOPMOP_NESTED_VALIDATE_OWNER"] = _NESTED_VALIDATE_OWNER
     result = subprocess.run(
         command,
         cwd=project_root,
@@ -663,6 +670,41 @@ def _block_continue_plan(
     return 1
 
 
+def _block_on_repo_state_error(
+    args: argparse.Namespace,
+    project_root: Path,
+    plan: Dict[str, Any],
+    *,
+    error: RuntimeError,
+    current_item: Optional[Dict[str, Any]] = None,
+    gate: Optional[str] = None,
+    artifact_path: Optional[Path] = None,
+) -> int:
+    lines = [
+        "Refit blocked: could not read repository state safely.",
+        str(error),
+    ]
+    if gate:
+        lines.insert(0, f"Refit blocked on {gate}: repository state check failed.")
+    return _block_continue_plan(
+        args,
+        project_root,
+        plan,
+        event="blocked_on_repo_state_error",
+        status="blocked_on_repo_state_error",
+        next_action="Resolve the repository state problem, then rerun `sm refit --continue`.",
+        human_lines=lines,
+        details={
+            "reason": "repo_state_unreadable",
+            "error": str(error),
+            "gate": gate,
+            "artifact": str(artifact_path) if artifact_path is not None else None,
+        },
+        current_item=current_item,
+        artifact_path=artifact_path,
+    )
+
+
 def _advance_without_commit(
     args: argparse.Namespace,
     project_root: Path,
@@ -769,10 +811,29 @@ def _process_current_plan_item(
         return _emit_continue_completion(args, project_root, plan)
 
     current_item = items[current_index]
-    gate = str(current_item.get("gate"))
-    if not gate:
-        print("Refit blocked: current plan item has no gate.")
-        return 1
+    gate_value = current_item.get("gate")
+    if not isinstance(gate_value, str) or not gate_value.strip():
+        return _block_continue_plan(
+            args,
+            project_root,
+            plan,
+            event="blocked_on_plan_corruption",
+            status="blocked_on_plan_corruption",
+            next_action=(
+                "The refit plan appears to be corrupt. Inspect or regenerate the plan "
+                "before rerunning `sm refit --continue`."
+            ),
+            human_lines=[
+                "Refit blocked: current plan item has no gate. The refit plan appears to be corrupt."
+            ],
+            details={
+                "reason": "current_plan_item_missing_gate",
+                "current_index": current_index,
+                "current_item": current_item,
+            },
+            current_item=current_item,
+        )
+    gate = gate_value
 
     expected_head = cast(Optional[str], plan.get("expected_head"))
     live_head = _current_head(project_root)
@@ -791,11 +852,32 @@ def _process_current_plan_item(
             details={"expected_head": expected_head, "current_head": live_head},
         )
 
-    status_before = _worktree_status(project_root)
+    try:
+        status_before = _worktree_status(project_root)
+    except RuntimeError as exc:
+        return _block_on_repo_state_error(
+            args,
+            project_root,
+            plan,
+            error=exc,
+            current_item=current_item,
+            gate=gate,
+        )
     artifact_path = _continue_scour_path(project_root)
     exit_code = _run_scour(project_root, artifact_path, gate=gate)
     live_head_after_run = _current_head(project_root)
-    status_after = _worktree_status(project_root)
+    try:
+        status_after = _worktree_status(project_root)
+    except RuntimeError as exc:
+        return _block_on_repo_state_error(
+            args,
+            project_root,
+            plan,
+            error=exc,
+            current_item=current_item,
+            gate=gate,
+            artifact_path=artifact_path,
+        )
 
     if expected_head and live_head_after_run != expected_head:
         return _block_continue_plan(

@@ -1057,6 +1057,7 @@ class TestValidateSmLockError:
         from slopmop.cli.validate import _run_validation
 
         monkeypatch.setenv("SLOPMOP_SKIP_REPO_LOCK", "1")
+        monkeypatch.setenv("SLOPMOP_NESTED_VALIDATE_OWNER", "refit")
         args = argparse.Namespace(
             project_root=str(tmp_path),
             quiet=False,
@@ -1068,6 +1069,36 @@ class TestValidateSmLockError:
         assert result == 0
         mock_lock.assert_not_called()
         mock_run_locked.assert_called_once()
+
+    @patch("slopmop.cli.validate._run_validation_locked", return_value=0)
+    @patch("slopmop.cli.validate.sm_lock")
+    @patch("slopmop.cli.validate.max_expected_duration", return_value=30.0)
+    @patch("slopmop.cli.validate.load_timing_averages", return_value={})
+    def test_skip_repo_lock_env_requires_internal_owner(
+        self,
+        _mock_timings,
+        _mock_expected_duration,
+        mock_lock,
+        mock_run_locked,
+        tmp_path,
+        monkeypatch,
+        capsys,
+    ):
+        from slopmop.cli.validate import _run_validation
+
+        monkeypatch.setenv("SLOPMOP_SKIP_REPO_LOCK", "1")
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+
+        result = _run_validation(args, [], None)
+
+        assert result == 1
+        mock_lock.assert_not_called()
+        mock_run_locked.assert_not_called()
+        assert "reserved for internal nested validation runs" in capsys.readouterr().err
 
 
 class TestValidateJsonOutputFile:

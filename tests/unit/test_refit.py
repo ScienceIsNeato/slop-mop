@@ -387,6 +387,94 @@ class TestCmdRefitContinue:
         assert "Refit stopped on failing gate: myopia:source-duplication" in out
         assert saved["plan"]["status"] == "blocked_on_failure"
 
+    def test_continue_blocks_on_plan_corruption_when_gate_missing(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        args = argparse.Namespace(
+            generate_plan=False, continue_run=True, project_root=str(tmp_path)
+        )
+        plan = {
+            "project_root": str(tmp_path),
+            "branch": "feat/refit",
+            "expected_head": "abc123",
+            "status": "ready",
+            "current_index": 0,
+            "items": [
+                {
+                    "status": "pending",
+                    "attempt_count": 0,
+                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "log_file": None,
+                }
+            ],
+        }
+        saved = {}
+
+        monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
+        monkeypatch.setattr(
+            refit_mod,
+            "_save_plan",
+            lambda root, plan: saved.update({"plan": json.loads(json.dumps(plan))}),
+        )
+        monkeypatch.setattr(
+            refit_mod, "_current_branch", Mock(return_value="feat/refit")
+        )
+        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+
+        assert refit_mod.cmd_refit(args) == 1
+        payload = json.loads(
+            (tmp_path / ".slopmop" / "refit" / "protocol.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert payload["event"] == "blocked_on_plan_corruption"
+        assert saved["plan"]["status"] == "blocked_on_plan_corruption"
+        assert "current plan item has no gate" in capsys.readouterr().out
+
+    def test_continue_blocks_when_git_status_cannot_be_read(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        args = argparse.Namespace(
+            generate_plan=False, continue_run=True, project_root=str(tmp_path)
+        )
+        plan = {
+            "project_root": str(tmp_path),
+            "branch": "feat/refit",
+            "expected_head": "abc123",
+            "status": "ready",
+            "current_index": 0,
+            "items": [
+                {
+                    "gate": "myopia:source-duplication",
+                    "status": "pending",
+                    "attempt_count": 0,
+                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "log_file": None,
+                }
+            ],
+        }
+
+        monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
+        monkeypatch.setattr(
+            refit_mod, "_current_branch", Mock(return_value="feat/refit")
+        )
+        monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="abc123"))
+        monkeypatch.setattr(
+            refit_mod,
+            "_worktree_status",
+            Mock(side_effect=RuntimeError("git status failed")),
+        )
+        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+
+        assert refit_mod.cmd_refit(args) == 1
+        payload = json.loads(
+            (tmp_path / ".slopmop" / "refit" / "protocol.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert payload["event"] == "blocked_on_repo_state_error"
+        assert "git status failed" in capsys.readouterr().out
+
     def test_continue_json_output_emits_protocol_payload(
         self, monkeypatch, capsys, tmp_path: Path
     ):
@@ -832,6 +920,7 @@ class TestRunScour:
         assert exit_code == 0
         assert captured["cwd"] == tmp_path
         assert captured["env"]["SLOPMOP_SKIP_REPO_LOCK"] == "1"
+        assert captured["env"]["SLOPMOP_NESTED_VALIDATE_OWNER"] == "refit"
         assert captured["capture_output"] is True
         assert captured["text"] is True
         assert captured["check"] is False
