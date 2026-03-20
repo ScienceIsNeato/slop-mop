@@ -55,6 +55,19 @@ class TestAssertCleanWorktree:
         with pytest.raises(ScenarioDriverError, match="src/new_file.py"):
             assert_clean_worktree(tmp_path, label="after refit")
 
+    def test_does_not_ignore_nested_non_artifact_paths(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(
+            "tests.integration.refit_scenario_driver._git_status",
+            Mock(
+                return_value=["?? src/.slopmop/foo", "?? .slopmop/refit/protocol.json"]
+            ),
+        )
+
+        with pytest.raises(ScenarioDriverError, match="src/.slopmop/foo"):
+            assert_clean_worktree(tmp_path, label="after refit")
+
 
 class TestApplyPatchStep:
     def test_apply_patch_step_builds_diff_and_applies_it(

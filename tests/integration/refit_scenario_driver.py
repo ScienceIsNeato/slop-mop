@@ -76,7 +76,16 @@ def _git_status(cwd: Path) -> list[str]:
 
 
 def _is_slopmop_artifact(status_line: str) -> bool:
-    return ".slopmop/" in status_line or status_line.endswith(" .slopmop")
+    try:
+        _status, path_part = status_line.split(" ", 1)
+    except ValueError:
+        return False
+    if " -> " in path_part:
+        path = path_part.split(" -> ", 1)[1]
+    else:
+        path = path_part
+    path = path.strip().strip('"')
+    return path == ".slopmop" or path.startswith(".slopmop/")
 
 
 def assert_clean_worktree(cwd: Path, *, label: str) -> None:
