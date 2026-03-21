@@ -8,6 +8,7 @@ limits.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
@@ -17,6 +18,53 @@ _HEAD_DRIFT_NEXT_ACTION = (
     "Review the repo state, then rerun `sm refit --iterate` once HEAD is stable."
 )
 _HEAD_DRIFT_HUMAN_LINE = "Review the repo state before resuming."
+
+_MAX_SURFACED_FINDINGS = 5
+
+
+def _summarise_failure_artifact(artifact_path: Path) -> List[str]:
+    """Pull the top findings + fix_suggestion out of a scour artifact.
+
+    The block message otherwise says "Inspect: <path>" and nothing else —
+    forcing the agent to parse JSON to learn *anything* about what failed.
+    This surfaces enough to act without the round-trip.
+    """
+    try:
+        raw = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(raw, dict):
+        return []
+    payload = cast(Dict[str, Any], raw)
+    results_raw = payload.get("results")
+    if not isinstance(results_raw, list) or not results_raw:
+        return []
+    first = cast(Any, results_raw[0])
+    if not isinstance(first, dict):
+        return []
+    result = cast(Dict[str, Any], first)
+
+    lines: List[str] = []
+    findings_raw = result.get("findings")
+    if isinstance(findings_raw, list) and findings_raw:
+        findings = cast(List[Dict[str, Any]], findings_raw)
+        total = len(findings)
+        lines.append(f"  {total} finding(s). Top {min(total, _MAX_SURFACED_FINDINGS)}:")
+        for f in findings[:_MAX_SURFACED_FINDINGS]:
+            loc = str(f.get("file") or "?")
+            line_no = f.get("line")
+            if line_no is not None:
+                loc = f"{loc}:{line_no}"
+            msg = str(f.get("message", ""))[:120]
+            lines.append(f"    {loc} — {msg}")
+        if total > _MAX_SURFACED_FINDINGS:
+            lines.append(f"    ... and {total - _MAX_SURFACED_FINDINGS} more")
+
+    fix = result.get("fix_suggestion")
+    if isinstance(fix, str) and fix.strip():
+        lines.append(f"  Fix: {fix.strip()}")
+
+    return lines
 
 
 def _block_continue_plan(
@@ -332,8 +380,9 @@ def process_current_plan_item(
     if exit_code == 1:
         lines = [
             f"Refit stopped on failing gate: {gate}",
-            f"Inspect: {artifact_path}",
         ]
+        lines.extend(_summarise_failure_artifact(artifact_path))
+        lines.append(f"Full artifact: {artifact_path}")
         if current_item.get("log_file"):
             lines.append(f"Latest log: {current_item['log_file']}")
         lines.append("Fix the issue, then rerun: sm refit --iterate")

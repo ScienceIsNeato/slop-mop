@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from slopmop.cli import refit as refit_mod
+from slopmop.cli._refit_iteration import _summarise_failure_artifact
 
 
 class _FakeLock:
@@ -20,6 +21,71 @@ class _FakeLock:
 
 def _fake_lock(_project_root, _verb):
     return _FakeLock()
+
+
+class TestSummariseFailureArtifact:
+    """The block-on-failure message should surface findings, not just a path."""
+
+    def test_missing_file_returns_empty(self, tmp_path: Path):
+        assert _summarise_failure_artifact(tmp_path / "nope.json") == []
+
+    def test_malformed_json_returns_empty(self, tmp_path: Path):
+        p = tmp_path / "bad.json"
+        p.write_text("{not json")
+        assert _summarise_failure_artifact(p) == []
+
+    def test_surfaces_findings_and_fix(self, tmp_path: Path):
+        """Top findings + fix_suggestion should appear in block output.
+
+        Observed against manim: block message said only "Inspect: <path>"
+        with 162 findings sitting in the JSON. Agent had to parse JSON
+        manually to learn anything about what failed.
+        """
+        artifact = {
+            "results": [
+                {
+                    "findings": [
+                        {
+                            "file": "tests/test_cli.py",
+                            "line": 42,
+                            "message": "Duplicate of tests/test_cli.py:10 (8 lines)",
+                        },
+                        {
+                            "file": "tests/test_cli.py",
+                            "line": 99,
+                            "message": "Duplicate of tests/other.py:5 (6 lines)",
+                        },
+                    ],
+                    "fix_suggestion": "Add tests/ to exclude_dirs.",
+                }
+            ]
+        }
+        p = tmp_path / "scour.json"
+        p.write_text(json.dumps(artifact))
+
+        lines = _summarise_failure_artifact(p)
+        joined = "\n".join(lines)
+        assert "2 finding(s)" in joined
+        assert "tests/test_cli.py:42" in joined
+        assert "Duplicate of tests/test_cli.py:10" in joined
+        assert "Fix: Add tests/ to exclude_dirs." in joined
+
+    def test_truncates_long_finding_lists(self, tmp_path: Path):
+        findings = [
+            {"file": f"f{i}.py", "line": i, "message": f"clone {i}"}
+            for i in range(20)
+        ]
+        p = tmp_path / "scour.json"
+        p.write_text(json.dumps({"results": [{"findings": findings}]}))
+
+        lines = _summarise_failure_artifact(p)
+        joined = "\n".join(lines)
+        assert "20 finding(s)" in joined
+        assert "... and 15 more" in joined
+        # Only first 5 findings shown
+        assert "f0.py:0" in joined
+        assert "f4.py:4" in joined
+        assert "f5.py" not in joined
 
 
 class TestCmdRefitContinue:
