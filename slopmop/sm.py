@@ -541,10 +541,10 @@ both human developers and AI coding assistants.
 Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
-    upgrade     Upgrade slop-mop and validate the result
-    buff        Post-PR CI triage and next-step guidance
-    refit       Structured remediation planning and continuation
-    agent       Install agent integration templates
+  upgrade     Upgrade slop-mop and validate the result
+  buff        Post-PR CI triage and next-step guidance
+  refit       Structured remediation planning and continuation
+  agent       Install agent integration templates
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -557,9 +557,9 @@ Quick Start:
 Examples:
   sm swab                               Quick validation (every commit)
   sm scour                              Thorough validation (PR readiness)
-    sm upgrade --check                    Preview an upgrade without mutating
-    sm buff                               Post-PR CI triage
-    sm refit --start                   Generate a remediation plan
+  sm upgrade --check                    Preview an upgrade without mutating
+  sm buff                               Post-PR CI triage
+  sm refit --start                      Generate a remediation plan
   sm swab -g python,quality             Run specific gate groups
   sm scour --verbose                    Thorough with details
   sm config --show                      Show current configuration
