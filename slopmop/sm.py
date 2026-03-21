@@ -5,7 +5,7 @@ Usage:
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
     sm upgrade [--check] [--to-version VERSION]
     sm buff [PR_NUMBER]
-    sm refit [--generate-plan | --continue]
+    sm refit [--start | --iterate | --finish]
     sm agent install [--target TARGET] [--project-root PATH] [--force]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
@@ -19,7 +19,7 @@ Verbs:
     scour         Thorough validation (PR readiness — superset of swab)
     upgrade       Upgrade slop-mop and validate the result
     buff          Post-PR CI triage and next-step guidance
-    refit         Structured remediation planning and continuation
+    refit         Repository onboarding — remediation planning and execution
     config        View or update configuration
     init          Interactive setup and project configuration
     agent         Install agent integration templates
@@ -559,7 +559,7 @@ Examples:
   sm scour                              Thorough validation (PR readiness)
     sm upgrade --check                    Preview an upgrade without mutating
     sm buff                               Post-PR CI triage
-    sm refit --generate-plan              Generate a remediation plan
+    sm refit --start                   Generate a remediation plan
   sm swab -g python,quality             Run specific gate groups
   sm scour --verbose                    Thorough with details
   sm config --show                      Show current configuration

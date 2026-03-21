@@ -141,11 +141,11 @@ class TestExecuteRefitScenario:
             Mock(),
         )
         monkeypatch.setattr(
-            "tests.integration.refit_scenario_driver.run_refit_generate_plan",
+            "tests.integration.refit_scenario_driver.run_refit_start",
             Mock(return_value=(0, {"event": "plan_generated"})),
         )
         monkeypatch.setattr(
-            "tests.integration.refit_scenario_driver.run_refit_continue",
+            "tests.integration.refit_scenario_driver.run_refit_iterate",
             Mock(side_effect=lambda _cwd: next(continue_responses)),
         )
         monkeypatch.setattr(
@@ -198,11 +198,11 @@ class TestExecuteRefitScenario:
             "tests.integration.refit_scenario_driver.prepare_run_branch", Mock()
         )
         monkeypatch.setattr(
-            "tests.integration.refit_scenario_driver.run_refit_generate_plan",
+            "tests.integration.refit_scenario_driver.run_refit_start",
             Mock(return_value=(0, {"event": "plan_generated"})),
         )
         monkeypatch.setattr(
-            "tests.integration.refit_scenario_driver.run_refit_continue",
+            "tests.integration.refit_scenario_driver.run_refit_iterate",
             Mock(
                 return_value=(
                     0,
@@ -231,11 +231,11 @@ class TestExecuteRefitScenario:
             "tests.integration.refit_scenario_driver.prepare_run_branch", Mock()
         )
         monkeypatch.setattr(
-            "tests.integration.refit_scenario_driver.run_refit_generate_plan",
+            "tests.integration.refit_scenario_driver.run_refit_start",
             Mock(return_value=(0, {"event": "plan_generated"})),
         )
         monkeypatch.setattr(
-            "tests.integration.refit_scenario_driver.run_refit_continue",
+            "tests.integration.refit_scenario_driver.run_refit_iterate",
             Mock(
                 return_value=(
                     1,
@@ -266,11 +266,11 @@ class TestExecuteRefitScenario:
             "tests.integration.refit_scenario_driver.prepare_run_branch", Mock()
         )
         monkeypatch.setattr(
-            "tests.integration.refit_scenario_driver.run_refit_generate_plan",
+            "tests.integration.refit_scenario_driver.run_refit_start",
             Mock(return_value=(0, {"event": "plan_generated"})),
         )
         monkeypatch.setattr(
-            "tests.integration.refit_scenario_driver.run_refit_continue",
+            "tests.integration.refit_scenario_driver.run_refit_iterate",
             Mock(
                 return_value=(
                     1,

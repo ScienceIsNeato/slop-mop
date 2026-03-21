@@ -121,9 +121,7 @@ class TestBuildPlan:
 
 class TestCmdRefitGeneratePlan:
     def test_generate_plan_requires_clean_worktree(self, monkeypatch, capsys, tmp_path):
-        args = argparse.Namespace(
-            generate_plan=True, continue_run=False, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=True, iterate=False, project_root=str(tmp_path))
         (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
 
         monkeypatch.setattr(
@@ -141,8 +139,8 @@ class TestCmdRefitGeneratePlan:
         self, capsys, tmp_path: Path
     ):
         args = argparse.Namespace(
-            generate_plan=True,
-            continue_run=False,
+            start=True,
+            iterate=False,
             project_root=str(tmp_path),
             json_output=True,
             output_file=None,
@@ -156,9 +154,7 @@ class TestCmdRefitGeneratePlan:
     def test_generate_plan_runs_scour_and_persists_plan(
         self, monkeypatch, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(
-            generate_plan=True, continue_run=False, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=True, iterate=False, project_root=str(tmp_path))
         (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
 
         saved = {}
@@ -200,8 +196,8 @@ class TestCmdRefitGeneratePlan:
         self, monkeypatch, capsys, tmp_path: Path
     ):
         args = argparse.Namespace(
-            generate_plan=True,
-            continue_run=False,
+            start=True,
+            iterate=False,
             project_root=str(tmp_path),
             json_output=True,
             output_file=None,
@@ -248,8 +244,8 @@ class TestCmdRefitGeneratePlan:
     ):
         output_file = tmp_path / "refit-out.json"
         args = argparse.Namespace(
-            generate_plan=True,
-            continue_run=False,
+            start=True,
+            iterate=False,
             project_root=str(tmp_path),
             json_output=False,
             output_file=str(output_file),
@@ -297,9 +293,7 @@ class TestCmdRefitGeneratePlan:
 
 class TestCmdRefitContinue:
     def test_continue_requires_existing_plan(self, capsys, tmp_path: Path):
-        args = argparse.Namespace(
-            generate_plan=False, continue_run=True, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
 
         assert refit_mod.cmd_refit(args) == 1
         out = capsys.readouterr().out
@@ -309,8 +303,8 @@ class TestCmdRefitContinue:
         self, capsys, tmp_path: Path
     ):
         args = argparse.Namespace(
-            generate_plan=False,
-            continue_run=True,
+            start=False,
+            iterate=True,
             project_root=str(tmp_path),
             json_output=True,
             output_file=None,
@@ -322,9 +316,7 @@ class TestCmdRefitContinue:
         assert payload["status"] == "missing_plan"
 
     def test_continue_blocks_on_branch_drift(self, monkeypatch, capsys, tmp_path: Path):
-        args = argparse.Namespace(
-            generate_plan=False, continue_run=True, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
         monkeypatch.setattr(
             refit_mod,
             "_load_plan",
@@ -346,9 +338,7 @@ class TestCmdRefitContinue:
         assert "current branch no longer matches" in out
 
     def test_continue_stops_on_first_failure(self, monkeypatch, capsys, tmp_path: Path):
-        args = argparse.Namespace(
-            generate_plan=False, continue_run=True, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
         plan = {
             "project_root": str(tmp_path),
             "branch": "feat/refit",
@@ -390,9 +380,7 @@ class TestCmdRefitContinue:
     def test_continue_blocks_on_plan_corruption_when_gate_missing(
         self, monkeypatch, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(
-            generate_plan=False, continue_run=True, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
         plan = {
             "project_root": str(tmp_path),
             "branch": "feat/refit",
@@ -434,9 +422,7 @@ class TestCmdRefitContinue:
     def test_continue_blocks_when_git_status_cannot_be_read(
         self, monkeypatch, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(
-            generate_plan=False, continue_run=True, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
         plan = {
             "project_root": str(tmp_path),
             "branch": "feat/refit",
@@ -479,8 +465,8 @@ class TestCmdRefitContinue:
         self, monkeypatch, capsys, tmp_path: Path
     ):
         args = argparse.Namespace(
-            generate_plan=False,
-            continue_run=True,
+            start=False,
+            iterate=True,
             project_root=str(tmp_path),
             json_output=True,
             output_file=None,
@@ -522,7 +508,7 @@ class TestCmdRefitContinue:
         assert payload["current_gate"] == "myopia:source-duplication"
         assert (
             payload["next_action"]
-            == "Fix the failing gate, then rerun `sm refit --continue`."
+            == "Fix the failing gate, then rerun `sm refit --iterate`."
         )
 
     def test_continue_failure_writes_protocol_file_and_output_mirror(
@@ -530,8 +516,8 @@ class TestCmdRefitContinue:
     ):
         output_file = tmp_path / "continue-out.json"
         args = argparse.Namespace(
-            generate_plan=False,
-            continue_run=True,
+            start=False,
+            iterate=True,
             project_root=str(tmp_path),
             json_output=False,
             output_file=str(output_file),
@@ -578,9 +564,7 @@ class TestCmdRefitContinue:
     def test_continue_advances_without_commit_when_gate_already_passes(
         self, monkeypatch, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(
-            generate_plan=False, continue_run=True, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
         plan = {
             "project_root": str(tmp_path),
             "branch": "feat/refit",
@@ -622,9 +606,7 @@ class TestCmdRefitContinue:
     def test_continue_commits_when_preexisting_fix_passes(
         self, monkeypatch, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(
-            generate_plan=False, continue_run=True, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
         plan = {
             "project_root": str(tmp_path),
             "branch": "feat/refit",
@@ -678,9 +660,7 @@ class TestCmdRefitContinue:
     def test_continue_blocks_when_worktree_changes_during_validation(
         self, monkeypatch, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(
-            generate_plan=False, continue_run=True, project_root=str(tmp_path)
-        )
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
         plan = {
             "project_root": str(tmp_path),
             "branch": "feat/refit",
@@ -731,8 +711,8 @@ class TestCmdRefitContinue:
         self, monkeypatch, tmp_path: Path
     ):
         args = argparse.Namespace(
-            generate_plan=False,
-            continue_run=True,
+            start=False,
+            iterate=True,
             project_root=str(tmp_path),
             json_output=False,
             output_file=None,

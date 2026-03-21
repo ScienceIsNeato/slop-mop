@@ -123,7 +123,7 @@ sm init                       # auto-detects languages, writes .sb_config.json
 sm swab                       # fix what it finds, commit when green
 sm scour                      # thorough check before opening a PR
 sm buff                       # post-PR loop: CI triage + next-step guidance
-sm refit --generate-plan      # remediation-phase rail: build one-gate-at-a-time plan
+sm refit --start              # onboarding: build one-gate-at-a-time remediation plan
 ```
 
 Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
@@ -149,27 +149,29 @@ What this does:
 
 This is for controlled remediation, not denial. The goal is to surface net-new slop while you pay down the existing mess deliberately.
 
-### Refit Rail
+### Refit (Onboarding)
 
-When a repo is still in remediation phase, use `sm refit` to turn open-ended cleanup into a deterministic rail:
+When a repo is being onboarded into slop-mop, use `sm refit` to turn open-ended cleanup into a deterministic process:
 
 ```bash
-sm refit --generate-plan
-sm refit --continue
+sm refit --start
+sm refit --iterate
+sm refit --finish
 ```
 
 What this does:
-- `sm refit --generate-plan` verifies remediation preflight, runs a full `sm scour --no-auto-fix`, and persists a local plan under `.slopmop/refit/`.
+- `sm refit --start` verifies remediation preflight, runs a full `sm scour --no-auto-fix`, and persists a local plan under `.slopmop/refit/`.
 - The plan is one gate per item, ordered by slop-mop's existing remediation priority rules.
-- `sm refit --continue` reruns only the current gate, stops on the first blocker, and writes a protocol artifact describing the exact next action.
+- `sm refit --iterate` reruns only the current gate, stops on the first blocker, and writes a protocol artifact describing the exact next action. If the plan has never been started, it fails and suggests `--start`. If already finished, it surfaces a helpful message.
+- `sm refit --finish` checks the current remediation plan against the scour results and transitions the repo from remediation to maintenance mode.
 - When the current item already has local remediation edits and the targeted gate passes without unexpected repo drift, `refit` owns the structured commit for that item.
 
 Current constraint:
 - The doctor preflight is intentionally stubbed in this first merged version of `refit`. The integration point is already present and will be replaced by the real `sm doctor` command in the next task.
 
 Machine-readable mode:
-- `sm refit --generate-plan --json`
-- `sm refit --continue --json`
+- `sm refit --start --json`
+- `sm refit --iterate --json`
 - `sm refit ... --output-file .slopmop/refit/latest.json`
 
 `refit` always persists `.slopmop/refit/protocol.json`; JSON mode mirrors that payload to stdout so an agent can resume without scraping prose.
@@ -304,11 +306,12 @@ before PR          -> sm scour
 after PR opens     -> sm buff
 ```
 
-Remediation-phase override:
+Onboarding (refit, step 0 — before entering the loop):
 
 ```text
-repo still in remediation -> sm refit --generate-plan
-after each remediation fix -> sm refit --continue
+start remediation          -> sm refit --start
+after each remediation fix -> sm refit --iterate
+all gates pass             -> sm refit --finish
 ```
 
 `sm buff` is post-submit protection. It reads CI scan results for the PR branch,

@@ -33,7 +33,6 @@ classifiers = [
 # Install extras for the tools you need: pipx install slopmop[all]
 dependencies = [
     "jinja2>=3.0.0",
-    "packaging>=20.0",
 ]
 
 [project.optional-dependencies]

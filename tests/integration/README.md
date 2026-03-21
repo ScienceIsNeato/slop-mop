@@ -17,7 +17,7 @@ contract under `tests/integration/scenarios/`.
 - `tests/integration/scenario_manifest.py` validates reserved refs, patch-ladder
   linearity, and run-branch naming
 - `DockerManager.run_scripted_scenario(...)` is the persistent single-container
-  seam for multi-step `sm refit --continue` loops
+  entrypoint for multi-step `sm refit --iterate` loops
 
 This is intentionally still a foundation layer. The actual agent-shim loop and
 patch application logic will build on top of these helpers rather than bypass

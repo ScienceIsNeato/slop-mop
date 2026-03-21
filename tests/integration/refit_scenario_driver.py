@@ -3,7 +3,7 @@
 This module is designed to run inside the integration container against the
 secondary fixture repo. It treats `.slopmop/refit/protocol.json` as the agent
 contract, applies ideal remediation patches from the scenario manifest, and
-hands control back to `sm refit --continue` until the plan completes.
+hands control back to `sm refit --iterate` until the plan completes.
 """
 
 from __future__ import annotations
@@ -161,12 +161,12 @@ def _run_refit_command(cwd: Path, *args: str) -> tuple[int, dict[str, Any]]:
     return result.returncode, load_protocol(cwd)
 
 
-def run_refit_generate_plan(cwd: Path) -> tuple[int, dict[str, Any]]:
-    return _run_refit_command(cwd, "--generate-plan", "--json")
+def run_refit_start(cwd: Path) -> tuple[int, dict[str, Any]]:
+    return _run_refit_command(cwd, "--start", "--json")
 
 
-def run_refit_continue(cwd: Path) -> tuple[int, dict[str, Any]]:
-    return _run_refit_command(cwd, "--continue", "--json")
+def run_refit_iterate(cwd: Path) -> tuple[int, dict[str, Any]]:
+    return _run_refit_command(cwd, "--iterate", "--json")
 
 
 def apply_patch_step(cwd: Path, step: PatchStep) -> None:
@@ -205,7 +205,7 @@ def execute_refit_scenario(
     verify_reserved_refs(cwd, manifest)
     prepare_run_branch(cwd, manifest, run_branch)
 
-    plan_code, plan_protocol = run_refit_generate_plan(cwd)
+    plan_code, plan_protocol = run_refit_start(cwd)
     if plan_code != 0 or plan_protocol.get("event") != "plan_generated":
         raise ScenarioDriverError(
             f"expected plan_generated from refit plan generation, got exit {plan_code} and event {plan_protocol.get('event')!r}"
@@ -215,7 +215,7 @@ def execute_refit_scenario(
     iteration_count = 0
     while True:
         iteration_count += 1
-        continue_code, protocol = run_refit_continue(cwd)
+        continue_code, protocol = run_refit_iterate(cwd)
         event = str(protocol.get("event"))
         if continue_code == 0 and event == "completed":
             break

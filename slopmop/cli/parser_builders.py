@@ -233,22 +233,29 @@ class RefitParserBuilder:
             "refit",
             help="Structured remediation planning and continuation",
             description=(
-                "Run the remediation rail. Generate a one-gate-at-a-time plan "
-                "from the current scour results, then continue that plan until "
-                "the next blocker."
+                "Onboard a repository into slop-mop. Generate a one-gate-at-a-time "
+                "remediation plan, iterate through it, and finish by transitioning "
+                "to maintenance mode."
             ),
         )
         mode_group = refit_parser.add_mutually_exclusive_group(required=True)
         mode_group.add_argument(
-            "--generate-plan",
+            "--start",
+            dest="start",
             action="store_true",
             help="Capture the current scour failure set and persist a refit plan.",
         )
         mode_group.add_argument(
-            "--continue",
-            dest="continue_run",
+            "--iterate",
+            dest="iterate",
             action="store_true",
             help="Resume the persisted refit plan until the next blocker.",
+        )
+        mode_group.add_argument(
+            "--finish",
+            dest="finish",
+            action="store_true",
+            help="Check plan completion and transition from remediation to maintenance.",
         )
         refit_parser.add_argument(
             "--project-root",

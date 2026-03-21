@@ -84,27 +84,33 @@ class TestCreateParser:
         assert args.json_output is True
         assert args.output_file == "triage.json"
 
-    def test_refit_generate_plan_parses(self):
+    def test_refit_start_parses(self):
         parser = create_parser()
-        args = parser.parse_args(["refit", "--generate-plan"])
+        args = parser.parse_args(["refit", "--start"])
         assert args.verb == "refit"
-        assert args.generate_plan is True
-        assert args.continue_run is False
+        assert args.start is True
+        assert args.iterate is False
 
-    def test_refit_continue_parses(self):
+    def test_refit_iterate_parses(self):
         parser = create_parser()
-        args = parser.parse_args(["refit", "--continue"])
+        args = parser.parse_args(["refit", "--iterate"])
         assert args.verb == "refit"
-        assert args.generate_plan is False
-        assert args.continue_run is True
+        assert args.start is False
+        assert args.iterate is True
+
+    def test_refit_finish_parses(self):
+        parser = create_parser()
+        args = parser.parse_args(["refit", "--finish"])
+        assert args.verb == "refit"
+        assert args.finish is True
 
     def test_refit_json_and_output_file_flags(self):
         parser = create_parser()
         args = parser.parse_args(
-            ["refit", "--generate-plan", "--json", "--output-file", "refit.json"]
+            ["refit", "--start", "--json", "--output-file", "refit.json"]
         )
         assert args.verb == "refit"
-        assert args.generate_plan is True
+        assert args.start is True
         assert args.json_output is True
         assert args.output_file == "refit.json"
 
@@ -116,7 +122,7 @@ class TestCreateParser:
     def test_refit_modes_are_mutually_exclusive(self):
         parser = create_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["refit", "--generate-plan", "--continue"])
+            parser.parse_args(["refit", "--start", "--iterate"])
 
     def test_swab_with_quality_gates(self):
         parser = create_parser()

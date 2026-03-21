@@ -1,11 +1,13 @@
-"""Structured remediation rail for remediation-phase repositories.
+"""Structured remediation for onboarding repositories into slop-mop.
 
 `sm refit` turns open-ended remediation into a deterministic plan-and-execute
 loop:
-- `sm refit --generate-plan` captures the current failing scour gates and
+- `sm refit --start` captures the current failing scour gates and
   persists a one-gate-at-a-time plan.
-- `sm refit --continue` resumes that plan, rerunning the current gate,
+- `sm refit --iterate` resumes that plan, rerunning the current gate,
   auto-committing when it passes, and stopping on the first blocker.
+- `sm refit --finish` checks the plan against scour results and transitions
+  the repo from remediation to maintenance mode.
 """
 
 from __future__ import annotations
@@ -40,6 +42,9 @@ _POST_REFIT_NEXT_ACTION = (
 )
 _CONTINUE_LOOP = 2
 _NESTED_VALIDATE_OWNER = "refit"
+_MAINTENANCE_NEXT_ACTION = (
+    "Use the normal swab/scour/buff workflow for maintenance repos."
+)
 
 
 def _project_root(args: argparse.Namespace) -> Path:
@@ -206,7 +211,7 @@ def _load_json_file(path: Path) -> Dict[str, Any]:
 def _load_plan(project_root: Path) -> Dict[str, Any]:
     path = _plan_path(project_root)
     if not path.exists():
-        raise FileNotFoundError("No refit plan found. Run `sm refit --generate-plan`.")
+        raise FileNotFoundError("No refit plan found. Run `sm refit --start`.")
     return _load_json_file(path)
 
 
@@ -508,7 +513,7 @@ def _plan_generated_lines(plan: Dict[str, Any]) -> List[str]:
     if items:
         current = items[0]
         lines.append(f"Next gate: {current['gate']}")
-        lines.append("Next command: sm refit --continue")
+        lines.append("Next command: sm refit --iterate")
     else:
         lines.append("No failing scour gates remain. Refit has nothing to do.")
     return lines
@@ -574,7 +579,7 @@ def _load_continue_plan(
             project_root,
             event="missing_plan",
             status="missing_plan",
-            next_action="Run `sm refit --generate-plan`, then rerun `sm refit --continue`.",
+            next_action="Run `sm refit --start`, then rerun `sm refit --iterate`.",
             human_lines=[str(exc)],
         )
         return None
@@ -592,7 +597,7 @@ def _ensure_continue_branch(
     protocol = _snapshot_protocol(
         plan,
         event="blocked_on_branch_drift",
-        next_action="Review branch state, then rerun `sm refit --continue` from the planned branch.",
+        next_action="Review branch state, then rerun `sm refit --iterate` from the planned branch.",
         details={
             "expected_branch": expected_branch,
             "current_branch": current_branch,
@@ -624,359 +629,7 @@ def _emit_continue_completion(
     return 0
 
 
-def _block_continue_plan(
-    args: argparse.Namespace,
-    project_root: Path,
-    plan: Dict[str, Any],
-    *,
-    event: str,
-    status: str,
-    next_action: str,
-    human_lines: List[str],
-    details: Dict[str, Any],
-    current_item: Optional[Dict[str, Any]] = None,
-    artifact_path: Optional[Path] = None,
-    increment_attempt: bool = False,
-) -> int:
-    if current_item is not None:
-        current_item["status"] = status
-        if artifact_path is not None:
-            current_item["last_artifact"] = str(artifact_path)
-        if increment_attempt:
-            current_item["attempt_count"] = (
-                int(current_item.get("attempt_count", 0)) + 1
-            )
-    plan["status"] = status
-    _save_plan(project_root, plan)
-    protocol = _snapshot_protocol(
-        plan,
-        event=event,
-        next_action=next_action,
-        details=details,
-    )
-    _emit_protocol(args, project_root, protocol, human_lines)
-    return 1
-
-
-def _block_on_repo_state_error(
-    args: argparse.Namespace,
-    project_root: Path,
-    plan: Dict[str, Any],
-    *,
-    error: RuntimeError,
-    current_item: Optional[Dict[str, Any]] = None,
-    gate: Optional[str] = None,
-    artifact_path: Optional[Path] = None,
-) -> int:
-    lines = [
-        "Refit blocked: could not read repository state safely.",
-        str(error),
-    ]
-    if gate:
-        lines.insert(0, f"Refit blocked on {gate}: repository state check failed.")
-    return _block_continue_plan(
-        args,
-        project_root,
-        plan,
-        event="blocked_on_repo_state_error",
-        status="blocked_on_repo_state_error",
-        next_action="Resolve the repository state problem, then rerun `sm refit --continue`.",
-        human_lines=lines,
-        details={
-            "reason": "repo_state_unreadable",
-            "error": str(error),
-            "gate": gate,
-            "artifact": str(artifact_path) if artifact_path is not None else None,
-        },
-        current_item=current_item,
-        artifact_path=artifact_path,
-    )
-
-
-def _advance_without_commit(
-    args: argparse.Namespace,
-    project_root: Path,
-    plan: Dict[str, Any],
-    current_item: Dict[str, Any],
-    gate: str,
-    artifact_path: Path,
-) -> int:
-    current_item["status"] = "completed_no_changes"
-    current_item["last_artifact"] = str(artifact_path)
-    current_item["attempt_count"] = int(current_item.get("attempt_count", 0)) + 1
-    plan = _advance_plan(plan)
-    _save_plan(project_root, plan)
-    protocol = _snapshot_protocol(
-        plan,
-        event="advanced_without_commit",
-        next_action=(
-            "Run `sm refit --continue` again to keep advancing the plan."
-            if plan.get("status") != "completed"
-            else _POST_REFIT_NEXT_ACTION
-        ),
-        details={"gate": gate, "artifact": str(artifact_path)},
-    )
-    _emit_protocol(
-        args,
-        project_root,
-        protocol,
-        [f"Refit advanced {gate}: gate already passes with no new commit required."],
-    )
-    return 0 if plan.get("status") == "completed" else _CONTINUE_LOOP
-
-
-def _commit_and_advance(
-    args: argparse.Namespace,
-    project_root: Path,
-    plan: Dict[str, Any],
-    current_item: Dict[str, Any],
-    gate: str,
-    artifact_path: Path,
-) -> int:
-    commit_code, detail = _commit_current_changes(
-        project_root, str(current_item.get("commit_message"))
-    )
-    current_item["attempt_count"] = int(current_item.get("attempt_count", 0)) + 1
-    current_item["last_artifact"] = str(artifact_path)
-    if commit_code != 0:
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_commit",
-            status="blocked_on_commit",
-            next_action="Resolve the git commit problem, then rerun `sm refit --continue`.",
-            human_lines=[
-                line
-                for line in [
-                    f"Refit blocked on {gate}: automatic commit failed.",
-                    detail,
-                ]
-                if line
-            ],
-            details={"gate": gate, "artifact": str(artifact_path), "detail": detail},
-            current_item=current_item,
-        )
-
-    new_head = _current_head(project_root)
-    current_item["status"] = "completed"
-    current_item["commit_sha"] = new_head
-    plan["expected_head"] = new_head
-    plan = _advance_plan(plan)
-    _save_plan(project_root, plan)
-    protocol = _snapshot_protocol(
-        plan,
-        event="committed",
-        next_action=(
-            "Run `sm refit --continue` again to keep advancing the plan."
-            if plan.get("status") != "completed"
-            else _POST_REFIT_NEXT_ACTION
-        ),
-        details={
-            "committed_gate": gate,
-            "commit_message": current_item.get("commit_message"),
-            "commit_sha": new_head,
-            "artifact": str(artifact_path),
-        },
-    )
-    _emit_protocol(
-        args,
-        project_root,
-        protocol,
-        [f"Refit committed {gate}: {current_item['commit_message']}"],
-    )
-    return 0 if plan.get("status") == "completed" else _CONTINUE_LOOP
-
-
-def _process_current_plan_item(
-    args: argparse.Namespace,
-    project_root: Path,
-    plan: Dict[str, Any],
-) -> int:
-    items = cast(List[Dict[str, Any]], plan.get("items", []))
-    current_index = int(plan.get("current_index", 0))
-    if current_index >= len(items):
-        return _emit_continue_completion(args, project_root, plan)
-
-    current_item = items[current_index]
-    gate_value = current_item.get("gate")
-    if not isinstance(gate_value, str) or not gate_value.strip():
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_plan_corruption",
-            status="blocked_on_plan_corruption",
-            next_action=(
-                "The refit plan appears to be corrupt. Inspect or regenerate the plan "
-                "before rerunning `sm refit --continue`."
-            ),
-            human_lines=[
-                "Refit blocked: current plan item has no gate. The refit plan appears to be corrupt."
-            ],
-            details={
-                "reason": "current_plan_item_missing_gate",
-                "current_index": current_index,
-                "current_item": current_item,
-            },
-            current_item=current_item,
-        )
-    gate = gate_value
-
-    expected_head = cast(Optional[str], plan.get("expected_head"))
-    live_head = _current_head(project_root)
-    if expected_head and live_head != expected_head:
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_head_drift",
-            status="blocked_on_head_drift",
-            next_action="Review the repo state, then rerun `sm refit --continue` once HEAD is stable.",
-            human_lines=[
-                "Refit blocked: HEAD changed unexpectedly since the plan last advanced. "
-                "Review the repo state before resuming."
-            ],
-            details={"expected_head": expected_head, "current_head": live_head},
-        )
-
-    try:
-        status_before = _worktree_status(project_root)
-    except RuntimeError as exc:
-        return _block_on_repo_state_error(
-            args,
-            project_root,
-            plan,
-            error=exc,
-            current_item=current_item,
-            gate=gate,
-        )
-    artifact_path = _continue_scour_path(project_root)
-    exit_code = _run_scour(project_root, artifact_path, gate=gate)
-    live_head_after_run = _current_head(project_root)
-    try:
-        status_after = _worktree_status(project_root)
-    except RuntimeError as exc:
-        return _block_on_repo_state_error(
-            args,
-            project_root,
-            plan,
-            error=exc,
-            current_item=current_item,
-            gate=gate,
-            artifact_path=artifact_path,
-        )
-
-    if expected_head and live_head_after_run != expected_head:
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_head_drift",
-            status="blocked_on_head_drift",
-            next_action="Review the repo state, then rerun `sm refit --continue` once HEAD is stable.",
-            human_lines=[
-                f"Refit blocked on {gate}: HEAD changed during execution. "
-                "Review the repo state before resuming."
-            ],
-            details={
-                "expected_head": expected_head,
-                "current_head": live_head_after_run,
-                "artifact": str(artifact_path),
-            },
-            current_item=current_item,
-            artifact_path=artifact_path,
-            increment_attempt=True,
-        )
-    if exit_code not in {0, 1}:
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_execution_error",
-            status="blocked_on_execution_error",
-            next_action="Inspect the artifact and execution environment, then rerun `sm refit --continue`.",
-            human_lines=[
-                f"Refit blocked on {gate}: targeted scour errored instead of producing a normal gate result."
-            ],
-            details={"gate": gate, "artifact": str(artifact_path)},
-            current_item=current_item,
-            artifact_path=artifact_path,
-            increment_attempt=True,
-        )
-    if exit_code == 1:
-        lines = [
-            f"Refit stopped on failing gate: {gate}",
-            f"Inspect: {artifact_path}",
-        ]
-        if current_item.get("log_file"):
-            lines.append(f"Latest log: {current_item['log_file']}")
-        lines.append("Fix the issue, then rerun: sm refit --continue")
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_failure",
-            status="blocked_on_failure",
-            next_action="Fix the failing gate, then rerun `sm refit --continue`.",
-            human_lines=lines,
-            details={"gate": gate, "artifact": str(artifact_path)},
-            current_item=current_item,
-            artifact_path=artifact_path,
-            increment_attempt=True,
-        )
-    if not status_before and status_after:
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_dirty_worktree",
-            status="blocked_on_dirty_worktree",
-            next_action="Review unexpected worktree changes, then rerun `sm refit --continue`.",
-            human_lines=[
-                f"Refit blocked on {gate}: worktree changed during validation even though the item started clean."
-            ],
-            details={
-                "gate": gate,
-                "status_before": status_before,
-                "status_after": status_after,
-                "artifact": str(artifact_path),
-            },
-            current_item=current_item,
-            artifact_path=artifact_path,
-            increment_attempt=True,
-        )
-    if status_before and not _status_is_same(status_before, status_after):
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_dirty_worktree",
-            status="blocked_on_dirty_worktree",
-            next_action="Review the changed worktree state, then rerun `sm refit --continue`.",
-            human_lines=[
-                f"Refit blocked on {gate}: worktree changed during validation beyond the planned remediation edits."
-            ],
-            details={
-                "gate": gate,
-                "status_before": status_before,
-                "status_after": status_after,
-                "artifact": str(artifact_path),
-            },
-            current_item=current_item,
-            artifact_path=artifact_path,
-            increment_attempt=True,
-        )
-    if not status_after:
-        return _advance_without_commit(
-            args, project_root, plan, current_item, gate, artifact_path
-        )
-    return _commit_and_advance(
-        args, project_root, plan, current_item, gate, artifact_path
-    )
-
-
-def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
+def _cmd_refit_start(args: argparse.Namespace) -> int:
     project_root = _project_root(args)
     if not _ensure_remediation_phase(project_root):
         _emit_standalone_protocol(
@@ -984,7 +637,7 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
             project_root,
             event="blocked_on_phase",
             status="blocked_on_phase",
-            next_action="Use the normal swab/scour/buff workflow for maintenance repos.",
+            next_action=_MAINTENANCE_NEXT_ACTION,
             human_lines=[
                 "Refit is only available while the repo is in remediation phase. "
                 "Run the normal swab/scour/buff workflow for maintenance repos."
@@ -997,7 +650,7 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
             project_root,
             event="preflight_missing_init",
             status="preflight_missing_init",
-            next_action="Run `sm init`, then rerun `sm refit --generate-plan`.",
+            next_action="Run `sm init`, then rerun `sm refit --start`.",
             human_lines=[
                 "Refit preflight failed: no .sb_config.json found. Run `sm init` first."
             ],
@@ -1011,7 +664,7 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
             project_root,
             event="preflight_doctor_failed",
             status="preflight_doctor_failed",
-            next_action="Resolve the doctor preflight issue, then rerun `sm refit --generate-plan`.",
+            next_action="Resolve the doctor preflight issue, then rerun `sm refit --start`.",
             human_lines=[f"Refit preflight failed: {doctor_detail}"],
             details={"doctor_detail": doctor_detail},
         )
@@ -1026,7 +679,7 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
             status="preflight_dirty_worktree",
             next_action=(
                 "Commit, stash, or discard local changes before rerunning "
-                "`sm refit --generate-plan`."
+                "`sm refit --start`."
             ),
             human_lines=[
                 "Refit preflight failed: working tree is not clean. "
@@ -1044,7 +697,7 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
             project_root,
             event="initial_scour_error",
             status="initial_scour_error",
-            next_action="Inspect the initial scour failure and rerun `sm refit --generate-plan`.",
+            next_action="Inspect the initial scour failure and rerun `sm refit --start`.",
             human_lines=[
                 "Refit could not generate a plan because the initial scour run errored."
             ],
@@ -1057,7 +710,7 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
     protocol = _snapshot_protocol(
         plan,
         event="plan_generated",
-        next_action="Run `sm refit --continue` to start advancing the plan.",
+        next_action="Run `sm refit --iterate` to start advancing the plan.",
         details={
             "initial_scour_artifact": str(artifact_path),
             "item_count": len(cast(List[Dict[str, Any]], plan.get("items", []))),
@@ -1067,7 +720,7 @@ def _cmd_refit_generate_plan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_refit_continue(args: argparse.Namespace) -> int:
+def _cmd_refit_iterate(args: argparse.Namespace) -> int:
     project_root = _project_root(args)
     if not _ensure_remediation_phase(project_root):
         _emit_standalone_protocol(
@@ -1075,7 +728,7 @@ def _cmd_refit_continue(args: argparse.Namespace) -> int:
             project_root,
             event="blocked_on_phase",
             status="blocked_on_phase",
-            next_action="Use the normal swab/scour/buff workflow for maintenance repos.",
+            next_action=_MAINTENANCE_NEXT_ACTION,
             human_lines=[
                 "Refit is only available while the repo is in remediation phase. "
                 "Run the normal swab/scour/buff workflow for maintenance repos."
@@ -1086,13 +739,30 @@ def _cmd_refit_continue(args: argparse.Namespace) -> int:
     plan = _load_continue_plan(args, project_root)
     if plan is None:
         return 1
+
+    if plan.get("status") == "completed":
+        _emit_standalone_protocol(
+            args,
+            project_root,
+            event="already_completed",
+            status="already_completed",
+            next_action="Run `sm refit --finish` to transition to maintenance mode.",
+            human_lines=[
+                "Refit plan is already completed. "
+                "Run `sm refit --finish` to check results and transition to maintenance."
+            ],
+        )
+        return 0
+
     if not _ensure_continue_branch(args, project_root, plan):
         return 1
+
+    from slopmop.cli._refit_iteration import process_current_plan_item
 
     try:
         with sm_lock(project_root, "refit"):
             while True:
-                result = _process_current_plan_item(args, project_root, plan)
+                result = process_current_plan_item(args, project_root, plan)
                 if result == _CONTINUE_LOOP:
                     continue
                 return result
@@ -1103,7 +773,7 @@ def _cmd_refit_continue(args: argparse.Namespace) -> int:
             "event": "blocked_on_lock",
             "status": "blocked_on_lock",
             "project_root": str(project_root),
-            "next_action": "Wait for the active sm process to finish, then rerun `sm refit --continue`.",
+            "next_action": "Wait for the active sm process to finish, then rerun `sm refit --iterate`.",
             "details": {"message": str(exc)},
         }
         _emit_protocol(
@@ -1115,11 +785,73 @@ def _cmd_refit_continue(args: argparse.Namespace) -> int:
         return 1
 
 
+def _cmd_refit_finish(args: argparse.Namespace) -> int:
+    project_root = _project_root(args)
+    if not _ensure_remediation_phase(project_root):
+        _emit_standalone_protocol(
+            args,
+            project_root,
+            event="blocked_on_phase",
+            status="already_maintenance",
+            next_action=_MAINTENANCE_NEXT_ACTION,
+            human_lines=[
+                "This repo is already in maintenance mode. Nothing to finish."
+            ],
+        )
+        return 0
+
+    plan = _load_continue_plan(args, project_root)
+    if plan is None:
+        return 1
+
+    items = cast(List[Dict[str, Any]], plan.get("items", []))
+    pending = [
+        i for i in items if i.get("status") not in {"completed", "completed_no_changes"}
+    ]
+    if pending:
+        _emit_standalone_protocol(
+            args,
+            project_root,
+            event="finish_blocked_incomplete",
+            status="finish_blocked_incomplete",
+            next_action=f"Run `sm refit --iterate` to complete the remaining {len(pending)} gate(s).",
+            human_lines=[
+                f"Cannot finish: {len(pending)} gate(s) still pending in the remediation plan.",
+                f"Next gate: {pending[0].get('gate', 'unknown')}",
+                "Run `sm refit --iterate` to continue.",
+            ],
+            details={
+                "pending_count": len(pending),
+                "next_gate": pending[0].get("gate"),
+            },
+        )
+        return 1
+
+    from slopmop.workflow.state_store import record_baseline
+
+    record_baseline(project_root)
+    _emit_standalone_protocol(
+        args,
+        project_root,
+        event="refit_completed",
+        status="maintenance",
+        next_action=_POST_REFIT_NEXT_ACTION,
+        human_lines=[
+            "All remediation gates passed.",
+            "Repo transitioned from remediation to maintenance mode.",
+            _POST_REFIT_NEXT_ACTION,
+        ],
+    )
+    return 0
+
+
 def cmd_refit(args: argparse.Namespace) -> int:
-    """Run the structured remediation rail."""
-    if getattr(args, "generate_plan", False):
-        return _cmd_refit_generate_plan(args)
-    if getattr(args, "continue_run", False):
-        return _cmd_refit_continue(args)
-    print("Refit requires exactly one mode: --generate-plan or --continue")
+    """Run the structured remediation process."""
+    if getattr(args, "start", False):
+        return _cmd_refit_start(args)
+    if getattr(args, "iterate", False):
+        return _cmd_refit_iterate(args)
+    if getattr(args, "finish", False):
+        return _cmd_refit_finish(args)
+    print("Refit requires exactly one mode: --start, --iterate, or --finish")
     return 1

@@ -420,7 +420,7 @@ class DockerManager:
         """Run an arbitrary multi-step scenario after clone/install/init.
 
         This is the seam for higher-level refit integration tests that need to
-        keep repo state alive across multiple `sm refit --continue` calls in one
+        keep repo state alive across multiple `sm refit --iterate` calls in one
         container run. The scenario script becomes phase C while clone, install,
         and init stay identical to the standard integration harness.
         """
