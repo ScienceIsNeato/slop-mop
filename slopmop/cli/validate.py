@@ -151,6 +151,29 @@ def _setup_dynamic_display(
 # ─── Shared execution pipeline ───────────────────────────────────────────
 
 
+def _should_skip_repo_lock() -> bool | None:
+    """Check whether a nested validation run should skip lock acquisition.
+
+    Returns ``True`` when the caller is the refit pipeline's internal nested
+    validation (opt-in via ``SLOPMOP_SKIP_REPO_LOCK``).  Returns ``None``
+    when the env-var is set but the owner is not ``refit`` — a disallowed
+    caller that should be rejected.  Returns ``False`` otherwise (normal
+    locking path).
+    """
+    skip = os.environ.get("SLOPMOP_SKIP_REPO_LOCK", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not skip:
+        return False
+    owner = os.environ.get("SLOPMOP_NESTED_VALIDATE_OWNER", "").strip()
+    if owner != "refit":
+        return None  # disallowed caller
+    return True
+
+
 def _run_validation(
     args: argparse.Namespace,
     gates: List[str],
@@ -209,22 +232,7 @@ def _run_validation(
     else:
         lock_expected_duration = max(float(historical_estimate), 1.0)
 
-    # Internal nested validation runs, such as refit re-checking a single gate
-    # while already holding the repo lock, can opt out of reacquiring here.
-    skip_repo_lock = os.environ.get("SLOPMOP_SKIP_REPO_LOCK", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    nested_validate_owner = os.environ.get("SLOPMOP_NESTED_VALIDATE_OWNER", "").strip()
-    if skip_repo_lock:
-        if nested_validate_owner != "refit":
-            print(
-                "SLOPMOP_SKIP_REPO_LOCK is reserved for internal nested validation runs.",
-                file=sys.stderr,
-            )
-            return 1
+    def _run_locked() -> int:
         return _run_validation_locked(
             args,
             gates,
@@ -235,6 +243,16 @@ def _run_validation(
             custom_gates_registered=custom_gates_registered,
         )
 
+    lock_skip = _should_skip_repo_lock()
+    if lock_skip is None:
+        print(
+            "SLOPMOP_SKIP_REPO_LOCK is reserved for internal nested validation runs.",
+            file=sys.stderr,
+        )
+        return 1
+    if lock_skip:
+        return _run_locked()
+
     try:
         with sm_lock(
             project_root,
@@ -242,15 +260,7 @@ def _run_validation(
             stale_after_seconds=lock_stale_after,
             expected_duration_seconds=lock_expected_duration,
         ):
-            return _run_validation_locked(
-                args,
-                gates,
-                level_name,
-                project_root,
-                resolved_swabbing_time=resolved_swabbing_time,
-                preloaded_config=preloaded_config,
-                custom_gates_registered=custom_gates_registered,
-            )
+            return _run_locked()
     except SmLockError as exc:
         print(str(exc), file=sys.stderr)
         return 1
