@@ -166,7 +166,10 @@ class TestScenarioShellScript:
 class TestRefitScenarioShellScript:
     def test_refit_scenario_invokes_driver_script(self) -> None:
         script = _capture_refit_scenario_shell_script()
-        assert f"{_CONTAINER_BUILD_DIR}/tests/integration/refit_scenario_driver.py" in script
+        assert (
+            f"{_CONTAINER_BUILD_DIR}/tests/integration/refit_scenario_driver.py"
+            in script
+        )
         assert "--scenario happy-path-small" in script
         assert (
             "--run-branch run/refit/happy-path-small/20260319-abcdef1-run01" in script

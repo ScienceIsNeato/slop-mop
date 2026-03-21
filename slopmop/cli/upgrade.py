@@ -16,12 +16,6 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Dict, List, Optional, TypedDict, cast
 
-try:
-    from packaging.version import InvalidVersion, Version
-except ModuleNotFoundError:
-    Version = None  # type: ignore[assignment,misc]
-    InvalidVersion = None  # type: ignore[assignment,misc]
-
 from slopmop.core.config import config_file_path, state_dir_path
 from slopmop.migrations import planned_upgrade_migrations, run_upgrade_migrations
 
@@ -328,8 +322,10 @@ def _print_check_plan(
 
 def _require_packaging() -> None:
     """Raise ``MissingDependencyError`` when packaging is not installed."""
-    if Version is None:
-        from slopmop import MissingDependencyError
+    try:
+        from packaging.version import Version  # noqa: F401
+    except ModuleNotFoundError:
+        from slopmop.exceptions import MissingDependencyError
 
         raise MissingDependencyError(
             package="packaging",
@@ -340,12 +336,16 @@ def _require_packaging() -> None:
 
 def _packaging_version_class() -> type:
     _require_packaging()
-    return cast(type, Version)
+    from packaging.version import Version
+
+    return Version
 
 
 def _packaging_invalid_version_class() -> type[Exception]:
     _require_packaging()
-    return cast(type[Exception], InvalidVersion)
+    from packaging.version import InvalidVersion
+
+    return InvalidVersion
 
 
 def cmd_upgrade(args: argparse.Namespace) -> int:
