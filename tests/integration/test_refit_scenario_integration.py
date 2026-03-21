@@ -1,10 +1,4 @@
-"""Real Docker-backed acceptance test for the deterministic refit scenario loop.
-
-This test is intentionally self-skipping until the external fixture repo gains
-the real scenario branch, reserved tags, and patch-ladder SHAs that match the
-checked-in manifest. The test shape is still worth checking in now so the repo
-already contains the intended acceptance criterion.
-"""
+"""Real Docker-backed acceptance test for the deterministic refit scenario loop."""
 
 from __future__ import annotations
 
@@ -19,24 +13,18 @@ from tests.integration.scenario_manifest import (
     manifest_uses_placeholder_shas,
 )
 
-_ok, _reason = DockerManager.prerequisites_met()
 _manifest = load_scenario_manifest_by_name("happy-path-small")
-_scenario_ready = not manifest_uses_placeholder_shas(_manifest)
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(not _ok, reason=_reason or "prerequisites not met"),
-    pytest.mark.skipif(
-        not _scenario_ready,
-        reason=(
-            "happy-path-small still uses placeholder SHAs; populate the real "
-            "bucket-o-slop scenario branch/tags before running this acceptance test"
-        ),
-    ),
-]
+pytestmark = [pytest.mark.integration]
 
 
 class TestRefitScenarioHappyPath:
     def test_refit_scenario_completes_end_to_end(self) -> None:
+        ok, reason = DockerManager.prerequisites_met()
+        assert ok, f"Docker prerequisites not met: {reason}"
+        assert not manifest_uses_placeholder_shas(_manifest), (
+            "happy-path-small still uses placeholder SHAs; populate the real "
+            "bucket-o-slop scenario branch/tags before running this acceptance test"
+        )
         run_branch = make_run_branch_name(
             _manifest.scenario,
             "abcdef1",
