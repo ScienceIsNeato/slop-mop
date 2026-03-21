@@ -273,9 +273,14 @@ class SourceDuplicationCheck(BaseCheck):
         all_ignores = list(dict.fromkeys(self._DEFAULT_IGNORES + config_excludes))
         ignore_str = ",".join(all_ignores)
 
+        # Restrict formats to match cache_inputs/is_applicable — otherwise
+        # jscpd scans every file type it recognises (SVG, HTML, markdown, …)
+        # and flags e.g. logo assets as "code duplication".
         return [
             "npx",
             "jscpd",
+            "--format",
+            "python,javascript,typescript,jsx,tsx",
             "--min-tokens",
             str(min_tokens),
             "--min-lines",
