@@ -12,7 +12,7 @@ Slop-mop (`sm`) is your procedural backbone for development in this repository. 
 ## When to use
 
 - **During implementation**: Run `sm swab` after every meaningful code change. Keep running until clean.
-- **During inherited remediation**: Run `sm refit --generate-plan`, then `sm refit --continue` until the plan completes.
+- **During inherited remediation**: Run `sm refit --start`, then `sm refit --iterate` until the plan completes.
 - **Before PR**: Run `sm scour` for a comprehensive sweep.
 - **After CI/review**: Run `sm buff <PR_NUMBER>` to convert feedback into next steps.
 
@@ -20,7 +20,7 @@ Slop-mop (`sm`) is your procedural backbone for development in this repository. 
 
 ```
 Normal work:  write code → sm swab → fix → repeat → sm scour → sm buff <PR#>
-Remediation:  sm refit --generate-plan → fix one gate → sm refit --continue
+Remediation:  sm refit --start → fix one gate → sm refit --iterate
 ```
 
 ## Tooling preference
@@ -31,7 +31,7 @@ Remediation:  sm refit --generate-plan → fix one gate → sm refit --continue
 ## Refit discipline
 
 - Use `sm refit` only for remediation-phase repos.
-- Treat `sm refit --continue` as the canonical resume command.
+- Treat `sm refit --iterate` as the canonical resume command.
 - Let `refit` own the structured remediation commits when the rail is active.
 
 ## Safety
