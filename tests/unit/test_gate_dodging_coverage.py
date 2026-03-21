@@ -18,7 +18,7 @@ from slopmop.checks.quality.gate_dodging import (
     _check_justification_comment,
     _describe_change,
     _detect_loosened_gates,
-    _detect_pr_number,
+    _detect_pr_for_gate,
     _is_more_permissive,
     _load_base_config,
 )
@@ -298,7 +298,7 @@ class TestDetectLoosenedGatesEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# _detect_pr_number
+# _detect_pr_for_gate
 # ---------------------------------------------------------------------------
 
 
@@ -308,17 +308,17 @@ class TestDetectPrNumber:
     def test_github_pr_number_env(self, tmp_path):
         """GITHUB_PR_NUMBER env var is used first."""
         with patch.dict("os.environ", {"GITHUB_PR_NUMBER": "42"}, clear=True):
-            assert _detect_pr_number(str(tmp_path)) == 42
+            assert _detect_pr_for_gate(str(tmp_path)) == 42
 
     def test_pr_number_env(self, tmp_path):
         """PR_NUMBER env var works."""
         with patch.dict("os.environ", {"PR_NUMBER": "99"}, clear=True):
-            assert _detect_pr_number(str(tmp_path)) == 99
+            assert _detect_pr_for_gate(str(tmp_path)) == 99
 
     def test_pull_request_number_env(self, tmp_path):
         """PULL_REQUEST_NUMBER env var works."""
         with patch.dict("os.environ", {"PULL_REQUEST_NUMBER": "7"}, clear=True):
-            assert _detect_pr_number(str(tmp_path)) == 7
+            assert _detect_pr_for_gate(str(tmp_path)) == 7
 
     def test_invalid_env_var_skipped(self, tmp_path):
         """Non-integer env var is skipped."""
@@ -329,14 +329,14 @@ class TestDetectPrNumber:
                 side_effect=FileNotFoundError,
             ),
         ):
-            assert _detect_pr_number(str(tmp_path)) is None
+            assert _detect_pr_for_gate(str(tmp_path)) is None
 
     def test_github_ref_pulls(self, tmp_path):
         """GITHUB_REF=refs/pull/123/merge extracts PR number."""
         with patch.dict(
             "os.environ", {"GITHUB_REF": "refs/pull/123/merge"}, clear=True
         ):
-            assert _detect_pr_number(str(tmp_path)) == 123
+            assert _detect_pr_for_gate(str(tmp_path)) == 123
 
     def test_github_ref_non_pull(self, tmp_path):
         """GITHUB_REF not matching refs/pull/ falls through."""
@@ -347,7 +347,7 @@ class TestDetectPrNumber:
                 side_effect=FileNotFoundError,
             ),
         ):
-            assert _detect_pr_number(str(tmp_path)) is None
+            assert _detect_pr_for_gate(str(tmp_path)) is None
 
     def test_github_ref_invalid_number(self, tmp_path):
         """GITHUB_REF with non-int PR number falls through."""
@@ -358,7 +358,7 @@ class TestDetectPrNumber:
                 side_effect=FileNotFoundError,
             ),
         ):
-            assert _detect_pr_number(str(tmp_path)) is None
+            assert _detect_pr_for_gate(str(tmp_path)) is None
 
     def test_gh_cli_fallback_success(self, tmp_path):
         """Falls back to gh pr list when env vars missing."""
@@ -375,7 +375,7 @@ class TestDetectPrNumber:
                 side_effect=[branch_result, pr_list_result],
             ),
         ):
-            assert _detect_pr_number(str(tmp_path)) == 55
+            assert _detect_pr_for_gate(str(tmp_path)) == 55
 
     def test_gh_cli_empty_pr_list(self, tmp_path):
         """gh pr list returns empty array → None."""
@@ -392,7 +392,7 @@ class TestDetectPrNumber:
                 side_effect=[branch_result, pr_list_result],
             ),
         ):
-            assert _detect_pr_number(str(tmp_path)) is None
+            assert _detect_pr_for_gate(str(tmp_path)) is None
 
     def test_gh_cli_branch_fails(self, tmp_path):
         """git branch --show-current fails → None."""
@@ -406,7 +406,7 @@ class TestDetectPrNumber:
                 return_value=branch_result,
             ),
         ):
-            assert _detect_pr_number(str(tmp_path)) is None
+            assert _detect_pr_for_gate(str(tmp_path)) is None
 
     def test_gh_cli_timeout(self, tmp_path):
         """Subprocess timeout during gh pr list → None."""
@@ -420,7 +420,7 @@ class TestDetectPrNumber:
                 side_effect=[branch_result, subprocess.TimeoutExpired("gh", 10)],
             ),
         ):
-            assert _detect_pr_number(str(tmp_path)) is None
+            assert _detect_pr_for_gate(str(tmp_path)) is None
 
     def test_gh_cli_pr_list_nonzero(self, tmp_path):
         """gh pr list returns non-zero → None."""
@@ -437,7 +437,7 @@ class TestDetectPrNumber:
                 side_effect=[branch_result, pr_list_result],
             ),
         ):
-            assert _detect_pr_number(str(tmp_path)) is None
+            assert _detect_pr_for_gate(str(tmp_path)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -648,7 +648,7 @@ class TestRunAdditionalPaths:
                 return_value=schema_lookup,
             ),
             patch(
-                "slopmop.checks.quality.gate_dodging._detect_pr_number",
+                "slopmop.checks.quality.gate_dodging._detect_pr_for_gate",
                 return_value=None,
             ),
         ):

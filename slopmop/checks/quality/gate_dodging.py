@@ -320,7 +320,7 @@ def _detect_loosened_gates(
     return changes
 
 
-def _detect_pr_number(project_root: str) -> Optional[int]:
+def _detect_pr_for_gate(project_root: str) -> Optional[int]:
     """Detect PR number from env or git branch (mirrors PRCommentsCheck)."""
     for env_var in ["GITHUB_PR_NUMBER", "PR_NUMBER", "PULL_REQUEST_NUMBER"]:
         val = os.environ.get(env_var)
@@ -557,7 +557,7 @@ class GateDodgingCheck(BaseCheck):
             )
 
         # We found loosened gates — check for justification on PR
-        pr_number = _detect_pr_number(project_root)
+        pr_number = _detect_pr_for_gate(project_root)
         if pr_number is not None:
             if _check_justification_comment(project_root, pr_number):
                 lines = [

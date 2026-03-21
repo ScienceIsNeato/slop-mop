@@ -9,19 +9,8 @@ from unittest.mock import Mock
 
 from slopmop.cli import buff as buff_mod
 from slopmop.cli import scan_triage as triage
-from slopmop.core.result import CheckResult, CheckStatus
-
-
-def _feedback_result(status: CheckStatus, **kwargs) -> CheckResult:
-    return CheckResult(
-        name="myopia:ignored-feedback",
-        status=status,
-        duration=0.01,
-        output=kwargs.get("output", ""),
-        error=kwargs.get("error"),
-        fix_suggestion=kwargs.get("fix_suggestion"),
-        status_detail=kwargs.get("status_detail"),
-    )
+from slopmop.core.result import CheckStatus
+from tests.conftest import make_feedback_result
 
 
 class TestBuffIterateAndFinalize:
@@ -90,7 +79,7 @@ class TestBuffIterateAndFinalize:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.FAILED)),
+            Mock(return_value=make_feedback_result(CheckStatus.FAILED)),
         )
 
         assert buff_mod.cmd_buff(args) == 1
@@ -138,7 +127,7 @@ class TestBuffIterateAndFinalize:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
         monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=1))
 
@@ -171,7 +160,7 @@ class TestBuffIterateAndFinalize:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
         monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=0))
 
@@ -207,7 +196,7 @@ class TestBuffIterateAndFinalize:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
         monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=0))
         push_branch = Mock(return_value=0)
@@ -243,7 +232,7 @@ class TestBuffIterateAndFinalize:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
         monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=1))
 
@@ -285,7 +274,7 @@ class TestBuffIterateAndFinalize:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
         monkeypatch.setattr(buff_mod, "_run_scour_quietly", Mock(return_value=0))
 
@@ -328,7 +317,7 @@ class TestBuffVerifyAndResolve:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
 
         assert buff_mod.cmd_buff(args) == 0

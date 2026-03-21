@@ -7,19 +7,8 @@ from unittest.mock import Mock
 
 from slopmop.cli import buff as buff_mod
 from slopmop.cli import scan_triage as triage
-from slopmop.core.result import CheckResult, CheckStatus
-
-
-def _feedback_result(status: CheckStatus, **kwargs) -> CheckResult:
-    return CheckResult(
-        name="myopia:ignored-feedback",
-        status=status,
-        duration=0.01,
-        output=kwargs.get("output", ""),
-        error=kwargs.get("error"),
-        fix_suggestion=kwargs.get("fix_suggestion"),
-        status_detail=kwargs.get("status_detail"),
-    )
+from slopmop.core.result import CheckStatus
+from tests.conftest import make_feedback_result
 
 
 class TestBuffInspectCommand:
@@ -47,7 +36,7 @@ class TestBuffInspectCommand:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
 
         assert buff_mod.cmd_buff(args) == 0
@@ -86,7 +75,7 @@ class TestBuffInspectCommand:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
 
         assert buff_mod.cmd_buff(args) == 1
@@ -113,7 +102,7 @@ class TestBuffInspectCommand:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
 
         assert buff_mod.cmd_buff(args) == 0
@@ -150,7 +139,7 @@ class TestBuffInspectCommand:
         monkeypatch.setattr(
             buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        feedback_gate = Mock(return_value=_feedback_result(CheckStatus.PASSED))
+        feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
         monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
 
         assert buff_mod.cmd_buff(args) == 0
@@ -174,7 +163,7 @@ class TestBuffInspectCommand:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
 
         assert buff_mod.cmd_buff(args) == 1
@@ -225,7 +214,7 @@ class TestBuffInspectCommand:
             buff_mod,
             "_run_pr_feedback_gate",
             Mock(
-                return_value=_feedback_result(
+                return_value=make_feedback_result(
                     CheckStatus.FAILED,
                     status_detail="3 unresolved",
                     output="PR #85 has unresolved review threads.",
@@ -268,7 +257,7 @@ class TestBuffInspectCommand:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.PASSED)),
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
 
         assert buff_mod.cmd_buff(args) == 0
@@ -350,7 +339,7 @@ class TestBuffStatusCommand:
             buff_mod,
             "_run_pr_feedback_gate",
             Mock(
-                return_value=_feedback_result(
+                return_value=make_feedback_result(
                     CheckStatus.FAILED,
                     output="PR #85 has unresolved review threads.",
                 )
@@ -401,7 +390,7 @@ class TestBuffStatusCommand:
         ]
         fetch_checks = Mock(side_effect=[(checks, ""), (checks, "")])
         monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
-        feedback_gate = Mock(return_value=_feedback_result(CheckStatus.PASSED))
+        feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
         monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
         sleep_mock = Mock()
         monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
@@ -442,7 +431,7 @@ class TestBuffStatusCommand:
             buff_mod,
             "_run_pr_feedback_gate",
             Mock(
-                return_value=_feedback_result(
+                return_value=make_feedback_result(
                     CheckStatus.FAILED,
                     output="PR #85 has unresolved review threads.",
                 )
@@ -497,7 +486,7 @@ class TestBuffStatusCommand:
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
-            Mock(return_value=_feedback_result(CheckStatus.SKIPPED)),
+            Mock(return_value=make_feedback_result(CheckStatus.SKIPPED)),
         )
 
         assert buff_mod.cmd_buff(args) == 1
@@ -565,7 +554,7 @@ class TestBuffStatusCommand:
             ]
         )
         monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
-        feedback_gate = Mock(return_value=_feedback_result(CheckStatus.PASSED))
+        feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
         monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
         sleep_mock = Mock()
         monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)

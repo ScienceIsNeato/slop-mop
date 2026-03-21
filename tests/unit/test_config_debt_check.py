@@ -6,7 +6,7 @@ from pathlib import Path
 from slopmop.checks.base import Flaw, GateCategory
 from slopmop.checks.quality.config_debt import (
     ConfigDebtCheck,
-    _load_config,
+    _load_config_json,
     check_disabled_gates,
     check_stale_applicability,
 )
@@ -15,7 +15,7 @@ from slopmop.core.result import CheckStatus
 CONFIG_FILE = ".sb_config.json"
 
 
-def _write_config(root: Path, config: dict) -> None:
+def _write_test_config(root: Path, config: dict) -> None:
     """Write a config dict as .sb_config.json."""
     (root / CONFIG_FILE).write_text(json.dumps(config))
 
@@ -75,7 +75,7 @@ class TestConfigDebtCheckProperties:
 
 class TestApplicability:
     def test_applicable_when_config_exists(self, tmp_path: Path):
-        _write_config(tmp_path, {"version": "1.0"})
+        _write_test_config(tmp_path, {"version": "1.0"})
         check = ConfigDebtCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
@@ -96,17 +96,17 @@ class TestApplicability:
 
 class TestLoadConfig:
     def test_loads_valid_config(self, tmp_path: Path):
-        _write_config(tmp_path, {"version": "1.0", "laziness": {"enabled": True}})
-        config = _load_config(tmp_path)
+        _write_test_config(tmp_path, {"version": "1.0", "laziness": {"enabled": True}})
+        config = _load_config_json(tmp_path)
         assert config is not None
         assert config["version"] == "1.0"
 
     def test_returns_none_for_bad_json(self, tmp_path: Path):
         (tmp_path / CONFIG_FILE).write_text("not json {{{")
-        assert _load_config(tmp_path) is None
+        assert _load_config_json(tmp_path) is None
 
     def test_returns_none_for_missing_file(self, tmp_path: Path):
-        assert _load_config(tmp_path) is None
+        assert _load_config_json(tmp_path) is None
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +301,7 @@ class TestConfigDebtRun:
 
     def test_clean_config_passes(self, tmp_path: Path):
         """No debt → PASSED."""
-        _write_config(
+        _write_test_config(
             tmp_path,
             {
                 "version": "1.0",
@@ -319,7 +319,7 @@ class TestConfigDebtRun:
     def test_stale_config_warns(self, tmp_path: Path):
         """Stale applicability → WARNED."""
         _make_python_project(tmp_path)
-        _write_config(
+        _write_test_config(
             tmp_path,
             {
                 "laziness": {
@@ -335,7 +335,7 @@ class TestConfigDebtRun:
 
     def test_disabled_gate_warns(self, tmp_path: Path):
         """Explicit disabled_gates → WARNED."""
-        _write_config(
+        _write_test_config(
             tmp_path,
             {
                 "version": "1.0",
@@ -350,7 +350,7 @@ class TestConfigDebtRun:
     def test_multiple_findings_combined(self, tmp_path: Path):
         """Multiple debt items → single WARNED with count."""
         _make_python_project(tmp_path)
-        _write_config(
+        _write_test_config(
             tmp_path,
             {
                 "disabled_gates": ["myopia:vulnerability-blindness.py"],
@@ -370,7 +370,7 @@ class TestConfigDebtRun:
         """Even with lots of debt, status is WARNED not FAILED."""
         _make_python_project(tmp_path)
         _make_javascript_project(tmp_path)
-        _write_config(
+        _write_test_config(
             tmp_path,
             {
                 "disabled_gates": ["a:b", "c:d", "e:f"],
@@ -397,14 +397,14 @@ class TestConfigDebtRun:
 
     def test_has_duration(self, tmp_path: Path):
         """Result always includes a duration."""
-        _write_config(tmp_path, {"version": "1.0"})
+        _write_test_config(tmp_path, {"version": "1.0"})
         check = ConfigDebtCheck({})
         result = check.run(str(tmp_path))
         assert result.duration >= 0
 
     def test_error_field_set_on_warn(self, tmp_path: Path):
         """WARNED result populates the error field for display."""
-        _write_config(
+        _write_test_config(
             tmp_path,
             {"disabled_gates": ["laziness:complexity-creep.py"]},
         )

@@ -224,7 +224,7 @@ class TestScanTriageInternals:
             "current_pr_number",
             Mock(side_effect=triage.TriageError("no open PR for branch")),
         )
-        monkeypatch.setattr(triage, "_project_root_from_cwd", Mock(return_value=root))
+        monkeypatch.setattr(triage, "_resolve_project_root", Mock(return_value=root))
         selected_pr = Mock(return_value=85)
         validator = Mock(return_value=85)
         monkeypatch.setattr(triage, "get_current_pr_number", selected_pr)
@@ -240,9 +240,7 @@ class TestScanTriageInternals:
             "current_pr_number",
             Mock(side_effect=triage.TriageError("no open PR for branch")),
         )
-        monkeypatch.setattr(
-            triage, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
+        monkeypatch.setattr(triage, "_resolve_project_root", Mock(return_value="/repo"))
         monkeypatch.setattr(triage, "get_current_pr_number", Mock(return_value=92))
         monkeypatch.setattr(
             triage,

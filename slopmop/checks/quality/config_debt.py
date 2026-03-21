@@ -210,7 +210,7 @@ class ConfigDebtCheck(BaseCheck):
         start = time.time()
         root = Path(project_root)
 
-        config = _load_config(root)
+        config = _load_config_json(root)
         if config is None:
             return self._create_result(
                 status=CheckStatus.PASSED,
@@ -259,7 +259,7 @@ class ConfigDebtCheck(BaseCheck):
         )
 
 
-def _load_config(root: Path) -> Optional[Dict[str, Any]]:
+def _load_config_json(root: Path) -> Optional[Dict[str, Any]]:
     """Load .sb_config.json from project root."""
     try:
         return json.loads((root / CONFIG_FILE).read_text())
