@@ -7,6 +7,9 @@ from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from slopmop import MissingDependencyError
 from slopmop.cli.upgrade import (
     UpgradeError,
     _backup_upgrade_state,
@@ -15,6 +18,7 @@ from slopmop.cli.upgrade import (
     _fetch_latest_pypi_version,
     _installed_version_fresh,
     _is_editable_install,
+    _require_packaging,
     _run_upgrade_install,
     _running_from_source_checkout,
     _upgrade_command,
@@ -458,3 +462,63 @@ class TestUpgradeCommandLine:
             "--force",
             "slopmop==0.9.1",
         ]
+
+
+class TestMissingDependencyGuard:
+    """Tests for graceful handling when packaging is absent."""
+
+    def test_require_packaging_passes_when_available(self):
+        """No error raised when packaging is installed (the normal case)."""
+        assert _require_packaging() is None
+
+    def test_require_packaging_raises_when_missing(self):
+        """MissingDependencyError raised when packaging is not installed."""
+        import builtins
+
+        _real_import = builtins.__import__
+
+        def _fake_import(name, *args, **kwargs):
+            if name == "packaging.version":
+                raise ModuleNotFoundError("No module named 'packaging'")
+            return _real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=_fake_import):
+            with pytest.raises(MissingDependencyError) as exc_info:
+                _require_packaging()
+        assert "packaging" in str(exc_info.value)
+        assert "upgrade" in str(exc_info.value)
+        assert "pipx inject" in str(exc_info.value)
+
+    def test_cmd_upgrade_raises_missing_dep_when_packaging_absent(self, tmp_path):
+        """cmd_upgrade raises MissingDependencyError, not ModuleNotFoundError."""
+        import builtins
+
+        _real_import = builtins.__import__
+
+        def _fake_import(name, *args, **kwargs):
+            if name == "packaging.version":
+                raise ModuleNotFoundError("No module named 'packaging'")
+            return _real_import(name, *args, **kwargs)
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            check=True,
+            to_version=None,
+            verbose=False,
+        )
+        with (
+            patch("builtins.__import__", side_effect=_fake_import),
+            patch(
+                "slopmop.cli.upgrade._running_from_source_checkout", return_value=False
+            ),
+        ):
+            with pytest.raises(MissingDependencyError):
+                cmd_upgrade(args)
+
+    def test_missing_dependency_error_attributes(self):
+        err = MissingDependencyError(
+            package="packaging", verb="upgrade", reason="version comparison"
+        )
+        assert err.package == "packaging"
+        assert err.verb == "upgrade"
+        assert isinstance(err, ImportError)

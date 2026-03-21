@@ -573,6 +573,20 @@ class TestMain:
             mock_cmd.assert_called_once()
             assert result == 0
 
+    def test_main_catches_missing_dependency_error(self, capsys):
+        """main() catches MissingDependencyError and prints a friendly message."""
+        from slopmop import MissingDependencyError
+
+        exc = MissingDependencyError(
+            package="packaging", verb="upgrade", reason="needed for version comparison"
+        )
+        with patch("slopmop.cli.cmd_upgrade", side_effect=exc):
+            result = main(["upgrade", "--check"])
+        assert result == 1
+        err = capsys.readouterr().err
+        assert "packaging" in err
+        assert "pipx inject" in err
+
 
 class TestBuffStatus:
     """Tests for CI status actions through cmd_buff."""
@@ -1026,6 +1040,65 @@ class TestValidateSmLockError:
         assert result == 1
         err = capsys.readouterr().err
         assert "Another sm instance" in err
+
+    @patch("slopmop.cli.validate._run_validation_locked", return_value=0)
+    @patch("slopmop.cli.validate.sm_lock")
+    @patch("slopmop.cli.validate.max_expected_duration", return_value=30.0)
+    @patch("slopmop.cli.validate.load_timing_averages", return_value={})
+    def test_skip_repo_lock_env_bypasses_sm_lock(
+        self,
+        _mock_timings,
+        _mock_expected_duration,
+        mock_lock,
+        mock_run_locked,
+        tmp_path,
+        monkeypatch,
+    ):
+        from slopmop.cli.validate import _run_validation
+
+        monkeypatch.setenv("SLOPMOP_SKIP_REPO_LOCK", "1")
+        monkeypatch.setenv("SLOPMOP_NESTED_VALIDATE_OWNER", "refit")
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+
+        result = _run_validation(args, [], None)
+
+        assert result == 0
+        mock_lock.assert_not_called()
+        mock_run_locked.assert_called_once()
+
+    @patch("slopmop.cli.validate._run_validation_locked", return_value=0)
+    @patch("slopmop.cli.validate.sm_lock")
+    @patch("slopmop.cli.validate.max_expected_duration", return_value=30.0)
+    @patch("slopmop.cli.validate.load_timing_averages", return_value={})
+    def test_skip_repo_lock_env_requires_internal_owner(
+        self,
+        _mock_timings,
+        _mock_expected_duration,
+        mock_lock,
+        mock_run_locked,
+        tmp_path,
+        monkeypatch,
+        capsys,
+    ):
+        from slopmop.cli.validate import _run_validation
+
+        monkeypatch.setenv("SLOPMOP_SKIP_REPO_LOCK", "1")
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+
+        result = _run_validation(args, [], None)
+
+        assert result == 1
+        mock_lock.assert_not_called()
+        mock_run_locked.assert_not_called()
+        assert "reserved for internal nested validation runs" in capsys.readouterr().err
 
 
 class TestValidateJsonOutputFile:

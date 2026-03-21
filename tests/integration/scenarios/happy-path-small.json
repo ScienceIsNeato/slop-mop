@@ -1,0 +1,41 @@
+{
+  "schema": "refit-integration/v1",
+  "scenario": "happy-path-small",
+  "secondary_repo_url": "https://github.com/ScienceIsNeato/bucket-o-slop.git",
+  "fixture_base_sha": "f6049f7840ea4be9de6db24a9813c1a8212e38c3",
+  "scenario_branch": "scenario/refit/happy-path-small",
+  "reserved_tags": [
+    "scenario/refit/happy-path-small/base",
+    "scenario/refit/happy-path-small/step-01",
+    "scenario/refit/happy-path-small/step-02",
+    "scenario/refit/happy-path-small/step-03"
+  ],
+  "patch_ladder": [
+    {
+      "step": 1,
+      "gate": "myopia:source-duplication",
+      "from_sha": "f6049f7840ea4be9de6db24a9813c1a8212e38c3",
+      "to_sha": "cc96da5f7c045a5b8652ce00b6ee074201673012",
+      "expected_commit_subject": "refactor(source-duplication): resolve remediation findings"
+    },
+    {
+      "step": 2,
+      "gate": "deceptiveness:bogus-tests.py",
+      "from_sha": "cc96da5f7c045a5b8652ce00b6ee074201673012",
+      "to_sha": "742a795a416749884426cf98dc4c694d1b1fb68e",
+      "expected_commit_subject": "test(bogus-tests.py): resolve remediation findings"
+    },
+    {
+      "step": 3,
+      "gate": "deceptiveness:bogus-tests.js",
+      "from_sha": "742a795a416749884426cf98dc4c694d1b1fb68e",
+      "to_sha": "5f7044831c9db62033ab9de2b52f7a1be2772d9c",
+      "expected_commit_subject": "test(bogus-tests.js): resolve remediation findings"
+    }
+  ],
+  "cross_repo": {
+    "scenario_id": "refit-happy-path-small",
+    "slop_mop_tracking_issue": null,
+    "secondary_repo_tracking_issue": null
+  }
+}

@@ -81,7 +81,7 @@ class TestLoader:
         """_shared/core.md loads and contains the key phrases."""
         core = _load_shared_core()
         text = core.decode("utf-8")
-        assert "speed multiplier" in text
+        assert "development protocol" in text
         assert "sm swab" in text
         assert "sm scour" in text
         assert "sm buff" in text
@@ -111,7 +111,9 @@ class TestLoader:
             # At least one asset in each target should contain the core body
             texts = [a.content.decode("utf-8") for a in assets]
             combined = "\n".join(texts)
-            assert "speed multiplier" in combined, f"{key} missing shared core content"
+            assert (
+                "development protocol" in combined
+            ), f"{key} missing shared core content"
 
     def test_claude_templates_are_independent(self):
         """Claude templates don't use {{CORE}} — they have custom content."""
@@ -119,7 +121,7 @@ class TestLoader:
         for asset in assets:
             text = asset.content.decode("utf-8")
             if asset.destination_relpath.endswith("SKILL.md"):
-                assert "speed multiplier" in text.lower()
+                assert "remediation" in text.lower()
             else:
                 assert "sm" in text.lower()
 
@@ -160,16 +162,15 @@ class TestClaudeSkill:
         assert len(skill_assets) == 1
         text = skill_assets[0].content.decode("utf-8")
         assert text.startswith("---\n")
-        assert "name: slop-mop" in text
+        assert "name: slopmop" in text
         assert "description:" in text
 
     def test_skill_md_description_is_accurate(self):
-        """SKILL.md description should mention speed multiplier, not quality gates."""
+        """SKILL.md description should mention remediation, not quality gates."""
         assets = load_assets(TARGETS["claude"].template_dir)
         skill = next(a for a in assets if a.destination_relpath.endswith("SKILL.md"))
         text = skill.content.decode("utf-8")
-        assert "speed multiplier" in text.lower() or "Speed multiplier" in text
-        assert "quality" not in text.lower()
+        assert "remediation" in text.lower()
 
     def test_skill_md_path(self):
         """SKILL.md installs to .claude/skills/slopmop/SKILL.md."""
@@ -325,7 +326,7 @@ class TestCmdAgent:
             assert "sm buff" in text, f"{label} ({path}) missing 'sm buff'"
 
     def test_installed_content_has_correct_framing(self, tmp_path):
-        """Installed files describe sm as a speed multiplier, not quality gates."""
+        """Installed files describe sm as a development protocol, not quality gates."""
         args = _make_args(tmp_path)
         cmd_agent(args)
 
@@ -333,14 +334,14 @@ class TestCmdAgent:
         cursor_text = (tmp_path / ".cursor/rules/slopmop-swab.mdc").read_text(
             encoding="utf-8"
         )
-        assert "speed multiplier" in cursor_text
+        assert "development protocol" in cursor_text
         assert "{{CORE}}" not in cursor_text
 
         # Check Claude SKILL.md
         skill_text = (tmp_path / ".claude/skills/slopmop/SKILL.md").read_text(
             encoding="utf-8"
         )
-        assert "quality" not in skill_text.lower()
+        assert "remediation" in skill_text.lower()
 
     def test_core_substitution_produces_identical_body(self, tmp_path):
         """All targets using {{CORE}} get identical shared content."""

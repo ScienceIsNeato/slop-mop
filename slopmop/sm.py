@@ -5,6 +5,7 @@ Usage:
     sm scour [--quality-gates GATES] [--verbose] [--quiet]
     sm upgrade [--check] [--to-version VERSION]
     sm buff [PR_NUMBER]
+    sm refit [--start | --iterate | --finish]
     sm agent install [--target TARGET] [--project-root PATH] [--force]
     sm config [--show] [--enable GATE] [--disable GATE] [--json FILE]
     sm init [--config FILE] [--non-interactive]
@@ -18,6 +19,7 @@ Verbs:
     scour         Thorough validation (PR readiness — superset of swab)
     upgrade       Upgrade slop-mop and validate the result
     buff          Post-PR CI triage and next-step guidance
+    refit         Repository onboarding — remediation planning and execution
     config        View or update configuration
     init          Interactive setup and project configuration
     agent         Install agent integration templates
@@ -37,7 +39,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from slopmop import __version__
-from slopmop.cli.parser_builders import AgentParserBuilder, BuffParserBuilder
+from slopmop.cli.parser_builders import (
+    AgentParserBuilder,
+    BuffParserBuilder,
+    RefitParserBuilder,
+)
 from slopmop.constants import PROJECT_ROOT_HELP
 
 logger = logging.getLogger(__name__)
@@ -249,6 +255,13 @@ def _add_buff_parser(
 ) -> None:
     """Add the buff subcommand parser (post-PR validation loop)."""
     BuffParserBuilder(subparsers).build()
+
+
+def _add_refit_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the refit subcommand parser (structured remediation rail)."""
+    RefitParserBuilder(subparsers).build()
 
 
 def _add_upgrade_parser(
@@ -518,8 +531,7 @@ def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser for sm CLI."""
     parser = argparse.ArgumentParser(
         prog="./sm",
-        description=(
-            textwrap.dedent("""
+        description=(textwrap.dedent("""
 🪣 sm - Slop-Mop Quality Gate Framework
 
 A language-agnostic, bolt-on code validation tool designed to catch AI-generated
@@ -529,9 +541,10 @@ both human developers and AI coding assistants.
 Verbs:
   swab        Quick validation — runs on every commit
   scour       Thorough validation — PR readiness (superset of swab)
-    upgrade     Upgrade slop-mop and validate the result
-    buff        Post-PR CI triage and next-step guidance
-    agent       Install agent integration templates
+  upgrade     Upgrade slop-mop and validate the result
+  buff        Post-PR CI triage and next-step guidance
+  refit       Structured remediation planning and continuation
+  agent       Install agent integration templates
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
 
@@ -544,20 +557,15 @@ Quick Start:
 Examples:
   sm swab                               Quick validation (every commit)
   sm scour                              Thorough validation (PR readiness)
-    sm upgrade --check                    Preview an upgrade without mutating
-    sm buff                               Post-PR CI triage
+  sm upgrade --check                    Preview an upgrade without mutating
+  sm buff                               Post-PR CI triage
+  sm refit --start                      Generate a remediation plan
   sm swab -g python,quality             Run specific gate groups
   sm scour --verbose                    Thorough with details
   sm config --show                      Show current configuration
   sm config --enable python-security    Enable a quality gate
   sm help python-lint-format            Show help for specific gate
-""")
-            .replace("\n    upgrade", "\n  upgrade")
-            .replace("\n    buff", "\n  buff")
-            .replace("\n    agent", "\n  agent")
-            .replace("\n    sm upgrade", "\n  sm upgrade")
-            .replace("\n    sm buff", "\n  sm buff")
-        ),
+""")),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -567,6 +575,7 @@ Examples:
     _add_scour_parser(subparsers)
     _add_upgrade_parser(subparsers)
     _add_buff_parser(subparsers)
+    _add_refit_parser(subparsers)
     _add_status_parser(subparsers)
     _add_config_parser(subparsers)
     _add_help_parser(subparsers)
@@ -585,6 +594,7 @@ Examples:
 
 def main(args: Optional[List[str]] = None) -> int:
     """Main entry point for sm CLI."""
+    from slopmop import MissingDependencyError
     from slopmop.cli import (
         cmd_agent,
         cmd_buff,
@@ -592,6 +602,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_config,
         cmd_help,
         cmd_init,
+        cmd_refit,
         cmd_scour,
         cmd_status,
         cmd_swab,
@@ -607,27 +618,56 @@ def main(args: Optional[List[str]] = None) -> int:
     else:
         setup_logging(verbose=False)
 
+    try:
+        return _dispatch(
+            parsed_args,
+            parser,
+            cmd_swab=cmd_swab,
+            cmd_scour=cmd_scour,
+            cmd_upgrade=cmd_upgrade,
+            cmd_buff=cmd_buff,
+            cmd_refit=cmd_refit,
+            cmd_status=cmd_status,
+            cmd_config=cmd_config,
+            cmd_help=cmd_help,
+            cmd_init=cmd_init,
+            cmd_agent=cmd_agent,
+            cmd_commit_hooks=cmd_commit_hooks,
+        )
+    except MissingDependencyError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 1
+
+
+def _dispatch(
+    parsed_args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    **handlers: Any,
+) -> int:
+    """Route parsed arguments to the appropriate verb handler."""
     # Handle verbs
     if parsed_args.verb == "swab":
-        return cmd_swab(parsed_args)
+        return handlers["cmd_swab"](parsed_args)
     elif parsed_args.verb == "scour":
-        return cmd_scour(parsed_args)
+        return handlers["cmd_scour"](parsed_args)
     elif parsed_args.verb == "upgrade":
-        return cmd_upgrade(parsed_args)
+        return handlers["cmd_upgrade"](parsed_args)
     elif parsed_args.verb == "buff":
-        return cmd_buff(parsed_args)
+        return handlers["cmd_buff"](parsed_args)
+    elif parsed_args.verb == "refit":
+        return handlers["cmd_refit"](parsed_args)
     elif parsed_args.verb == "status":
-        return cmd_status(parsed_args)
+        return handlers["cmd_status"](parsed_args)
     elif parsed_args.verb == "config":
-        return cmd_config(parsed_args)
+        return handlers["cmd_config"](parsed_args)
     elif parsed_args.verb == "help":
-        return cmd_help(parsed_args)
+        return handlers["cmd_help"](parsed_args)
     elif parsed_args.verb == "init":
-        return cmd_init(parsed_args)
+        return handlers["cmd_init"](parsed_args)
     elif parsed_args.verb == "agent":
-        return cmd_agent(parsed_args)
+        return handlers["cmd_agent"](parsed_args)
     elif parsed_args.verb == "commit-hooks":
-        return cmd_commit_hooks(parsed_args)
+        return handlers["cmd_commit_hooks"](parsed_args)
     else:
         parser.print_help()
         return 0

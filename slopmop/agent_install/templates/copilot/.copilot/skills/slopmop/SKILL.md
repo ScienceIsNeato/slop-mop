@@ -2,7 +2,7 @@
 name: slop-mop
 description: >-
   Speed multiplier for long-running code generation and slop resolution —
-  provides the swab/scour/buff loop so you always know what to do next.
+  provides the swab/scour/buff loop and the refit remediation rail so you always know what to do next.
 ---
 
 # Slop-mop skill
@@ -12,23 +12,27 @@ Slop-mop (`sm`) is your procedural backbone for development in this repository. 
 ## When to use
 
 - **During implementation**: Run `sm swab` after every meaningful code change. Keep running until clean.
+- **During inherited remediation**: Run `sm refit --start`, then `sm refit --iterate` until the plan completes.
 - **Before PR**: Run `sm scour` for a comprehensive sweep.
 - **After CI/review**: Run `sm buff <PR_NUMBER>` to convert feedback into next steps.
 
 ## The loop
 
 ```
-Write code → sm swab → fix → repeat (until clean)
-                ↓ ready for PR
-            sm scour → fix anything remaining
-                ↓ PR opened
-            sm buff <PR#> → follow remediation plan
+Normal work:  write code → sm swab → fix → repeat → sm scour → sm buff <PR#>
+Remediation:  sm refit --start → fix one gate → sm refit --iterate
 ```
 
 ## Tooling preference
 
 - Prefer MCP tools `sm_swab`/`sm_scour`/`sm_buff` if available.
 - Otherwise, run CLI commands from the project root.
+
+## Refit discipline
+
+- Use `sm refit` only for remediation-phase repos.
+- Treat `sm refit --iterate` as the canonical resume command.
+- Let `refit` own the structured remediation commits when the rail is active.
 
 ## Safety
 

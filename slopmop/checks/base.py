@@ -642,7 +642,7 @@ class BaseCheck(ABC):
     def init_config(self, project_root: str) -> Dict[str, Any]:
         """Return init-time config overrides discovered by this gate.
 
-        This hook is the gate-owned seam for `sm init`. Gates that know how
+        This hook is the gate-owned extension point for `sm init`. Gates that know how
         to discover their own native config or baseline files should override
         it and return only the gate-specific fields they own. The default is
         empty because most gates do not need repo-specific config-file lookup.

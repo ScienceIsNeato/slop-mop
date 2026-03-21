@@ -101,7 +101,19 @@ include = ["slopmop*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-"slopmop.agent_install" = ["templates/**/*"]
+"slopmop.agent_install" = [
+    "templates/_shared/*",
+    "templates/aider/*",
+    "templates/antigravity/.agents/rules/*",
+    "templates/claude/.claude/commands/*",
+    "templates/claude/.claude/skills/slopmop/*",
+    "templates/cline/.clinerules/*",
+    "templates/copilot/.copilot/skills/slopmop/*",
+    "templates/copilot/.github/*",
+    "templates/cursor/.cursor/rules/*",
+    "templates/roo/.roo/rules/*",
+    "templates/windsurf/.windsurf/rules/*",
+]
 
 [tool.black]
 line-length = 88
