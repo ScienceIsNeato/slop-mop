@@ -122,10 +122,14 @@ class _TestAnalyzer(ast.NodeVisitor):
         """Check a single test function for bogus patterns."""
         body = node.body
 
-        # Check for empty body: pass, ..., or docstring-only
-        # (Always a hard failure — 0 statements is the only *definitively*
-        # wrong test body length.)
+        # Check for empty body: pass, ..., or docstring-only.
+        # Decorated tests with an explicit suppression marker are allowed
+        # through — frameworks like pytest's parametrize or visual-regression
+        # decorators (e.g. @frames_comparison) legitimately produce empty
+        # bodies where the decorator *is* the test logic.
         if self._is_empty_body(body):
+            if node.decorator_list and self._is_suppressed(node):
+                return
             self.findings.append(
                 BogusTestFinding(
                     file=self.rel_path,
@@ -149,8 +153,7 @@ class _TestAnalyzer(ast.NodeVisitor):
             )
             return
 
-        # Inline suppression only applies to the short-test heuristic.
-        # Empty bodies and tautological assertions are always flagged.
+        # Inline suppression applies to the short-test heuristic.
         if self._is_suppressed(node):
             return
 
