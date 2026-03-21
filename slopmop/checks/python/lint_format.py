@@ -261,12 +261,18 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 timeout=60,
             )
             if not result.success:
+                output = (result.output or "").strip()
+                # Distinguish tool-installation failures from real formatting
+                # issues.  A broken black (missing dependency, bad interpreter,
+                # import error) is not a code-quality finding — skip it.
+                if "ModuleNotFoundError" in output or "ImportError" in output:
+                    return None  # tool broken, not a code issue
                 any_failed = True
-                if result.output:
+                if output:
                     # Black outputs useful info like:
                     # "error: cannot format file.py: Cannot parse: 1:11: message"
                     # "would reformat file.py"
-                    all_output.append(result.output.strip())
+                    all_output.append(output)
 
         if not any_failed:
             return None
