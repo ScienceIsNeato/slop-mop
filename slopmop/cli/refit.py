@@ -371,6 +371,12 @@ def _commit_kind_for_check(name: str, check: BaseCheck) -> str:
             "missing-annotations",
             "static-analysis",
             "vulnerability-blindness",
+            # Security checks don't all live under the "security:" category
+            # prefix — dependency-risk.py (bandit) is under myopia:. Without
+            # this, bandit annotations get a "test(...)" commit prefix via
+            # the churn fallback, which is nonsense.
+            "dependency-risk",
+            "leaked-secrets",
         )
     ):
         return "fix"
