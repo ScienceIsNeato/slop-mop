@@ -217,19 +217,32 @@ def process_current_plan_item(
     expected_head = cast(Optional[str], plan.get("expected_head"))
     live_head = _refit._current_head(project_root)
     if expected_head and live_head != expected_head:
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_head_drift",
-            status="blocked_on_head_drift",
-            next_action="Review the repo state, then rerun `sm refit --iterate` once HEAD is stable.",
-            human_lines=[
-                "Refit blocked: HEAD changed unexpectedly since the plan last advanced. "
-                "Review the repo state before resuming."
-            ],
-            details={"expected_head": expected_head, "current_head": live_head},
+        # If no items have been completed yet, allow HEAD to drift.
+        # This accommodates the commit of plan artifacts between --start
+        # and the first --iterate, as well as any preparatory commits the
+        # user makes before beginning the iteration loop.
+        any_completed = any(
+            i.get("status") in {"completed", "completed_no_changes"}
+            for i in items
         )
+        if not any_completed:
+            plan["expected_head"] = live_head
+            _refit._save_plan(project_root, plan)
+            expected_head = live_head
+        else:
+            return _block_continue_plan(
+                args,
+                project_root,
+                plan,
+                event="blocked_on_head_drift",
+                status="blocked_on_head_drift",
+                next_action="Review the repo state, then rerun `sm refit --iterate` once HEAD is stable.",
+                human_lines=[
+                    "Refit blocked: HEAD changed unexpectedly since the plan last advanced. "
+                    "Review the repo state before resuming."
+                ],
+                details={"expected_head": expected_head, "current_head": live_head},
+            )
 
     try:
         status_before = _refit._worktree_status(project_root)
