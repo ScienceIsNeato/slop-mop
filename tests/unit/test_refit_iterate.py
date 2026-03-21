@@ -174,6 +174,110 @@ class TestCmdRefitContinue:
         assert "Refit stopped on failing gate: myopia:source-duplication" in out
         assert saved["plan"]["status"] == "blocked_on_failure"
 
+    def test_skip_marks_current_gate_and_advances(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        """--skip should mark status=skipped, record reason, and advance.
+
+        Use case observed against manim: gate #2 has 162 jscpd findings,
+        but gates #3-6 are quick wins. No way to park #2 and move on —
+        plan is a strict queue. --skip unblocks the queue without
+        pretending the gate passed.
+        """
+        args = argparse.Namespace(
+            start=False,
+            iterate=False,
+            skip="162 findings, needs triage",
+            project_root=str(tmp_path),
+        )
+        plan = {
+            "project_root": str(tmp_path),
+            "branch": "feat/refit",
+            "expected_head": "abc123",
+            "status": "blocked_on_failure",
+            "current_index": 0,
+            "current_gate": "myopia:source-duplication",
+            "items": [
+                {"gate": "myopia:source-duplication", "status": "blocked_on_failure"},
+                {"gate": "laziness:dead-code", "status": "pending"},
+            ],
+        }
+        saved = {}
+
+        monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
+        monkeypatch.setattr(
+            refit_mod,
+            "_save_plan",
+            lambda root, plan: saved.update({"plan": json.loads(json.dumps(plan))}),
+        )
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+        monkeypatch.setattr(
+            refit_mod, "_ensure_remediation_phase", Mock(return_value=True)
+        )
+
+        assert refit_mod.cmd_refit(args) == 0
+        out = capsys.readouterr().out
+        assert "Skipped gate: myopia:source-duplication" in out
+        assert "162 findings, needs triage" in out
+        assert "Next gate: laziness:dead-code" in out
+        # Plan state: item marked skipped, index advanced
+        saved_plan = saved["plan"]
+        assert saved_plan["items"][0]["status"] == "skipped"
+        assert saved_plan["items"][0]["skip_reason"] == "162 findings, needs triage"
+        assert saved_plan["current_index"] == 1
+        assert saved_plan["current_gate"] == "laziness:dead-code"
+        assert saved_plan["status"] == "ready"
+
+    def test_skip_past_end_is_noop(self, monkeypatch, capsys, tmp_path: Path):
+        args = argparse.Namespace(
+            start=False, iterate=False, skip="manual skip", project_root=str(tmp_path)
+        )
+        plan = {
+            "project_root": str(tmp_path),
+            "status": "completed",
+            "current_index": 1,
+            "items": [{"gate": "x", "status": "completed"}],
+        }
+        monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
+        save_mock = Mock()
+        monkeypatch.setattr(refit_mod, "_save_plan", save_mock)
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+        monkeypatch.setattr(
+            refit_mod, "_ensure_remediation_phase", Mock(return_value=True)
+        )
+
+        assert refit_mod.cmd_refit(args) == 0
+        out = capsys.readouterr().out
+        assert "No current gate to skip" in out
+        save_mock.assert_not_called()
+
+    def test_skipped_gate_renders_in_plan_summary(self):
+        """Skipped items get a [~] marker and show their reason."""
+        plan = {
+            "schema": "refit/v2",
+            "items": [
+                {
+                    "gate": "myopia:source-duplication",
+                    "status": "skipped",
+                    "skip_reason": "needs triage",
+                    "phase_label": "Phase 1",
+                    "verify_command": "sm scour",
+                    "commit_message": "refactor: ...",
+                },
+                {
+                    "gate": "laziness:dead-code",
+                    "status": "completed",
+                    "phase_label": "Phase 2",
+                    "verify_command": "sm scour",
+                    "commit_message": "fix: ...",
+                },
+            ],
+        }
+        summary = refit_mod._render_plan_summary(plan)
+        assert "[~] myopia:source-duplication" in summary
+        assert "skip reason: needs triage" in summary
+        assert "[x] laziness:dead-code" in summary
+
     def test_continue_blocks_on_plan_corruption_when_gate_missing(
         self, monkeypatch, capsys, tmp_path: Path
     ):

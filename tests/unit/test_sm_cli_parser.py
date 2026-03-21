@@ -114,6 +114,23 @@ class TestCreateParser:
         assert args.verb == "refit"
         assert args.finish is True
 
+    def test_refit_skip_parses_without_reason(self):
+        parser = create_parser()
+        args = parser.parse_args(["refit", "--skip"])
+        assert args.verb == "refit"
+        assert args.skip == "manual skip"
+        assert args.iterate is False
+
+    def test_refit_skip_parses_with_reason(self):
+        parser = create_parser()
+        args = parser.parse_args(["refit", "--skip", "tool unavailable on CI"])
+        assert args.skip == "tool unavailable on CI"
+
+    def test_refit_skip_is_mutually_exclusive_with_iterate(self):
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["refit", "--iterate", "--skip"])
+
     def test_refit_json_and_output_file_flags(self):
         parser = create_parser()
         args = parser.parse_args(
