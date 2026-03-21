@@ -217,15 +217,19 @@ def process_current_plan_item(
     expected_head = cast(Optional[str], plan.get("expected_head"))
     live_head = _refit._current_head(project_root)
     if expected_head and live_head != expected_head:
-        # If no items have been completed yet, allow HEAD to drift.
-        # This accommodates the commit of plan artifacts between --start
-        # and the first --iterate, as well as any preparatory commits the
-        # user makes before beginning the iteration loop.
+        # Allow HEAD to advance when the user is expected to be making
+        # commits.  Two scenarios:
+        #   1. No items completed yet — the user committed plan artifacts
+        #      between --start and the first --iterate.
+        #   2. The current item is in a blocked/failing state — the user
+        #      was told to fix the issue and re-run, which naturally
+        #      requires committing changes.
         any_completed = any(
             i.get("status") in {"completed", "completed_no_changes"}
             for i in items
         )
-        if not any_completed:
+        current_is_blocked = current_item.get("status", "").startswith("blocked")
+        if not any_completed or current_is_blocked:
             plan["expected_head"] = live_head
             _refit._save_plan(project_root, plan)
             expected_head = live_head
