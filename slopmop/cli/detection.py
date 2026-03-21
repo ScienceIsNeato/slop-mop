@@ -327,6 +327,37 @@ def _detect_package_manager(project_root: Path) -> str:
     return "npm"
 
 
+_TEST_SOURCE_EXTS = {".py", ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"}
+
+
+def _dir_contains_test_sources(path: Path) -> bool:
+    """Cheap check that a directory named test/ actually holds test code.
+
+    A directory named "test" does not make it a test directory. Observed
+    against manim: renderer/shaders/test/ contains only .glsl files — it's
+    test *shaders*, not a test suite. Pointing coverage/test gates at it
+    is nonsense.
+    """
+    try:
+        entries = list(path.iterdir())
+    except OSError:
+        return False
+    # Direct source file → yes
+    for entry in entries:
+        if entry.is_file() and entry.suffix in _TEST_SOURCE_EXTS:
+            return True
+    # One level of subdirs (test/unit/test_foo.py is common)
+    for entry in entries:
+        if entry.is_dir():
+            try:
+                for sub in entry.iterdir():
+                    if sub.is_file() and sub.suffix in _TEST_SOURCE_EXTS:
+                        return True
+            except OSError:
+                continue
+    return False
+
+
 def _detect_test_dirs(project_root: Path) -> list[str]:
     """Find test directories."""
     names = {"tests", "test", "spec", "__tests__"}
@@ -339,6 +370,8 @@ def _detect_test_dirs(project_root: Path) -> list[str]:
             if len(rel.parts) > _MAX_NESTED_SCAN_DEPTH:
                 continue
             if any(part in _DETECTION_EXCLUDED_DIRS for part in rel.parts):
+                continue
+            if not _dir_contains_test_sources(path):
                 continue
             found.add(str(rel))
     return sorted(found)
