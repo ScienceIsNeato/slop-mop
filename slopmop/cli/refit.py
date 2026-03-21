@@ -128,9 +128,12 @@ def _current_head(project_root: Path) -> Optional[str]:
 
 
 def _is_slopmop_artifact(status_line: str) -> bool:
-    if len(status_line) < 4:
+    if len(status_line) < 3:
         return False
-    path = status_line[3:]
+    # Git porcelain format: XY PATH (XY = 2-char status code).
+    # Use lstrip() after the status prefix to handle variable spacing
+    # between the status code and the path.
+    path = status_line[2:].lstrip()
     if " -> " in path:
         path = path.split(" -> ", 1)[1]
     path = path.strip().strip('"')
