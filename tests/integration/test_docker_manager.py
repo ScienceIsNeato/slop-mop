@@ -18,6 +18,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from tests.integration.docker_manager import (
+    _CONTAINER_BUILD_DIR,
+    _CONTAINER_SCENARIO_SUMMARY,
     _EXTRACT_MARKER,
     DockerManager,
     RunResult,
@@ -164,7 +166,7 @@ class TestScenarioShellScript:
 class TestRefitScenarioShellScript:
     def test_refit_scenario_invokes_driver_script(self) -> None:
         script = _capture_refit_scenario_shell_script()
-        assert "/tmp/slopmop-build/tests/integration/refit_scenario_driver.py" in script
+        assert f"{_CONTAINER_BUILD_DIR}/tests/integration/refit_scenario_driver.py" in script
         assert "--scenario happy-path-small" in script
         assert (
             "--run-branch run/refit/happy-path-small/20260319-abcdef1-run01" in script
@@ -172,7 +174,7 @@ class TestRefitScenarioShellScript:
 
     def test_refit_scenario_extracts_summary_file(self) -> None:
         script = _capture_refit_scenario_shell_script()
-        assert 'cat "/tmp/refit-scenario-summary.json"' in script
+        assert f'cat "{_CONTAINER_SCENARIO_SUMMARY}"' in script
 
     def test_refit_scenario_respects_custom_checkout_ref(self) -> None:
         script = _capture_refit_scenario_shell_script(ref="deadbeef")

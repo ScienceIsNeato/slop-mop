@@ -1,9 +1,8 @@
 """Scenario manifest helpers for higher-level refit integration tests.
 
-These helpers define the machine-readable contract for Option A of the refit
-integration plan: immutable scenario refs in the secondary repo plus a fresh
-per-run writable branch and a patch ladder describing the ideal remediation
-steps.
+These helpers define the machine-readable contract for the refit integration
+harness: immutable scenario refs in the secondary repo plus a fresh per-run
+writable branch and a patch ladder describing the ideal remediation steps.
 """
 
 from __future__ import annotations

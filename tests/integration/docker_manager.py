@@ -68,6 +68,11 @@ CHECKOUT_FAILED_EXIT = 3
 INIT_FAILED_EXIT = 4
 CLONE_FAILED_EXIT = 5
 
+# Paths inside the Docker container (always Linux).
+_CONTAINER_BUILD_DIR = "/tmp/slopmop-build"
+_CONTAINER_CONFIG_BACKUP = "/tmp/repo_config.json"
+_CONTAINER_SCENARIO_SUMMARY = "/tmp/refit-scenario-summary.json"
+
 
 @dataclass
 class RunResult:
@@ -295,13 +300,13 @@ class DockerManager:
             f"|| {{ echo 'REPO_CLONE_FAILED'; exit {CLONE_FAILED_EXIT}; }}; "
             f"git checkout {checkout_target} 2>&1 "
             f"|| {{ echo 'BRANCH_CHECKOUT_FAILED'; exit {CHECKOUT_FAILED_EXIT}; }}; "
-            f"cp -r /slopmop-src /tmp/slopmop-build 2>&1 "
-            f"&& pip install /tmp/slopmop-build --quiet 2>&1 "
+            f"cp -r /slopmop-src {_CONTAINER_BUILD_DIR} 2>&1 "
+            f"&& pip install {_CONTAINER_BUILD_DIR} --quiet 2>&1 "
             f"|| {{ echo 'SLOPMOP_INSTALL_FAILED'; exit {INSTALL_FAILED_EXIT}; }}; "
-            f"[ -f .sb_config.json ] && cp .sb_config.json /tmp/repo_config.json; "
+            f"[ -f .sb_config.json ] && cp .sb_config.json {_CONTAINER_CONFIG_BACKUP}; "
             f"sm init --non-interactive 2>&1 "
             f"|| {{ echo 'SM_INIT_FAILED'; exit {INIT_FAILED_EXIT}; }}; "
-            f"[ -f /tmp/repo_config.json ] && cp /tmp/repo_config.json .sb_config.json; "
+            f"[ -f {_CONTAINER_CONFIG_BACKUP} ] && cp {_CONTAINER_CONFIG_BACKUP} .sb_config.json; "
             f"rm -f .sb_config.json.template .sb_config.json.backup.*; "
         )
 
@@ -419,7 +424,7 @@ class DockerManager:
     ) -> RunResult:
         """Run an arbitrary multi-step scenario after clone/install/init.
 
-        This is the seam for higher-level refit integration tests that need to
+        This is the entry point for higher-level refit integration tests that need to
         keep repo state alive across multiple `sm refit --iterate` calls in one
         container run. The scenario script becomes phase C while clone, install,
         and init stay identical to the standard integration harness.
@@ -448,21 +453,20 @@ class DockerManager:
         """Run the deterministic refit scenario driver inside the container.
 
         The driver lives in the mounted slop-mop source tree copied to
-        `/tmp/slopmop-build` during bootstrap, so it can reuse the checked-in
+        ``_CONTAINER_BUILD_DIR`` during bootstrap, so it can reuse the checked-in
         scenario manifests and helper code even though tests/ is not installed
         as a Python package in the fixture repo.
         """
-        summary_file = "/tmp/refit-scenario-summary.json"
         scenario_script = " ".join(
             [
                 "python",
-                "/tmp/slopmop-build/tests/integration/refit_scenario_driver.py",
+                f"{_CONTAINER_BUILD_DIR}/tests/integration/refit_scenario_driver.py",
                 "--scenario",
                 scenario,
                 "--run-branch",
                 run_branch,
                 "--summary-file",
-                summary_file,
+                _CONTAINER_SCENARIO_SUMMARY,
             ]
         )
         return self.run_scripted_scenario(
@@ -470,7 +474,7 @@ class DockerManager:
             scenario_script=scenario_script,
             ref=ref,
             extra_env=extra_env,
-            extract_file=summary_file,
+            extract_file=_CONTAINER_SCENARIO_SUMMARY,
         )
 
     # ------------------------------------------------------------------
