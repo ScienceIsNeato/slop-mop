@@ -765,6 +765,73 @@ class TestLegitimateTests:
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
 
+    def test_numpy_testing_assert_recognised(self, tmp_path):
+        """numpy.testing.assert_* is an assertion — chained attr, not self."""
+        # Observed against manim: `np.testing.assert_array_equal(a, b)` was
+        # flagged "no assertions" because the old check required the receiver
+        # to be literally `self`. The `assert_` prefix IS the convention.
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_numpy.py").write_text(textwrap.dedent("""\
+            import numpy as np
+            def test_center():
+                np.testing.assert_array_equal([1, 2], [1, 2])
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_aliased_assert_module_recognised(self, tmp_path):
+        """`import numpy.testing as nt` → `nt.assert_equal()` is an assertion."""
+        # Also from manim: `nt.assert_equal(RED.opacity(0.5)..., 0.5)` as the
+        # entire single-statement test body. Definitely an assertion.
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_nt.py").write_text(textwrap.dedent("""\
+            import numpy.testing as nt
+            def test_opacity():
+                nt.assert_equal(0.5, 0.5)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_mock_assert_methods_recognised(self, tmp_path):
+        """Mock assert_called*/assert_not_called raise on failure → assertions."""
+        # These are first-class assertions. `m.assert_not_called()` raises
+        # AssertionError if m was called. Flagging a test that uses ONLY
+        # mock assertions as "no assertions" is wrong.
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_mock.py").write_text(textwrap.dedent("""\
+            from unittest.mock import Mock
+            def test_not_called():
+                m = Mock()
+                m.assert_not_called()
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_nested_assert_method_inside_loop_recognised(self, tmp_path):
+        """assert_* inside a for-loop body still counts (ast.walk recurses)."""
+        # Manim's parametric tests: a single `for` statement at the top level
+        # (1 "meaningful statement"), with `nt.assert_allclose` buried three
+        # loops deep. The old code walked the tree but then only matched
+        # `self.assert*` — so the walk was pointless for non-self receivers.
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_loop.py").write_text(textwrap.dedent("""\
+            import numpy.testing as nt
+            def test_subdivision():
+                for i in range(3):
+                    for j in range(3):
+                        nt.assert_allclose(i + j, j + i)
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
     def test_async_nested_function_not_flagged(self, tmp_path):
         """Async nested test_* is not flagged either."""
         test_dir = tmp_path / "tests"

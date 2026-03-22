@@ -371,6 +371,12 @@ def _commit_kind_for_check(name: str, check: BaseCheck) -> str:
             "missing-annotations",
             "static-analysis",
             "vulnerability-blindness",
+            # Security checks don't all live under the "security:" category
+            # prefix — dependency-risk.py (bandit) is under myopia:. Without
+            # this, bandit annotations get a "test(...)" commit prefix via
+            # the churn fallback, which is nonsense.
+            "dependency-risk",
+            "leaked-secrets",
         )
     ):
         return "fix"
@@ -489,12 +495,18 @@ def _render_plan_summary(plan: Dict[str, Any]) -> str:
         return "\n".join(lines) + "\n"
 
     for item in items:
-        marker = (
-            "x" if item.get("status") in {"completed", "completed_no_changes"} else " "
-        )
+        status = item.get("status")
+        if status in {"completed", "completed_no_changes"}:
+            marker = "x"
+        elif status == "skipped":
+            marker = "~"
+        else:
+            marker = " "
         lines.append(
-            f"- [{marker}] {item.get('gate')} | {item.get('phase_label')} | {item.get('status')}"
+            f"- [{marker}] {item.get('gate')} | {item.get('phase_label')} | {status}"
         )
+        if status == "skipped" and item.get("skip_reason"):
+            lines.append(f"  skip reason: {item.get('skip_reason')}")
         lines.append(f"  verify: {item.get('verify_command')}")
         lines.append(f"  commit: {item.get('commit_message')}")
     return "\n".join(lines) + "\n"
@@ -804,24 +816,40 @@ def _cmd_refit_finish(args: argparse.Namespace) -> int:
         return 1
 
     items = cast(List[Dict[str, Any]], plan.get("items", []))
-    pending = [
-        i for i in items if i.get("status") not in {"completed", "completed_no_changes"}
-    ]
+    done = {"completed", "completed_no_changes"}
+    pending = [i for i in items if i.get("status") not in done]
+    skipped = [i for i in pending if i.get("status") == "skipped"]
+    unresolved = [i for i in pending if i.get("status") != "skipped"]
     if pending:
+        lines = [f"Cannot finish: {len(pending)} gate(s) not completed."]
+        if unresolved:
+            lines.append(
+                f"  {len(unresolved)} unresolved. Next: {unresolved[0].get('gate', '?')}. "
+                "Run `sm refit --iterate`."
+            )
+        if skipped:
+            lines.append(
+                f"  {len(skipped)} skipped. Either resolve them or disable the "
+                "checks in .sb_config.json:"
+            )
+            for item in skipped:
+                reason = item.get("skip_reason", "")
+                lines.append(f"    - {item.get('gate')}  ({reason})")
         _emit_standalone_protocol(
             args,
             project_root,
             event="finish_blocked_incomplete",
             status="finish_blocked_incomplete",
-            next_action=f"Run `sm refit --iterate` to complete the remaining {len(pending)} gate(s).",
-            human_lines=[
-                f"Cannot finish: {len(pending)} gate(s) still pending in the remediation plan.",
-                f"Next gate: {pending[0].get('gate', 'unknown')}",
-                "Run `sm refit --iterate` to continue.",
-            ],
+            next_action=(
+                "Run `sm refit --iterate` for unresolved gates; disable skipped "
+                "gates in .sb_config.json if permanently out of scope."
+            ),
+            human_lines=lines,
             details={
                 "pending_count": len(pending),
-                "next_gate": pending[0].get("gate"),
+                "skipped_count": len(skipped),
+                "unresolved_count": len(unresolved),
+                "skipped_gates": [i.get("gate") for i in skipped],
             },
         )
         return 1
@@ -844,13 +872,112 @@ def _cmd_refit_finish(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_refit_skip(args: argparse.Namespace) -> int:
+    """Mark the current gate as skipped and advance without running it.
+
+    Use when a gate is intractable right now (tool unavailable, needs
+    discussion, out of scope for this pass). Skipped items still block
+    --finish — disable the check in .sb_config.json if it's permanently
+    out of scope.
+    """
+    project_root = _project_root(args)
+    if not _ensure_remediation_phase(project_root):
+        _emit_standalone_protocol(
+            args,
+            project_root,
+            event="blocked_on_phase",
+            status="blocked_on_phase",
+            next_action=_MAINTENANCE_NEXT_ACTION,
+            human_lines=["Refit is only available in remediation phase."],
+        )
+        return 1
+
+    plan = _load_continue_plan(args, project_root)
+    if plan is None:
+        return 1
+
+    if not _ensure_continue_branch(args, project_root, plan):
+        return 1
+
+    items = cast(List[Dict[str, Any]], plan.get("items", []))
+    current_index = int(plan.get("current_index", 0))
+    if current_index >= len(items):
+        _emit_standalone_protocol(
+            args,
+            project_root,
+            event="skip_past_end",
+            status=str(plan.get("status", "completed")),
+            next_action="Run `sm refit --finish`.",
+            human_lines=[
+                "No current gate to skip — plan is already past its last item."
+            ],
+        )
+        return 0
+
+    current_item = items[current_index]
+    gate = str(current_item.get("gate", "?"))
+    reason = str(getattr(args, "skip", None) or "manual skip")
+
+    try:
+        with sm_lock(project_root, "refit"):
+            current_item["status"] = "skipped"
+            current_item["skip_reason"] = reason
+            plan = _advance_plan(plan)
+            _save_plan(project_root, plan)
+    except SmLockError as exc:
+        protocol: Dict[str, Any] = {
+            "schema": _SCHEMA_VERSION,
+            "recorded_at": _iso_now(),
+            "event": "blocked_on_lock",
+            "status": "blocked_on_lock",
+            "project_root": str(project_root),
+            "next_action": "Wait for the active sm process to finish, then rerun `sm refit --skip`.",
+            "details": {"message": str(exc)},
+        }
+        _emit_protocol(
+            args,
+            project_root,
+            protocol,
+            [f"Refit blocked: {exc}"],
+        )
+        return 1
+
+    next_gate = plan.get("current_gate")
+    next_line = (
+        f"Next gate: {next_gate}. Run: sm refit --iterate"
+        if next_gate
+        else "No gates remain. Run: sm refit --finish"
+    )
+    protocol = _snapshot_protocol(
+        plan,
+        event="gate_skipped",
+        next_action="Run `sm refit --iterate` to resume, or disable the skipped check in .sb_config.json.",
+        details={"skipped_gate": gate, "reason": reason},
+    )
+    _emit_protocol(
+        args,
+        project_root,
+        protocol,
+        [
+            f"Skipped gate: {gate}",
+            f"Reason: {reason}",
+            next_line,
+            "Note: skipped gates still block --finish. If this gate is permanently "
+            "out of scope, disable it in .sb_config.json.",
+        ],
+    )
+    return 0
+
+
 def cmd_refit(args: argparse.Namespace) -> int:
     """Run the structured remediation process."""
     if getattr(args, "start", False):
         return _cmd_refit_start(args)
     if getattr(args, "iterate", False):
         return _cmd_refit_iterate(args)
+    if getattr(args, "skip", None) is not None:
+        return _cmd_refit_skip(args)
     if getattr(args, "finish", False):
         return _cmd_refit_finish(args)
-    print("Refit requires exactly one mode: --start, --iterate, or --finish")
+    print("Refit requires exactly one mode: --start, --iterate, --skip, or --finish")
     return 1

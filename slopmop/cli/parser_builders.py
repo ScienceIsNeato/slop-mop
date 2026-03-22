@@ -264,6 +264,19 @@ class RefitParserBuilder:
             action="store_true",
             help="Check plan completion and transition from remediation to maintenance.",
         )
+        mode_group.add_argument(
+            "--skip",
+            dest="skip",
+            metavar="REASON",
+            nargs="?",
+            const="manual skip",
+            default=None,
+            help=(
+                "Mark the current gate as skipped and advance the plan without "
+                "running it. Optionally provide a reason. Skipped gates still "
+                "block --finish; disable them in .sb_config.json to finish."
+            ),
+        )
         refit_parser.add_argument(
             "--project-root",
             type=str,
