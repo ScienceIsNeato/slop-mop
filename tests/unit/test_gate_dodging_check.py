@@ -564,7 +564,7 @@ class TestRunIntegration:
                 return_value=schema_lookup,
             ),
             patch(
-                "slopmop.checks.quality.gate_dodging._detect_pr_number",
+                "slopmop.checks.quality.gate_dodging._detect_pr_for_gate",
                 return_value=None,
             ),
         ):
@@ -610,7 +610,7 @@ class TestRunIntegration:
                 return_value=schema_lookup,
             ),
             patch(
-                "slopmop.checks.quality.gate_dodging._detect_pr_number",
+                "slopmop.checks.quality.gate_dodging._detect_pr_for_gate",
                 return_value=42,
             ),
             patch(
@@ -659,7 +659,7 @@ class TestRunIntegration:
                 return_value=schema_lookup,
             ),
             patch(
-                "slopmop.checks.quality.gate_dodging._detect_pr_number",
+                "slopmop.checks.quality.gate_dodging._detect_pr_for_gate",
                 return_value=42,
             ),
             patch(

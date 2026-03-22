@@ -73,6 +73,16 @@ class TestCreateParser:
         assert args.action_args == ["84"]
         assert args.interval == 10
 
+    def test_buff_fail_fast_parses(self):
+        parser = create_parser()
+        args = parser.parse_args(["buff", "watch", "84", "--fail-fast"])
+        assert args.fail_fast is True
+
+    def test_buff_fail_fast_defaults_false(self):
+        parser = create_parser()
+        args = parser.parse_args(["buff", "watch", "84"])
+        assert args.fail_fast is False
+
     def test_buff_json_and_output_file_flags(self):
         parser = create_parser()
         args = parser.parse_args(

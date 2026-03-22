@@ -172,7 +172,7 @@ def _find_test_files(project_root: str, exclude_dirs: List[str]) -> Iterator[Pat
                 yield Path(dirpath) / filename
 
 
-def _strip_comments(body: str) -> str:
+def _strip_comments(body: str) -> str:  # noqa: ambiguity-mine
     """Remove single-line and multi-line comments from body."""
     body = re.sub(r"//.*$", "", body, flags=re.MULTILINE)
     body = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)

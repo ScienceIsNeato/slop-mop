@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import BaseCheck, RemediationChurn
 from slopmop.checks.custom import register_custom_gates
+from slopmop.cli.buff import _load_json_file
 from slopmop.cli.scan_triage import write_json_out
 from slopmop.core.lock import SmLockError, sm_lock
 from slopmop.core.registry import get_registry
@@ -199,13 +200,6 @@ def _run_scour(
         check=False,
     )
     return result.returncode
-
-
-def _load_json_file(path: Path) -> Dict[str, Any]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected JSON object in {path}")
-    return cast(Dict[str, Any], data)
 
 
 def _load_plan(project_root: Path) -> Dict[str, Any]:

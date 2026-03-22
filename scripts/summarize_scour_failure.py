@@ -23,7 +23,7 @@ from slopmop.reporting.rail import (
 )
 
 
-def _load_json(path: Path) -> dict[str, Any] | None:
+def _try_load_json(path: Path) -> dict[str, Any] | None:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
@@ -86,7 +86,7 @@ def _write_step_summary(
 
 
 def _read_sarif(sarif_path: str) -> tuple[list[dict[str, Any]], str]:
-    sarif_doc = _load_json(Path(sarif_path))
+    sarif_doc = _try_load_json(Path(sarif_path))
     if sarif_doc is None:
         print("::error::slopmop scour failed - SARIF missing or unreadable")
         return [], "SARIF missing or unreadable"
@@ -105,7 +105,7 @@ def _read_sarif(sarif_path: str) -> tuple[list[dict[str, Any]], str]:
 
 
 def _read_actionable_results(json_path: str) -> list[dict[str, Any]]:
-    json_doc = _load_json(Path(json_path))
+    json_doc = _try_load_json(Path(json_path))
     if json_doc is None:
         print(
             "::warning::JSON report missing/unreadable; cannot classify "

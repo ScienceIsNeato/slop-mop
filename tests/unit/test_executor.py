@@ -59,7 +59,7 @@ class MockCheck(BaseCheck):
         )
 
 
-def make_mock_check_class(
+def make_mock_check_class(  # noqa: ambiguity-mine
     name: str,
     status: CheckStatus = CheckStatus.PASSED,
     duration: float = 0.01,

@@ -64,7 +64,7 @@ class _BogusFinding:
     reason: str
 
 
-def _strip_comments(body: str) -> str:
+def _strip_comments(body: str) -> str:  # noqa: ambiguity-mine
     body = re.sub(r"//.*$", "", body, flags=re.MULTILINE)
     body = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
     return body

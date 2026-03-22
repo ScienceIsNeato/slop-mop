@@ -6,7 +6,7 @@ hook status, and init integration — all without gate execution.
 
 import argparse
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from slopmop.cli.ci import _categorize_checks
 from slopmop.cli.status import (
@@ -27,31 +27,11 @@ from slopmop.cli.status import (
 )
 from slopmop.reporting.timings import TimingStats
 from slopmop.sm import create_parser, main
+from tests.conftest import make_mock_status_registry
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _mock_registry(all_gates=None, swab_gates=None, scour_gates=None):
-    """Build a mock registry for status tests."""
-    mock_reg = MagicMock()
-    mock_reg.list_checks.return_value = all_gates or []
-
-    def _gate_names_for_level(level, _config=None):
-        from slopmop.checks.base import GateLevel
-
-        if level == GateLevel.SWAB:
-            return swab_gates or all_gates or []
-        return scour_gates or all_gates or []
-
-    mock_reg.get_gate_names_for_level.side_effect = _gate_names_for_level
-
-    mock_check = MagicMock()
-    mock_check.is_applicable.return_value = True
-    mock_check.skip_reason.return_value = ""
-    mock_reg.get_check.return_value = mock_check
-    return mock_reg
 
 
 def _stats(
@@ -350,7 +330,7 @@ class TestCmdStatus:
         )
         ns.update(ns_overrides)
         args = argparse.Namespace(**ns)
-        registry = _mock_registry()
+        registry = make_mock_status_registry()
         with (
             patch(
                 "slopmop.cli.status.get_registry",
@@ -1161,7 +1141,7 @@ class TestGatherCiData:
         return_value=(
             [("lint", "pass", "", "")],
             [("deploy", "pending", "", "")],
-            [("test", "fail", "", ""), ("e2e", "fail", "", "")],
+            [("test", "fail", "", "", ""), ("e2e", "fail", "", "", "")],
         ),
     )
     @patch(f"{_CI_MODULE}._fetch_checks", return_value=([{"name": "x"}], ""))

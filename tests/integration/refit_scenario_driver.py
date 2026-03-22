@@ -14,6 +14,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
+from slopmop.cli.refit import _is_slopmop_artifact
+
 try:
     from tests.integration.scenario_manifest import (
         PatchStep,
@@ -73,16 +75,6 @@ def _git_status(cwd: Path) -> list[str]:
         detail = (result.stderr or result.stdout or "").strip()
         raise ScenarioDriverError(f"git status failed: {detail or result.returncode}")
     return [line for line in result.stdout.splitlines() if line.strip()]
-
-
-def _is_slopmop_artifact(status_line: str) -> bool:
-    if len(status_line) < 4:
-        return False
-    path = status_line[3:]
-    if " -> " in path:
-        path = path.split(" -> ", 1)[1]
-    path = path.strip().strip('"')
-    return path == ".slopmop" or path.startswith(".slopmop/")
 
 
 def assert_clean_worktree(cwd: Path, *, label: str) -> None:

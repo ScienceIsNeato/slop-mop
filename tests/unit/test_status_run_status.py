@@ -1,30 +1,10 @@
 """Focused tests for run_status direct invocation."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from slopmop.cli.status import run_status
-
-
-def _mock_registry(all_gates=None, swab_gates=None, scour_gates=None):
-    """Build a mock registry for status tests."""
-    mock_reg = MagicMock()
-    mock_reg.list_checks.return_value = all_gates or []
-
-    def _gate_names_for_level(level, _config=None):
-        from slopmop.checks.base import GateLevel
-
-        if level == GateLevel.SWAB:
-            return swab_gates or all_gates or []
-        return scour_gates or all_gates or []
-
-    mock_reg.get_gate_names_for_level.side_effect = _gate_names_for_level
-
-    mock_check = MagicMock()
-    mock_check.is_applicable.return_value = True
-    mock_check.skip_reason.return_value = ""
-    mock_reg.get_check.return_value = mock_check
-    return mock_reg
+from tests.conftest import make_mock_status_registry
 
 
 class TestRunStatus:
@@ -33,7 +13,7 @@ class TestRunStatus:
     def _run(self, tmp_path):
         """Helper: call run_status with standard mocks."""
         (tmp_path / ".sb_config.json").write_text(json.dumps({}))
-        registry = _mock_registry()
+        registry = make_mock_status_registry()
         with (
             patch("slopmop.cli.status.get_registry", return_value=registry),
             patch("slopmop.cli.status.load_timings", return_value={}),
@@ -57,7 +37,7 @@ class TestRunStatus:
     def test_shows_dashboard_header(self, tmp_path, capsys):
         """run_status shows dashboard header."""
         (tmp_path / ".sb_config.json").write_text(json.dumps({}))
-        registry = _mock_registry()
+        registry = make_mock_status_registry()
         with (
             patch("slopmop.cli.status.get_registry", return_value=registry),
             patch("slopmop.cli.status.load_timings", return_value={}),
@@ -89,7 +69,7 @@ class TestRunStatus:
                 }
             )
         )
-        registry = _mock_registry(
+        registry = make_mock_status_registry(
             all_gates=["myopia:dependency-risk.py"],
             swab_gates=[],
             scour_gates=["myopia:dependency-risk.py"],
@@ -107,7 +87,7 @@ class TestRunStatus:
     def test_no_executor_used(self, tmp_path):
         """run_status does NOT use CheckExecutor."""
         (tmp_path / ".sb_config.json").write_text(json.dumps({}))
-        registry = _mock_registry()
+        registry = make_mock_status_registry()
         with (
             patch("slopmop.cli.status.get_registry", return_value=registry),
             patch("slopmop.cli.status.load_timings", return_value={}),
@@ -148,7 +128,7 @@ class TestRunStatus:
                 }
             )
         )
-        registry = _mock_registry()
+        registry = make_mock_status_registry()
         with (
             patch("slopmop.cli.status.get_registry", return_value=registry),
             patch("slopmop.cli.status.load_timings", return_value={}),

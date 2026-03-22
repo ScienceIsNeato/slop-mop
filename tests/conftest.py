@@ -2,8 +2,11 @@
 
 from pathlib import Path
 from typing import Generator
+from unittest.mock import MagicMock
 
 import pytest
+
+from slopmop.core.result import CheckResult, CheckStatus
 
 
 @pytest.fixture
@@ -62,3 +65,42 @@ module.exports = { hello };
 def slopmop_root() -> Path:
     """Return the slopmop project root directory."""
     return Path(__file__).parent.parent
+
+
+# ---------------------------------------------------------------------------
+# Shared test helpers
+# ---------------------------------------------------------------------------
+
+
+def make_feedback_result(status: CheckStatus, **kwargs) -> CheckResult:
+    """Build a CheckResult for the ``myopia:ignored-feedback`` gate."""
+    return CheckResult(
+        name="myopia:ignored-feedback",
+        status=status,
+        duration=0.01,
+        output=kwargs.get("output", ""),
+        error=kwargs.get("error"),
+        fix_suggestion=kwargs.get("fix_suggestion"),
+        status_detail=kwargs.get("status_detail"),
+    )
+
+
+def make_mock_status_registry(all_gates=None, swab_gates=None, scour_gates=None):
+    """Build a mock registry for status tests."""
+    mock_reg = MagicMock()
+    mock_reg.list_checks.return_value = all_gates or []
+
+    def _gate_names_for_level(level, _config=None):
+        from slopmop.checks.base import GateLevel
+
+        if level == GateLevel.SWAB:
+            return swab_gates or all_gates or []
+        return scour_gates or all_gates or []
+
+    mock_reg.get_gate_names_for_level.side_effect = _gate_names_for_level
+
+    mock_check = MagicMock()
+    mock_check.is_applicable.return_value = True
+    mock_check.skip_reason.return_value = ""
+    mock_reg.get_check.return_value = mock_check
+    return mock_reg

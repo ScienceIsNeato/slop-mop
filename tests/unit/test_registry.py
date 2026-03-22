@@ -45,7 +45,7 @@ class MockCheck(BaseCheck):
         )
 
 
-def make_mock_check_class(name: str, depends_on: list = None):
+def make_mock_check_class(name: str, depends_on: list = None):  # noqa: ambiguity-mine
     """Factory to create mock check classes with specific names."""
 
     class DynamicMockCheck(MockCheck):

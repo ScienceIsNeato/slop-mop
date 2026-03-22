@@ -9,14 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, cast
 
-from slopmop.cli.config import _deep_merge
+from slopmop.cli.config import _as_dict, _deep_merge
 from slopmop.cli.detection import detect_project_type
-
-
-def _as_dict(value: Any) -> Dict[str, Any] | None:
-    if isinstance(value, dict):
-        return cast(Dict[str, Any], value)
-    return None
 
 
 def _as_list(value: Any) -> list[Any]:

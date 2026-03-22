@@ -68,7 +68,7 @@ def _run_local(cmd: list[str]) -> str:
     return proc.stdout
 
 
-def _project_root_from_cwd() -> Path:
+def _resolve_project_root() -> Path:
     """Resolve git project root for cwd, falling back to raw cwd."""
 
     try:
@@ -162,7 +162,7 @@ def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
     except TriageError as exc:
         branch_error = exc
 
-    project_root = _project_root_from_cwd()
+    project_root = _resolve_project_root()
     configured_pr = get_current_pr_number(project_root)
     if configured_pr is not None:
         try:

@@ -9,7 +9,7 @@ from slopmop.checks.quality.complexity import (
     _to_finding,
 )
 from slopmop.checks.quality.duplication import SourceDuplicationCheck
-from slopmop.core.result import CheckStatus
+from slopmop.core.result import CheckStatus, FindingLevel
 
 
 class TestComplexityCheck:
@@ -349,6 +349,166 @@ class TestSourceDuplicationCheck:
         check = SourceDuplicationCheck({})
         reason = check.skip_reason(str(tmp_path))
         assert "not applicable" in reason.lower()
+
+
+# ─── Ambiguity mine detection (AST function-name scan) ───────────────────
+
+
+class TestAmbiguityMineScan:
+    """Tests for _scan_duplicate_function_names()."""
+
+    def test_detects_duplicate_function_across_files(self, tmp_path):
+        """Same module-level function name in two files → finding."""
+        (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
+        (tmp_path / "b.py").write_text("def helper():\n    return 2\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 1
+        assert "helper()" in findings[0].message
+        assert "Ambiguity mine" in findings[0].message
+        assert findings[0].level == FindingLevel.ERROR
+
+    def test_ignores_dunders(self, tmp_path):
+        """Dunder methods should not be flagged."""
+        (tmp_path / "a.py").write_text("def __init__():\n    pass\n")
+        (tmp_path / "b.py").write_text("def __init__():\n    pass\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_ignores_lifecycle_names(self, tmp_path):
+        """Common lifecycle names (main, setUp, etc.) should not be flagged."""
+        (tmp_path / "a.py").write_text("def main():\n    pass\n")
+        (tmp_path / "b.py").write_text("def main():\n    pass\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_ignores_class_methods(self, tmp_path):
+        """Methods inside classes should not be indexed."""
+        (tmp_path / "a.py").write_text(
+            "class A:\n    def process(self):\n        pass\n"
+        )
+        (tmp_path / "b.py").write_text(
+            "class B:\n    def process(self):\n        pass\n"
+        )
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_ignores_conftest(self, tmp_path):
+        """conftest.py files should be skipped entirely."""
+        (tmp_path / "conftest.py").write_text("def my_fixture():\n    pass\n")
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "conftest.py").write_text("def my_fixture():\n    pass\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_skips_excluded_dirs(self, tmp_path):
+        """Directories in exclude_dirs config should be pruned."""
+        vendor = tmp_path / "vendor"
+        vendor.mkdir()
+        (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
+        (vendor / "b.py").write_text("def helper():\n    return 2\n")
+        check = SourceDuplicationCheck({"exclude_dirs": ["vendor"]})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_unique_functions_no_findings(self, tmp_path):
+        """Distinct function names → no findings."""
+        (tmp_path / "a.py").write_text("def foo():\n    pass\n")
+        (tmp_path / "b.py").write_text("def bar():\n    pass\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_same_name_same_file_no_finding(self, tmp_path):
+        """Two functions with same name in one file → not our concern."""
+        (tmp_path / "a.py").write_text(
+            "def helper():\n    return 1\n\ndef helper():\n    return 2\n"
+        )
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_syntax_error_files_skipped(self, tmp_path):
+        """Files with syntax errors should be silently skipped."""
+        (tmp_path / "good.py").write_text("def helper():\n    pass\n")
+        (tmp_path / "bad.py").write_text("def helper(\n")  # syntax error
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_identical_bodies_tagged(self, tmp_path):
+        """Identical function bodies should be tagged as 'identical'."""
+        body = "def helper():\n    return 42\n"
+        (tmp_path / "a.py").write_text(body)
+        (tmp_path / "b.py").write_text(body)
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 1
+        assert "(identical)" in findings[0].message
+        assert "IDENTICAL" in findings[0].fix_strategy
+
+    def test_diverged_bodies_tagged(self, tmp_path):
+        """Different function bodies should be tagged as 'DIVERGED'."""
+        (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
+        (tmp_path / "b.py").write_text("def helper():\n    return 999\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 1
+        assert "(DIVERGED)" in findings[0].message
+        assert "DIVERGED" in findings[0].fix_strategy
+
+    def test_fix_strategy_contains_triage_categories(self, tmp_path):
+        """fix_strategy should present all five classification options."""
+        (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
+        (tmp_path / "b.py").write_text("def helper():\n    return 2\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 1
+        strategy = findings[0].fix_strategy
+        assert "ERRANT DUPLICATION" in strategy
+        assert "NEEDS ABSTRACTION" in strategy
+        assert "MISLEADING NAME" in strategy
+        assert "PURPOSEFUL DUPLICATION" in strategy
+        assert "ALLOWED EXCEPTION" in strategy
+
+    def test_fix_strategy_embeds_source(self, tmp_path):
+        """fix_strategy should contain the actual function source."""
+        (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
+        (tmp_path / "b.py").write_text("def helper():\n    return 2\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 1
+        strategy = findings[0].fix_strategy
+        assert "return 1" in strategy
+        assert "return 2" in strategy
+
+    def test_noqa_suppresses_finding(self, tmp_path):
+        """# noqa: ambiguity-mine on the def line suppresses that copy."""
+        (tmp_path / "a.py").write_text(
+            "def helper():  # noqa: ambiguity-mine\n    return 1\n"
+        )
+        (tmp_path / "b.py").write_text(
+            "def helper():  # noqa: ambiguity-mine\n    return 2\n"
+        )
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        assert len(findings) == 0
+
+    def test_noqa_partial_still_flags(self, tmp_path):
+        """If only one copy is suppressed, only one location remains → no finding."""
+        (tmp_path / "a.py").write_text(
+            "def helper():  # noqa: ambiguity-mine\n    return 1\n"
+        )
+        (tmp_path / "b.py").write_text("def helper():\n    return 2\n")
+        check = SourceDuplicationCheck({})
+        findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
+        # Only one un-suppressed location → fewer than 2 unique files → no finding
+        assert len(findings) == 0
 
 
 # ─── _to_finding helper ──────────────────────────────────────────────────

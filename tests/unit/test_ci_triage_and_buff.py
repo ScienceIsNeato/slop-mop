@@ -224,7 +224,7 @@ class TestScanTriageInternals:
             "current_pr_number",
             Mock(side_effect=triage.TriageError("no open PR for branch")),
         )
-        monkeypatch.setattr(triage, "_project_root_from_cwd", Mock(return_value=root))
+        monkeypatch.setattr(triage, "_resolve_project_root", Mock(return_value=root))
         selected_pr = Mock(return_value=85)
         validator = Mock(return_value=85)
         monkeypatch.setattr(triage, "get_current_pr_number", selected_pr)
@@ -240,9 +240,7 @@ class TestScanTriageInternals:
             "current_pr_number",
             Mock(side_effect=triage.TriageError("no open PR for branch")),
         )
-        monkeypatch.setattr(
-            triage, "_project_root_from_cwd", Mock(return_value="/repo")
-        )
+        monkeypatch.setattr(triage, "_resolve_project_root", Mock(return_value="/repo"))
         monkeypatch.setattr(triage, "get_current_pr_number", Mock(return_value=92))
         monkeypatch.setattr(
             triage,
@@ -463,3 +461,94 @@ class TestScanTriageInternals:
             triage, "run_triage", Mock(side_effect=triage.TriageError("boom"))
         )
         assert triage.main(["--pr", "84"]) == 2
+
+
+class TestFormatElapsed:
+    def test_seconds_only(self):
+        from slopmop.cli.ci import _format_elapsed
+
+        assert _format_elapsed(42) == "42s"
+
+    def test_minutes_and_seconds(self):
+        from slopmop.cli.ci import _format_elapsed
+
+        assert _format_elapsed(125) == "2m 05s"
+
+    def test_zero(self):
+        from slopmop.cli.ci import _format_elapsed
+
+        assert _format_elapsed(0) == "0s"
+
+    def test_negative_returns_empty(self):
+        from slopmop.cli.ci import _format_elapsed
+
+        assert _format_elapsed(-5) == ""
+
+
+class TestParseCheckTiming:
+    def test_no_started_at(self):
+        from slopmop.cli.ci import _parse_check_timing
+
+        assert _parse_check_timing({"name": "lint"}) == ""
+
+    def test_completed_check_shows_duration(self):
+        from slopmop.cli.ci import _parse_check_timing
+
+        check = {
+            "startedAt": "2026-03-21T10:00:00Z",
+            "completedAt": "2026-03-21T10:02:30Z",
+        }
+        assert _parse_check_timing(check) == "2m 30s"
+
+    def test_invalid_timestamp_returns_empty(self):
+        from slopmop.cli.ci import _parse_check_timing
+
+        check = {"startedAt": "not-a-date"}
+        assert _parse_check_timing(check) == ""
+
+
+class TestCategorizeChecksWithTiming:
+    def test_timing_included_in_completed(self):
+        from slopmop.cli.ci import _categorize_checks
+
+        checks = [
+            {
+                "name": "lint",
+                "bucket": "pass",
+                "state": "SUCCESS",
+                "link": "",
+                "startedAt": "2026-03-21T10:00:00Z",
+                "completedAt": "2026-03-21T10:01:15Z",
+            }
+        ]
+        completed, _, _ = _categorize_checks(checks)
+        assert len(completed) == 1
+        name, emoji, state, timing = completed[0]
+        assert name == "lint"
+        assert timing == "1m 15s"
+
+    def test_timing_included_in_failed(self):
+        from slopmop.cli.ci import _categorize_checks
+
+        checks = [
+            {
+                "name": "test",
+                "bucket": "fail",
+                "state": "FAILURE",
+                "link": "http://x",
+                "startedAt": "2026-03-21T10:00:00Z",
+                "completedAt": "2026-03-21T10:00:45Z",
+            }
+        ]
+        _, _, failed = _categorize_checks(checks)
+        assert len(failed) == 1
+        name, emoji, state, url, timing = failed[0]
+        assert name == "test"
+        assert timing == "45s"
+
+    def test_missing_timing_gives_empty_string(self):
+        from slopmop.cli.ci import _categorize_checks
+
+        checks = [{"name": "lint", "bucket": "pass", "state": "SUCCESS", "link": ""}]
+        completed, _, _ = _categorize_checks(checks)
+        assert completed[0][3] == ""

@@ -7,9 +7,11 @@ Note: This is a cross-cutting quality check that works across
 all languages supported by jscpd.
 """
 
+import ast
 import json
 import os
 import tempfile
+import textwrap
 import time
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +31,63 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
 MIN_TOKENS = 50
 MIN_LINES = 5
+
+_AMBIGUITY_MINE_FIX = (
+    "Consolidate duplicate function definitions to eliminate ambiguity mines."
+)
+
+# ── Ambiguity-mine detection (supplementary AST scan) ────────────────
+# Function names expected to appear in multiple files — not ambiguous.
+_AMBIGUITY_MINE_SKIP_NAMES: set[str] = {
+    # Entry-point / lifecycle patterns
+    "main",
+    "run",
+    "cli",
+    "setup",
+    "configure",
+    "register",
+    # unittest lifecycle
+    "setUp",
+    "tearDown",
+    "setUpClass",
+    "tearDownClass",
+    "setUpModule",
+    "tearDownModule",
+    # pytest lifecycle
+    "setup_method",
+    "teardown_method",
+    "setup_module",
+    "teardown_module",
+    "setup_function",
+    "teardown_function",
+}
+
+# Directories pruned during the AST walk (mirrors _DEFAULT_IGNORES
+# minus glob-only patterns that don't map to dir names).
+_AST_SKIP_DIRS: set[str] = {
+    "node_modules",
+    "dist",
+    "build",
+    ".git",
+    ".slopmop",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "coverage",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".tox",
+    "htmlcov",
+    "tools",
+    "migrations",
+    "alembic",
+    "cursor-rules",
+}
+
+
+def _indent_source(src: str, prefix: str = "     | ") -> str:
+    """Indent a block of source for embedding in fix_strategy."""
+    return "\n".join(prefix + line for line in src.splitlines())
 
 
 class SourceDuplicationCheck(BaseCheck):
@@ -302,26 +361,72 @@ class SourceDuplicationCheck(BaseCheck):
             findings=findings,
         )
 
+    def _merge_ast_findings(
+        self,
+        jscpd_result: CheckResult,
+        ast_findings: list[Finding],
+        start_time: float,
+    ) -> CheckResult:
+        """Merge AST ambiguity-mine findings into a jscpd result."""
+        final_duration = time.time() - start_time
+        all_findings = list(jscpd_result.findings) + ast_findings
+        ast_detail = "\n".join(f"  {f.message}" for f in ast_findings)
+        merged_output = (
+            jscpd_result.output
+            + "\n\nAmbiguity mines (function names duplicated across files):\n"
+            + ast_detail
+        )
+        status = jscpd_result.status
+        if status in (CheckStatus.PASSED, CheckStatus.WARNED):
+            status = CheckStatus.FAILED
+        return self._create_result(
+            status=status,
+            duration=final_duration,
+            output=merged_output,
+            error=jscpd_result.error,
+            fix_suggestion=(jscpd_result.fix_suggestion or _AMBIGUITY_MINE_FIX),
+            findings=all_findings,
+        )
+
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
 
+        include_dirs = self.config.get("include_dirs", ["."])
+        if not include_dirs:
+            include_dirs = ["."]
+
+        # AST-based function-name duplication scan.
+        # Runs independently of jscpd — uses only the stdlib ast module.
+        ast_findings = self._scan_duplicate_function_names(project_root, include_dirs)
+
         # Check jscpd availability
-        error = self._check_jscpd_availability(project_root)
-        if error:
+        jscpd_error = self._check_jscpd_availability(project_root)
+        if jscpd_error:
+            duration = time.time() - start_time
+            if ast_findings:
+                ast_detail = "\n".join(f"  {f.message}" for f in ast_findings)
+                return self._create_result(
+                    status=CheckStatus.FAILED,
+                    duration=duration,
+                    output=(
+                        f"jscpd unavailable ({jscpd_error}), but AST scan found issues:\n"
+                        + ast_detail
+                    ),
+                    error="Ambiguity mines detected (jscpd skipped)",
+                    fix_suggestion=_AMBIGUITY_MINE_FIX,
+                    findings=ast_findings,
+                )
             return self._create_result(
                 status=CheckStatus.WARNED,
-                duration=time.time() - start_time,
-                error=error,
+                duration=duration,
+                error=jscpd_error,
                 fix_suggestion="Install jscpd: npm install -g jscpd",
-                findings=[Finding(message=error, level=FindingLevel.WARNING)],
+                findings=[Finding(message=jscpd_error, level=FindingLevel.WARNING)],
             )
 
         # Get config values
         min_tokens = self.config.get("min_tokens", MIN_TOKENS)
         min_lines = self.config.get("min_lines", MIN_LINES)
-        include_dirs = self.config.get("include_dirs", ["."])
-        if not include_dirs:
-            include_dirs = ["."]
 
         with tempfile.TemporaryDirectory(prefix="jscpd-") as temp_dir:
             report_output = os.path.join(temp_dir, "jscpd-report")
@@ -335,26 +440,45 @@ class SourceDuplicationCheck(BaseCheck):
             report_path = os.path.join(report_output, "jscpd-report.json")
             if not os.path.exists(report_path):
                 if result.returncode == 0:
+                    if ast_findings:
+                        ast_detail = "\n".join(f"  {f.message}" for f in ast_findings)
+                        return self._create_result(
+                            status=CheckStatus.FAILED,
+                            duration=duration,
+                            output="No jscpd duplication detected, but AST scan found issues:\n"
+                            + ast_detail,
+                            fix_suggestion=_AMBIGUITY_MINE_FIX,
+                            findings=ast_findings,
+                        )
                     return self._create_result(
                         status=CheckStatus.PASSED,
                         duration=duration,
                         output="No duplication detected",
                     )
                 return self._create_result(
-                    status=CheckStatus.ERROR,
+                    status=CheckStatus.FAILED if ast_findings else CheckStatus.ERROR,
                     duration=duration,
                     error=result.stderr or "jscpd failed to produce report",
+                    findings=ast_findings or None,
+                    fix_suggestion=_AMBIGUITY_MINE_FIX if ast_findings else None,
                 )
 
             report = self._parse_report(report_path)
             if report is None:
                 return self._create_result(
-                    status=CheckStatus.ERROR,
+                    status=CheckStatus.FAILED if ast_findings else CheckStatus.ERROR,
                     duration=duration,
                     error="Failed to parse jscpd report",
+                    findings=ast_findings or None,
+                    fix_suggestion=_AMBIGUITY_MINE_FIX if ast_findings else None,
                 )
 
-            return self._format_result(report, duration)
+            jscpd_result = self._format_result(report, duration)
+
+        if not ast_findings:
+            return jscpd_result
+
+        return self._merge_ast_findings(jscpd_result, ast_findings, start_time)
 
     def measure_scope(self, project_root: str) -> Optional[ScopeInfo]:
         """Measure scope — counts files across all supported languages."""
@@ -379,3 +503,171 @@ class SourceDuplicationCheck(BaseCheck):
                 f"{second.get('endLoc', {}).get('line', '?')} ({lines} lines)"
             )
         return violations
+
+    # ── Ambiguity-mine detection ──────────────────────────────────────
+
+    @staticmethod
+    def _extract_function_source(
+        source_lines: list[str], node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> str:
+        """Extract source text for a function node (decorators through end)."""
+        start_lineno = node.lineno
+        if getattr(node, "decorator_list", None):
+            decorator_linenos = [
+                dec.lineno for dec in node.decorator_list if hasattr(dec, "lineno")
+            ]
+            if decorator_linenos:
+                start_lineno = min(start_lineno, min(decorator_linenos))
+        start = max(start_lineno - 1, 0)
+        end = node.end_lineno or node.lineno
+        return "".join(source_lines[start:end])
+
+    @staticmethod
+    def _is_suppressed(source_lines: list[str], lineno: int) -> bool:
+        """Check if the def line has a ``# noqa: ambiguity-mine`` comment."""
+        line = source_lines[lineno - 1] if lineno <= len(source_lines) else ""
+        return "noqa: ambiguity-mine" in line
+
+    @staticmethod
+    def _build_mine_fix_strategy(
+        name: str,
+        locations: list[tuple[str, int, str]],
+        identical: bool,
+    ) -> str:
+        """Build a triage-oriented fix_strategy for the calling LLM.
+
+        The strategy presents the evidence and the five classification
+        options with per-category instructions.  The LLM sorts; we
+        don't guess.
+        """
+        loc_block = "\n".join(
+            f"  {i+1}. {rel}:{lineno}\n{_indent_source(src)}"
+            for i, (rel, lineno, src) in enumerate(locations)
+        )
+        similarity = "IDENTICAL" if identical else "DIVERGED"
+
+        return (
+            f"Ambiguity mine: `{name}()` is defined in "
+            f"{len(locations)} files ({similarity} bodies).\n"
+            f"\n"
+            f"Copies:\n{loc_block}\n"
+            f"\n"
+            f"Classify this as ONE of the following and take the "
+            f"corresponding action:\n"
+            f"\n"
+            f"A) ERRANT DUPLICATION — no excuse, just a copy-paste "
+            f"duplicate. Pick the canonical location, delete the "
+            f"other(s), and import from the canonical module.\n"
+            f"\n"
+            f"B) NEEDS ABSTRACTION — both copies do the same thing "
+            f"in different contexts. Extract into a shared utility "
+            f"module and have both call sites import it.\n"
+            f"\n"
+            f"C) MISLEADING NAME — the functions aren't really "
+            f"duplicates; one (or both) has a poor name that "
+            f"creates false ambiguity. Rename the less-canonical "
+            f"copy to reflect what it actually does.\n"
+            f"\n"
+            f"D) PURPOSEFUL DUPLICATION — these implement the same "
+            f"interface/protocol in different contexts (e.g. "
+            f"strategy pattern, test doubles). This is acceptable "
+            f"if the duplication is structural, not accidental. "
+            f"Add `# noqa: ambiguity-mine` to each def line to "
+            f"suppress.\n"
+            f"\n"
+            f"E) ALLOWED EXCEPTION — a rare case that doesn't fit "
+            f"A–D. Add `# noqa: ambiguity-mine` to each def line "
+            f"with a comment explaining why."
+        )
+
+    def _scan_duplicate_function_names(
+        self, project_root: str, include_dirs: list[str]
+    ) -> list[Finding]:
+        """AST scan for module-level function names defined in 2+ files.
+
+        Catches small-function "ambiguity mines" that fall below jscpd's
+        min_tokens threshold.  Only top-level (module-scope) functions
+        are indexed — class methods are naturally disambiguated by their
+        class.
+
+        For each duplicate, extracts the actual function source so the
+        calling LLM can classify the type of duplication and take the
+        right action.
+        """
+        config_excludes = set(self.config.get("exclude_dirs", []))
+        skip_dirs = _AST_SKIP_DIRS | config_excludes
+
+        # func_name → [(relative_path, lineno, source_text)]
+        func_index: dict[str, list[tuple[str, int, str]]] = {}
+
+        for scan_dir in include_dirs:
+            base = (
+                os.path.join(project_root, scan_dir)
+                if scan_dir != "."
+                else project_root
+            )
+            for root, dirs, files in os.walk(base):
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if d not in skip_dirs and not d.endswith(".egg-info")
+                ]
+                for fname in files:
+                    if not fname.endswith(".py") or fname == "conftest.py":
+                        continue
+                    fpath = os.path.join(root, fname)
+                    rel = os.path.relpath(fpath, project_root)
+                    try:
+                        with open(fpath, encoding="utf-8") as f:
+                            source = f.read()
+                        tree = ast.parse(source, filename=rel)
+                    except (SyntaxError, UnicodeDecodeError):
+                        continue
+                    source_lines = source.splitlines(keepends=True)
+                    for node in ast.iter_child_nodes(tree):
+                        if not isinstance(
+                            node, (ast.FunctionDef, ast.AsyncFunctionDef)
+                        ):
+                            continue
+                        name = node.name
+                        if name in _AMBIGUITY_MINE_SKIP_NAMES or (
+                            name.startswith("__") and name.endswith("__")
+                        ):
+                            continue
+                        if self._is_suppressed(source_lines, node.lineno):
+                            continue
+                        func_src = self._extract_function_source(source_lines, node)
+                        func_index.setdefault(name, []).append(
+                            (rel, node.lineno, func_src)
+                        )
+
+        findings: list[Finding] = []
+        for name, locations in sorted(func_index.items()):
+            unique_files = {loc[0] for loc in locations}
+            if len(unique_files) < 2:
+                continue
+
+            # Determine if all copies are textually identical
+            # (normalised via textwrap.dedent to ignore indentation)
+            normalised = [textwrap.dedent(loc[2]).strip() for loc in locations]
+            identical = len(set(normalised)) == 1
+
+            sorted_locs = sorted(locations)
+            loc_strs = [f"{f}:{line}" for f, line, _ in sorted_locs]
+            tag = "identical" if identical else "DIVERGED"
+            strategy = self._build_mine_fix_strategy(name, sorted_locs, identical)
+
+            findings.append(
+                Finding(
+                    message=(
+                        f"Ambiguity mine ({tag}): `{name}()` defined in "
+                        f"{len(unique_files)} files: " + ", ".join(loc_strs)
+                    ),
+                    level=FindingLevel.ERROR,
+                    file=sorted_locs[0][0],
+                    line=sorted_locs[0][1],
+                    fix_strategy=strategy,
+                )
+            )
+
+        return findings
