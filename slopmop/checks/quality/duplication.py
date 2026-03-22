@@ -456,17 +456,21 @@ class SourceDuplicationCheck(BaseCheck):
                         output="No duplication detected",
                     )
                 return self._create_result(
-                    status=CheckStatus.ERROR,
+                    status=CheckStatus.FAILED if ast_findings else CheckStatus.ERROR,
                     duration=duration,
                     error=result.stderr or "jscpd failed to produce report",
+                    findings=ast_findings or None,
+                    fix_suggestion=_AMBIGUITY_MINE_FIX if ast_findings else None,
                 )
 
             report = self._parse_report(report_path)
             if report is None:
                 return self._create_result(
-                    status=CheckStatus.ERROR,
+                    status=CheckStatus.FAILED if ast_findings else CheckStatus.ERROR,
                     duration=duration,
                     error="Failed to parse jscpd report",
+                    findings=ast_findings or None,
+                    fix_suggestion=_AMBIGUITY_MINE_FIX if ast_findings else None,
                 )
 
             jscpd_result = self._format_result(report, duration)
