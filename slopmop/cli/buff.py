@@ -21,6 +21,7 @@ from slopmop.checks.pr.comments import PRCommentsCheck
 from slopmop.cli.ci import (
     _categorize_checks,
     _fetch_checks,
+    _format_elapsed,
     _print_failed_status,
     _print_in_progress_status,
     _print_success_status,
@@ -43,6 +44,8 @@ _RESOLUTION_SCENARIOS = {
 }
 
 _POST_CI_FEEDBACK_CHECK_NAMES = {"cursor bugbot"}
+
+_POLL_WAIT_MSG = "⏳ Waiting {interval}s before next check..."
 
 
 def _has_post_ci_feedback_check(checks: list[dict[str, Any]]) -> bool:
@@ -111,6 +114,8 @@ def _normalize_status_action(
     mode: str,
     raw_rest: list[str],
     interval: int,
+    *,
+    fail_fast: bool = False,
 ) -> argparse.Namespace:
     """Normalize buff CI status/watch actions."""
 
@@ -124,6 +129,7 @@ def _normalize_status_action(
         ),
         watch=mode == "watch",
         interval=interval,
+        fail_fast=fail_fast,
     )
 
 
@@ -144,6 +150,7 @@ def _normalize_buff_args(args: argparse.Namespace) -> argparse.Namespace:
             mode="status",
             raw_rest=raw_rest,
             interval=int(getattr(args, "interval", 30)),
+            fail_fast=bool(getattr(args, "fail_fast", False)),
         )
 
     if raw_mode == "watch":
@@ -151,6 +158,7 @@ def _normalize_buff_args(args: argparse.Namespace) -> argparse.Namespace:
             mode="watch",
             raw_rest=raw_rest,
             interval=int(getattr(args, "interval", 30)),
+            fail_fast=bool(getattr(args, "fail_fast", False)),
         )
 
     if raw_mode == "iterate":
@@ -561,7 +569,13 @@ def _cmd_buff_verify(pr_number: int | None) -> int:
     return 1
 
 
-def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
+def _cmd_buff_status(
+    pr_number: int | None,
+    watch: bool,
+    interval: int,
+    *,
+    fail_fast: bool = False,
+) -> int:
     """Check PR CI status through the buff rail."""
 
     project_root = Path(_project_root_from_cwd())
@@ -579,13 +593,30 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
     print_project_header(str(project_root))
     print(f"🔀 PR: #{resolved_pr}")
     if watch:
-        print(f"👀 Watch mode: polling every {interval}s")
+        flags = f"polling every {interval}s"
+        if fail_fast:
+            flags += ", fail-fast"
+        print(f"👀 Watch mode: {flags}")
     print("=" * 60)
     print()
 
     settled_post_ci_feedback = False
+    poll_count = 0
+    watch_start = time.monotonic()
+    _MAX_EMPTY_POLLS = 6
 
     while True:
+        poll_count += 1
+
+        # Show poll header with timestamp in watch mode (skip first poll)
+        if watch and poll_count > 1:
+            elapsed = time.monotonic() - watch_start
+            ts = time.strftime("%H:%M:%S")
+            print(
+                f"[{ts}] Poll #{poll_count} (watching for {_format_elapsed(elapsed)})"
+            )
+            print()
+
         checks, error = _fetch_checks(project_root, resolved_pr)
 
         if checks is None:
@@ -593,6 +624,15 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
             return 2 if "not found" in error.lower() else 1
 
         if not checks:
+            if watch and poll_count <= _MAX_EMPTY_POLLS:
+                print(
+                    "⏳ No CI checks registered yet — waiting for GitHub to pick up workflows..."
+                )
+                print(_POLL_WAIT_MSG.format(interval=interval))
+                time.sleep(interval)
+                print()
+                continue
+
             feedback_result = _run_pr_feedback_gate(resolved_pr, str(project_root))
             if feedback_result.status != CheckStatus.PASSED:
                 return _render_status_feedback_blocker(
@@ -609,9 +649,9 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
 
         if failed:
             _print_failed_status(completed, in_progress, failed)
-            if watch and in_progress:
+            if watch and in_progress and not fail_fast:
                 settled_post_ci_feedback = False
-                print(f"⏳ Waiting {interval}s before next check...")
+                print(_POLL_WAIT_MSG.format(interval=interval))
                 time.sleep(interval)
                 print()
                 continue
@@ -621,7 +661,7 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
             _print_in_progress_status(completed, in_progress)
             if watch:
                 settled_post_ci_feedback = False
-                print(f"⏳ Waiting {interval}s before next check...")
+                print(_POLL_WAIT_MSG.format(interval=interval))
                 time.sleep(interval)
                 print()
                 continue
@@ -649,6 +689,10 @@ def _cmd_buff_status(pr_number: int | None, watch: bool, interval: int) -> int:
             )
 
         _print_success_status(completed, total)
+        if watch:
+            elapsed = time.monotonic() - watch_start
+            print(f"⏱️  Total watch time: {_format_elapsed(elapsed)}")
+            print()
         return 0
 
 
@@ -1014,7 +1058,10 @@ def cmd_buff(args: argparse.Namespace) -> int:
         return exit_code
     if normalized.action == "status":
         return _cmd_buff_status(
-            normalized.pr_number, normalized.watch, normalized.interval
+            normalized.pr_number,
+            normalized.watch,
+            normalized.interval,
+            fail_fast=normalized.fail_fast,
         )
     if normalized.action == "finalize":
         return _cmd_buff_finalize(normalized.pr_number, normalized.push_changes)

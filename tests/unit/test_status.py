@@ -1141,7 +1141,7 @@ class TestGatherCiData:
         return_value=(
             [("lint", "pass", "", "")],
             [("deploy", "pending", "", "")],
-            [("test", "fail", "", ""), ("e2e", "fail", "", "")],
+            [("test", "fail", "", "", ""), ("e2e", "fail", "", "", "")],
         ),
     )
     @patch(f"{_CI_MODULE}._fetch_checks", return_value=([{"name": "x"}], ""))

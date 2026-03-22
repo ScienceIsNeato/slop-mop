@@ -346,7 +346,7 @@ def _gather_ci_data(root: Path) -> Optional[Dict[str, Any]]:
         "passed": len(completed),
         "failed": len(failed),
         "pending": len(in_progress),
-        "failures": [name for name, _, _, _ in failed],
+        "failures": [name for name, _, _, _, _ in failed],
     }
 
 

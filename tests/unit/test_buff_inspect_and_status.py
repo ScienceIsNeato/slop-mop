@@ -567,3 +567,162 @@ class TestBuffStatusCommand:
         assert fetch_checks.call_count == 4
         feedback_gate.assert_called_once_with(85, "/repo")
         assert sleep_mock.call_count == 3
+
+    def test_cmd_buff_watch_fail_fast_exits_immediately(self, monkeypatch, capsys):
+        args = argparse.Namespace(
+            pr_or_action="watch",
+            action_args=["85"],
+            interval=7,
+            fail_fast=True,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        checks = [
+            {
+                "name": "lint",
+                "bucket": "fail",
+                "state": "FAILURE",
+                "link": "https://example.test/fail",
+            },
+            {
+                "name": "build",
+                "bucket": "pending",
+                "state": "IN_PROGRESS",
+                "link": "",
+            },
+        ]
+        fetch_checks = Mock(return_value=(checks, ""))
+        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        sleep_mock = Mock()
+        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+
+        assert buff_mod.cmd_buff(args) == 1
+        out = capsys.readouterr().out
+        assert "fail-fast" in out
+        assert "SLOP IN CI" in out
+        # Should NOT have slept — fail-fast exits immediately
+        sleep_mock.assert_not_called()
+        assert fetch_checks.call_count == 1
+
+    def test_cmd_buff_watch_retries_empty_checks(self, monkeypatch, capsys):
+        args = argparse.Namespace(
+            pr_or_action="watch",
+            action_args=["85"],
+            interval=5,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        passing_checks = [
+            {
+                "name": "lint",
+                "bucket": "pass",
+                "state": "SUCCESS",
+                "link": "",
+            },
+        ]
+        # First 2 polls return empty, third returns checks
+        fetch_checks = Mock(side_effect=[([], ""), ([], ""), (passing_checks, "")])
+        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
+        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        sleep_mock = Mock()
+        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+
+        assert buff_mod.cmd_buff(args) == 0
+        out = capsys.readouterr().out
+        assert "No CI checks registered yet" in out
+        assert fetch_checks.call_count == 3
+        assert sleep_mock.call_count == 2
+
+    def test_cmd_buff_watch_shows_poll_counter(self, monkeypatch, capsys):
+        args = argparse.Namespace(
+            pr_or_action="watch",
+            action_args=["85"],
+            interval=5,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        pending = [
+            {"name": "build", "bucket": "pending", "state": "PENDING", "link": ""}
+        ]
+        passing = [{"name": "build", "bucket": "pass", "state": "SUCCESS", "link": ""}]
+        fetch_checks = Mock(side_effect=[(pending, ""), (passing, "")])
+        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
+        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        sleep_mock = Mock()
+        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+
+        assert buff_mod.cmd_buff(args) == 0
+        out = capsys.readouterr().out
+        assert "Poll #2" in out
+        assert "CI CLEAN" in out
+
+    def test_cmd_buff_watch_shows_total_watch_time(self, monkeypatch, capsys):
+        args = argparse.Namespace(
+            pr_or_action="watch",
+            action_args=["85"],
+            interval=5,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        checks = [{"name": "lint", "bucket": "pass", "state": "SUCCESS", "link": ""}]
+        monkeypatch.setattr(buff_mod, "_fetch_checks", Mock(return_value=(checks, "")))
+        feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
+        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+
+        assert buff_mod.cmd_buff(args) == 0
+        out = capsys.readouterr().out
+        assert "Total watch time:" in out

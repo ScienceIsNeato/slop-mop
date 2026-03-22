@@ -73,6 +73,13 @@ class BuffParserBuilder:
             help="Polling interval in seconds for 'sm buff watch' (default: 30)",
         )
         buff_parser.add_argument(
+            "--fail-fast",
+            dest="fail_fast",
+            action="store_true",
+            default=False,
+            help="Exit immediately on first CI failure, even if other checks are still pending.",
+        )
+        buff_parser.add_argument(
             "--run-id",
             type=int,
             default=None,
