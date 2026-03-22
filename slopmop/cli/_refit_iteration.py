@@ -13,6 +13,11 @@ from typing import Any, Dict, List, Optional, cast
 
 import slopmop.cli.refit as _refit
 
+_HEAD_DRIFT_NEXT_ACTION = (
+    "Review the repo state, then rerun `sm refit --iterate` once HEAD is stable."
+)
+_HEAD_DRIFT_HUMAN_LINE = "Review the repo state before resuming."
+
 
 def _block_continue_plan(
     args: argparse.Namespace,
@@ -217,19 +222,48 @@ def process_current_plan_item(
     expected_head = cast(Optional[str], plan.get("expected_head"))
     live_head = _refit._current_head(project_root)
     if expected_head and live_head != expected_head:
-        return _block_continue_plan(
-            args,
-            project_root,
-            plan,
-            event="blocked_on_head_drift",
-            status="blocked_on_head_drift",
-            next_action="Review the repo state, then rerun `sm refit --iterate` once HEAD is stable.",
-            human_lines=[
-                "Refit blocked: HEAD changed unexpectedly since the plan last advanced. "
-                "Review the repo state before resuming."
-            ],
-            details={"expected_head": expected_head, "current_head": live_head},
+        # Allow HEAD to advance when the user is expected to be making
+        # commits.  Two scenarios:
+        #   1. No items completed yet — the user committed plan artifacts
+        #      between --start and the first --iterate.
+        #   2. The current item is in a blocked/failing state — the user
+        #      was told to fix the issue and re-run, which naturally
+        #      requires committing changes.
+        any_completed = any(
+            i.get("status") in {"completed", "completed_no_changes"} for i in items
         )
+        current_is_blocked = current_item.get("status", "").startswith("blocked")
+        if not any_completed or current_is_blocked:
+            if not live_head:
+                return _block_continue_plan(
+                    args,
+                    project_root,
+                    plan,
+                    event="blocked_on_head_drift",
+                    status="blocked_on_head_drift",
+                    next_action=_HEAD_DRIFT_NEXT_ACTION,
+                    human_lines=[
+                        "Refit blocked: cannot resolve HEAD. " + _HEAD_DRIFT_HUMAN_LINE
+                    ],
+                    details={"expected_head": expected_head, "current_head": live_head},
+                )
+            plan["expected_head"] = live_head
+            _refit._save_plan(project_root, plan)
+            expected_head = live_head
+        else:
+            return _block_continue_plan(
+                args,
+                project_root,
+                plan,
+                event="blocked_on_head_drift",
+                status="blocked_on_head_drift",
+                next_action=_HEAD_DRIFT_NEXT_ACTION,
+                human_lines=[
+                    "Refit blocked: HEAD changed unexpectedly since the plan last advanced. "
+                    + _HEAD_DRIFT_HUMAN_LINE
+                ],
+                details={"expected_head": expected_head, "current_head": live_head},
+            )
 
     try:
         status_before = _refit._worktree_status(project_root)
@@ -265,10 +299,10 @@ def process_current_plan_item(
             plan,
             event="blocked_on_head_drift",
             status="blocked_on_head_drift",
-            next_action="Review the repo state, then rerun `sm refit --iterate` once HEAD is stable.",
+            next_action=_HEAD_DRIFT_NEXT_ACTION,
             human_lines=[
                 f"Refit blocked on {gate}: HEAD changed during execution. "
-                "Review the repo state before resuming."
+                + _HEAD_DRIFT_HUMAN_LINE
             ],
             details={
                 "expected_head": expected_head,
