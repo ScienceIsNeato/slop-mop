@@ -284,9 +284,9 @@ class TestCheckRegistry:
 
         ensure_checks_registered()
         registry = get_registry()
-        check = registry.get_check("myopia:source-duplication", {})
+        check = registry.get_check("laziness:repeated-code", {})
         expected_priority = (
-            curated_remediation_order_names().index("myopia:source-duplication") + 1
+            curated_remediation_order_names().index("laziness:repeated-code") + 1
         ) * 10
 
         assert check is not None

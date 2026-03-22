@@ -83,6 +83,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
     from slopmop.checks.pr.comments import PRCommentsCheck
     from slopmop.checks.quality import (
+        AmbiguityMinesCheck,
         BogusTestsCheck,
         ComplexityCheck,
         ConfigDebtCheck,
@@ -90,19 +91,20 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
         DebuggerArtifactsCheck,
         GateDodgingCheck,
         LocLockCheck,
-        SourceDuplicationCheck,
+        RepeatedCodeCheck,
         StringDuplicationCheck,
     )
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
 
     registry.register(SecurityCheck)
     registry.register(SecurityLocalCheck)
+    registry.register(AmbiguityMinesCheck)
     registry.register(BogusTestsCheck)
     registry.register(ComplexityCheck)
     registry.register(DeadCodeCheck)
     registry.register(DebuggerArtifactsCheck)
     registry.register(GateDodgingCheck)
-    registry.register(SourceDuplicationCheck)
+    registry.register(RepeatedCodeCheck)
     registry.register(StringDuplicationCheck)
     registry.register(LocLockCheck)
     registry.register(ConfigDebtCheck)

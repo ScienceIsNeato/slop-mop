@@ -403,6 +403,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `laziness:complexity-creep.py` | 🌀 Cyclomatic complexity (max rank C) | Big branching functions are where edge cases go to hide and future fixes go to die. |
 | `laziness:dead-code.py` | 💀 Dead code detection via vulture (≥80% confidence) | Dead code makes the map lie. People read paths that do not matter and miss the ones that do. |
 | `laziness:generated-artifacts.dart` | 🧱 Detects committed Flutter build/tool artifacts | Checking in generated junk is how you turn diffs into static and invite edits that get wiped later. |
+| `laziness:repeated-code` | 📋 Code clone detection (jscpd) | Copy-pasted blocks diverge in slow motion until every bug fix becomes a scavenger hunt across near-identical code. |
 | `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists | A disabled gate is usually debt with a welcome mat on it. |
 | `laziness:sloppy-formatting.dart` | 🎨 Dart formatting via dart format --set-exit-if-changed | Formatting noise hides the real change and makes review slower than it needs to be. |
 | `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
@@ -417,11 +418,11 @@ Gates aren't organized by language — they're organized by **the failure mode t
 
 | Gate | What It Does | Reasoning |
 |------|--------------|----------------|
+| `myopia:ambiguity-mines.py` | 💣 Function-name ambiguity detection (AST) | Duplicate function names across files create ambiguity mines — copy-paste artifacts that diverge silently until every bug fix is a scavenger hunt. |
 | `myopia:code-sprawl` | 📏 File and function length limits | Once files and functions get too big, nobody can safely reason about them in one pass, including the model. |
 | `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) | Code can pass tests and types and still be an own-goal from a security perspective. |
 | `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads | Unresolved review threads turn the PR loop into Groundhog Day and hide known concerns in plain sight. |
 | `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) | If changed lines can land untested, overall coverage becomes a nice story the PR does not actually obey. |
-| `myopia:source-duplication` | 📋 Code clone detection (jscpd) | Copy-pasted logic diverges in slow motion until every bug fix becomes a scavenger hunt. |
 | `myopia:string-duplication.py` | 🔤 Duplicate string literal detection | Repeated literals hide shared rules and make the repo drift by typo instead of design. |
 | `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets | Your code can be clean and still ship someone else's CVE to production. |
 
@@ -437,36 +438,37 @@ Reasoning: handle the changes most likely to reshape other work first. High-risk
 |---|------|----------|--------|------------|
 | 1 | `myopia:dependency-risk.py` | 10 | curated | unlikely |
 | 2 | `myopia:vulnerability-blindness.py` | 20 | curated | unlikely |
-| 3 | `myopia:source-duplication` | 30 | curated | very-likely |
-| 4 | `laziness:dead-code.py` | 40 | curated | very-likely |
-| 5 | `myopia:string-duplication.py` | 50 | curated | unlikely |
-| 6 | `deceptiveness:gate-dodging` | 60 | curated | likely |
-| 7 | `deceptiveness:bogus-tests.py` | 70 | curated | likely |
-| 8 | `deceptiveness:bogus-tests.js` | 80 | curated | likely |
-| 9 | `deceptiveness:bogus-tests.dart` | 90 | curated | likely |
-| 10 | `deceptiveness:hand-wavy-tests.js` | 100 | curated | likely |
-| 11 | `overconfidence:missing-annotations.py` | 110 | curated | unlikely |
-| 12 | `overconfidence:missing-annotations.dart` | 120 | curated | unlikely |
-| 13 | `overconfidence:type-blindness.py` | 130 | curated | unlikely |
-| 14 | `overconfidence:type-blindness.js` | 140 | curated | unlikely |
-| 15 | `myopia:code-sprawl` | 150 | curated | very-likely |
-| 16 | `laziness:complexity-creep.py` | 160 | curated | very-likely |
-| 17 | `overconfidence:untested-code.py` | 170 | curated | unlikely |
-| 18 | `overconfidence:untested-code.js` | 180 | curated | unlikely |
-| 19 | `overconfidence:untested-code.dart` | 190 | curated | unlikely |
-| 20 | `overconfidence:coverage-gaps.py` | 200 | curated | unlikely |
-| 21 | `overconfidence:coverage-gaps.js` | 210 | curated | unlikely |
-| 22 | `overconfidence:coverage-gaps.dart` | 220 | curated | unlikely |
-| 23 | `myopia:just-this-once.py` | 230 | curated | unlikely |
-| 24 | `laziness:silenced-gates` | 240 | curated | likely |
-| 25 | `myopia:ignored-feedback` | 250 | curated | unlikely |
-| 26 | `laziness:sloppy-frontend.js` | 260 | curated | unlikely |
-| 27 | `laziness:broken-templates.py` | 270 | curated | unlikely |
-| 28 | `laziness:sloppy-formatting.py` | 280 | curated | very-unlikely |
-| 29 | `laziness:sloppy-formatting.js` | 290 | curated | very-unlikely |
-| 30 | `laziness:sloppy-formatting.dart` | 300 | curated | unlikely |
-| 31 | `laziness:generated-artifacts.dart` | 310 | curated | very-unlikely |
-| 32 | `deceptiveness:debugger-artifacts` | 320 | curated | very-unlikely |
+| 3 | `laziness:repeated-code` | 30 | curated | very-likely |
+| 4 | `myopia:ambiguity-mines.py` | 40 | curated | very-likely |
+| 5 | `laziness:dead-code.py` | 50 | curated | very-likely |
+| 6 | `myopia:string-duplication.py` | 60 | curated | unlikely |
+| 7 | `deceptiveness:gate-dodging` | 70 | curated | likely |
+| 8 | `deceptiveness:bogus-tests.py` | 80 | curated | likely |
+| 9 | `deceptiveness:bogus-tests.js` | 90 | curated | likely |
+| 10 | `deceptiveness:bogus-tests.dart` | 100 | curated | likely |
+| 11 | `deceptiveness:hand-wavy-tests.js` | 110 | curated | likely |
+| 12 | `overconfidence:missing-annotations.py` | 120 | curated | unlikely |
+| 13 | `overconfidence:missing-annotations.dart` | 130 | curated | unlikely |
+| 14 | `overconfidence:type-blindness.py` | 140 | curated | unlikely |
+| 15 | `overconfidence:type-blindness.js` | 150 | curated | unlikely |
+| 16 | `myopia:code-sprawl` | 160 | curated | very-likely |
+| 17 | `laziness:complexity-creep.py` | 170 | curated | very-likely |
+| 18 | `overconfidence:untested-code.py` | 180 | curated | unlikely |
+| 19 | `overconfidence:untested-code.js` | 190 | curated | unlikely |
+| 20 | `overconfidence:untested-code.dart` | 200 | curated | unlikely |
+| 21 | `overconfidence:coverage-gaps.py` | 210 | curated | unlikely |
+| 22 | `overconfidence:coverage-gaps.js` | 220 | curated | unlikely |
+| 23 | `overconfidence:coverage-gaps.dart` | 230 | curated | unlikely |
+| 24 | `myopia:just-this-once.py` | 240 | curated | unlikely |
+| 25 | `laziness:silenced-gates` | 250 | curated | likely |
+| 26 | `myopia:ignored-feedback` | 260 | curated | unlikely |
+| 27 | `laziness:sloppy-frontend.js` | 270 | curated | unlikely |
+| 28 | `laziness:broken-templates.py` | 280 | curated | unlikely |
+| 29 | `laziness:sloppy-formatting.py` | 290 | curated | very-unlikely |
+| 30 | `laziness:sloppy-formatting.js` | 300 | curated | very-unlikely |
+| 31 | `laziness:sloppy-formatting.dart` | 310 | curated | unlikely |
+| 32 | `laziness:generated-artifacts.dart` | 320 | curated | very-unlikely |
+| 33 | `deceptiveness:debugger-artifacts` | 330 | curated | very-unlikely |
 
 <!-- END GATE TABLES -->
 
@@ -525,9 +527,9 @@ Time budgets only apply to swab. Scour runs always execute every gate.
 If a gate is useful, but not useful on every single local pass, keep it in scour and take it out of swab:
 
 ```bash
-sm config --swab-off myopia:source-duplication        # keep out of local swab
+sm config --swab-off laziness:repeated-code             # keep out of local swab
 sm config --swab-off laziness:complexity-creep.py     # only check during scour
-sm config --swab-on myopia:source-duplication         # put it back into swab
+sm config --swab-on laziness:repeated-code              # put it back into swab
 ```
 
 Semantics:
@@ -592,7 +594,7 @@ If the gate should still matter before PR, prefer scour-only instead of disable:
 
 ```bash
 sm config --swab-off laziness:complexity-creep.py    # not every local loop
-sm config --swab-off myopia:source-duplication       # still enforced in scour
+sm config --swab-off laziness:repeated-code            # still enforced in scour
 ```
 
 ### 4. Fix Everything That's Left

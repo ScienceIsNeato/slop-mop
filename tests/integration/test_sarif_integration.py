@@ -259,7 +259,7 @@ class TestGateCoverage:
             "deceptiveness:hand-wavy-tests.js",
             "laziness:dead-code.py",
             "laziness:sloppy-formatting.js",
-            "myopia:source-duplication",
+            "laziness:repeated-code",
             "myopia:vulnerability-blindness.py",
             "overconfidence:missing-annotations.py",
             "overconfidence:untested-code.py",

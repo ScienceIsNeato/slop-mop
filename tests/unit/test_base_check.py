@@ -162,13 +162,13 @@ class TestToolContext:
         """Spot-check a few real checks for correct tool_context."""
         from slopmop.checks.python.tests import PythonTestsCheck
         from slopmop.checks.quality.complexity import ComplexityCheck
-        from slopmop.checks.quality.duplication import SourceDuplicationCheck
+        from slopmop.checks.quality.duplication import RepeatedCodeCheck
         from slopmop.checks.security import SecurityLocalCheck
 
         assert SecurityLocalCheck.tool_context is ToolContext.SM_TOOL
         assert PythonTestsCheck.tool_context is ToolContext.PROJECT
         assert ComplexityCheck.tool_context is ToolContext.SM_TOOL
-        assert SourceDuplicationCheck.tool_context is ToolContext.NODE
+        assert RepeatedCodeCheck.tool_context is ToolContext.NODE
 
     def test_tool_context_does_not_shadow_docstring(self):
         """tool_context placed after docstring so __doc__ is not None.

@@ -1,9 +1,11 @@
 """Tests for the built-in upgrade migration registry."""
 
+import json
 from pathlib import Path
 
 from slopmop.migrations import (
     UpgradeMigration,
+    _rename_source_duplication,
     planned_upgrade_migrations,
     run_upgrade_migrations,
 )
@@ -110,3 +112,159 @@ class TestMigrationRegistry:
             "migrate-0.10.0",
         ]
         assert seen == ["migrate-0.9.0", "migrate-0.10.0"]
+
+    def test_rename_source_duplication_is_registered(self):
+        keys = planned_upgrade_migrations("0.11.0", "0.12.0")
+        assert "rename-source-duplication-gates" in keys
+
+
+class TestRenameSourceDuplication:
+    """Tests for the 0.11→0.12 gate rename migration."""
+
+    def _write_config(self, root: Path, data: dict) -> Path:
+        cfg = root / ".sb_config.json"
+        cfg.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        return cfg
+
+    def _read_config(self, root: Path) -> dict:
+        return json.loads((root / ".sb_config.json").read_text(encoding="utf-8"))
+
+    def test_hierarchical_config_split(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {
+                "myopia": {
+                    "enabled": True,
+                    "gates": {
+                        "source-duplication": {
+                            "enabled": True,
+                            "threshold": 6,
+                            "include_dirs": ["."],
+                            "min_tokens": 50,
+                            "min_lines": 5,
+                            "exclude_dirs": [],
+                        }
+                    },
+                }
+            },
+        )
+        _rename_source_duplication(tmp_path)
+        result = self._read_config(tmp_path)
+
+        # Old gate gone
+        assert "source-duplication" not in result["myopia"]["gates"]
+
+        # ambiguity-mines.py stays in myopia
+        amb = result["myopia"]["gates"]["ambiguity-mines.py"]
+        assert amb["enabled"] is True
+        assert amb["include_dirs"] == ["."]
+        assert amb["exclude_dirs"] == []
+        assert "threshold" not in amb
+        assert "min_tokens" not in amb
+
+        # repeated-code moves to laziness
+        rep = result["laziness"]["gates"]["repeated-code"]
+        assert rep["enabled"] is True
+        assert rep["threshold"] == 6
+        assert rep["min_tokens"] == 50
+        assert rep["min_lines"] == 5
+        assert rep["include_dirs"] == ["."]
+
+    def test_flat_config_format(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {
+                "myopia:source-duplication": {
+                    "enabled": True,
+                    "threshold": 10,
+                    "include_dirs": ["src"],
+                }
+            },
+        )
+        _rename_source_duplication(tmp_path)
+        result = self._read_config(tmp_path)
+
+        assert "myopia:source-duplication" not in result
+        assert result["myopia:ambiguity-mines.py"]["enabled"] is True
+        assert result["laziness:repeated-code"]["threshold"] == 10
+
+    def test_disabled_gates_list_renamed(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {
+                "disabled_gates": [
+                    "myopia:source-duplication",
+                    "laziness:dead-code.py",
+                ],
+                "myopia": {
+                    "enabled": True,
+                    "gates": {
+                        "source-duplication": {"enabled": True},
+                    },
+                },
+            },
+        )
+        _rename_source_duplication(tmp_path)
+        result = self._read_config(tmp_path)
+
+        disabled = result["disabled_gates"]
+        assert "myopia:source-duplication" not in disabled
+        assert "myopia:ambiguity-mines.py" in disabled
+        assert "laziness:repeated-code" in disabled
+        assert "laziness:dead-code.py" in disabled
+
+    def test_no_config_file_is_noop(self, tmp_path: Path):
+        _rename_source_duplication(tmp_path)
+        assert not (tmp_path / ".sb_config.json").exists()
+
+    def test_config_without_source_duplication_is_noop(self, tmp_path: Path):
+        original = {
+            "myopia": {
+                "enabled": True,
+                "gates": {
+                    "ambiguity-mines.py": {"enabled": True},
+                },
+            },
+        }
+        self._write_config(tmp_path, original)
+        _rename_source_duplication(tmp_path)
+        result = self._read_config(tmp_path)
+        assert result == original
+
+    def test_preserves_other_gates(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {
+                "myopia": {
+                    "enabled": True,
+                    "gates": {
+                        "source-duplication": {"enabled": True, "threshold": 5},
+                        "string-duplication.py": {"enabled": True},
+                    },
+                },
+            },
+        )
+        _rename_source_duplication(tmp_path)
+        result = self._read_config(tmp_path)
+
+        assert "string-duplication.py" in result["myopia"]["gates"]
+        assert "ambiguity-mines.py" in result["myopia"]["gates"]
+        assert "source-duplication" not in result["myopia"]["gates"]
+
+    def test_end_to_end_via_registry(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {
+                "myopia": {
+                    "enabled": True,
+                    "gates": {
+                        "source-duplication": {"enabled": True},
+                    },
+                },
+            },
+        )
+        applied = run_upgrade_migrations(tmp_path, "0.11.0", "0.12.0")
+        assert "rename-source-duplication-gates" in applied
+        result = self._read_config(tmp_path)
+        assert "source-duplication" not in result["myopia"]["gates"]
+        assert "ambiguity-mines.py" in result["myopia"]["gates"]

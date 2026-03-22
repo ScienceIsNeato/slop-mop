@@ -128,6 +128,12 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Tradeoffs: Sometimes the generated output is the artifact you actually need to ship or preserve as a fixture.
 - Override When: Allow it when the generated file is intentionally versioned, not when it is just local build fallout hitching a ride.
 
+### `laziness:repeated-code`
+
+- Rationale: Copy-pasted blocks diverge in slow motion until every bug fix becomes a scavenger hunt across near-identical code.
+- Tradeoffs: Deduping too early can create the wrong abstraction and make simple code feel clever for no reason.
+- Override When: Hold off when the repeated code is still genuinely in discovery mode and the shared shape is not stable yet.
+
 ### `laziness:silenced-gates`
 
 - Rationale: A disabled gate is usually debt with a welcome mat on it.
@@ -160,6 +166,12 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 
 ## 🔵 Myopia
 
+### `myopia:ambiguity-mines.py`
+
+- Rationale: Duplicate function names across files create ambiguity mines — copy-paste artifacts that diverge silently until every bug fix is a scavenger hunt.
+- Tradeoffs: False positives on lifecycle names and protocol implementations can be noisy; the noqa suppression keeps intentional cases clean.
+- Override When: Suppress when the duplication is structural (strategy pattern, test doubles) and add `# noqa: ambiguity-mine` with an explanation.
+
 ### `myopia:code-sprawl`
 
 - Rationale: Once files and functions get too big, nobody can safely reason about them in one pass, including the model.
@@ -183,12 +195,6 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Rationale: If changed lines can land untested, overall coverage becomes a nice story the PR does not actually obey.
 - Tradeoffs: Diff coverage can be painful on legacy code where touching one line exposes a whole untested neighborhood.
 - Override When: Bend this for spikes, emergency patches, or intentionally exploratory diffs with an agreed follow-up to close the gap.
-
-### `myopia:source-duplication`
-
-- Rationale: Copy-pasted logic diverges in slow motion until every bug fix becomes a scavenger hunt.
-- Tradeoffs: Deduping too early can create the wrong abstraction and make simple code feel clever for no reason.
-- Override When: Hold off when the repeated code is still genuinely in discovery mode and the shared shape is not stable yet.
 
 ### `myopia:string-duplication.py`
 

@@ -2,78 +2,102 @@
   "version": "1.0",
   "swabbing_time": 20,
   "overconfidence": {
-    "enabled": true,
+    "enabled": false,
     "gates": {
       "untested-code.py": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "test_dirs": [
           "tests"
         ],
         "timeout": 300
       },
       "coverage-gaps.py": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "threshold": 80
       },
       "missing-annotations.py": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "strict_typing": true,
         "include_dirs": []
       },
       "type-blindness.py": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
-        "strict": true
+        "run_on": null,
+        "strict": true,
+        "pyright_config_file": null,
+        "include_dirs": []
       },
       "untested-code.js": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "test_command": "npm test"
       },
       "coverage-gaps.js": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "threshold": 80
       },
       "type-blindness.js": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "tsconfig": "tsconfig.json"
+      },
+      "missing-annotations.dart": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null
+      },
+      "untested-code.dart": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null
+      },
+      "coverage-gaps.dart": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
+        "threshold": 80
       }
     }
   },
   "deceptiveness": {
-    "enabled": true,
+    "enabled": false,
     "gates": {
       "bogus-tests.js": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "max_allowed": 0,
         "exclude_dirs": []
       },
       "hand-wavy-tests.js": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "additional_assert_functions": [],
         "exclude_dirs": [],
         "max_violations": 0
       },
-      "bogus-tests.py": {
-        "enabled": true,
+      "bogus-tests.dart": {
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
+        "max_allowed": 0
+      },
+      "bogus-tests.py": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
         "test_dirs": [
           "tests"
         ],
@@ -83,52 +107,71 @@
         "min_test_statements": 1,
         "short_test_severity": "fail"
       },
-      "gate-dodging": {
-        "enabled": true,
+      "debugger-artifacts": {
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
+        "exclude_dirs": [],
+        "max_files": 50000
+      },
+      "gate-dodging": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
         "base_ref": ""
       }
     }
   },
   "laziness": {
-    "enabled": true,
+    "enabled": false,
     "gates": {
       "sloppy-formatting.py": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "line_length": 88
       },
       "sloppy-formatting.js": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "npm_install_flags": []
       },
       "sloppy-frontend.js": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "frontend_dirs": []
       },
-      "complexity-creep.py": {
-        "enabled": true,
+      "sloppy-formatting.dart": {
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null
+      },
+      "generated-artifacts.dart": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
+        "exclude_paths": []
+      },
+      "complexity-creep.py": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
         "max_rank": "C",
         "max_complexity": 15,
         "src_dirs": []
       },
       "dead-code.py": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "min_confidence": 80,
         "exclude_patterns": [
           "**/venv/**",
           "**/.venv/**",
           "**/node_modules/**",
+          "**/ephemeral/**",
           "**/test_*",
           "**/tests/**",
           "**/conftest.py",
@@ -142,75 +185,10 @@
         ],
         "whitelist_file": ""
       },
-      "silenced-gates": {
-        "enabled": true,
+      "repeated-code": {
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null
-      },
-      "broken-templates.py": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null,
-        "templates_dir": null
-      }
-    }
-  },
-  "myopia": {
-    "enabled": true,
-    "gates": {
-      "just-this-once.py": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null
-      },
-      "dependency-risk.py": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null,
-        "scanners": [
-          "bandit",
-          "semgrep",
-          "detect-secrets"
-        ],
-        "exclude_dirs": [
-          "venv",
-          ".venv",
-          "node_modules",
-          "cursor-rules",
-          "archives",
-          "logs",
-          "tests",
-          "*/.venv",
-          "*/venv"
-        ],
-        "bandit_config_file": null
-      },
-      "vulnerability-blindness.py": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null,
-        "scanners": [
-          "bandit",
-          "semgrep",
-          "detect-secrets"
-        ],
-        "exclude_dirs": [
-          "venv",
-          ".venv",
-          "node_modules",
-          "cursor-rules",
-          "archives",
-          "logs",
-          "tests",
-          "*/.venv",
-          "*/venv"
-        ],
-        "bandit_config_file": null
-      },
-      "source-duplication": {
-        "enabled": true,
-        "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "threshold": 5,
         "include_dirs": [
           "."
@@ -219,10 +197,86 @@
         "min_lines": 5,
         "exclude_dirs": []
       },
-      "string-duplication.py": {
-        "enabled": true,
+      "silenced-gates": {
+        "enabled": false,
         "auto_fix": false,
+        "run_on": null
+      },
+      "broken-templates.py": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
+        "templates_dir": null
+      }
+    }
+  },
+  "myopia": {
+    "enabled": false,
+    "gates": {
+      "just-this-once.py": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null
+      },
+      "dependency-risk.py": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
+        "scanners": [
+          "bandit",
+          "semgrep",
+          "detect-secrets"
+        ],
+        "exclude_dirs": [
+          "venv",
+          ".venv",
+          "node_modules",
+          "cursor-rules",
+          "archives",
+          "logs",
+          "tests",
+          "*/.venv",
+          "*/venv"
+        ],
         "config_file_path": null,
+        "bandit_config_file": null
+      },
+      "vulnerability-blindness.py": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
+        "scanners": [
+          "bandit",
+          "semgrep",
+          "detect-secrets"
+        ],
+        "exclude_dirs": [
+          "venv",
+          ".venv",
+          "node_modules",
+          "cursor-rules",
+          "archives",
+          "logs",
+          "tests",
+          "*/.venv",
+          "*/venv"
+        ],
+        "config_file_path": null,
+        "bandit_config_file": null
+      },
+      "ambiguity-mines.py": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
+        "include_dirs": [
+          "."
+        ],
+        "exclude_dirs": []
+      },
+      "string-duplication.py": {
+        "enabled": false,
+        "auto_fix": false,
+        "run_on": null,
         "threshold": 2,
         "min_file_count": 1,
         "min_length": 8,
@@ -243,9 +297,9 @@
         ]
       },
       "code-sprawl": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "max_file_lines": 1000,
         "max_function_lines": 100,
         "include_dirs": [
@@ -253,18 +307,23 @@
         ],
         "exclude_dirs": [],
         "extensions": []
-      }
-    }
-  },
-  "pr": {
-    "enabled": true,
-    "gates": {
+      },
       "ignored-feedback": {
-        "enabled": true,
+        "enabled": false,
         "auto_fix": false,
-        "config_file_path": null,
+        "run_on": null,
         "fail_on_unresolved": false
       }
     }
-  }
+  },
+  "custom_gates": [
+    {
+      "name": "missing-upgrade-migration",
+      "description": "Fails when gate names change without an upgrade migration",
+      "category": "myopia",
+      "command": "python scripts/check_migration_coverage.py",
+      "level": "scour",
+      "timeout": 10
+    }
+  ]
 }

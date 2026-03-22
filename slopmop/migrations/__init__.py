@@ -1,17 +1,25 @@
 """Built-in upgrade migrations for slop-mop installs.
 
-The first implementation keeps the framework intentionally small: upgrades can
-preview and run deterministic Python migrations keyed by version transitions,
-even if no concrete migrations are needed yet.
+Each migration is a deterministic Python function keyed by a version range.
+When ``sm upgrade`` runs, applicable migrations execute in stepwise order
+between the old and new package versions.
+
+See ``docs/MIGRATIONS.md`` for the authoring process.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, List
+from typing import Any, Callable, Dict, Iterable, List, cast
 
 from packaging.version import Version
+
+# ---------------------------------------------------------------------------
+# Config file constant (matches slopmop.core.config.CONFIG_FILE)
+# ---------------------------------------------------------------------------
+_CONFIG_FILE = ".sb_config.json"
 
 
 @dataclass(frozen=True)
@@ -36,7 +44,112 @@ class UpgradeMigration:
         )
 
 
-_MIGRATIONS: List[UpgradeMigration] = []
+# ===================================================================
+# Migration: rename-source-duplication-gates (0.11.0 → 0.12.0)
+# ===================================================================
+
+# jscpd-specific config keys → laziness:repeated-code
+_JSCPD_KEYS = {"threshold", "min_tokens", "min_lines"}
+# Keys inherited by both successor gates
+_SHARED_KEYS = {"include_dirs", "exclude_dirs", "enabled"}
+
+
+def _split_duplication_config(
+    old_cfg: Dict[str, Any],
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Split a source-duplication config dict into repeated-code + ambiguity-mines."""
+    repeated: Dict[str, Any] = {}
+    ambiguity: Dict[str, Any] = {}
+    for key, value in old_cfg.items():
+        if key in _JSCPD_KEYS:
+            repeated[key] = value
+        elif key in _SHARED_KEYS:
+            repeated[key] = value
+            ambiguity[key] = value
+        else:
+            # Unknown keys preserved on both sides as a safety measure
+            repeated[key] = value
+            ambiguity[key] = value
+    return repeated, ambiguity
+
+
+def _rename_source_duplication(project_root: Path) -> None:
+    """Rename myopia:source-duplication → laziness:repeated-code + myopia:ambiguity-mines.py."""
+    config_path = project_root / _CONFIG_FILE
+    if not config_path.exists():
+        return
+
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        data: Dict[str, Any] = json.loads(raw)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    changed = False
+
+    # --- Hierarchical format: myopia → gates → source-duplication -----------
+    myopia_raw = data.get("myopia")
+    if isinstance(myopia_raw, dict):
+        myopia_dict: Dict[str, Any] = cast(Dict[str, Any], myopia_raw)
+        gates_raw = myopia_dict.get("gates")
+        if isinstance(gates_raw, dict) and "source-duplication" in gates_raw:
+            gates_dict: Dict[str, Any] = cast(Dict[str, Any], gates_raw)
+            old_cfg = cast(Dict[str, Any], gates_dict.pop("source-duplication"))
+            repeated_cfg, ambiguity_cfg = _split_duplication_config(old_cfg)
+
+            gates_dict["ambiguity-mines.py"] = ambiguity_cfg
+
+            laziness_raw = data.setdefault("laziness", {})
+            if not isinstance(laziness_raw, dict):
+                laziness_raw = {}
+                data["laziness"] = laziness_raw
+            laziness_dict: Dict[str, Any] = cast(Dict[str, Any], laziness_raw)
+            laziness_dict.setdefault("enabled", True)
+            laz_gates: Dict[str, Any] = laziness_dict.setdefault("gates", {})
+            laz_gates["repeated-code"] = repeated_cfg
+            changed = True
+
+    # --- Flat format: "myopia:source-duplication" ---------------------------
+    flat_key = "myopia:source-duplication"
+    if flat_key in data:
+        old_cfg = cast(Dict[str, Any], data.pop(flat_key))
+        repeated_cfg, ambiguity_cfg = _split_duplication_config(old_cfg)
+        data["myopia:ambiguity-mines.py"] = ambiguity_cfg
+        data["laziness:repeated-code"] = repeated_cfg
+        changed = True
+
+    # --- disabled_gates list ------------------------------------------------
+    disabled_raw = data.get("disabled_gates")
+    if isinstance(disabled_raw, list):
+        disabled_list: List[Any] = cast(List[Any], disabled_raw)
+        new_disabled: List[str] = []
+        for entry in disabled_list:
+            gate_name: str = str(entry)
+            if gate_name == "myopia:source-duplication":
+                new_disabled.append("myopia:ambiguity-mines.py")
+                new_disabled.append("laziness:repeated-code")
+                changed = True
+            else:
+                new_disabled.append(gate_name)
+        if changed:
+            data["disabled_gates"] = new_disabled
+
+    if changed:
+        config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Migration registry
+# ---------------------------------------------------------------------------
+
+_MIGRATIONS: List[UpgradeMigration] = [
+    UpgradeMigration(
+        key="rename-source-duplication-gates",
+        min_version="0.11.0",
+        max_version="0.12.0",
+        apply=_rename_source_duplication,
+    ),
+]
 
 
 def _ordered_applicable_migrations(

@@ -30,7 +30,7 @@ These are what make slop-mop something other than a shell script calling `pylint
 - Are these tests actually testing anything, or are they theater? (`bogus-tests`)
 - Did someone quietly weaken a gate threshold? (`gate-dodging`)
 - Is this function doing too many things? (`code-sprawl`, `complexity-creep`)
-- Did the code just duplicate logic that already exists? (`source-duplication`)
+- Did the code just duplicate logic that already exists? (`repeated-code`)
 - Are there debugger breakpoints left in production code? (`debugger-artifacts`)
 - Did the model ignore PR review feedback? (`ignored-feedback`)
 
@@ -94,7 +94,7 @@ Every `BaseCheck` subclass declares a `role: ClassVar[CheckRole]`. The classific
 | `gate-dodging` | DIAGNOSTIC | Git-diff analysis of config weakening |
 | `code-sprawl` | DIAGNOSTIC | AST function-length analysis |
 | `silenced-gates` | DIAGNOSTIC | Config audit for disabled gates |
-| `source-duplication` | DIAGNOSTIC | Cross-file similarity detection |
+| `repeated-code` | DIAGNOSTIC | Cross-file similarity detection |
 | `string-duplication.py` | DIAGNOSTIC | Cross-file string extraction |
 | `ignored-feedback` | DIAGNOSTIC | PR comment resolution tracking |
 | `just-this-once.py` | DIAGNOSTIC | TODO/FIXME/hack pattern detection |

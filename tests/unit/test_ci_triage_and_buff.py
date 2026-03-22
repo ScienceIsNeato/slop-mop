@@ -327,7 +327,7 @@ class TestScanTriageInternals:
                 },
                 {
                     "status": "failed",
-                    "name": "myopia:source-duplication",
+                    "name": "laziness:repeated-code",
                     "error": "dup",
                 },
             ],
@@ -343,10 +343,10 @@ class TestScanTriageInternals:
 
         assert code == 1
         assert [row["gate"] for row in payload["actionable"]] == [
-            "myopia:source-duplication",
+            "laziness:repeated-code",
             "laziness:sloppy-formatting.py",
         ]
-        assert payload["first_to_fix"]["gate"] == "myopia:source-duplication"
+        assert payload["first_to_fix"]["gate"] == "laziness:repeated-code"
 
     def test_write_json_out(self, tmp_path):
         target = tmp_path / "triage.json"
