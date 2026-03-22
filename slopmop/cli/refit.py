@@ -688,6 +688,11 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # Ensure .slopmop/ is gitignored before scour populates it
+    from slopmop.utils import ensure_slopmop_gitignored
+
+    ensure_slopmop_gitignored(project_root)
+
     artifact_path = _initial_scour_path(project_root)
     exit_code = _run_scour(project_root, artifact_path)
     if exit_code not in {0, 1}:
