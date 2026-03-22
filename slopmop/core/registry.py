@@ -55,6 +55,7 @@ def curated_remediation_order_classes() -> Tuple[Type[BaseCheck], ...]:
     from slopmop.checks.python.tests import PythonTestsCheck
     from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
     from slopmop.checks.quality import (
+        AmbiguityMinesCheck,
         BogusTestsCheck,
         ComplexityCheck,
         ConfigDebtCheck,
@@ -62,7 +63,7 @@ def curated_remediation_order_classes() -> Tuple[Type[BaseCheck], ...]:
         DebuggerArtifactsCheck,
         GateDodgingCheck,
         LocLockCheck,
-        SourceDuplicationCheck,
+        RepeatedCodeCheck,
         StringDuplicationCheck,
     )
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
@@ -70,7 +71,8 @@ def curated_remediation_order_classes() -> Tuple[Type[BaseCheck], ...]:
     return (
         SecurityCheck,
         SecurityLocalCheck,
-        SourceDuplicationCheck,
+        RepeatedCodeCheck,
+        AmbiguityMinesCheck,
         DeadCodeCheck,
         StringDuplicationCheck,
         GateDodgingCheck,

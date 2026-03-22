@@ -340,16 +340,15 @@ def _commit_kind_for_check(name: str, check: BaseCheck) -> str:
         )
     ):
         return "test"
-    if (
-        any(
-            token in family
-            for token in (
-                "source-duplication",
-                "dead-code",
-                "complexity-creep",
-                "code-sprawl",
-                "string-duplication",
-            )
+    if any(
+        token in family
+        for token in (
+            "repeated-code",
+            "ambiguity-mines",
+            "dead-code",
+            "complexity-creep",
+            "code-sprawl",
+            "string-duplication",
         )
         or check.remediation_churn == RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
     ):

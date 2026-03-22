@@ -303,7 +303,7 @@ tell you the next step.
 ## Issue resolution priority
 
 When multiple gates fail, address them in this order — fix from the
-outside in.  Structural gates (code-sprawl, source-duplication,
+outside in.  Structural gates (code-sprawl, repeated-code,
 complexity-creep, dead-code) move or delete code, so fix those first.
 Cosmetic gates (formatting, debugger-artifacts) run last because
 structural changes would undo their fixes.

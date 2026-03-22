@@ -28,7 +28,7 @@ Branch fixture summary
 ----------------------
     all-pass  — all gates pass (Python + JS)
   all-fail  — every gate uniquely broken (Python + JS)
-  mixed     — security + dead-code.py + bogus-tests.py fail; source-duplication disabled; JS passes
+  mixed     — security + dead-code.py + bogus-tests.py fail; repeated-code disabled; JS passes
 
 Run integration tests::
 
@@ -259,7 +259,7 @@ class TestAllFail:
 
 
 class TestMixed:
-    """Branch mixed: security + dead-code.py + bogus-tests.py fail; source-duplication skipped."""
+    """Branch mixed: security + dead-code.py + bogus-tests.py fail; repeated-code skipped."""
 
     def test_exit_code_is_one(self, result_mixed: RunResult) -> None:
         result_mixed.assert_prerequisites()
@@ -290,16 +290,16 @@ class TestMixed:
             "untested-code.py" in result_mixed.output
         ), f"untested-code.py gate output not found.\n{result_mixed}"
 
-    def test_source_duplication_not_failed(self, result_mixed: RunResult) -> None:
-        """source-duplication is disabled in config -> must not appear as FAILED."""
+    def test_repeated_code_not_failed(self, result_mixed: RunResult) -> None:
+        """repeated-code is disabled in config -> must not appear as FAILED."""
         result_mixed.assert_prerequisites()
         failing_lines = [
             line
             for line in result_mixed.output.splitlines()
-            if "source-duplication" in line.lower() and "fail" in line.lower()
+            if "repeated-code" in line.lower() and "fail" in line.lower()
         ]
         assert not failing_lines, (
-            "source-duplication should be disabled (skipped) but was "
+            "repeated-code should be disabled (skipped) but was "
             f"reported as failed:\n" + "\n".join(failing_lines)
         )
 
