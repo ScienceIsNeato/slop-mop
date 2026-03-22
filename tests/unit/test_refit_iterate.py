@@ -72,8 +72,7 @@ class TestSummariseFailureArtifact:
 
     def test_truncates_long_finding_lists(self, tmp_path: Path):
         findings = [
-            {"file": f"f{i}.py", "line": i, "message": f"clone {i}"}
-            for i in range(20)
+            {"file": f"f{i}.py", "line": i, "message": f"clone {i}"} for i in range(20)
         ]
         p = tmp_path / "scour.json"
         p.write_text(json.dumps({"results": [{"findings": findings}]}))
@@ -214,6 +213,10 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(
             refit_mod, "_ensure_remediation_phase", Mock(return_value=True)
         )
+        monkeypatch.setattr(
+            refit_mod, "_current_branch", Mock(return_value="feat/refit")
+        )
+        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 0
         out = capsys.readouterr().out

@@ -363,14 +363,14 @@ class SourceDuplicationCheck(BaseCheck):
         for f in findings:
             if f.file:
                 file_counts[f.file] = file_counts.get(f.file, 0) + 1
-        top = sorted(file_counts.items(), key=lambda kv: -kv[1])[:3]
+        top = sorted(file_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
         top_str = ", ".join(f"{fn} ({n})" for fn, n in top) if top else "?"
 
         fix = (
             "Extract real clones into shared helpers. "
             f"Top offenders: {top_str}. "
             "If duplication is in tests, examples, or generated code, "
-            'add those paths to checks.source-duplication.exclude_dirs '
+            "add those paths to checks.source-duplication.exclude_dirs "
             "in .sb_config.json — don't refactor test boilerplate."
         )
 

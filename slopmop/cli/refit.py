@@ -896,6 +896,9 @@ def _cmd_refit_skip(args: argparse.Namespace) -> int:
     if plan is None:
         return 1
 
+    if not _ensure_continue_branch(args, project_root, plan):
+        return 1
+
     items = cast(List[Dict[str, Any]], plan.get("items", []))
     current_index = int(plan.get("current_index", 0))
     if current_index >= len(items):
@@ -905,7 +908,9 @@ def _cmd_refit_skip(args: argparse.Namespace) -> int:
             event="skip_past_end",
             status=str(plan.get("status", "completed")),
             next_action="Run `sm refit --finish`.",
-            human_lines=["No current gate to skip — plan is already past its last item."],
+            human_lines=[
+                "No current gate to skip — plan is already past its last item."
+            ],
         )
         return 0
 
@@ -913,10 +918,29 @@ def _cmd_refit_skip(args: argparse.Namespace) -> int:
     gate = str(current_item.get("gate", "?"))
     reason = str(getattr(args, "skip", None) or "manual skip")
 
-    current_item["status"] = "skipped"
-    current_item["skip_reason"] = reason
-    plan = _advance_plan(plan)
-    _save_plan(project_root, plan)
+    try:
+        with sm_lock(project_root, "refit"):
+            current_item["status"] = "skipped"
+            current_item["skip_reason"] = reason
+            plan = _advance_plan(plan)
+            _save_plan(project_root, plan)
+    except SmLockError as exc:
+        protocol: Dict[str, Any] = {
+            "schema": _SCHEMA_VERSION,
+            "recorded_at": _iso_now(),
+            "event": "blocked_on_lock",
+            "status": "blocked_on_lock",
+            "project_root": str(project_root),
+            "next_action": "Wait for the active sm process to finish, then rerun `sm refit --skip`.",
+            "details": {"message": str(exc)},
+        }
+        _emit_protocol(
+            args,
+            project_root,
+            protocol,
+            [f"Refit blocked: {exc}"],
+        )
+        return 1
 
     next_gate = plan.get("current_gate")
     next_line = (

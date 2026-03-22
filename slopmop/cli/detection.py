@@ -344,14 +344,14 @@ def _dir_contains_test_sources(path: Path) -> bool:
         return False
     # Direct source file → yes
     for entry in entries:
-        if entry.is_file() and entry.suffix in _TEST_SOURCE_EXTS:
+        if entry.is_file() and entry.suffix.lower() in _TEST_SOURCE_EXTS:
             return True
     # One level of subdirs (test/unit/test_foo.py is common)
     for entry in entries:
         if entry.is_dir():
             try:
                 for sub in entry.iterdir():
-                    if sub.is_file() and sub.suffix in _TEST_SOURCE_EXTS:
+                    if sub.is_file() and sub.suffix.lower() in _TEST_SOURCE_EXTS:
                         return True
             except OSError:
                 continue
