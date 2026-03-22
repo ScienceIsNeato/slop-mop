@@ -881,3 +881,98 @@ class TestCmdRefitContinue:
         assert saved["plan"]["expected_head"] == "new_head"
         out = capsys.readouterr().out
         assert "Refit stopped on failing gate" in out
+
+    # ------------------------------------------------------------------
+    # _cmd_refit_finish
+    # ------------------------------------------------------------------
+    def test_finish_blocks_when_skipped_items_remain(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        """--finish must refuse when skipped items still exist."""
+        args = argparse.Namespace(
+            start=False,
+            iterate=False,
+            skip=None,
+            finish=True,
+            project_root=str(tmp_path),
+        )
+        plan = {
+            "project_root": str(tmp_path),
+            "branch": "feat/refit",
+            "status": "completed",
+            "current_index": 2,
+            "current_gate": None,
+            "items": [
+                {
+                    "gate": "myopia:source-duplication",
+                    "status": "skipped",
+                    "skip_reason": "too many findings",
+                },
+                {"gate": "laziness:dead-code", "status": "completed"},
+            ],
+        }
+        monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+        monkeypatch.setattr(
+            refit_mod, "_ensure_remediation_phase", Mock(return_value=True)
+        )
+
+        assert refit_mod.cmd_refit(args) == 1
+        out = capsys.readouterr().out
+        assert "Cannot finish" in out
+        assert "1 skipped" in out
+        assert "myopia:source-duplication" in out
+
+    def test_finish_blocks_when_unresolved_items_remain(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        """--finish must refuse when unresolved (non-skipped) pending items exist."""
+        args = argparse.Namespace(
+            start=False,
+            iterate=False,
+            skip=None,
+            finish=True,
+            project_root=str(tmp_path),
+        )
+        plan = {
+            "project_root": str(tmp_path),
+            "branch": "feat/refit",
+            "status": "ready",
+            "current_index": 0,
+            "current_gate": "myopia:source-duplication",
+            "items": [
+                {"gate": "myopia:source-duplication", "status": "blocked_on_failure"},
+                {"gate": "laziness:dead-code", "status": "pending"},
+            ],
+        }
+        monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+        monkeypatch.setattr(
+            refit_mod, "_ensure_remediation_phase", Mock(return_value=True)
+        )
+
+        assert refit_mod.cmd_refit(args) == 1
+        out = capsys.readouterr().out
+        assert "Cannot finish" in out
+        assert "2 unresolved" in out
+
+    # ------------------------------------------------------------------
+    # _cmd_refit_skip guard rails
+    # ------------------------------------------------------------------
+    def test_skip_blocked_when_not_remediation_phase(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        args = argparse.Namespace(
+            start=False,
+            iterate=False,
+            skip="manual skip",
+            project_root=str(tmp_path),
+        )
+        monkeypatch.setattr(
+            refit_mod, "_ensure_remediation_phase", Mock(return_value=False)
+        )
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+
+        assert refit_mod.cmd_refit(args) == 1
+        out = capsys.readouterr().out
+        assert "remediation phase" in out
