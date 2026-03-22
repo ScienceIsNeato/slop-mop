@@ -109,7 +109,9 @@ def _git_output(project_root: Path, *args: str) -> Tuple[int, str, str]:
         text=True,
         check=False,
     )
-    return result.returncode, result.stdout.strip(), result.stderr.strip()
+    # Use rstrip('\n') instead of strip() for stdout to preserve leading
+    # whitespace in porcelain format (e.g. " M foo.py").
+    return result.returncode, result.stdout.rstrip("\n"), result.stderr.strip()
 
 
 def _git_output_or_none(project_root: Path, *args: str) -> Optional[str]:

@@ -239,6 +239,90 @@ class TestPythonLintFormatCheck:
         assert "file4.py" in result
         assert "file7.py" in result  # All files returned, not truncated here
 
+    def test_check_black_module_not_found_skips(self, tmp_path):
+        """Broken black install (ModuleNotFoundError) returns skip sentinel."""
+        from slopmop.checks.python.lint_format import _BLACK_SKIPPED
+
+        (tmp_path / "test.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout=(
+                "Traceback (most recent call last):\n"
+                '  File "/usr/bin/black", line 5, in <module>\n'
+                "ModuleNotFoundError: No module named '_black_internals'"
+            ),
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_black(str(tmp_path))
+        assert result == _BLACK_SKIPPED
+
+    def test_check_black_import_error_skips(self, tmp_path):
+        """Broken black install (ImportError) returns skip sentinel."""
+        from slopmop.checks.python.lint_format import _BLACK_SKIPPED
+
+        (tmp_path / "test.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="ImportError: cannot import name 'parse' from 'ast'",
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_black(str(tmp_path))
+        assert result == _BLACK_SKIPPED
+
+    def test_check_black_filename_containing_import_error_not_skipped(self, tmp_path):
+        """File named ImportError.py does not trigger the skip sentinel."""
+        (tmp_path / "test.py").touch()
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="would reformat ImportError.py",
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_black(str(tmp_path))
+        # Real formatting failure — not treated as a broken installation
+        assert result is not None
+        assert result != "__BLACK_SKIPPED_BROKEN_INSTALL__"
+        assert "ImportError.py" in result
+
+    def test_run_black_broken_shows_skipped_not_passed(self, tmp_path):
+        """run() shows 'Skipped' when black is broken, not '✅ Formatting OK'."""
+
+        (tmp_path / "test.py").touch()
+
+        mock_runner = MagicMock()
+        # First call = black (broken), subsequent calls = isort/flake8 (pass)
+        mock_runner.run.side_effect = [
+            SubprocessResult(
+                returncode=1,
+                stdout="ModuleNotFoundError: No module named 'black'",
+                stderr="",
+                duration=1.0,
+            ),
+            SubprocessResult(returncode=0, stdout="", stderr="", duration=1.0),
+            SubprocessResult(returncode=0, stdout="", stderr="", duration=1.0),
+        ]
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+        # Gate passes overall (broken tool is not the user's code fault)
+        assert result.status == CheckStatus.PASSED
+        assert "Skipped" in result.output
+        assert "Formatting OK" not in result.output
+
     def test_check_isort_fails_shows_file_paths(self, tmp_path):
         """Test _check_isort shows actual file paths when isort fails."""
         (tmp_path / "test.py").touch()

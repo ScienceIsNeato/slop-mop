@@ -565,6 +565,33 @@ class TestSuppression:
         assert result.status == CheckStatus.FAILED
         assert "suspiciously short" in result.output
 
+    def test_decorated_empty_body_suppressed(self, tmp_path):
+        """Decorated empty-body test with suppression marker is allowed."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_deco.py").write_text(textwrap.dedent("""\
+            @frames_comparison
+            def test_visual():  # overconfidence:short-test-ok
+                pass
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+
+    def test_decorated_empty_body_without_suppression_still_fails(self, tmp_path):
+        """Decorated empty-body test WITHOUT suppression is still flagged."""
+        test_dir = tmp_path / "tests"
+        test_dir.mkdir()
+        (test_dir / "test_deco_no_supp.py").write_text(textwrap.dedent("""\
+            @some_decorator
+            def test_empty_deco():
+                pass
+            """))
+        check = BogusTestsCheck({"test_dirs": ["tests"]})
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert "empty test body" in result.output
+
 
 class TestLegitimateTests:
     """Tests confirming legitimate test patterns are not flagged."""

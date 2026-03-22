@@ -602,3 +602,109 @@ class TestCmdRefitContinue:
             "overconfidence:coverage-gaps.py",
             "overconfidence:coverage-gaps.py",
         ]
+
+    def test_continue_accepts_head_drift_before_first_completed(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        """HEAD drift is accepted when no items have completed yet.
+
+        After ``--start`` commits plan artifacts, the user runs
+        ``--iterate`` and HEAD has changed.  Since no gates have
+        completed, this is expected and the plan should be updated.
+        """
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
+        plan = {
+            "project_root": str(tmp_path),
+            "branch": "feat/refit",
+            "expected_head": "old_head",
+            "status": "ready",
+            "current_index": 0,
+            "items": [
+                {
+                    "gate": "myopia:source-duplication",
+                    "status": "pending",
+                    "attempt_count": 0,
+                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "log_file": None,
+                }
+            ],
+        }
+        saved = {}
+
+        monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
+        monkeypatch.setattr(
+            refit_mod,
+            "_save_plan",
+            lambda root, p: saved.update({"plan": json.loads(json.dumps(p))}),
+        )
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+        monkeypatch.setattr(
+            refit_mod, "_current_branch", Mock(return_value="feat/refit")
+        )
+        monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="new_head"))
+        monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
+        monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
+        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+
+        assert refit_mod.cmd_refit(args) == 1
+        # The plan's expected_head was updated to reflect the drift.
+        assert saved["plan"]["expected_head"] == "new_head"
+        # It didn't block — it proceeded to the gate (which failed).
+        out = capsys.readouterr().out
+        assert "Refit stopped on failing gate" in out
+
+    def test_continue_accepts_head_drift_when_current_gate_is_blocked(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        """HEAD drift is accepted when the current item is in a blocked state.
+
+        After a gate fails, the user fixes the issue and commits, then
+        re-runs ``--iterate``.  HEAD naturally changes and should be accepted.
+        """
+        args = argparse.Namespace(start=False, iterate=True, project_root=str(tmp_path))
+        plan = {
+            "project_root": str(tmp_path),
+            "branch": "feat/refit",
+            "expected_head": "old_head",
+            "status": "blocked_on_failure",
+            "current_index": 0,
+            "items": [
+                {
+                    "gate": "myopia:source-duplication",
+                    "status": "blocked_on_failure",
+                    "attempt_count": 1,
+                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "log_file": None,
+                },
+                {
+                    "gate": "overconfidence:coverage-gaps.py",
+                    "status": "completed",
+                    "attempt_count": 1,
+                    "commit_message": "test(coverage): fill coverage gaps",
+                    "log_file": None,
+                },
+            ],
+        }
+        saved = {}
+
+        monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
+        monkeypatch.setattr(
+            refit_mod,
+            "_save_plan",
+            lambda root, p: saved.update({"plan": json.loads(json.dumps(p))}),
+        )
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+        monkeypatch.setattr(
+            refit_mod, "_current_branch", Mock(return_value="feat/refit")
+        )
+        monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="new_head"))
+        monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
+        monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
+        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+
+        assert refit_mod.cmd_refit(args) == 1
+        # The plan's expected_head was updated despite completed items
+        # because the *current* item is blocked.
+        assert saved["plan"]["expected_head"] == "new_head"
+        out = capsys.readouterr().out
+        assert "Refit stopped on failing gate" in out

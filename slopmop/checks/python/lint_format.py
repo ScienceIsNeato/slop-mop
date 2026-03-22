@@ -26,6 +26,13 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # flake8 default format: path:line:col: CODE message
 _FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
+
+# Sentinel returned by _check_black when the tool itself is broken
+# (e.g. missing dependency).  Distinguished from None (pass) and
+# a string (real formatting failure) so that run() can report the
+# skip without treating it as a pass.
+_BLACK_SKIPPED = "__BLACK_SKIPPED_BROKEN_INSTALL__"
+
 _DEFAULT_EXCLUDE_DIRS = [
     "venv",
     ".venv",
@@ -42,6 +49,20 @@ _DEFAULT_EXCLUDE_DIRS = [
     "alembic",
     "ephemeral",
 ]
+
+
+def _is_import_error(output: str) -> bool:
+    """True when output looks like a Python import/module-not-found error.
+
+    Checks for error names at the *start* of a line (how Python
+    tracebacks format them) to avoid false positives on filenames
+    that happen to contain 'ImportError' or 'ModuleNotFoundError'.
+    """
+    for line in output.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(("ModuleNotFoundError:", "ImportError:")):
+            return True
+    return False
 
 
 class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
@@ -190,7 +211,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         # Check 1: Black formatting
         black_result = self._check_black(project_root)
-        if black_result:
+        if black_result == _BLACK_SKIPPED:
+            output_parts.append("Black: ⚠️ Skipped (broken installation)")
+        elif black_result:
             issues.append(black_result)
             output_parts.append(f"Black: {black_result}")
         else:
@@ -265,8 +288,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 # Distinguish tool-installation failures from real formatting
                 # issues.  A broken black (missing dependency, bad interpreter,
                 # import error) is not a code-quality finding — skip it.
-                if "ModuleNotFoundError" in output or "ImportError" in output:
-                    return None  # tool broken, not a code issue
+                # Check line-starts to avoid false positives on filenames
+                # that happen to contain "ImportError" or "ModuleNotFoundError".
+                if _is_import_error(output):
+                    return _BLACK_SKIPPED  # tool broken, not a code issue
                 any_failed = True
                 if output:
                     # Black outputs useful info like:

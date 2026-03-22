@@ -2,7 +2,10 @@
 
 Catches test functions that exist structurally but don't test anything:
 
-- Empty bodies (pass, ..., or docstring-only) — always fail
+- Empty bodies (pass, ..., or docstring-only) — always fail unless the
+  test is decorated AND carries the ``# overconfidence:short-test-ok``
+  suppression marker (frameworks like ``@frames_comparison`` legitimately
+  produce empty bodies where the decorator *is* the test logic)
 - Tautological assertions (assert True, assert 1 == 1) — always fail
 - Suspiciously short tests with no assertion mechanism — configurable
 
@@ -375,7 +378,10 @@ class BogusTestsCheck(BaseCheck):
 
     **Always fail (definitively wrong):**
 
-    - Empty bodies (pass, ..., or docstring-only)
+    - Empty bodies (pass, ..., or docstring-only) — unless the test is
+      decorated AND carries the ``# overconfidence:short-test-ok``
+      suppression marker (frameworks like ``@frames_comparison`` use
+      the decorator as the test logic)
     - Tautological assertions (assert True, assert 1 == 1)
 
     **Configurable (heuristic):**
