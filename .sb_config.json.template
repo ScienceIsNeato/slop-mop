@@ -315,5 +315,15 @@
         "fail_on_unresolved": false
       }
     }
-  }
+  },
+  "custom_gates": [
+    {
+      "name": "missing-upgrade-migration",
+      "description": "Fails when gate names change without an upgrade migration",
+      "category": "myopia",
+      "command": "python scripts/check_migration_coverage.py",
+      "level": "scour",
+      "timeout": 10
+    }
+  ]
 }
