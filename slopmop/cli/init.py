@@ -625,6 +625,12 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     _write_config(config_file, project_root, base_config, detected, config)
 
+    # Ensure .slopmop/ is gitignored so ephemeral state is never committed
+    from slopmop.utils import ensure_slopmop_gitignored
+
+    if ensure_slopmop_gitignored(project_root):
+        print("📝 Added .slopmop/ to .gitignore")
+
     # Show project dashboard so the user sees current state
     print("─" * 60)
 
