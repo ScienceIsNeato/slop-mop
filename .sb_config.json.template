@@ -2,10 +2,10 @@
   "version": "1.0",
   "swabbing_time": 20,
   "overconfidence": {
-    "enabled": false,
+    "enabled": true,
     "gates": {
       "untested-code.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "test_dirs": [
@@ -14,20 +14,20 @@
         "timeout": 300
       },
       "coverage-gaps.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "threshold": 80
       },
       "missing-annotations.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "strict_typing": true,
         "include_dirs": []
       },
       "type-blindness.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "strict": true,
@@ -35,35 +35,35 @@
         "include_dirs": []
       },
       "untested-code.js": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "test_command": "npm test"
       },
       "coverage-gaps.js": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "threshold": 80
       },
       "type-blindness.js": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "tsconfig": "tsconfig.json"
       },
       "missing-annotations.dart": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null
       },
       "untested-code.dart": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null
       },
       "coverage-gaps.dart": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "threshold": 80
@@ -71,17 +71,17 @@
     }
   },
   "deceptiveness": {
-    "enabled": false,
+    "enabled": true,
     "gates": {
       "bogus-tests.js": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "max_allowed": 0,
         "exclude_dirs": []
       },
       "hand-wavy-tests.js": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "additional_assert_functions": [],
@@ -89,13 +89,13 @@
         "max_violations": 0
       },
       "bogus-tests.dart": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "max_allowed": 0
       },
       "bogus-tests.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "test_dirs": [
@@ -108,14 +108,14 @@
         "short_test_severity": "fail"
       },
       "debugger-artifacts": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "exclude_dirs": [],
         "max_files": 50000
       },
       "gate-dodging": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "base_ref": ""
@@ -123,39 +123,39 @@
     }
   },
   "laziness": {
-    "enabled": false,
+    "enabled": true,
     "gates": {
       "sloppy-formatting.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "line_length": 88
       },
       "sloppy-formatting.js": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "npm_install_flags": []
       },
       "sloppy-frontend.js": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "frontend_dirs": []
       },
       "sloppy-formatting.dart": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null
       },
       "generated-artifacts.dart": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "exclude_paths": []
       },
       "complexity-creep.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "max_rank": "C",
@@ -163,7 +163,7 @@
         "src_dirs": []
       },
       "dead-code.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "min_confidence": 80,
@@ -186,7 +186,7 @@
         "whitelist_file": ""
       },
       "repeated-code": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "threshold": 5,
@@ -198,12 +198,12 @@
         "exclude_dirs": []
       },
       "silenced-gates": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null
       },
       "broken-templates.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "templates_dir": null
@@ -211,15 +211,15 @@
     }
   },
   "myopia": {
-    "enabled": false,
+    "enabled": true,
     "gates": {
       "just-this-once.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null
       },
       "dependency-risk.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "scanners": [
@@ -242,7 +242,7 @@
         "bandit_config_file": null
       },
       "vulnerability-blindness.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "scanners": [
@@ -265,7 +265,7 @@
         "bandit_config_file": null
       },
       "ambiguity-mines.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "include_dirs": [
@@ -274,7 +274,7 @@
         "exclude_dirs": []
       },
       "string-duplication.py": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "threshold": 2,
@@ -297,7 +297,7 @@
         ]
       },
       "code-sprawl": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "max_file_lines": 1000,
@@ -309,21 +309,11 @@
         "extensions": []
       },
       "ignored-feedback": {
-        "enabled": false,
+        "enabled": true,
         "auto_fix": false,
         "run_on": null,
         "fail_on_unresolved": false
       }
     }
-  },
-  "custom_gates": [
-    {
-      "name": "missing-upgrade-migration",
-      "description": "Fails when gate names change without an upgrade migration",
-      "category": "myopia",
-      "command": "python scripts/check_migration_coverage.py",
-      "level": "scour",
-      "timeout": 10
-    }
-  ]
+  }
 }

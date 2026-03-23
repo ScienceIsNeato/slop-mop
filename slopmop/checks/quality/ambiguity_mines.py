@@ -298,6 +298,7 @@ class AmbiguityMinesCheck(BaseCheck):
 
         # func_name → [(relative_path, lineno, source_text)]
         func_index: dict[str, list[tuple[str, int, str]]] = {}
+        seen_files: set[str] = set()
 
         for scan_dir in include_dirs:
             base = (
@@ -316,6 +317,9 @@ class AmbiguityMinesCheck(BaseCheck):
                         continue
                     fpath = os.path.join(root, fname)
                     rel = os.path.relpath(fpath, project_root)
+                    if rel in seen_files:
+                        continue
+                    seen_files.add(rel)
                     try:
                         with open(fpath, encoding="utf-8") as f:
                             source = f.read()

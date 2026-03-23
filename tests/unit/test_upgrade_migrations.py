@@ -114,12 +114,12 @@ class TestMigrationRegistry:
         assert seen == ["migrate-0.9.0", "migrate-0.10.0"]
 
     def test_rename_source_duplication_is_registered(self):
-        keys = planned_upgrade_migrations("0.11.0", "0.12.0")
+        keys = planned_upgrade_migrations("0.11.0", "0.11.1")
         assert "rename-source-duplication-gates" in keys
 
 
 class TestRenameSourceDuplication:
-    """Tests for the 0.11→0.12 gate rename migration."""
+    """Tests for the 0.11.0→0.11.1 gate rename migration."""
 
     def _write_config(self, root: Path, data: dict) -> Path:
         cfg = root / ".sb_config.json"
@@ -263,7 +263,7 @@ class TestRenameSourceDuplication:
                 },
             },
         )
-        applied = run_upgrade_migrations(tmp_path, "0.11.0", "0.12.0")
+        applied = run_upgrade_migrations(tmp_path, "0.11.0", "0.11.1")
         assert "rename-source-duplication-gates" in applied
         result = self._read_config(tmp_path)
         assert "source-duplication" not in result["myopia"]["gates"]

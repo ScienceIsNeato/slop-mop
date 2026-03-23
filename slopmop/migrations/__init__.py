@@ -45,7 +45,7 @@ class UpgradeMigration:
 
 
 # ===================================================================
-# Migration: rename-source-duplication-gates (0.11.0 → 0.12.0)
+# Migration: rename-source-duplication-gates (0.11.0 → 0.11.1)
 # ===================================================================
 
 # jscpd-specific config keys → laziness:repeated-code
@@ -146,7 +146,7 @@ _MIGRATIONS: List[UpgradeMigration] = [
     UpgradeMigration(
         key="rename-source-duplication-gates",
         min_version="0.11.0",
-        max_version="0.12.0",
+        max_version="0.11.1",
         apply=_rename_source_duplication,
     ),
 ]

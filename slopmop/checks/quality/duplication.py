@@ -314,7 +314,7 @@ class RepeatedCodeCheck(BaseCheck):
             "Extract real clones into shared helpers. "
             f"Top offenders: {top_str}. "
             "If duplication is in tests, examples, or generated code, "
-            "add those paths to checks.source-duplication.exclude_dirs "
+            "add those paths to checks.repeated-code.exclude_dirs "
             "in .sb_config.json — don't refactor test boilerplate."
         )
 
