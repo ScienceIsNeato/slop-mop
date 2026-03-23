@@ -154,6 +154,10 @@ def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
     buff_args = argparse.Namespace(
         pr_or_action=str(pr) if pr else None,
         json_output=getattr(args, "json_output", False),
+        repo=None,
+        run_id=None,
+        workflow=None,
+        artifact=None,
     )
     return cmd_buff(buff_args)
 
@@ -171,6 +175,10 @@ def _sail_buff_failing(args: argparse.Namespace, project_root: Path) -> int:
     buff_args = argparse.Namespace(
         pr_or_action=str(pr) if pr else None,
         json_output=getattr(args, "json_output", False),
+        repo=None,
+        run_id=None,
+        workflow=None,
+        artifact=None,
     )
     return cmd_buff(buff_args)
 
