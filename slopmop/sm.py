@@ -257,6 +257,42 @@ def _add_buff_parser(
     BuffParserBuilder(subparsers).build()
 
 
+def _add_sail_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the sail subcommand parser (auto-advance workflow)."""
+    sail_parser = subparsers.add_parser(
+        "sail",
+        help="Auto-advance the workflow — do the next obvious thing",
+        description=(
+            "Read the current workflow state and execute the next step. "
+            "You don't need to know whether to swab, scour, or buff — "
+            "sail figures it out."
+        ),
+    )
+    sail_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+    sail_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Verbose output."
+    )
+    sail_parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Failures only."
+    )
+    sail_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit JSON output.",
+    )
+    sail_parser.add_argument(
+        "--static", action="store_true", help="Disable dynamic display."
+    )
+
+
 def _add_refit_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -575,6 +611,7 @@ Examples:
     _add_scour_parser(subparsers)
     _add_upgrade_parser(subparsers)
     _add_buff_parser(subparsers)
+    _add_sail_parser(subparsers)
     _add_refit_parser(subparsers)
     _add_status_parser(subparsers)
     _add_config_parser(subparsers)
@@ -603,6 +640,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_help,
         cmd_init,
         cmd_refit,
+        cmd_sail,
         cmd_scour,
         cmd_status,
         cmd_swab,
@@ -626,6 +664,7 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_scour=cmd_scour,
             cmd_upgrade=cmd_upgrade,
             cmd_buff=cmd_buff,
+            cmd_sail=cmd_sail,
             cmd_refit=cmd_refit,
             cmd_status=cmd_status,
             cmd_config=cmd_config,
@@ -654,6 +693,8 @@ def _dispatch(
         return handlers["cmd_upgrade"](parsed_args)
     elif parsed_args.verb == "buff":
         return handlers["cmd_buff"](parsed_args)
+    elif parsed_args.verb == "sail":
+        return handlers["cmd_sail"](parsed_args)
     elif parsed_args.verb == "refit":
         return handlers["cmd_refit"](parsed_args)
     elif parsed_args.verb == "status":

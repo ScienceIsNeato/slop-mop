@@ -245,21 +245,31 @@ class _TestAnalyzer(ast.NodeVisitor):
                 call_name = self._get_call_name(child)
                 if call_name in self._PYTEST_ASSERTION_CALLS:
                     return True
-                # Detect unittest / Django TestCase assertion methods:
-                # self.assertEqual(), self.assertTrue(), self.assertRaises(),
-                # self.assertRedirects(), self.assertContains(), etc.
-                if self._is_self_assert_call(child):
+                # Detect assertion methods by naming convention.  Covers
+                # unittest/Django ``self.assert*()``, numpy.testing
+                # ``nt.assert_equal()``, mock ``m.assert_called_once()``,
+                # pandas ``pd.testing.assert_frame_equal()``, etc.
+                if self._is_assert_method_call(child):
                     return True
         return False
 
     @staticmethod
-    def _is_self_assert_call(node: ast.Call) -> bool:
-        """Return True if *node* is a ``self.assert*(...)`` method call."""
-        return (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr.startswith("assert")
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "self"
+    def _is_assert_method_call(node: ast.Call) -> bool:
+        """Return True if *node* is a ``<something>.assert*(...)`` call.
+
+        The ``assert`` prefix on a method is a strong convention across
+        the Python ecosystem: unittest (``self.assertEqual``), numpy
+        (``numpy.testing.assert_array_equal``), mock (``m.assert_called``),
+        pandas (``pd.testing.assert_frame_equal``).  All of these raise
+        on failure — they ARE the assertion.
+
+        Observed against manim: a test body of a single
+        ``nt.assert_equal(RED.opacity(0.5)..., 0.5)`` was flagged
+        "no assertions" because the old check required the receiver
+        to be literally ``self``.
+        """
+        return isinstance(node.func, ast.Attribute) and node.func.attr.startswith(
+            "assert"
         )
 
     def _is_empty_body(self, body: List[ast.stmt]) -> bool:

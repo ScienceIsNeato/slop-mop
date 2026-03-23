@@ -133,7 +133,7 @@ class TestLoader:
     def test_cursor_preserves_frontmatter(self):
         """Cursor templates retain their YAML frontmatter after substitution."""
         assets = load_assets(TARGETS["cursor"].template_dir)
-        assert len(assets) == 3
+        assert len(assets) == 4
         for asset in assets:
             text = asset.content.decode("utf-8")
             assert text.startswith("---\n")
@@ -186,7 +186,7 @@ class TestClaudeSkill:
             for a in assets
             if "/commands/" in a.destination_relpath
         }
-        assert len(commands) == 3
+        assert len(commands) == 4
         for path, text in commands.items():
             if "swab" in path:
                 assert "sm swab" in text
@@ -194,6 +194,8 @@ class TestClaudeSkill:
                 assert "sm scour" in text
             elif "buff" in path:
                 assert "sm buff" in text
+            elif "sail" in path:
+                assert "sm sail" in text
 
 
 # ---------------------------------------------------------------------------

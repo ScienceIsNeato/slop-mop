@@ -181,6 +181,26 @@ class TestRepeatedCodeCheck:
         assert "migrations" in ignore_arg
         assert "alembic" in ignore_arg
 
+    def test_build_command_restricts_formats(self):
+        """jscpd command must restrict --format to source languages.
+
+        Without this, jscpd scans every filetype it recognises (SVG,
+        markdown, HTML) and reports e.g. logo assets as code clones.
+        """
+        check = SourceDuplicationCheck({})
+        cmd = check._build_jscpd_command(
+            "/tmp/report", ["."], min_tokens=50, min_lines=5
+        )
+        assert "--format" in cmd
+        fmt_arg = cmd[cmd.index("--format") + 1]
+        # Must match the extensions cache_inputs/is_applicable care about
+        assert "python" in fmt_arg
+        assert "javascript" in fmt_arg
+        assert "typescript" in fmt_arg
+        # And must NOT let jscpd pick its own defaults
+        assert "svg" not in fmt_arg
+        assert "markup" not in fmt_arg
+
     def test_is_applicable_with_python(self, tmp_path):
         """Test is_applicable returns True for Python projects."""
         (tmp_path / "app.py").write_text("print('hello')")

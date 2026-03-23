@@ -217,9 +217,14 @@ class RepeatedCodeCheck(BaseCheck):
         all_ignores = list(dict.fromkeys(self._DEFAULT_IGNORES + config_excludes))
         ignore_str = ",".join(all_ignores)
 
+        # Restrict formats to match cache_inputs/is_applicable — otherwise
+        # jscpd scans every file type it recognises (SVG, HTML, markdown, …)
+        # and flags e.g. logo assets as "code duplication".
         return [
             "npx",
             "jscpd",
+            "--format",
+            "python,javascript,typescript,jsx,tsx",
             "--min-tokens",
             str(min_tokens),
             "--min-lines",
@@ -296,12 +301,29 @@ class RepeatedCodeCheck(BaseCheck):
                 )
             ]
 
+        # Summarise which files dominate — if 140 of 162 findings are
+        # in tests/, the fix is an exclusion, not a refactor.
+        file_counts: dict[str, int] = {}
+        for f in findings:
+            if f.file:
+                file_counts[f.file] = file_counts.get(f.file, 0) + 1
+        top = sorted(file_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        top_str = ", ".join(f"{fn} ({n})" for fn, n in top) if top else "?"
+
+        fix = (
+            "Extract real clones into shared helpers. "
+            f"Top offenders: {top_str}. "
+            "If duplication is in tests, examples, or generated code, "
+            "add those paths to checks.source-duplication.exclude_dirs "
+            "in .sb_config.json — don't refactor test boilerplate."
+        )
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error="Excessive code duplication detected",
-            fix_suggestion="Extract duplicated code into shared functions or modules.",
+            fix_suggestion=fix,
             findings=findings,
         )
 

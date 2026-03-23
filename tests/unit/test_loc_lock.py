@@ -310,10 +310,11 @@ class TestLocLockOutput:
         result = check.run(str(tmp_path))
 
         assert result.fix_suggestion is not None
-        # The new fix_suggestion points at the per-violation action
-        # lines rather than describing what to do directly — the
-        # violations say WHAT, the suggestion says DON'T-SQUEEZE.
-        assert "move-this instruction" in result.fix_suggestion
+        # The fix_suggestion covers two modes: specific moves for
+        # single-definition fixes, and split prompts for files that
+        # need real structural analysis.
+        assert "needs splitting" in result.fix_suggestion
+        assert "DO NOT trim comments" in result.fix_suggestion
 
     def test_limits_output_to_top_violations(self, tmp_path):
         """Test output is limited to top violations."""
@@ -572,29 +573,31 @@ class TestFileAction:
         assert "line 619" in msg
         assert "clears the limit by 223" in msg  # 273 - 50
 
-    def test_target_too_small_says_so(self) -> None:
-        """Honesty when one move isn't enough.
+    def test_target_too_small_emits_split_prompt(self) -> None:
+        """When the biggest def won't clear the limit, emit a prompt.
 
-        Still points at the biggest thing (right first move) but warns
-        the gate will fire again.  Better than lying, better than
-        trying to chain instructions.  The agent does the move,
-        re-runs, gets a new target.  Iterative, each step real.
+        Instead of nibbling at a small function, tell the agent to
+        read the file and find a real structural seam.  The gate can't
+        pick the right split point programmatically — that requires
+        understanding the file's content.
         """
-        msg = _file_action(target=("Helper", 100, 30), over=80)
-        assert "Helper" in msg
-        assert "re-run after" in msg
-        assert "clears the limit" not in msg
+        msg = _file_action(target=("Helper", 100, 30), over=80, total_loc=1080)
+        assert "needs splitting" in msg
+        assert "logical seam" in msg
+        assert "around line 540" in msg
+        # Must NOT name the small function — that's misdirection
+        assert "Helper" not in msg
 
-    def test_no_target_still_says_dont_trim(self) -> None:
-        """The degraded case still carries the anti-squeeze payload.
+    def test_no_target_emits_split_prompt(self) -> None:
+        """When no definition is found, still emit a split prompt.
 
-        When we can't name a target (non-Python file with no functions,
-        or a parse error) the instruction is vaguer but STILL says
-        "don't trim comments".  The one thing we never drop.
+        The instruction is the same as the too-small case: find a seam
+        and split.  No function name to chase.
         """
-        msg = _file_action(target=None, over=42)
-        assert "at least 42 lines" in msg
-        assert "trimming them won't help" in msg
+        msg = _file_action(target=None, over=42, total_loc=1042)
+        assert "needs splitting" in msg
+        assert "logical seam" in msg
+        assert "around line 521" in msg
 
 
 class TestFindingGuidance:

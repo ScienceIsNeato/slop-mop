@@ -8,14 +8,21 @@ Slop-mop (`sm`) has two primary modes: **refit** and **maintenance**.
 
 | Verb | What it does | When to run it |
 |------|-------------|----------------|
+| `sm sail` | Auto-advance — reads state and runs the next obvious verb | When you're not sure what to do next |
 | `sm swab` | Fast iterative feedback — catches drift, auto-fixes what it can | After every meaningful code change |
 | `sm scour` | Comprehensive pre-PR sweep — surfaces everything before it compounds | Before opening or updating a PR |
 | `sm buff` | Post-PR triage — digests CI/review feedback into next steps | After CI completes or review feedback lands |
 
 ### The maintenance loop
+
+The fastest path: run `sm sail` repeatedly. It reads the workflow state and dispatches the right verb automatically — swab, scour, or buff. It stops after each action so you can fix what it finds, then run `sm sail` again.
+
+Or manually:
 1. Write code → `sm swab` → fix → repeat until clean.
 2. Before PR → `sm scour`.
 3. After CI/review → `sm buff <PR_NUMBER>`.
+
+Use `sm sail` for forward motion; use individual verbs (`sm swab -g <gate>`, `sm buff resolve`, etc.) for surgical work.
 
 ### Refit (step 0 — before entering the loop)
 
