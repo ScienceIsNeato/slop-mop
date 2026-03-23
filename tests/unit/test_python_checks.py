@@ -583,6 +583,53 @@ class TestPythonCoverageCheck:
 
         assert result.status == CheckStatus.PASSED
 
+    def test_run_coverage_above_threshold_branch_columns(self, tmp_path):
+        """Test run parses TOTAL correctly when branch columns are present."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text(
+            "def test_ok():\n    pass\n"
+        )
+        (tmp_path / "coverage.xml").write_text("<coverage></coverage>")
+
+        mock_runner = MagicMock()
+        # Branch format: Stmts  Miss  Branch  BrPart  Cover
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0,
+            stdout="TOTAL    14188   1829   4910    736    84%",
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonCoverageCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
+    def test_parse_coverage_branch_format(self):
+        """_parse_coverage extracts TOTAL % even with Branch/BrPart columns."""
+        check = PythonCoverageCheck({})
+        # Non-branch format
+        assert check._parse_coverage("TOTAL    1000    100    90%") == 90.0
+        # Branch format (4 numeric columns before the %)
+        assert (
+            check._parse_coverage("TOTAL   14188   1829   4910    736    84%") == 84.0
+        )
+
+    def test_parse_missing_lines_branch_format(self):
+        """_parse_missing_lines handles optional Branch/BrPart columns."""
+        check = PythonCoverageCheck({})
+        branch_output = (
+            "Name      Stmts   Miss Branch BrPart  Cover   Missing\n"
+            "slopmop/foo.py   100     10     40      5    85%   12-15, 42\n"
+            "slopmop/bar.py    50      0     20      0   100%\n"
+        )
+        result = check._parse_missing_lines(branch_output)
+        assert len(result) == 1
+        assert result[0][0] == "slopmop/foo.py"
+        assert result[0][2] == 10  # miss count
+        assert result[0][3] == "12-15, 42"
+
     def test_run_coverage_below_threshold(self, tmp_path):
         """Test run when coverage is below threshold."""
         (tmp_path / "tests").mkdir()

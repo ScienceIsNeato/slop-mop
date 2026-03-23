@@ -315,9 +315,13 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         Sorted by missing_count descending (biggest gaps first).
         """
         results: List[Tuple[str, int, int, str]] = []
-        # Pattern: filename  stmts  miss  cover  missing
-        # slopmop/sb.py   456    386    15%   45-67, 89, 120-150
-        pattern = re.compile(r"^(\S+\.py)\s+(\d+)\s+(\d+)\s+\d+%\s+(.+)$", re.MULTILINE)
+        # Pattern: filename  stmts  miss  [branch  brpart]  cover%  missing
+        # With branch=false:  slopmop/sb.py   456    386    15%   45-67, 89
+        # With branch=true:   slopmop/sb.py   456    386   100   20   15%   45-67, 89
+        # (?:\s+\d+)* absorbs optional Branch/BrPart columns.
+        pattern = re.compile(
+            r"^(\S+\.py)\s+(\d+)\s+(\d+)(?:\s+\d+)*\s+\d+%\s+(.+)$", re.MULTILINE
+        )
 
         for match in pattern.finditer(output):
             filepath = match.group(1)
@@ -370,8 +374,10 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
 
     def _parse_coverage(self, output: str) -> Optional[float]:
         """Parse coverage percentage from output."""
-        # Look for TOTAL line with percentage
-        match = re.search(r"TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%", output)
+        # Look for TOTAL line with percentage.
+        # (?:\s+\d+)* absorbs optional Branch/BrPart columns so this
+        # works with or without branch = true in coverage config.
+        match = re.search(r"TOTAL\s+\d+\s+\d+(?:\s+\d+)*\s+(\d+(?:\.\d+)?)%", output)
         if match:
             return float(match.group(1))
 

@@ -140,6 +140,7 @@ markers = [
 
 [tool.coverage.run]
 source = ["slopmop"]
+branch = true
 omit = ["tests/*"]
 
 [tool.coverage.report]
