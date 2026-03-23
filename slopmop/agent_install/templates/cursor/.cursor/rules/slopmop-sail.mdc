@@ -1,0 +1,6 @@
+---
+description: Slop-mop workflow auto-advance — reads state and runs the next obvious verb (swab, scour, or buff)
+alwaysApply: true
+---
+
+{{CORE}}

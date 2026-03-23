@@ -134,6 +134,7 @@ class TestDetectProjectType:
     def test_detects_test_directories(self, tmp_path):
         """Detects test directories."""
         (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_foo.py").write_text("")
         result = detect_project_type(tmp_path)
         assert result["has_tests_dir"] is True
         assert "tests" in result["test_dirs"]
@@ -141,7 +142,9 @@ class TestDetectProjectType:
     def test_detects_nested_test_directories(self, tmp_path):
         """Detects nested test directories in monorepo layouts."""
         (tmp_path / "server" / "tests").mkdir(parents=True)
+        (tmp_path / "server" / "tests" / "test_api.py").write_text("")
         (tmp_path / "client" / "test").mkdir(parents=True)
+        (tmp_path / "client" / "test" / "app.test.js").write_text("")
         result = detect_project_type(tmp_path)
         assert result["has_tests_dir"] is True
         assert "server/tests" in result["test_dirs"]
@@ -150,9 +153,35 @@ class TestDetectProjectType:
     def test_ignores_test_directories_in_excluded_paths(self, tmp_path):
         """Does not count node_modules test directories."""
         (tmp_path / "node_modules" / "foo" / "tests").mkdir(parents=True)
+        (tmp_path / "node_modules" / "foo" / "tests" / "x.js").write_text("")
         result = detect_project_type(tmp_path)
         assert result["has_tests_dir"] is False
         assert result["test_dirs"] == []
+
+    def test_ignores_test_directories_without_source_files(self, tmp_path):
+        """A directory *named* test with no test sources isn't a test dir.
+
+        Observed against manim: renderer/shaders/test/ holds only .glsl
+        shader assets. sm init pointed coverage gates at it.
+        """
+        shader_test = tmp_path / "renderer" / "shaders" / "test"
+        shader_test.mkdir(parents=True)
+        (shader_test / "vertex.glsl").write_text("void main() {}")
+        (shader_test / "fragment.glsl").write_text("void main() {}")
+        # And a real test dir that should still be found
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_real.py").write_text("")
+
+        result = detect_project_type(tmp_path)
+        assert "tests" in result["test_dirs"]
+        assert "renderer/shaders/test" not in result["test_dirs"]
+
+    def test_detects_test_directory_with_nested_sources(self, tmp_path):
+        """test/unit/test_foo.py layout should still be detected."""
+        (tmp_path / "test" / "unit").mkdir(parents=True)
+        (tmp_path / "test" / "unit" / "test_foo.py").write_text("")
+        result = detect_project_type(tmp_path)
+        assert "test" in result["test_dirs"]
 
     def test_detects_pytest_from_nested_config(self, tmp_path):
         """Detects pytest from nested pytest.ini."""

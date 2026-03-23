@@ -139,40 +139,41 @@ def _python_code_lines(content: str) -> Optional[int]:
     return len(code_lines)
 
 
-def _file_action(target: Optional[Tuple[str, int, int]], over: int) -> str:
+def _file_action(
+    target: Optional[Tuple[str, int, int]], over: int, total_loc: int = 0
+) -> str:
     """Render the per-file instruction — the '#4' ultra-specific guidance.
 
     This string is the payload.  It's what an agent reads at the moment
     of deciding how to fix the violation, in both the console output
-    and the GitHub annotation.  It names a specific definition, a
-    specific line, and a specific action.  There is no interpretive
-    work left to do.
+    and the GitHub annotation.
 
-    When ``target`` is None (unparseable file, or no definitions found)
-    we still emit SOMETHING directive — vaguer, but still an action and
-    still not trimming.
+    Two modes:
+      1. The biggest definition clears the limit → name it, say "move this".
+      2. It doesn't (or nothing was found) → the file needs a real split.
+         Emit a prompt the calling agent can hand to a subagent to find
+         the right seam.  We can't pick the seam programmatically — it
+         requires reading the file and understanding its structure.
     """
-    if target is None:
-        return (
-            f"Move at least {over} lines of code into a separate module. "
-            f"Comments and docstrings already don't count — trimming them "
-            f"won't help."
-        )
-    name, line, span = target
-    if span > over:
-        # Moving the biggest thing clears the limit with room to spare.
-        # Tell them exactly where it is and where it goes.
-        return (
-            f"Move {name} ({span} lines, starts line {line}) to its own "
-            f"file — that clears the limit by {span - over}."
-        )
-    # The biggest single definition isn't enough on its own.  Still
-    # point at it — it's the right FIRST move — but be honest that
-    # the gate will fire again.  Iterative guidance is fine; what
-    # matters is each step is a real refactor, not a trim.
+    if target is not None:
+        name, line, span = target
+        if span > over:
+            # Moving the biggest thing clears the limit with room to spare.
+            # Tell them exactly where it is and where it goes.
+            return (
+                f"Move {name} ({span} lines, starts line {line}) to its own "
+                f"file — that clears the limit by {span - over}."
+            )
+    # Either no target found, or the biggest definition doesn't clear
+    # the limit.  Don't nibble at individual functions — hand the agent
+    # a prompt to find a structural seam.
+    mid = f" (around line {total_loc // 2})" if total_loc else ""
     return (
-        f"Move {name} ({span} lines, starts line {line}) to its own file. "
-        f"That won't fully clear the limit — re-run after for the next target."
+        f"This file needs splitting, not function extraction. "
+        f"Read the file and find a logical seam near the middle{mid} "
+        f"— look for describe() blocks, class boundaries, or groups of "
+        f"related functions that form a natural module. Split into two "
+        f"files with descriptive names."
     )
 
 
@@ -183,13 +184,15 @@ def _file_action(target: Optional[Tuple[str, int, int]], over: int) -> str:
 # specific per-violation instructions in the Finding messages do the
 # heavy lifting; this is the backstop for anyone who skims past them.
 _FIX_SUGGESTION = (
-    "Each violation above has a specific move-this instruction — do that.\n"
+    "Violations that name a specific definition can be resolved by moving "
+    "that definition to its own file. Violations that say 'needs splitting' "
+    "require reading the file to find a natural seam — look for groups of "
+    "related functions, describe blocks, or class boundaries and split there.\n"
     "\n"
     "⚠️  DO NOT trim comments, compress docstrings, or join lines to "
     "squeeze under the limit. This check counts CODE lines only — "
     "comments, blanks, and docstrings already don't count, so trimming "
-    "them achieves nothing. If you're reaching for a squeeze, that's "
-    "the signal the file genuinely needs splitting."
+    "them achieves nothing."
 )
 
 _FIX_SUGGESTION_SUFFIX = "\n\nVerify with: "
@@ -565,7 +568,7 @@ class LocLockCheck(BaseCheck):
             ]:
                 over = lines - max_file_lines
                 out.append(f"  {path}: {lines} code lines ({over} over)")
-                out.append(f"    → {_file_action(target, over)}")
+                out.append(f"    → {_file_action(target, over, lines)}")
             if len(file_violations) > 10:
                 out.append(f"  ... and {len(file_violations) - 10} more")
         if func_violations:
@@ -610,7 +613,7 @@ class LocLockCheck(BaseCheck):
                 Finding(
                     message=(
                         f"{loc} code lines (limit {max_file_lines}, {over} over). "
-                        f"{_file_action(target, over)}"
+                        f"{_file_action(target, over, loc)}"
                     ),
                     level=FindingLevel.ERROR,
                     file=path,

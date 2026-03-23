@@ -51,10 +51,13 @@ sm_status_*.json
 
 # Generated Copilot instructions (from cursor-rules)
 .github/instructions/*.instructions.md
+.github/copilot-instructions.md
 
 # Auto-generated AI agent instructions (from cursor-rules)
 AGENTS.md
 .windsurfrules
+.agents/
+.copilot/
 .slopmop/
 
 # Claude Code session state (hooks, settings, transcripts)

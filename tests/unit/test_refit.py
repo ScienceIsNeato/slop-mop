@@ -119,6 +119,43 @@ class TestBuildPlan:
         assert plan["items"][1]["commit_message"].startswith("test(coverage-gaps.py)")
 
 
+class TestCommitKindForCheck:
+    """Commit type prefix derivation for auto-commits."""
+
+    def _check(self, churn: RemediationChurn):
+        fake = SimpleNamespace(remediation_churn=churn)
+        return fake
+
+    def test_dependency_risk_gets_fix_not_test(self):
+        """bandit annotations are security fixes, not tests.
+
+        Observed against manim: auto-commit for 7 bandit nosec annotations
+        was `test(dependency-risk.py): ...`. dependency-risk.py lives under
+        myopia: (not security:) and has DOWNSTREAM_CHANGES_UNLIKELY, so it
+        fell through the keyword matches to the churn fallback → "test".
+        """
+        kind = refit_mod._commit_kind_for_check(
+            "myopia:dependency-risk.py",
+            self._check(RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY),
+        )
+        assert kind == "fix"
+
+    def test_source_duplication_gets_refactor(self):
+        kind = refit_mod._commit_kind_for_check(
+            "myopia:source-duplication",
+            self._check(RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY),
+        )
+        assert kind == "refactor"
+
+    def test_unknown_unlikely_churn_falls_through_to_test(self):
+        """The churn fallback still applies for truly unknown gates."""
+        kind = refit_mod._commit_kind_for_check(
+            "myopia:some-novel-gate",
+            self._check(RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY),
+        )
+        assert kind == "test"
+
+
 class TestCmdRefitGeneratePlan:
     def test_generate_plan_requires_clean_worktree(self, monkeypatch, capsys, tmp_path):
         args = argparse.Namespace(start=True, iterate=False, project_root=str(tmp_path))
