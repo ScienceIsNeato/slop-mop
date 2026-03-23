@@ -46,7 +46,7 @@ from slopmop.core.lock import (
 from slopmop.doctor.base import DoctorCheck, DoctorContext, DoctorResult
 
 
-def _format_age(seconds: float) -> str:
+def _format_seconds_age(seconds: float) -> str:  # noqa: ambiguity-mine
     seconds = max(0.0, seconds)
     if seconds < 120:
         return f"{seconds:.0f}s"
@@ -115,7 +115,7 @@ class StateLockCheck(DoctorCheck):
 
         pid = data.get("pid", "?")
         verb = data.get("verb", "?")
-        age = _format_age(cast(float, data.get("age_seconds", 0.0)))
+        age = _format_seconds_age(cast(float, data.get("age_seconds", 0.0)))
         holder = f"Holder:    pid={pid} verb={verb} (age {age})"
 
         if state == "stale":

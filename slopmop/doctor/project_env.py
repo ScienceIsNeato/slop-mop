@@ -22,7 +22,6 @@ dependency set?  ``SKIP`` when no venv exists (depends on
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 from slopmop.checks.mixins import (
     PYTHON_SOURCE_PROJECT_VENV,
@@ -34,15 +33,8 @@ from slopmop.checks.mixins import (
     resolve_project_python,
     suggest_js_install_command,
 )
+from slopmop.checks.quality.config_debt import _has_python_markers
 from slopmop.doctor.base import DoctorCheck, DoctorContext, DoctorResult
-
-
-def _has_python_markers(root: Path) -> bool:
-    """Loose "is this a Python project" — manifest presence only."""
-    return any(
-        (root / name).exists()
-        for name in ("pyproject.toml", "setup.py", "requirements.txt", "Pipfile")
-    )
 
 
 class ProjectVenvCheck(DoctorCheck):

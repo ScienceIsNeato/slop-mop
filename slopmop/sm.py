@@ -713,7 +713,6 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_buff,
         cmd_commit_hooks,
         cmd_config,
-        cmd_doctor,
         cmd_help,
         cmd_init,
         cmd_refit,

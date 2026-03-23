@@ -233,6 +233,37 @@ def _enable_gate(
         print(f"✅ Enabled: {gate_name}")
     else:
         print(f"ℹ️  {gate_name} is already enabled")
+
+    # Run doctor readiness check for the gate so the user sees what's
+    # missing before their first run.  Informational only — never
+    # blocks enable, and a bug in doctor must not break config.
+    try:
+        from slopmop.checks.base import find_tool
+
+        ensure_checks_registered()
+        registry = get_registry()
+        check = registry.get_check(gate_name, config)
+        if check is not None:
+            missing = [
+                t
+                for t in check.required_tools
+                if find_tool(t, str(project_root)) is None
+            ]
+            if missing:
+                hint = check.install_hint
+                print(f"\n  ⚠️  Missing tools: {', '.join(missing)}")
+                if hint == "pip":
+                    print(f"     → pip install {' '.join(missing)}")
+                else:
+                    for t in missing:
+                        print(f"     → Install {t} and ensure it is on PATH")
+    except (ImportError, KeyError, ValueError, OSError) as exc:
+        import logging
+
+        logging.getLogger("slopmop.cli.config").debug(
+            "Doctor readiness check failed for %s: %s", gate_name, exc
+        )
+
     return 0
 
 

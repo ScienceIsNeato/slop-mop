@@ -202,6 +202,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["pyright"]
     role = CheckRole.FOUNDATION
 
     @property

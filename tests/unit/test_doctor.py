@@ -41,11 +41,11 @@ from slopmop.doctor.base import DoctorCheck
 
 
 @pytest.fixture()
-def ctx(tmp_path: Path) -> DoctorContext:
+def ctx(tmp_path: Path) -> DoctorContext:  # noqa: ambiguity-mine
     return DoctorContext(project_root=tmp_path)
 
 
-def _mk_lock(root: Path, meta: dict) -> Path:
+def _mk_lock(root: Path, meta: dict) -> Path:  # noqa: ambiguity-mine
     lock_dir = root / LOCK_DIR
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_file = lock_dir / LOCK_FILE
