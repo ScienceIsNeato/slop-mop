@@ -12,6 +12,7 @@ Slop-mop (`sm`) has two primary modes: **refit** (one-time onboarding) and **mai
 
 ## When to use
 
+- **Default action**: Run `sm sail` when you're not sure what's next — it reads workflow state and does the right thing.
 - **Refit (step 0)**: Run `sm refit --start` to generate a remediation plan, then `sm refit --iterate` until complete, then `sm refit --finish` to enter maintenance.
 - **During implementation**: Run `sm swab` after every meaningful code change. Keep running until clean.
 - **Before PR**: Run `sm scour` for a comprehensive sweep.
@@ -20,8 +21,11 @@ Slop-mop (`sm`) has two primary modes: **refit** (one-time onboarding) and **mai
 ## The maintenance loop
 
 ```
-write code → sm swab → fix → repeat → sm scour → sm buff <PR#>
+Fastest path:  sm sail → fix what it finds → sm sail → repeat until PR lands
+Manual path:   write code → sm swab → fix → repeat → sm scour → sm buff <PR#>
 ```
+
+`sm sail` automates verb selection. Use individual verbs (`sm swab -g <gate>`, `sm buff resolve`, etc.) for surgical work.
 
 ## Refit (before entering the loop)
 
