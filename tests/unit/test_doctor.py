@@ -58,6 +58,7 @@ def _doctor_args(**kw) -> argparse.Namespace:
     defaults = dict(
         checks=[],
         list_checks=False,
+        gates=False,
         fix=False,
         yes=False,
         json_output=None,
@@ -275,10 +276,10 @@ class TestFormatHuman:
         assert "✗" in lines[0]
         assert "○" in lines[-1]
 
-    def test_detail_block_only_for_non_ok_and_platform(self):
+    def test_detail_block_only_for_fail_warn(self):
         out = _format_human(_sample_results())
-        # Platform detail always shown (bug-report header).
-        assert "── runtime.platform " in out
+        # Detail blocks only expand for FAIL/WARN, not OK.
+        assert "── runtime.platform " not in out
         assert "── state.lock " in out
         # SKIP has no detail content set, so no block.
         assert "── project.pip_check " not in out

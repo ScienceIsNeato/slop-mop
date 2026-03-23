@@ -486,3 +486,55 @@ class TestStringDuplicationCheck:
         with patch.object(check, "_load_strip_function", return_value=None):
             result = check._preprocess_python_files(str(tmp_path), config)
             assert result is None
+
+
+class TestStringDuplicationCacheInputs:
+    """Tests for the cache_inputs scoped fingerprint."""
+
+    @pytest.fixture
+    def check(self):
+        return StringDuplicationCheck({})
+
+    def test_returns_scoped_fingerprint(self, check, tmp_path):
+        """cache_inputs returns a SHA-256 hex fingerprint (not None)."""
+        (tmp_path / "main.py").write_text("x = 1")
+        fp = check.cache_inputs(str(tmp_path))
+        assert fp is not None
+        assert isinstance(fp, str)
+        assert len(fp) == 64
+
+    def test_changes_with_py_file_addition(self, check, tmp_path):
+        """Adding a Python file changes the fingerprint."""
+        (tmp_path / "main.py").write_text("x = 1")
+        fp1 = check.cache_inputs(str(tmp_path))
+        (tmp_path / "other.py").write_text("y = 2")
+        fp2 = check.cache_inputs(str(tmp_path))
+        assert fp1 != fp2
+
+    def test_stable_with_non_py_changes(self, check, tmp_path):
+        """Editing YAML, Markdown, or JSON does not change the fingerprint."""
+        (tmp_path / "main.py").write_text("x = 1")
+        fp1 = check.cache_inputs(str(tmp_path))
+        (tmp_path / "config.yaml").write_text("key: value")
+        (tmp_path / "README.md").write_text("# docs")
+        (tmp_path / "data.json").write_text('{"a": 1}')
+        fp2 = check.cache_inputs(str(tmp_path))
+        assert fp1 == fp2
+
+    def test_changes_with_py_content_change(self, check, tmp_path):
+        """Changing Python file content changes the fingerprint."""
+        f = tmp_path / "main.py"
+        f.write_text("x = 1")
+        fp1 = check.cache_inputs(str(tmp_path))
+        f.write_text("x = 2")
+        fp2 = check.cache_inputs(str(tmp_path))
+        assert fp1 != fp2
+
+    def test_config_change_changes_fingerprint(self, tmp_path):
+        """Changing check config changes the fingerprint."""
+        (tmp_path / "main.py").write_text("x = 1")
+        check_default = StringDuplicationCheck({})
+        check_strict = StringDuplicationCheck({"min_length": 4})
+        fp1 = check_default.cache_inputs(str(tmp_path))
+        fp2 = check_strict.cache_inputs(str(tmp_path))
+        assert fp1 != fp2

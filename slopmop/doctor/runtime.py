@@ -137,10 +137,38 @@ class SmResolutionCheck(DoctorCheck):
             )
 
         if len(all_sm) > 1:
+            # Check if the active sm is the project's own venv install.
+            # When developing slop-mop itself, having venv/bin/sm +
+            # scripts/sm + a system pipx install is the expected layout
+            # — no warning needed as long as the project venv wins.
+            project_root = ctx.project_root
+
+            def _is_project_owned(p: str) -> bool:
+                rp = Path(p).resolve()
+                try:
+                    return rp.is_relative_to(project_root)
+                except (TypeError, ValueError):
+                    return False
+
+            active_is_project = first is not None and _is_project_owned(first)
+
             detail_lines = ["Multiple ``sm`` entries on PATH (first wins):"]
             for i, path in enumerate(all_sm):
                 marker = " ← active" if i == 0 else ""
                 detail_lines.append(f"  {i+1}. {path}{marker}")
+
+            if active_is_project:
+                detail_lines.append("")
+                detail_lines.append(
+                    "Active binary is in the project venv — other "
+                    "entries are shadowed."
+                )
+                return self._ok(
+                    f"sm resolves to {first} (project venv)",
+                    detail="\n".join(detail_lines),
+                    data=data,
+                )
+
             detail_lines.append("")
             detail_lines.append(
                 "If this isn't the ``sm`` you expect, adjust PATH ordering "

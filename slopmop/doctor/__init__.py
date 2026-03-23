@@ -48,6 +48,7 @@ from slopmop.doctor.project_env import (
 from slopmop.doctor.runtime import PlatformCheck, SmResolutionCheck
 from slopmop.doctor.sm_env import (
     InstallModeCheck,
+    PypiVersionCheck,
     SmPipCheck,
     ToolInventoryCheck,
 )
@@ -75,6 +76,7 @@ ALL_CHECKS: List[type[DoctorCheck]] = [
     PlatformCheck,
     SmResolutionCheck,
     InstallModeCheck,
+    PypiVersionCheck,
     SmPipCheck,
     ToolInventoryCheck,
     ProjectVenvCheck,

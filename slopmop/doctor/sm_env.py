@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Tuple
 
 from slopmop.checks.base import find_tool
 from slopmop.cli.detection import REQUIRED_TOOLS
-from slopmop.cli.upgrade import classify_install
+from slopmop.cli.upgrade import UpgradeError, classify_install
 from slopmop.doctor.base import DoctorCheck, DoctorContext, DoctorResult
 from slopmop.subprocess.validator import SecurityError, get_validator
 
@@ -224,5 +224,48 @@ class ToolInventoryCheck(DoctorCheck):
             "; ".join(summary_bits),
             detail="\n".join(detail_lines),
             fix_hint="\n".join(fix_lines),
+            data=data,
+        )
+
+
+class PypiVersionCheck(DoctorCheck):
+    name = "sm_env.pypi_version"
+    description = "Installed slopmop version vs latest on PyPI"
+
+    def run(self, ctx: DoctorContext) -> DoctorResult:
+        from slopmop.cli.upgrade import (
+            _fetch_latest_pypi_version,
+            _installed_version,
+            _packaging_version_class,
+        )
+
+        try:
+            current = _installed_version()
+        except UpgradeError:
+            return self._skip("could not determine installed version")
+
+        try:
+            latest = _fetch_latest_pypi_version()
+        except UpgradeError:
+            return self._skip(
+                f"slopmop {current} (PyPI unreachable)",
+                data={"installed": current, "latest": None},
+            )
+
+        data = {"installed": current, "latest": latest}
+
+        try:
+            Version = _packaging_version_class()
+            is_behind = Version(current) < Version(latest)
+        except Exception:
+            is_behind = current != latest
+
+        if not is_behind:
+            return self._ok(f"slopmop {current} (latest)", data=data)
+
+        return self._warn(
+            f"slopmop {current} → {latest} available",
+            detail=f"Installed: {current}\nLatest:    {latest}",
+            fix_hint="sm upgrade",
             data=data,
         )

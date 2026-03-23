@@ -150,7 +150,12 @@ class TestSmResolutionCheck:
         assert r.status is DoctorStatus.OK
         assert str(sm) in r.summary or str(sm.resolve()) in r.summary
 
-    def test_collision_warns(self, ctx, monkeypatch, tmp_path):
+    def test_collision_warns(self, monkeypatch, tmp_path):
+        # Use a project_root that does NOT contain the sm binaries
+        # so they aren't treated as project-owned.
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        ext_ctx = DoctorContext(project_root=project_root)
         a, b = tmp_path / "a", tmp_path / "b"
         for d in (a, b):
             d.mkdir()
@@ -158,7 +163,7 @@ class TestSmResolutionCheck:
             sm.write_text("#!/bin/sh\n")
             sm.chmod(0o755)
         monkeypatch.setenv("PATH", f"{a}{os.pathsep}{b}")
-        r = SmResolutionCheck().run(ctx)
+        r = SmResolutionCheck().run(ext_ctx)
         assert r.status is DoctorStatus.WARN
         assert "2 sm binaries" in r.summary
         assert "← active" in r.detail

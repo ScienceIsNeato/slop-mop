@@ -155,6 +155,23 @@ class StringDuplicationCheck(BaseCheck):
             ),
         ]
 
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to Python source files only.
+
+        Edits to non-Python files (YAML, Markdown, JSON, config) and
+        other-language files won't invalidate this check's cache — the
+        tool only scans the configured .py includes, so only .py changes
+        can produce a different result.
+        """
+        from slopmop.core.cache import hash_file_scope
+
+        return hash_file_scope(
+            project_root,
+            ["."],
+            {".py"},
+            self._get_effective_config(),
+        )
+
     def is_applicable(self, project_root: str) -> bool:
         """Check if there are source files to analyze."""
         root = Path(project_root)

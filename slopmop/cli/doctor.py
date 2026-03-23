@@ -30,7 +30,7 @@ import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Tuple
 
 from slopmop.doctor import (
     ALL_CHECKS,
@@ -88,11 +88,12 @@ def _format_human(
         out.append(_table_row(r, name_width))
     out.append("")
 
-    # Detail blocks for non-OK.  Always include runtime.platform — it's
-    # the "paste this into your bug report" header even when green.
+    # Detail blocks for non-OK only.  runtime.platform gets a compact
+    # one-liner instead of the full detail block when everything is green.
     for r in sorted_results:
-        show_detail = r.status != DoctorStatus.OK or r.name == "runtime.platform"
-        if not show_detail or not r.detail:
+        if r.status not in (DoctorStatus.FAIL, DoctorStatus.WARN):
+            continue
+        if not r.detail:
             continue
         out.append(_rule(r.name))
         out.append(r.detail.rstrip())
@@ -173,11 +174,85 @@ def _print_list_checks() -> None:
         print(f"  {cls.name.ljust(name_width)}  {cls.description}{fix}")
 
 
+def _print_gates_tree(project_root: Path, json_mode: bool = False) -> int:
+    """Show quality gates grouped by level with required tools and status."""
+    from slopmop.checks import ensure_checks_registered
+    from slopmop.checks.base import GateLevel, find_tool
+    from slopmop.core.registry import get_registry
+
+    ensure_checks_registered()
+    registry = get_registry()
+    root = str(project_root)
+
+    swab_gates: List[Tuple[str, str, List[Tuple[str, bool]]]] = []
+    scour_gates: List[Tuple[str, str, List[Tuple[str, bool]]]] = []
+
+    for name, cls in registry._check_classes.items():
+        tools_status: List[Tuple[str, bool]] = []
+        for tool in cls.required_tools:
+            path = find_tool(tool, root)
+            tools_status.append((tool, path is not None))
+
+        role_tag = cls.role.value if hasattr(cls, "role") else ""
+        entry = (name, role_tag, tools_status)
+
+        if cls.level == GateLevel.SCOUR:
+            scour_gates.append(entry)
+        else:
+            swab_gates.append(entry)
+
+    if json_mode:
+        payload: dict[str, list[dict[str, object]]] = {
+            "swab": [
+                {"gate": g, "role": r, "tools": [{"name": t, "ok": ok} for t, ok in ts]}
+                for g, r, ts in swab_gates
+            ],
+            "scour": [
+                {"gate": g, "role": r, "tools": [{"name": t, "ok": ok} for t, ok in ts]}
+                for g, r, ts in scour_gates
+            ],
+        }
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    def _format_group(
+        label: str, gates: List[Tuple[str, str, List[Tuple[str, bool]]]]
+    ) -> List[str]:
+        lines: List[str] = []
+        lines.append(f"{label} ({len(gates)} gates)")
+        name_width = max((len(g) for g, _, _ in gates), default=0)
+        for gate_name, _role, tools in sorted(gates):
+            if tools:
+                tool_parts: list[str] = []
+                for t, ok in tools:
+                    tool_parts.append(f"{'✓' if ok else '✗'} {t}")
+                tool_str = ", ".join(tool_parts)
+            else:
+                tool_str = "(pure — no external tools)"
+            lines.append(f"  {gate_name.ljust(name_width)}  {tool_str}")
+        lines.append("")
+        return lines
+
+    out: List[str] = []
+    out.extend(_format_group("swab", swab_gates))
+    if scour_gates:
+        out.extend(_format_group("scour-only", scour_gates))
+    print("\n".join(out).rstrip())
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Entry point for ``sm doctor``."""
     if args.list_checks:
         _print_list_checks()
         return 0
+
+    if args.gates:
+        project_root = Path(getattr(args, "project_root", ".") or ".").resolve()
+        json_mode = args.json_output
+        if json_mode is None:
+            json_mode = not sys.stdout.isatty()
+        return _print_gates_tree(project_root, json_mode=json_mode)
 
     patterns = _validate_patterns(args.checks or [])
     project_root = Path(getattr(args, "project_root", ".") or ".").resolve()

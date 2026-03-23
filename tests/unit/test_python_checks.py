@@ -536,6 +536,147 @@ class TestPythonTestsCheck:
         assert len(findings) == 1
         assert findings[0].fix_strategy is None
 
+    # ------------------------------------------------------------------
+    # cache_inputs
+    # ------------------------------------------------------------------
+
+    def test_cache_inputs_returns_scoped_fingerprint(self, tmp_path):
+        """cache_inputs returns a 64-char SHA-256 hex string (not None)."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_foo.py").write_text("def test_ok(): pass")
+        check = PythonTestsCheck({})
+        fp = check.cache_inputs(str(tmp_path))
+        assert fp is not None
+        assert isinstance(fp, str)
+        assert len(fp) == 64
+
+    def test_cache_inputs_stable_with_non_py_change(self, tmp_path):
+        """cache_inputs fingerprint is stable when only non-Python files change."""
+        (tmp_path / "main.py").write_text("x = 1")
+        check = PythonTestsCheck({})
+        fp1 = check.cache_inputs(str(tmp_path))
+        (tmp_path / "config.yaml").write_text("key: value")
+        (tmp_path / "README.md").write_text("# docs")
+        fp2 = check.cache_inputs(str(tmp_path))
+        assert fp1 == fp2
+
+    def test_cache_inputs_changes_with_py_change(self, tmp_path):
+        """cache_inputs fingerprint changes when a Python file is modified."""
+        f = tmp_path / "main.py"
+        f.write_text("x = 1")
+        check = PythonTestsCheck({})
+        fp1 = check.cache_inputs(str(tmp_path))
+        f.write_text("x = 2")
+        fp2 = check.cache_inputs(str(tmp_path))
+        assert fp1 != fp2
+
+    # ------------------------------------------------------------------
+    # testmon fast path
+    # ------------------------------------------------------------------
+
+    def test_run_uses_testmon_when_available(self, tmp_path):
+        """When testmon is installed and .testmondata+coverage.xml exist, use --testmon."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass")
+        (tmp_path / ".testmondata").touch()
+        (tmp_path / "coverage.xml").write_text("<coverage></coverage>")
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="1 passed in 0.1s", stderr="", duration=0.1
+        )
+
+        check = PythonTestsCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            with patch.object(check, "_testmon_available", return_value=True):
+                result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        cmd = mock_runner.run.call_args[0][0]
+        assert "--testmon" in cmd
+        assert "--cov=." not in cmd
+
+    def test_run_uses_full_path_when_no_testmondata(self, tmp_path):
+        """When .testmondata is absent, fall back to full pytest with coverage."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass")
+        # No .testmondata — fast path should NOT activate
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="1 passed in 0.1s", stderr="", duration=1.0
+        )
+
+        check = PythonTestsCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            with patch.object(check, "_testmon_available", return_value=True):
+                result = check.run(str(tmp_path))
+
+        cmd = mock_runner.run.call_args[0][0]
+        assert "--cov=." in cmd
+        assert "--testmon" not in cmd
+
+    def test_run_uses_full_path_when_no_coverage_xml(self, tmp_path):
+        """When coverage.xml is absent, fall back to full pytest run."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass")
+        (tmp_path / ".testmondata").touch()
+        # No coverage.xml — fast path should NOT activate
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="1 passed in 0.1s", stderr="", duration=1.0
+        )
+
+        check = PythonTestsCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            with patch.object(check, "_testmon_available", return_value=True):
+                result = check.run(str(tmp_path))
+
+        cmd = mock_runner.run.call_args[0][0]
+        assert "--cov=." in cmd
+        assert "--testmon" not in cmd
+
+    def test_run_testmon_exit_5_is_pass(self, tmp_path):
+        """pytest exit 5 (no tests collected) while using testmon = all deselected = pass."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass")
+        (tmp_path / ".testmondata").touch()
+        (tmp_path / "coverage.xml").write_text("<coverage></coverage>")
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=5, stdout="", stderr="", duration=0.05
+        )
+
+        check = PythonTestsCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            with patch.object(check, "_testmon_available", return_value=True):
+                result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
+    def test_run_testmon_not_available_uses_full_command(self, tmp_path):
+        """When testmon is not installed, full pytest command is always used."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass")
+        (tmp_path / ".testmondata").touch()
+        (tmp_path / "coverage.xml").write_text("<coverage></coverage>")
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="1 passed in 0.1s", stderr="", duration=1.0
+        )
+
+        check = PythonTestsCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            with patch.object(check, "_testmon_available", return_value=False):
+                result = check.run(str(tmp_path))
+
+        cmd = mock_runner.run.call_args[0][0]
+        assert "--cov=." in cmd
+        assert "--testmon" not in cmd
+
 
 class TestPythonCoverageCheck:
     """Tests for PythonCoverageCheck."""

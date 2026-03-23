@@ -549,6 +549,11 @@ def _add_doctor_parser(
         help="List check names and descriptions, then exit.",
     )
     doctor_parser.add_argument(
+        "--gates",
+        action="store_true",
+        help="Show quality gates grouped by level with required tools and resolution status.",
+    )
+    doctor_parser.add_argument(
         "--fix",
         action="store_true",
         help=(
