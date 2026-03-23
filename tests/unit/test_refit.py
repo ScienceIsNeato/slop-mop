@@ -138,9 +138,9 @@ class TestCommitKindForCheck:
         )
         assert kind == "fix"
 
-    def test_source_duplication_gets_refactor(self):
+    def test_repeated_code_gets_refactor(self):
         kind = refit_mod._commit_kind_for_check(
-            "myopia:source-duplication",
+            "myopia:repeated-code",
             self._check(RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY),
         )
         assert kind == "refactor"

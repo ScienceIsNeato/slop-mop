@@ -187,7 +187,7 @@ class TestRepeatedCodeCheck:
         Without this, jscpd scans every filetype it recognises (SVG,
         markdown, HTML) and reports e.g. logo assets as code clones.
         """
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         cmd = check._build_jscpd_command(
             "/tmp/report", ["."], min_tokens=50, min_lines=5
         )
