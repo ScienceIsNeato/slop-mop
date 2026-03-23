@@ -121,7 +121,7 @@ class TestCmdRefitContinue:
                     "branch": "feat/refit",
                     "expected_head": "abc123",
                     "current_index": 0,
-                    "items": [{"gate": "myopia:source-duplication"}],
+                    "items": [{"gate": "laziness:repeated-code"}],
                 }
             ),
         )
@@ -143,10 +143,10 @@ class TestCmdRefitContinue:
             "current_index": 0,
             "items": [
                 {
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -170,7 +170,7 @@ class TestCmdRefitContinue:
 
         assert refit_mod.cmd_refit(args) == 1
         out = capsys.readouterr().out
-        assert "Refit stopped on failing gate: myopia:source-duplication" in out
+        assert "Refit stopped on failing gate: laziness:repeated-code" in out
         assert saved["plan"]["status"] == "blocked_on_failure"
 
     def test_skip_marks_current_gate_and_advances(
@@ -295,7 +295,7 @@ class TestCmdRefitContinue:
                 {
                     "status": "pending",
                     "attempt_count": 0,
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -335,10 +335,10 @@ class TestCmdRefitContinue:
             "current_index": 0,
             "items": [
                 {
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -381,15 +381,15 @@ class TestCmdRefitContinue:
             "expected_head": "abc123",
             "status": "ready",
             "current_index": 0,
-            "current_gate": "myopia:source-duplication",
+            "current_gate": "laziness:repeated-code",
             "items": [
                 {
                     "id": 1,
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "verify_command": "sm scour -g myopia:source-duplication --no-auto-fix",
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "verify_command": "sm scour -g laziness:repeated-code --no-auto-fix",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -409,7 +409,7 @@ class TestCmdRefitContinue:
         assert refit_mod.cmd_refit(args) == 1
         payload = json.loads(capsys.readouterr().out)
         assert payload["event"] == "blocked_on_failure"
-        assert payload["current_gate"] == "myopia:source-duplication"
+        assert payload["current_gate"] == "laziness:repeated-code"
         assert (
             payload["next_action"]
             == "Fix the failing gate, then rerun `sm refit --iterate`."
@@ -432,15 +432,15 @@ class TestCmdRefitContinue:
             "expected_head": "abc123",
             "status": "ready",
             "current_index": 0,
-            "current_gate": "myopia:source-duplication",
+            "current_gate": "laziness:repeated-code",
             "items": [
                 {
                     "id": 1,
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "verify_command": "sm scour -g myopia:source-duplication --no-auto-fix",
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "verify_command": "sm scour -g laziness:repeated-code --no-auto-fix",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -477,10 +477,10 @@ class TestCmdRefitContinue:
             "current_index": 0,
             "items": [
                 {
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -519,10 +519,10 @@ class TestCmdRefitContinue:
             "current_index": 0,
             "items": [
                 {
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -557,7 +557,7 @@ class TestCmdRefitContinue:
 
         assert refit_mod.cmd_refit(args) == 0
         out = capsys.readouterr().out
-        assert "Refit committed myopia:source-duplication" in out
+        assert "Refit committed laziness:repeated-code" in out
         assert saves[-1]["status"] == "completed"
         assert saves[-1]["items"][0]["commit_sha"] == "def456"
 
@@ -573,10 +573,10 @@ class TestCmdRefitContinue:
             "current_index": 0,
             "items": [
                 {
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -628,15 +628,15 @@ class TestCmdRefitContinue:
             "expected_head": "abc123",
             "status": "ready",
             "current_index": 0,
-            "current_gate": "myopia:source-duplication",
+            "current_gate": "laziness:repeated-code",
             "items": [
                 {
                     "id": 1,
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "verify_command": "sm scour -g myopia:source-duplication --no-auto-fix",
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "verify_command": "sm scour -g laziness:repeated-code --no-auto-fix",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                     "last_artifact": None,
                     "commit_sha": None,
@@ -723,13 +723,13 @@ class TestCmdRefitContinue:
 
         assert after_first["status"] == "blocked_on_failure"
         assert after_first["current_index"] == 0
-        assert after_first["current_gate"] == "myopia:source-duplication"
+        assert after_first["current_gate"] == "laziness:repeated-code"
         assert after_first["items"][0]["status"] == "blocked_on_failure"
         assert after_first["items"][0]["attempt_count"] == 1
         assert first_protocol["event"] == "blocked_on_failure"
         assert first_protocol["current_index"] == 0
-        assert first_protocol["current_gate"] == "myopia:source-duplication"
-        assert first_protocol["current_item"]["gate"] == "myopia:source-duplication"
+        assert first_protocol["current_gate"] == "laziness:repeated-code"
+        assert first_protocol["current_item"]["gate"] == "laziness:repeated-code"
 
         assert refit_mod.cmd_refit(args) == 1
         after_second = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -770,8 +770,8 @@ class TestCmdRefitContinue:
         assert third_protocol["current_gate"] is None
         assert "current_item" not in third_protocol
         assert [gate for gate, _artifact in scour_calls] == [
-            "myopia:source-duplication",
-            "myopia:source-duplication",
+            "laziness:repeated-code",
+            "laziness:repeated-code",
             "overconfidence:coverage-gaps.py",
             "overconfidence:coverage-gaps.py",
         ]
@@ -794,10 +794,10 @@ class TestCmdRefitContinue:
             "current_index": 0,
             "items": [
                 {
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "pending",
                     "attempt_count": 0,
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 }
             ],
@@ -843,10 +843,10 @@ class TestCmdRefitContinue:
             "current_index": 0,
             "items": [
                 {
-                    "gate": "myopia:source-duplication",
+                    "gate": "laziness:repeated-code",
                     "status": "blocked_on_failure",
                     "attempt_count": 1,
-                    "commit_message": "refactor(source-duplication): resolve remediation findings",
+                    "commit_message": "refactor(repeated-code): resolve remediation findings",
                     "log_file": None,
                 },
                 {

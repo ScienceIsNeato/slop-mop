@@ -2,8 +2,8 @@ FROM python:3.12-slim
 
 # System dependencies required by slop-mop gates:
 #   git      — clone fixture repo + branch checkout inside the container
-#   Node.js  — jscpd (source-duplication gate), find-duplicate-strings
-#   jscpd    — installed globally via npm (source-duplication gate)
+#   Node.js  — jscpd (repeated-code gate), find-duplicate-strings
+#   jscpd    — installed globally via npm (repeated-code gate)
 #   find-duplicate-strings — installed globally via npm (string-duplication gate)
 #
 # Python analysis tools are pre-installed so that gates work immediately

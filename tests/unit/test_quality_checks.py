@@ -1,14 +1,15 @@
-"""Tests for quality checks (complexity, source duplication)."""
+"""Tests for quality checks (complexity, repeated code, ambiguity mines)."""
 
 import json
 from unittest.mock import MagicMock, patch
 
+from slopmop.checks.quality.ambiguity_mines import AmbiguityMinesCheck
 from slopmop.checks.quality.complexity import (
     MAX_COMPLEXITY,
     ComplexityCheck,
     _to_finding,
 )
-from slopmop.checks.quality.duplication import SourceDuplicationCheck
+from slopmop.checks.quality.duplication import RepeatedCodeCheck
 from slopmop.core.result import CheckStatus, FindingLevel
 
 
@@ -143,27 +144,27 @@ class TestComplexityCheck:
         assert "Radon not available" in result.error
 
 
-class TestSourceDuplicationCheck:
-    """Tests for SourceDuplicationCheck."""
+class TestRepeatedCodeCheck:
+    """Tests for RepeatedCodeCheck."""
 
     def test_name(self):
         """Test check name."""
-        check = SourceDuplicationCheck({})
-        assert check.name == "source-duplication"
+        check = RepeatedCodeCheck({})
+        assert check.name == "repeated-code"
 
     def test_full_name(self):
         """Test full check name with category."""
-        check = SourceDuplicationCheck({})
-        assert check.full_name == "myopia:source-duplication"
+        check = RepeatedCodeCheck({})
+        assert check.full_name == "laziness:repeated-code"
 
     def test_display_name(self):
         """Test display name."""
-        check = SourceDuplicationCheck({})
-        assert "Duplication" in check.display_name
+        check = RepeatedCodeCheck({})
+        assert "Repeated Code" in check.display_name
 
     def test_config_schema(self):
         """Test config schema includes expected fields."""
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         schema = check.config_schema
         field_names = [f.name for f in schema]
         assert "threshold" in field_names
@@ -172,7 +173,7 @@ class TestSourceDuplicationCheck:
 
     def test_build_command_ignores_migrations_by_default(self):
         """jscpd command should ignore migration boilerplate by default."""
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         cmd = check._build_jscpd_command(
             "/tmp/report", ["."], min_tokens=50, min_lines=5
         )
@@ -186,7 +187,7 @@ class TestSourceDuplicationCheck:
         Without this, jscpd scans every filetype it recognises (SVG,
         markdown, HTML) and reports e.g. logo assets as code clones.
         """
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         cmd = check._build_jscpd_command(
             "/tmp/report", ["."], min_tokens=50, min_lines=5
         )
@@ -203,25 +204,25 @@ class TestSourceDuplicationCheck:
     def test_is_applicable_with_python(self, tmp_path):
         """Test is_applicable returns True for Python projects."""
         (tmp_path / "app.py").write_text("print('hello')")
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
     def test_is_applicable_with_js(self, tmp_path):
         """Test is_applicable returns True for JS projects."""
         (tmp_path / "app.js").write_text("console.log('hello')")
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
     def test_is_applicable_no_code(self, tmp_path):
         """Test is_applicable returns False for non-code projects."""
         (tmp_path / "README.md").write_text("# Hello")
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         assert check.is_applicable(str(tmp_path)) is False
 
     def test_run_jscpd_not_available(self, tmp_path):
         """Test run() when jscpd is not installed."""
         (tmp_path / "app.py").write_text("def test(): pass")
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
 
         mock_result = MagicMock()
         mock_result.returncode = 1
@@ -236,7 +237,7 @@ class TestSourceDuplicationCheck:
     def test_run_no_duplication(self, tmp_path):
         """Test run() when no duplication found."""
         (tmp_path / "app.py").write_text("def unique(): pass")
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
 
         # First call checks jscpd availability, second runs the analysis
         version_result = MagicMock()
@@ -260,7 +261,7 @@ class TestSourceDuplicationCheck:
     def test_run_with_duplication(self, tmp_path):
         """Test run() when duplication exceeds threshold."""
         (tmp_path / "app.py").write_text("def copy(): pass")
-        check = SourceDuplicationCheck({"threshold": 5})
+        check = RepeatedCodeCheck({"threshold": 5})
 
         version_result = MagicMock()
         version_result.returncode = 0
@@ -310,7 +311,7 @@ class TestSourceDuplicationCheck:
     def test_run_with_duplication_below_threshold(self, tmp_path):
         """Test run() passes when duplicates exist but percentage is below threshold."""
         (tmp_path / "app.py").write_text("def copy(): pass")
-        check = SourceDuplicationCheck({"threshold": 5})
+        check = RepeatedCodeCheck({"threshold": 5})
 
         version_result = MagicMock()
         version_result.returncode = 0
@@ -359,14 +360,14 @@ class TestSourceDuplicationCheck:
     def test_skip_reason_no_source_files(self, tmp_path):
         """Test skip_reason returns correct message when no source files."""
         (tmp_path / "README.md").write_text("# Hello")
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         reason = check.skip_reason(str(tmp_path))
         assert "No Python or JavaScript/TypeScript source files" in reason
 
     def test_skip_reason_with_source_files(self, tmp_path):
         """Test skip_reason returns generic message when source files exist."""
         (tmp_path / "app.py").write_text("print('hello')")
-        check = SourceDuplicationCheck({})
+        check = RepeatedCodeCheck({})
         reason = check.skip_reason(str(tmp_path))
         assert "not applicable" in reason.lower()
 
@@ -381,7 +382,7 @@ class TestAmbiguityMineScan:
         """Same module-level function name in two files → finding."""
         (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
         (tmp_path / "b.py").write_text("def helper():\n    return 2\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 1
         assert "helper()" in findings[0].message
@@ -392,7 +393,7 @@ class TestAmbiguityMineScan:
         """Dunder methods should not be flagged."""
         (tmp_path / "a.py").write_text("def __init__():\n    pass\n")
         (tmp_path / "b.py").write_text("def __init__():\n    pass\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -400,7 +401,7 @@ class TestAmbiguityMineScan:
         """Common lifecycle names (main, setUp, etc.) should not be flagged."""
         (tmp_path / "a.py").write_text("def main():\n    pass\n")
         (tmp_path / "b.py").write_text("def main():\n    pass\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -412,7 +413,7 @@ class TestAmbiguityMineScan:
         (tmp_path / "b.py").write_text(
             "class B:\n    def process(self):\n        pass\n"
         )
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -422,7 +423,7 @@ class TestAmbiguityMineScan:
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "conftest.py").write_text("def my_fixture():\n    pass\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -432,7 +433,7 @@ class TestAmbiguityMineScan:
         vendor.mkdir()
         (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
         (vendor / "b.py").write_text("def helper():\n    return 2\n")
-        check = SourceDuplicationCheck({"exclude_dirs": ["vendor"]})
+        check = AmbiguityMinesCheck({"exclude_dirs": ["vendor"]})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -440,7 +441,7 @@ class TestAmbiguityMineScan:
         """Distinct function names → no findings."""
         (tmp_path / "a.py").write_text("def foo():\n    pass\n")
         (tmp_path / "b.py").write_text("def bar():\n    pass\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -449,7 +450,7 @@ class TestAmbiguityMineScan:
         (tmp_path / "a.py").write_text(
             "def helper():\n    return 1\n\ndef helper():\n    return 2\n"
         )
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -457,7 +458,7 @@ class TestAmbiguityMineScan:
         """Files with syntax errors should be silently skipped."""
         (tmp_path / "good.py").write_text("def helper():\n    pass\n")
         (tmp_path / "bad.py").write_text("def helper(\n")  # syntax error
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -466,7 +467,7 @@ class TestAmbiguityMineScan:
         body = "def helper():\n    return 42\n"
         (tmp_path / "a.py").write_text(body)
         (tmp_path / "b.py").write_text(body)
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 1
         assert "(identical)" in findings[0].message
@@ -476,7 +477,7 @@ class TestAmbiguityMineScan:
         """Different function bodies should be tagged as 'DIVERGED'."""
         (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
         (tmp_path / "b.py").write_text("def helper():\n    return 999\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 1
         assert "(DIVERGED)" in findings[0].message
@@ -486,7 +487,7 @@ class TestAmbiguityMineScan:
         """fix_strategy should present all five classification options."""
         (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
         (tmp_path / "b.py").write_text("def helper():\n    return 2\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 1
         strategy = findings[0].fix_strategy
@@ -500,7 +501,7 @@ class TestAmbiguityMineScan:
         """fix_strategy should contain the actual function source."""
         (tmp_path / "a.py").write_text("def helper():\n    return 1\n")
         (tmp_path / "b.py").write_text("def helper():\n    return 2\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 1
         strategy = findings[0].fix_strategy
@@ -515,7 +516,7 @@ class TestAmbiguityMineScan:
         (tmp_path / "b.py").write_text(
             "def helper():  # noqa: ambiguity-mine\n    return 2\n"
         )
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         assert len(findings) == 0
 
@@ -525,7 +526,7 @@ class TestAmbiguityMineScan:
             "def helper():  # noqa: ambiguity-mine\n    return 1\n"
         )
         (tmp_path / "b.py").write_text("def helper():\n    return 2\n")
-        check = SourceDuplicationCheck({})
+        check = AmbiguityMinesCheck({})
         findings = check._scan_duplicate_function_names(str(tmp_path), ["."])
         # Only one un-suppressed location → fewer than 2 unique files → no finding
         assert len(findings) == 0

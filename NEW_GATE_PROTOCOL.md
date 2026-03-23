@@ -190,7 +190,7 @@ class MyCheck(BaseCheck, PythonCheckMixin):
 | `ToolContext.PURE`    | No external tools needed (AST, regex, file parsing)  | N/A                        | `LocLockCheck`, `BogusTestsCheck` |
 | `ToolContext.SM_TOOL` | Uses tools bundled with slop-mop (via pipx)          | `find_tool()` / bare cmd   | `SecurityLocalCheck`, `ComplexityCheck` |
 | `ToolContext.PROJECT` | Runs against the project's own Python env            | `get_project_python()`     | `PythonTestsCheck`, `PythonCoverageCheck` |
-| `ToolContext.NODE`    | Requires Node.js toolchain in the project            | `npx` / `node_modules`     | `SourceDuplicationCheck`, `FrontendCheck` |
+| `ToolContext.NODE`    | Requires Node.js toolchain in the project            | `npx` / `node_modules`     | `RepeatedCodeCheck`, `FrontendCheck` |
 
 **Decision guide:**
 

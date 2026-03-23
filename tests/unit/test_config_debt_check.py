@@ -211,7 +211,7 @@ class TestStaleApplicability:
             "myopia": {
                 "enabled": True,
                 "gates": {
-                    "source-duplication": {"enabled": False},
+                    "code-sprawl": {"enabled": False},
                 },
             },
         }

@@ -163,7 +163,7 @@ class TestGenerateTables:
         remediation_section = tables.split("### 🧭 Remediation Order", 1)[1]
 
         assert remediation_section.index(
-            "`myopia:source-duplication`"
+            "`laziness:repeated-code`"
         ) < remediation_section.index("`laziness:sloppy-formatting.py`")
 
     def test_stale_docs_not_in_generated_tables(self) -> None:

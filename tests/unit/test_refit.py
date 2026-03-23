@@ -60,7 +60,7 @@ class TestBuildPlan:
                             "output": "coverage missing",
                         },
                         {
-                            "name": "myopia:source-duplication",
+                            "name": "laziness:repeated-code",
                             "status": "failed",
                             "output": "duplicate code",
                         },
@@ -72,8 +72,8 @@ class TestBuildPlan:
         (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
 
         structural = _FakeCheck(
-            "myopia:source-duplication",
-            "source-duplication",
+            "laziness:repeated-code",
+            "repeated-code",
             RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY,
         )
         coverage = _FakeCheck(
@@ -110,12 +110,10 @@ class TestBuildPlan:
         assert plan["branch"] == "feat/refit"
         assert plan["expected_head"] == "abc123"
         assert [item["gate"] for item in plan["items"]] == [
-            "myopia:source-duplication",
+            "laziness:repeated-code",
             "overconfidence:coverage-gaps.py",
         ]
-        assert plan["items"][0]["commit_message"].startswith(
-            "refactor(source-duplication)"
-        )
+        assert plan["items"][0]["commit_message"].startswith("refactor(repeated-code)")
         assert plan["items"][1]["commit_message"].startswith("test(coverage-gaps.py)")
 
 
@@ -140,9 +138,9 @@ class TestCommitKindForCheck:
         )
         assert kind == "fix"
 
-    def test_source_duplication_gets_refactor(self):
+    def test_repeated_code_gets_refactor(self):
         kind = refit_mod._commit_kind_for_check(
-            "myopia:source-duplication",
+            "myopia:repeated-code",
             self._check(RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY),
         )
         assert kind == "refactor"
@@ -212,7 +210,7 @@ class TestCmdRefitGeneratePlan:
                     "expected_head": "abc123",
                     "status": "ready",
                     "current_index": 0,
-                    "items": [{"gate": "myopia:source-duplication"}],
+                    "items": [{"gate": "laziness:repeated-code"}],
                 }
             ),
         )
@@ -227,7 +225,7 @@ class TestCmdRefitGeneratePlan:
         out = capsys.readouterr().out
         assert "Refit plan generated." in out
         assert saved["root"] == tmp_path
-        assert saved["plan"]["items"][0]["gate"] == "myopia:source-duplication"
+        assert saved["plan"]["items"][0]["gate"] == "laziness:repeated-code"
 
     def test_generate_plan_json_output_emits_protocol_payload(
         self, monkeypatch, capsys, tmp_path: Path
@@ -258,11 +256,11 @@ class TestCmdRefitGeneratePlan:
                     "expected_head": "abc123",
                     "status": "ready",
                     "current_index": 0,
-                    "current_gate": "myopia:source-duplication",
+                    "current_gate": "laziness:repeated-code",
                     "items": [
                         {
                             "id": 1,
-                            "gate": "myopia:source-duplication",
+                            "gate": "laziness:repeated-code",
                             "status": "pending",
                         }
                     ],
@@ -274,7 +272,7 @@ class TestCmdRefitGeneratePlan:
         assert refit_mod.cmd_refit(args) == 0
         payload = json.loads(capsys.readouterr().out)
         assert payload["event"] == "plan_generated"
-        assert payload["current_gate"] == "myopia:source-duplication"
+        assert payload["current_gate"] == "laziness:repeated-code"
 
     def test_generate_plan_writes_protocol_file_and_output_mirror(
         self, monkeypatch, tmp_path: Path
@@ -306,11 +304,11 @@ class TestCmdRefitGeneratePlan:
                     "expected_head": "abc123",
                     "status": "ready",
                     "current_index": 0,
-                    "current_gate": "myopia:source-duplication",
+                    "current_gate": "laziness:repeated-code",
                     "items": [
                         {
                             "id": 1,
-                            "gate": "myopia:source-duplication",
+                            "gate": "laziness:repeated-code",
                             "status": "pending",
                         }
                     ],
@@ -409,7 +407,7 @@ class TestRunScour:
         exit_code = refit_mod._run_scour(
             tmp_path,
             artifact_path,
-            gate="myopia:source-duplication",
+            gate="laziness:repeated-code",
         )
 
         assert exit_code == 0
@@ -419,4 +417,4 @@ class TestRunScour:
         assert captured["capture_output"] is True
         assert captured["text"] is True
         assert captured["check"] is False
-        assert captured["command"][-2:] == ["-g", "myopia:source-duplication"]
+        assert captured["command"][-2:] == ["-g", "laziness:repeated-code"]

@@ -221,9 +221,27 @@ def _laziness_structural_reasoning_entries() -> (
         ComplexityCheck,
         ConfigDebtCheck,
         DeadCodeCheck,
+        RepeatedCodeCheck,
     )
 
     return (
+        (
+            RepeatedCodeCheck,
+            _reasoning(
+                rationale=(
+                    "Copy-pasted blocks diverge in slow motion until every bug fix becomes a "
+                    "scavenger hunt across near-identical code."
+                ),
+                tradeoffs=(
+                    "Deduping too early can create the wrong abstraction and make simple code "
+                    "feel clever for no reason."
+                ),
+                override_when=(
+                    "Hold off when the repeated code is still genuinely in discovery mode and the "
+                    "shared shape is not stable yet."
+                ),
+            ),
+        ),
         (
             TemplateValidationCheck,
             _reasoning(
@@ -422,24 +440,24 @@ def _myopia_scope_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning]
 
 @lru_cache(maxsize=1)
 def _myopia_risk_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning], ...]:
-    from slopmop.checks.quality import SourceDuplicationCheck, StringDuplicationCheck
+    from slopmop.checks.quality import AmbiguityMinesCheck, StringDuplicationCheck
     from slopmop.checks.security import SecurityCheck
 
     return (
         (
-            SourceDuplicationCheck,
+            AmbiguityMinesCheck,
             _reasoning(
                 rationale=(
-                    "Copy-pasted logic diverges in slow motion until every bug fix becomes a "
-                    "scavenger hunt."
+                    "Duplicate function names across files create ambiguity mines — copy-paste "
+                    "artifacts that diverge silently until every bug fix is a scavenger hunt."
                 ),
                 tradeoffs=(
-                    "Deduping too early can create the wrong abstraction and make simple code "
-                    "feel clever for no reason."
+                    "False positives on lifecycle names and protocol implementations can be "
+                    "noisy; the noqa suppression keeps intentional cases clean."
                 ),
                 override_when=(
-                    "Hold off when the repeated code is still genuinely in discovery mode and the "
-                    "shared shape is not stable yet."
+                    "Suppress when the duplication is structural (strategy pattern, test doubles) "
+                    "and add `# noqa: ambiguity-mine` with an explanation."
                 ),
             ),
         ),

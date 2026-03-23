@@ -340,16 +340,15 @@ def _commit_kind_for_check(name: str, check: BaseCheck) -> str:
         )
     ):
         return "test"
-    if (
-        any(
-            token in family
-            for token in (
-                "source-duplication",
-                "dead-code",
-                "complexity-creep",
-                "code-sprawl",
-                "string-duplication",
-            )
+    if any(
+        token in family
+        for token in (
+            "repeated-code",
+            "ambiguity-mines",
+            "dead-code",
+            "complexity-creep",
+            "code-sprawl",
+            "string-duplication",
         )
         or check.remediation_churn == RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
     ):
@@ -699,6 +698,11 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
             details={"worktree_status": worktree},
         )
         return 1
+
+    # Ensure .slopmop/ is gitignored before scour populates it
+    from slopmop.utils import ensure_slopmop_gitignored
+
+    ensure_slopmop_gitignored(project_root)
 
     artifact_path = _initial_scour_path(project_root)
     exit_code = _run_scour(project_root, artifact_path)
