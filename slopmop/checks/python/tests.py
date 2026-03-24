@@ -37,8 +37,18 @@ _PYTEST_FAILED_RE = re.compile(
 )
 
 
+def _is_failed_summary_line(line: str) -> bool:
+    """Return True for pytest short-summary failure lines only.
+
+    Pytest progress output can include tokens like ``FAILED [ 31%]``.
+    Those are status markers, not actionable short-summary entries, and
+    should not be treated as real test failures.
+    """
+    return bool(_PYTEST_FAILED_RE.match(line.strip()))
+
+
 def _parse_failed_lines(failed_tests: List[str]) -> List[Finding]:
-    """Turn pytest FAILED lines into structured findings.
+    """Turn pytest FAILED short-summary lines into structured findings.
 
     When the line matches pytest's short-summary format we extract the
     bare test name (last ``::`` segment) and the assertion summary.
@@ -286,7 +296,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     ) -> CheckResult:
         """Handle a non-zero pytest exit code."""
         lines = result.output.split("\n")
-        failed_tests = [line for line in lines if "FAILED" in line]
+        failed_tests = [line for line in lines if _is_failed_summary_line(line)]
 
         # pytest exit code 5 = "no tests were collected/run".
         # When testmon deselects every test (nothing in the changed
