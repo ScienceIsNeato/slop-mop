@@ -296,7 +296,7 @@ class GateReadinessCheck(DoctorCheck):
     ``sm doctor --gates`` for the full tree.
     """
 
-    name = "gates.readiness"
+    name = "sm_env.gate_readiness"
     description = "Quality gate readiness summary (tool availability)"
 
     def run(self, ctx: DoctorContext) -> DoctorResult:
