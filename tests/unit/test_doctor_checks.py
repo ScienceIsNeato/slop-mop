@@ -574,7 +574,7 @@ class TestStateConfigCheck:
 
 
 class TestStateLockFix:
-    def test_removes_stale_lock(self, tmp_path):
+    def test_clears_stale_lock_metadata(self, tmp_path):
         lock_file = _mk_lock(
             tmp_path,
             {"pid": 99999999, "verb": "swab", "started_at": 0},
@@ -582,16 +582,20 @@ class TestStateLockFix:
         assert lock_file.exists()
         r = StateLockCheck().fix(DoctorContext(project_root=tmp_path, apply_fix=True))
         assert r.status is DoctorStatus.OK
-        assert not lock_file.exists()
+        # File preserved (inode kept for flock safety), metadata cleared
+        assert lock_file.exists()
+        assert json.loads(lock_file.read_text()) == {}
 
-    def test_removes_unreadable_sidecar(self, tmp_path):
+    def test_clears_unreadable_sidecar(self, tmp_path):
         lock_dir = tmp_path / LOCK_DIR
         lock_dir.mkdir()
         lock_file = lock_dir / LOCK_FILE
         lock_file.write_text("garbage")
         r = StateLockCheck().fix(DoctorContext(project_root=tmp_path, apply_fix=True))
         assert r.status is DoctorStatus.OK
-        assert not lock_file.exists()
+        # File preserved (inode kept for flock safety), metadata cleared
+        assert lock_file.exists()
+        assert json.loads(lock_file.read_text()) == {}
 
     def test_refuses_live_lock(self, tmp_path):
         """--fix must never delete a lock held by a real running sm."""

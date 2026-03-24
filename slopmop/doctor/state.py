@@ -166,16 +166,19 @@ class StateLockCheck(DoctorCheck):
                 data=data,
             )
 
-        # stale or unreadable — safe to delete.
+        # stale or unreadable — clear the metadata but preserve the inode.
+        # Deleting the file would break flock mutual exclusion: a concurrent
+        # sm process could create a new inode at the same path and acquire
+        # its own flock while the original holder still holds the old one.
         try:
-            lock_file.unlink(missing_ok=True)
+            lock_file.write_text("{}")
         except OSError as exc:
             return self._fail(
-                "could not remove stale lock",
+                "could not clear stale lock",
                 detail=f"{lock_file}: {exc}",
                 data=data,
             )
-        return self._ok(f"removed stale lock {lock_file}", data=data)
+        return self._ok(f"cleared stale lock metadata {lock_file}", data=data)
 
 
 class StateDirCheck(DoctorCheck):

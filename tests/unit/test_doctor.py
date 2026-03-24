@@ -392,8 +392,8 @@ class TestCmdDoctor:
         with pytest.raises(SystemExit):
             cmd_doctor(_doctor_args(checks=["typo.city"], project_root=str(tmp_path)))
 
-    def test_fix_removes_stale_lock_end_to_end(self, capsys, tmp_path):
-        """The headline --fix path: stale lock → doctor --fix → gone, exit 0."""
+    def test_fix_clears_stale_lock_end_to_end(self, capsys, tmp_path):
+        """The headline --fix path: stale lock → doctor --fix → cleared, exit 0."""
         lock_file = _mk_lock(
             tmp_path,
             {"pid": 99999999, "verb": "swab", "started_at": 0},
@@ -409,7 +409,9 @@ class TestCmdDoctor:
         )
         payload = json.loads(capsys.readouterr().out)
         assert rc == 0
-        assert not lock_file.exists()
+        # File preserved (inode kept for flock safety), metadata cleared
+        assert lock_file.exists()
+        assert json.loads(lock_file.read_text()) == {}
         assert payload["fixes"]["state.lock"]["status"] == "ok"
 
     def test_fix_aborts_on_no(self, capsys, tmp_path, monkeypatch):
