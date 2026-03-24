@@ -326,10 +326,12 @@ def sm_lock(
         # Clean metadata, release flock, close fd.
         if fd is not None:
             try:
-                # Remove metadata so stale-detection doesn't fire on
-                # leftover content after a clean exit.
+                # Delete the file so doctor's stale-detection never
+                # sees leftover content after a clean exit.  An empty
+                # dict (``{}``) would still read as age-from-epoch-0
+                # and trigger a false stale alarm.
                 if path.exists():
-                    path.write_text("{}")
+                    path.unlink()
             except OSError:
                 pass
             try:

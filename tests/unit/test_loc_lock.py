@@ -310,10 +310,9 @@ class TestLocLockOutput:
         result = check.run(str(tmp_path))
 
         assert result.fix_suggestion is not None
-        # The fix_suggestion covers two modes: specific moves for
-        # single-definition fixes, and split prompts for files that
-        # need real structural analysis.
-        assert "needs splitting" in result.fix_suggestion
+        # The fix_suggestion covers the two-phase remediation workflow:
+        # oversized files first, then functions in otherwise-OK files.
+        assert "Phase 1" in result.fix_suggestion
         assert "DO NOT trim comments" in result.fix_suggestion
 
     def test_limits_output_to_top_violations(self, tmp_path):

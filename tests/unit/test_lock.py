@@ -278,9 +278,8 @@ class TestSmLock:
             assert meta is not None
             assert meta["verb"] == "swab"
 
-        # After release, metadata should be cleared
-        meta_after = _read_lock_meta(path)
-        assert meta_after == {}
+        # After release, lock file should be deleted
+        assert not path.exists()
 
     def test_creates_lock_dir_if_missing(self, tmp_path: Path) -> None:
         # No .slopmop dir yet

@@ -74,6 +74,12 @@ class StateLockCheck(DoctorCheck):
         if meta is None:
             return "unreadable", data
 
+        # A clean sm exit writes ``{}`` (or deletes the file).
+        # If the file somehow survives with empty metadata, treat
+        # it the same as "no lock" — not stale, just a no-op.
+        if not meta:
+            return "none", data
+
         pid = meta.get("pid")
         verb = meta.get("verb", "?")
         started = meta.get("started_at", 0)

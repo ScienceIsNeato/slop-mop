@@ -236,7 +236,9 @@ class PypiVersionCheck(DoctorCheck):
         from slopmop.cli.upgrade import (
             _fetch_latest_pypi_version,
             _installed_version,
+            _is_editable_install,
             _packaging_version_class,
+            _running_from_source_checkout,
         )
 
         try:
@@ -263,9 +265,95 @@ class PypiVersionCheck(DoctorCheck):
         if not is_behind:
             return self._ok(f"slopmop {current} (latest)", data=data)
 
+        # Editable / source-checkout installs can't use ``sm upgrade``
+        # — tell the developer the correct path instead.
+        is_dev = _running_from_source_checkout() or _is_editable_install()
+        if is_dev:
+            return self._ok(
+                f"slopmop {current} (dev install; {latest} on PyPI)",
+                detail=(
+                    f"Installed: {current} (editable / source checkout)\n"
+                    f"PyPI:      {latest}\n\n"
+                    "Version drift is expected in dev mode.  To sync:\n"
+                    "  git pull && pip install -e '.[all]'"
+                ),
+                data=data,
+            )
+
         return self._warn(
             f"slopmop {current} → {latest} available",
             detail=f"Installed: {current}\nLatest:    {latest}",
             fix_hint="sm upgrade",
+            data=data,
+        )
+
+
+class GateReadinessCheck(DoctorCheck):
+    """Collapsed summary of quality gate readiness.
+
+    Enumerates all registered gates, checks tool availability, and
+    reports a single pass/fail/warn result.  Directs the user to
+    ``sm doctor --gates`` for the full tree.
+    """
+
+    name = "gates.readiness"
+    description = "Quality gate readiness summary (tool availability)"
+
+    def run(self, ctx: DoctorContext) -> DoctorResult:
+        from slopmop.checks import ensure_checks_registered
+        from slopmop.checks.base import find_tool
+        from slopmop.core.registry import get_registry
+
+        ensure_checks_registered()
+        registry = get_registry()
+        root = str(ctx.project_root)
+
+        total_gates = 0
+        ready_gates = 0
+        blocked_gates: List[str] = []
+        missing_tools: set[str] = set()
+
+        for name, cls in registry._check_classes.items():
+            total_gates += 1
+            gate_ok = True
+            for tool in cls.required_tools:
+                if not find_tool(tool, root):
+                    gate_ok = False
+                    missing_tools.add(tool)
+            if gate_ok:
+                ready_gates += 1
+            else:
+                blocked_gates.append(name)
+
+        data: dict[str, object] = {
+            "total_gates": total_gates,
+            "ready_gates": ready_gates,
+            "blocked_gates": blocked_gates,
+            "missing_tools": sorted(missing_tools),
+        }
+
+        if not blocked_gates:
+            return self._ok(
+                f"all {total_gates} gates ready",
+                detail=f"Run ``sm doctor --gates`` for the full dependency tree.",
+                data=data,
+            )
+
+        return self._warn(
+            f"{ready_gates}/{total_gates} gates ready, "
+            f"{len(blocked_gates)} blocked ({len(missing_tools)} missing tool(s))",
+            detail=(
+                f"Blocked gates: {', '.join(sorted(blocked_gates)[:5])}"
+                + (
+                    f" (+{len(blocked_gates) - 5} more)"
+                    if len(blocked_gates) > 5
+                    else ""
+                )
+                + f"\nMissing tools: {', '.join(sorted(missing_tools))}"
+            ),
+            fix_hint="sm doctor --gates   # full dependency tree\n"
+            + _group_install_hints(
+                [(t, "", cmd) for t, _, cmd in REQUIRED_TOOLS if t in missing_tools]
+            ),
             data=data,
         )
