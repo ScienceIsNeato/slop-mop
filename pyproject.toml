@@ -109,6 +109,7 @@ exclude = ["tests*"]
     "templates/antigravity/.agents/rules/*",
     "templates/claude/.claude/commands/*",
     "templates/claude/.claude/skills/slopmop/*",
+    "templates/claude/CLAUDE.md",
     "templates/cline/.clinerules/*",
     "templates/copilot/.copilot/skills/slopmop/*",
     "templates/copilot/.github/*",

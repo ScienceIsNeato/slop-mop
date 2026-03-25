@@ -251,8 +251,9 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         # Testmon fast path: skip coverage regeneration and only execute
         # tests whose source dependencies have changed since the last run.
         # Activates when .testmondata and coverage.xml exist (seeded by a
-        # prior run).  When not seeded, falls back to full pytest+coverage
-        # which also prepares testmon for the next run.
+        # prior run).  Testmon cannot run alongside pytest-cov with branch
+        # coverage enabled, so seeding requires a separate ``pytest --testmon``
+        # invocation — done by ``sm init`` or ``sm doctor --fix``.
         use_testmon = (Path(project_root) / ".testmondata").exists() and (
             Path(project_root) / "coverage.xml"
         ).exists()
