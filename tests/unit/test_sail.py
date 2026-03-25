@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from slopmop.cli import sail as sail_mod
+from slopmop.cli.scan_triage import ARTIFACT_NAME, WORKFLOW_NAME
 from slopmop.workflow.state_machine import WorkflowState
 
 
@@ -106,6 +107,8 @@ class TestSailDispatch:
         mock_buff.assert_called_once()
         call_args = mock_buff.call_args[0][0]
         assert call_args.pr_or_action == "42"
+        assert call_args.workflow == WORKFLOW_NAME
+        assert call_args.artifact == ARTIFACT_NAME
 
     def test_scour_clean_without_pr_suggests_create(
         self, monkeypatch, capsys, tmp_path: Path
@@ -130,6 +133,8 @@ class TestSailDispatch:
         # Verify it passed the PR number
         call_args = mock_buff.call_args[0][0]
         assert call_args.pr_or_action == "42"
+        assert call_args.workflow == WORKFLOW_NAME
+        assert call_args.artifact == ARTIFACT_NAME
 
     def test_buff_failing_runs_buff(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
@@ -142,6 +147,9 @@ class TestSailDispatch:
 
         assert sail_mod.cmd_sail(args) == 1
         mock_buff.assert_called_once()
+        call_args = mock_buff.call_args[0][0]
+        assert call_args.workflow == WORKFLOW_NAME
+        assert call_args.artifact == ARTIFACT_NAME
 
     def test_pr_ready_reports_ready_to_land(self, monkeypatch, capsys, tmp_path: Path):
         args = _base_args(tmp_path)
