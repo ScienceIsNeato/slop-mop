@@ -67,6 +67,7 @@ security = [
 testing = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-testmon>=2.0.0",
     "diff-cover>=7.0.0",
     "jsonschema>=4.0.0",   # validates SARIF output against the vendored schema
 ]

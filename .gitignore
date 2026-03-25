@@ -68,3 +68,4 @@ AGENTS.md
 !slopmop/agent_install/templates/**
 STATUS.md
 .tmp/
+.specstory/
