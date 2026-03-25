@@ -44,24 +44,27 @@ class TestBuffIterateAndFinalize:
                         {
                             "thread_id": "PRRT_a",
                             "resolution_priority_rank": 1,
-                            "resolution_scenario": "fixed_in_code",
                             "category": "🐛 Logic/Correctness",
+                            "impact_score": 95,
+                            "signals": [],
                             "path": "a.py",
                             "line": 10,
                         },
                         {
                             "thread_id": "PRRT_b",
                             "resolution_priority_rank": 1,
-                            "resolution_scenario": "fixed_in_code",
-                            "category": "🧪 Testing",
+                            "category": "🐛 Logic/Correctness",
+                            "impact_score": 95,
+                            "signals": ["body_references_prior_fix"],
                             "path": "b.py",
                             "line": 12,
                         },
                         {
                             "thread_id": "PRRT_c",
                             "resolution_priority_rank": 2,
-                            "resolution_scenario": "needs_human_feedback",
                             "category": "❓ Question",
+                            "impact_score": 55,
+                            "signals": ["contains_question_or_request"],
                             "path": "c.py",
                             "line": 3,
                         },
@@ -96,10 +99,7 @@ class TestBuffIterateAndFinalize:
         drafts_doc = json.loads((loop_dir / "drafts.json").read_text(encoding="utf-8"))
         assert len(drafts_doc["drafts"]) == 2
         assert drafts_doc["drafts"][0]["draft_status"] == "pending"
-        assert (
-            "Replace with commit SHA after committing"
-            in drafts_doc["drafts"][0]["comment_template"]
-        )
+        assert "choose a scenario" in drafts_doc["drafts"][0]["comment_template"]
         assert (loop_dir / "iteration_log.md").exists()
 
     def test_cmd_buff_iterate_runs_scour_when_feedback_is_clean(

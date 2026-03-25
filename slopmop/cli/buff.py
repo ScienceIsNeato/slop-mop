@@ -284,13 +284,13 @@ def _write_iteration_artifact(
                 "pr_number": protocol.get("pr_number"),
                 "loop_dir": protocol.get("loop_dir"),
                 "selected_rank": rank,
-                "scenario": batch[0].get("resolution_scenario"),
+                "category": batch[0].get("category"),
                 "thread_count": len(batch),
                 "thread_ids": [thread.get("thread_id") for thread in batch],
                 "threads": batch,
                 "instructions": [
                     "Limit this round to the listed threads only.",
-                    "Make code changes or reviewer replies only for this batch.",
+                    "Investigate each thread and choose a resolution scenario.",
                     "When the batch is addressed, re-run 'sm buff iterate'.",
                 ],
             },
@@ -302,34 +302,31 @@ def _write_iteration_artifact(
 
 
 def _build_draft_entries(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Build draft local-response placeholders for an iterate round."""
+    """Build draft investigation placeholders for an iterate round.
+
+    Scenario is NOT pre-assigned — the agent must investigate each
+    thread and choose the appropriate scenario at resolution time.
+    """
 
     drafts: list[dict[str, Any]] = []
     for thread in batch:
-        scenario = str(thread.get("resolution_scenario") or "")
-        if scenario == "fixed_in_code":
-            template = (
-                "Fixed in the current branch. Replace with commit SHA after committing: "
-                "[explain the code change]"
-            )
-        elif scenario == "invalid_with_explanation":
-            template = "[state why this comment no longer applies with evidence]"
-        elif scenario == "no_longer_applicable":
-            template = "Code has changed and this thread is outdated; adding explicit note for reviewer."
-        elif scenario == "out_of_scope_ticketed":
-            template = (
-                "Tracking in issue #[ISSUE_NUMBER]: [URL]. Not part of this PR scope."
-            )
-        else:
-            template = "Please clarify expected behavior or acceptance criteria before implementation."
+        signals = thread.get("signals", [])
+        signals_hint = f" Signals: {', '.join(signals)}." if signals else ""
+        template = (
+            "Investigate this thread, choose a scenario "
+            "(fixed_in_code / invalid_with_explanation / "
+            "no_longer_applicable / out_of_scope_ticketed / "
+            "needs_human_feedback), and provide evidence."
+            f"{signals_hint}"
+        )
 
         drafts.append(
             {
                 "thread_id": thread.get("thread_id"),
-                "scenario": scenario,
                 "category": thread.get("category"),
                 "path": thread.get("path"),
                 "line": thread.get("line"),
+                "signals": signals,
                 "draft_status": "pending",
                 "comment_template": template,
                 "notes": "",
@@ -852,7 +849,7 @@ def _cmd_buff_iterate(pr_number: int | None) -> int:
     print(f"Iteration artifact: {artifact_paths['iteration']}")
     print(f"Drafts artifact: {artifact_paths['drafts']}")
     print(f"Iteration log: {artifact_paths['iteration_log']}")
-    print(f"Selected scenario: {batch[0].get('resolution_scenario')} (rank {rank})")
+    print(f"Selected category: {batch[0].get('category')} (rank {rank})")
     print("Threads in scope:")
     for idx, thread in enumerate(batch, 1):
         location = str(thread.get("path") or "(no path)")
