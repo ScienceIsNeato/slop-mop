@@ -33,6 +33,7 @@ classifiers = [
 # Install extras for the tools you need: pipx install slopmop[all]
 dependencies = [
     "jinja2>=3.0.0",
+    "tomli>=1.0.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -67,6 +68,7 @@ security = [
 testing = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-testmon>=2.0.0",
     "diff-cover>=7.0.0",
     "jsonschema>=4.0.0",   # validates SARIF output against the vendored schema
 ]
@@ -107,6 +109,7 @@ exclude = ["tests*"]
     "templates/antigravity/.agents/rules/*",
     "templates/claude/.claude/commands/*",
     "templates/claude/.claude/skills/slopmop/*",
+    "templates/claude/CLAUDE.md",
     "templates/cline/.clinerules/*",
     "templates/copilot/.copilot/skills/slopmop/*",
     "templates/copilot/.github/*",
@@ -140,6 +143,7 @@ markers = [
 
 [tool.coverage.run]
 source = ["slopmop"]
+branch = true
 omit = ["tests/*"]
 
 [tool.coverage.report]
@@ -148,3 +152,15 @@ show_missing = true
 
 [tool.pyright]
 exclude = ["tests/**", "venv/**", "build/**", "dist/**"]
+
+# Slop-mop gate config (committed, shared across CI and local).
+# Local .sb_config.json overrides these values where both exist.
+[tool.slopmop.myopia.gates."dependency-risk.py"]
+pip_audit_ignore_vulns = [
+    "GHSA-5239-wwwm-4pmq",  # pygments ReDoS (CVE-2026-4539), low severity, no fix available
+]
+
+[tool.slopmop.myopia.gates."vulnerability-blindness.py"]
+pip_audit_ignore_vulns = [
+    "GHSA-5239-wwwm-4pmq",  # pygments ReDoS (CVE-2026-4539), low severity, no fix available
+]

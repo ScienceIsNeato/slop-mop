@@ -123,6 +123,27 @@ class TestComputeFingerprint:
         assert isinstance(fp, str)
         assert len(fp) == 64
 
+    def test_same_content_different_mtime_same_fingerprint(self, tmp_path):
+        """Content-based hashing: touching a file without changing content
+        keeps the fingerprint stable (IDE autosave, git checkout etc.)."""
+        src = tmp_path / "main.py"
+        src.write_text("print('hello')")
+        fp1 = compute_fingerprint(str(tmp_path))
+
+        # Bump mtime without touching content
+        os.utime(src, (time.time() + 10, time.time() + 10))
+        fp2 = compute_fingerprint(str(tmp_path))
+        assert fp1 == fp2
+
+    def test_content_change_changes_fingerprint(self, tmp_path):
+        """Changing file content produces a new fingerprint."""
+        src = tmp_path / "main.py"
+        src.write_text("x = 1")
+        fp1 = compute_fingerprint(str(tmp_path))
+        src.write_text("x = 2")
+        fp2 = compute_fingerprint(str(tmp_path))
+        assert fp1 != fp2
+
 
 class TestCacheIO:
     """Tests for load_cache / save_cache."""
@@ -793,6 +814,30 @@ class TestHashFileScope:
         fp_both = hash_file_scope(str(tmp_path), ["a", "b"], {".py"}, {})
         fp_a_only = hash_file_scope(str(tmp_path), ["a"], {".py"}, {})
         assert fp_both != fp_a_only
+
+    def test_same_content_different_mtime_same_fingerprint(self, tmp_path):
+        """Content-based: touching a file without changing content keeps
+        the scoped fingerprint stable."""
+        src = tmp_path / "src"
+        src.mkdir()
+        f = src / "main.py"
+        f.write_text("print('hello')")
+        fp1 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+
+        os.utime(f, (time.time() + 10, time.time() + 10))
+        fp2 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        assert fp1 == fp2
+
+    def test_content_change_changes_fingerprint(self, tmp_path):
+        """Changing file content (not just mtime) produces a new fingerprint."""
+        src = tmp_path / "src"
+        src.mkdir()
+        f = src / "main.py"
+        f.write_text("x = 1")
+        fp1 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        f.write_text("x = 2")
+        fp2 = hash_file_scope(str(tmp_path), ["src"], {".py"}, {})
+        assert fp1 != fp2
 
 
 def _make_scoped_check_class(name: str, scope_dirs: list):

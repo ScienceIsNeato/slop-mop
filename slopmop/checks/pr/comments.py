@@ -63,9 +63,6 @@ class PRCommentsCheck(BaseCheck):
         "out_of_scope_ticketed",
         "needs_human_feedback",
     ]
-    RESOLUTION_PRIORITY_RANK = {
-        scenario: i + 1 for i, scenario in enumerate(RESOLUTION_REASON_PRIORITY)
-    }
     CATEGORY_IMPACT_SCORES = {
         "🔐 Security": (95, 90),
         "🐛 Logic/Correctness": (90, 95),
@@ -511,36 +508,40 @@ class PRCommentsCheck(BaseCheck):
 
         return "💭 General"
 
-    def _classify_resolution_scenario(
+    def _detect_thread_signals(
         self, thread: Dict[str, Any]
-    ) -> Tuple[str, str, List[str]]:
-        """Classify a thread into locked protocol scenarios."""
+    ) -> Tuple[List[str], List[str]]:
+        """Detect semantic signals in a thread to aid agent investigation.
+
+        Returns (signals, anti_pattern_flags).  Signals are observations
+        about thread content — the resolving agent uses them as context
+        when *choosing* a resolution scenario, NOT as a predetermined
+        verdict.
+        """
         body = str(thread.get("body", ""))
         body_lower = body.lower()
         is_outdated = bool(thread.get("is_outdated", False))
 
+        signals: List[str] = []
         anti_pattern_flags: List[str] = []
+
+        # Anti-pattern flags (always detected)
         if "wont_resolve" in body_lower or "won't resolve" in body_lower:
             anti_pattern_flags.append("contains_wont_resolve_marker")
         if "just ignore" in body_lower or "ignore this" in body_lower:
             anti_pattern_flags.append("contains_ignore_language")
 
-        if is_outdated or "outdated" in body_lower:
-            return (
-                "no_longer_applicable",
-                "Thread is marked outdated or superseded by later code changes.",
-                anti_pattern_flags,
-            )
+        # Semantic signals (observations, not verdicts)
+        if is_outdated:
+            signals.append("thread_marked_outdated")
+        if "outdated" in body_lower:
+            signals.append("body_mentions_outdated")
 
         if any(
             token in body_lower
             for token in ["already fixed", "resolved by", "fixed in", "addressed in"]
         ):
-            return (
-                "fixed_in_code",
-                "Comment indicates resolution likely exists in code and should be verified+resolved.",
-                anti_pattern_flags,
-            )
+            signals.append("body_references_prior_fix")
 
         if any(
             token in body_lower
@@ -552,11 +553,7 @@ class PRCommentsCheck(BaseCheck):
                 "not applicable",
             ]
         ):
-            return (
-                "invalid_with_explanation",
-                "Comment appears invalid or stale and should be answered with evidence.",
-                anti_pattern_flags,
-            )
+            signals.append("body_challenges_validity")
 
         if any(
             token in body_lower
@@ -568,32 +565,24 @@ class PRCommentsCheck(BaseCheck):
                 "file an issue",
             ]
         ):
-            return (
-                "out_of_scope_ticketed",
-                "Comment is outside PR scope and should be redirected to a tracked issue.",
-                anti_pattern_flags,
-            )
+            signals.append("body_references_scope_boundary")
 
         if "?" in body or any(
             token in body_lower
             for token in ["clarify", "can you", "could you", "why", "what", "how"]
         ):
-            return (
-                "needs_human_feedback",
-                "Comment requests clarification and should remain open pending reviewer response.",
-                anti_pattern_flags,
-            )
+            signals.append("contains_question_or_request")
 
-        return (
-            "fixed_in_code",
-            "Default to fixed_in_code so agent verifies implementation and resolves deterministically.",
-            anti_pattern_flags,
-        )
+        return signals, anti_pattern_flags
 
     def _classify_and_order_threads(
         self, threads: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Attach protocol metadata and order threads deterministically."""
+        """Attach category/impact metadata and order by impact for investigation.
+
+        Threads are NOT pre-assigned a resolution scenario.  The resolving
+        agent chooses the scenario after investigating each thread.
+        """
         classified: List[Dict[str, Any]] = []
 
         for thread in threads:
@@ -601,38 +590,44 @@ class PRCommentsCheck(BaseCheck):
             blast_radius_score, dependency_impact_score = (
                 self.CATEGORY_IMPACT_SCORES.get(category, (40, 40))
             )
-            scenario, scenario_reason, anti_pattern_flags = (
-                self._classify_resolution_scenario(thread)
-            )
-
-            rank = self.RESOLUTION_PRIORITY_RANK.get(scenario)
-            if rank is None:
-                raise ValueError(
-                    "UNCLASSIFIED_THREAD_PROTOCOL_BLOCK: "
-                    f"Unknown scenario '{scenario}' for thread {thread.get('thread_id')}."
-                )
+            signals, anti_pattern_flags = self._detect_thread_signals(thread)
+            impact_score = max(blast_radius_score, dependency_impact_score)
 
             classified.append(
                 {
                     **thread,
                     "category": category,
-                    "resolution_scenario": scenario,
-                    "resolution_priority_rank": rank,
-                    "resolution_priority_reason": scenario_reason,
                     "blast_radius_score": blast_radius_score,
                     "dependency_impact_score": dependency_impact_score,
+                    "impact_score": impact_score,
+                    "signals": signals,
                     "anti_pattern_flags": anti_pattern_flags,
                 }
             )
 
-        return sorted(
+        # Sort by impact descending, then category, then thread_id for stability
+        sorted_threads = sorted(
             classified,
             key=lambda t: (
-                int(t["resolution_priority_rank"]),
-                -max(int(t["blast_radius_score"]), int(t["dependency_impact_score"])),
+                -int(t["impact_score"]),
+                str(t.get("category", "")),
                 str(t.get("thread_id", "")),
             ),
         )
+
+        # Assign priority ranks by category for iterate batching —
+        # threads in the same category share a rank (highest-impact
+        # category = rank 1).
+        category_ranks: Dict[str, int] = {}
+        for thread in sorted_threads:
+            cat = str(thread["category"])
+            if cat not in category_ranks:
+                category_ranks[cat] = len(category_ranks) + 1
+
+        for thread in sorted_threads:
+            thread["resolution_priority_rank"] = category_ranks[thread["category"]]
+
+        return sorted_threads
 
     def _next_protocol_loop_dir(self, project_root: str, pr_number: int) -> Path:
         """Create and return the next persistent protocol loop directory."""
@@ -669,22 +664,7 @@ class PRCommentsCheck(BaseCheck):
         owner: str,
         repo: str,
     ) -> str:
-        """Build deterministic command pack for all protocol scenarios."""
-
-        def resolve_thread_command(
-            thread_id: str,
-            scenario: str,
-            message: str,
-            *,
-            resolve_thread: bool = True,
-        ) -> str:
-            command = (
-                f"sm buff resolve {pr_number} {thread_id} "
-                f"--scenario {scenario} --message {json.dumps(message)}"
-            )
-            if not resolve_thread:
-                command += " --no-resolve"
-            return command
+        """Build command templates requiring agent to choose resolution scenario."""
 
         lines: List[str] = []
         lines.append("#!/usr/bin/env bash")
@@ -693,70 +673,59 @@ class PRCommentsCheck(BaseCheck):
         lines.append(f"# Protocol: {self.PROTOCOL_VERSION}")
         lines.append(f"# PR: {pr_number}")
         lines.append("")
+        lines.append("# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("# SCENARIO MENU — choose one per thread after investigating")
+        lines.append("# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append(
+            "# fixed_in_code           "
+            " — Code addresses the feedback. Cite the commit."
+        )
+        lines.append(
+            "# invalid_with_explanation "
+            " — Feedback is incorrect. Explain with evidence."
+        )
+        lines.append(
+            "# no_longer_applicable    "
+            " — Code changed since comment. Note what changed."
+        )
+        lines.append(
+            "# out_of_scope_ticketed   "
+            " — Valid but not this PR. File issue, link it."
+        )
+        lines.append(
+            "# needs_human_feedback    " " — Need reviewer input. Uses --no-resolve."
+        )
+        lines.append("")
 
         for idx, thread in enumerate(ordered_threads, 1):
             thread_id = str(thread.get("thread_id", ""))
-            scenario = str(thread.get("resolution_scenario", ""))
-            reason = str(thread.get("resolution_priority_reason", ""))
-            lines.append(f"# [{idx}] {thread_id}")
+            category = str(thread.get("category", ""))
+            impact = thread.get("impact_score", 0)
+            signals = thread.get("signals", [])
+            body_raw = " ".join(str(thread.get("body", "")).split())
+            body = body_raw[:200] + ("..." if len(body_raw) > 200 else "")
+
+            lines.append(f"# ── [{idx}] {thread_id} ──")
+            lines.append(f"# Category: {category} (impact={impact})")
+            if signals:
+                lines.append(f"# Signals: {', '.join(signals)}")
+            if thread.get("path"):
+                location = str(thread["path"])
+                if thread.get("line"):
+                    location += f":{thread['line']}"
+                lines.append(f"# Location: {location}")
+            lines.append(f"# Comment: {body}")
             lines.append(
-                f"# Scenario={scenario} rank={thread.get('resolution_priority_rank')}"
+                "# >> Investigate this thread, choose a scenario, "
+                "replace <SCENARIO> and <YOUR_EVIDENCE>:"
             )
-            lines.append(f"# Reason: {reason}")
-
-            if scenario == "fixed_in_code":
-                lines.append(
-                    resolve_thread_command(
-                        thread_id,
-                        scenario,
-                        "Fixed in commit $(git rev-parse --short HEAD). [explain the code change]",
-                    )
-                )
-            elif scenario == "invalid_with_explanation":
-                lines.append(
-                    resolve_thread_command(
-                        thread_id,
-                        scenario,
-                        "[state why this comment no longer applies with evidence]",
-                    )
-                )
-            elif scenario == "no_longer_applicable":
-                lines.append(
-                    resolve_thread_command(
-                        thread_id,
-                        scenario,
-                        "Code has changed and this thread is outdated; adding explicit note for reviewer.",
-                    )
-                )
-            elif scenario == "out_of_scope_ticketed":
-                lines.append(
-                    "echo 'Create follow-up issue first, capture URL, then comment with [out of scope ticketed] and issue link.'"
-                )
-                lines.append(
-                    resolve_thread_command(
-                        thread_id,
-                        scenario,
-                        "Tracking in issue #[ISSUE_NUMBER]: [URL]. Not part of this PR scope.",
-                    )
-                )
-            elif scenario == "needs_human_feedback":
-                lines.append(
-                    resolve_thread_command(
-                        thread_id,
-                        scenario,
-                        "Please clarify expected behavior or acceptance criteria before implementation.",
-                        resolve_thread=False,
-                    )
-                )
-            else:
-                lines.append(
-                    "echo 'UNCLASSIFIED_THREAD_PROTOCOL_BLOCK: unexpected scenario; abort and fix classifier.'"
-                )
-                lines.append("exit 1")
-
+            lines.append(
+                f"sm buff resolve {pr_number} {thread_id} "
+                f'--scenario <SCENARIO> --message "<YOUR_EVIDENCE>"'
+            )
             lines.append("")
 
-        lines.append("# Re-enter the post-PR rail after resolving this ordered batch")
+        lines.append("# Re-enter the post-PR rail after resolving this batch")
         lines.append(action_buff_inspect_pr(pr_number))
         return "\n".join(lines) + "\n"
 
@@ -867,11 +836,8 @@ class PRCommentsCheck(BaseCheck):
         lines.append("")
 
         lines.append("━" * 80)
-        lines.append("📋 LOCKED RESOLUTION ORDER (follow exactly)")
+        lines.append("📋 THREADS BY IMPACT (highest first)")
         lines.append("━" * 80)
-        lines.append("Priority scenarios (high→low):")
-        for scenario in self.RESOLUTION_REASON_PRIORITY:
-            lines.append(f"  {self.RESOLUTION_PRIORITY_RANK[scenario]}. {scenario}")
         lines.append("")
 
         for idx, thread in enumerate(ordered, 1):
@@ -880,21 +846,18 @@ class PRCommentsCheck(BaseCheck):
                 f"[{idx}] {thread.get('thread_id')} :: {thread.get('category')}"
             )
             lines.append(
-                "  - scenario: "
-                f"{thread.get('resolution_scenario')} "
-                f"(rank {thread.get('resolution_priority_rank')})"
-            )
-            lines.append(
                 "  - impact: "
                 f"blast={thread.get('blast_radius_score')} "
                 f"dependency={thread.get('dependency_impact_score')}"
             )
-            lines.append("  - reason: " f"{thread.get('resolution_priority_reason')}")
             if thread.get("path"):
                 location = str(thread["path"])
                 if thread.get("line"):
                     location += f":{thread['line']}"
                 lines.append(f"  - location: {location}")
+            if thread.get("signals"):
+                signals_str = ", ".join(thread.get("signals", []))
+                lines.append(f"  - signals: {signals_str}")
             if thread.get("anti_pattern_flags"):
                 flags = ", ".join(thread.get("anti_pattern_flags", []))
                 lines.append(f"  - anti_pattern_flags: {flags}")
@@ -903,46 +866,47 @@ class PRCommentsCheck(BaseCheck):
 
         lines.append("")
         lines.append("━" * 80)
-        lines.append("🤖 AI AGENT WORKFLOW (protocol is locked)")
+        lines.append("🤖 AI AGENT WORKFLOW")
         lines.append("━" * 80)
         lines.append("")
-        lines.append("STEP 1: DO NOT INVENT A WORKFLOW")
+        lines.append("STEP 1: INVESTIGATE EACH THREAD")
         lines.append("─" * 40)
+        lines.append("Read the comment, check the code context, and understand")
+        lines.append("what the reviewer is asking or flagging. Higher-impact")
+        lines.append("threads are listed first to reduce downstream churn.")
+        lines.append("")
+        lines.append("STEP 2: CHOOSE A SCENARIO")
+        lines.append("─" * 40)
+        lines.append("After investigating, pick the scenario that fits:")
         lines.append(
-            "Use scenario+ordering from this report. Do not re-triage protocol."
+            "  fixed_in_code            "
+            "— Code addresses the feedback. Cite the commit."
+        )
+        lines.append(
+            "  invalid_with_explanation  "
+            "— Feedback is incorrect. Explain with evidence."
+        )
+        lines.append(
+            "  no_longer_applicable     "
+            " — Code changed since comment. Note what changed."
+        )
+        lines.append(
+            "  out_of_scope_ticketed    "
+            " — Valid but not this PR. File issue, link it."
+        )
+        lines.append(
+            "  needs_human_feedback     " " — Need reviewer input. Uses --no-resolve."
         )
         lines.append("")
-        lines.append("STEP 2: EXECUTE IN ORDER")
+        lines.append("STEP 3: RESOLVE WITH EVIDENCE")
         lines.append("─" * 40)
-        lines.append("Address each thread exactly once in listed order.")
-        lines.append("Higher impact items are intentionally first to reduce churn.")
+        lines.append(
+            "sm buff resolve <PR> <THREAD_ID> "
+            '--scenario <CHOSEN> --message "<EVIDENCE>"'
+        )
         lines.append("")
-        lines.append("STEP 3: USE COMMAND PACK")
-        lines.append("─" * 40)
         if artifact_paths:
-            lines.append(f"Run: bash {artifact_paths['commands_sh']}")
-        else:
-            lines.append("Run generated commands for each scenario in strict order.")
-        lines.append("")
-
-        lines.append("━" * 80)
-        lines.append("🔧 SCENARIO COMMAND MAPPING")
-        lines.append("━" * 80)
-        lines.append("")
-        lines.append("fixed_in_code: comment with commit evidence, then resolve thread")
-        lines.append(
-            "invalid_with_explanation: comment with evidence, then resolve thread"
-        )
-        lines.append(
-            "no_longer_applicable: comment stale/outdated rationale, then resolve"
-        )
-        lines.append(
-            "out_of_scope_ticketed: file/link issue, comment with URL, then resolve"
-        )
-        lines.append("needs_human_feedback: request clarification, do not resolve yet")
-        lines.append("")
-        if artifact_paths:
-            lines.append(f"Commands file: {artifact_paths['commands_sh']}")
+            lines.append(f"Command templates: {artifact_paths['commands_sh']}")
             lines.append(f"Classified threads: {artifact_paths['classified_json']}")
             lines.append(f"Protocol record: {artifact_paths['protocol_json']}")
             lines.append("")

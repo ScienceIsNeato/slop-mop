@@ -1,11 +1,18 @@
-# /sm-buff
+# /sm-buff — post-push CI and review triage
 
-Triage CI results and review feedback for a pull request.
+Post-push rail.  Use instead of any `gh pr` / `gh run` invocation.
+Buff fetches CI results and review threads and converts them into a
+remediation plan.
 
-Usage: Run `sm buff <PR_NUMBER>` after CI completes or review feedback lands.
+| Moment                         | Run                                          |
+|--------------------------------|----------------------------------------------|
+| Just pushed, CI queued/running | `sm buff watch <PR#>` — blocks until settled |
+| CI done, want triage           | `sm buff <PR#>` — remediation plan           |
+| Quick status snapshot          | `sm buff status <PR#>`                       |
+| Resolve one thread             | `sm buff resolve <PR#> <THREAD_ID> -m "..."` |
+| Dig into a single failure      | `sm buff inspect <PR#>`                      |
+| Ready to push fixes            | `sm buff finalize <PR#> --push`              |
 
-1. Run `sm buff <PR_NUMBER>`.
-2. Summarize what passed, what failed, and what needs attention.
-3. Propose a concrete remediation plan for each actionable item.
-
-This converts raw feedback into your next set of tasks. Never mark a failing check as resolved without actually fixing it.
+Never run raw `gh pr checks [--watch]` or read CI logs by hand.  Buff
+knows which check failed *and* what to do about it.  `gh` only knows
+the colour.

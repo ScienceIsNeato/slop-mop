@@ -1,8 +1,14 @@
 """Python test execution check using pytest."""
 
+from __future__ import annotations
+
 import re
 import time
-from typing import List
+from pathlib import Path
+from typing import TYPE_CHECKING, List, Optional
+
+if TYPE_CHECKING:
+    from slopmop.subprocess.runner import SubprocessResult
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -31,8 +37,18 @@ _PYTEST_FAILED_RE = re.compile(
 )
 
 
+def _is_failed_summary_line(line: str) -> bool:
+    """Return True for pytest short-summary failure lines only.
+
+    Pytest progress output can include tokens like ``FAILED [ 31%]``.
+    Those are status markers, not actionable short-summary entries, and
+    should not be treated as real test failures.
+    """
+    return bool(_PYTEST_FAILED_RE.match(line.strip()))
+
+
 def _parse_failed_lines(failed_tests: List[str]) -> List[Finding]:
-    """Turn pytest FAILED lines into structured findings.
+    """Turn pytest FAILED short-summary lines into structured findings.
 
     When the line matches pytest's short-summary format we extract the
     bare test name (last ``::`` segment) and the assertion summary.
@@ -126,6 +142,41 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     def depends_on(self) -> List[str]:
         return ["laziness:sloppy-formatting.py"]
 
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to Python files only.
+
+        pytest only cares about .py files, so edits to YAML, Markdown,
+        TOML, or other non-Python assets won't invalidate this check's
+        cache.  Saves the full test-suite time (~15s) on runs where only
+        docs or config changed.
+        """
+        from slopmop.core.cache import hash_file_scope
+
+        return hash_file_scope(project_root, ["."], {".py"}, self.config)
+
+    def _testmon_available(self, project_root: str) -> bool:
+        """Return True if pytest-testmon is importable in the project venv.
+
+        pytest-testmon enables dependency-aware test selection: on each
+        run only tests whose source dependencies have changed are executed,
+        skipping everything else.  The fast path activates automatically
+        once .testmondata has been seeded (``pytest --testmon`` once).
+        """
+        try:
+            probe = self._run_command(
+                [
+                    self.get_project_python(project_root),
+                    "-c",
+                    # v1.x uses pytest_testmon, v2.x renamed to testmon
+                    "try:\n import testmon\nexcept ImportError:\n import pytest_testmon",
+                ],
+                cwd=project_root,
+                timeout=10,
+            )
+            return probe.returncode == 0
+        except Exception:
+            return False
+
     @property
     def config_schema(self) -> List[ConfigField]:
         return [
@@ -176,9 +227,48 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         if venv_warn is not None:
             return venv_warn
 
-        # Run pytest with coverage to generate coverage.xml
-        result = self._run_command(
-            [
+        # pytest-testmon is a hard dependency: it enables dependency-aware
+        # test selection so only tests whose source deps changed re-run.
+        # Doctor handles installation; fail loudly if it's missing.
+        if not self._testmon_available(project_root):
+            msg = (
+                "pytest-testmon is required but not installed in the project venv. "
+                "Install it: pip install pytest-testmon (in your project venv)"
+            )
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=time.time() - start_time,
+                error=msg,
+                output=msg,
+                fix_suggestion=(
+                    "Install pytest-testmon in the project virtual environment:\n"
+                    "  source venv/bin/activate && pip install pytest-testmon\n"
+                    "Or run: sm doctor --fix"
+                ),
+                findings=[Finding(message=msg, level=FindingLevel.ERROR)],
+            )
+
+        # Testmon fast path: skip coverage regeneration and only execute
+        # tests whose source dependencies have changed since the last run.
+        # Activates when .testmondata and coverage.xml exist (seeded by a
+        # prior run).  Testmon cannot run alongside pytest-cov with branch
+        # coverage enabled, so seeding requires a separate ``pytest --testmon``
+        # invocation — done by ``sm init`` or ``sm doctor --fix``.
+        use_testmon = (Path(project_root) / ".testmondata").exists() and (
+            Path(project_root) / "coverage.xml"
+        ).exists()
+
+        if use_testmon:
+            cmd = [
+                self.get_project_python(project_root),
+                "-m",
+                "pytest",
+                "--testmon",
+                "-v",
+                "--tb=short",
+            ]
+        else:
+            cmd = [
                 self.get_project_python(project_root),
                 "-m",
                 "pytest",
@@ -187,13 +277,16 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 "--cov-report=term-missing",
                 "-v",
                 "--tb=short",
-            ],
-            cwd=project_root,
-            timeout=300,  # 5 minutes for tests
-        )
+            ]
 
+        result = self._run_command(cmd, cwd=project_root, timeout=300)
         duration = time.time() - start_time
+        return self._evaluate_pytest_result(result, duration, use_testmon)
 
+    def _evaluate_pytest_result(
+        self, result: SubprocessResult, duration: float, use_testmon: bool
+    ) -> CheckResult:
+        """Translate a pytest ``CommandResult`` into a ``CheckResult``."""
         if result.timed_out:
             return self._create_result(
                 status=CheckStatus.FAILED,
@@ -207,45 +300,60 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
             )
 
         if not result.success:
-            # Extract failure summary
-            lines = result.output.split("\n")
-            failed_tests = [line for line in lines if "FAILED" in line]
-
-            # Check if failure is due to coverage threshold (not test failures)
-            coverage_fail = any(
-                "coverage failure" in line.lower()
-                or "fail required test coverage" in line.lower()
-                for line in lines
-            )
-
-            if coverage_fail and not failed_tests:
-                # All tests passed but coverage is low - don't fail here,
-                # let the coverage check handle it
-                return self._create_result(
-                    status=CheckStatus.PASSED,
-                    duration=duration,
-                    output=result.output,
-                )
-
-            error_msg = f"{len(failed_tests)} test(s) failed"
-            if failed_tests:
-                error_msg += ":\n" + "\n".join(failed_tests[:5])
-
-            return self._create_result(
-                status=CheckStatus.FAILED,
-                duration=duration,
-                output=result.output,
-                error=error_msg,
-                fix_suggestion=(
-                    "Each failure above names the failing test and "
-                    "assertion. Fix the code (or the test, if the "
-                    "test's expectation is stale). Verify with: " + self.verify_command
-                ),
-                findings=_parse_failed_lines(failed_tests),
-            )
+            return self._evaluate_pytest_failure(result, duration, use_testmon)
 
         return self._create_result(
             status=CheckStatus.PASSED,
             duration=duration,
             output=result.output,
+        )
+
+    def _evaluate_pytest_failure(
+        self, result: SubprocessResult, duration: float, use_testmon: bool
+    ) -> CheckResult:
+        """Handle a non-zero pytest exit code."""
+        lines = result.output.split("\n")
+        failed_tests = [line for line in lines if _is_failed_summary_line(line)]
+
+        # pytest exit code 5 = "no tests were collected/run".
+        # When testmon deselects every test (nothing in the changed
+        # set has failing dependencies), this is a clean pass.
+        if use_testmon and result.returncode == 5:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output="All tests passed (no changes detected by testmon).",
+            )
+
+        # Check if failure is due to coverage threshold (not test failures)
+        coverage_fail = any(
+            "coverage failure" in line.lower()
+            or "fail required test coverage" in line.lower()
+            for line in lines
+        )
+
+        if coverage_fail and not failed_tests:
+            # All tests passed but coverage is low - don't fail here,
+            # let the coverage check handle it
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output=result.output,
+            )
+
+        error_msg = f"{len(failed_tests)} test(s) failed"
+        if failed_tests:
+            error_msg += ":\n" + "\n".join(failed_tests[:5])
+
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output=result.output,
+            error=error_msg,
+            fix_suggestion=(
+                "Each failure above names the failing test and "
+                "assertion. Fix the code (or the test, if the "
+                "test's expectation is stale). Verify with: " + self.verify_command
+            ),
+            findings=_parse_failed_lines(failed_tests),
         )

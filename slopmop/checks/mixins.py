@@ -40,6 +40,127 @@ from slopmop.core.result import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Free-function project introspection helpers
+#
+# These are the pure, side-effect-free cores of the mixin methods below.
+# The mixins wrap them to participate in the ``BaseCheck`` contract
+# (cached warnings, ``self.config`` access, result construction).  Other
+# callers — notably ``sm doctor`` — need the same resolution logic
+# without the gate scaffolding or the warn-once caching.
+# ---------------------------------------------------------------------------
+
+# Returned by resolve_project_python().  String constants rather than an
+# Enum: callers treat this as opaque display/JSON data and Enum would
+# just add ceremony.
+PYTHON_SOURCE_PROJECT_VENV = "project_venv"
+PYTHON_SOURCE_VIRTUAL_ENV = "virtual_env"
+PYTHON_SOURCE_SYS_EXECUTABLE = "sys_executable"
+PYTHON_SOURCE_PATH = "system_path"
+PYTHON_SOURCE_NOT_FOUND = "not_found"
+
+
+def _find_python_in_venv(venv_path: Path) -> Optional[str]:
+    """Return the ``python`` inside *venv_path* or None if none exists."""
+    for subpath in ["bin/python", "Scripts/python.exe"]:
+        candidate = venv_path / subpath
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def has_project_venv(project_root: str | Path) -> bool:
+    """True when *project_root* contains a ``venv/`` or ``.venv/``."""
+    root = Path(project_root)
+    for venv_dir in ("venv", ".venv"):
+        if (root / venv_dir / "bin" / "python").exists():
+            return True
+        if (root / venv_dir / "Scripts" / "python.exe").exists():
+            return True
+    return False
+
+
+def resolve_project_python(project_root: str | Path) -> tuple[str, str]:
+    """Return ``(python_path, source)`` for *project_root*.
+
+    Same stepped fallback as :meth:`PythonCheckMixin.get_project_python`
+    but without warnings, caching, or any other side effects.  ``source``
+    is one of the ``PYTHON_SOURCE_*`` constants above.
+    """
+    root = Path(project_root)
+
+    for venv_dir in ("venv", ".venv"):
+        python_path = _find_python_in_venv(root / venv_dir)
+        if python_path:
+            return python_path, PYTHON_SOURCE_PROJECT_VENV
+
+    virtual_env = os.environ.get("VIRTUAL_ENV")
+    if virtual_env:
+        python_path = _find_python_in_venv(Path(virtual_env))
+        if python_path:
+            return python_path, PYTHON_SOURCE_VIRTUAL_ENV
+
+    if sys.executable:
+        return sys.executable, PYTHON_SOURCE_SYS_EXECUTABLE
+
+    for python_name in ("python3", "python"):
+        system_python = shutil.which(python_name)
+        if system_python:
+            return system_python, PYTHON_SOURCE_PATH
+
+    return "python3", PYTHON_SOURCE_NOT_FOUND
+
+
+def has_package_json(project_root: str | Path) -> bool:
+    return (Path(project_root) / "package.json").exists()
+
+
+def has_node_modules(project_root: str | Path) -> bool:
+    return (Path(project_root) / "node_modules").is_dir()
+
+
+def detect_js_package_manager(project_root: str | Path) -> str:
+    """Return ``"pnpm"|"yarn"|"npm"`` based on lockfile presence."""
+    root = Path(project_root)
+    if (root / "pnpm-lock.yaml").exists():
+        return "pnpm"
+    if (root / "yarn.lock").exists():
+        return "yarn"
+    return "npm"
+
+
+def npmrc_wants_legacy_peer_deps(project_root: str | Path) -> bool:
+    """True when ``.npmrc`` sets ``legacy-peer-deps = true``."""
+    npmrc_path = Path(project_root) / ".npmrc"
+    if not npmrc_path.exists():
+        return False
+    try:
+        for line in npmrc_path.read_text().splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("#", ";")):
+                continue
+            key, _, value = stripped.partition("=")
+            if key.strip() == "legacy-peer-deps" and value.strip().lower() == "true":
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def suggest_js_install_command(project_root: str | Path) -> str:
+    """Return a shell-pastable install line for the detected package manager."""
+    pm = detect_js_package_manager(project_root)
+    if pm == "pnpm":
+        return "pnpm install --no-frozen-lockfile"
+    if pm == "yarn":
+        return "yarn install --ignore-engines"
+    base = "npm install"
+    if npmrc_wants_legacy_peer_deps(project_root):
+        return f"{base} --legacy-peer-deps"
+    return base
+
+
 _JS_TEST_DIR_NAMES = {"test", "tests", "spec", "__tests__", "e2e", "integration"}
 _JS_TEST_FILE_PATTERNS = (
     "*.test.js",
@@ -75,11 +196,7 @@ class PythonCheckMixin:
 
     def _find_python_in_venv(self, venv_path: Path) -> Optional[str]:
         """Find Python executable in a venv directory (Unix or Windows)."""
-        for subpath in ["bin/python", "Scripts/python.exe"]:
-            python_path = venv_path / subpath
-            if python_path.exists():
-                return str(python_path)
-        return None
+        return _find_python_in_venv(venv_path)
 
     def _cache_and_return(self, project_root: str, python_path: str) -> str:
         """Cache and return the Python path."""
@@ -110,13 +227,7 @@ class PythonCheckMixin:
         it is not evidence that the repository has its own local dependency
         environment.
         """
-        root = Path(project_root)
-        for venv_dir in ["venv", ".venv"]:
-            if (root / venv_dir / "bin" / "python").exists():
-                return True
-            if (root / venv_dir / "Scripts" / "python.exe").exists():
-                return True
-        return False
+        return has_project_venv(project_root)
 
     @staticmethod
     def suggest_venv_command(project_root: str) -> str:
@@ -346,7 +457,7 @@ class JavaScriptCheckMixin:
 
     def has_package_json(self, project_root: str) -> bool:
         """Check if project has package.json."""
-        return (Path(project_root) / "package.json").exists()
+        return has_package_json(project_root)
 
     def has_js_files(self, project_root: str) -> bool:
         """Check if project has JavaScript files."""
@@ -363,7 +474,7 @@ class JavaScriptCheckMixin:
 
     def has_node_modules(self, project_root: str) -> bool:
         """Check if node_modules exists."""
-        return (Path(project_root) / "node_modules").is_dir()
+        return has_node_modules(project_root)
 
     def has_javascript_test_files(self, project_root: str) -> bool:
         """Return True when JS/TS test files are present."""
@@ -404,12 +515,7 @@ class JavaScriptCheckMixin:
 
         Resolution order: pnpm-lock.yaml → yarn.lock → package-lock.json → npm
         """
-        root = Path(project_root)
-        if (root / "pnpm-lock.yaml").exists():
-            return "pnpm"
-        if (root / "yarn.lock").exists():
-            return "yarn"
-        return "npm"
+        return detect_js_package_manager(project_root)
 
     def _get_npm_install_command(self, project_root: str) -> List[str]:
         """Build install command with the correct package manager.
@@ -435,29 +541,11 @@ class JavaScriptCheckMixin:
             config_flags = [config_flags]
         cmd.extend(config_flags)
 
-        # Check .npmrc for legacy-peer-deps
-        npmrc_path = Path(project_root) / ".npmrc"
-        if npmrc_path.exists():
-            try:
-                content = npmrc_path.read_text()
-                # Parse line by line, ignoring comments (# and ;)
-                for line in content.splitlines():
-                    line = line.strip()
-                    # Skip comment lines
-                    if line.startswith("#") or line.startswith(";"):
-                        continue
-                    # Check for active legacy-peer-deps setting
-                    # Handle variations: with/without spaces around '='
-                    key, _, value = line.partition("=")
-                    if (
-                        key.strip() == "legacy-peer-deps"
-                        and value.strip().lower() == "true"
-                        and "--legacy-peer-deps" not in cmd
-                    ):
-                        cmd.append("--legacy-peer-deps")
-                        break
-            except Exception:
-                pass  # Ignore .npmrc read errors
+        if (
+            npmrc_wants_legacy_peer_deps(project_root)
+            and "--legacy-peer-deps" not in cmd
+        ):
+            cmd.append("--legacy-peer-deps")
 
         return cmd
 

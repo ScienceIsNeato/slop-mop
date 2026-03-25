@@ -155,6 +155,17 @@ class StringDuplicationCheck(BaseCheck):
             ),
         ]
 
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to .py files only."""
+        from slopmop.core.cache import hash_file_scope
+
+        return hash_file_scope(
+            project_root,
+            ["."],
+            {".py"},
+            self._get_effective_config(),
+        )
+
     def is_applicable(self, project_root: str) -> bool:
         """Check if there are source files to analyze."""
         root = Path(project_root)

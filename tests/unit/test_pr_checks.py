@@ -299,11 +299,10 @@ class TestPRCommentsCheck:
 
         # Check key elements are present
         assert "PR COMMENT RESOLUTION PROTOCOL" in guidance
-        assert "LOCKED RESOLUTION ORDER" in guidance
+        assert "THREADS BY IMPACT" in guidance
         assert "AI AGENT WORKFLOW" in guidance
         assert "PRRT_456" in guidance
-        assert "no_longer_applicable" in guidance
-        assert "SCENARIO COMMAND MAPPING" in guidance
+        assert "CHOOSE A SCENARIO" in guidance
         assert "fixed_in_code" in guidance
 
     def test_get_unresolved_threads_parses_response(self, tmp_path):
@@ -513,17 +512,18 @@ class TestPRCommentsCheck:
         assert (loop_dir / "outcomes.json").exists()
         assert (loop_dir / "pr_123_comments_report.md").exists()
 
-    def test_commands_script_uses_expandable_fixed_in_code_comment(self):
-        """Fixed-in-code rail should allow shell command substitution expansion."""
+    def test_commands_script_uses_template_placeholders(self):
+        """Command pack should require agent to choose scenario and evidence."""
         check = PRCommentsCheck({})
 
         script = check._build_commands_script(
             [
                 {
                     "thread_id": "PRRT_abc",
-                    "resolution_scenario": "fixed_in_code",
+                    "category": "🐛 Logic/Correctness",
+                    "impact_score": 95,
+                    "signals": [],
                     "resolution_priority_rank": 1,
-                    "resolution_priority_reason": "logic issue",
                 }
             ],
             pr_number=85,
@@ -531,8 +531,9 @@ class TestPRCommentsCheck:
             repo="repo",
         )
 
-        assert "sm buff resolve 85 PRRT_abc --scenario fixed_in_code" in script
-        assert "Fixed in commit $(git rev-parse --short HEAD)." in script
+        assert "sm buff resolve 85 PRRT_abc" in script
+        assert "<SCENARIO>" in script
+        assert "<YOUR_EVIDENCE>" in script
         assert "gh api graphql" not in script
 
     def test_commands_script_contains_no_raw_graphql(self):
@@ -543,15 +544,17 @@ class TestPRCommentsCheck:
             [
                 {
                     "thread_id": "PRRT_fixed",
-                    "resolution_scenario": "fixed_in_code",
+                    "category": "🐛 Logic/Correctness",
+                    "impact_score": 95,
+                    "signals": ["body_references_prior_fix"],
                     "resolution_priority_rank": 1,
-                    "resolution_priority_reason": "logic issue",
                 },
                 {
-                    "thread_id": "PRRT_human",
-                    "resolution_scenario": "needs_human_feedback",
-                    "resolution_priority_rank": 5,
-                    "resolution_priority_reason": "needs clarification",
+                    "thread_id": "PRRT_question",
+                    "category": "❓ Question",
+                    "impact_score": 55,
+                    "signals": ["contains_question_or_request"],
+                    "resolution_priority_rank": 2,
                 },
             ],
             pr_number=85,
@@ -626,7 +629,7 @@ class TestPRCommentsCheck:
             )
 
         classify.assert_not_called()
-        assert "LOCKED RESOLUTION ORDER" in guidance
+        assert "THREADS BY IMPACT" in guidance
 
     def test_protocol_loop_directory_increments(self, tmp_path):
         """Protocol loop directory should increment per run for same PR."""

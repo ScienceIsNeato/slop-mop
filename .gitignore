@@ -67,3 +67,5 @@ AGENTS.md
 # Allow agent install template files to be tracked
 !slopmop/agent_install/templates/**
 STATUS.md
+.tmp/
+.specstory/

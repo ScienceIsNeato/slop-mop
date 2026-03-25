@@ -184,10 +184,10 @@ def _file_action(
 # specific per-violation instructions in the Finding messages do the
 # heavy lifting; this is the backstop for anyone who skims past them.
 _FIX_SUGGESTION = (
-    "Violations that name a specific definition can be resolved by moving "
-    "that definition to its own file. Violations that say 'needs splitting' "
-    "require reading the file to find a natural seam — look for groups of "
-    "related functions, describe blocks, or class boundaries and split there.\n"
+    "Phase 1 (oversized files) comes first because large files cause more "
+    "problems than large methods — harder to navigate, merge, and review. "
+    "Phase 2 (oversized functions in otherwise-OK files) needs internal "
+    "extraction: break the function at a logical seam into helpers.\n"
     "\n"
     "⚠️  DO NOT trim comments, compress docstrings, or join lines to "
     "squeeze under the limit. This check counts CODE lines only — "
@@ -428,25 +428,20 @@ class LocLockCheck(BaseCheck):
             exclude_dirs=config_excludes,
         )
 
-    def run(self, project_root: str) -> CheckResult:
-        """Run LOC enforcement check."""
-        start_time = time.time()
-
-        max_file_lines = self.config.get("max_file_lines", DEFAULT_MAX_FILE_LINES)
-        max_func_lines = self.config.get(
-            "max_function_lines", DEFAULT_MAX_FUNCTION_LINES
-        )
+    def _scan_violations(
+        self,
+        project_root: str,
+        max_file_lines: int,
+        max_func_lines: int,
+    ) -> Tuple[
+        List[Tuple[str, int, Optional[Tuple[str, int, int]]]],
+        List[Tuple[str, str, int, int]],
+    ]:
+        """Walk source files and collect file/function violations."""
         include_dirs = self.config.get("include_dirs", ["."])
         excluded_dirs = self._get_excluded_dirs()
         extensions = self._get_extensions()
 
-        # File violations carry the "what to move" target alongside the
-        # count so _build_findings can emit an ultra-specific instruction
-        # without re-parsing.  ``target`` is None when we couldn't find
-        # one (non-Python file with no detectable functions, or parse
-        # error) — those violations fall back to a generic message.
-        #   (rel_path, code_line_count, target_or_None)
-        #   target = (name, start_line, raw_span)
         file_violations: List[Tuple[str, int, Optional[Tuple[str, int, int]]]] = []
         func_violations: List[Tuple[str, str, int, int]] = []
 
@@ -470,19 +465,12 @@ class LocLockCheck(BaseCheck):
                 try:
                     content = file_path.read_text(encoding="utf-8", errors="ignore")
 
-                    # Code-line count — comments, blanks, and (for
-                    # Python) docstrings don't count.  See the comment
-                    # block above _count_code_lines for why.
                     line_count = _count_code_lines(content, file_path.suffix)
 
                     if line_count > max_file_lines:
                         target = self._pick_move_target(content, file_path.suffix)
                         file_violations.append((rel_path, line_count, target))
 
-                    # Function-length still uses raw lines — a 120-line
-                    # function with 40 lines of comments is still a
-                    # 120-line wall to read.  The file-level metric is
-                    # about structure; this one is about readability.
                     funcs = self._find_functions(content, file_path.suffix)
                     for func_name, start_line, func_lines in funcs:
                         if func_lines > max_func_lines:
@@ -493,6 +481,21 @@ class LocLockCheck(BaseCheck):
                 except (OSError, UnicodeDecodeError) as e:
                     logger.debug(f"Could not read {rel_path}: {e}")
                     continue
+
+        return file_violations, func_violations
+
+    def run(self, project_root: str) -> CheckResult:
+        """Run LOC enforcement check."""
+        start_time = time.time()
+
+        max_file_lines = self.config.get("max_file_lines", DEFAULT_MAX_FILE_LINES)
+        max_func_lines = self.config.get(
+            "max_function_lines", DEFAULT_MAX_FUNCTION_LINES
+        )
+
+        file_violations, func_violations = self._scan_violations(
+            project_root, max_file_lines, max_func_lines
+        )
 
         duration = time.time() - start_time
 
@@ -505,18 +508,40 @@ class LocLockCheck(BaseCheck):
             )
 
         total = len(file_violations) + len(func_violations)
+
+        # Deduplicate: function violations in files that already have a
+        # file-level violation are secondary context, not separate problems.
+        oversized_files = {path for path, _, _ in file_violations}
+        primary_func_violations = [
+            fv for fv in func_violations if fv[0] not in oversized_files
+        ]
+        secondary_func_violations = [
+            fv for fv in func_violations if fv[0] in oversized_files
+        ]
+        unique_problems = len(file_violations) + len(primary_func_violations)
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=self._format_violations(
-                file_violations, func_violations, max_file_lines, max_func_lines
+                file_violations,
+                primary_func_violations,
+                secondary_func_violations,
+                max_file_lines,
+                max_func_lines,
             ),
-            error=f"{total} LOC violation(s) found",
+            error=(
+                f"{unique_problems} unique problem(s) " f"({total} total violation(s))"
+            ),
             fix_suggestion=_FIX_SUGGESTION
             + _FIX_SUGGESTION_SUFFIX
             + self.verify_command,
             findings=self._build_findings(
-                file_violations, func_violations, max_file_lines, max_func_lines
+                file_violations,
+                primary_func_violations,
+                secondary_func_violations,
+                max_file_lines,
+                max_func_lines,
             ),
         )
 
@@ -546,65 +571,90 @@ class LocLockCheck(BaseCheck):
     @staticmethod
     def _format_violations(
         file_violations: List[Tuple[str, int, Optional[Tuple[str, int, int]]]],
-        func_violations: List[Tuple[str, str, int, int]],
+        primary_func_violations: List[Tuple[str, str, int, int]],
+        secondary_func_violations: List[Tuple[str, str, int, int]],
         max_file_lines: int,
         max_func_lines: int,
     ) -> str:
-        """Render violations for console output — top 10 each, sorted by size.
+        """Render violations in priority order for console output.
 
-        Each violation gets its own action line.  This is where an agent
-        running ``sm swab`` locally reads what to do — the Finding
-        message covers the GitHub-annotation path, this covers the
-        terminal path.  Both say the same thing.
+        Two-phase layout:
+          Phase 1 — Oversized files (primary).  Large files are
+            inherently more problematic than large methods: harder to
+            navigate, merge, and review.
+          Phase 2 — Oversized functions in files that are otherwise
+            within the file limit.  These need internal extraction.
+
+        Secondary function violations (inside already-oversized files)
+        are shown as indented context under the file violation, not as
+        separate top-level items.
         """
         out: List[str] = []
+
         if file_violations:
-            out.append(
-                f"📁 Files exceeding {max_file_lines} code lines "
-                f"({len(file_violations)}):"
-            )
+            out.append(f"📁 Phase 1 — Oversized files " f"({len(file_violations)}):")
+            # Group secondary func violations by file for context display
+            sec_by_file: dict[str, List[Tuple[str, str, int, int]]] = {}
+            for fv in secondary_func_violations:
+                sec_by_file.setdefault(fv[0], []).append(fv)
+
             for path, lines, target in sorted(file_violations, key=lambda x: -x[1])[
                 :10
             ]:
                 over = lines - max_file_lines
                 out.append(f"  {path}: {lines} code lines ({over} over)")
                 out.append(f"    → {_file_action(target, over, lines)}")
+                # Show secondary function violations as context
+                sec_funcs = sec_by_file.get(path, [])
+                if sec_funcs:
+                    n = len(sec_funcs)
+                    out.append(
+                        f"    ↳ {n} oversized function(s) in this file "
+                        f"(will likely resolve when file is split)"
+                    )
             if len(file_violations) > 10:
                 out.append(f"  ... and {len(file_violations) - 10} more")
-        if func_violations:
+
+        if primary_func_violations:
             if out:
                 out.append("")
             out.append(
-                f"🔧 Functions exceeding {max_func_lines} lines "
-                f"({len(func_violations)}):"
+                f"🔧 Phase 2 — Oversized functions in otherwise-OK files "
+                f"({len(primary_func_violations)}):"
             )
-            for path, func, line, lines in sorted(func_violations, key=lambda x: -x[3])[
-                :10
-            ]:
+            for path, func, line, lines in sorted(
+                primary_func_violations, key=lambda x: -x[3]
+            )[:10]:
                 over = lines - max_func_lines
-                out.append(f"  {path}:{line} {func}(): {lines} lines ({over} over)")
                 out.append(
-                    f"    → Break at least {over} lines off {func}() into "
-                    f"a new function, or relocate to an existing one."
+                    f"  {path}:{line} — {func}(): {lines} lines "
+                    f"(limit {max_func_lines}, {over} over)"
                 )
-            if len(func_violations) > 10:
-                out.append(f"  ... and {len(func_violations) - 10} more")
+                out.append(
+                    f"    → Break at least {over} lines off into a new "
+                    f"function, or relocate to an existing one."
+                )
+            if len(primary_func_violations) > 10:
+                out.append(f"  ... and {len(primary_func_violations) - 10} more")
+
         return "\n".join(out)
 
     @staticmethod
     def _build_findings(
         file_violations: List[Tuple[str, int, Optional[Tuple[str, int, int]]]],
-        func_violations: List[Tuple[str, str, int, int]],
+        primary_func_violations: List[Tuple[str, str, int, int]],
+        secondary_func_violations: List[Tuple[str, str, int, int]],
         max_file_lines: int,
         max_func_lines: int,
     ) -> List[Finding]:
         """Build structured findings for SARIF — one per violation.
 
-        The Finding message becomes the GitHub annotation body, so it
-        carries the specific instruction.  An agent reading the
-        annotation inline on a PR sees exactly what to do, right where
-        the problem is.  File violations anchor at the move-target's
-        line (not line 1) so the annotation lands ON the thing to move.
+        File violations are emitted at ERROR level with rule_id
+        ``file-sprawl``.  Primary function violations (in files that
+        are otherwise within the file limit) are ERROR / ``func-sprawl``.
+        Secondary function violations (inside already-oversized files)
+        are WARNING / ``func-sprawl-secondary`` — they'll likely resolve
+        when the file is split, so they shouldn't dominate triage.
         """
         out: List[Finding] = []
         for path, loc, target in file_violations:
@@ -617,13 +667,11 @@ class LocLockCheck(BaseCheck):
                     ),
                     level=FindingLevel.ERROR,
                     file=path,
-                    # Anchor at the target so GitHub's annotation lands
-                    # on the class/function header — the agent sees the
-                    # instruction right next to the thing it names.
                     line=target[1] if target else None,
+                    rule_id="file-sprawl",
                 )
             )
-        for path, func, start_line, loc in func_violations:
+        for path, func, start_line, loc in primary_func_violations:
             over = loc - max_func_lines
             out.append(
                 Finding(
@@ -635,6 +683,22 @@ class LocLockCheck(BaseCheck):
                     level=FindingLevel.ERROR,
                     file=path,
                     line=start_line,
+                    rule_id="func-sprawl",
+                )
+            )
+        for path, func, start_line, loc in secondary_func_violations:
+            over = loc - max_func_lines
+            out.append(
+                Finding(
+                    message=(
+                        f"{func}(): {loc} lines (limit {max_func_lines}, {over} over). "
+                        f"This function is in a file that also exceeds the file "
+                        f"limit — splitting the file will likely resolve this."
+                    ),
+                    level=FindingLevel.WARNING,
+                    file=path,
+                    line=start_line,
+                    rule_id="func-sprawl-secondary",
                 )
             )
         return out

@@ -326,10 +326,15 @@ def sm_lock(
         # Clean metadata, release flock, close fd.
         if fd is not None:
             try:
-                # Remove metadata so stale-detection doesn't fire on
-                # leftover content after a clean exit.
-                if path.exists():
-                    path.write_text("{}")
+                # Clear metadata but preserve the file/inode.  Deleting
+                # the file would break flock mutual exclusion: a
+                # concurrent process could create a NEW inode at the
+                # same path and acquire its own flock while the old fd
+                # still holds the original.  Writing empty JSON keeps
+                # the inode alive so all contenders flock on the same
+                # file.  Doctor's _inspect() treats empty metadata as
+                # "no lock" rather than stale.
+                path.write_text("{}")
             except OSError:
                 pass
             try:

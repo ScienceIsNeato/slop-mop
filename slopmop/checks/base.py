@@ -507,6 +507,20 @@ class BaseCheck(ABC):
     # directly on the class when they have equivalent context.
     REASONING: ClassVar[Optional[Reasoning]] = None
 
+    # Tools this gate needs at runtime.  Doctor uses this to verify
+    # tool availability *before* the gate runs.  Opt-in: gates that
+    # don't declare this are still diagnosed by tool_context heuristics
+    # (e.g. NODE gates check for node_modules, PROJECT gates check for
+    # venv), but SM_TOOL gates should list specific executables.
+    required_tools: ClassVar[List[str]] = []
+
+    # How to install missing tools.  Doctor reads this to generate
+    # actionable remediation hints.  Use "pip" for Python-ecosystem
+    # tools, or a freeform string like "Install {tool} from https://..."
+    # for tools that aren't pip-installable.  Default "pip" covers most
+    # SM_TOOL gates.  Override in subclasses for non-pip tools.
+    install_hint: ClassVar[str] = "pip"
+
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None
     ):

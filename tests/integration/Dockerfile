@@ -41,7 +41,7 @@ RUN pip install --no-cache-dir \
     vulture radon \
     bandit detect-secrets \
     mypy \
-    pytest pytest-cov diff-cover
+    pytest pytest-cov pytest-testmon diff-cover
 
 # Git identity so checkout / status operations don't complain
 RUN git config --global user.email "test@slop-mop.dev" \

@@ -441,6 +441,55 @@ class DockerManager:
             extract_file=extract_file,
         )
 
+    def run_clean_script(
+        self,
+        script: str,
+        *,
+        label: str = "custom",
+        extra_env: Optional[dict[str, str]] = None,
+    ) -> RunResult:
+        """Run a bash script after installing slopmop — no fixture repo bootstrap.
+
+        Use this for tests that create their own project from scratch rather
+        than using bucket-o-slop.  slopmop is installed from the bind-mounted
+        ``/slopmop-src``, so ``sm`` commands are available in the script.
+
+        Parameters
+        ----------
+        script:
+            Bash script to run inside the container.
+        label:
+            Descriptive label used in the ``RunResult.branch`` field.
+        extra_env:
+            Extra ``-e KEY=VALUE`` flags passed to ``docker run``.
+        """
+        if not self._image_built:
+            self.build_image()
+
+        install_preamble = (
+            f"cp -r /slopmop-src {_CONTAINER_BUILD_DIR} 2>&1 "
+            f"&& pip install {_CONTAINER_BUILD_DIR} --quiet 2>&1 "
+            f"|| {{ echo 'SLOPMOP_INSTALL_FAILED'; exit {INSTALL_FAILED_EXIT}; }}; "
+        )
+
+        docker_cmd = self._docker_base_command(extra_env=extra_env)
+        docker_cmd += [self.image_name, "bash", "-c", install_preamble + script]
+
+        proc = subprocess.run(
+            docker_cmd,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+        )
+
+        return RunResult(
+            exit_code=proc.returncode,
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+            branch=label,
+            command=["bash", "-lc", script[:80] + "..."],
+        )
+
     def run_refit_scenario(
         self,
         *,

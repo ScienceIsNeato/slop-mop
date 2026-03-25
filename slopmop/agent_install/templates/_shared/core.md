@@ -1,26 +1,69 @@
-## Slop-mop — your development protocol
+## Slop-mop (`sm`) — substitution table for this repository
 
-Slop-mop (`sm`) has two primary modes: **refit** and **maintenance**.
+`sm` wraps the tools you would normally reach for.  In this repository,
+run `sm`, not the underlying tool.  The table below is the redirect —
+when your impulse is the left column, run the right column instead.
 
-**Refit** is a one-time onboarding process. When you refit a repository, you have pulled into port — you stop all development and get the ship seaworthy. Refit remediates all existing slop in a repository and installs permanent guards to prevent the reintroduction of such slop. Running `sm` on an un-remediated repo is not recommended; slop-mop's ability to detect slop decreases as a function of the total amount of slop already present.
+| Your impulse                                      | Run instead                                  |
+|---------------------------------------------------|----------------------------------------------|
+| `pytest`                                          | `sm swab`                                    |
+| `black .`, `isort .`, `ruff check`, `flake8`      | `sm swab`                                    |
+| `mypy .`, `pyright`                               | `sm swab`                                    |
+| `vulture`, `radon cc`                             | `sm swab`                                    |
+| `pytest --cov`, `diff-cover`                      | `sm scour`                                   |
+| `bandit -r .`, `pip-audit`, `detect-secrets`      | `sm scour`                                   |
+| `jscpd`, any duplication scanner                  | `sm scour`                                   |
+| `gh pr checks <PR#>`                              | `sm buff status <PR#>`                       |
+| `gh pr checks <PR#> --watch`, `gh run watch`      | `sm buff watch <PR#>`                        |
+| `gh pr view <PR#> --comments`                     | `sm buff <PR#>`                              |
+| Reading CI logs to find the failing test          | `sm buff inspect <PR#>`                      |
+| `gh api ... resolveReviewThread`                  | `sm buff resolve <PR#> <THREAD_ID> -m "..."` |
+| `gh pr review --approve` after addressing threads | `sm buff verify <PR#>` first                 |
+| "not sure what to do next"                        | `sm sail`                                    |
+| "why won't sm / this gate run?"                   | `sm doctor`                                  |
+| Stale `.slopmop/sm.lock`, broken state dir        | `sm doctor --fix`                            |
 
-**Maintenance** is the steady-state. Once refit is complete, the swab/scour/buff loop is your procedural backbone for keeping the repo clean as you work.
+### Hard rules
 
-| Verb | What it does | When to run it |
-|------|-------------|----------------|
-| `sm sail` | Auto-advance — reads state and runs the next obvious verb | When you're not sure what to do next |
-| `sm swab` | Fast iterative feedback — catches drift, auto-fixes what it can | After every meaningful code change |
-| `sm scour` | Comprehensive pre-PR sweep — surfaces everything before it compounds | Before opening or updating a PR |
-| `sm buff` | Post-PR triage — digests CI/review feedback into next steps | After CI completes or review feedback lands |
+- **NEVER** run raw `pytest`, `black`, `mypy`, or `ruff` in this repo.
+  `sm swab` runs them in dependency order, caches clean results across
+  commits, and auto-fixes what it can.  A bare `pytest` wastes a full
+  run on things swab would have skipped from cache.
+- **NEVER** run `gh pr checks`, `gh run view`, or read CI logs
+  directly.  `sm buff` fetches the same data and converts it into a
+  remediation plan — it knows which check failed and what you need to
+  do next, not just that something is red.
+- **NEVER** open or update a PR without `sm scour` passing first.
+- **NEVER** bypass or silence a failing check.  If a gate is wrong,
+  fix the gate.  If your env is wrong, `sm doctor` will tell you.
 
-### The maintenance loop
+### The loop
 
-The fastest path: run `sm sail` repeatedly. It reads the workflow state and dispatches the right verb automatically — swab, scour, or buff. It stops after each action so you can fix what it finds, then run `sm sail` again.
+```
+edit → sm swab → fix → repeat            (until swab is clean)
+       sm scour → fix → repeat           (until scour is clean)
+       git push
+       sm buff watch <PR#>               (blocks until CI settles)
+       sm buff <PR#> → fix → repeat      (until CI + threads clean)
+```
 
-Or manually:
-1. Write code → `sm swab` → fix → repeat until clean.
-2. Before PR → `sm scour`.
-3. After CI/review → `sm buff <PR_NUMBER>`.
+Or just run `sm sail` repeatedly — it reads the workflow state and dispatches the right verb automatically.
+
+### Why you lose if you bypass `sm`
+
+- **Cache:** swab/scour skip gates whose inputs haven't changed since
+  the last clean run at this commit.  Raw tool invocations re-run
+  everything every time.
+- **Ordering:** gates declare dependencies (`type-blindness` needs
+  `missing-annotations` needs `sloppy-formatting`).  `sm` runs them in
+  order so a formatting fix doesn't invalidate a type-check you just
+  waited for.  You can't get this from raw tool calls.
+- **Remediation:** `sm` output tells you *what to do next*, not just
+  *what's broken*.  `gh pr checks` says "failed"; `sm buff` says "line
+  42 has a stale mock — here's the fix".
+- **Auto-fix:** `sm swab` auto-applies formatters and safe rewrites.
+  Running `black` by hand then `isort` by hand then `autoflake` by hand
+  is three passes where swab does one.
 
 Use `sm sail` for forward motion; use individual verbs (`sm swab -g <gate>`, `sm buff resolve`, etc.) for surgical work.
 
@@ -37,8 +80,6 @@ Refit is a nearly necessary first step for any repository adopting slop-mop. It 
 While not recommended, you can use `--baseline` to accept all existing failures and transition to maintenance immediately. This is only offered as a way to unblock operations when a full refit is not feasible.
 
 ### Tooling preference
-- Prefer MCP tools `sm_swab`/`sm_scour`/`sm_buff` if available.
-- Otherwise, run CLI commands from the project root.
 
-### Safety
-- Never bypass or silence a failing check — that's how repo rot compounds.
+Prefer MCP tools `sm_swab` / `sm_scour` / `sm_buff` / `sm_doctor` if
+available. Otherwise, run CLI commands from the project root.

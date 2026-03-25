@@ -92,6 +92,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
+    required_tools = ["black", "isort", "autoflake", "flake8"]
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from slopmop.cli.buff import cmd_buff
     from slopmop.cli.config import cmd_config
     from slopmop.cli.detection import detect_project_type
+    from slopmop.cli.doctor import cmd_doctor
     from slopmop.cli.help import cmd_help
     from slopmop.cli.hooks import cmd_commit_hooks
     from slopmop.cli.init import cmd_init
@@ -29,6 +30,7 @@ _EXPORT_MAP = {
     "cmd_buff": ("slopmop.cli.buff", "cmd_buff"),
     "cmd_commit_hooks": ("slopmop.cli.hooks", "cmd_commit_hooks"),
     "cmd_config": ("slopmop.cli.config", "cmd_config"),
+    "cmd_doctor": ("slopmop.cli.doctor", "cmd_doctor"),
     "cmd_help": ("slopmop.cli.help", "cmd_help"),
     "cmd_init": ("slopmop.cli.init", "cmd_init"),
     "cmd_refit": ("slopmop.cli.refit", "cmd_refit"),
@@ -59,6 +61,7 @@ __all__ = [
     "cmd_agent",
     "cmd_commit_hooks",
     "cmd_config",
+    "cmd_doctor",
     "cmd_help",
     "cmd_init",
     "cmd_buff",

@@ -278,7 +278,9 @@ class TestSmLock:
             assert meta is not None
             assert meta["verb"] == "swab"
 
-        # After release, metadata should be cleared
+        # After release, metadata should be cleared but file preserved
+        # (inode must survive for flock mutual exclusion)
+        assert path.exists()
         meta_after = _read_lock_meta(path)
         assert meta_after == {}
 

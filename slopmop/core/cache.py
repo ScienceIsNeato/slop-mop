@@ -116,8 +116,12 @@ def hash_file_scope(
     hasher.update(b"config:")
     hasher.update(json.dumps(config, sort_keys=True).encode())
 
-    # 2. Collect (relative_path, mtime) for files in scope
-    entries: list[tuple[str, int]] = []
+    # 2. Collect paths, sort, then stream reads into the hasher.
+    # Content hashing rather than mtime means IDE auto-saves or git
+    # operations that touch mtimes without changing content won't bust
+    # the cache — only genuine content changes do.
+    # Streaming avoids holding all file contents in memory at once.
+    paths: list[tuple[str, Path]] = []
     for dir_name in dirs:
         scan_path = root / dir_name
         if not scan_path.exists():
@@ -139,15 +143,16 @@ def hash_file_scope(
             if file_path.suffix not in extensions:
                 continue
 
-            try:
-                mtime = file_path.stat().st_mtime_ns
-                entries.append((str(rel), mtime))
-            except OSError:
-                continue
+            paths.append((str(rel), file_path))
 
-    entries.sort()
-    for rel_path, mtime in entries:
-        hasher.update(f"{rel_path}:{mtime}\n".encode())
+    paths.sort(key=lambda e: e[0])
+    for rel_path, file_path in paths:
+        try:
+            content = file_path.read_bytes()
+        except OSError:
+            continue
+        hasher.update(f"file:{rel_path}\n".encode())
+        hasher.update(content)
 
     return hasher.hexdigest()
 
@@ -176,8 +181,12 @@ def compute_fingerprint(project_root: str) -> str:
     else:
         hasher.update(b"config:missing")
 
-    # 2. Collect (relative_path, mtime) for all source files, sorted
-    entries: list[tuple[str, int]] = []
+    # 2. Collect paths, sort, then stream reads into the hasher.
+    # Content hashing rather than mtime: IDE auto-saves, git checkouts,
+    # and stash operations that touch mtimes without changing file content
+    # won't invalidate the cache — only genuine content changes do.
+    # Streaming avoids holding all file contents in memory at once.
+    paths: list[tuple[str, Path]] = []
     for file_path in root.rglob("*"):
         if not file_path.is_file():
             continue
@@ -195,18 +204,19 @@ def compute_fingerprint(project_root: str) -> str:
         if file_path.suffix not in _SOURCE_EXTENSIONS:
             continue
 
-        try:
-            mtime = file_path.stat().st_mtime_ns
-            entries.append((str(rel), mtime))
-        except OSError:
-            continue
+        paths.append((str(rel), file_path))
 
     # Sort for deterministic ordering
-    entries.sort()
+    paths.sort(key=lambda e: e[0])
 
-    # Hash each entry
-    for rel_path, mtime in entries:
-        hasher.update(f"{rel_path}:{mtime}\n".encode())
+    # Stream reads: one file at a time instead of all at once
+    for rel_path, file_path in paths:
+        try:
+            content = file_path.read_bytes()
+        except OSError:
+            continue
+        hasher.update(f"file:{rel_path}\n".encode())
+        hasher.update(content)
 
     return hasher.hexdigest()
 
