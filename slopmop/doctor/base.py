@@ -111,14 +111,14 @@ class DoctorCheck(abc.ABC):
         return DoctorResult(self.name, DoctorStatus.OK, summary, **kw)
 
     def _warn(self, summary: str, **kw: Any) -> DoctorResult:
-        return DoctorResult(
-            self.name, DoctorStatus.WARN, summary, can_fix=self.can_fix, **kw
-        )
+        # Default to the class-level can_fix, but allow callers to
+        # override (e.g. can_fix=False for states the fix() refuses).
+        kw.setdefault("can_fix", self.can_fix)
+        return DoctorResult(self.name, DoctorStatus.WARN, summary, **kw)
 
     def _fail(self, summary: str, **kw: Any) -> DoctorResult:
-        return DoctorResult(
-            self.name, DoctorStatus.FAIL, summary, can_fix=self.can_fix, **kw
-        )
+        kw.setdefault("can_fix", self.can_fix)
+        return DoctorResult(self.name, DoctorStatus.FAIL, summary, **kw)
 
     def _skip(self, summary: str, **kw: Any) -> DoctorResult:
         return DoctorResult(self.name, DoctorStatus.SKIP, summary, **kw)

@@ -1,11 +1,11 @@
 ---
 name: slopmop
 description: >-
-  Substitutes gh / pytest / black / mypy / ruff / bandit in this repo.
-  Invoke whenever you are about to run one of those tools, or a
-  gh pr / gh run command, or check CI status.  Core redirect:
-  pytest → sm swab, gh pr checks → sm buff, "not sure what's next" →
-  sm sail, "why is it broken" → sm doctor.
+  Substitutes pytest, gh, mypy, black, and every other tool in this
+  repo with a single `sm` CLI.  Never run the underlying tools
+  directly — `sm swab` for fast iteration, `sm scour` before a PR,
+  `sm buff` after CI or review feedback, `sm doctor` when the
+  environment looks broken, `sm sail` when unsure what to do next.
 ---
 
 {{CORE}}

@@ -493,6 +493,7 @@ class TestStateLockCheck:
             r = StateLockCheck().run(DoctorContext(project_root=tmp_path))
         assert r.status is DoctorStatus.WARN
         assert "live lock" in r.summary
+        assert r.can_fix is False  # --fix refuses live locks; offering it misleads
 
     def test_unreadable_sidecar_fails(self, tmp_path):
         lock_dir = tmp_path / LOCK_DIR
@@ -610,6 +611,7 @@ class TestStateLockFix:
         assert r.status is DoctorStatus.WARN
         assert "refusing" in r.summary.lower()
         assert lock_file.exists()  # untouched
+        assert r.can_fix is False  # refusal result must not re-offer the fix
 
     def test_no_lock_is_noop_ok(self, tmp_path):
         r = StateLockCheck().fix(DoctorContext(project_root=tmp_path, apply_fix=True))
@@ -657,6 +659,7 @@ class TestStateDirFix:
             )
         assert r.status is DoctorStatus.FAIL
         assert "sudo chown" in r.fix_hint
+        assert r.can_fix is False  # requires elevation; sm can't auto-fix
 
 
 class TestStateConfigFix:
@@ -689,6 +692,7 @@ class TestStateConfigFix:
         r = StateConfigCheck().fix(DoctorContext(project_root=tmp_path, apply_fix=True))
         assert r.status is DoctorStatus.FAIL
         assert cfg.read_text() == "broken{{"  # untouched
+        assert r.can_fix is False  # nothing to restore; re-offering fix is misleading
 
     def test_already_valid_is_noop(self, tmp_path):
         cfg = tmp_path / CONFIG_FILE

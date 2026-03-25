@@ -184,8 +184,8 @@ def _file_action(
 # specific per-violation instructions in the Finding messages do the
 # heavy lifting; this is the backstop for anyone who skims past them.
 _FIX_SUGGESTION = (
-    "Phase 1 (oversized files) is the highest-payoff work — splitting a "
-    "large file often resolves the function violations inside it too. "
+    "Phase 1 (oversized files) comes first because large files cause more "
+    "problems than large methods — harder to navigate, merge, and review. "
     "Phase 2 (oversized functions in otherwise-OK files) needs internal "
     "extraction: break the function at a logical seam into helpers.\n"
     "\n"
@@ -579,15 +579,15 @@ class LocLockCheck(BaseCheck):
         """Render violations in priority order for console output.
 
         Two-phase layout:
-          Phase 1 — Oversized files (primary).  Fixing these often
-            clears secondary function violations in the same file.
+          Phase 1 — Oversized files (primary).  Large files are
+            inherently more problematic than large methods: harder to
+            navigate, merge, and review.
           Phase 2 — Oversized functions in files that are otherwise
             within the file limit.  These need internal extraction.
 
         Secondary function violations (inside already-oversized files)
         are shown as indented context under the file violation, not as
-        separate top-level items — they'll likely resolve when the
-        file is split.
+        separate top-level items.
         """
         out: List[str] = []
 

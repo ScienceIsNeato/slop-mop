@@ -135,7 +135,8 @@ class StateLockCheck(DoctorCheck):
             )
 
         # live — another sm is genuinely running.  Not an error, just
-        # something the user should know.
+        # something the user should know.  Not fixable: --fix refuses to
+        # remove a live lock, so offering the option would mislead the user.
         return self._warn(
             f"live lock: sm {verb} running (pid {pid}, {age})",
             detail=_header(
@@ -144,6 +145,7 @@ class StateLockCheck(DoctorCheck):
                 "Another ``sm`` process is active.  Wait for it to "
                 "finish, or kill it if it has hung.",
             ),
+            can_fix=False,
             data=data,
         )
 
@@ -163,6 +165,7 @@ class StateLockCheck(DoctorCheck):
                     "``--fix`` will not delete a live lock.  Kill the process "
                     "first if you are certain it has hung."
                 ),
+                can_fix=False,
                 data=data,
             )
 
@@ -261,6 +264,7 @@ class StateDirCheck(DoctorCheck):
                         f"current uid is {os.getuid()}."
                     ),
                     fix_hint=f"sudo chown -R $(id -un) {state_dir}",
+                    can_fix=False,
                 )
             mode = st.st_mode | stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR
             os.chmod(state_dir, mode)
@@ -349,6 +353,7 @@ class StateConfigCheck(DoctorCheck):
                     f"{state_dir_path(ctx.project_root) / 'backups'}."
                 ),
                 fix_hint="sm init  # recreate config from scratch",
+                can_fix=False,
             )
 
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

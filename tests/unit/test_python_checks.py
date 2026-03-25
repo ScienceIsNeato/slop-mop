@@ -85,7 +85,8 @@ class TestPythonTestsCheck:
         # activation, no project venv) short-circuits to WARNED before
         # the mocked runner is ever called.
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
-            result = check.run(str(tmp_path))
+            with patch.object(check, "_testmon_available", return_value=True):
+                result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
 
@@ -105,7 +106,8 @@ class TestPythonTestsCheck:
 
         check = PythonTestsCheck({}, runner=mock_runner)
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
-            result = check.run(str(tmp_path))
+            with patch.object(check, "_testmon_available", return_value=True):
+                result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
         assert result.findings
@@ -128,7 +130,8 @@ class TestPythonTestsCheck:
 
         check = PythonTestsCheck({}, runner=mock_runner)
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
-            result = check.run(str(tmp_path))
+            with patch.object(check, "_testmon_available", return_value=True):
+                result = check.run(str(tmp_path))
 
         # Should pass because tests passed, only coverage failed
         assert result.status == CheckStatus.PASSED
@@ -194,7 +197,8 @@ class TestPythonTestsCheck:
 
         check = PythonTestsCheck({}, runner=mock_runner)
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
-            result = check.run(str(tmp_path))
+            with patch.object(check, "_testmon_available", return_value=True):
+                result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
         assert result.findings is not None
@@ -323,26 +327,20 @@ class TestPythonTestsCheck:
 
         assert result.status == CheckStatus.PASSED
 
-    def test_run_testmon_not_available_uses_full_command(self, tmp_path):
-        """When testmon is not installed, full pytest command is always used."""
+    def test_run_testmon_not_available_hard_fails(self, tmp_path):
+        """When testmon is not installed, the check fails immediately."""
         (tmp_path / "tests").mkdir()
         (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass")
         (tmp_path / ".testmondata").touch()
         (tmp_path / "coverage.xml").write_text("<coverage></coverage>")
 
-        mock_runner = MagicMock()
-        mock_runner.run.return_value = SubprocessResult(
-            returncode=0, stdout="1 passed in 0.1s", stderr="", duration=1.0
-        )
-
-        check = PythonTestsCheck({}, runner=mock_runner)
+        check = PythonTestsCheck({})
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
             with patch.object(check, "_testmon_available", return_value=False):
                 result = check.run(str(tmp_path))
 
-        cmd = mock_runner.run.call_args[0][0]
-        assert "--cov=." in cmd
-        assert "--testmon" not in cmd
+        assert result.status == CheckStatus.FAILED
+        assert "pytest-testmon is required" in (result.error or "")
 
 
 class TestPythonCoverageCheck:

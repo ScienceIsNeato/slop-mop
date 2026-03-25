@@ -167,7 +167,8 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 [
                     self.get_project_python(project_root),
                     "-c",
-                    "import pytest_testmon",
+                    # v1.x uses pytest_testmon, v2.x renamed to testmon
+                    "try:\n import testmon\nexcept ImportError:\n import pytest_testmon",
                 ],
                 cwd=project_root,
                 timeout=10,
@@ -226,20 +227,35 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         if venv_warn is not None:
             return venv_warn
 
+        # pytest-testmon is a hard dependency: it enables dependency-aware
+        # test selection so only tests whose source deps changed re-run.
+        # Doctor handles installation; fail loudly if it's missing.
+        if not self._testmon_available(project_root):
+            msg = (
+                "pytest-testmon is required but not installed in the project venv. "
+                "Install it: pip install pytest-testmon (in your project venv)"
+            )
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=time.time() - start_time,
+                error=msg,
+                output=msg,
+                fix_suggestion=(
+                    "Install pytest-testmon in the project virtual environment:\n"
+                    "  source venv/bin/activate && pip install pytest-testmon\n"
+                    "Or run: sm doctor --fix"
+                ),
+                findings=[Finding(message=msg, level=FindingLevel.ERROR)],
+            )
+
         # Testmon fast path: skip coverage regeneration and only execute
         # tests whose source dependencies have changed since the last run.
-        # Activates only when three conditions are met:
-        #   1. pytest-testmon is installed in the project venv
-        #   2. .testmondata exists (seeded by a prior `pytest --testmon` run)
-        #   3. coverage.xml exists (from a prior full run, keeps it fresh)
-        # To enable: run `pytest --testmon` once in the project root.
-        # Note: --testmon and --cov conflict; fast-path skips coverage regen.
-        testmon_available = self._testmon_available(project_root)
-        use_testmon = (
-            testmon_available
-            and (Path(project_root) / ".testmondata").exists()
-            and (Path(project_root) / "coverage.xml").exists()
-        )
+        # Activates when .testmondata and coverage.xml exist (seeded by a
+        # prior run).  When not seeded, falls back to full pytest+coverage
+        # which also prepares testmon for the next run.
+        use_testmon = (Path(project_root) / ".testmondata").exists() and (
+            Path(project_root) / "coverage.xml"
+        ).exists()
 
         if use_testmon:
             cmd = [

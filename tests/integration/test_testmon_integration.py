@@ -1,27 +1,17 @@
-"""Integration test: pytest-testmon fast path in the untested-code gate.
+"""Integration tests: pytest-testmon fast path and TDD loop.
 
-Verifies that when pytest-testmon is installed and .testmondata has been
-seeded, sm swab uses ``pytest --testmon`` rather than a full
-coverage-regenerating run.  The fast path only re-runs tests whose source
-dependencies have changed, dramatically reducing iteration time on large
-suites.
+Two scenarios verify testmon behaviour inside a Docker container:
 
-Test structure
---------------
-A minimal Python project is created from scratch inside the container:
+  TestTestmonFastPath — confirms that sm swab activates ``pytest --testmon``
+    when .testmondata and coverage.xml are already seeded, re-running only
+    tests whose source deps changed.
 
-  src/module_a.py   — add()
-  src/module_b.py   — multiply()
-  tests/test_a.py   — covers module_a
-  tests/test_b.py   — covers module_b
+  TestTestmonTddLoop — exercises the full red→green TDD cycle:
+    baseline → add uncovered source → add failing test → fix test → green,
+    verifying that testmon caching keeps iteration fast.
 
-Scenario:
-
-  1. First ``sm swab``: no .testmondata → full pytest run.
-  2. Seed .testmondata via ``pytest --testmon`` + generate coverage.xml.
-  3. Touch src/module_b.py (only test_b.py should re-run).
-  4. Second ``sm swab``: testmon fast path activates, .testmondata is
-     updated (mtime changes), confirming testmon ran.
+Scripts live in ``tests/integration/scripts/`` and are loaded at import
+time to keep inline shell out of Python files.
 
 Run::
 
@@ -29,6 +19,8 @@ Run::
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 
@@ -40,101 +32,27 @@ pytestmark = [
     pytest.mark.skipif(not _ok, reason=_reason or "prerequisites not met"),
 ]
 
-
 # ---------------------------------------------------------------------------
-# Scenario script
+# Script loading
 # ---------------------------------------------------------------------------
 
-_PROJECT_SETUP = r"""
-mkdir -p /tmp/testmon-fixture/src /tmp/testmon-fixture/tests
-cd /tmp/testmon-fixture
+_SCRIPTS_DIR = Path(__file__).parent / "scripts"
 
-cat > src/__init__.py << 'PYEOF'
-PYEOF
 
-cat > src/module_a.py << 'PYEOF'
-def add(a, b):
-    return a + b
-PYEOF
+def _load_script(name: str) -> str:
+    return (_SCRIPTS_DIR / name).read_text()
 
-cat > src/module_b.py << 'PYEOF'
-def multiply(a, b):
-    return a * b
-PYEOF
 
-cat > tests/__init__.py << 'PYEOF'
-PYEOF
+_PROJECT_SETUP = _load_script("testmon_project_setup.sh")
 
-cat > tests/test_a.py << 'PYEOF'
-from src.module_a import add
-
-def test_add():
-    assert add(2, 3) == 5
-PYEOF
-
-cat > tests/test_b.py << 'PYEOF'
-from src.module_b import multiply
-
-def test_multiply():
-    assert multiply(2, 3) == 6
-PYEOF
-
-cat > setup.py << 'PYEOF'
-from setuptools import setup, find_packages
-setup(name="testmon-fixture", packages=find_packages())
-PYEOF
-
-# Project venv — install test tools
-python3 -m venv .venv
-.venv/bin/pip install pytest pytest-cov pytest-testmon --quiet 2>&1
-
-# Git repo so sm init doesn't complain
-git init --quiet
-git add .
-git commit -m "initial" --quiet --allow-empty-message
-"""
-
-_TESTMON_SCENARIO = _PROJECT_SETUP + r"""
-# sm init in the fixture project
+# Shared preamble: project setup → sm init
+_INIT_PREAMBLE = _PROJECT_SETUP + """
 sm init --non-interactive 2>&1 || { echo "SM_INIT_FAILED"; exit 4; }
-
-# --- First run: no .testmondata → full pytest with coverage ---
-echo "=== FIRST RUN ==="
-sm swab -g overconfidence:untested-code.py --no-fail-fast --no-json 2>&1
-FIRST_RC=$?
-echo "first_rc=$FIRST_RC"
-
-# Seed .testmondata and generate coverage.xml so the fast path can activate
-.venv/bin/pytest --testmon -q 2>&1
-.venv/bin/pytest --cov=. --cov-report=xml:coverage.xml -q --no-header 2>&1
-
-[ -f .testmondata ] || { echo "ERROR: .testmondata not seeded"; exit 1; }
-[ -f coverage.xml  ] || { echo "ERROR: coverage.xml not generated"; exit 1; }
-
-# Record .testmondata mtime before the second run
-BEFORE=$(stat -c %Y .testmondata)
-sleep 1
-
-# Touch module_b.py — testmon should re-run only test_b.py
-echo "# modified" >> src/module_b.py
-
-# --- Second run: .testmondata + coverage.xml exist → testmon fast path ---
-echo "=== SECOND RUN ==="
-sm swab -g overconfidence:untested-code.py --no-fail-fast --no-json 2>&1
-SECOND_RC=$?
-echo "second_rc=$SECOND_RC"
-
-AFTER=$(stat -c %Y .testmondata)
-
-if [ "$AFTER" != "$BEFORE" ]; then
-    echo "TESTMON_FAST_PATH_USED=yes"
-else
-    echo "TESTMON_FAST_PATH_USED=no"
-fi
-
-exit $SECOND_RC
 """
 
+_FAST_PATH_SCENARIO = _INIT_PREAMBLE + _load_script("testmon_fast_path.sh")
+_TDD_LOOP_SCENARIO = _INIT_PREAMBLE + _load_script("testmon_tdd_loop.sh")
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -143,15 +61,24 @@ exit $SECOND_RC
 
 @pytest.fixture(scope="module")
 def testmon_result(docker_manager: DockerManager) -> RunResult:
-    """Run the testmon integration scenario once for the whole module."""
+    """Run the testmon fast-path scenario once for the whole module."""
     return docker_manager.run_clean_script(
-        _TESTMON_SCENARIO,
+        _FAST_PATH_SCENARIO,
         label="testmon-fast-path",
     )
 
 
+@pytest.fixture(scope="module")
+def tdd_loop_result(docker_manager: DockerManager) -> RunResult:
+    """Run the TDD-loop scenario once for the whole module."""
+    return docker_manager.run_clean_script(
+        _TDD_LOOP_SCENARIO,
+        label="testmon-tdd-loop",
+    )
+
+
 # ---------------------------------------------------------------------------
-# Tests
+# Tests: fast-path activation
 # ---------------------------------------------------------------------------
 
 
@@ -183,4 +110,66 @@ class TestTestmonFastPath:
             "Expected testmon fast path to activate on second run "
             "(.testmondata mtime unchanged).\n"
             f"Output:\n{testmon_result.output}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests: TDD red→green loop with testmon caching
+# ---------------------------------------------------------------------------
+
+
+class TestTestmonTddLoop:
+    """Full TDD cycle: baseline → uncovered code → red test → green test.
+
+    Verifies that testmon caching keeps re-evaluation fast: only the
+    affected source and tests are re-run, while unrelated checks stay
+    cached.
+    """
+
+    def test_slopmop_installed(self, tdd_loop_result: RunResult) -> None:
+        assert (
+            tdd_loop_result.install_succeeded
+        ), f"slopmop install failed.\n{tdd_loop_result}"
+
+    def test_baseline_passes(self, tdd_loop_result: RunResult) -> None:
+        """Step 1: Full swab on a clean, all-passing project succeeds."""
+        assert (
+            "BASELINE_RC=0" in tdd_loop_result.output
+        ), f"Baseline swab did not pass.\n{tdd_loop_result.output}"
+
+    def test_seed_ok(self, tdd_loop_result: RunResult) -> None:
+        """Step 2: Testmon and coverage data seeded successfully."""
+        assert (
+            "SEED_OK=yes" in tdd_loop_result.output
+        ), f"Testmon/coverage seed failed.\n{tdd_loop_result.output}"
+
+    def test_uncovered_source_detected(self, tdd_loop_result: RunResult) -> None:
+        """Step 3: Adding uncovered source should make swab fail."""
+        assert (
+            "UNCOVERED_RC=0" not in tdd_loop_result.output
+            or "UNCOVERED_RC=1" in tdd_loop_result.output
+        ), (
+            "Expected swab to fail after adding uncovered source.\n"
+            f"Output:\n{tdd_loop_result.output}"
+        )
+
+    def test_tdd_red_fails(self, tdd_loop_result: RunResult) -> None:
+        """Step 4: TDD red phase — failing test should make swab fail."""
+        assert "TDD_RED_RC=1" in tdd_loop_result.output, (
+            "Expected swab to fail during TDD red phase.\n"
+            f"Output:\n{tdd_loop_result.output}"
+        )
+
+    def test_tdd_green_passes(self, tdd_loop_result: RunResult) -> None:
+        """Step 5: TDD green phase — fixed test should make swab pass."""
+        assert "TDD_GREEN_RC=0" in tdd_loop_result.output, (
+            "Expected swab to pass after fixing test.\n"
+            f"Output:\n{tdd_loop_result.output}"
+        )
+
+    def test_testmon_updated(self, tdd_loop_result: RunResult) -> None:
+        """Testmon data was updated across the scenario, confirming it ran."""
+        assert "TESTMON_UPDATED=yes" in tdd_loop_result.output, (
+            "Expected testmon to update .testmondata during the scenario.\n"
+            f"Output:\n{tdd_loop_result.output}"
         )
