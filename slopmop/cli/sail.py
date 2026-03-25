@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 from slopmop.workflow.state_machine import WorkflowState
-from slopmop.workflow.state_store import read_state
+from slopmop.workflow.state_store import read_state, write_state
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -46,6 +46,64 @@ def _get_pr_number(project_root: Path) -> Optional[int]:
     from slopmop.cli.ci import _detect_pr_number
 
     return _detect_pr_number(project_root)
+
+
+def _has_unpushed_commits(project_root: Path) -> bool:
+    """Return True when HEAD is ahead of its upstream, or upstream is unknown."""
+    upstream_result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if upstream_result.returncode != 0:
+        return True
+
+    divergence_result = subprocess.run(
+        ["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if divergence_result.returncode != 0:
+        return True
+
+    counts = divergence_result.stdout.strip().split()
+    if len(counts) != 2:
+        return True
+
+    try:
+        ahead = int(counts[1])
+    except ValueError:
+        return True
+    return ahead > 0
+
+
+def _reconcile_runtime_state(
+    state: WorkflowState,
+    project_root: Path,
+) -> WorkflowState:
+    """Heal stale persisted state using obvious repo/PR facts.
+
+    ``sail`` should not suggest a push when the branch is already pushed and
+    has an open PR. That condition means the loop has advanced past
+    ``SCOUR_CLEAN`` even if the persisted state has not caught up yet.
+    """
+    if state != WorkflowState.SCOUR_CLEAN:
+        return state
+
+    pr_number = _get_pr_number(project_root)
+    if pr_number is None:
+        return state
+
+    if _has_unpushed_commits(project_root):
+        return state
+
+    return WorkflowState.PR_OPEN
 
 
 def _print_step(icon: str, heading: str, detail: str = "") -> None:
@@ -215,7 +273,10 @@ _STATE_HANDLERS = {
 def cmd_sail(args: argparse.Namespace) -> int:
     """Auto-advance the workflow: detect state and do the next thing."""
     project_root = Path(getattr(args, "project_root", "."))
-    state = read_state(project_root) or WorkflowState.IDLE
+    persisted_state = read_state(project_root) or WorkflowState.IDLE
+    state = _reconcile_runtime_state(persisted_state, project_root)
+    if state != persisted_state:
+        write_state(project_root, state)
 
     handler = _STATE_HANDLERS.get(state)
     if handler is None:

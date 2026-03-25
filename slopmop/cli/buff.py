@@ -632,6 +632,7 @@ def _cmd_buff_status(
 
             feedback_result = _run_pr_feedback_gate(resolved_pr, str(project_root))
             if feedback_result.status != CheckStatus.PASSED:
+                _fire_buff_hook(has_issues=True)
                 return _render_status_feedback_blocker(
                     feedback_result,
                     no_checks=True,
@@ -652,6 +653,7 @@ def _cmd_buff_status(
                 time.sleep(interval)
                 print()
                 continue
+            _fire_buff_hook(has_issues=True)
             return 1
 
         if in_progress:
@@ -680,12 +682,14 @@ def _cmd_buff_status(
 
         feedback_result = _run_pr_feedback_gate(resolved_pr, str(project_root))
         if feedback_result.status != CheckStatus.PASSED:
+            _fire_buff_hook(has_issues=True)
             return _render_status_feedback_blocker(
                 feedback_result,
                 no_checks=False,
             )
 
         _print_success_status(completed, total)
+        _fire_buff_hook(has_issues=False)
         if watch:
             elapsed = time.monotonic() - watch_start
             print(f"⏱️  Total watch time: {_format_elapsed(elapsed)}")

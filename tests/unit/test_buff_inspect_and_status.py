@@ -268,6 +268,107 @@ class TestBuffInspectCommand:
 
 
 class TestBuffStatusCommand:
+    def test_cmd_buff_status_fires_buff_hook_on_clean_terminal_state(
+        self, monkeypatch, capsys
+    ):
+        args = argparse.Namespace(
+            pr_or_action="status",
+            action_args=["85"],
+            interval=30,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        monkeypatch.setattr(
+            buff_mod,
+            "_fetch_checks",
+            Mock(
+                return_value=(
+                    [
+                        {
+                            "name": "Primary Code Scanning Gate (blocking)",
+                            "bucket": "pass",
+                            "state": "SUCCESS",
+                            "link": "https://example.test/check",
+                        }
+                    ],
+                    "",
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
+        )
+        fire_hook = Mock()
+        monkeypatch.setattr(buff_mod, "_fire_buff_hook", fire_hook)
+
+        assert buff_mod.cmd_buff(args) == 0
+        assert "CI CLEAN" in capsys.readouterr().out
+        fire_hook.assert_called_once_with(has_issues=False)
+
+    def test_cmd_buff_status_fires_buff_hook_on_failed_terminal_state(
+        self, monkeypatch, capsys
+    ):
+        args = argparse.Namespace(
+            pr_or_action="status",
+            action_args=["85"],
+            interval=30,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        monkeypatch.setattr(
+            buff_mod,
+            "_fetch_checks",
+            Mock(
+                return_value=(
+                    [
+                        {
+                            "name": "Primary Code Scanning Gate (blocking)",
+                            "bucket": "fail",
+                            "state": "FAILURE",
+                            "link": "https://example.test/check",
+                        }
+                    ],
+                    "",
+                )
+            ),
+        )
+        fire_hook = Mock()
+        monkeypatch.setattr(buff_mod, "_fire_buff_hook", fire_hook)
+
+        assert buff_mod.cmd_buff(args) == 1
+        out = capsys.readouterr().out
+        assert "Primary Code Scanning Gate (blocking)" in out
+        assert "failed" in out.lower()
+        fire_hook.assert_called_once_with(has_issues=True)
+
     def test_cmd_buff_status_reports_stale_selected_pr(self, monkeypatch, capsys):
         args = argparse.Namespace(
             pr_or_action="status",
