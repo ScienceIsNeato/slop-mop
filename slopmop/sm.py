@@ -38,7 +38,13 @@ import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib  # type: ignore[no-redef]
+
 from slopmop import __version__
+from slopmop.cli.config import _deep_merge
 from slopmop.cli.parser_builders import (
     AgentParserBuilder,
     BuffParserBuilder,
@@ -50,7 +56,11 @@ logger = logging.getLogger(__name__)
 
 
 def load_config(project_root: Path) -> Dict[str, Any]:
-    """Load configuration from .sb_config.json.
+    """Load configuration from .sb_config.json, merged with pyproject.toml.
+
+    Configuration layering (later wins on conflicts):
+      1. ``pyproject.toml [tool.slopmop]``  — committed, shared settings
+      2. ``.sb_config.json``                — local per-environment overrides
 
     Args:
         project_root: Path to project root directory
@@ -58,6 +68,10 @@ def load_config(project_root: Path) -> Dict[str, Any]:
     Returns:
         Configuration dictionary, or empty dict if not found
     """
+    # Layer 1: pyproject.toml [tool.slopmop] (committed, shared)
+    base: Dict[str, Any] = _load_pyproject_config(project_root)
+
+    # Layer 2: .sb_config.json (local override, gitignored)
     config_file = os.environ.get("SB_CONFIG_FILE")
     if config_file:
         config_path = Path(config_file)
@@ -66,11 +80,27 @@ def load_config(project_root: Path) -> Dict[str, Any]:
 
     if config_path.exists():
         try:
-            return json.loads(config_path.read_text())
+            local = json.loads(config_path.read_text())
+            base = _deep_merge(base, local)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse config: {e}")
-            return {}
-    return {}
+
+    return base
+
+
+def _load_pyproject_config(project_root: Path) -> Dict[str, Any]:
+    """Read ``[tool.slopmop]`` from pyproject.toml if present."""
+    pyproject_path = project_root / "pyproject.toml"
+    if not pyproject_path.exists():
+        return {}
+    try:
+        with open(pyproject_path, "rb") as f:
+            data: Dict[str, Any] = tomllib.load(f)
+        tool_cfg: Dict[str, Any] = data.get("tool", {})
+        return dict(tool_cfg.get("slopmop", {}))
+    except Exception as e:
+        logger.debug(f"Failed to read [tool.slopmop] from pyproject.toml: {e}")
+        return {}
 
 
 def setup_logging(verbose: bool = False) -> None:

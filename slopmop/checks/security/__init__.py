@@ -191,6 +191,17 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 ),
                 required=False,
             ),
+            ConfigField(
+                name="pip_audit_ignore_vulns",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Vulnerability IDs to ignore in pip-audit "
+                    "(GHSA-xxxx, CVE-xxxx, PYSEC-xxxx). Use for "
+                    "known vulns with no patched version available."
+                ),
+                permissiveness="fewer_is_stricter",
+            ),
         ]
 
     def init_config(self, project_root: str) -> Dict[str, Any]:
@@ -821,6 +832,10 @@ class SecurityCheck(SecurityLocalCheck):
             "--format",
             "json",
         ]
+
+        ignore_ids = self.config.get("pip_audit_ignore_vulns", [])
+        for vuln_id in ignore_ids:
+            cmd.extend(["--ignore-vuln", vuln_id])
 
         result = self._run_command(cmd, cwd=project_root, timeout=30)
 
