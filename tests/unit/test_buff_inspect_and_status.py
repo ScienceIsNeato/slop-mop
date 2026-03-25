@@ -544,6 +544,43 @@ class TestBuffStatusCommand:
         assert "no CI checks found, but unresolved PR review threads remain" in out
         assert "PR #85 has unresolved review threads." in out
 
+    def test_cmd_buff_status_no_checks_clean_fires_success_hook(
+        self, monkeypatch, capsys
+    ):
+        args = argparse.Namespace(
+            pr_or_action="status",
+            action_args=["85"],
+            interval=30,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        monkeypatch.setattr(buff_mod, "_fetch_checks", Mock(return_value=([], "")))
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
+        )
+        fire_hook = Mock()
+        monkeypatch.setattr(buff_mod, "_fire_buff_hook", fire_hook)
+
+        assert buff_mod.cmd_buff(args) == 0
+        out = capsys.readouterr().out
+        assert "No CI checks found for this PR" in out
+        fire_hook.assert_called_once_with(has_issues=False)
+
     def test_cmd_buff_status_blocks_when_feedback_not_verified(
         self, monkeypatch, capsys
     ):

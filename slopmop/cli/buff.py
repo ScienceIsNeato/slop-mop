@@ -640,6 +640,7 @@ def _cmd_buff_status(
 
             print("ℹ️  No CI checks found for this PR")
             print("   (CI workflow may not be set up yet)")
+            _fire_buff_hook(has_issues=False)
             return 0
 
         completed, in_progress, failed = _categorize_checks(checks)
