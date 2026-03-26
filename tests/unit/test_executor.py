@@ -1,9 +1,12 @@
 """Tests for check executor."""
 
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from slopmop.checks.base import BaseCheck, Flaw, GateCategory, RemediationChurn
+from slopmop.checks.custom import make_custom_check_class
+from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
+from slopmop.checks.python.lint_format import PythonLintFormatCheck
 from slopmop.core.executor import CheckExecutor, run_quality_checks
 from slopmop.core.registry import CheckRegistry
 from slopmop.core.result import CheckResult, CheckStatus, SkipReason
@@ -718,6 +721,148 @@ class TestCheckExecutor:
         )
 
         assert not FixableCheck.fix_called
+
+    def test_python_lint_format_auto_fix_respects_executor_flag(self, tmp_path):
+        """Built-in Python lint gate should never auto-fix when disabled."""
+        (tmp_path / "setup.py").touch()
+
+        registry = CheckRegistry()
+        registry.register(PythonLintFormatCheck)
+
+        run_result = CheckResult(
+            name="sloppy-formatting.py",
+            status=CheckStatus.PASSED,
+            duration=0.01,
+            output="ok",
+        )
+
+        with (
+            patch.object(PythonLintFormatCheck, "run", return_value=run_result),
+            patch.object(PythonLintFormatCheck, "auto_fix", return_value=True) as fix,
+        ):
+            executor = CheckExecutor(registry=registry)
+            summary = executor.run_checks(
+                str(tmp_path),
+                ["laziness:sloppy-formatting.py"],
+                auto_fix=False,
+                use_cache=False,
+            )
+
+        assert summary.passed == 1
+        fix.assert_not_called()
+
+        with (
+            patch.object(PythonLintFormatCheck, "run", return_value=run_result),
+            patch.object(PythonLintFormatCheck, "auto_fix", return_value=True) as fix,
+        ):
+            executor = CheckExecutor(registry=registry)
+            summary = executor.run_checks(
+                str(tmp_path),
+                ["laziness:sloppy-formatting.py"],
+                auto_fix=True,
+                use_cache=False,
+            )
+
+        assert summary.passed == 1
+        fix.assert_called_once()
+
+    def test_javascript_lint_format_auto_fix_respects_executor_flag(self, tmp_path):
+        """Built-in JS lint gate should never auto-fix when disabled."""
+        (tmp_path / "package.json").write_text('{"name": "demo"}')
+
+        registry = CheckRegistry()
+        registry.register(JavaScriptLintFormatCheck)
+
+        run_result = CheckResult(
+            name="sloppy-formatting.js",
+            status=CheckStatus.PASSED,
+            duration=0.01,
+            output="ok",
+        )
+
+        with (
+            patch.object(JavaScriptLintFormatCheck, "run", return_value=run_result),
+            patch.object(
+                JavaScriptLintFormatCheck, "auto_fix", return_value=True
+            ) as fix,
+        ):
+            executor = CheckExecutor(registry=registry)
+            summary = executor.run_checks(
+                str(tmp_path),
+                ["laziness:sloppy-formatting.js"],
+                auto_fix=False,
+                use_cache=False,
+            )
+
+        assert summary.passed == 1
+        fix.assert_not_called()
+
+        with (
+            patch.object(JavaScriptLintFormatCheck, "run", return_value=run_result),
+            patch.object(
+                JavaScriptLintFormatCheck, "auto_fix", return_value=True
+            ) as fix,
+        ):
+            executor = CheckExecutor(registry=registry)
+            summary = executor.run_checks(
+                str(tmp_path),
+                ["laziness:sloppy-formatting.js"],
+                auto_fix=True,
+                use_cache=False,
+            )
+
+        assert summary.passed == 1
+        fix.assert_called_once()
+
+    def test_custom_gate_auto_fix_respects_executor_flag(self, tmp_path):
+        """Custom gates with fix_command must also obey the executor flag."""
+        custom_check = make_custom_check_class(
+            gate_name="docs-refresh",
+            description="Refresh docs",
+            category_key="laziness",
+            command="exit 0",
+            fix_command="touch fixed.txt",
+        )
+
+        registry = CheckRegistry()
+        registry.register(custom_check)
+
+        run_result = CheckResult(
+            name="docs-refresh",
+            status=CheckStatus.PASSED,
+            duration=0.01,
+            output="ok",
+        )
+
+        with (
+            patch.object(custom_check, "run", return_value=run_result),
+            patch.object(custom_check, "auto_fix", return_value=True) as fix,
+        ):
+            executor = CheckExecutor(registry=registry)
+            summary = executor.run_checks(
+                str(tmp_path),
+                ["laziness:docs-refresh"],
+                auto_fix=False,
+                use_cache=False,
+            )
+
+        assert summary.passed == 1
+        fix.assert_not_called()
+
+        with (
+            patch.object(custom_check, "run", return_value=run_result),
+            patch.object(custom_check, "auto_fix", return_value=True) as fix,
+        ):
+            executor = CheckExecutor(registry=registry)
+            summary = executor.run_checks(
+                str(tmp_path),
+                ["laziness:docs-refresh"],
+                auto_fix=True,
+                use_cache=False,
+            )
+
+        assert summary.passed == 1
+        fix.assert_called_once()
 
     def test_config_passed_to_checks(self, tmp_path):
         """Test that config is extracted and passed to check instances."""

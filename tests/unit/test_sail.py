@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from slopmop.cli import sail as sail_mod
+from slopmop.cli.scan_triage import ARTIFACT_NAME, WORKFLOW_NAME
 from slopmop.workflow.state_machine import WorkflowState
 
 
@@ -81,11 +83,32 @@ class TestSailDispatch:
         args = _base_args(tmp_path)
         monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.SCOUR_CLEAN)
         monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: 120)
+        monkeypatch.setattr(sail_mod, "_has_unpushed_commits", lambda _: True)
 
         assert sail_mod.cmd_sail(args) == 0
         out = capsys.readouterr().out
         assert "PR #120" in out
         assert "git push" in out
+
+    def test_scour_clean_with_pushed_pr_runs_buff_and_heals_state(
+        self, monkeypatch, tmp_path: Path
+    ):
+        args = _base_args(tmp_path)
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.SCOUR_CLEAN)
+        monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: 42)
+        monkeypatch.setattr(sail_mod, "_has_unpushed_commits", lambda _: False)
+        write_state = Mock()
+        monkeypatch.setattr(sail_mod, "write_state", write_state)
+        mock_buff = Mock(return_value=0)
+        monkeypatch.setattr("slopmop.cli.cmd_buff", mock_buff)
+
+        assert sail_mod.cmd_sail(args) == 0
+        write_state.assert_called_once_with(tmp_path, WorkflowState.PR_OPEN)
+        mock_buff.assert_called_once()
+        call_args = mock_buff.call_args[0][0]
+        assert call_args.pr_or_action == "42"
+        assert call_args.workflow == WORKFLOW_NAME
+        assert call_args.artifact == ARTIFACT_NAME
 
     def test_scour_clean_without_pr_suggests_create(
         self, monkeypatch, capsys, tmp_path: Path
@@ -110,6 +133,8 @@ class TestSailDispatch:
         # Verify it passed the PR number
         call_args = mock_buff.call_args[0][0]
         assert call_args.pr_or_action == "42"
+        assert call_args.workflow == WORKFLOW_NAME
+        assert call_args.artifact == ARTIFACT_NAME
 
     def test_buff_failing_runs_buff(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
@@ -122,6 +147,9 @@ class TestSailDispatch:
 
         assert sail_mod.cmd_sail(args) == 1
         mock_buff.assert_called_once()
+        call_args = mock_buff.call_args[0][0]
+        assert call_args.workflow == WORKFLOW_NAME
+        assert call_args.artifact == ARTIFACT_NAME
 
     def test_pr_ready_reports_ready_to_land(self, monkeypatch, capsys, tmp_path: Path):
         args = _base_args(tmp_path)
@@ -140,3 +168,102 @@ class TestSailDispatch:
 
         assert sail_mod.cmd_sail(args) == 0
         mock_swab.assert_called_once()
+
+
+class TestSailStateReconciliation:
+    def test_has_unpushed_commits_returns_true_when_upstream_missing(
+        self, monkeypatch, tmp_path: Path
+    ):
+        monkeypatch.setattr(
+            sail_mod.subprocess,
+            "run",
+            Mock(return_value=SimpleNamespace(returncode=1, stdout="", stderr="")),
+        )
+
+        assert sail_mod._has_unpushed_commits(tmp_path) is True
+
+    def test_has_unpushed_commits_returns_true_when_divergence_check_fails(
+        self, monkeypatch, tmp_path: Path
+    ):
+        monkeypatch.setattr(
+            sail_mod.subprocess,
+            "run",
+            Mock(
+                side_effect=[
+                    SimpleNamespace(returncode=0, stdout="origin/friction\n"),
+                    SimpleNamespace(returncode=1, stdout="", stderr="boom"),
+                ]
+            ),
+        )
+
+        assert sail_mod._has_unpushed_commits(tmp_path) is True
+
+    def test_has_unpushed_commits_returns_true_on_malformed_divergence_output(
+        self, monkeypatch, tmp_path: Path
+    ):
+        monkeypatch.setattr(
+            sail_mod.subprocess,
+            "run",
+            Mock(
+                side_effect=[
+                    SimpleNamespace(returncode=0, stdout="origin/friction\n"),
+                    SimpleNamespace(returncode=0, stdout="garbled"),
+                ]
+            ),
+        )
+
+        assert sail_mod._has_unpushed_commits(tmp_path) is True
+
+    def test_has_unpushed_commits_returns_true_on_non_numeric_ahead_count(
+        self, monkeypatch, tmp_path: Path
+    ):
+        monkeypatch.setattr(
+            sail_mod.subprocess,
+            "run",
+            Mock(
+                side_effect=[
+                    SimpleNamespace(returncode=0, stdout="origin/friction\n"),
+                    SimpleNamespace(returncode=0, stdout="0 nope"),
+                ]
+            ),
+        )
+
+        assert sail_mod._has_unpushed_commits(tmp_path) is True
+
+    def test_has_unpushed_commits_returns_false_when_head_matches_upstream(
+        self, monkeypatch, tmp_path: Path
+    ):
+        monkeypatch.setattr(
+            sail_mod.subprocess,
+            "run",
+            Mock(
+                side_effect=[
+                    SimpleNamespace(returncode=0, stdout="origin/friction\n"),
+                    SimpleNamespace(returncode=0, stdout="0 0"),
+                ]
+            ),
+        )
+
+        assert sail_mod._has_unpushed_commits(tmp_path) is False
+
+    def test_reconcile_runtime_state_keeps_non_scour_states(
+        self, monkeypatch, tmp_path: Path
+    ):
+        pr_lookup = Mock(side_effect=AssertionError("should not be called"))
+        monkeypatch.setattr(sail_mod, "_get_pr_number", pr_lookup)
+
+        state = sail_mod._reconcile_runtime_state(WorkflowState.PR_READY, tmp_path)
+
+        assert state == WorkflowState.PR_READY
+
+    def test_reconcile_runtime_state_keeps_scour_clean_without_pr(
+        self, monkeypatch, tmp_path: Path
+    ):
+        monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: None)
+
+        state = sail_mod._reconcile_runtime_state(
+            WorkflowState.SCOUR_CLEAN,
+            tmp_path,
+        )
+
+        assert state == WorkflowState.SCOUR_CLEAN

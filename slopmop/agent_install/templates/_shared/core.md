@@ -83,3 +83,30 @@ While not recommended, you can use `--baseline` to accept all existing failures 
 
 Prefer MCP tools `sm_swab` / `sm_scour` / `sm_buff` / `sm_doctor` if
 available. Otherwise, run CLI commands from the project root.
+
+### Live Dogfood Protocol
+
+For live refit efforts in real target repositories, run a strict state machine
+to capture friction and immediately harden slop-mop.
+
+#### State 1: Target Repository Remediation
+- Work in the target repository using normal `sm` rails.
+- If friction appears (slowdown, weird behavior, incorrect result), stop immediately.
+- Leave a pin with: repo, command/gate, exact error, and what was being attempted.
+- Transition to State 2.
+
+#### State 2: Fix Slop-Mop Friction
+- Switch to slop-mop on a dedicated fix branch.
+- Implement the smallest targeted fix for the pinned friction.
+- Validate in slop-mop with `sm swab`.
+- Commit the fix on that branch.
+- Transition to State 3.
+
+#### State 3: Test Fix Against Real Friction
+- Return to the original target-repo scenario and re-run the pinned command.
+- If the fix works: log resolution and return to State 1.
+- If the fix fails: return to State 2 and iterate.
+
+#### Core Rule
+- Never push through friction in State 1. Always pause remediation, fix slop-mop,
+  and prove the fix in the real target workflow before resuming.

@@ -417,4 +417,5 @@ class TestRunScour:
         assert captured["capture_output"] is True
         assert captured["text"] is True
         assert captured["check"] is False
+        assert "--no-auto-fix" in captured["command"]
         assert captured["command"][-2:] == ["-g", "laziness:repeated-code"]
