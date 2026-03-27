@@ -1,6 +1,7 @@
 """Tests for JavaScript quality checks."""
 
 import json
+import os
 from unittest.mock import MagicMock, patch
 
 from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
@@ -29,7 +30,6 @@ class TestJavaScriptTestsCheck:
         """Test display name."""
         check = JavaScriptTestsCheck({})
         assert "Tests" in check.display_name
-        assert "Jest" in check.display_name
 
     def test_depends_on(self):
         """Test dependencies."""
@@ -42,6 +42,7 @@ class TestJavaScriptTestsCheck:
         schema = check.config_schema
         field_names = [f.name for f in schema]
         assert "test_command" in field_names
+        assert "exclude_dirs" in field_names
 
     def test_is_applicable_with_package_json(self, tmp_path):
         """Test is_applicable returns True for JS projects."""
@@ -169,6 +170,97 @@ class TestJavaScriptTestsCheck:
             return_value=[(str(excluded_root), ["pkg"], ["foo.test.js"])],
         ):
             assert check.has_javascript_test_files(str(tmp_path)) is False
+
+    def test_run_uses_configured_test_command(self, tmp_path):
+        """run() should use the configured test_command instead of hardcoded jest."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTestsCheck({"test_command": "npm test"})
+
+        commands_run = []
+
+        def capture_command(cmd, **kwargs):
+            commands_run.append(cmd)
+            mock = MagicMock()
+            mock.success = True
+            mock.timed_out = False
+            mock.output = "Tests passed"
+            return mock
+
+        with patch.object(check, "_run_command", side_effect=capture_command):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert commands_run[-1] == ["npm", "test"]
+
+    def test_run_uses_default_jest_when_no_config(self, tmp_path):
+        """run() falls back to npx jest when test_command is not configured."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "smoke.test.js").write_text("test('ok', () => {})")
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTestsCheck({})
+
+        commands_run = []
+
+        def capture_command(cmd, **kwargs):
+            commands_run.append(cmd)
+            mock = MagicMock()
+            mock.success = True
+            mock.timed_out = False
+            mock.output = "Tests passed"
+            return mock
+
+        with patch.object(check, "_run_command", side_effect=capture_command):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert commands_run[-1] == ["npx", "--yes", "jest", "--ci", "--coverage"]
+
+    def test_exclude_dirs_hides_test_files(self, tmp_path):
+        """exclude_dirs config prevents test files in those dirs from being found."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        deno_dir = tmp_path / "supabase" / "functions"
+        deno_dir.mkdir(parents=True)
+        (deno_dir / "handler.test.ts").write_text("Deno.test('x', () => {})")
+        check = JavaScriptTestsCheck({"exclude_dirs": ["supabase/functions"]})
+
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "No JavaScript/TypeScript tests found" in (result.error or "")
+
+    def test_exclude_dirs_still_finds_non_excluded_tests(self, tmp_path):
+        """exclude_dirs skips specified dirs but still finds tests elsewhere."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        deno_dir = tmp_path / "supabase" / "functions"
+        deno_dir.mkdir(parents=True)
+        (deno_dir / "handler.test.ts").write_text("Deno.test('x', () => {})")
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "app.test.js").write_text("test('ok', () => {})")
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptTestsCheck({"exclude_dirs": ["supabase/functions"]})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.timed_out = False
+        mock_result.output = "Tests passed"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
+    def test_skip_reason_pure_deno_project(self, tmp_path):
+        """skip_reason explains why a pure Deno project is skipped."""
+        (tmp_path / "deno.json").write_text("{}")
+        check = JavaScriptTestsCheck({})
+
+        reason = check.skip_reason(str(tmp_path))
+        assert "Deno" in reason
 
 
 class TestJavaScriptCoverageCheckBranches:
@@ -385,6 +477,112 @@ class TestJavaScriptLintFormatCheck:
             result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.FAILED
+
+    # ------------------------------------------------------------------
+    # Deno project tests
+    # ------------------------------------------------------------------
+
+    def test_is_applicable_deno_project(self, tmp_path):
+        """Test is_applicable returns True for Deno projects."""
+        (tmp_path / "deno.json").write_text("{}")
+        check = JavaScriptLintFormatCheck({})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_is_applicable_deno_jsonc(self, tmp_path):
+        """Test is_applicable returns True for Deno projects with deno.jsonc."""
+        (tmp_path / "deno.jsonc").write_text("{}")
+        check = JavaScriptLintFormatCheck({})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_run_deno_project_uses_deno_lint_and_fmt(self, tmp_path):
+        """Deno project run() calls deno lint + deno fmt, not npx."""
+        (tmp_path / "deno.json").write_text("{}")
+        check = JavaScriptLintFormatCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = ""
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        commands = [call.args[0] for call in mock_run.call_args_list]
+        assert ["deno", "lint", "--json"] in commands
+        assert ["deno", "fmt", "--check"] in commands
+        # Must NOT invoke npx
+        for cmd in commands:
+            assert cmd[0] != "npx", f"npx called in Deno project: {cmd}"
+
+    def test_run_deno_lint_fails(self, tmp_path):
+        """Deno project run() reports lint failures."""
+        (tmp_path / "deno.json").write_text("{}")
+        check = JavaScriptLintFormatCheck({})
+
+        lint_result = MagicMock()
+        lint_result.success = False
+        lint_result.output = "error"
+        lint_result.stdout = json.dumps(
+            {
+                "diagnostics": [
+                    {
+                        "message": "no-unused-vars",
+                        "code": "no-unused-vars",
+                        "filename": "main.ts",
+                        "range": {"start": {"line": 1}},
+                    }
+                ]
+            }
+        )
+
+        fmt_result = MagicMock()
+        fmt_result.success = True
+        fmt_result.output = ""
+
+        with patch.object(check, "_run_command", side_effect=[lint_result, fmt_result]):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+
+    def test_auto_fix_deno_project(self, tmp_path):
+        """Deno project auto_fix() calls deno lint --fix + deno fmt."""
+        (tmp_path / "deno.json").write_text("{}")
+        check = JavaScriptLintFormatCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            result = check.auto_fix(str(tmp_path))
+
+        assert result is True
+        commands = [call.args[0] for call in mock_run.call_args_list]
+        assert ["deno", "lint", "--fix"] in commands
+        assert ["deno", "fmt"] in commands
+        for cmd in commands:
+            assert cmd[0] != "npx", f"npx called in Deno project: {cmd}"
+
+    def test_node_project_still_uses_eslint_prettier(self, tmp_path):
+        """Node project (no deno.json) still uses ESLint + Prettier path."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptLintFormatCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = ""
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        commands = [call.args[0] for call in mock_run.call_args_list]
+        # Node path should use npx eslint/prettier
+        npx_commands = [cmd for cmd in commands if cmd[0] == "npx"]
+        assert len(npx_commands) >= 1
+        # Must NOT invoke deno
+        for cmd in commands:
+            assert cmd[0] != "deno", f"deno called in Node project: {cmd}"
 
 
 class TestJavaScriptCoverageCheck:
@@ -1098,3 +1296,74 @@ class TestJavaScriptExpectCheck:
 
         assert result.status == CheckStatus.ERROR
         assert "install eslint" in result.error.lower()
+
+    def test_run_uses_absolute_parser_path_for_typescript(self, tmp_path):
+        """Test run() passes absolute path to @typescript-eslint/parser for .ts files.
+
+        ESLint's --resolve-plugins-relative-to only affects plugin resolution,
+        not parser resolution. A bare module name would fail because ESLint
+        resolves --parser relative to project CWD, not the temp dir.
+        """
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "app.test.ts").write_text(
+            "test('works', () => { expect(1).toBe(1); })"
+        )
+        check = JavaScriptExpectCheck({})
+
+        commands_run: list = []
+
+        def capture_command(cmd, **kwargs):
+            commands_run.append(cmd)
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.timed_out = False
+            mock_result.returncode = 0
+            mock_result.stdout = json.dumps([])
+            return mock_result
+
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", side_effect=capture_command),
+        ):
+            check.run(str(tmp_path))
+
+        assert len(commands_run) == 1
+        cmd = commands_run[0]
+        parser_idx = cmd.index("--parser")
+        parser_value = cmd[parser_idx + 1]
+        # Must be an absolute path, not a bare module name
+        assert os.path.isabs(
+            parser_value
+        ), f"Parser should be absolute path, got: {parser_value}"
+        assert parser_value.endswith(
+            os.path.join("@typescript-eslint", "parser", "dist", "index.js")
+        )
+
+    def test_run_omits_parser_for_plain_js(self, tmp_path):
+        """Test run() does not include --parser when only .js test files exist."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "app.test.js").write_text(
+            "test('works', () => { expect(1).toBe(1); })"
+        )
+        check = JavaScriptExpectCheck({})
+
+        commands_run: list = []
+
+        def capture_command(cmd, **kwargs):
+            commands_run.append(cmd)
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.timed_out = False
+            mock_result.returncode = 0
+            mock_result.stdout = json.dumps([])
+            return mock_result
+
+        with (
+            patch.object(check, "_install_eslint_deps", return_value=None),
+            patch.object(check, "_run_command", side_effect=capture_command),
+        ):
+            check.run(str(tmp_path))
+
+        assert len(commands_run) == 1
+        cmd = commands_run[0]
+        assert "--parser" not in cmd

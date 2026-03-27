@@ -218,43 +218,9 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             eslint_bin = os.path.join(tmpdir, "node_modules", ".bin", "eslint")
             node_modules = os.path.join(tmpdir, "node_modules")
 
-            # --no-eslintrc prevents the project's own eslint config from
-            # interfering. We ONLY want expect-expect.
-            # --parser-options=ecmaVersion:latest,sourceType:module is
-            # required because --no-eslintrc resets ecmaVersion to ES5
-            # and sourceType to "script". Without sourceType:module,
-            # import/export statements cause parse errors.
-            #
-            # For TypeScript files, we use @typescript-eslint/parser
-            # because espree can't parse TS syntax.  The TS parser
-            # handles both .js and .ts files correctly.
-            #
-            # ESLINT_USE_FLAT_CONFIG=false prevents ESLint 8.21+ from
-            # auto-discovering eslint.config.js in the project root and
-            # switching to flat config mode (where --no-eslintrc is invalid).
-            has_ts = any(f.endswith((".ts", ".tsx")) for f in test_files)
-            cmd = [
-                eslint_bin,
-                "--no-eslintrc",
-                "--resolve-plugins-relative-to",
-                node_modules,
-                "--plugin",
-                "jest",
-                *(
-                    [
-                        "--parser",
-                        "@typescript-eslint/parser",
-                    ]
-                    if has_ts
-                    else []
-                ),
-                "--parser-options=ecmaVersion:latest,sourceType:module",
-                "--rule",
-                f"jest/expect-expect: {rule_config}",
-                "--format",
-                "json",
-                *test_files,
-            ]
+            cmd = self._build_eslint_cmd(
+                eslint_bin, node_modules, test_files, rule_config
+            )
 
             env = {**os.environ, "ESLINT_USE_FLAT_CONFIG": "false"}
             result = self._run_command(cmd, cwd=project_root, timeout=120, env=env)
@@ -266,6 +232,46 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _build_eslint_cmd(
+        self,
+        eslint_bin: str,
+        node_modules: str,
+        test_files: List[str],
+        rule_config: str,
+    ) -> List[str]:
+        """Build the ESLint CLI command for expect-expect.
+
+        Uses @typescript-eslint/parser for TS files (absolute path to
+        avoid CWD-relative resolution). Disables flat config and the
+        project's own eslintrc to isolate the expect-expect rule.
+        """
+        has_ts = any(f.endswith((".ts", ".tsx")) for f in test_files)
+        ts_parser_path = os.path.join(
+            node_modules, "@typescript-eslint", "parser", "dist", "index.js"
+        )
+        return [
+            eslint_bin,
+            "--no-eslintrc",
+            "--resolve-plugins-relative-to",
+            node_modules,
+            "--plugin",
+            "jest",
+            *(
+                [
+                    "--parser",
+                    ts_parser_path,
+                ]
+                if has_ts
+                else []
+            ),
+            "--parser-options=ecmaVersion:latest,sourceType:module",
+            "--rule",
+            f"jest/expect-expect: {rule_config}",
+            "--format",
+            "json",
+            *test_files,
+        ]
 
     def _install_eslint_deps(
         self,
@@ -328,7 +334,8 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
                 error="ESLint configuration error",
                 output=result.output,
                 fix_suggestion=(
-                    "This may indicate eslint-plugin-jest couldn't be loaded. "
+                    "This may indicate eslint-plugin-jest or "
+                    "@typescript-eslint/parser couldn't be loaded. "
                     "Ensure node/npm is on PATH and try: "
                     "npm install eslint@8 eslint-plugin-jest"
                 ),

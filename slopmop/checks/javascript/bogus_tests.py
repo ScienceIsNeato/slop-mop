@@ -128,6 +128,8 @@ ALTERNATIVE_ASSERTIONS: List[Pattern[str]] = [
     re.compile(r"\.toHaveBeenCalled"),
     re.compile(r"\.toThrow"),
     re.compile(r"assert[\.\(]"),
+    # Deno std assertions (assertEquals, assertThrows, assertRejects, etc.)
+    re.compile(r"\bassert(?:[A-Z]\w*)\s*\("),
     # Node.js test runner assertions (node:assert)
     re.compile(r"\bdeepEqual\s*\("),
     re.compile(r"\bstrictEqual\s*\("),

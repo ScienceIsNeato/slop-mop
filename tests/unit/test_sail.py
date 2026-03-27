@@ -32,7 +32,11 @@ class TestSailDispatch:
         monkeypatch.setattr("slopmop.cli.cmd_swab", mock_swab)
 
         assert sail_mod.cmd_sail(args) == 0
-        mock_swab.assert_called_once_with(args)
+        mock_swab.assert_called_once()
+        enriched = mock_swab.call_args[0][0]
+        assert hasattr(enriched, "no_fail_fast")
+        assert hasattr(enriched, "no_auto_fix")
+        assert enriched.project_root == str(tmp_path)
 
     def test_swab_failing_runs_swab(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
@@ -168,6 +172,49 @@ class TestSailDispatch:
 
         assert sail_mod.cmd_sail(args) == 0
         mock_swab.assert_called_once()
+
+
+class TestSwabArgs:
+    """Verify _swab_args provides every attribute that validate expects."""
+
+    _REQUIRED_ATTRS = (
+        "quality_gates",
+        "no_auto_fix",
+        "no_fail_fast",
+        "no_cache",
+        "sarif",
+        "json_output",
+        "json_file",
+        "output_file",
+        "verbose",
+        "quiet",
+        "static",
+        "swabbing_time",
+        "clear_history",
+        "ignore_baseline_failures",
+    )
+
+    def test_all_validation_attrs_present(self, tmp_path: Path):
+        """Sail's minimal namespace must be enriched with all swab attrs."""
+        base = _base_args(tmp_path)
+        enriched = sail_mod._swab_args(base)
+        for attr in self._REQUIRED_ATTRS:
+            assert hasattr(enriched, attr), f"_swab_args missing attribute: {attr}"
+
+    def test_preserves_caller_overrides(self, tmp_path: Path):
+        """Attributes already on the source namespace survive enrichment."""
+        base = _base_args(tmp_path)
+        base.verbose = True
+        base.static = True
+        enriched = sail_mod._swab_args(base)
+        assert enriched.verbose is True
+        assert enriched.static is True
+
+    def test_does_not_mutate_original(self, tmp_path: Path):
+        base = _base_args(tmp_path)
+        enriched = sail_mod._swab_args(base)
+        enriched.no_fail_fast = True
+        assert not hasattr(base, "no_fail_fast") or base.no_fail_fast is not True
 
 
 class TestSailStateReconciliation:

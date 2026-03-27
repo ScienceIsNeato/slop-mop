@@ -517,3 +517,91 @@ class TestInitSuggestedCustomGateRefresh:
             "myopia:vulnerability-blindness.py" in disabled_list
             or nested_enabled is False
         )
+
+
+class TestInitDoesNotMutateProjectFiles:
+    """sm init must be read-only with respect to existing project files.
+
+    Regression guard: confirms sm init does not reformat, compact, or
+    otherwise modify checked-in files such as tsconfig.json, package.json,
+    README.md.  The only files sm init may create/modify are:
+      - .sb_config.json
+      - .sb_config.json.template
+      - .gitignore  (may be extended with .slopmop/ entry)
+    """
+
+    def _make_args(self, tmp_path):
+        import argparse
+
+        return argparse.Namespace(
+            project_root=str(tmp_path),
+            config=None,
+            non_interactive=True,
+        )
+
+    def test_init_leaves_project_files_unchanged(self, tmp_path):
+        """Existing JS/TS project files are untouched by sm init."""
+        from unittest.mock import patch
+
+        # Multi-line JSON with arrays — exactly what prettier would compact
+        tsconfig_content = json.dumps(
+            {
+                "compilerOptions": {"target": "es2020", "strict": True},
+                "include": ["src/**/*"],
+                "exclude": ["node_modules", "dist", "**/*.spec.ts"],
+            },
+            indent=2,
+        )
+        package_json_content = json.dumps(
+            {
+                "name": "test-project",
+                "version": "1.0.0",
+                "scripts": {"build": "tsc", "test": "jest"},
+                "dependencies": {},
+            },
+            indent=2,
+        )
+        readme_content = "# Test\n\nA project.\n"
+        settings_content = json.dumps(
+            {"editor.formatOnSave": True, "editor.tabSize": 2}, indent=2
+        )
+
+        (tmp_path / "tsconfig.json").write_text(tsconfig_content)
+        (tmp_path / "package.json").write_text(package_json_content)
+        (tmp_path / "README.md").write_text(readme_content)
+        vscode_dir = tmp_path / ".vscode"
+        vscode_dir.mkdir()
+        (vscode_dir / "settings.json").write_text(settings_content)
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "index.ts").write_text("export const x = 1;\n")
+
+        args = self._make_args(tmp_path)
+
+        with patch("slopmop.cli.status.run_status", return_value=0):
+            from slopmop.cli.init import cmd_init
+
+            result = cmd_init(args)
+
+        assert result == 0
+        # Existing project files must have identical content — no reformatting
+        assert (
+            tmp_path / "tsconfig.json"
+        ).read_text() == tsconfig_content, (
+            "sm init rewrote tsconfig.json (formatter ran in write mode)"
+        )
+        assert (
+            tmp_path / "package.json"
+        ).read_text() == package_json_content, "sm init rewrote package.json"
+        assert (
+            tmp_path / "README.md"
+        ).read_text() == readme_content, "sm init modified README.md"
+        assert (
+            vscode_dir / "settings.json"
+        ).read_text() == settings_content, "sm init reformatted .vscode/settings.json"
+        assert (
+            src_dir / "index.ts"
+        ).read_text() == "export const x = 1;\n", "sm init modified src/index.ts"
+        # sm init artifacts must be created
+        assert (tmp_path / ".sb_config.json").exists()
+        assert (tmp_path / ".sb_config.json.template").exists()

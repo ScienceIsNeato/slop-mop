@@ -46,6 +46,19 @@ _NESTED_VALIDATE_OWNER = "refit"
 _MAINTENANCE_NEXT_ACTION = (
     "Use the normal swab/scour/buff workflow for maintenance repos."
 )
+_DOCTOR_PREFLIGHT_CHECKS = (
+    "runtime.sm_resolution",
+    "sm_env.pip_check",
+    "sm_env.tool_inventory",
+    "sm_env.gate_readiness",
+    "project.python_venv",
+    "project.pip_check",
+    "project.pip_audit_remediability",
+    "project.js_deps",
+    "state.lock",
+    "state.dir_permissions",
+    "state.config_readable",
+)
 
 
 def _project_root(args: argparse.Namespace) -> Path:
@@ -168,11 +181,34 @@ def _ensure_init_completed(project_root: Path) -> bool:
     return (project_root / ".sb_config.json").exists()
 
 
-def _run_doctor_preflight(_project_root: Path) -> Tuple[bool, str]:
-    # TODO: replace this stub with a real `sm doctor` invocation once the
-    # doctor command lands. This feature is expected to ship and merge with the
-    # stub in place so refit can stabilize ahead of the doctor work.
-    return True, "doctor preflight stub passed"
+def _run_doctor_preflight(project_root: Path) -> Tuple[bool, str]:
+    """Run a focused doctor preflight before generating a refit plan.
+
+    This preflight blocks only on doctor FAIL states. WARN and SKIP
+    statuses are surfaced in the doctor report but do not block refit start.
+    """
+    from slopmop.doctor import DoctorContext, DoctorStatus, run_checks
+
+    try:
+        results = run_checks(
+            DoctorContext(project_root=project_root, apply_fix=False),
+            patterns=_DOCTOR_PREFLIGHT_CHECKS,
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard
+        return False, f"doctor preflight crashed: {type(exc).__name__}: {exc}"
+
+    failures = [r for r in results if r.status == DoctorStatus.FAIL]
+    if not failures:
+        return True, f"doctor preflight passed ({len(results)} checks)"
+
+    names = ", ".join(r.name for r in failures)
+    first = failures[0]
+    message = (
+        f"doctor preflight failed ({len(failures)} check(s): {names}). "
+        f"First failure: {first.name}: {first.summary}. "
+        f"Run `sm doctor {' '.join(_DOCTOR_PREFLIGHT_CHECKS)} --project-root {project_root}`."
+    )
+    return False, message
 
 
 def _run_scour(
@@ -543,16 +579,24 @@ def _status_is_same(before: List[str], after: List[str]) -> bool:
 
 
 def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]:
-    add_result = subprocess.run(
-        ["git", "add", "-A", "--", ".", ":!.slopmop"],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if add_result.returncode != 0:
-        detail = (add_result.stderr or add_result.stdout or "").strip()
-        return add_result.returncode, detail or "git add failed"
+    # Two-step add avoids "ignored file" errors on git ≥2.39 when
+    # :!.slopmop negative pathspec still trips the advice.addIgnoredFile
+    # guard.  `git add -u` stages modifications/deletions of tracked
+    # files; the second command stages new untracked (non-ignored) files.
+    for add_cmd in (
+        ["git", "add", "-u"],
+        ["git", "add", "-A", "--ignore-errors"],
+    ):
+        add_result = subprocess.run(
+            add_cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if add_result.returncode != 0:
+            detail = (add_result.stderr or add_result.stdout or "").strip()
+            return add_result.returncode, detail or "git add failed"
 
     commit_result = subprocess.run(
         ["git", "commit", "-m", message],

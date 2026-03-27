@@ -199,7 +199,7 @@ class RepeatedCodeCheck(BaseCheck):
     def _check_jscpd_availability(self, project_root: str) -> Optional[str]:
         """Check if jscpd is available. Returns error message or None."""
         result = self._run_command(
-            ["npx", "jscpd", "--version"], cwd=project_root, timeout=30
+            ["npx", "--yes", "jscpd", "--version"], cwd=project_root, timeout=30
         )
         if result.returncode != 0:
             return "jscpd not available"
@@ -222,6 +222,7 @@ class RepeatedCodeCheck(BaseCheck):
         # and flags e.g. logo assets as "code duplication".
         return [
             "npx",
+            "--yes",
             "jscpd",
             "--format",
             "python,javascript,typescript,jsx,tsx",

@@ -54,6 +54,7 @@ def action_buff_inspect_pr(pr_number: int) -> str:
 
 # Check result messages
 NO_ISSUES_FOUND = "No issues found"
+ISSUES_FOUND_TEMPLATE = "{count} issue(s) found"
 COVERAGE_XML_NOT_FOUND = "coverage.xml not found"
 COVERAGE_MEETS_THRESHOLD = "Coverage meets required threshold."
 COVERAGE_BELOW_THRESHOLD = "Coverage below threshold"

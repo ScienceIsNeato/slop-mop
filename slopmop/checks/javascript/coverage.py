@@ -130,7 +130,9 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         result = self._run_command(
             [
                 "npx",
+                "--yes",
                 "jest",
+                "--ci",
                 "--coverage",
                 "--coverageReporters=json-summary",
             ],

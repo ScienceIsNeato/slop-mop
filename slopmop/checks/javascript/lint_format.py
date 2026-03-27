@@ -16,7 +16,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
-from slopmop.constants import NPM_INSTALL_FAILED
+from slopmop.constants import ISSUES_FOUND_TEMPLATE, NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
@@ -25,27 +25,32 @@ logger = logging.getLogger(__name__)
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     """JavaScript/TypeScript lint and format enforcement.
 
-    Wraps ESLint and Prettier. Auto-fix runs ESLint --fix and
-    Prettier --write before checking. Installs npm dependencies
-    automatically if node_modules/ is missing.
+    For Node projects: wraps ESLint and Prettier.
+    For Deno projects: wraps ``deno lint`` and ``deno fmt``.
+
+    Auto-fix runs the appropriate tool's fix mode before checking.
+    Node projects get npm dependency installation automatically if
+    node_modules/ is missing.
 
     Level: swab
 
     Configuration:
-      Uses project's .eslintrc and .prettierrc. No additional
-      sm-specific config — respects your existing tool configs.
+      Node: uses project's .eslintrc and .prettierrc.
+      Deno: uses project's deno.json lint/fmt config.
 
     Common failures:
-      ESLint errors: Run `npx eslint . --fix` to auto-fix.
-          Remaining errors need manual code changes.
-      Prettier drift: Run `npx prettier --write .` to reformat.
-      npm install failed: Check package.json for syntax errors
-          or missing registry access.
+      ESLint errors: Run ``npx eslint . --fix`` to auto-fix.
+      Prettier drift: Run ``npx prettier --write .`` to reformat.
+      deno lint errors: Run ``deno lint --fix``.
+      deno fmt drift: Run ``deno fmt``.
 
     Re-check:
       sm swab -g laziness:sloppy-formatting.js --verbose
     """
 
+    # Dual-context gate: NODE for npm/npx projects, DENO for deno projects.
+    # is_applicable() accepts both; run()/auto_fix() branch at runtime.
+    # Declared as NODE since that's the original/majority case.
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
@@ -56,11 +61,11 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🎨 Lint & Format (ESLint, Prettier)"
+        return "🎨 Lint & Format (JS/TS)"
 
     @property
     def gate_description(self) -> str:
-        return "🎨 ESLint + Prettier (supports auto-fix 🔧)"
+        return "🎨 Lint + Format — ESLint/Prettier or deno lint/fmt (auto-fix 🔧)"
 
     @property
     def category(self) -> GateCategory:
@@ -86,16 +91,90 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        return self.is_javascript_project(project_root)
+        return self.is_javascript_project(project_root) or self.is_deno_project(
+            project_root
+        )
 
     def skip_reason(self, project_root: str) -> str:
-        return "No package.json found (not a JavaScript/TypeScript project)"
+        return (
+            "No package.json or deno.json found "
+            "(not a JavaScript/TypeScript project)"
+        )
 
     def can_auto_fix(self) -> bool:
         return True
 
     def auto_fix(self, project_root: str) -> bool:
         """Auto-fix formatting issues."""
+        if self.is_deno_project(project_root):
+            return self._auto_fix_deno(project_root)
+        return self._auto_fix_node(project_root)
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _get_deno_target_dirs(project_root: str) -> List[str]:
+        """Extract lint/fmt target directories from package.json scripts.
+
+        Projects often scope ``deno lint`` / ``deno fmt`` to a subdirectory
+        (e.g. ``"lint": "deno lint supabase/functions/"``).  When target
+        dirs are found, we pass them explicitly so the gate doesn't lint
+        files outside the project's intended scope.
+
+        Returns an empty list when no scoped targets are detected (bare
+        ``deno lint`` / ``deno fmt`` with no path argument).
+        """
+        pkg_path = os.path.join(project_root, "package.json")
+        if not os.path.isfile(pkg_path):
+            return []
+
+        try:
+            with open(pkg_path) as fh:
+                pkg = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            return []
+
+        scripts = pkg.get("scripts", {})
+        targets: List[str] = []
+        for _name, cmd in scripts.items():
+            if not isinstance(cmd, str):
+                continue
+            # Match patterns like "deno lint supabase/functions/"
+            for prefix in ("deno lint ", "deno fmt "):
+                if prefix in cmd:
+                    # Take the token immediately after the prefix
+                    rest = cmd.split(prefix, 1)[1].strip()
+                    path_arg = rest.split()[0] if rest else ""
+                    # Only accept relative paths (not flags)
+                    if path_arg and not path_arg.startswith("-"):
+                        resolved = os.path.join(project_root, path_arg)
+                        if os.path.isdir(resolved) and path_arg not in targets:
+                            targets.append(path_arg)
+        return targets
+
+    def _auto_fix_deno(self, project_root: str) -> bool:
+        fixed = False
+        targets = self._get_deno_target_dirs(project_root)
+        result = self._run_command(
+            ["deno", "lint", "--fix"] + targets,
+            cwd=project_root,
+            timeout=60,
+        )
+        if result.success:
+            fixed = True
+        result = self._run_command(
+            ["deno", "fmt"] + targets,
+            cwd=project_root,
+            timeout=60,
+        )
+        if result.success:
+            fixed = True
+        return fixed
+
+    # ------------------------------------------------------------------
+    # Node path
+    # ------------------------------------------------------------------
+
+    def _auto_fix_node(self, project_root: str) -> bool:
         fixed = False
 
         # Install deps if needed
@@ -125,6 +204,102 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     def run(self, project_root: str) -> CheckResult:
         """Run lint and format checks."""
+        if self.is_deno_project(project_root):
+            return self._run_deno(project_root)
+        return self._run_node(project_root)
+
+    # ------------------------------------------------------------------
+    # Deno run
+    # ------------------------------------------------------------------
+
+    def _run_deno(self, project_root: str) -> CheckResult:
+        start_time = time.time()
+        issues: List[str] = []
+        output_parts: List[str] = []
+
+        # deno lint --json
+        lint_result, lint_findings = self._check_deno_lint(project_root)
+        if lint_result:
+            issues.append(lint_result)
+            output_parts.append(f"deno lint: {lint_result}")
+        else:
+            output_parts.append("deno lint: \u2705 No lint errors")
+
+        # deno fmt --check
+        fmt_result = self._check_deno_fmt(project_root)
+        if fmt_result:
+            issues.append(fmt_result)
+            output_parts.append(f"deno fmt: {fmt_result}")
+        else:
+            output_parts.append("deno fmt: \u2705 Formatting OK")
+
+        duration = time.time() - start_time
+
+        if issues:
+            msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=duration,
+                output="\n".join(output_parts),
+                error=msg,
+                fix_suggestion="Run: deno lint --fix && deno fmt",
+                findings=lint_findings
+                or [Finding(message=msg, level=FindingLevel.ERROR)],
+            )
+
+        return self._create_result(
+            status=CheckStatus.PASSED,
+            duration=duration,
+            output="\n".join(output_parts),
+        )
+
+    def _check_deno_lint(
+        self, project_root: str
+    ) -> Tuple[Optional[str], List[Finding]]:
+        targets = self._get_deno_target_dirs(project_root)
+        result = self._run_command(
+            ["deno", "lint", "--json"] + targets,
+            cwd=project_root,
+            timeout=60,
+        )
+        if not result.success and result.output.strip():
+            findings: List[Finding] = []
+            try:
+                data = json.loads(result.stdout)
+                for diag in data.get("diagnostics", []):
+                    findings.append(
+                        Finding(
+                            message=diag.get("message", ""),
+                            level=FindingLevel.ERROR,
+                            file=diag.get("filename"),
+                            line=diag.get("range", {}).get("start", {}).get("line"),
+                            rule_id=diag.get("code"),
+                        )
+                    )
+            except (json.JSONDecodeError, TypeError):
+                pass
+            count = (
+                len(findings) if findings else len(result.output.strip().split("\n"))
+            )
+            return f"{count} lint issue(s)", findings
+        return None, []
+
+    def _check_deno_fmt(self, project_root: str) -> Optional[str]:
+        targets = self._get_deno_target_dirs(project_root)
+        result = self._run_command(
+            ["deno", "fmt", "--check"] + targets,
+            cwd=project_root,
+            timeout=60,
+        )
+        if not result.success:
+            return "Formatting issues found"
+        return None
+
+    # ------------------------------------------------------------------
+    # Node run
+    # ------------------------------------------------------------------
+
+    def _run_node(self, project_root: str) -> CheckResult:
         start_time = time.time()
         issues: List[str] = []
         output_parts: List[str] = []
@@ -160,7 +335,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         duration = time.time() - start_time
 
         if issues:
-            msg = f"{len(issues)} issue(s) found"
+            msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
@@ -180,7 +355,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def _check_eslint(self, project_root: str) -> Tuple[Optional[str], List[Finding]]:
         """Check ESLint."""
         result = self._run_command(
-            ["npx", "eslint", ".", "--format", "json"],
+            ["npx", "--yes", "eslint", ".", "--format", "json"],
             cwd=project_root,
             timeout=60,
         )
@@ -226,7 +401,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def _check_prettier(self, project_root: str) -> Optional[str]:
         """Check Prettier formatting."""
         result = self._run_command(
-            ["npx", "prettier", "--check", "."],
+            ["npx", "--yes", "prettier", "--check", "."],
             cwd=project_root,
             timeout=60,
         )

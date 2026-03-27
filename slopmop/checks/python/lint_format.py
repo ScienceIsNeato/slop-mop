@@ -22,6 +22,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.constants import ISSUES_FOUND_TEMPLATE
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # flake8 default format: path:line:col: CODE message
@@ -239,7 +240,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         duration = time.time() - start_time
 
         if issues:
-            msg = f"{len(issues)} issue(s) found"
+            msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,

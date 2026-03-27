@@ -105,6 +105,7 @@ class CommandValidator:
             "prettier",
             "jest",
             "tsc",
+            "deno",
             "dart",
             "flutter",
             # Version control

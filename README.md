@@ -373,7 +373,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) | If the type checker cannot tell what something is in TypeScript, humans and agents are left guessing too. |
 | `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types | If the type checker cannot tell what something is in Python, humans and agents are left guessing too. |
 | `overconfidence:untested-code.dart` | 🧪 Flutter test execution across discovered packages | Passing compilation is not proof; if Dart code never executes under test, you are still guessing. |
-| `overconfidence:untested-code.js` | 🧪 Jest test execution | Passing compilation is not proof; if JavaScript code never executes under test, you are still guessing. |
+| `overconfidence:untested-code.js` | 🧪 JavaScript/TypeScript test execution | Passing compilation is not proof; if JavaScript code never executes under test, you are still guessing. |
 | `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests | Passing compilation is not proof; if Python code never executes under test, you are still guessing. |
 
 ### 🟡 Deceptiveness
@@ -406,7 +406,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `laziness:repeated-code` | 📋 Code clone detection (jscpd) | Copy-pasted blocks diverge in slow motion until every bug fix becomes a scavenger hunt across near-identical code. |
 | `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists | A disabled gate is usually debt with a welcome mat on it. |
 | `laziness:sloppy-formatting.dart` | 🎨 Dart formatting via dart format --set-exit-if-changed | Formatting noise hides the real change and makes review slower than it needs to be. |
-| `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
+| `laziness:sloppy-formatting.js` | 🎨 Lint + Format — ESLint/Prettier or deno lint/fmt (auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
 | `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
 | `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check | Frontend lint issues have a habit of turning into visible bugs, state leaks, or accessibility damage. |
 

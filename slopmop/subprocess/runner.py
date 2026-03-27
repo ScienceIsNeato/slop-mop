@@ -113,8 +113,11 @@ class SubprocessRunner:
         try:
             # Start the process
             # SECURITY: Never use shell=True
+            # stdin=DEVNULL prevents interactive prompts from hanging
+            # the process when running in CI/agent/non-TTY contexts.
             process = subprocess.Popen(  # nosec B603 - commands are validated by CommandValidator
                 command,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE if capture_output else None,
                 stderr=subprocess.PIPE if capture_output else None,
                 cwd=cwd,
@@ -242,6 +245,7 @@ class SubprocessRunner:
         process = (
             subprocess.Popen(  # nosec B603 - commands are validated by CommandValidator
                 command,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=cwd,

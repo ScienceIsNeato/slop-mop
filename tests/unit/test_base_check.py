@@ -150,8 +150,14 @@ class TestToolContext:
     """Tests for ToolContext enum."""
 
     def test_enum_values(self):
-        """ToolContext has exactly the four expected members."""
-        assert set(ToolContext.__members__) == {"PURE", "SM_TOOL", "PROJECT", "NODE"}
+        """ToolContext has exactly the five expected members."""
+        assert set(ToolContext.__members__) == {
+            "PURE",
+            "SM_TOOL",
+            "PROJECT",
+            "NODE",
+            "DENO",
+        }
 
     def test_pure_is_default_on_base_check(self):
         """BaseCheck defaults to ToolContext.PURE."""

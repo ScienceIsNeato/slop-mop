@@ -10,6 +10,7 @@ from unittest.mock import Mock
 
 from slopmop.checks.base import RemediationChurn
 from slopmop.cli import refit as refit_mod
+from slopmop.doctor.base import DoctorResult, DoctorStatus
 
 
 class _FakeCheck:
@@ -382,8 +383,9 @@ class TestCommitCurrentChanges:
         code, _ = refit_mod._commit_current_changes(tmp_path, "test commit")
 
         assert code == 0
-        git_add_cmd = captured_args[0]
-        assert git_add_cmd == ["git", "add", "-A", "--", ".", ":!.slopmop"]
+        # Two-step add: first -u (tracked), then -A --ignore-errors (new)
+        assert captured_args[0] == ["git", "add", "-u"]
+        assert captured_args[1] == ["git", "add", "-A", "--ignore-errors"]
 
 
 class TestRunScour:
@@ -419,3 +421,112 @@ class TestRunScour:
         assert captured["check"] is False
         assert "--no-auto-fix" in captured["command"]
         assert captured["command"][-2:] == ["-g", "laziness:repeated-code"]
+
+
+class TestDoctorPreflight:
+    def test_run_doctor_preflight_passes_when_no_failures(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        import slopmop.doctor as doctor_mod
+
+        def _fake_run_checks(ctx, patterns):
+            assert ctx.project_root == tmp_path
+            assert tuple(patterns) == refit_mod._DOCTOR_PREFLIGHT_CHECKS
+            return [
+                DoctorResult(
+                    name="state.lock",
+                    status=DoctorStatus.OK,
+                    summary="no lock held",
+                ),
+                DoctorResult(
+                    name="project.python_venv",
+                    status=DoctorStatus.WARN,
+                    summary="no local venv",
+                ),
+            ]
+
+        monkeypatch.setattr(doctor_mod, "run_checks", _fake_run_checks)
+
+        ok, detail = refit_mod._run_doctor_preflight(tmp_path)
+        assert ok is True
+        assert "doctor preflight passed" in detail
+
+    def test_run_doctor_preflight_fails_when_any_check_fails(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        import slopmop.doctor as doctor_mod
+
+        def _fake_run_checks(ctx, patterns):
+            assert ctx.project_root == tmp_path
+            assert tuple(patterns) == refit_mod._DOCTOR_PREFLIGHT_CHECKS
+            return [
+                DoctorResult(
+                    name="sm_env.tool_inventory",
+                    status=DoctorStatus.FAIL,
+                    summary="2 tool(s) missing",
+                ),
+                DoctorResult(
+                    name="state.lock",
+                    status=DoctorStatus.OK,
+                    summary="no lock held",
+                ),
+            ]
+
+        monkeypatch.setattr(doctor_mod, "run_checks", _fake_run_checks)
+
+        ok, detail = refit_mod._run_doctor_preflight(tmp_path)
+        assert ok is False
+        assert "doctor preflight failed" in detail
+        assert "sm_env.tool_inventory" in detail
+        assert "Run `sm doctor" in detail
+
+
+class TestInitArtifactsBlockRefit:
+    """sm init artifacts must surface as dirty and block refit --start.
+
+    This is the EXPECTED behavior: sm init creates files that must be
+    committed before sm refit --start can proceed.  The worktree check must
+    NOT filter them out — doing so would silently ignore uncommitted config
+    that belongs under version control.
+    """
+
+    def test_sb_config_json_not_filtered_as_slopmop_artifact(self):
+        """.sb_config.json must show as dirty — refit blocks until committed."""
+        assert not refit_mod._is_slopmop_artifact("?? .sb_config.json"), (
+            ".sb_config.json was incorrectly filtered as a slopmop artifact. "
+            "It must show as dirty so refit --start blocks until it is committed."
+        )
+
+    def test_sb_config_template_not_filtered_as_slopmop_artifact(self):
+        """.sb_config.json.template must show as dirty — refit blocks until committed."""
+        assert not refit_mod._is_slopmop_artifact("?? .sb_config.json.template"), (
+            ".sb_config.json.template was incorrectly filtered as a slopmop artifact. "
+            "It must show as dirty so refit --start blocks until it is committed."
+        )
+
+    def test_gitignore_modification_not_filtered_as_slopmop_artifact(self):
+        """.gitignore modification must show as dirty — refit blocks until committed."""
+        assert not refit_mod._is_slopmop_artifact("M  .gitignore"), (
+            ".gitignore was incorrectly filtered as a slopmop artifact. "
+            "It must show as dirty so refit --start blocks until it is committed."
+        )
+
+    def test_worktree_status_returns_sm_init_files_not_slopmop_dir(self, monkeypatch):
+        """_worktree_status surfaces sm init files while still filtering .slopmop/."""
+        sm_init_output = (
+            "?? .sb_config.json\n"
+            "?? .sb_config.json.template\n"
+            "M  .gitignore\n"
+            " M .slopmop/refit/plan.json\n"
+        )
+        monkeypatch.setattr(
+            refit_mod,
+            "_git_output",
+            Mock(return_value=(0, sm_init_output, "")),
+        )
+        status = refit_mod._worktree_status(Path("/fake"))
+
+        assert "?? .sb_config.json" in status
+        assert "?? .sb_config.json.template" in status
+        assert "M  .gitignore" in status
+        assert not any(".slopmop" in line for line in status)
