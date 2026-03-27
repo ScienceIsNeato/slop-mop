@@ -34,7 +34,9 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
     Level: swab
 
     Configuration:
-      test_command: Shell command string for running tests.
+      test_command: Command string parsed with ``shlex.split`` into
+          argv and executed without a shell.  Shell operators
+          (``&&``, ``|``, redirects) are not supported.
           Default ``"npx --yes jest --ci --coverage"``.
           Override when the project uses a custom test script
           (e.g. ``"npm test"``).
@@ -91,13 +93,13 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 field_type="string",
                 default=_DEFAULT_JEST_COMMAND,
                 description=(
-                    "Shell command to run tests. "
+                    "Command string (parsed via shlex, no shell operators). "
                     "Override for non-Jest setups (e.g. 'npm test')."
                 ),
             ),
             ConfigField(
                 name="exclude_dirs",
-                field_type="list",
+                field_type="string[]",
                 default=[],
                 description=(
                     "Directories to exclude from test-file discovery "

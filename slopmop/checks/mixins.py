@@ -510,12 +510,12 @@ class JavaScriptCheckMixin:
 
         for dirpath, dirnames, filenames in os.walk(root):
             rel_dir = Path(dirpath).relative_to(root)
-            rel_str = str(rel_dir)
+            rel_posix = rel_dir.as_posix()
 
             if set(rel_dir.parts) & exclude_dirs:
                 dirnames[:] = []
                 continue
-            if extra_excludes and rel_str in extra_excludes:
+            if extra_excludes and rel_posix in extra_excludes:
                 dirnames[:] = []
                 continue
 

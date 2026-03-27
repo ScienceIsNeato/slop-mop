@@ -262,26 +262,36 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             cwd=project_root,
             timeout=60,
         )
-        if not result.success and result.output.strip():
+        if not result.success:
             findings: List[Finding] = []
-            try:
-                data = json.loads(result.stdout)
-                for diag in data.get("diagnostics", []):
-                    findings.append(
-                        Finding(
-                            message=diag.get("message", ""),
-                            level=FindingLevel.ERROR,
-                            file=diag.get("filename"),
-                            line=diag.get("range", {}).get("start", {}).get("line"),
-                            rule_id=diag.get("code"),
+            output = result.output.strip()
+            if output:
+                try:
+                    data = json.loads(result.stdout)
+                    for diag in data.get("diagnostics", []):
+                        findings.append(
+                            Finding(
+                                message=diag.get("message", ""),
+                                level=FindingLevel.ERROR,
+                                file=diag.get("filename"),
+                                line=diag.get("range", {})
+                                .get("start", {})
+                                .get("line"),
+                                rule_id=diag.get("code"),
+                            )
                         )
-                    )
-            except (json.JSONDecodeError, TypeError):
-                pass
-            count = (
-                len(findings) if findings else len(result.output.strip().split("\n"))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                count = len(findings) if findings else len(output.split("\n"))
+                return f"{count} lint issue(s)", findings
+            message = (
+                "deno lint failed with no output; check Deno "
+                "installation and configuration."
             )
-            return f"{count} lint issue(s)", findings
+            findings.append(
+                Finding(message=message, level=FindingLevel.ERROR)
+            )
+            return message, findings
         return None, []
 
     def _check_deno_fmt(self, project_root: str) -> Optional[str]:

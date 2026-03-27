@@ -811,8 +811,7 @@ class SecurityCheck(SecurityLocalCheck):
             duration=duration,
             output=detail,
             error=(
-                f"{len(warnings)} security scanner(s) reported "
-                "non-blocking risk"
+                f"{len(warnings)} security scanner(s) reported " "non-blocking risk"
             ),
             fix_suggestion=(
                 "No patched versions are currently available for the "
@@ -836,13 +835,9 @@ class SecurityCheck(SecurityLocalCheck):
         )
         if warnings:
             for w in warnings:
-                detail_parts.append(
-                    f"[{w.name} (advisory)]\n{w.findings}"
-                )
+                detail_parts.append(f"[{w.name} (advisory)]\n{w.findings}")
             all_findings.extend(
-                self._collect_findings(
-                    warnings, fallback_level=FindingLevel.WARNING
-                )
+                self._collect_findings(warnings, fallback_level=FindingLevel.WARNING)
             )
         detail = "\n\n".join(detail_parts)
         return self._create_result(
@@ -853,8 +848,7 @@ class SecurityCheck(SecurityLocalCheck):
             fix_suggestion=(
                 "Each finding above has a rule-specific fix where known. "
                 "Bandit's HIGH severity findings are real vulnerabilities "
-                "\u2014 fix those first. Verify with: "
-                + self.verify_command
+                "\u2014 fix those first. Verify with: " + self.verify_command
             ),
             findings=all_findings,
         )
@@ -942,10 +936,7 @@ class SecurityCheck(SecurityLocalCheck):
         ]
         if no_fix_versions:
             no_fix_detail = self._format_pip_audit_detail(no_fix_versions)
-            detail += (
-                "\n\nNo fix versions available (advisory only):\n"
-                + no_fix_detail
-            )
+            detail += "\n\nNo fix versions available (advisory only):\n" + no_fix_detail
             sarif.append(
                 Finding(
                     message=(
@@ -1006,9 +997,7 @@ class SecurityCheck(SecurityLocalCheck):
                     no_fix_versions.append(dependency)
 
             if remediable:
-                return self._pip_audit_remediable_result(
-                    remediable, no_fix_versions
-                )
+                return self._pip_audit_remediable_result(remediable, no_fix_versions)
 
             detail = self._format_pip_audit_detail(no_fix_versions)
             sarif_warn: list[Finding] = [

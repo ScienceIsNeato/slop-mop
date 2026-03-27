@@ -200,7 +200,10 @@ class ProjectPipAuditRemediabilityCheck(DoctorCheck):
             idx_output = ((idx.stdout or "") + (idx.stderr or "")).strip()
             if idx.returncode != 0:
                 return None, idx_output
-            return (version in idx_output), idx_output
+            import re
+
+            pattern = r"(?<![.\d])" + re.escape(version) + r"(?![.\d])"
+            return bool(re.search(pattern, idx_output)), idx_output
 
         return None, output
 
