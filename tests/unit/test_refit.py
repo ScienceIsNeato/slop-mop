@@ -550,9 +550,21 @@ class TestCommitCurrentChanges:
         code, _ = refit_mod._commit_current_changes(tmp_path, "test commit")
 
         assert code == 0
-        # Two-step add: first -u (tracked), then -A --ignore-errors (new)
+        # Two-step add: first -u (tracked), then -A with explicit :!.slopmop
+        # exclusion.  -c advice.addIgnoredFile=false suppresses the warning that
+        # fires when .slopmop is gitignored but referenced via negative pathspec;
+        # real staging errors are still surfaced (no --ignore-errors).
         assert captured_args[0] == ["git", "add", "-u"]
-        assert captured_args[1] == ["git", "add", "-A", "--ignore-errors"]
+        assert captured_args[1] == [
+            "git",
+            "-c",
+            "advice.addIgnoredFile=false",
+            "add",
+            "-A",
+            "--",
+            ".",
+            ":!.slopmop",
+        ]
 
 
 class TestRunScour:

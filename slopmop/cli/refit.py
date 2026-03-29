@@ -677,12 +677,22 @@ def _status_is_same(before: List[str], after: List[str]) -> bool:
 
 def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]:
     # Two-step add avoids "ignored file" errors on git ≥2.39 when
-    # :!.slopmop negative pathspec still trips the advice.addIgnoredFile
-    # guard.  `git add -u` stages modifications/deletions of tracked
-    # files; the second command stages new untracked (non-ignored) files.
+    # Use -c advice.addIgnoredFile=false to suppress the warning that
+    # fires when .slopmop is in .gitignore but we reference it via a
+    # negative pathspec.  Without --ignore-errors, genuine staging
+    # failures (permissions, encoding, path-too-long) still fail loudly.
     for add_cmd in (
         ["git", "add", "-u"],
-        ["git", "add", "-A", "--ignore-errors"],
+        [
+            "git",
+            "-c",
+            "advice.addIgnoredFile=false",
+            "add",
+            "-A",
+            "--",
+            ".",
+            ":!.slopmop",
+        ],
     ):
         add_result = subprocess.run(
             add_cmd,
