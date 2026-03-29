@@ -110,7 +110,7 @@ class TestJavaScriptCoverageConfig:
         )
         run_result = MagicMock()
         run_result.success = True
-        run_result.output = lcov_output
+        run_result.stdout = lcov_output
 
         with patch.object(check, "_run_command", return_value=run_result) as mock_run:
             summary = check._parse_deno_report(str(tmp_path), report_path)

@@ -347,7 +347,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         )
         if not result.success:
             return None
-        return self._parse_lcov_text(project_root, result.output, report_path.parent)
+        return self._parse_lcov_text(project_root, result.stdout, report_path.parent)
 
     def _parse_lcov_text(
         self, project_root: str, text: str, relative_base: Path
