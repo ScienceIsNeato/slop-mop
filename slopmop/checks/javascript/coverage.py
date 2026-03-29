@@ -82,6 +82,10 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
       sm swab -g overconfidence:coverage-gaps.js --verbose
     """
 
+    # Dual-context gate: NODE for npm/jest projects, DENO for deno projects.
+    # is_applicable() accepts both; run() branches at runtime based on
+    # coverage_format config.  Declared as NODE since that is the
+    # original/majority case.
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY

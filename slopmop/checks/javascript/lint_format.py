@@ -350,8 +350,17 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                             )
                         )
                 except (json.JSONDecodeError, TypeError):
-                    pass
-                count = len(findings) if findings else len(stdout.split("\n"))
+                    findings.append(
+                        Finding(
+                            message=(
+                                "deno lint reported issues but output"
+                                " could not be parsed as JSON:"
+                                f" {stdout[:200]}"
+                            ),
+                            level=FindingLevel.ERROR,
+                        )
+                    )
+                count = len(findings)
                 return f"{count} lint issue(s)", findings
             message = (
                 "deno lint failed with no output; check Deno "

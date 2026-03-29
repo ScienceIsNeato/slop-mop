@@ -542,6 +542,30 @@ class TestJavaScriptLintFormatCheck:
 
         assert result.status == CheckStatus.FAILED
 
+    def test_run_deno_lint_unparseable_json_produces_finding(self, tmp_path):
+        """When deno lint stdout cannot be parsed as JSON, a Finding is returned."""
+        (tmp_path / "deno.json").write_text("{}")
+        check = JavaScriptLintFormatCheck({})
+
+        lint_result = MagicMock()
+        lint_result.success = False
+        lint_result.stdout = "not valid json at all"
+        lint_result.output = "not valid json at all"
+
+        fmt_result = MagicMock()
+        fmt_result.success = True
+        fmt_result.output = ""
+
+        with patch.object(check, "_run_command", side_effect=[lint_result, fmt_result]):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        # Must have at least one Finding (not an empty list)
+        assert result.findings, "Expected findings for unparseable JSON output"
+        assert any(
+            "could not be parsed" in f.message for f in result.findings
+        ), "Expected 'could not be parsed' in finding message"
+
     def test_auto_fix_deno_project(self, tmp_path):
         """Deno project auto_fix() calls deno lint --fix + deno fmt."""
         (tmp_path / "deno.json").write_text("{}")
