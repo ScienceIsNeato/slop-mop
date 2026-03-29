@@ -362,7 +362,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             msg = "Formatting issues found"
             # deno fmt --check lists misformatted files on stdout
             findings: List[Finding] = []
-            for line in result.output.splitlines():
+            for line in result.stdout.splitlines():
                 line = line.strip()
                 if line:
                     findings.append(
