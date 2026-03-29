@@ -40,6 +40,10 @@ from slopmop.checks.mixins import (
 )
 from slopmop.checks.quality.config_debt import _has_python_markers
 from slopmop.doctor.base import DoctorCheck, DoctorContext, DoctorResult
+from slopmop.doctor.gate_preflight import (
+    gather_gate_preflight_records,
+    summarize_gate_preflight,
+)
 
 _NO_PYTHON_PROJECT_MARKERS = "no Python project markers"
 
@@ -532,5 +536,67 @@ class ProjectJsDepsCheck(DoctorCheck):
                 "absent.  JS gates (lint, tests) will skip or fail."
             ),
             fix_hint=f"cd {root} && {suggest_js_install_command(root)}",
+            data=data,
+        )
+
+
+class ProjectGateRunnabilityCheck(DoctorCheck):
+    """Summarize which applicable gates are ready for refit probing."""
+
+    name = "project.gate_runnability"
+    description = "Applicable gate runnability summary for refit prechecks"
+
+    def run(self, ctx: DoctorContext) -> DoctorResult:
+        records = gather_gate_preflight_records(ctx.project_root)
+        summary = summarize_gate_preflight(records)
+        total = len(records)
+        runnable = cast(List[str], summary["runnable"])
+        blocked = cast(List[str], summary["blocked"])
+        disabled = cast(List[str], summary["disabled"])
+
+        data: Dict[str, Any] = {
+            "total_gates": total,
+            "runnable_gates": runnable,
+            "blocked_gates": blocked,
+            "disabled_gates": disabled,
+        }
+        if not records:
+            return self._skip("no applicable or enabled gates discovered", data=data)
+        if blocked:
+            preview = ", ".join(blocked[:5])
+            suffix = f" (+{len(blocked) - 5} more)" if len(blocked) > 5 else ""
+            return self._fail(
+                f"{len(blocked)} applicable gate(s) blocked before refit can start",
+                detail=(
+                    f"Runnable: {len(runnable)}\n"
+                    f"Disabled: {len(disabled)}\n"
+                    f"Blocked: {preview}{suffix}"
+                ),
+                fix_hint=(
+                    "Resolve the missing-tool or setup issue, then rerun "
+                    "sm doctor project.gate_runnability"
+                ),
+                data=data,
+            )
+        if disabled:
+            disabled_preview = ", ".join(disabled[:5])
+            disabled_suffix = (
+                f" (+{len(disabled) - 5} more)" if len(disabled) > 5 else ""
+            )
+            return self._warn(
+                f"{len(disabled)} applicable gate(s) disabled and need an explicit refit decision",
+                detail=(
+                    f"Runnable: {len(runnable)}\n"
+                    f"Disabled: {disabled_preview}{disabled_suffix}"
+                ),
+                fix_hint=(
+                    "During refit start, either re-enable/tune the gate or "
+                    "record a tooling blocker before plan generation."
+                ),
+                data=data,
+            )
+        return self._ok(
+            f"all {len(runnable)} applicable enabled gate(s) look runnable",
+            detail="Refit still needs a per-gate fidelity review before generating the plan.",
             data=data,
         )

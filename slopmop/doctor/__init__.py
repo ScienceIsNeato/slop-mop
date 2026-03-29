@@ -41,6 +41,7 @@ from slopmop.doctor.base import (
     DoctorStatus,
 )
 from slopmop.doctor.project_env import (
+    ProjectGateRunnabilityCheck,
     ProjectJsDepsCheck,
     ProjectPipAuditRemediabilityCheck,
     ProjectPipCheck,
@@ -86,6 +87,7 @@ ALL_CHECKS: List[type[DoctorCheck]] = [
     ProjectPipCheck,
     ProjectPipAuditRemediabilityCheck,
     ProjectJsDepsCheck,
+    ProjectGateRunnabilityCheck,
     StateLockCheck,
     StateDirCheck,
     StateConfigCheck,

@@ -22,7 +22,9 @@ import pytest
 from slopmop.core.config import CONFIG_FILE, STATE_DIR
 from slopmop.core.lock import LOCK_DIR, LOCK_FILE
 from slopmop.doctor import DoctorContext, DoctorStatus
+from slopmop.doctor.gate_preflight import GatePreflightRecord
 from slopmop.doctor.project_env import (
+    ProjectGateRunnabilityCheck,
     ProjectJsDepsCheck,
     ProjectPipAuditRemediabilityCheck,
     ProjectPipCheck,
@@ -258,6 +260,58 @@ class TestReinstallHint:
     def test_venv_mode(self):
         with patch("slopmop.doctor.sm_env.classify_install", return_value="venv"):
             assert "pip install --force-reinstall" in _reinstall_hint()
+
+
+class TestProjectGateRunnabilityCheck:
+    def test_fails_when_any_applicable_gate_is_blocked(self, ctx):
+        records = [
+            GatePreflightRecord(
+                gate="deceptiveness:bogus-tests.js",
+                display_name="bogus-tests.js",
+                enabled=True,
+                applicable=True,
+                skip_reason="",
+                config_fingerprint="one",
+                missing_tools=(),
+            ),
+            GatePreflightRecord(
+                gate="overconfidence:coverage-gaps.js",
+                display_name="coverage-gaps.js",
+                enabled=True,
+                applicable=True,
+                skip_reason="",
+                config_fingerprint="two",
+                missing_tools=("deno",),
+            ),
+        ]
+        with patch(
+            "slopmop.doctor.project_env.gather_gate_preflight_records",
+            return_value=records,
+        ):
+            result = ProjectGateRunnabilityCheck().run(ctx)
+        assert result.status is DoctorStatus.FAIL
+        assert "blocked before refit can start" in result.summary
+        assert "coverage-gaps.js" in result.detail
+
+    def test_warns_when_gate_is_disabled_pending_decision(self, ctx):
+        records = [
+            GatePreflightRecord(
+                gate="overconfidence:coverage-gaps.js",
+                display_name="coverage-gaps.js",
+                enabled=False,
+                applicable=True,
+                skip_reason="",
+                config_fingerprint="two",
+                missing_tools=(),
+            )
+        ]
+        with patch(
+            "slopmop.doctor.project_env.gather_gate_preflight_records",
+            return_value=records,
+        ):
+            result = ProjectGateRunnabilityCheck().run(ctx)
+        assert result.status is DoctorStatus.WARN
+        assert "disabled and need an explicit refit decision" in result.summary
 
 
 class TestToolInventoryCheck:
