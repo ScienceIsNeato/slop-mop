@@ -31,7 +31,7 @@ bandit>=1.7.0
 detect-secrets>=1.4.0
 semgrep>=1.140.0
 pip-audit>=2.0.0
-cryptography>=46.0.5  # CVE GHSA-r6ph-v2qm-q3c2
+cryptography>=46.0.6  # CVE GHSA-r6ph-v2qm-q3c2, GHSA-m959-cc7f-wv43
 pyasn1>=0.6.3  # GHSA-jr27-m4p2-rc6r
 requests>=2.33.0  # GHSA-gc5v-m9x4-r6x2
 

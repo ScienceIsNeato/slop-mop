@@ -270,8 +270,8 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         node_result = self._run_node(project_root)
         duration = time.time() - start_time
 
-        deno_failed = deno_result.status == CheckStatus.FAILED
-        node_failed = node_result.status == CheckStatus.FAILED
+        deno_failed = deno_result.status in (CheckStatus.FAILED, CheckStatus.ERROR)
+        node_failed = node_result.status in (CheckStatus.FAILED, CheckStatus.ERROR)
 
         if not deno_failed and not node_failed:
             output_parts: List[str] = []
@@ -285,6 +285,13 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 output="\n".join(output_parts),
             )
 
+        # Propagate ERROR status if either sub-result errored
+        aggregate_status = CheckStatus.FAILED
+        if (
+            deno_result.status == CheckStatus.ERROR
+            or node_result.status == CheckStatus.ERROR
+        ):
+            aggregate_status = CheckStatus.ERROR
         failed_count = int(deno_failed) + int(node_failed)
         msg = ISSUES_FOUND_TEMPLATE.format(count=failed_count)
         all_findings: List[Finding] = list(deno_result.findings) + list(
@@ -296,7 +303,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         if node_result.output:
             fail_parts.append(f"[node]\n{node_result.output}")
         return self._create_result(
-            status=CheckStatus.FAILED,
+            status=aggregate_status,
             duration=duration,
             output="\n".join(fail_parts),
             error=msg,
