@@ -226,7 +226,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             output_parts.append("deno lint: \u2705 No lint errors")
 
         # deno fmt --check
-        fmt_result = self._check_deno_fmt(project_root)
+        fmt_result, fmt_findings = self._check_deno_fmt(project_root)
         if fmt_result:
             issues.append(fmt_result)
             output_parts.append(f"deno fmt: {fmt_result}")
@@ -237,13 +237,14 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
         if issues:
             msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
+            all_findings = lint_findings + fmt_findings
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output="\n".join(output_parts),
                 error=msg,
                 fix_suggestion="Run: deno lint --fix && deno fmt",
-                findings=lint_findings
+                findings=all_findings
                 or [Finding(message=msg, level=FindingLevel.ERROR)],
             )
 
@@ -290,7 +291,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             return message, findings
         return None, []
 
-    def _check_deno_fmt(self, project_root: str) -> Optional[str]:
+    def _check_deno_fmt(self, project_root: str) -> Tuple[Optional[str], List[Finding]]:
         targets = self._get_deno_target_dirs(project_root)
         result = self._run_command(
             ["deno", "fmt", "--check"] + targets,
@@ -298,8 +299,22 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             timeout=60,
         )
         if not result.success:
-            return "Formatting issues found"
-        return None
+            msg = "Formatting issues found"
+            # deno fmt --check lists misformatted files on stdout
+            findings: List[Finding] = []
+            for line in result.output.splitlines():
+                line = line.strip()
+                if line:
+                    findings.append(
+                        Finding(
+                            message=f"deno fmt: {line}",
+                            level=FindingLevel.WARNING,
+                        )
+                    )
+            if not findings:
+                findings = [Finding(message=msg, level=FindingLevel.ERROR)]
+            return msg, findings
+        return None, []
 
     # ------------------------------------------------------------------
     # Node run
