@@ -37,6 +37,9 @@ def curated_remediation_order_classes() -> Tuple[Type[BaseCheck], ...]:
         FlutterAnalyzeCheck,
         FlutterTestsCheck,
     )
+    from slopmop.checks.general.interactive_assumptions import (
+        InteractiveAssumptionsCheck,
+    )
     from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
     from slopmop.checks.javascript.bogus_tests import JavaScriptBogusTestsCheck
     from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
@@ -71,6 +74,7 @@ def curated_remediation_order_classes() -> Tuple[Type[BaseCheck], ...]:
     return (
         SecurityCheck,
         SecurityLocalCheck,
+        InteractiveAssumptionsCheck,
         RepeatedCodeCheck,
         AmbiguityMinesCheck,
         DeadCodeCheck,

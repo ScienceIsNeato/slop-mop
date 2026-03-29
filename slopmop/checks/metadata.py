@@ -440,10 +440,33 @@ def _myopia_scope_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning]
 
 @lru_cache(maxsize=1)
 def _myopia_risk_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning], ...]:
+    from slopmop.checks.general.interactive_assumptions import (
+        InteractiveAssumptionsCheck,
+    )
     from slopmop.checks.quality import AmbiguityMinesCheck, StringDuplicationCheck
     from slopmop.checks.security import SecurityCheck
 
     return (
+        (
+            InteractiveAssumptionsCheck,
+            _reasoning(
+                rationale=(
+                    "Commands that assume a TTY work fine at a developer terminal and hang "
+                    "silently in CI, Docker builds, and headless agents.  The gap only "
+                    "shows up at the worst possible moment."
+                ),
+                tradeoffs=(
+                    "Some patterns (e.g. npx in a step that follows npm ci) work in practice "
+                    "because the package is already installed locally, but --yes is still "
+                    "the defensive default."
+                ),
+                override_when=(
+                    "Suppress for directories where the dev environment is explicitly guaranteed "
+                    "or for intentional interactive scripts that are never run in CI. "
+                    "Add the directory to exclude_dirs in .sb_config.json."
+                ),
+            ),
+        ),
         (
             AmbiguityMinesCheck,
             _reasoning(
