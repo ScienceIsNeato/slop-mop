@@ -189,7 +189,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
         # Run ESLint fix
         result = self._run_command(
-            ["npx", "eslint", ".", "--fix"],
+            ["npx", "--yes", "eslint", ".", "--fix"],
             cwd=project_root,
             timeout=60,
         )
@@ -198,7 +198,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
         # Run Prettier
         result = self._run_command(
-            ["npx", "prettier", "--write", "."],
+            ["npx", "--yes", "prettier", "--write", "."],
             cwd=project_root,
             timeout=60,
         )
