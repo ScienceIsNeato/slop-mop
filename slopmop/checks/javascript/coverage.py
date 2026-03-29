@@ -1,13 +1,16 @@
 """JavaScript coverage threshold check.
 
 Enforces minimum coverage thresholds for JS/TS projects.
-Parses Jest coverage output to verify line coverage meets requirements.
+Parses either Jest coverage artifacts or Deno-produced coverage data
+for hybrid repos that still want one coherent "is the changed JS/TS
+code meaningfully covered?" gate.
 """
 
 import json
-import os
 import re
+import shlex
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
@@ -36,31 +39,53 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 DEFAULT_THRESHOLD = 80
 MAX_FILES_TO_SHOW = 5
+DEFAULT_COVERAGE_COMMAND = (
+    "npx --yes jest --ci --coverage --coverageReporters=json-summary"
+)
+DEFAULT_COVERAGE_REPORT_PATH = "coverage/coverage-summary.json"
+DEFAULT_COVERAGE_FORMAT = "json-summary"
 
 
 class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
-    """Jest coverage threshold enforcement.
+    """JavaScript/TypeScript coverage threshold enforcement.
 
-    Wraps Jest with --coverageReporters=json-summary to parse
-    line coverage. Falls back to parsing console output if the
-    JSON summary isn't available.
+    Runs a configurable coverage command, then parses either a
+    Jest-style JSON summary, an lcov report, or a Deno raw coverage
+    directory to evaluate line coverage. Defaults to Jest with
+    ``coverage-summary.json`` for backwards compatibility.
+
+    Why one gate instead of separate Jest/Deno variants?  The policy
+    question is the same in both cases: did the project produce enough
+    line coverage for the changed JavaScript/TypeScript code?  The
+    runtime/tooling differs, but the remediation signal is shared, so
+    the gate stays singular and only the artifact adapter changes.
 
     Level: swab
 
     Configuration:
       threshold: 80 — minimum line coverage percentage. Start
           lower on legacy codebases and ramp up over time.
+      coverage_command: Command string parsed with ``shlex.split``
+          into argv and executed without a shell. Defaults to Jest.
+      coverage_report_path: Path to the generated coverage report,
+          relative to project root. Defaults to
+          ``coverage/coverage-summary.json``.
+      coverage_format: ``json-summary``, ``lcov``, or ``deno``.
 
     Common failures:
       Below threshold: The output lists files with lowest
           coverage. Write tests for those files.
-      Coverage data unavailable: Ensure Jest is configured to
-          produce coverage reports.
+      Coverage data unavailable: Ensure the configured coverage
+          command writes the configured report format/path.
 
     Re-check:
       sm swab -g overconfidence:coverage-gaps.js --verbose
     """
 
+    # Dual-context gate: NODE for npm/jest projects, DENO for deno projects.
+    # is_applicable() accepts both; run() branches at runtime based on
+    # coverage_format config.  Declared as NODE since that is the
+    # original/majority case.
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
@@ -75,7 +100,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "📊 Coverage (JavaScript, Jest)"
+        return "📊 Coverage (JavaScript/TypeScript)"
 
     @property
     def gate_description(self) -> str:
@@ -105,7 +130,44 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 max_value=100,
                 permissiveness="higher_is_stricter",
             ),
+            ConfigField(
+                name="coverage_command",
+                field_type="string",
+                default=DEFAULT_COVERAGE_COMMAND,
+                description=("Command string (parsed via shlex) to generate coverage"),
+            ),
+            ConfigField(
+                name="coverage_report_path",
+                field_type="string",
+                default=DEFAULT_COVERAGE_REPORT_PATH,
+                description="Coverage report path relative to project root",
+            ),
+            ConfigField(
+                name="coverage_format",
+                field_type="string",
+                default=DEFAULT_COVERAGE_FORMAT,
+                description="Coverage report format: json-summary, lcov, or deno",
+                choices=["json-summary", "lcov", "deno"],
+            ),
         ]
+
+    def init_config(self, project_root: str) -> dict[str, str]:
+        """Discover a strong-evidence Deno coverage workflow for hybrid repos."""
+        if not (
+            self.has_package_json(project_root) and self.is_deno_project(project_root)
+        ):
+            return {}
+        test_glob = self.discover_supabase_deno_test_glob(project_root)
+        if test_glob is None:
+            return {}
+        return {
+            "coverage_command": (
+                "deno test --allow-all --no-check "
+                f"--coverage=coverage/raw {test_glob}"
+            ),
+            "coverage_report_path": "coverage/raw",
+            "coverage_format": "deno",
+        }
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping — delegate to JavaScriptCheckMixin."""
@@ -122,25 +184,19 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
                 duration=time.time() - start_time,
             )
 
-        dep_result = self._ensure_dependencies(project_root, start_time)
-        if dep_result is not None:
-            return dep_result
+        if self._should_install_dependencies():
+            dep_result = self._ensure_dependencies(project_root, start_time)
+            if dep_result is not None:
+                return dep_result
 
-        # Run Jest with coverage and JSON reporter
         result = self._run_command(
-            [
-                "npx",
-                "jest",
-                "--coverage",
-                "--coverageReporters=json-summary",
-            ],
+            self._get_coverage_command(),
             cwd=project_root,
             timeout=300,
         )
         duration = time.time() - start_time
 
-        # Parse coverage from JSON summary
-        coverage_data = self._parse_coverage_json(project_root)
+        coverage_data = self._parse_coverage_report(project_root)
         if coverage_data:
             return self._evaluate_coverage(coverage_data, result.output, duration)
 
@@ -169,9 +225,31 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             status=CheckStatus.FAILED,
             duration=duration,
             output=result.output,
-            error="Jest tests failed",
-            findings=[Finding(message="Jest tests failed", level=FindingLevel.ERROR)],
+            error="Coverage command failed",
+            findings=[
+                Finding(message="Coverage command failed", level=FindingLevel.ERROR)
+            ],
         )
+
+    def _get_coverage_command(self) -> List[str]:
+        """Build the coverage command from config."""
+        configured = self.config.get("coverage_command", DEFAULT_COVERAGE_COMMAND)
+        return shlex.split(configured)
+
+    def _get_coverage_report_path(self, project_root: str) -> Path:
+        """Return the configured coverage report path."""
+        rel_path = self.config.get("coverage_report_path", DEFAULT_COVERAGE_REPORT_PATH)
+        return Path(project_root) / rel_path
+
+    def _get_coverage_format(self) -> str:
+        """Return the configured coverage report format."""
+        value = self.config.get("coverage_format", DEFAULT_COVERAGE_FORMAT)
+        return str(value).strip().lower()
+
+    def _should_install_dependencies(self) -> bool:
+        """Install node deps when the coverage command is npm/npx based."""
+        cmd = self._get_coverage_command()
+        return bool(cmd) and cmd[0] in ("npm", "npx")
 
     def _no_tests_result(
         self, message: str, duration: float, output: Optional[str] = None
@@ -231,16 +309,115 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             ],
         )
 
-    def _parse_coverage_json(self, project_root: str) -> Optional[Dict[str, Any]]:
-        """Parse coverage-summary.json if available."""
-        summary_path = os.path.join(project_root, "coverage", "coverage-summary.json")
-        if not os.path.exists(summary_path):
+    def _parse_coverage_report(self, project_root: str) -> Optional[Dict[str, Any]]:
+        """Parse the configured coverage report, if available."""
+        report_path = self._get_coverage_report_path(project_root)
+        report_format = self._get_coverage_format()
+        if not report_path.exists():
             return None
+        if report_format == "json-summary":
+            return self._parse_coverage_json(report_path)
+        if report_format == "lcov":
+            return self._parse_lcov_report(project_root, report_path)
+        if report_format == "deno":
+            return self._parse_deno_report(project_root, report_path)
+        return None
+
+    def _parse_coverage_json(self, report_path: Path) -> Optional[Dict[str, Any]]:
+        """Parse a Jest-style coverage-summary.json report."""
         try:
-            with open(summary_path) as f:
+            with report_path.open(encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             return None
+
+    def _parse_lcov_report(
+        self, project_root: str, report_path: Path
+    ) -> Optional[Dict[str, Any]]:
+        """Convert an lcov file into the Jest-summary shape."""
+        try:
+            text = report_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return None
+        return self._parse_lcov_text(project_root, text, Path(project_root))
+
+    def _parse_deno_report(
+        self, project_root: str, report_path: Path
+    ) -> Optional[Dict[str, Any]]:
+        """Convert a Deno raw coverage directory into the Jest-summary shape."""
+        result = self._run_command(
+            ["deno", "coverage", "--lcov", str(report_path)],
+            cwd=project_root,
+            timeout=300,
+        )
+        if not result.success:
+            return None
+        return self._parse_lcov_text(project_root, result.stdout, Path(project_root))
+
+    def _parse_lcov_text(
+        self, project_root: str, text: str, relative_base: Path
+    ) -> Optional[Dict[str, Any]]:
+        """Convert lcov text into the Jest-summary shape."""
+        aggregate: Dict[str, Dict[str, int]] = {}
+        current_file: Optional[str] = None
+        root = Path(project_root).resolve()
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if line.startswith("SF:"):
+                raw_path = line[3:]
+                resolved = Path(raw_path)
+                if not resolved.is_absolute():
+                    resolved = (relative_base / raw_path).resolve()
+                try:
+                    rel = str(resolved.relative_to(root))
+                except ValueError:
+                    rel = raw_path.replace("\\", "/")
+                current_file = rel
+                aggregate.setdefault(current_file, {"total": 0, "covered": 0})
+                continue
+
+            if line.startswith("DA:") and current_file:
+                parts = line[3:].split(",")
+                if len(parts) < 2:
+                    continue
+                try:
+                    hits = int(parts[1])
+                except ValueError:
+                    continue
+                aggregate[current_file]["total"] += 1
+                if hits > 0:
+                    aggregate[current_file]["covered"] += 1
+                continue
+
+            if line == "end_of_record":
+                current_file = None
+
+        if not aggregate:
+            return None
+        total_lines = sum(stats["total"] for stats in aggregate.values())
+        covered_lines = sum(stats["covered"] for stats in aggregate.values())
+        summary: Dict[str, Any] = {
+            "total": {
+                "lines": {
+                    "total": total_lines,
+                    "covered": covered_lines,
+                    "pct": (
+                        (covered_lines / total_lines) * 100 if total_lines else 100.0
+                    ),
+                }
+            }
+        }
+        for file_path, stats in aggregate.items():
+            total = stats["total"]
+            covered = stats["covered"]
+            summary[file_path] = {
+                "lines": {
+                    "total": total,
+                    "covered": covered,
+                    "pct": (covered / total) * 100 if total else 100.0,
+                }
+            }
+        return summary
 
     @staticmethod
     def _as_pct(v: Any) -> float:

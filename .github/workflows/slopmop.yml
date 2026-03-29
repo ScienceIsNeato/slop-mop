@@ -74,7 +74,7 @@ jobs:
         run: |
           cd tools/find-duplicate-strings
           npm install
-          npx tsc
+          npx --yes tsc
 
       - name: Run final dogfood scour
         env:

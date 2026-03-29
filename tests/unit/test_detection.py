@@ -139,6 +139,19 @@ class TestDetectProjectType:
         result = detect_project_type(tmp_path)
         assert result["has_typescript"] is True
 
+    def test_detects_supabase_deno_tests_for_hybrid_repo(self, tmp_path):
+        """Hybrid Supabase repos should expose the strong-evidence Deno marker."""
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "deno.json").write_text("{}")
+        test_file = tmp_path / "supabase" / "functions" / "hello" / "index.unit.test.ts"
+        test_file.parent.mkdir(parents=True)
+        test_file.write_text("Deno.test('ok', () => {})")
+
+        result = detect_project_type(tmp_path)
+
+        assert result["has_supabase_deno_tests"] is True
+        assert "overconfidence:coverage-gaps.js" in result["recommended_gates"]
+
     def test_typescript_recommends_types_gate(self, tmp_path):
         """TypeScript projects recommend type-blindness.js gate."""
         (tmp_path / "package.json").write_text("{}")

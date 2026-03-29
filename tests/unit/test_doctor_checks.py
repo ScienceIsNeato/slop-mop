@@ -22,8 +22,11 @@ import pytest
 from slopmop.core.config import CONFIG_FILE, STATE_DIR
 from slopmop.core.lock import LOCK_DIR, LOCK_FILE
 from slopmop.doctor import DoctorContext, DoctorStatus
+from slopmop.doctor.gate_preflight import GatePreflightRecord
 from slopmop.doctor.project_env import (
+    ProjectGateRunnabilityCheck,
     ProjectJsDepsCheck,
+    ProjectPipAuditRemediabilityCheck,
     ProjectPipCheck,
     ProjectVenvCheck,
 )
@@ -259,6 +262,58 @@ class TestReinstallHint:
             assert "pip install --force-reinstall" in _reinstall_hint()
 
 
+class TestProjectGateRunnabilityCheck:
+    def test_fails_when_any_applicable_gate_is_blocked(self, ctx):
+        records = [
+            GatePreflightRecord(
+                gate="deceptiveness:bogus-tests.js",
+                display_name="bogus-tests.js",
+                enabled=True,
+                applicable=True,
+                skip_reason="",
+                config_fingerprint="one",
+                missing_tools=(),
+            ),
+            GatePreflightRecord(
+                gate="overconfidence:coverage-gaps.js",
+                display_name="coverage-gaps.js",
+                enabled=True,
+                applicable=True,
+                skip_reason="",
+                config_fingerprint="two",
+                missing_tools=("deno",),
+            ),
+        ]
+        with patch(
+            "slopmop.doctor.project_env.gather_gate_preflight_records",
+            return_value=records,
+        ):
+            result = ProjectGateRunnabilityCheck().run(ctx)
+        assert result.status is DoctorStatus.FAIL
+        assert "blocked before refit can start" in result.summary
+        assert "coverage-gaps.js" in result.detail
+
+    def test_warns_when_gate_is_disabled_pending_decision(self, ctx):
+        records = [
+            GatePreflightRecord(
+                gate="overconfidence:coverage-gaps.js",
+                display_name="coverage-gaps.js",
+                enabled=False,
+                applicable=True,
+                skip_reason="",
+                config_fingerprint="two",
+                missing_tools=(),
+            )
+        ]
+        with patch(
+            "slopmop.doctor.project_env.gather_gate_preflight_records",
+            return_value=records,
+        ):
+            result = ProjectGateRunnabilityCheck().run(ctx)
+        assert result.status is DoctorStatus.WARN
+        assert "disabled and need an explicit refit decision" in result.summary
+
+
 class TestToolInventoryCheck:
     def test_all_resolved_ok(self, ctx):
         # Path must normalize to an allowlisted name so the validator
@@ -438,6 +493,148 @@ class TestProjectPipCheck:
         assert "conflict detected" in r.detail
 
 
+class TestProjectPipAuditRemediabilityCheck:
+    def test_skips_without_python_markers(self, ctx):
+        assert ProjectPipAuditRemediabilityCheck().run(ctx).status is DoctorStatus.SKIP
+
+    def test_skips_without_local_venv(self, tmp_path, monkeypatch):
+        _mk_python_project(tmp_path)
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        r = ProjectPipAuditRemediabilityCheck().run(
+            DoctorContext(project_root=tmp_path)
+        )
+        assert r.status is DoctorStatus.SKIP
+        assert "project.python_venv" in r.summary
+
+    def test_no_vulnerabilities_ok(self, tmp_path):
+        _mk_python_project(tmp_path)
+        _mk_project_venv(tmp_path)
+        pip_audit_proc = MagicMock(
+            returncode=0,
+            stdout=json.dumps({"dependencies": []}),
+            stderr="",
+        )
+        with patch("subprocess.run", return_value=pip_audit_proc):
+            r = ProjectPipAuditRemediabilityCheck().run(
+                DoctorContext(project_root=tmp_path)
+            )
+        assert r.status is DoctorStatus.OK
+        assert "no vulnerable dependencies" in r.summary
+
+    def test_blocked_when_fix_versions_not_in_index(self, tmp_path):
+        _mk_python_project(tmp_path)
+        _mk_project_venv(tmp_path)
+
+        pip_audit_payload = {
+            "dependencies": [
+                {
+                    "name": "Pygments",
+                    "version": "2.19.2",
+                    "vulns": [
+                        {
+                            "id": "PYSEC-TEST-1",
+                            "fix_versions": ["2.19.3"],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        def _fake_run(cmd, **kwargs):
+            if cmd[2:4] == ["pip_audit", "--format"]:
+                return MagicMock(
+                    returncode=1,
+                    stdout=json.dumps(pip_audit_payload),
+                    stderr="",
+                )
+            if cmd[2:5] == ["pip", "install", "--dry-run"]:
+                return MagicMock(
+                    returncode=1,
+                    stdout="",
+                    stderr=(
+                        "ERROR: Could not find a version that satisfies the requirement "
+                        "Pygments==2.19.3"
+                    ),
+                )
+            raise AssertionError(f"Unexpected command: {cmd}")
+
+        with patch("subprocess.run", side_effect=_fake_run):
+            r = ProjectPipAuditRemediabilityCheck().run(
+                DoctorContext(project_root=tmp_path)
+            )
+
+        assert r.status is DoctorStatus.FAIL
+        assert "blocked by package index" in r.summary
+        assert "Publish/mirror" in (r.fix_hint or "")
+        assert r.data["blocked"][0]["name"] == "Pygments"
+
+    def test_ok_when_at_least_one_fix_is_installable(self, tmp_path):
+        _mk_python_project(tmp_path)
+        _mk_project_venv(tmp_path)
+
+        pip_audit_payload = {
+            "dependencies": [
+                {
+                    "name": "Pygments",
+                    "version": "2.19.2",
+                    "vulns": [
+                        {
+                            "id": "PYSEC-TEST-1",
+                            "fix_versions": ["2.19.3"],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        def _fake_run(cmd, **kwargs):
+            if cmd[2:4] == ["pip_audit", "--format"]:
+                return MagicMock(
+                    returncode=1,
+                    stdout=json.dumps(pip_audit_payload),
+                    stderr="",
+                )
+            if cmd[2:5] == ["pip", "install", "--dry-run"]:
+                return MagicMock(returncode=0, stdout="Would install", stderr="")
+            raise AssertionError(f"Unexpected command: {cmd}")
+
+        with patch("subprocess.run", side_effect=_fake_run):
+            r = ProjectPipAuditRemediabilityCheck().run(
+                DoctorContext(project_root=tmp_path)
+            )
+
+        assert r.status is DoctorStatus.OK
+        assert "installable" in r.summary
+        assert r.data["remediable_count"] == 1
+
+    def test_warn_when_upstream_has_no_fix_versions(self, tmp_path):
+        _mk_python_project(tmp_path)
+        _mk_project_venv(tmp_path)
+
+        pip_audit_payload = {
+            "dependencies": [
+                {
+                    "name": "pkg-no-fix",
+                    "version": "1.0.0",
+                    "vulns": [{"id": "PYSEC-TEST-2", "fix_versions": []}],
+                }
+            ]
+        }
+
+        pip_audit_proc = MagicMock(
+            returncode=1,
+            stdout=json.dumps(pip_audit_payload),
+            stderr="",
+        )
+        with patch("subprocess.run", return_value=pip_audit_proc):
+            r = ProjectPipAuditRemediabilityCheck().run(
+                DoctorContext(project_root=tmp_path)
+            )
+
+        assert r.status is DoctorStatus.WARN
+        assert "no upstream fix" in r.summary
+
+
 class TestProjectJsDepsCheck:
     def test_skips_without_package_json(self, ctx):
         assert ProjectJsDepsCheck().run(ctx).status is DoctorStatus.SKIP
@@ -467,6 +664,43 @@ class TestProjectJsDepsCheck:
         (tmp_path / ".npmrc").write_text("legacy-peer-deps = true\n")
         r = ProjectJsDepsCheck().run(DoctorContext(project_root=tmp_path))
         assert "--legacy-peer-deps" in r.fix_hint
+
+    def test_deno_project_ok_when_binary_on_path(self, tmp_path):
+        (tmp_path / "deno.json").write_text("{}")
+        with patch(
+            "slopmop.doctor.project_env.shutil.which",
+            return_value="/usr/local/bin/deno",
+        ):
+            r = ProjectJsDepsCheck().run(DoctorContext(project_root=tmp_path))
+        assert r.status is DoctorStatus.OK
+        assert r.data["runtime"] == "deno"
+        assert r.data["deno_binary"] == "/usr/local/bin/deno"
+
+    def test_deno_project_warns_when_binary_missing(self, tmp_path):
+        (tmp_path / "deno.json").write_text("{}")
+        with patch("slopmop.doctor.project_env.shutil.which", return_value=None):
+            r = ProjectJsDepsCheck().run(DoctorContext(project_root=tmp_path))
+        assert r.status is DoctorStatus.WARN
+        assert "not found" in r.summary
+        assert "Install Deno" in r.fix_hint
+
+    def test_deno_jsonc_also_detected(self, tmp_path):
+        (tmp_path / "deno.jsonc").write_text("{}")
+        with patch("slopmop.doctor.project_env.shutil.which", return_value="/opt/deno"):
+            r = ProjectJsDepsCheck().run(DoctorContext(project_root=tmp_path))
+        assert r.status is DoctorStatus.OK
+        assert r.data["runtime"] == "deno"
+
+    def test_deno_takes_priority_over_node(self, tmp_path):
+        """When both deno.json and package.json exist, prefer Deno path."""
+        (tmp_path / "deno.json").write_text("{}")
+        (tmp_path / "package.json").write_text("{}")
+        with patch(
+            "slopmop.doctor.project_env.shutil.which",
+            return_value="/usr/local/bin/deno",
+        ):
+            r = ProjectJsDepsCheck().run(DoctorContext(project_root=tmp_path))
+        assert r.data["runtime"] == "deno"
 
 
 # ── state.* (read-only) ──────────────────────────────────────────────────

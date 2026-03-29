@@ -21,9 +21,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+from slopmop.baseline import generate_baseline_snapshot_from_artifact
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import BaseCheck, RemediationChurn
 from slopmop.checks.custom import register_custom_gates
+from slopmop.cli._refit_precheck import (
+    apply_review_actions,
+    approved_entries,
+    blocked_runnability_entries,
+    blocker_entries,
+    build_precheck,
+    load_precheck,
+    pending_fidelity_entries,
+    precheck_path,
+    save_precheck,
+)
 from slopmop.cli.buff import _load_json_file
 from slopmop.cli.scan_triage import write_json_out
 from slopmop.core.lock import SmLockError, sm_lock
@@ -45,6 +57,19 @@ _CONTINUE_LOOP = 2
 _NESTED_VALIDATE_OWNER = "refit"
 _MAINTENANCE_NEXT_ACTION = (
     "Use the normal swab/scour/buff workflow for maintenance repos."
+)
+_DOCTOR_PREFLIGHT_CHECKS = (
+    "runtime.sm_resolution",
+    "sm_env.pip_check",
+    "sm_env.tool_inventory",
+    "sm_env.gate_readiness",
+    "project.python_venv",
+    "project.pip_check",
+    "project.pip_audit_remediability",
+    "project.js_deps",
+    "state.lock",
+    "state.dir_permissions",
+    "state.config_readable",
 )
 
 
@@ -76,12 +101,42 @@ def _continue_scour_path(project_root: Path) -> Path:
     return _refit_dir(project_root) / _CONTINUE_SCOUR_FILE
 
 
+def _precheck_path(project_root: Path) -> Path:
+    return precheck_path(project_root)
+
+
 def _plan_project_root(plan: Dict[str, Any]) -> Path:
     return Path(str(plan["project_root"]))
 
 
 def _plan_file_line(plan: Dict[str, Any]) -> str:
     return f"Plan file: {_plan_path(_plan_project_root(plan))}"
+
+
+def _validate_start_review_args(args: argparse.Namespace) -> Optional[str]:
+    if not getattr(args, "start", False):
+        if getattr(args, "approve_gate", []) or getattr(args, "record_blocker", None):
+            return (
+                "--approve-gate and --record-blocker are only valid with "
+                "`sm refit --start`."
+            )
+        if getattr(args, "blocker_issue", None) or getattr(
+            args, "blocker_reason", None
+        ):
+            return (
+                "--blocker-issue and --blocker-reason are only valid with "
+                "`sm refit --start --record-blocker`."
+            )
+        return None
+    if getattr(args, "blocker_issue", None) and not getattr(
+        args, "record_blocker", None
+    ):
+        return "--blocker-issue requires --record-blocker."
+    if getattr(args, "blocker_reason", None) and not getattr(
+        args, "record_blocker", None
+    ):
+        return "--blocker-reason requires --record-blocker."
+    return None
 
 
 def _iso_now() -> str:
@@ -168,11 +223,34 @@ def _ensure_init_completed(project_root: Path) -> bool:
     return (project_root / ".sb_config.json").exists()
 
 
-def _run_doctor_preflight(_project_root: Path) -> Tuple[bool, str]:
-    # TODO: replace this stub with a real `sm doctor` invocation once the
-    # doctor command lands. This feature is expected to ship and merge with the
-    # stub in place so refit can stabilize ahead of the doctor work.
-    return True, "doctor preflight stub passed"
+def _run_doctor_preflight(project_root: Path) -> Tuple[bool, str]:
+    """Run a focused doctor preflight before generating a refit plan.
+
+    This preflight blocks only on doctor FAIL states. WARN and SKIP
+    statuses are surfaced in the doctor report but do not block refit start.
+    """
+    from slopmop.doctor import DoctorContext, DoctorStatus, run_checks
+
+    try:
+        results = run_checks(
+            DoctorContext(project_root=project_root, apply_fix=False),
+            patterns=_DOCTOR_PREFLIGHT_CHECKS,
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard
+        return False, f"doctor preflight crashed: {type(exc).__name__}: {exc}"
+
+    failures = [r for r in results if r.status == DoctorStatus.FAIL]
+    if not failures:
+        return True, f"doctor preflight passed ({len(results)} checks)"
+
+    names = ", ".join(r.name for r in failures)
+    first = failures[0]
+    message = (
+        f"doctor preflight failed ({len(failures)} check(s): {names}). "
+        f"First failure: {first.name}: {first.summary}. "
+        f"Run `sm doctor {' '.join(_DOCTOR_PREFLIGHT_CHECKS)} --project-root {project_root}`."
+    )
+    return False, message
 
 
 def _run_scour(
@@ -284,6 +362,7 @@ def _snapshot_protocol(
         "next_action": next_action,
         "plan_file": str(_plan_path(Path(str(plan.get("project_root"))))),
         "summary_file": str(_plan_summary_path(Path(str(plan.get("project_root"))))),
+        "precheck_file": plan.get("precheck_file"),
     }
     if current_item is not None:
         protocol["current_item"] = {
@@ -469,6 +548,7 @@ def _build_plan(project_root: Path, scour_artifact_path: Path) -> Dict[str, Any]
         "status": "ready",
         "current_index": 0,
         "current_gate": items[0]["gate"] if items else None,
+        "precheck_file": str(_precheck_path(project_root)),
         "initial_scour_artifact": str(scour_artifact_path),
         "items": items,
     }
@@ -515,9 +595,11 @@ def _plan_generated_lines(plan: Dict[str, Any]) -> List[str]:
     items = cast(List[Dict[str, Any]], plan.get("items", []))
     lines = [
         "Refit plan generated.",
+        f"Precheck: {_precheck_path(_plan_project_root(plan))}",
         _plan_file_line(plan),
         f"Summary: {_plan_summary_path(_plan_project_root(plan))}",
         f"Protocol: {_protocol_path(_plan_project_root(plan))}",
+        f"Baseline snapshot: {_plan_project_root(plan) / '.slopmop' / 'baseline_snapshot.json'}",
         f"Plan items: {len(items)}",
     ]
     if items:
@@ -526,6 +608,57 @@ def _plan_generated_lines(plan: Dict[str, Any]) -> List[str]:
         lines.append("Next command: sm refit --iterate")
     else:
         lines.append("No failing scour gates remain. Refit has nothing to do.")
+    return lines
+
+
+def _runnability_block_lines(project_root: Path, precheck: Dict[str, Any]) -> List[str]:
+    blocked = blocked_runnability_entries(precheck)
+    lines = [
+        "Refit start stopped during gate runnability precheck.",
+        f"Precheck: {_precheck_path(project_root)}",
+        f"Blocked gates: {len(blocked)}",
+    ]
+    for entry in blocked[:5]:
+        gate = str(entry.get("gate", "?"))
+        missing_tools = cast(List[str], entry.get("missing_tools") or [])
+        if missing_tools:
+            lines.append(f"  - {gate}: missing tools ({', '.join(missing_tools)})")
+        else:
+            artifact = entry.get("probe_artifact")
+            lines.append(f"  - {gate}: execution errored (artifact: {artifact})")
+    if len(blocked) > 5:
+        lines.append(f"  ... and {len(blocked) - 5} more")
+    lines.append("Resolve the tooling/setup issue, then rerun: sm refit --start")
+    return lines
+
+
+def _fidelity_block_lines(project_root: Path, precheck: Dict[str, Any]) -> List[str]:
+    pending = pending_fidelity_entries(precheck)
+    approved = approved_entries(precheck)
+    blockers = blocker_entries(precheck)
+    lines = [
+        "Refit start stopped for per-gate fidelity review.",
+        f"Precheck: {_precheck_path(project_root)}",
+        f"Approved gates: {len(approved)}",
+        f"Recorded blockers: {len(blockers)}",
+        f"Pending decisions: {len(pending)}",
+    ]
+    if pending:
+        next_gate = str(pending[0].get("gate", "?"))
+        artifact = pending[0].get("probe_artifact")
+        if artifact:
+            lines.append(f"Next review gate: {next_gate} (artifact: {artifact})")
+        else:
+            lines.append(f"Next review gate: {next_gate}")
+    lines.extend(
+        [
+            "For each pending gate, do exactly one:",
+            "  A) approve the current config: sm refit --start --approve-gate <gate>",
+            "  B) tune config/init output, then rerun: sm refit --start",
+            "  C) disable the gate, file a slop-mop bug, then record it:",
+            "     sm refit --start --record-blocker <gate> --blocker-issue <issue> --blocker-reason <reason>",
+        ]
+    )
     return lines
 
 
@@ -543,16 +676,34 @@ def _status_is_same(before: List[str], after: List[str]) -> bool:
 
 
 def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]:
-    add_result = subprocess.run(
-        ["git", "add", "-A", "--", ".", ":!.slopmop"],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if add_result.returncode != 0:
-        detail = (add_result.stderr or add_result.stdout or "").strip()
-        return add_result.returncode, detail or "git add failed"
+    # Two-step add avoids "ignored file" errors on git ≥2.39 when
+    # Use -c advice.addIgnoredFile=false to suppress the warning that
+    # fires when .slopmop is in .gitignore but we reference it via a
+    # negative pathspec.  Without --ignore-errors, genuine staging
+    # failures (permissions, encoding, path-too-long) still fail loudly.
+    for add_cmd in (
+        ["git", "add", "-u"],
+        [
+            "git",
+            "-c",
+            "advice.addIgnoredFile=false",
+            "add",
+            "-A",
+            "--",
+            ".",
+            ":!.slopmop",
+        ],
+    ):
+        add_result = subprocess.run(
+            add_cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if add_result.returncode != 0:
+            detail = (add_result.stderr or add_result.stdout or "").strip()
+            return add_result.returncode, detail or "git add failed"
 
     commit_result = subprocess.run(
         ["git", "commit", "-m", message],
@@ -584,6 +735,25 @@ def _load_continue_plan(
     try:
         return _load_plan(project_root)
     except (FileNotFoundError, ValueError) as exc:
+        precheck = load_precheck(project_root)
+        if precheck is not None:
+            status = str(precheck.get("status", "blocked_on_gate_fidelity"))
+            next_action = "Run `sm refit --start` to resume staged prechecks."
+            lines = (
+                _runnability_block_lines(project_root, precheck)
+                if status == "blocked_on_gate_runnability"
+                else _fidelity_block_lines(project_root, precheck)
+            )
+            _emit_standalone_protocol(
+                args,
+                project_root,
+                event=status,
+                status=status,
+                next_action=next_action,
+                human_lines=lines,
+                details={"precheck_file": str(_precheck_path(project_root))},
+            )
+            return None
         _emit_standalone_protocol(
             args,
             project_root,
@@ -639,8 +809,7 @@ def _emit_continue_completion(
     return 0
 
 
-def _cmd_refit_start(args: argparse.Namespace) -> int:
-    project_root = _project_root(args)
+def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) -> bool:
     if not _ensure_remediation_phase(project_root):
         _emit_standalone_protocol(
             args,
@@ -653,7 +822,7 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
                 "Run the normal swab/scour/buff workflow for maintenance repos."
             ],
         )
-        return 1
+        return False
     if not _ensure_init_completed(project_root):
         _emit_standalone_protocol(
             args,
@@ -665,7 +834,7 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
                 "Refit preflight failed: no .sb_config.json found. Run `sm init` first."
             ],
         )
-        return 1
+        return False
 
     doctor_ok, doctor_detail = _run_doctor_preflight(project_root)
     if not doctor_ok:
@@ -678,7 +847,7 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
             human_lines=[f"Refit preflight failed: {doctor_detail}"],
             details={"doctor_detail": doctor_detail},
         )
-        return 1
+        return False
 
     worktree = _worktree_status(project_root)
     if worktree:
@@ -697,13 +866,68 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
             ],
             details={"worktree_status": worktree},
         )
-        return 1
+        return False
 
-    # Ensure .slopmop/ is gitignored before scour populates it
     from slopmop.utils import ensure_slopmop_gitignored
 
     ensure_slopmop_gitignored(project_root)
+    return True
 
+
+def _run_start_precheck_stage(
+    args: argparse.Namespace, project_root: Path
+) -> Optional[Dict[str, Any]]:
+    previous_precheck = load_precheck(project_root)
+    precheck = build_precheck(project_root, previous=previous_precheck)
+    review_error = apply_review_actions(
+        precheck,
+        approve_gates=cast(List[str], getattr(args, "approve_gate", [])),
+        blocker_gate=cast(Optional[str], getattr(args, "record_blocker", None)),
+        blocker_issue=cast(Optional[str], getattr(args, "blocker_issue", None)),
+        blocker_reason=cast(Optional[str], getattr(args, "blocker_reason", None)),
+    )
+    if review_error:
+        _emit_standalone_protocol(
+            args,
+            project_root,
+            event="precheck_invalid_review_action",
+            status="precheck_invalid_review_action",
+            next_action="Fix the review command arguments, then rerun `sm refit --start`.",
+            human_lines=[review_error],
+            details={"precheck_file": str(_precheck_path(project_root))},
+        )
+        return None
+
+    save_precheck(project_root, precheck)
+    if blocked_runnability_entries(precheck):
+        _emit_standalone_protocol(
+            args,
+            project_root,
+            event="blocked_on_gate_runnability",
+            status="blocked_on_gate_runnability",
+            next_action="Resolve the gate runnability blocker, then rerun `sm refit --start`.",
+            human_lines=_runnability_block_lines(project_root, precheck),
+            details={"precheck_file": str(_precheck_path(project_root))},
+        )
+        return None
+    if pending_fidelity_entries(precheck):
+        _emit_standalone_protocol(
+            args,
+            project_root,
+            event="blocked_on_gate_fidelity",
+            status="blocked_on_gate_fidelity",
+            next_action="Review or tune the pending gates, then rerun `sm refit --start`.",
+            human_lines=_fidelity_block_lines(project_root, precheck),
+            details={"precheck_file": str(_precheck_path(project_root))},
+        )
+        return None
+    return precheck
+
+
+def _generate_plan_from_trustworthy_scour(
+    args: argparse.Namespace,
+    project_root: Path,
+) -> int:
     artifact_path = _initial_scour_path(project_root)
     exit_code = _run_scour(project_root, artifact_path)
     if exit_code not in {0, 1}:
@@ -720,6 +944,9 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
         )
         return 1
 
+    baseline_path, _baseline_source = generate_baseline_snapshot_from_artifact(
+        project_root, artifact_path
+    )
     plan = _build_plan(project_root, artifact_path)
     _save_plan(project_root, plan)
     protocol = _snapshot_protocol(
@@ -727,12 +954,24 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
         event="plan_generated",
         next_action="Run `sm refit --iterate` to start advancing the plan.",
         details={
+            "precheck_file": str(_precheck_path(project_root)),
             "initial_scour_artifact": str(artifact_path),
+            "baseline_snapshot": str(baseline_path),
             "item_count": len(cast(List[Dict[str, Any]], plan.get("items", []))),
         },
     )
     _emit_protocol(args, project_root, protocol, _plan_generated_lines(plan))
     return 0
+
+
+def _cmd_refit_start(args: argparse.Namespace) -> int:
+    project_root = _project_root(args)
+    if not _ensure_start_prerequisites(args, project_root):
+        return 1
+    precheck = _run_start_precheck_stage(args, project_root)
+    if precheck is None:
+        return 1
+    return _generate_plan_from_trustworthy_scour(args, project_root)
 
 
 def _cmd_refit_iterate(args: argparse.Namespace) -> int:
@@ -877,104 +1116,18 @@ def _cmd_refit_finish(args: argparse.Namespace) -> int:
 
 
 def _cmd_refit_skip(args: argparse.Namespace) -> int:
-    """Mark the current gate as skipped and advance without running it.
-
-    Use when a gate is intractable right now (tool unavailable, needs
-    discussion, out of scope for this pass). Skipped items still block
-    --finish — disable the check in .sb_config.json if it's permanently
-    out of scope.
-    """
     project_root = _project_root(args)
-    if not _ensure_remediation_phase(project_root):
-        _emit_standalone_protocol(
-            args,
-            project_root,
-            event="blocked_on_phase",
-            status="blocked_on_phase",
-            next_action=_MAINTENANCE_NEXT_ACTION,
-            human_lines=["Refit is only available in remediation phase."],
-        )
-        return 1
+    from slopmop.cli._refit_skip import cmd_refit_skip
 
-    plan = _load_continue_plan(args, project_root)
-    if plan is None:
-        return 1
-
-    if not _ensure_continue_branch(args, project_root, plan):
-        return 1
-
-    items = cast(List[Dict[str, Any]], plan.get("items", []))
-    current_index = int(plan.get("current_index", 0))
-    if current_index >= len(items):
-        _emit_standalone_protocol(
-            args,
-            project_root,
-            event="skip_past_end",
-            status=str(plan.get("status", "completed")),
-            next_action="Run `sm refit --finish`.",
-            human_lines=[
-                "No current gate to skip — plan is already past its last item."
-            ],
-        )
-        return 0
-
-    current_item = items[current_index]
-    gate = str(current_item.get("gate", "?"))
-    reason = str(getattr(args, "skip", None) or "manual skip")
-
-    try:
-        with sm_lock(project_root, "refit"):
-            current_item["status"] = "skipped"
-            current_item["skip_reason"] = reason
-            plan = _advance_plan(plan)
-            _save_plan(project_root, plan)
-    except SmLockError as exc:
-        protocol: Dict[str, Any] = {
-            "schema": _SCHEMA_VERSION,
-            "recorded_at": _iso_now(),
-            "event": "blocked_on_lock",
-            "status": "blocked_on_lock",
-            "project_root": str(project_root),
-            "next_action": "Wait for the active sm process to finish, then rerun `sm refit --skip`.",
-            "details": {"message": str(exc)},
-        }
-        _emit_protocol(
-            args,
-            project_root,
-            protocol,
-            [f"Refit blocked: {exc}"],
-        )
-        return 1
-
-    next_gate = plan.get("current_gate")
-    next_line = (
-        f"Next gate: {next_gate}. Run: sm refit --iterate"
-        if next_gate
-        else "No gates remain. Run: sm refit --finish"
-    )
-    protocol = _snapshot_protocol(
-        plan,
-        event="gate_skipped",
-        next_action="Run `sm refit --iterate` to resume, or disable the skipped check in .sb_config.json.",
-        details={"skipped_gate": gate, "reason": reason},
-    )
-    _emit_protocol(
-        args,
-        project_root,
-        protocol,
-        [
-            f"Skipped gate: {gate}",
-            f"Reason: {reason}",
-            next_line,
-            "Note: skipped gates still block --finish. If this gate is permanently "
-            "out of scope, disable it in .sb_config.json.",
-        ],
-    )
-    return 0
+    return cmd_refit_skip(args, project_root)
 
 
 def cmd_refit(args: argparse.Namespace) -> int:
     """Run the structured remediation process."""
+    arg_error = _validate_start_review_args(args)
+    if arg_error:
+        print(arg_error)
+        return 1
     if getattr(args, "start", False):
         return _cmd_refit_start(args)
     if getattr(args, "iterate", False):

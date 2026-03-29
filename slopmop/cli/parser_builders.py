@@ -284,6 +284,38 @@ class RefitParserBuilder:
             help=PROJECT_ROOT_HELP,
         )
         refit_parser.add_argument(
+            "--approve-gate",
+            action="append",
+            default=[],
+            metavar="GATE",
+            help=(
+                "With --start, record that a gate's current precheck output looks "
+                "trustworthy and should be accepted for plan generation. Repeatable."
+            ),
+        )
+        refit_parser.add_argument(
+            "--record-blocker",
+            dest="record_blocker",
+            default=None,
+            metavar="GATE",
+            help=(
+                "With --start, record that a disabled applicable gate remains off "
+                "because of a slop-mop tooling blocker."
+            ),
+        )
+        refit_parser.add_argument(
+            "--blocker-issue",
+            default=None,
+            metavar="ISSUE",
+            help="Bug/issue reference used with --record-blocker.",
+        )
+        refit_parser.add_argument(
+            "--blocker-reason",
+            default=None,
+            metavar="TEXT",
+            help="Short explanation used with --record-blocker.",
+        )
+        refit_parser.add_argument(
             "--json",
             dest="json_output",
             action="store_true",

@@ -95,6 +95,7 @@ class SecuritySubResult:
     sarif_findings: List[Finding] = field(
         default_factory=lambda: cast(List[Finding], [])
     )
+    warned: bool = False
 
 
 class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
@@ -780,8 +781,9 @@ class SecurityCheck(SecurityLocalCheck):
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]
+        warnings = [r for r in results if r.warned and r.passed]
 
-        if not failures:
+        if not failures and not warnings:
             tools = ", ".join(r.name for r in results)
             return self._create_result(
                 status=CheckStatus.PASSED,
@@ -789,18 +791,55 @@ class SecurityCheck(SecurityLocalCheck):
                 output=f"All security checks passed ({tools})",
             )
 
-        detail = "\n\n".join(f"[{f.name}]\n{f.findings}" for f in failures)
-        all_findings: List[Finding] = []
-        for f in failures:
-            if f.sarif_findings:
-                all_findings.extend(f.sarif_findings)
-            else:
-                all_findings.append(
-                    Finding(
-                        message=f"{f.name} found issues",
-                        level=FindingLevel.ERROR,
-                    )
-                )
+        if warnings and not failures:
+            return self._warnings_only_result(warnings, duration)
+
+        return self._failures_result(failures, warnings, duration)
+
+    def _warnings_only_result(
+        self,
+        warnings: List["SecuritySubResult"],
+        duration: float,
+    ) -> CheckResult:
+        """Build a WARNED result when no scanners failed outright."""
+        detail = "\n\n".join(f"[{w.name}]\n{w.findings}" for w in warnings)
+        warning_findings = self._collect_findings(
+            warnings, fallback_level=FindingLevel.WARNING
+        )
+        return self._create_result(
+            status=CheckStatus.WARNED,
+            duration=duration,
+            output=detail,
+            error=(
+                f"{len(warnings)} security scanner(s) reported " "non-blocking risk"
+            ),
+            fix_suggestion=(
+                "No patched versions are currently available for the "
+                "advisories above. Track upstream releases, reassess "
+                "risk periodically, and only use pip_audit_ignore_vulns "
+                "when you have documented acceptance criteria."
+            ),
+            findings=warning_findings,
+        )
+
+    def _failures_result(
+        self,
+        failures: List["SecuritySubResult"],
+        warnings: List["SecuritySubResult"],
+        duration: float,
+    ) -> CheckResult:
+        """Build a FAILED result, including any advisory warnings."""
+        detail_parts = [f"[{f.name}]\n{f.findings}" for f in failures]
+        all_findings = self._collect_findings(
+            failures, fallback_level=FindingLevel.ERROR
+        )
+        if warnings:
+            for w in warnings:
+                detail_parts.append(f"[{w.name} (advisory)]\n{w.findings}")
+            all_findings.extend(
+                self._collect_findings(warnings, fallback_level=FindingLevel.WARNING)
+            )
+        detail = "\n\n".join(detail_parts)
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
@@ -813,6 +852,101 @@ class SecurityCheck(SecurityLocalCheck):
             ),
             findings=all_findings,
         )
+
+    @staticmethod
+    def _collect_findings(
+        sub_results: List["SecuritySubResult"],
+        fallback_level: FindingLevel,
+    ) -> List[Finding]:
+        """Gather SARIF findings from sub-results with a fallback level."""
+        findings: List[Finding] = []
+        for r in sub_results:
+            if r.sarif_findings:
+                findings.extend(r.sarif_findings)
+            else:
+                findings.append(
+                    Finding(
+                        message=f"{r.name} found issues",
+                        level=fallback_level,
+                    )
+                )
+        return findings
+
+    @staticmethod
+    def _has_fix_versions(vulnerability: Dict[str, Any]) -> bool:
+        """Return True when pip-audit reports at least one fix version."""
+        fix_versions_obj = vulnerability.get("fix_versions", [])
+        if not isinstance(fix_versions_obj, list):
+            return False
+        fix_versions = cast(List[Any], fix_versions_obj)
+        for version in fix_versions:
+            if isinstance(version, str) and version.strip():
+                return True
+            if isinstance(version, (int, float)) and str(version).strip():
+                return True
+        return False
+
+    @staticmethod
+    def _format_fix_versions(vulnerability: Dict[str, Any]) -> str:
+        """Format fix versions defensively for pip-audit display output."""
+        raw_fix_versions_obj = vulnerability.get("fix_versions", ["no fix"])
+        if not isinstance(raw_fix_versions_obj, list):
+            return "no fix"
+        raw_fix_versions = cast(List[Any], raw_fix_versions_obj)
+
+        formatted: List[str] = []
+        for version in raw_fix_versions:
+            if isinstance(version, str):
+                trimmed = version.strip()
+                if trimmed:
+                    formatted.append(trimmed)
+            elif isinstance(version, (int, float)):
+                formatted.append(str(version))
+
+        return ", ".join(formatted) if formatted else "no fix"
+
+    @staticmethod
+    def _format_pip_audit_detail(dependencies: List[Dict[str, Any]]) -> str:
+        """Render a compact, human-readable summary of vulnerable deps."""
+        return "\n".join(
+            f"  {dependency.get('name', '?')} {dependency.get('version', '?')}: "
+            + ", ".join(
+                f"{vulnerability.get('id', '?')} "
+                f"({SecurityCheck._format_fix_versions(vulnerability)})"
+                for vulnerability in dependency.get("vulns", [])[:3]
+            )
+            for dependency in dependencies[:10]
+        )
+
+    def _pip_audit_remediable_result(
+        self,
+        remediable: List[Dict[str, Any]],
+        no_fix_versions: List[Dict[str, Any]],
+    ) -> "SecuritySubResult":
+        """Build a FAILED pip-audit result, appending no-fix advisory."""
+        detail = self._format_pip_audit_detail(remediable)
+        sarif: list[Finding] = [
+            Finding(
+                message=(
+                    f"{len(remediable)} vulnerable dependency/dependencies "
+                    "with available fix versions"
+                ),
+                level=FindingLevel.ERROR,
+            )
+        ]
+        if no_fix_versions:
+            no_fix_detail = self._format_pip_audit_detail(no_fix_versions)
+            detail += "\n\nNo fix versions available (advisory only):\n" + no_fix_detail
+            sarif.append(
+                Finding(
+                    message=(
+                        f"{len(no_fix_versions)} vulnerable "
+                        "dependency/dependencies with no published fix"
+                    ),
+                    level=FindingLevel.WARNING,
+                )
+            )
+        return SecuritySubResult("pip-audit", False, detail, sarif)
 
     def _run_pip_audit(self, project_root: str) -> SecuritySubResult:
         """Run pip-audit dependency vulnerability scan.
@@ -848,22 +982,42 @@ class SecurityCheck(SecurityLocalCheck):
                     "pip-audit", True, "No vulnerable dependencies"
                 )
 
-            detail = "\n".join(
-                f"  {d['name']} {d.get('version', '?')}: "
-                + ", ".join(
-                    f"{v.get('id', '?')} ({', '.join(map(str, v.get('fix_versions', ['no fix'])))})"
-                    for v in d.get("vulns", [])[:3]
+            remediable: List[Dict[str, Any]] = []
+            no_fix_versions: List[Dict[str, Any]] = []
+            for dependency in vulnerable:
+                vulnerabilities = cast(
+                    List[Dict[str, Any]], dependency.get("vulns", [])
                 )
-                for d in vulnerable[:10]
-            )
-            # pip-audit: no file anchor — one aggregate Finding
-            sarif = [
+                if any(
+                    self._has_fix_versions(vulnerability)
+                    for vulnerability in vulnerabilities
+                ):
+                    remediable.append(dependency)
+                else:
+                    no_fix_versions.append(dependency)
+
+            if remediable:
+                return self._pip_audit_remediable_result(remediable, no_fix_versions)
+
+            detail = self._format_pip_audit_detail(no_fix_versions)
+            sarif_warn: list[Finding] = [
                 Finding(
-                    message=f"{len(vulnerable)} vulnerable dependency/dependencies",
-                    level=FindingLevel.ERROR,
+                    message=(
+                        f"{len(no_fix_versions)} vulnerable dependency/dependencies "
+                        "with no published fix versions"
+                    ),
+                    level=FindingLevel.WARNING,
                 )
             ]
-            return SecuritySubResult("pip-audit", False, detail, sarif)
+            return SecuritySubResult(
+                "pip-audit",
+                True,
+                "No fix versions available for the vulnerable dependencies "
+                "below:\n"
+                f"{detail}",
+                warned=True,
+                sarif_findings=sarif_warn,
+            )
         except json.JSONDecodeError:
             if result.success:
                 return SecuritySubResult("pip-audit", True, "No vulnerabilities found")

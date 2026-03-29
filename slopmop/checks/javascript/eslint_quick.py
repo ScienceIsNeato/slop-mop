@@ -122,6 +122,7 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
         # Run ESLint in errors-only mode (fast path)
         cmd = [
             "npx",
+            "--yes",
             "eslint",
             "--ext",
             ".js",

@@ -120,6 +120,34 @@ def has_node_modules(project_root: str | Path) -> bool:
     return (Path(project_root) / "node_modules").is_dir()
 
 
+def is_deno_project(project_root: str | Path) -> bool:
+    """Return True when the project uses Deno as its JS/TS runtime.
+
+    Detection: ``deno.json`` or ``deno.jsonc`` at the project root.
+    """
+    root = Path(project_root)
+    return (root / "deno.json").exists() or (root / "deno.jsonc").exists()
+
+
+def discover_supabase_deno_test_glob(project_root: str | Path) -> Optional[str]:
+    """Return a strong-evidence Deno test glob for Supabase Edge Functions.
+
+    This is intentionally conservative. We only auto-configure hybrid JS/Deno
+    repos when the layout strongly suggests Supabase Edge Functions-style unit
+    tests under ``supabase/functions``. That avoids guessing at arbitrary Deno
+    workflows in generic monorepos.
+    """
+    functions_root = Path(project_root) / "supabase" / "functions"
+    if not functions_root.is_dir():
+        return None
+
+    if any(functions_root.rglob("*.unit.test.ts")):
+        return "supabase/functions/**/*.unit.test.ts"
+    if any(functions_root.rglob("*.test.ts")):
+        return "supabase/functions/**/*.test.ts"
+    return None
+
+
 def detect_js_package_manager(project_root: str | Path) -> str:
     """Return ``"pnpm"|"yarn"|"npm"`` based on lockfile presence."""
     root = Path(project_root)
@@ -472,23 +500,50 @@ class JavaScriptCheckMixin:
         """
         return self.has_package_json(project_root)
 
+    def is_deno_project(self, project_root: str) -> bool:
+        """Check if this is a Deno project (deno.json or deno.jsonc)."""
+        return is_deno_project(project_root)
+
+    def discover_supabase_deno_test_glob(self, project_root: str) -> Optional[str]:
+        """Return a strong-evidence Supabase Edge Functions Deno test glob."""
+        return discover_supabase_deno_test_glob(project_root)
+
     def has_node_modules(self, project_root: str) -> bool:
         """Check if node_modules exists."""
         return has_node_modules(project_root)
 
-    def has_javascript_test_files(self, project_root: str) -> bool:
-        """Return True when JS/TS test files are present."""
+    def has_javascript_test_files(
+        self,
+        project_root: str,
+        extra_excludes: set[str] | None = None,
+    ) -> bool:
+        """Return True when JS/TS test files are present.
+
+        Args:
+            project_root: Absolute path to the project.
+            extra_excludes: Additional directory paths (relative to
+                project_root) to skip during the walk.  Supports both
+                simple names (``"vendor"``) and slash-separated paths
+                (``"supabase/functions"``).
+        """
         root = Path(project_root)
+        exclude_dirs = _JS_SCAN_EXCLUDE_DIRS
+        if extra_excludes:
+            exclude_dirs = exclude_dirs | extra_excludes
+
         for dirpath, dirnames, filenames in os.walk(root):
             rel_dir = Path(dirpath).relative_to(root)
-            if set(rel_dir.parts) & _JS_SCAN_EXCLUDE_DIRS:
+            rel_posix = rel_dir.as_posix()
+
+            if set(rel_dir.parts) & exclude_dirs:
+                dirnames[:] = []
+                continue
+            if extra_excludes and rel_posix in extra_excludes:
                 dirnames[:] = []
                 continue
 
             dirnames[:] = [
-                d
-                for d in dirnames
-                if d not in _JS_SCAN_EXCLUDE_DIRS and not d.startswith(".")
+                d for d in dirnames if d not in exclude_dirs and not d.startswith(".")
             ]
             is_test_dir = bool(set(rel_dir.parts) & _JS_TEST_DIR_NAMES)
 

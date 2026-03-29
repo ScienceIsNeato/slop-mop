@@ -190,6 +190,12 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Tradeoffs: Sometimes a thread is stale, blocked on reviewer input, or attached to code that has changed shape since the comment landed.
 - Override When: Override only when you have explicitly resolved the thread state with evidence or you are waiting on human clarification.
 
+### `myopia:interactive-assumptions`
+
+- Rationale: Commands that assume a TTY work fine at a developer terminal and hang silently in CI, Docker builds, and headless agents.  The gap only shows up at the worst possible moment.
+- Tradeoffs: Some patterns (e.g. npx in a step that follows npm ci) work in practice because the package is already installed locally, but --yes is still the defensive default.
+- Override When: Suppress for directories where the dev environment is explicitly guaranteed or for intentional interactive scripts that are never run in CI. Add the directory to exclude_dirs in .sb_config.json.
+
 ### `myopia:just-this-once.py`
 
 - Rationale: If changed lines can land untested, overall coverage becomes a nice story the PR does not actually obey.

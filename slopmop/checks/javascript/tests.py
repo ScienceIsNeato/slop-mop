@@ -1,5 +1,6 @@
-"""JavaScript test execution check using Jest."""
+"""JavaScript test execution check — Jest or custom runner."""
 
+import shlex
 import time
 from typing import List
 
@@ -21,21 +22,35 @@ from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
+_DEFAULT_JEST_COMMAND = "npx --yes jest --ci --coverage"
+
 
 class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
-    """JavaScript test execution via Jest.
+    """JavaScript/TypeScript test execution.
 
-    Wraps Jest with --coverage. Installs
-    npm dependencies automatically if missing.
+    Runs the configured test command (default: Jest with coverage).
+    Installs npm dependencies automatically if missing.
 
     Level: swab
 
     Configuration:
-      test_command: "npm test" — command to run tests. Override
-          if your project uses a custom test script.
+      test_command: Command string parsed with ``shlex.split`` into
+          argv and executed without a shell.  Shell operators
+          (``&&``, ``|``, redirects) are not supported.
+          Default ``"npx --yes jest --ci --coverage"``.
+          Override when the project uses a custom test script
+          (e.g. ``"npm test"``).
+      exclude_dirs: Directories to exclude from test-file discovery.
+          Files inside these directories are invisible to the gate.
+          Default ``[]``.
+
+    Pure Deno projects (detected via deno.json/deno.jsonc without
+    package.json) are skipped automatically. Hybrid Node + Deno repos
+    can override the runner, and ``sm init`` auto-seeds a Supabase
+    Edge Functions workflow when the repo shape strongly suggests it.
 
     Common failures:
-      Test failures: Output shows FAIL lines. Run `npm test` for
+      Test failures: Output shows FAIL lines. Run ``npm test`` for
           full details.
       Timeout: Suite took > 5 minutes. Look for missing mocks
           or slow async operations.
@@ -54,11 +69,11 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
 
     @property
     def display_name(self) -> str:
-        return "🧪 Tests (Jest)"
+        return "🧪 Tests (JS/TS)"
 
     @property
     def gate_description(self) -> str:
-        return "🧪 Jest test execution"
+        return "🧪 JavaScript/TypeScript test execution"
 
     @property
     def category(self) -> GateCategory:
@@ -78,22 +93,72 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
             ConfigField(
                 name="test_command",
                 field_type="string",
-                default="npm test",
-                description="Command to run tests",
+                default=_DEFAULT_JEST_COMMAND,
+                description=(
+                    "Command string (parsed via shlex, no shell operators). "
+                    "Override for non-Jest setups (e.g. 'npm test')."
+                ),
+            ),
+            ConfigField(
+                name="exclude_dirs",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Directories to exclude from test-file discovery "
+                    "(e.g. ['supabase/functions'] for Deno Edge Functions)."
+                ),
             ),
         ]
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping — delegate to JavaScriptCheckMixin."""
+        if self.is_deno_project(project_root) and not self.has_package_json(
+            project_root
+        ):
+            return "Pure Deno project — use a Deno test gate instead"
         return JavaScriptCheckMixin.skip_reason(self, project_root)
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_javascript_project(project_root)
 
+    def _get_test_command(self) -> List[str]:
+        """Build the test command from config, falling back to Jest."""
+        configured = self.config.get("test_command", _DEFAULT_JEST_COMMAND)
+        return shlex.split(configured)
+
+    def init_config(self, project_root: str) -> dict[str, str]:
+        """Discover a strong-evidence Deno test workflow for hybrid repos."""
+        if not (
+            self.has_package_json(project_root) and self.is_deno_project(project_root)
+        ):
+            return {}
+        test_glob = self.discover_supabase_deno_test_glob(project_root)
+        if test_glob is None:
+            return {}
+        return {
+            "test_command": f"deno test --allow-all --no-check {test_glob}",
+        }
+
+    def _get_exclude_dirs(self) -> set[str]:
+        """Return the set of directory names to exclude from discovery."""
+        raw: list[str] = self.config.get("exclude_dirs") or []
+        if isinstance(raw, str):
+            raw = [raw]
+        return set(raw)
+
+    def _should_install_dependencies(self) -> bool:
+        """Install node deps when the test command is npm/npx based."""
+        cmd = self._get_test_command()
+        return bool(cmd) and cmd[0] in ("npm", "npx")
+
     def run(self, project_root: str) -> CheckResult:
-        """Run Jest tests."""
+        """Run test command."""
         start_time = time.time()
-        if not self.has_javascript_test_files(project_root):
+
+        extra_excludes = self._get_exclude_dirs()
+        if not self.has_javascript_test_files(
+            project_root, extra_excludes=extra_excludes
+        ):
             message = JS_NO_TESTS_FOUND_EXPECTED
             return self._create_result(
                 status=CheckStatus.FAILED,
@@ -104,8 +169,9 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )
 
-        # Install deps if needed
-        if not self.has_node_modules(project_root):
+        if self._should_install_dependencies() and not self.has_node_modules(
+            project_root
+        ):
             npm_cmd = self._get_npm_install_command(project_root)
             npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
             if not npm_result.success:
@@ -116,12 +182,8 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                     output=npm_result.output,
                 )
 
-        # Run Jest
-        result = self._run_command(
-            ["npx", "jest", "--coverage"],
-            cwd=project_root,
-            timeout=300,
-        )
+        test_cmd = self._get_test_command()
+        result = self._run_command(test_cmd, cwd=project_root, timeout=300)
 
         duration = time.time() - start_time
 
@@ -147,15 +209,10 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                     fix_suggestion=js_no_tests_fix_suggestion(self.verify_command),
                     findings=[Finding(message=message, level=FindingLevel.ERROR)],
                 )
-            # Jest's text reporter prefixes each failing suite with
-            # ``FAIL  <path>`` (two spaces).  Extract file paths for
-            # SARIF — file-level findings, no line numbers, since a
-            # failing test file is a file-level problem.
             findings: List[Finding] = []
             for line in result.output.split("\n"):
                 stripped = line.strip()
                 if stripped.startswith("FAIL "):
-                    # ``FAIL  js-tests/calc.test.js`` → second token
                     parts = stripped.split(None, 1)
                     if len(parts) == 2:
                         findings.append(

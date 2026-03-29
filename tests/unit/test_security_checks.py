@@ -22,6 +22,7 @@ class TestSecuritySubResult:
         assert result.name == "bandit"
         assert result.passed is True
         assert result.findings == "No issues found"
+        assert result.warned is False
 
     def test_create_failing_result(self):
         """Test creating a failing sub-result."""
@@ -732,6 +733,37 @@ class TestSecurityCheck:
         assert result.status == CheckStatus.FAILED
         assert "pip-audit" in result.output
 
+    def test_run_pip_audit_warned(self, tmp_path):
+        """Test run() warns when only non-remediable pip-audit vulns exist."""
+        (tmp_path / "app.py").write_text("print('hello')")
+        check = SecurityCheck({})
+
+        results = [
+            SecuritySubResult("bandit", True, "OK"),
+            SecuritySubResult("semgrep", True, "OK"),
+            SecuritySubResult("detect-secrets", True, "OK"),
+            SecuritySubResult(
+                "pip-audit",
+                True,
+                "No fix versions available",
+                warned=True,
+            ),
+        ]
+
+        with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
+            mock_executor = MagicMock()
+            mock_executor_class.return_value.__enter__.return_value = mock_executor
+            mock_futures = [MagicMock() for _ in results]
+            for future, res in zip(mock_futures, results):
+                future.result.return_value = res
+            mock_executor.submit.side_effect = mock_futures
+
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert "non-blocking risk" in result.error
+        assert "No fix versions available" in result.output
+
 
 class TestRunPipAudit:
     """Tests for _run_pip_audit method."""
@@ -780,6 +812,36 @@ class TestRunPipAudit:
         assert result.passed is False
         assert "requests" in result.findings
         assert "CVE-2023-1234" in result.findings
+
+    def test_pip_audit_with_no_fix_versions_warns(self, tmp_path):
+        """No-fix advisories should warn without blocking the gate."""
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.stdout = json.dumps(
+            {
+                "dependencies": [
+                    {
+                        "name": "pygments",
+                        "version": "2.19.2",
+                        "vulns": [
+                            {
+                                "id": "GHSA-5239-wwwm-4pmq",
+                                "fix_versions": [],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_pip_audit(str(tmp_path))
+
+        assert result.passed is True
+        assert result.warned is True
+        assert "No fix versions available" in result.findings
+        assert "GHSA-5239-wwwm-4pmq" in result.findings
 
     def test_pip_audit_empty_dependencies(self, tmp_path):
         """Test _run_pip_audit with no dependencies listed."""

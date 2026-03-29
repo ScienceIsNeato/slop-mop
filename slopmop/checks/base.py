@@ -148,12 +148,17 @@ class ToolContext(Enum):
     NODE — Tool is resolved via npm/npx from the project's node_modules.
            Requires ``package.json`` at project root.  Examples: eslint,
            jest, prettier.
+
+    DENO — Tool is resolved via the ``deno`` binary on PATH.  Requires
+           ``deno.json`` or ``deno.jsonc`` at project root.  Examples:
+           deno lint, deno fmt, deno test.
     """
 
     PURE = "pure"
     SM_TOOL = "sm_tool"
     PROJECT = "project"
     NODE = "node"
+    DENO = "deno"
 
 
 def find_tool(name: str, project_root: str) -> Optional[str]:

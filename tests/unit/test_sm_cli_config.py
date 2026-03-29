@@ -306,6 +306,42 @@ class TestCmdConfig:
         assert args.verb == "config"
         assert args.swab_on == "myopia:code-sprawl"
 
+    def test_config_set_parser(self):
+        """config --set flag parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(
+            [
+                "config",
+                "--set",
+                "overconfidence:coverage-gaps.js",
+                "coverage_format",
+                "deno",
+            ]
+        )
+        assert args.verb == "config"
+        assert args.set_field == [
+            "overconfidence:coverage-gaps.js",
+            "coverage_format",
+            "deno",
+        ]
+
+    def test_config_unset_parser(self):
+        """config --unset flag parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(
+            [
+                "config",
+                "--unset",
+                "overconfidence:coverage-gaps.js",
+                "coverage_format",
+            ]
+        )
+        assert args.verb == "config"
+        assert args.unset_field == [
+            "overconfidence:coverage-gaps.js",
+            "coverage_format",
+        ]
+
     def test_set_swabbing_time(self, tmp_path):
         """--swabbing-time updates config file."""
         (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
@@ -416,6 +452,84 @@ class TestCmdConfig:
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
         assert config["myopia"]["gates"]["dependency-risk.py"]["run_on"] == "swab"
+
+    def test_set_gate_field(self, tmp_path):
+        """--set updates a typed gate-specific field."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+            swab_off=None,
+            swab_on=None,
+            set_field=[
+                "overconfidence:coverage-gaps.js",
+                "coverage_format",
+                "deno",
+            ],
+            unset_field=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        gate = config["overconfidence"]["gates"]["coverage-gaps.js"]
+        assert gate["coverage_format"] == "deno"
+
+    def test_unset_gate_field(self, tmp_path):
+        """--unset removes a gate-specific field override."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "overconfidence": {
+                        "gates": {
+                            "coverage-gaps.js": {
+                                "coverage_format": "deno",
+                            }
+                        }
+                    },
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+            swab_off=None,
+            swab_on=None,
+            set_field=None,
+            unset_field=[
+                "overconfidence:coverage-gaps.js",
+                "coverage_format",
+            ],
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        gate = config["overconfidence"]["gates"]["coverage-gaps.js"]
+        assert "coverage_format" not in gate
 
     def test_set_current_pr_number(self, tmp_path):
         """--current-pr-number updates local .slopmop state."""

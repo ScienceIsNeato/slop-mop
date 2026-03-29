@@ -176,7 +176,7 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
                 tsconfig = default_tsconfig
 
         # Build the type check command
-        cmd: List[str] = ["npx", "tsc", "--noEmit", "-p", tsconfig]
+        cmd: List[str] = ["npx", "--yes", "tsc", "--noEmit", "-p", tsconfig]
 
         result = self._run_command(
             cmd,

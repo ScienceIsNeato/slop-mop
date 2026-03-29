@@ -134,7 +134,7 @@ jobs:
         run: |
           cd tools/find-duplicate-strings
           npm install
-          npx tsc
+          npx --yes tsc
 
       - name: Run Primary Gate (scour -> SARIF)
         id: scour

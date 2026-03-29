@@ -57,6 +57,16 @@ def generate_baseline_snapshot(project_root: str | Path) -> Tuple[Path, Path]:
         raise FileNotFoundError(
             "No persisted run artifact found. Run sm swab or sm scour first."
         )
+    return generate_baseline_snapshot_from_artifact(project_root, source)
+
+
+def generate_baseline_snapshot_from_artifact(
+    project_root: str | Path, source: str | Path
+) -> Tuple[Path, Path]:
+    """Capture a local baseline snapshot from an explicit artifact path."""
+    source = Path(source)
+    if not source.exists():
+        raise FileNotFoundError(f"Artifact not found: {source}")
 
     try:
         source_data = json.loads(source.read_text(encoding="utf-8"))

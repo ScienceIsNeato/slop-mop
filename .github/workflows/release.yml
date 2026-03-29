@@ -135,7 +135,7 @@ jobs:
         run: |
           cd tools/find-duplicate-strings
           npm install
-          npx tsc
+          npx --yes tsc
 
       - name: Run slop-mop on itself
         run: python -m slopmop.sm scour

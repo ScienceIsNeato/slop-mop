@@ -131,6 +131,11 @@ Tip: repeat `sm swab` runs are accelerated by selective per-gate caching. See
 
 `sm init` auto-detects Python, JavaScript/TypeScript, Dart/Flutter, Go, Rust, and C/C++ and writes a `.sb_config.json` with applicable gates enabled. Dart/Flutter projects get first-class `flutter analyze`, `flutter test`, `dart format`, coverage, bogus-test, and generated-artifact gates. For Go, Rust, and C/C++ projects it still scaffolds custom gates (e.g. `go test`, `cargo clippy`, `make`) where built-in support is intentionally thinner.
 
+Gate-owned init hooks can also seed repo-specific defaults when the evidence is
+strong. Example: hybrid Node + Deno repos with Supabase Edge Functions-style
+tests under `supabase/functions/` get Deno-backed JS test and coverage commands
+auto-populated instead of assuming Jest owns the whole repo.
+
 ### Baseline Snapshot Flow
 
 When you inherit a repo that is already dirty, slop-mop can track the current
@@ -160,14 +165,25 @@ sm refit --finish
 ```
 
 What this does:
-- `sm refit --start` verifies remediation preflight, runs a full `sm scour --no-auto-fix`, and persists a local plan under `.slopmop/refit/`.
+- `sm refit --start` now runs in stages:
+  1. doctor-backed preflight for environment/state blockers,
+  2. per-gate runnability probes for every applicable gate,
+  3. per-gate fidelity review where each gate must be explicitly approved, tuned and re-run, or disabled with a recorded tooling blocker,
+  4. the first trustworthy read-only `sm scour --no-auto-fix`, which becomes the source for both the refit plan and the baseline snapshot.
 - The plan is one gate per item, ordered by slop-mop's existing remediation priority rules.
 - `sm refit --iterate` reruns only the current gate, stops on the first blocker, and writes a protocol artifact describing the exact next action. If the plan has never been started, it fails and suggests `--start`. If already finished, it surfaces a helpful message.
 - `sm refit --finish` checks the current remediation plan against the scour results and transitions the repo from remediation to maintenance mode.
 - When the current item already has local remediation edits and the targeted gate passes without unexpected repo drift, `refit` owns the structured commit for that item.
 
-Current constraint:
-- The doctor preflight is intentionally stubbed in this first merged version of `refit`. The integration point is already present and will be replaced by the real `sm doctor` command in the next task.
+The fidelity review rail is explicit by design. For every applicable gate, the operator must do one of three things before a plan can be generated:
+- Approve the current config/output:
+  `sm refit --start --approve-gate <gate>`
+- Tune config or init-derived params, then rerun:
+  `sm refit --start`
+- Keep the gate disabled because slop-mop itself is blocked, and record the bug:
+  `sm refit --start --record-blocker <gate> --blocker-issue <issue> --blocker-reason <reason>`
+
+This makes `refit --start` idempotent. You can commit setup improvements, rerun `sm refit --start`, and let the staged precheck rail rebuild around the current repo state without undoing remediation commits you already made.
 
 Machine-readable mode:
 - `sm refit --start --json`
@@ -373,7 +389,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `overconfidence:type-blindness.js` | 🏗️ TypeScript type checking (tsc) | If the type checker cannot tell what something is in TypeScript, humans and agents are left guessing too. |
 | `overconfidence:type-blindness.py` | 🔬 pyright strict — second opinion on types | If the type checker cannot tell what something is in Python, humans and agents are left guessing too. |
 | `overconfidence:untested-code.dart` | 🧪 Flutter test execution across discovered packages | Passing compilation is not proof; if Dart code never executes under test, you are still guessing. |
-| `overconfidence:untested-code.js` | 🧪 Jest test execution | Passing compilation is not proof; if JavaScript code never executes under test, you are still guessing. |
+| `overconfidence:untested-code.js` | 🧪 JavaScript/TypeScript test execution | Passing compilation is not proof; if JavaScript code never executes under test, you are still guessing. |
 | `overconfidence:untested-code.py` | 🧪 Runs pytest — code must actually pass its tests | Passing compilation is not proof; if Python code never executes under test, you are still guessing. |
 
 ### 🟡 Deceptiveness
@@ -406,7 +422,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `laziness:repeated-code` | 📋 Code clone detection (jscpd) | Copy-pasted blocks diverge in slow motion until every bug fix becomes a scavenger hunt across near-identical code. |
 | `laziness:silenced-gates` | 🔇 Detects disabled gates when language tooling exists | A disabled gate is usually debt with a welcome mat on it. |
 | `laziness:sloppy-formatting.dart` | 🎨 Dart formatting via dart format --set-exit-if-changed | Formatting noise hides the real change and makes review slower than it needs to be. |
-| `laziness:sloppy-formatting.js` | 🎨 ESLint + Prettier (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
+| `laziness:sloppy-formatting.js` | 🎨 Lint + Format — ESLint/Prettier or deno lint/fmt (auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
 | `laziness:sloppy-formatting.py` | 🎨 autoflake, black, isort, flake8 (supports auto-fix 🔧) | Formatting noise hides the real change and makes review slower than it needs to be. |
 | `laziness:sloppy-frontend.js` | ⚡ Quick ESLint frontend check | Frontend lint issues have a habit of turning into visible bugs, state leaks, or accessibility damage. |
 
@@ -422,6 +438,7 @@ Gates aren't organized by language — they're organized by **the failure mode t
 | `myopia:code-sprawl` | 📏 File and function length limits | Once files and functions get too big, nobody can safely reason about them in one pass, including the model. |
 | `myopia:dependency-risk.py` | 🔒 Full security audit (code + pip-audit) | Code can pass tests and types and still be an own-goal from a security perspective. |
 | `myopia:ignored-feedback` | 💬 Checks for unresolved PR review threads | Unresolved review threads turn the PR loop into Groundhog Day and hide known concerns in plain sight. |
+| `myopia:interactive-assumptions` | 🙋 Catches commands that hang in CI/agents: npx without --yes, apt install without -y | Commands that assume a TTY work fine at a developer terminal and hang silently in CI, Docker builds, and headless agents.  The gap only shows up at the worst possible moment. |
 | `myopia:just-this-once.py` | 📈 Coverage on changed lines only (diff-cover) | If changed lines can land untested, overall coverage becomes a nice story the PR does not actually obey. |
 | `myopia:string-duplication.py` | 🔤 Duplicate string literal detection | Repeated literals hide shared rules and make the repo drift by typo instead of design. |
 | `myopia:vulnerability-blindness.py` | 🔐 bandit + semgrep + detect-secrets | Your code can be clean and still ship someone else's CVE to production. |
@@ -438,37 +455,38 @@ Reasoning: handle the changes most likely to reshape other work first. High-risk
 |---|------|----------|--------|------------|
 | 1 | `myopia:dependency-risk.py` | 10 | curated | unlikely |
 | 2 | `myopia:vulnerability-blindness.py` | 20 | curated | unlikely |
-| 3 | `laziness:repeated-code` | 30 | curated | very-likely |
-| 4 | `myopia:ambiguity-mines.py` | 40 | curated | very-likely |
-| 5 | `laziness:dead-code.py` | 50 | curated | very-likely |
-| 6 | `myopia:string-duplication.py` | 60 | curated | unlikely |
-| 7 | `deceptiveness:gate-dodging` | 70 | curated | likely |
-| 8 | `deceptiveness:bogus-tests.py` | 80 | curated | likely |
-| 9 | `deceptiveness:bogus-tests.js` | 90 | curated | likely |
-| 10 | `deceptiveness:bogus-tests.dart` | 100 | curated | likely |
-| 11 | `deceptiveness:hand-wavy-tests.js` | 110 | curated | likely |
-| 12 | `overconfidence:missing-annotations.py` | 120 | curated | unlikely |
-| 13 | `overconfidence:missing-annotations.dart` | 130 | curated | unlikely |
-| 14 | `overconfidence:type-blindness.py` | 140 | curated | unlikely |
-| 15 | `overconfidence:type-blindness.js` | 150 | curated | unlikely |
-| 16 | `myopia:code-sprawl` | 160 | curated | very-likely |
-| 17 | `laziness:complexity-creep.py` | 170 | curated | very-likely |
-| 18 | `overconfidence:untested-code.py` | 180 | curated | unlikely |
-| 19 | `overconfidence:untested-code.js` | 190 | curated | unlikely |
-| 20 | `overconfidence:untested-code.dart` | 200 | curated | unlikely |
-| 21 | `overconfidence:coverage-gaps.py` | 210 | curated | unlikely |
-| 22 | `overconfidence:coverage-gaps.js` | 220 | curated | unlikely |
-| 23 | `overconfidence:coverage-gaps.dart` | 230 | curated | unlikely |
-| 24 | `myopia:just-this-once.py` | 240 | curated | unlikely |
-| 25 | `laziness:silenced-gates` | 250 | curated | likely |
-| 26 | `myopia:ignored-feedback` | 260 | curated | unlikely |
-| 27 | `laziness:sloppy-frontend.js` | 270 | curated | unlikely |
-| 28 | `laziness:broken-templates.py` | 280 | curated | unlikely |
-| 29 | `laziness:sloppy-formatting.py` | 290 | curated | very-unlikely |
-| 30 | `laziness:sloppy-formatting.js` | 300 | curated | very-unlikely |
-| 31 | `laziness:sloppy-formatting.dart` | 310 | curated | unlikely |
-| 32 | `laziness:generated-artifacts.dart` | 320 | curated | very-unlikely |
-| 33 | `deceptiveness:debugger-artifacts` | 330 | curated | very-unlikely |
+| 3 | `myopia:interactive-assumptions` | 30 | curated | very-unlikely |
+| 4 | `laziness:repeated-code` | 40 | curated | very-likely |
+| 5 | `myopia:ambiguity-mines.py` | 50 | curated | very-likely |
+| 6 | `laziness:dead-code.py` | 60 | curated | very-likely |
+| 7 | `myopia:string-duplication.py` | 70 | curated | unlikely |
+| 8 | `deceptiveness:gate-dodging` | 80 | curated | likely |
+| 9 | `deceptiveness:bogus-tests.py` | 90 | curated | likely |
+| 10 | `deceptiveness:bogus-tests.js` | 100 | curated | likely |
+| 11 | `deceptiveness:bogus-tests.dart` | 110 | curated | likely |
+| 12 | `deceptiveness:hand-wavy-tests.js` | 120 | curated | likely |
+| 13 | `overconfidence:missing-annotations.py` | 130 | curated | unlikely |
+| 14 | `overconfidence:missing-annotations.dart` | 140 | curated | unlikely |
+| 15 | `overconfidence:type-blindness.py` | 150 | curated | unlikely |
+| 16 | `overconfidence:type-blindness.js` | 160 | curated | unlikely |
+| 17 | `myopia:code-sprawl` | 170 | curated | very-likely |
+| 18 | `laziness:complexity-creep.py` | 180 | curated | very-likely |
+| 19 | `overconfidence:untested-code.py` | 190 | curated | unlikely |
+| 20 | `overconfidence:untested-code.js` | 200 | curated | unlikely |
+| 21 | `overconfidence:untested-code.dart` | 210 | curated | unlikely |
+| 22 | `overconfidence:coverage-gaps.py` | 220 | curated | unlikely |
+| 23 | `overconfidence:coverage-gaps.js` | 230 | curated | unlikely |
+| 24 | `overconfidence:coverage-gaps.dart` | 240 | curated | unlikely |
+| 25 | `myopia:just-this-once.py` | 250 | curated | unlikely |
+| 26 | `laziness:silenced-gates` | 260 | curated | likely |
+| 27 | `myopia:ignored-feedback` | 270 | curated | unlikely |
+| 28 | `laziness:sloppy-frontend.js` | 280 | curated | unlikely |
+| 29 | `laziness:broken-templates.py` | 290 | curated | unlikely |
+| 30 | `laziness:sloppy-formatting.py` | 300 | curated | very-unlikely |
+| 31 | `laziness:sloppy-formatting.js` | 310 | curated | very-unlikely |
+| 32 | `laziness:sloppy-formatting.dart` | 320 | curated | unlikely |
+| 33 | `laziness:generated-artifacts.dart` | 330 | curated | very-unlikely |
+| 34 | `deceptiveness:debugger-artifacts` | 340 | curated | very-unlikely |
 
 <!-- END GATE TABLES -->
 
@@ -629,18 +647,62 @@ sm config --enable <gate>     # enable a disabled gate
 sm config --disable <gate>    # disable a gate
 sm config --swab-off <gate>   # keep gate out of swab, but in scour
 sm config --swab-on <gate>    # run gate in both swab and scour
+sm config --set <gate> <field> <value>   # set a gate-specific field
+sm config --unset <gate> <field>         # remove a gate-specific override
 sm config --json <file>       # bulk update from JSON
 ```
 
-### Include / Exclude Directories
+### Editing Gate Fields
 
 ```bash
-sm config --exclude-dir myopia:generated       # skip generated code
-sm config --include-dir overconfidence:src      # only check src/
+sm config --set overconfidence:coverage-gaps.js threshold 70
+sm config --set overconfidence:coverage-gaps.js coverage_format deno
+sm config --set overconfidence:coverage-gaps.js coverage_report_path coverage/raw
+sm config --unset overconfidence:coverage-gaps.js coverage_command
 ```
 
-- `include_dirs`: whitelist — only these dirs are scanned
-- `exclude_dirs`: blacklist — always skipped, takes precedence
+Type coercion is schema-aware:
+- integers parse as integers
+- booleans accept `true/false`, `yes/no`, `1/0`
+- string arrays accept either comma-separated values or a JSON array string
+
+Use `--set/--unset` for one-off edits after init. Use `--json` when you want to
+apply a larger prepared config patch in one shot.
+
+### Hybrid Node + Deno Repos
+
+Some repos mix Node tooling at the root with Deno-owned code in a subtree. In
+that case the *policy* is still singular - "is the JS/TS code tested and
+covered?" - but the runner and artifact format may differ by repo shape.
+
+slop-mop handles that as one gate with multiple adapters rather than separate
+"Jest coverage" and "Deno coverage" gates:
+- the gate name and remediation signal stay stable
+- init/config only swap the runner + artifact adapter
+- PR feedback and local workflows still talk about one coverage policy
+
+For strong-evidence Supabase Edge Functions hybrids, `sm init` auto-seeds:
+
+```json
+{
+  "overconfidence": {
+    "gates": {
+      "untested-code.js": {
+        "test_command": "deno test --allow-all --no-check supabase/functions/**/*.unit.test.ts"
+      },
+      "coverage-gaps.js": {
+        "coverage_command": "deno test --allow-all --no-check --coverage=coverage/raw supabase/functions/**/*.unit.test.ts",
+        "coverage_report_path": "coverage/raw",
+        "coverage_format": "deno"
+      }
+    }
+  }
+}
+```
+
+`coverage_format: "deno"` tells the gate to run `deno coverage --lcov` against
+the raw coverage directory and evaluate the resulting lcov data with the same
+coverage policy used for Jest-based repos.
 
 ### .sb_config.json
 

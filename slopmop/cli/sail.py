@@ -113,6 +113,32 @@ def _print_step(icon: str, heading: str, detail: str = "") -> None:
     print()
 
 
+def _swab_args(args: argparse.Namespace) -> argparse.Namespace:
+    """Build a namespace with every attribute ``cmd_swab`` expects.
+
+    Sail's own parser only defines a handful of flags.  When delegating
+    to ``cmd_swab`` we must provide the full set that
+    ``_run_validation`` reads, otherwise it crashes with
+    ``AttributeError: Namespace object has no attribute …``.
+    """
+    swab = argparse.Namespace(**vars(args))
+    swab.quality_gates = getattr(args, "quality_gates", None)
+    swab.no_auto_fix = getattr(args, "no_auto_fix", False)
+    swab.no_fail_fast = getattr(args, "no_fail_fast", False)
+    swab.no_cache = getattr(args, "no_cache", False)
+    swab.sarif = getattr(args, "sarif", False)
+    swab.json_output = getattr(args, "json_output", False)
+    swab.json_file = getattr(args, "json_file", None)
+    swab.output_file = getattr(args, "output_file", None)
+    swab.verbose = getattr(args, "verbose", False)
+    swab.quiet = getattr(args, "quiet", False)
+    swab.static = getattr(args, "static", False)
+    swab.swabbing_time = getattr(args, "swabbing_time", None)
+    swab.clear_history = getattr(args, "clear_history", False)
+    swab.ignore_baseline_failures = getattr(args, "ignore_baseline_failures", False)
+    return swab
+
+
 # ── State → action dispatch ─────────────────────────────────────
 
 
@@ -121,7 +147,7 @@ def _sail_idle(args: argparse.Namespace, project_root: Path) -> int:
     _print_step("🧹", "Running swab", "No pending state — checking quality gates.")
     from slopmop.cli import cmd_swab
 
-    return cmd_swab(args)
+    return cmd_swab(_swab_args(args))
 
 
 def _sail_swab_failing(args: argparse.Namespace, project_root: Path) -> int:
@@ -129,7 +155,7 @@ def _sail_swab_failing(args: argparse.Namespace, project_root: Path) -> int:
     _print_step("🧹", "Re-running swab", "Checking whether fixes cleared the failures.")
     from slopmop.cli import cmd_swab
 
-    return cmd_swab(args)
+    return cmd_swab(_swab_args(args))
 
 
 def _sail_swab_clean(args: argparse.Namespace, project_root: Path) -> int:
@@ -175,7 +201,7 @@ def _sail_scour_failing(args: argparse.Namespace, project_root: Path) -> int:
     )
     from slopmop.cli import cmd_swab
 
-    return cmd_swab(args)
+    return cmd_swab(_swab_args(args))
 
 
 def _sail_scour_clean(args: argparse.Namespace, project_root: Path) -> int:
@@ -285,6 +311,6 @@ def cmd_sail(args: argparse.Namespace) -> int:
         print(f"⛵ sail: unknown state {state.value!r} — falling back to swab.")
         from slopmop.cli import cmd_swab
 
-        return cmd_swab(args)
+        return cmd_swab(_swab_args(args))
 
     return handler(args, project_root)
