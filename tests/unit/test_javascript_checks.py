@@ -566,6 +566,41 @@ class TestJavaScriptLintFormatCheck:
             "could not be parsed" in f.message for f in result.findings
         ), "Expected 'could not be parsed' in finding message"
 
+    def test_run_deno_lint_line_numbers_offset_to_1indexed(self, tmp_path):
+        """deno lint --json emits 0-indexed lines; Finding.line must be 1-indexed."""
+        (tmp_path / "deno.json").write_text("{}")
+        check = JavaScriptLintFormatCheck({})
+
+        lint_result = MagicMock()
+        lint_result.success = False
+        lint_result.output = "error"
+        lint_result.stdout = json.dumps(
+            {
+                "diagnostics": [
+                    {
+                        "message": "no-console",
+                        "code": "no-console",
+                        "filename": "main.ts",
+                        "range": {"start": {"line": 0}},  # 0-indexed
+                    }
+                ]
+            }
+        )
+
+        fmt_result = MagicMock()
+        fmt_result.success = True
+        fmt_result.output = ""
+
+        with patch.object(check, "_run_command", side_effect=[lint_result, fmt_result]):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert result.findings, "Expected at least one Finding"
+        # 0-indexed 0 should become 1-indexed 1
+        assert (
+            result.findings[0].line == 1
+        ), f"Expected line=1 (1-indexed), got {result.findings[0].line}"
+
     def test_auto_fix_deno_project(self, tmp_path):
         """Deno project auto_fix() calls deno lint --fix + deno fmt."""
         (tmp_path / "deno.json").write_text("{}")

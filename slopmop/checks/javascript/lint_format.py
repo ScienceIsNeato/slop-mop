@@ -330,12 +330,16 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 try:
                     data = json.loads(stdout)
                     for diag in data.get("diagnostics", []):
+                        # deno lint --json uses 0-indexed line numbers
+                        # (LSP convention); Finding.line is 1-indexed.
+                        raw_line = diag.get("range", {}).get("start", {}).get("line")
+                        line = (raw_line + 1) if raw_line is not None else None
                         findings.append(
                             Finding(
                                 message=diag.get("message", ""),
                                 level=FindingLevel.ERROR,
                                 file=diag.get("filename"),
-                                line=diag.get("range", {}).get("start", {}).get("line"),
+                                line=line,
                                 rule_id=diag.get("code"),
                             )
                         )
