@@ -147,8 +147,9 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
         return set(raw)
 
     def _should_install_dependencies(self) -> bool:
-        """Only auto-install node deps for the default Jest workflow."""
-        return "test_command" not in self.config
+        """Install node deps when the test command is npm/npx based."""
+        cmd = self._get_test_command()
+        return bool(cmd) and cmd[0] in ("npm", "npx")
 
     def run(self, project_root: str) -> CheckResult:
         """Run test command."""

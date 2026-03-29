@@ -243,8 +243,9 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
         return str(value).strip().lower()
 
     def _should_install_dependencies(self) -> bool:
-        """Only auto-install node deps for the default Jest workflow."""
-        return "coverage_command" not in self.config
+        """Install node deps when the coverage command is npm/npx based."""
+        cmd = self._get_coverage_command()
+        return bool(cmd) and cmd[0] in ("npm", "npx")
 
     def _no_tests_result(
         self, message: str, duration: float, output: Optional[str] = None
