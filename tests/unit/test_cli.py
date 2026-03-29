@@ -300,6 +300,40 @@ class TestCmdInitNonInteractiveDetection:
         gate = config["overconfidence"]["gates"]["type-blindness.js"]
         assert gate["tsconfig"] == "tsconfig.ci.json"
 
+    def test_cmd_init_applies_supabase_deno_js_gate_config(self, tmp_path):
+        """sm init should persist strong-evidence hybrid Deno JS defaults."""
+        import json
+        from unittest.mock import patch
+
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "deno.json").write_text("{}")
+        deno_test = (
+            tmp_path / "supabase" / "functions" / "teams" / "validation.unit.test.ts"
+        )
+        deno_test.parent.mkdir(parents=True)
+        deno_test.write_text("Deno.test('ok', () => {})")
+        args = self._make_args(tmp_path, non_interactive=True)
+
+        with patch("slopmop.cli.status.run_status", return_value=0):
+            from slopmop.cli.init import cmd_init
+
+            result = cmd_init(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        tests_gate = config["overconfidence"]["gates"]["untested-code.js"]
+        coverage_gate = config["overconfidence"]["gates"]["coverage-gaps.js"]
+        assert (
+            tests_gate["test_command"] == "deno test --allow-all --no-check "
+            "supabase/functions/**/*.unit.test.ts"
+        )
+        assert (
+            coverage_gate["coverage_command"] == "deno test --allow-all --no-check "
+            "--coverage=coverage/raw supabase/functions/**/*.unit.test.ts"
+        )
+        assert coverage_gate["coverage_report_path"] == "coverage/raw"
+        assert coverage_gate["coverage_format"] == "deno"
+
 
 class TestPrintNextSteps:
     """Tests for _print_next_steps output."""

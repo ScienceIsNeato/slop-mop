@@ -412,6 +412,20 @@ def _add_config_parser(
         help="Make a gate run during both swab and scour.",
     )
     config_parser.add_argument(
+        "--set",
+        dest="set_field",
+        nargs=3,
+        metavar=("GATE", "FIELD", "VALUE"),
+        help="Set a gate-specific config field to a new value.",
+    )
+    config_parser.add_argument(
+        "--unset",
+        dest="unset_field",
+        nargs=2,
+        metavar=("GATE", "FIELD"),
+        help="Remove a gate-specific config field override.",
+    )
+    config_parser.add_argument(
         "--current-pr-number",
         type=int,
         metavar="PR",

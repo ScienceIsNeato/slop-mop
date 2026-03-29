@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
+from slopmop.checks.mixins import discover_supabase_deno_test_glob
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
 # Used during `sm init` to auto-disable checks whose tools aren't available.
@@ -455,7 +456,7 @@ def _recommend_gates(detected: Dict[str, Any]) -> list[str]:
         recommended.extend(
             ["laziness:sloppy-formatting.js", "overconfidence:untested-code.js"]
         )
-        if detected["has_jest"]:
+        if detected["has_jest"] or detected.get("has_supabase_deno_tests"):
             recommended.append("overconfidence:coverage-gaps.js")
         if detected["has_typescript"]:
             recommended.append("overconfidence:type-blindness.js")
@@ -580,6 +581,7 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
     - has_tests_dir: bool
     - has_pytest: bool
     - has_jest: bool
+    - has_supabase_deno_tests: bool
     - test_dirs: list of test directory paths
     - recommended_gates: list of str
     - available_tools: list of str
@@ -599,6 +601,8 @@ def detect_project_type(project_root: Path) -> Dict[str, Any]:
         "has_dart": _detect_dart(project_root, detected_languages),
         "has_pytest": _detect_pytest(project_root),
         "has_jest": _detect_jest(project_root),
+        "has_supabase_deno_tests": discover_supabase_deno_test_glob(project_root)
+        is not None,
         "test_dirs": _detect_test_dirs(project_root),
         "package_manager": _detect_package_manager(project_root),
         "language_detector": "scc" if detected_languages is not None else "manifest",

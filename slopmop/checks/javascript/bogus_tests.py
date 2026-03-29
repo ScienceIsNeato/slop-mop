@@ -15,7 +15,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List, Optional, Pattern, Tuple
+from typing import Any, Iterator, List, Optional, Pattern, Tuple, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -130,6 +130,8 @@ ALTERNATIVE_ASSERTIONS: List[Pattern[str]] = [
     re.compile(r"assert[\.\(]"),
     # Deno std assertions (assertEquals, assertThrows, assertRejects, etc.)
     re.compile(r"\bassert(?:[A-Z]\w*)\s*\("),
+    # Helper functions named expect*() — common DRY pattern wrapping assertions
+    re.compile(r"\bexpect[A-Z]\w*\s*\("),
     # Node.js test runner assertions (node:assert)
     re.compile(r"\bdeepEqual\s*\("),
     re.compile(r"\bstrictEqual\s*\("),
@@ -250,7 +252,9 @@ def _check_tautology(body: str) -> Optional[str]:
     return None
 
 
-def _has_assertions(body: str) -> bool:
+def _has_assertions(
+    body: str, extra_patterns: Optional[List[Pattern[str]]] = None
+) -> bool:
     """Check if body has any assertion calls."""
     stripped = _strip_comments(body)
     if EXPECT_PATTERN.search(stripped):
@@ -258,10 +262,18 @@ def _has_assertions(body: str) -> bool:
     for pattern in ALTERNATIVE_ASSERTIONS:
         if pattern.search(stripped):
             return True
+    if extra_patterns:
+        for pattern in extra_patterns:
+            if pattern.search(stripped):
+                return True
     return False
 
 
-def _analyze_file(filepath: Path, project_root: str) -> List[BogusTestFinding]:
+def _analyze_file(
+    filepath: Path,
+    project_root: str,
+    extra_assert_patterns: Optional[List[Pattern[str]]] = None,
+) -> List[BogusTestFinding]:
     """Analyze a single test file for bogus patterns."""
     findings: List[BogusTestFinding] = []
     rel_path = str(filepath.relative_to(project_root))
@@ -310,7 +322,7 @@ def _analyze_file(filepath: Path, project_root: str) -> List[BogusTestFinding]:
                 continue
 
             # Check for no assertions
-            if not _has_assertions(body):
+            if not _has_assertions(body, extra_assert_patterns):
                 findings.append(
                     BogusTestFinding(
                         file=rel_path,
@@ -339,6 +351,10 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
     Configuration:
       max_allowed: 0 — Maximum bogus tests before failure (default: 0)
       exclude_dirs: [] — Additional directories to skip
+      additional_assert_functions: [] — Custom assertion helper names
+          to recognise.  Functions matching ``expect*(...)`` or
+          ``assert*(...)`` are detected automatically; use this field
+          for helpers with non-standard names.
 
     Common failures:
       Empty test body: The test function has no code. Either add real
@@ -346,7 +362,8 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
       Tautological assertion: The test asserts a literal value equals
           itself. Replace with a real value from your code.
       No assertions: The test runs code but never checks results. Add
-          expect() calls to verify behavior.
+          expect() calls to verify behavior, or list your custom
+          assertion helper in ``additional_assert_functions``.
 
     Re-check:
       sm swab -g deceptiveness:bogus-tests.js --verbose
@@ -396,6 +413,17 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 description="Additional directories to exclude from scanning",
                 permissiveness="fewer_is_stricter",
             ),
+            ConfigField(
+                name="additional_assert_functions",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Custom assertion function names to recognize "
+                    '(e.g. ["customAssert", "expectSaga"]). '
+                    "Functions matching expect*() or assert*() are "
+                    "already recognized automatically."
+                ),
+            ),
         ]
 
     def skip_reason(self, project_root: str) -> str:
@@ -414,19 +442,36 @@ class JavaScriptBogusTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 return True
         return False
 
+    def _build_extra_assert_patterns(self) -> List[Pattern[str]]:
+        """Compile additional_assert_functions config into regex patterns."""
+        names_any = self.config.get("additional_assert_functions", [])
+        if isinstance(names_any, str):
+            names: List[str] = [names_any]
+        elif isinstance(names_any, list):
+            names = []
+            for candidate in cast(List[Any], names_any):
+                if isinstance(candidate, str) and candidate:
+                    names.append(candidate)
+        else:
+            names = []
+        return [re.compile(rf"\b{re.escape(name)}\s*\(") for name in names]
+
     def run(self, project_root: str) -> CheckResult:
         """Scan test files for bogus patterns."""
         start_time = time.time()
 
         max_allowed = self.config.get("max_allowed", 0)
         exclude_dirs = self.config.get("exclude_dirs", [])
+        extra_patterns = self._build_extra_assert_patterns()
 
         findings: List[BogusTestFinding] = []
         files_scanned = 0
 
         for filepath in _find_test_files(project_root, exclude_dirs):
             files_scanned += 1
-            file_findings = _analyze_file(filepath, project_root)
+            file_findings = _analyze_file(
+                filepath, project_root, extra_patterns or None
+            )
             findings.extend(file_findings)
 
         duration = time.time() - start_time

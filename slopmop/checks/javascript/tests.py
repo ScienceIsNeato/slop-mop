@@ -44,8 +44,10 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
           Files inside these directories are invisible to the gate.
           Default ``[]``.
 
-    Deno projects (detected via deno.json/deno.jsonc) are skipped
-    automatically — use a dedicated Deno test gate instead.
+    Pure Deno projects (detected via deno.json/deno.jsonc without
+    package.json) are skipped automatically. Hybrid Node + Deno repos
+    can override the runner, and ``sm init`` auto-seeds a Supabase
+    Edge Functions workflow when the repo shape strongly suggests it.
 
     Common failures:
       Test failures: Output shows FAIL lines. Run ``npm test`` for
@@ -124,12 +126,29 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
         configured = self.config.get("test_command", _DEFAULT_JEST_COMMAND)
         return shlex.split(configured)
 
+    def init_config(self, project_root: str) -> dict[str, str]:
+        """Discover a strong-evidence Deno test workflow for hybrid repos."""
+        if not (
+            self.has_package_json(project_root) and self.is_deno_project(project_root)
+        ):
+            return {}
+        test_glob = self.discover_supabase_deno_test_glob(project_root)
+        if test_glob is None:
+            return {}
+        return {
+            "test_command": f"deno test --allow-all --no-check {test_glob}",
+        }
+
     def _get_exclude_dirs(self) -> set[str]:
         """Return the set of directory names to exclude from discovery."""
         raw: list[str] = self.config.get("exclude_dirs") or []
         if isinstance(raw, str):
             raw = [raw]
         return set(raw)
+
+    def _should_install_dependencies(self) -> bool:
+        """Only auto-install node deps for the default Jest workflow."""
+        return "test_command" not in self.config
 
     def run(self, project_root: str) -> CheckResult:
         """Run test command."""
@@ -149,7 +168,9 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )
 
-        if not self.has_node_modules(project_root):
+        if self._should_install_dependencies() and not self.has_node_modules(
+            project_root
+        ):
             npm_cmd = self._get_npm_install_command(project_root)
             npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
             if not npm_result.success:

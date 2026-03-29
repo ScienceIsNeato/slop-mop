@@ -22,7 +22,6 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 
-
 # ── Substitutions config ─────────────────────────────────────────────────────
 # Each entry is (pattern, replacement, is_regex).
 # Both sides of every changed hunk are normalised with all substitutions,
@@ -210,7 +209,7 @@ def main() -> None:
             subprocess.run(["open", args.output])
             print(f"Wrote {len(d2h.stdout):,} bytes to {args.output}", file=sys.stderr)
         else:
-            import tempfile, os
+            import tempfile
             with tempfile.NamedTemporaryFile(
                 suffix=".html", delete=False, mode="w", prefix="semantic-diff-"
             ) as tmp:

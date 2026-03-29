@@ -129,6 +129,25 @@ def is_deno_project(project_root: str | Path) -> bool:
     return (root / "deno.json").exists() or (root / "deno.jsonc").exists()
 
 
+def discover_supabase_deno_test_glob(project_root: str | Path) -> Optional[str]:
+    """Return a strong-evidence Deno test glob for Supabase Edge Functions.
+
+    This is intentionally conservative. We only auto-configure hybrid JS/Deno
+    repos when the layout strongly suggests Supabase Edge Functions-style unit
+    tests under ``supabase/functions``. That avoids guessing at arbitrary Deno
+    workflows in generic monorepos.
+    """
+    functions_root = Path(project_root) / "supabase" / "functions"
+    if not functions_root.is_dir():
+        return None
+
+    if any(functions_root.rglob("*.unit.test.ts")):
+        return "supabase/functions/**/*.unit.test.ts"
+    if any(functions_root.rglob("*.test.ts")):
+        return "supabase/functions/**/*.test.ts"
+    return None
+
+
 def detect_js_package_manager(project_root: str | Path) -> str:
     """Return ``"pnpm"|"yarn"|"npm"`` based on lockfile presence."""
     root = Path(project_root)
@@ -484,6 +503,10 @@ class JavaScriptCheckMixin:
     def is_deno_project(self, project_root: str) -> bool:
         """Check if this is a Deno project (deno.json or deno.jsonc)."""
         return is_deno_project(project_root)
+
+    def discover_supabase_deno_test_glob(self, project_root: str) -> Optional[str]:
+        """Return a strong-evidence Supabase Edge Functions Deno test glob."""
+        return discover_supabase_deno_test_glob(project_root)
 
     def has_node_modules(self, project_root: str) -> bool:
         """Check if node_modules exists."""

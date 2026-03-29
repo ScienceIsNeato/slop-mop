@@ -15,6 +15,8 @@ from slopmop.core.config import (
 from slopmop.core.config import set_current_pr_number as set_current_pr_selection
 from slopmop.core.registry import get_registry
 
+_UNKNOWN_GATE_MSG = "❌ Unknown gate: {gate_name}"
+
 
 def _as_dict(value: Any) -> dict[str, Any] | None:
     if isinstance(value, dict):
@@ -105,6 +107,117 @@ def _gate_cfg_dict(cfg: dict[str, Any], full_name: str) -> dict[str, Any] | None
         gate_cfg = {}
         gates_cfg[gate] = gate_cfg
     return gate_cfg
+
+
+def _gate_field_definition(
+    config: dict[str, Any], full_name: str, field_name: str
+) -> Any:
+    """Return the ConfigField definition for a gate field, if it exists."""
+    registry = get_registry()
+    check = registry.get_check(full_name, config)
+    if check is None:
+        return None
+    for field in check.get_full_config_schema():
+        if field.name == field_name:
+            return field
+    return None
+
+
+def _parse_field_value(field: Any, raw_value: str) -> Any:
+    """Parse a CLI string into the field's configured type."""
+    field_type = getattr(field, "field_type", "string")
+    if field_type == "integer":
+        return int(raw_value)
+    if field_type == "boolean":
+        normalized = raw_value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+        raise ValueError("expected boolean true/false")
+    if field_type == "string[]":
+        value = raw_value.strip()
+        if value.startswith("["):
+            parsed: list[Any] = json.loads(value)
+            if not isinstance(parsed, list) or not all(
+                isinstance(item, str) for item in parsed
+            ):
+                raise ValueError("expected JSON array of strings")
+            return parsed
+        if not value:
+            return []
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return raw_value
+
+
+def _set_gate_field(
+    config_file: Path,
+    config: dict[str, Any],
+    gate_name: str,
+    field_name: str,
+    raw_value: str,
+) -> int:
+    """Set a gate-specific config field from the CLI."""
+    if field_name == "enabled":
+        print("❌ Use --enable/--disable for the enabled field")
+        return 1
+    if field_name == "run_on":
+        print("❌ Use --swab-on/--swab-off for the run_on field")
+        return 1
+
+    field = _gate_field_definition(config, gate_name, field_name)
+    if field is None:
+        print(f"❌ Unknown config field for {gate_name}: {field_name}")
+        return 1
+
+    try:
+        parsed_value = _parse_field_value(field, raw_value)
+    except (ValueError, json.JSONDecodeError) as exc:
+        print(f"❌ Invalid value for {gate_name}.{field_name}: {exc}")
+        return 1
+
+    gate_cfg = _gate_cfg_dict(config, gate_name)
+    if gate_cfg is None:
+        print(_UNKNOWN_GATE_MSG.format(gate_name=gate_name))
+        return 1
+    gate_cfg[field_name] = parsed_value
+    config_file.write_text(json.dumps(config, indent=2))
+    print(f"✅ Set {gate_name}.{field_name} = {parsed_value!r}")
+    return 0
+
+
+def _unset_gate_field(
+    config_file: Path,
+    config: dict[str, Any],
+    gate_name: str,
+    field_name: str,
+) -> int:
+    """Remove a gate-specific config field override from the CLI."""
+    if field_name == "enabled":
+        print("❌ Use --enable/--disable for the enabled field")
+        return 1
+    if field_name == "run_on":
+        print("❌ Use --swab-on/--swab-off for the run_on field")
+        return 1
+
+    field = _gate_field_definition(config, gate_name, field_name)
+    if field is None:
+        print(f"❌ Unknown config field for {gate_name}: {field_name}")
+        return 1
+
+    gate_cfg = _gate_cfg_dict(config, gate_name)
+    if gate_cfg is None:
+        print(_UNKNOWN_GATE_MSG.format(gate_name=gate_name))
+        return 1
+    if field_name in gate_cfg:
+        gate_cfg.pop(field_name, None)
+        config_file.write_text(json.dumps(config, indent=2))
+        print(f"✅ Unset {gate_name}.{field_name}")
+    else:
+        print(
+            f"ℹ️  {gate_name}.{field_name} is already using its default/discovered value"
+        )
+    return 0
 
 
 def _set_gate_run_on(cfg: dict[str, Any], full_name: str, level: GateLevel) -> None:
@@ -219,7 +332,7 @@ def _enable_gate(
     registry = get_registry()
     check = registry.get_check(gate_name, config)
     if check is None:
-        print(f"❌ Unknown gate: {gate_name}")
+        print(_UNKNOWN_GATE_MSG.format(gate_name=gate_name))
         return 1
     if not check.is_applicable(str(project_root)):
         reason = check.skip_reason(str(project_root))
@@ -305,6 +418,33 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
 
     registry = get_registry()
 
+    def _gate_cfg_view(full_name: str) -> dict[str, Any]:
+        if ":" not in full_name:
+            return {}
+        category, gate = full_name.split(":", 1)
+        category_cfg = _as_dict(config.get(category))
+        gates_cfg = _as_dict(category_cfg.get("gates") if category_cfg else None)
+        gate_cfg = _as_dict(gates_cfg.get(gate) if gates_cfg else None)
+        if gate_cfg is None:
+            return {}
+        return dict(gate_cfg)
+
+    def _format_explicit_fields(full_name: str, check: Any) -> list[str]:
+        gate_cfg = _gate_cfg_view(full_name)
+        items: list[str] = []
+        for key, value in gate_cfg.items():
+            if key in {"enabled", "run_on"}:
+                continue
+            default = None
+            for field in check.get_full_config_schema():
+                if field.name == key:
+                    default = field.default
+                    break
+            if value == default:
+                continue
+            items.append(f"{key}={value!r}")
+        return items
+
     # Show all available gates
     print("🔍 Available Quality Gates:")
     print("-" * 40)
@@ -334,6 +474,9 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         print(f"             gate: {name}")
         if check is not None:
             print(f"             runs: {_configured_run_on(check)}")
+            explicit_fields = _format_explicit_fields(name, check)
+            if explicit_fields:
+                print(f"             config: {', '.join(explicit_fields)}")
 
     if not checks:
         print("  (No applicable gates for this repository)")
@@ -366,7 +509,7 @@ def _set_gate_swab_membership(
     registry = get_registry()
     check = registry.get_check(gate_name, config)
     if check is None:
-        print(f"❌ Unknown gate: {gate_name}")
+        print(_UNKNOWN_GATE_MSG.format(gate_name=gate_name))
         return 1
     if not check.is_applicable(str(project_root)):
         reason = check.skip_reason(str(project_root))
@@ -424,6 +567,8 @@ def _show_usage_hints(project_root: Path, config: dict[str, Any]) -> int:
     print("  sm config --disable <gate>         Disable a gate")
     print("  sm config --swab-off <gate>        Keep gate out of swab")
     print("  sm config --swab-on  <gate>        Run gate in swab + scour")
+    print("  sm config --set <gate> <field> <value>    Set a gate field")
+    print("  sm config --unset <gate> <field>          Remove a gate field override")
     print("  sm config --swabbing-time <secs>   Set time budget")
     print("  sm config --current-pr-number <n>  Select working PR")
     print("  sm config --clear-current-pr       Clear selected PR")
@@ -508,6 +653,25 @@ def cmd_config(args: argparse.Namespace) -> int:
             args.swab_on,
             GateLevel.SWAB,
             project_root,
+        )
+
+    if getattr(args, "set_field", None):
+        gate_name, field_name, raw_value = args.set_field
+        return _set_gate_field(
+            config_file,
+            config,
+            gate_name,
+            field_name,
+            raw_value,
+        )
+
+    if getattr(args, "unset_field", None):
+        gate_name, field_name = args.unset_field
+        return _unset_gate_field(
+            config_file,
+            config,
+            gate_name,
+            field_name,
         )
 
     if getattr(args, "current_pr_number", None) is not None:

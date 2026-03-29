@@ -274,9 +274,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                                 message=diag.get("message", ""),
                                 level=FindingLevel.ERROR,
                                 file=diag.get("filename"),
-                                line=diag.get("range", {})
-                                .get("start", {})
-                                .get("line"),
+                                line=diag.get("range", {}).get("start", {}).get("line"),
                                 rule_id=diag.get("code"),
                             )
                         )
@@ -288,9 +286,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 "deno lint failed with no output; check Deno "
                 "installation and configuration."
             )
-            findings.append(
-                Finding(message=message, level=FindingLevel.ERROR)
-            )
+            findings.append(Finding(message=message, level=FindingLevel.ERROR))
             return message, findings
         return None, []
 
