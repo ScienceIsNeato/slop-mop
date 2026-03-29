@@ -106,8 +106,13 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     def auto_fix(self, project_root: str) -> bool:
         """Auto-fix formatting issues."""
-        if self.is_deno_project(project_root):
-            return self._auto_fix_deno(project_root)
+        is_deno = self.is_deno_project(project_root)
+        has_node = self.has_package_json(project_root)
+        if is_deno:
+            fixed = self._auto_fix_deno(project_root)
+            if has_node:
+                fixed = self._auto_fix_node(project_root) or fixed
+            return fixed
         return self._auto_fix_node(project_root)
 
     # ------------------------------------------------------------------
@@ -204,7 +209,11 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     def run(self, project_root: str) -> CheckResult:
         """Run lint and format checks."""
-        if self.is_deno_project(project_root):
+        is_deno = self.is_deno_project(project_root)
+        has_node = self.has_package_json(project_root)
+        if is_deno and has_node:
+            return self._run_hybrid(project_root)
+        if is_deno:
             return self._run_deno(project_root)
         return self._run_node(project_root)
 
@@ -254,6 +263,50 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             output="\n".join(output_parts),
         )
 
+    def _run_hybrid(self, project_root: str) -> CheckResult:
+        """Run both Deno and Node checks for hybrid repos."""
+        start_time = time.time()
+        deno_result = self._run_deno(project_root)
+        node_result = self._run_node(project_root)
+        duration = time.time() - start_time
+
+        deno_failed = deno_result.status == CheckStatus.FAILED
+        node_failed = node_result.status == CheckStatus.FAILED
+
+        if not deno_failed and not node_failed:
+            output_parts: List[str] = []
+            if deno_result.output:
+                output_parts.append(f"[deno] {deno_result.output}")
+            if node_result.output:
+                output_parts.append(f"[node] {node_result.output}")
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output="\n".join(output_parts),
+            )
+
+        failed_count = int(deno_failed) + int(node_failed)
+        msg = ISSUES_FOUND_TEMPLATE.format(count=failed_count)
+        all_findings: List[Finding] = list(deno_result.findings) + list(
+            node_result.findings
+        )
+        fail_parts: List[str] = []
+        if deno_result.output:
+            fail_parts.append(f"[deno]\n{deno_result.output}")
+        if node_result.output:
+            fail_parts.append(f"[node]\n{node_result.output}")
+        return self._create_result(
+            status=CheckStatus.FAILED,
+            duration=duration,
+            output="\n".join(fail_parts),
+            error=msg,
+            fix_suggestion=(
+                "Run: deno lint --fix && deno fmt "
+                "&& npx eslint . --fix && npx prettier --write ."
+            ),
+            findings=all_findings or [Finding(message=msg, level=FindingLevel.ERROR)],
+        )
+
     def _check_deno_lint(
         self, project_root: str
     ) -> Tuple[Optional[str], List[Finding]]:
@@ -265,10 +318,10 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         )
         if not result.success:
             findings: List[Finding] = []
-            output = result.output.strip()
-            if output:
+            stdout = result.stdout.strip()
+            if stdout:
                 try:
-                    data = json.loads(result.stdout)
+                    data = json.loads(stdout)
                     for diag in data.get("diagnostics", []):
                         findings.append(
                             Finding(
@@ -281,7 +334,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                         )
                 except (json.JSONDecodeError, TypeError):
                     pass
-                count = len(findings) if findings else len(output.split("\n"))
+                count = len(findings) if findings else len(stdout.split("\n"))
                 return f"{count} lint issue(s)", findings
             message = (
                 "deno lint failed with no output; check Deno "

@@ -781,7 +781,7 @@ class SecurityCheck(SecurityLocalCheck):
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]
-        warnings = [r for r in results if r.warned]
+        warnings = [r for r in results if r.warned and r.passed]
 
         if not failures and not warnings:
             tools = ", ".join(r.name for r in results)
