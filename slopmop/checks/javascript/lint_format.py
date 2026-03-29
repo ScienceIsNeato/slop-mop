@@ -339,6 +339,16 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                                 rule_id=diag.get("code"),
                             )
                         )
+                    if not findings:
+                        findings.append(
+                            Finding(
+                                message=(
+                                    "deno lint exited with error"
+                                    " but reported no diagnostics"
+                                ),
+                                level=FindingLevel.ERROR,
+                            )
+                        )
                 except (json.JSONDecodeError, TypeError):
                     pass
                 count = len(findings) if findings else len(stdout.split("\n"))

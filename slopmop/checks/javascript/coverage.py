@@ -388,6 +388,8 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             if line == "end_of_record":
                 current_file = None
 
+        if not aggregate:
+            return None
         total_lines = sum(stats["total"] for stats in aggregate.values())
         covered_lines = sum(stats["covered"] for stats in aggregate.values())
         summary: Dict[str, Any] = {
