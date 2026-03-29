@@ -92,6 +92,32 @@ class TestJavaScriptCoverageConfig:
         assert summary["total"]["lines"]["covered"] == 1
         assert summary["src/app.ts"]["lines"]["pct"] == 50.0
 
+    def test_parse_lcov_report_relative_sf_resolves_from_project_root(self, tmp_path):
+        """Relative SF: paths resolve from project root regardless of report depth."""
+        check = JavaScriptCoverageCheck({})
+        # Report is nested 3 levels deep — old .parent.parent would be wrong
+        report_path = tmp_path / "output" / "coverage" / "lcov.info"
+        report_path.parent.mkdir(parents=True)
+        source_file = tmp_path / "src" / "app.ts"
+        source_file.parent.mkdir()
+        source_file.write_text("export const x = 1;\n")
+        report_path.write_text(
+            "\n".join(
+                [
+                    "SF:src/app.ts",
+                    "DA:1,1",
+                    "DA:2,0",
+                    "end_of_record",
+                ]
+            )
+        )
+
+        summary = check._parse_lcov_report(str(tmp_path), report_path)
+
+        assert summary is not None, "relative SF path should resolve from project root"
+        assert "src/app.ts" in summary
+        assert summary["src/app.ts"]["lines"]["pct"] == 50.0
+
     def test_parse_deno_report_uses_deno_coverage_lcov(self, tmp_path):
         check = JavaScriptCoverageCheck({"coverage_format": "deno"})
         report_path = tmp_path / "coverage" / "raw"

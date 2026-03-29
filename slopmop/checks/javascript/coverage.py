@@ -334,7 +334,7 @@ class JavaScriptCoverageCheck(BaseCheck, JavaScriptCheckMixin):
             text = report_path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             return None
-        return self._parse_lcov_text(project_root, text, report_path.parent.parent)
+        return self._parse_lcov_text(project_root, text, Path(project_root))
 
     def _parse_deno_report(
         self, project_root: str, report_path: Path
