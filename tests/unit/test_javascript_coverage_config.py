@@ -123,3 +123,33 @@ class TestJavaScriptCoverageConfig:
             "--lcov",
             str(report_path),
         ]
+
+    def test_parse_deno_report_relative_sf_resolves_from_project_root(self, tmp_path):
+        """SF: relative paths in deno lcov output resolve from project root, not
+        report_path.parent (which would be coverage/ — one dir too deep)."""
+        check = JavaScriptCoverageCheck({"coverage_format": "deno"})
+        report_path = tmp_path / "coverage" / "raw"
+        report_path.mkdir(parents=True)
+        source_file = tmp_path / "src" / "app.ts"
+        source_file.parent.mkdir()
+        source_file.write_text("export const x = 1;\n")
+
+        # Relative SF path — Deno typically emits these relative to project root
+        lcov_output = "\n".join(
+            [
+                "SF:src/app.ts",
+                "DA:1,1",
+                "DA:2,0",
+                "end_of_record",
+            ]
+        )
+        run_result = MagicMock()
+        run_result.success = True
+        run_result.stdout = lcov_output
+
+        with patch.object(check, "_run_command", return_value=run_result):
+            summary = check._parse_deno_report(str(tmp_path), report_path)
+
+        assert summary is not None, "relative SF path should resolve successfully"
+        assert "src/app.ts" in summary, "key should be relative to project root"
+        assert summary["src/app.ts"]["lines"]["pct"] == 50.0
