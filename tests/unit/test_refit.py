@@ -156,8 +156,26 @@ class TestCommitKindForCheck:
 
 
 class TestCmdRefitGeneratePlan:
+    @staticmethod
+    def _start_args(tmp_path: Path, **overrides: object) -> argparse.Namespace:
+        data: dict[str, object] = {
+            "start": True,
+            "iterate": False,
+            "finish": False,
+            "skip": None,
+            "project_root": str(tmp_path),
+            "json_output": False,
+            "output_file": None,
+            "approve_gate": [],
+            "record_blocker": None,
+            "blocker_issue": None,
+            "blocker_reason": None,
+        }
+        data.update(overrides)
+        return argparse.Namespace(**data)
+
     def test_generate_plan_requires_clean_worktree(self, monkeypatch, capsys, tmp_path):
-        args = argparse.Namespace(start=True, iterate=False, project_root=str(tmp_path))
+        args = self._start_args(tmp_path)
         (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
 
         monkeypatch.setattr(
@@ -174,13 +192,7 @@ class TestCmdRefitGeneratePlan:
     def test_generate_plan_missing_init_json_output_emits_protocol(
         self, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(
-            start=True,
-            iterate=False,
-            project_root=str(tmp_path),
-            json_output=True,
-            output_file=None,
-        )
+        args = self._start_args(tmp_path, json_output=True)
 
         assert refit_mod.cmd_refit(args) == 1
         payload = json.loads(capsys.readouterr().out)
@@ -190,7 +202,7 @@ class TestCmdRefitGeneratePlan:
     def test_generate_plan_runs_scour_and_persists_plan(
         self, monkeypatch, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(start=True, iterate=False, project_root=str(tmp_path))
+        args = self._start_args(tmp_path)
         (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
 
         saved = {}
@@ -198,7 +210,30 @@ class TestCmdRefitGeneratePlan:
             refit_mod, "_run_doctor_preflight", Mock(return_value=(True, "ok"))
         )
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
+        monkeypatch.setattr(
+            refit_mod,
+            "build_precheck",
+            Mock(return_value={"status": "ready_for_plan", "gates": []}),
+        )
+        monkeypatch.setattr(refit_mod, "apply_review_actions", Mock(return_value=None))
+        monkeypatch.setattr(refit_mod, "save_precheck", Mock())
+        monkeypatch.setattr(
+            refit_mod, "blocked_runnability_entries", Mock(return_value=[])
+        )
+        monkeypatch.setattr(
+            refit_mod, "pending_fidelity_entries", Mock(return_value=[])
+        )
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
+        monkeypatch.setattr(
+            refit_mod,
+            "generate_baseline_snapshot_from_artifact",
+            Mock(
+                return_value=(
+                    tmp_path / ".slopmop" / "baseline_snapshot.json",
+                    tmp_path / ".slopmop" / "refit" / "initial_scour.json",
+                )
+            ),
+        )
         monkeypatch.setattr(
             refit_mod,
             "_build_plan",
@@ -231,20 +266,37 @@ class TestCmdRefitGeneratePlan:
     def test_generate_plan_json_output_emits_protocol_payload(
         self, monkeypatch, capsys, tmp_path: Path
     ):
-        args = argparse.Namespace(
-            start=True,
-            iterate=False,
-            project_root=str(tmp_path),
-            json_output=True,
-            output_file=None,
-        )
+        args = self._start_args(tmp_path, json_output=True)
         (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
 
         monkeypatch.setattr(
             refit_mod, "_run_doctor_preflight", Mock(return_value=(True, "ok"))
         )
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
+        monkeypatch.setattr(
+            refit_mod,
+            "build_precheck",
+            Mock(return_value={"status": "ready_for_plan", "gates": []}),
+        )
+        monkeypatch.setattr(refit_mod, "apply_review_actions", Mock(return_value=None))
+        monkeypatch.setattr(refit_mod, "save_precheck", Mock())
+        monkeypatch.setattr(
+            refit_mod, "blocked_runnability_entries", Mock(return_value=[])
+        )
+        monkeypatch.setattr(
+            refit_mod, "pending_fidelity_entries", Mock(return_value=[])
+        )
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
+        monkeypatch.setattr(
+            refit_mod,
+            "generate_baseline_snapshot_from_artifact",
+            Mock(
+                return_value=(
+                    tmp_path / ".slopmop" / "baseline_snapshot.json",
+                    tmp_path / ".slopmop" / "refit" / "initial_scour.json",
+                )
+            ),
+        )
         monkeypatch.setattr(
             refit_mod,
             "_build_plan",
@@ -279,20 +331,37 @@ class TestCmdRefitGeneratePlan:
         self, monkeypatch, tmp_path: Path
     ):
         output_file = tmp_path / "refit-out.json"
-        args = argparse.Namespace(
-            start=True,
-            iterate=False,
-            project_root=str(tmp_path),
-            json_output=False,
-            output_file=str(output_file),
-        )
+        args = self._start_args(tmp_path, output_file=str(output_file))
         (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
 
         monkeypatch.setattr(
             refit_mod, "_run_doctor_preflight", Mock(return_value=(True, "ok"))
         )
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
+        monkeypatch.setattr(
+            refit_mod,
+            "build_precheck",
+            Mock(return_value={"status": "ready_for_plan", "gates": []}),
+        )
+        monkeypatch.setattr(refit_mod, "apply_review_actions", Mock(return_value=None))
+        monkeypatch.setattr(refit_mod, "save_precheck", Mock())
+        monkeypatch.setattr(
+            refit_mod, "blocked_runnability_entries", Mock(return_value=[])
+        )
+        monkeypatch.setattr(
+            refit_mod, "pending_fidelity_entries", Mock(return_value=[])
+        )
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
+        monkeypatch.setattr(
+            refit_mod,
+            "generate_baseline_snapshot_from_artifact",
+            Mock(
+                return_value=(
+                    tmp_path / ".slopmop" / "baseline_snapshot.json",
+                    tmp_path / ".slopmop" / "refit" / "initial_scour.json",
+                )
+            ),
+        )
         monkeypatch.setattr(
             refit_mod,
             "_build_plan",
@@ -325,6 +394,104 @@ class TestCmdRefitGeneratePlan:
         assert protocol["event"] == "plan_generated"
         assert protocol["protocol_file"] == str(protocol_path)
         assert mirrored == protocol
+
+    def test_generate_plan_blocks_on_pending_fidelity_review(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        args = self._start_args(tmp_path)
+        (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
+        pending_precheck = {
+            "status": "blocked_on_gate_fidelity",
+            "gates": [
+                {
+                    "gate": "deceptiveness:bogus-tests.js",
+                    "enabled": True,
+                    "applicable": True,
+                    "probe_status": "runnable",
+                    "probe_artifact": "/tmp/probe.json",
+                    "review_status": "pending",
+                }
+            ],
+        }
+        monkeypatch.setattr(
+            refit_mod, "_run_doctor_preflight", Mock(return_value=(True, "ok"))
+        )
+        monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
+        monkeypatch.setattr(
+            refit_mod, "build_precheck", Mock(return_value=pending_precheck)
+        )
+        monkeypatch.setattr(refit_mod, "apply_review_actions", Mock(return_value=None))
+        monkeypatch.setattr(refit_mod, "save_precheck", Mock())
+        monkeypatch.setattr(
+            refit_mod, "blocked_runnability_entries", Mock(return_value=[])
+        )
+        monkeypatch.setattr(
+            refit_mod,
+            "pending_fidelity_entries",
+            Mock(return_value=pending_precheck["gates"]),
+        )
+
+        assert refit_mod.cmd_refit(args) == 1
+        out = capsys.readouterr().out
+        assert "per-gate fidelity review" in out
+        assert "--approve-gate" in out
+
+    def test_generate_plan_uses_initial_scour_for_baseline_snapshot(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        args = self._start_args(tmp_path)
+        (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
+        baseline_mock = Mock(
+            return_value=(
+                tmp_path / ".slopmop" / "baseline_snapshot.json",
+                tmp_path / ".slopmop" / "refit" / "initial_scour.json",
+            )
+        )
+
+        monkeypatch.setattr(
+            refit_mod, "_run_doctor_preflight", Mock(return_value=(True, "ok"))
+        )
+        monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
+        monkeypatch.setattr(
+            refit_mod,
+            "build_precheck",
+            Mock(return_value={"status": "ready_for_plan", "gates": []}),
+        )
+        monkeypatch.setattr(refit_mod, "apply_review_actions", Mock(return_value=None))
+        monkeypatch.setattr(refit_mod, "save_precheck", Mock())
+        monkeypatch.setattr(
+            refit_mod, "blocked_runnability_entries", Mock(return_value=[])
+        )
+        monkeypatch.setattr(
+            refit_mod, "pending_fidelity_entries", Mock(return_value=[])
+        )
+        monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
+        monkeypatch.setattr(
+            refit_mod,
+            "_build_plan",
+            Mock(
+                return_value={
+                    "project_root": str(tmp_path),
+                    "schema": "refit/v1",
+                    "generated_at": "now",
+                    "branch": "feat/refit",
+                    "expected_head": "abc123",
+                    "status": "ready",
+                    "current_index": 0,
+                    "items": [],
+                }
+            ),
+        )
+        monkeypatch.setattr(refit_mod, "_save_plan", Mock())
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+        monkeypatch.setattr(
+            refit_mod, "generate_baseline_snapshot_from_artifact", baseline_mock
+        )
+
+        assert refit_mod.cmd_refit(args) == 0
+        baseline_mock.assert_called_once_with(
+            tmp_path, tmp_path / ".slopmop" / "refit" / "initial_scour.json"
+        )
 
 
 class TestIsSlopmopArtifact:
@@ -479,6 +646,48 @@ class TestDoctorPreflight:
         assert "doctor preflight failed" in detail
         assert "sm_env.tool_inventory" in detail
         assert "Run `sm doctor" in detail
+
+
+class TestLoadContinuePlan:
+    def test_prefers_precheck_guidance_when_plan_is_missing(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        args = argparse.Namespace(json_output=False, output_file=None)
+        monkeypatch.setattr(
+            refit_mod,
+            "_load_plan",
+            Mock(
+                side_effect=FileNotFoundError(
+                    "No refit plan found. Run `sm refit --start`."
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            refit_mod,
+            "load_precheck",
+            Mock(
+                return_value={
+                    "status": "blocked_on_gate_fidelity",
+                    "gates": [
+                        {
+                            "gate": "deceptiveness:bogus-tests.js",
+                            "enabled": True,
+                            "applicable": True,
+                            "probe_status": "runnable",
+                            "probe_artifact": "/tmp/probe.json",
+                            "review_status": "pending",
+                        }
+                    ],
+                }
+            ),
+        )
+
+        plan = refit_mod._load_continue_plan(args, tmp_path)
+
+        assert plan is None
+        out = capsys.readouterr().out
+        assert "per-gate fidelity review" in out
+        assert "sm refit --start" in out
 
 
 class TestInitArtifactsBlockRefit:
