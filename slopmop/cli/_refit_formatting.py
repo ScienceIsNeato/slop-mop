@@ -1,8 +1,16 @@
-"""Formatting quarantine step for the refit onboarding process.
+"""Formatting quarantine and drain steps for the refit onboarding process.
 
-Runs all auto-fixable formatters and commits any changes as a dedicated
-formatting-only commit before the initial scour generates the gate plan.
-Separated from the main refit module to keep file size within code-sprawl
+``run_formatting_quarantine_commit`` runs at ``--start`` time: formats
+everything once and commits the result before the initial scour.
+
+``drain_formatting_before_commit`` runs inside ``--iterate`` just before each
+gate-fix commit: if the formatter wants to touch files that the gate fix
+didn't touch, it commits those separately so the gate fix commit stays
+logically clean.  Files where gate-fix logic and formatter output are
+interleaved end up in the gate fix commit (splitting them would require
+brittle git-patch algebra).
+
+Separated from the main refit module to keep file sizes within code-sprawl
 limits.
 """
 
@@ -10,8 +18,18 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import List
 
 import slopmop.cli.refit as _refit
+
+
+def _status_path(line: str) -> str:
+    """Extract the file path from a git status --porcelain line."""
+    path = line[2:].lstrip()
+    if " -> " in path:
+        # Rename: "R  old -> new" — track the new path
+        path = path.split(" -> ", 1)[1]
+    return path.strip().strip('"')
 
 
 def run_formatting_quarantine_commit(
@@ -118,4 +136,99 @@ def run_formatting_quarantine_commit(
     head_sha = _refit._current_head(project_root) or "unknown"
     if not json_mode:
         print(f"✅ Formatting commit created: {head_sha[:8]}")
+    return True
+
+
+def drain_formatting_before_commit(
+    args: argparse.Namespace,
+    project_root: Path,
+    gate: str,
+    gate_fix_status: List[str],
+) -> bool:
+    """Drain formatter drift on files outside the gate fix before committing.
+
+    Runs all applicable formatters after the gate's scour pass.  Any files
+    that are newly dirty — i.e. touched by the formatter but NOT part of the
+    agent's gate fix — get committed as a dedicated formatting-only commit
+    first, so the subsequent gate fix commit stays logically clean.
+
+    Files that are in *both* the gate fix set and the formatter's output
+    end up in the gate fix commit (mixed).  Splitting those would require
+    git-patch algebra that is too fragile to implement reliably.
+
+    Always returns True.  Git failures are non-fatal: the gate-fix commit
+    proceeds regardless so the remediation loop is never blocked by
+    formatting housekeeping.
+    """
+    from slopmop.checks.javascript.lint_format import (  # noqa: PLC0415
+        JavaScriptLintFormatCheck,
+    )
+    from slopmop.checks.python.lint_format import (  # noqa: PLC0415
+        PythonLintFormatCheck,
+    )
+
+    json_mode = getattr(args, "json_output", False)
+    project_root_str = str(project_root)
+
+    py_check = PythonLintFormatCheck(config={})
+    js_check = JavaScriptLintFormatCheck(config={})
+    py_applicable = py_check.is_applicable(project_root_str)
+    js_applicable = js_check.is_applicable(project_root_str)
+
+    if not py_applicable and not js_applicable:
+        return True
+
+    if py_applicable:
+        py_check.auto_fix(project_root_str)
+    if js_applicable:
+        js_check.auto_fix(project_root_str)
+
+    try:
+        status_after_fmt = _refit._worktree_status(project_root)
+    except RuntimeError:
+        return True  # Don't block on a status check failure
+
+    gate_fix_paths = {_status_path(line) for line in gate_fix_status}
+    fmt_paths = {_status_path(line) for line in status_after_fmt}
+    formatting_only_paths = fmt_paths - gate_fix_paths
+
+    if not formatting_only_paths:
+        # Either no drift at all, or all drift is in files the gate fix
+        # already touched (mixed commits — accepted limitation).
+        return True
+
+    if not json_mode:
+        print(
+            f"  🎨 {len(formatting_only_paths)} file(s) outside gate fix reformatted"
+            " — committing as formatting-only commit first…"
+        )
+
+    code, _, err = _refit._git_output(
+        project_root, "add", "--", *sorted(formatting_only_paths)
+    )
+    if code != 0:
+        if not json_mode:
+            print(f"  ⚠ Could not stage formatting files: {err or 'unknown error'}")
+        return True  # Non-fatal
+
+    commit_msg = (
+        "style: automated formatting pass (zero logic changes) [slop-mop refit]\n\n"
+        f"Committed during remediation of gate: {gate}\n"
+        "Contains only formatter output for files not touched by the gate fix.\n"
+        "Filtered with `git log --invert-grep --grep='slop-mop refit'`."
+    )
+    code, _, err = _refit._git_output(project_root, "commit", "-m", commit_msg)
+    if code != 0:
+        # Nothing staged (e.g. files were already clean after git add)
+        if "nothing to commit" in (err or "").lower():
+            return True
+        if not json_mode:
+            print(f"  ⚠ Could not commit formatting drift: {err or 'unknown error'}")
+        # Reset staging area so the gate fix commit picks up everything
+        _refit._git_output(project_root, "reset", "HEAD")
+        return True  # Non-fatal
+
+    head_sha = _refit._current_head(project_root) or "unknown"
+    if not json_mode:
+        print(f"  ✅ Formatting drain commit: {head_sha[:8]}")
     return True

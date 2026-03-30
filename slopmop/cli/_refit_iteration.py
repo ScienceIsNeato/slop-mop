@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 import slopmop.cli.refit as _refit
+from slopmop.cli._refit_formatting import (
+    drain_formatting_before_commit as _drain_before_commit,
+)
 
 _HEAD_DRIFT_NEXT_ACTION = (
     "Review the repo state, then rerun `sm refit --iterate` once HEAD is stable."
@@ -175,7 +178,9 @@ def _commit_and_advance(
     current_item: Dict[str, Any],
     gate: str,
     artifact_path: Path,
+    status_before_commit: Optional[List[str]] = None,
 ) -> int:
+    _drain_before_commit(args, project_root, gate, status_before_commit or [])
     commit_code, detail = _refit._commit_current_changes(
         project_root, str(current_item.get("commit_message"))
     )
@@ -446,5 +451,5 @@ def process_current_plan_item(
             args, project_root, plan, current_item, gate, artifact_path
         )
     return _commit_and_advance(
-        args, project_root, plan, current_item, gate, artifact_path
+        args, project_root, plan, current_item, gate, artifact_path, status_after
     )

@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from slopmop.checks.base import RemediationChurn
 from slopmop.cli import refit as refit_mod
 from slopmop.doctor.base import DoctorResult, DoctorStatus
@@ -915,3 +917,202 @@ class TestRunFormattingQuarantineCommit:
         assert result is False
         out = capsys.readouterr().out
         assert "Failed to commit formatting changes" in out
+
+
+class TestDrainFormattingBeforeCommit:
+    """Tests for _refit_formatting.drain_formatting_before_commit."""
+
+    def _args(self, **kw: object) -> argparse.Namespace:
+        ns = argparse.Namespace(json_output=False)
+        ns.__dict__.update(kw)
+        return ns
+
+    def test_no_op_when_no_formatter_applicable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns True immediately without any git calls when no formatters apply."""
+        from slopmop.cli._refit_formatting import drain_formatting_before_commit
+
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        git_mock = Mock()
+        monkeypatch.setattr(refit_mod, "_git_output", git_mock)
+
+        result = drain_formatting_before_commit(
+            self._args(), tmp_path, "python:lint", [" M src/app.py"]
+        )
+
+        assert result is True
+        git_mock.assert_not_called()
+
+    def test_no_op_when_no_additional_files_dirtied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns True without a commit when formatter output matches gate fix files."""
+        from slopmop.cli._refit_formatting import drain_formatting_before_commit
+
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
+            lambda self, root: None,
+        )
+        # Formatter does not dirty any new files beyond what the gate fix touched
+        monkeypatch.setattr(
+            refit_mod, "_worktree_status", Mock(return_value=[" M src/app.py"])
+        )
+        git_mock = Mock()
+        monkeypatch.setattr(refit_mod, "_git_output", git_mock)
+
+        result = drain_formatting_before_commit(
+            self._args(), tmp_path, "python:lint", [" M src/app.py"]
+        )
+
+        assert result is True
+        git_mock.assert_not_called()
+
+    def test_commits_formatting_only_files_separately(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Stages and commits files touched only by formatter, not by gate fix."""
+        from slopmop.cli._refit_formatting import drain_formatting_before_commit
+
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
+            lambda self, root: None,
+        )
+        # Formatter dirtied utils.py in addition to the already-tracked app.py
+        monkeypatch.setattr(
+            refit_mod,
+            "_worktree_status",
+            Mock(return_value=[" M src/app.py", " M src/utils.py"]),
+        )
+        git_calls: list[tuple] = []
+
+        def _fake_git(root, *args):
+            git_calls.append(args)
+            return (0, "abc1234", "")
+
+        monkeypatch.setattr(refit_mod, "_git_output", _fake_git)
+        monkeypatch.setattr(
+            refit_mod, "_current_head", Mock(return_value="deadbeef1234")
+        )
+
+        result = drain_formatting_before_commit(
+            self._args(), tmp_path, "python:lint", [" M src/app.py"]
+        )
+
+        assert result is True
+        # First call: git add -- src/utils.py
+        assert git_calls[0][0] == "add"
+        assert "src/utils.py" in git_calls[0]
+        assert "src/app.py" not in git_calls[0]
+        # Second call: git commit
+        assert git_calls[1][0] == "commit"
+        out = capsys.readouterr().out
+        assert "Formatting drain commit" in out
+
+    def test_git_add_failure_is_non_fatal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns True and does not attempt commit when git add fails."""
+        from slopmop.cli._refit_formatting import drain_formatting_before_commit
+
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
+            lambda self, root: None,
+        )
+        monkeypatch.setattr(
+            refit_mod,
+            "_worktree_status",
+            Mock(return_value=[" M src/utils.py"]),
+        )
+        git_calls: list[tuple] = []
+
+        def _fake_git(root, *args):
+            git_calls.append(args)
+            if args[0] == "add":
+                return (1, "", "error: pathspec not found")
+            return (0, "", "")
+
+        monkeypatch.setattr(refit_mod, "_git_output", _fake_git)
+
+        result = drain_formatting_before_commit(
+            self._args(), tmp_path, "python:lint", []
+        )
+
+        assert result is True
+        # Only add was called — commit was never attempted
+        assert all(c[0] != "commit" for c in git_calls)
+
+    def test_git_commit_failure_resets_staging_area(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns True and resets staging area when git commit fails."""
+        from slopmop.cli._refit_formatting import drain_formatting_before_commit
+
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
+            lambda self, root: None,
+        )
+        monkeypatch.setattr(
+            refit_mod,
+            "_worktree_status",
+            Mock(return_value=[" M src/utils.py"]),
+        )
+        git_calls: list[tuple] = []
+
+        def _fake_git(root, *args):
+            git_calls.append(args)
+            if args[0] == "commit":
+                return (1, "", "error: lock file exists")
+            return (0, "", "")
+
+        monkeypatch.setattr(refit_mod, "_git_output", _fake_git)
+
+        result = drain_formatting_before_commit(
+            self._args(), tmp_path, "python:lint", []
+        )
+
+        assert result is True
+        reset_calls = [c for c in git_calls if c[0] == "reset"]
+        assert reset_calls, "Expected git reset to be called on commit failure"
