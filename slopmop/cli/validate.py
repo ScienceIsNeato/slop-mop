@@ -520,6 +520,15 @@ def cmd_swab(args: argparse.Namespace) -> int:
     if getattr(args, "json_file", None) is None:
         args.json_file = _default_json_artifact_path(project_root, "last_swab.json")
 
+    # Silently ensure .slopmop/ is gitignored on every swab run.
+    # Catches repos that skipped `sm init` and went straight to `sm swab`.
+    try:
+        from slopmop.utils import ensure_slopmop_gitignored
+
+        ensure_slopmop_gitignored(project_root)
+    except Exception:  # noqa: BLE001 — never block swab over gitignore housekeeping
+        pass
+
     config = load_config(project_root)
     register_custom_gates(config)
     registry = get_registry()
