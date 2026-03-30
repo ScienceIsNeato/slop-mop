@@ -63,6 +63,10 @@ def _pid_alive(pid: int) -> bool:
     except PermissionError:
         # Process exists but we can't signal it (different user).
         return True
+    except OSError:
+        # Windows raises OSError(WinError 87, "The parameter is incorrect")
+        # for non-existent or out-of-range PIDs instead of ProcessLookupError.
+        return False
     return True
 
 

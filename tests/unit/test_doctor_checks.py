@@ -764,6 +764,10 @@ class TestStateDirCheck:
         finally:
             state.chmod(0o700)  # let pytest clean up
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="chmod semantics differ on Windows; os.access ignores ACLs for admin users",
+    )
     def test_absent_with_unwritable_parent_fails(self, tmp_path):
         nested = tmp_path / "project"
         nested.mkdir()
