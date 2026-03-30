@@ -964,12 +964,30 @@ def _generate_plan_from_trustworthy_scour(
     return 0
 
 
+def _run_formatting_quarantine_commit(
+    args: argparse.Namespace, project_root: Path
+) -> bool:
+    """Run all auto-fixable formatters and commit any changes as a dedicated
+    formatting-only commit before the initial scour.
+
+    Delegates to ``slopmop.cli._refit_formatting`` to keep this file within
+    the code-sprawl line limit.
+    """
+    from slopmop.cli._refit_formatting import (  # noqa: PLC0415
+        run_formatting_quarantine_commit,
+    )
+
+    return run_formatting_quarantine_commit(args, project_root)
+
+
 def _cmd_refit_start(args: argparse.Namespace) -> int:
     project_root = _project_root(args)
     if not _ensure_start_prerequisites(args, project_root):
         return 1
     precheck = _run_start_precheck_stage(args, project_root)
     if precheck is None:
+        return 1
+    if not _run_formatting_quarantine_commit(args, project_root):
         return 1
     return _generate_plan_from_trustworthy_scour(args, project_root)
 

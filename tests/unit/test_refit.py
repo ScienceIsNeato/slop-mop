@@ -751,3 +751,167 @@ class TestInitArtifactsBlockRefit:
         assert "?? .sb_config.json.template" in status
         assert "M  .gitignore" in status
         assert not any(".slopmop" in line for line in status)
+
+
+class TestRunFormattingQuarantineCommit:
+    """Tests for _run_formatting_quarantine_commit."""
+
+    def _args(self) -> argparse.Namespace:
+        return argparse.Namespace(json_output=False, output_file=None)
+
+    def test_skips_when_no_formatter_applicable(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        """Returns True and prints informational message when no formatters apply."""
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+
+        result = refit_mod._run_formatting_quarantine_commit(self._args(), tmp_path)
+
+        assert result is True
+        out = capsys.readouterr().out
+        assert "No formatter-applicable language" in out
+
+    def test_no_commit_when_already_formatted(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        """Returns True without committing when formatters produce no changes."""
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
+
+        git_calls: list = []
+        monkeypatch.setattr(
+            refit_mod,
+            "_git_output",
+            lambda root, *args: git_calls.append(args) or (0, "", ""),
+        )
+
+        result = refit_mod._run_formatting_quarantine_commit(self._args(), tmp_path)
+
+        assert result is True
+        assert git_calls == [], "No git commands should run when nothing changed"
+        out = capsys.readouterr().out
+        assert "already fully formatted" in out
+
+    def test_commits_when_formatters_change_files(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        """Stages and commits all changes when formatters dirty the worktree."""
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            refit_mod, "_worktree_status", Mock(return_value=[" M src/foo.py"])
+        )
+
+        git_calls: list = []
+
+        def _fake_git(root, *args):
+            git_calls.append(args)
+            if args[0] == "rev-parse":
+                return (0, "abc12345def", "")
+            return (0, "", "")
+
+        monkeypatch.setattr(refit_mod, "_git_output", _fake_git)
+
+        result = refit_mod._run_formatting_quarantine_commit(self._args(), tmp_path)
+
+        assert result is True
+        assert ("add", "-A") in git_calls
+        assert any(a[0] == "commit" for a in git_calls)
+        out = capsys.readouterr().out
+        assert "abc12345" in out
+
+    def test_returns_false_when_git_add_fails(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        """Returns False and emits protocol when `git add` fails."""
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            refit_mod, "_worktree_status", Mock(return_value=[" M src/foo.py"])
+        )
+
+        def _fake_git(root, *args):
+            if args[0] == "add":
+                return (1, "", "fatal: not a git repo")
+            return (0, "", "")
+
+        monkeypatch.setattr(refit_mod, "_git_output", _fake_git)
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+
+        result = refit_mod._run_formatting_quarantine_commit(self._args(), tmp_path)
+
+        assert result is False
+        out = capsys.readouterr().out
+        assert "Failed to stage formatting changes" in out
+
+    def test_returns_false_when_git_commit_fails(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        """Returns False and emits protocol when `git commit` fails."""
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
+            lambda self, root: True,
+        )
+        monkeypatch.setattr(
+            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
+            lambda self, root: False,
+        )
+        monkeypatch.setattr(
+            refit_mod, "_worktree_status", Mock(return_value=[" M src/foo.py"])
+        )
+
+        def _fake_git(root, *args):
+            if args[0] == "commit":
+                return (1, "", "error: nothing to commit")
+            return (0, "", "")
+
+        monkeypatch.setattr(refit_mod, "_git_output", _fake_git)
+        monkeypatch.setattr(refit_mod, "_save_protocol", Mock())
+
+        result = refit_mod._run_formatting_quarantine_commit(self._args(), tmp_path)
+
+        assert result is False
+        out = capsys.readouterr().out
+        assert "Failed to commit formatting changes" in out
