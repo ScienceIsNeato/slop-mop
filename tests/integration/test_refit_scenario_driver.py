@@ -182,6 +182,7 @@ class TestExecuteRefitScenario:
             manifest.patch_ladder[1].gate,
         ]
         assert summary["commit_subjects"] == ["first", "second", "third"]
+        assert summary["style_commit_subjects"] == []
 
     def test_execute_refit_scenario_rejects_unexpected_protocol_event(
         self, monkeypatch, tmp_path: Path

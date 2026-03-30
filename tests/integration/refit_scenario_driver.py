@@ -251,7 +251,12 @@ def execute_refit_scenario(
         )
     assert_clean_worktree(cwd, label="after scenario completion")
 
-    subjects = list(reversed(commit_subjects_since(cwd, manifest.fixture_base_sha)))
+    all_subjects = list(reversed(commit_subjects_since(cwd, manifest.fixture_base_sha)))
+    # Separate drain-style commits from gate-fix commits so assertions
+    # on gate_commit_subjects don't break when drain fires.
+    _drain_marker = "[slop-mop refit]"
+    gate_commit_subjects = [s for s in all_subjects if _drain_marker not in s]
+    style_commit_subjects = [s for s in all_subjects if _drain_marker in s]
     return {
         "schema": "refit-scenario-summary/v1",
         "scenario": manifest.scenario,
@@ -260,7 +265,12 @@ def execute_refit_scenario(
         "final_status": final_protocol.get("status"),
         "iterations": iteration_count,
         "applied_steps": applied_steps,
-        "commit_subjects": subjects,
+        # Gate-fix commits only (excludes formatting drain commits).
+        # Use this for strict ordering assertions.
+        "commit_subjects": gate_commit_subjects,
+        # Formatting drain commits (style: ... [slop-mop refit]).
+        # Present for observability; may be empty if drain never fired.
+        "style_commit_subjects": style_commit_subjects,
         "protocol_file": str(cwd / ".slopmop" / "refit" / "protocol.json"),
     }
 
