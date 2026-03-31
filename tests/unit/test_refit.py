@@ -201,6 +201,41 @@ class TestCmdRefitGeneratePlan:
         assert payload["event"] == "preflight_missing_init"
         assert payload["status"] == "preflight_missing_init"
 
+    def test_generate_plan_blocked_by_doctor_preflight_emits_human_message(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        """Doctor preflight failure blocks --start and surfaces detail in human output."""
+        args = self._start_args(tmp_path)
+        (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            refit_mod,
+            "_run_doctor_preflight",
+            Mock(return_value=(False, "tool inventory missing: black, isort")),
+        )
+
+        assert refit_mod.cmd_refit(args) == 1
+        out = capsys.readouterr().out
+        assert "preflight failed" in out
+        assert "tool inventory missing" in out
+
+    def test_generate_plan_blocked_by_doctor_preflight_json_event(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        """Doctor preflight failure emits preflight_doctor_failed event in JSON output."""
+        args = self._start_args(tmp_path, json_output=True)
+        (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            refit_mod,
+            "_run_doctor_preflight",
+            Mock(return_value=(False, "tool inventory missing: black, isort")),
+        )
+
+        assert refit_mod.cmd_refit(args) == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["event"] == "preflight_doctor_failed"
+        assert payload["status"] == "preflight_doctor_failed"
+        assert "tool inventory missing" in payload["details"]["doctor_detail"]
+
     def test_generate_plan_runs_scour_and_persists_plan(
         self, monkeypatch, capsys, tmp_path: Path
     ):
