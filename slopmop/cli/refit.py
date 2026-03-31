@@ -198,6 +198,20 @@ def _is_slopmop_artifact(status_line: str) -> bool:
     return path == ".slopmop" or path.startswith(".slopmop/")
 
 
+def _config_hash(project_root: Path) -> str:
+    """Return a short SHA-256 digest of .sb_config.json for drift detection.
+
+    Returns an empty string when the config file does not exist so callers
+    can treat an absent config as "no hash recorded" without branching.
+    """
+    import hashlib
+
+    config_path = project_root / ".sb_config.json"
+    if not config_path.exists():
+        return ""
+    return hashlib.sha256(config_path.read_bytes()).hexdigest()[:16]
+
+
 def _worktree_status(project_root: Path) -> List[str]:
     code, stdout, stderr = _git_output(project_root, "status", "--porcelain")
     if code != 0:
@@ -545,6 +559,7 @@ def _build_plan(project_root: Path, scour_artifact_path: Path) -> Dict[str, Any]
         "project_root": str(project_root),
         "branch": branch,
         "expected_head": head,
+        "config_hash": _config_hash(project_root),
         "status": "ready",
         "current_index": 0,
         "current_gate": items[0]["gate"] if items else None,
@@ -1028,6 +1043,35 @@ def _cmd_refit_iterate(args: argparse.Namespace) -> int:
 
     if not _ensure_continue_branch(args, project_root, plan):
         return 1
+
+    # Non-blocking config drift warning — agent may have edited .sb_config.json
+    # directly while refit was in flight, which can stale the gate list.
+    expected_cfg_hash = plan.get("config_hash", "")
+    if expected_cfg_hash and _config_hash(project_root) != expected_cfg_hash:
+        drift_protocol = _snapshot_protocol(
+            plan,
+            event="warn_config_drift",
+            next_action=(
+                "If the change was intentional, continue with `sm refit --iterate`. "
+                "If it may affect the gate list or thresholds, regenerate the plan "
+                "with `sm refit --start`."
+            ),
+            details={
+                "expected_hash": expected_cfg_hash,
+                "current_hash": _config_hash(project_root),
+            },
+        )
+        _emit_protocol(
+            args,
+            project_root,
+            drift_protocol,
+            [
+                "Warning: .sb_config.json has changed since the refit plan was "
+                "generated. The gate list may be stale.",
+                "If the change affects gate thresholds or disables a gate that is "
+                "still in the plan, regenerate with `sm refit --start`.",
+            ],
+        )
 
     from slopmop.cli._refit_iteration import process_current_plan_item
 

@@ -21,6 +21,10 @@ _HEAD_DRIFT_NEXT_ACTION = (
     "Review the repo state, then rerun `sm refit --iterate` once HEAD is stable."
 )
 _HEAD_DRIFT_HUMAN_LINE = "Review the repo state before resuming."
+_HEAD_DRIFT_AGENT_COMMITTED_HINT = (
+    "If you manually committed a fix for this gate, "
+    "run `sm refit --skip` to mark it as resolved and advance to the next gate."
+)
 
 _MAX_SURFACED_FINDINGS = 5
 
@@ -313,7 +317,8 @@ def process_current_plan_item(
                 next_action=_HEAD_DRIFT_NEXT_ACTION,
                 human_lines=[
                     "Refit blocked: HEAD changed unexpectedly since the plan last advanced. "
-                    + _HEAD_DRIFT_HUMAN_LINE
+                    + _HEAD_DRIFT_HUMAN_LINE,
+                    _HEAD_DRIFT_AGENT_COMMITTED_HINT,
                 ],
                 details={"expected_head": expected_head, "current_head": live_head},
             )
@@ -329,6 +334,38 @@ def process_current_plan_item(
             current_item=current_item,
             gate=gate,
         )
+
+    # Guard: block if the worktree is dirty before the gate runs and the
+    # agent hasn't been told to make fixes (i.e. is not in a blocked/retry
+    # state).  Without this guard, `git add -A` inside _commit_current_changes
+    # would silently bundle the agent's unrelated changes into the gate-fix
+    # commit, breaking commit attribution and potentially hiding real slop.
+    current_item_status = str(current_item.get("status") or "")
+    if status_before and not current_item_status.startswith("blocked"):
+        return _block_continue_plan(
+            args,
+            project_root,
+            plan,
+            event="blocked_on_dirty_entry",
+            status="blocked_on_dirty_entry",
+            next_action=(
+                "Commit, stash, or discard the uncommitted changes listed below, "
+                "then rerun `sm refit --iterate`."
+            ),
+            human_lines=[
+                f"Refit blocked on {gate}: worktree has uncommitted changes that "
+                "were not made by the refit pipeline.",
+                "These changes would be silently bundled into the gate-fix commit.",
+                "Commit, stash, or discard them, then rerun `sm refit --iterate`.",
+                "Uncommitted files: " + ", ".join(s.strip() for s in status_before),
+            ],
+            details={
+                "gate": gate,
+                "uncommitted_files": status_before,
+            },
+            current_item=current_item,
+        )
+
     artifact_path = _refit._continue_scour_path(project_root)
     exit_code = _refit._run_scour(project_root, artifact_path, gate=gate)
     live_head_after_run = _refit._current_head(project_root)
