@@ -319,12 +319,15 @@ class RepeatedCodeCheck(BaseCheck):
         top = sorted(file_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
         top_str = ", ".join(f"{fn} ({n})" for fn, n in top) if top else "?"
 
+        cat_key = self.category.key  # e.g. "laziness"
         fix = (
             "Extract real clones into shared helpers. "
             f"Top offenders: {top_str}. "
             "If duplication is in tests, examples, or generated code, "
-            "add those paths to checks.repeated-code.exclude_dirs "
-            "in .sb_config.json — don't refactor test boilerplate."
+            f"add those paths to {cat_key}.gates.{self.name}.exclude_dirs "
+            "in .sb_config.json — or run: "
+            f"sm config --set {self.full_name} exclude_dirs '[\"path/**\"]' "
+            "— don't refactor test boilerplate."
         )
 
         return self._create_result(

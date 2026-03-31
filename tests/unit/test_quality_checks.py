@@ -431,6 +431,43 @@ class TestRepeatedCodeCheck:
         ]
         assert check._filter_duplicates(dupes) == dupes
 
+    def test_fix_suggestion_points_to_correct_config_key(self):
+        """fix_suggestion must reference laziness.gates.repeated-code, NOT the dead checks.* path.
+
+        Regression guard: the message previously said 'checks.repeated-code.exclude_dirs'
+        which is a non-existent JSON key. Users who followed it set patterns at the wrong
+        path, making _filter_duplicates receive an empty config_excludes and silently skip
+        the post-filter step.
+        """
+        check = RepeatedCodeCheck({"threshold": 5})
+        report = {
+            "duplicates": [
+                {
+                    "firstFile": {
+                        "name": "src/a.ts",
+                        "startLoc": {"line": 1},
+                        "endLoc": {"line": 5},
+                    },
+                    "secondFile": {
+                        "name": "src/b.ts",
+                        "startLoc": {"line": 10},
+                        "endLoc": {"line": 14},
+                    },
+                    "lines": 5,
+                }
+            ],
+            "statistics": {"total": {"lines": 100, "percentage": 50.0}},
+        }
+        result = check._format_result(report, 0.1)
+        assert result.fix_suggestion is not None
+        # Must NOT say "checks.repeated-code" (the wrong dead path)
+        assert "checks.repeated-code" not in result.fix_suggestion
+        # Must reference the correct JSON path or sm config --set syntax
+        assert (
+            "laziness.gates.repeated-code" in result.fix_suggestion
+            or "laziness:repeated-code" in result.fix_suggestion
+        )
+
     def test_run_no_report_exit_code_2_is_passed(self, tmp_path):
         """jscpd exit 2 with no report (all files excluded) should be PASSED."""
         (tmp_path / "app.py").write_text("def test(): pass")
