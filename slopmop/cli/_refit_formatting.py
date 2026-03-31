@@ -119,7 +119,15 @@ def run_formatting_quarantine_commit(
         "ESLint/Prettier/deno fmt for JS/TS). Review can safely be skipped\n"
         "or filtered with `git log --invert-grep --grep='slop-mop refit'`."
     )
-    code, _, err = _refit._git_output(project_root, "commit", "-m", commit_msg)
+    # --no-verify prevents any pre-commit hook from blocking this commit.
+    # The quarantine commit is a pure formatter pass with no logic changes;
+    # bypassing hooks here is safe and necessary — a third-party hook
+    # (husky, lefthook, etc.) or an installed slop-mop hook would otherwise
+    # block the commit, leave the worktree dirty, and cause the next
+    # `sm refit --start` to fail at the dirty-worktree preflight check.
+    code, _, err = _refit._git_output(
+        project_root, "commit", "--no-verify", "-m", commit_msg
+    )
     if code != 0:
         _refit._emit_standalone_protocol(
             args,
@@ -217,7 +225,11 @@ def drain_formatting_before_commit(
         "Contains only formatter output for files not touched by the gate fix.\n"
         "Filtered with `git log --invert-grep --grep='slop-mop refit'`."
     )
-    code, _, err = _refit._git_output(project_root, "commit", "-m", commit_msg)
+    # --no-verify: same reasoning as the quarantine commit above — any
+    # pre-commit hook would block this housekeeping-only commit.
+    code, _, err = _refit._git_output(
+        project_root, "commit", "--no-verify", "-m", commit_msg
+    )
     if code != 0:
         # Nothing staged (e.g. files were already clean after git add)
         if "nothing to commit" in (err or "").lower():
