@@ -388,13 +388,37 @@ def _run_validation_locked(
         # or SARIF-to-stdout mode)
         executor.set_progress_callback(reporter.on_check_complete)
 
+    # Remediation-mode auto-fix suppression: in REMEDIATION phase, auto-fix
+    # defaults OFF to prevent unexpected file mutations in a high-slop codebase
+    # (e.g. a pre-commit hook reformatting 100+ unrelated files mid-refit).
+    # Maintenance mode restores the normal default (auto-fix ON).
+    # Override with --auto-fix to enable explicitly in remediation,
+    # or --no-auto-fix to suppress explicitly in maintenance.
+    auto_fix: bool
+    if args.no_auto_fix:
+        auto_fix = False
+    elif getattr(args, "explicit_auto_fix", False):
+        auto_fix = True
+    else:
+        phase = read_phase(project_root)
+        if phase == RepoPhase.REMEDIATION:
+            auto_fix = False
+            if not args.quiet and not json_mode and not sarif_to_stdout:
+                print(
+                    "ℹ  Remediation mode: auto-fix disabled "
+                    "(pass --auto-fix to enable, or run `sm refit --finish` "
+                    "to transition to maintenance mode)"
+                )
+        else:
+            auto_fix = True
+
     try:
         # Run checks
         summary = executor.run_checks(
             project_root=str(project_root),
             check_names=gates,
             config=config,
-            auto_fix=not args.no_auto_fix,
+            auto_fix=auto_fix,
             swabbing_time=swabbing_time,
             timings=timings,
             use_cache=not getattr(args, "no_cache", False),

@@ -70,6 +70,10 @@ _DOCTOR_PREFLIGHT_CHECKS = (
     "state.lock",
     "state.dir_permissions",
     "state.config_readable",
+    # A slop-mop commit hook will block manual commits during the refit and
+    # can auto-fix unrelated files in maintenance mode.  Warn so the agent
+    # can uninstall before the rail starts.
+    "state.commit_hook",
 )
 
 
@@ -721,7 +725,11 @@ def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]
             return add_result.returncode, detail or "git add failed"
 
     commit_result = subprocess.run(
-        ["git", "commit", "-m", message],
+        # --no-verify bypasses any installed pre-commit hook.
+        # The refit rail runs its own gate validation before each commit;
+        # a hook running sm swab would block the commit because non-remediated
+        # gates still fail, deadlocking the rail.
+        ["git", "commit", "--no-verify", "-m", message],
         cwd=project_root,
         capture_output=True,
         text=True,
