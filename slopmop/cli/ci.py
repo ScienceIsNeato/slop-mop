@@ -167,7 +167,15 @@ def _categorize_checks(
             "SKIPPED",
             "STALE",
         ):
-            completed.append((name, "⬜", state or bucket, timing))
+            # Only treat as completed if completedAt is set — the
+            # authoritative signal that the check has truly finished.
+            # Without it the check is still in flight (e.g. Cursor Bugbot
+            # reports bucket=skipping/neutral while still posting review
+            # comments, before it has set completedAt).
+            if check.get("completedAt"):
+                completed.append((name, "⬜", state or bucket, timing))
+            else:
+                in_progress.append((name, "⏳", state or bucket, timing))
         elif bucket == "pending":
             in_progress.append((name, "🔄", state or bucket, timing))
         else:

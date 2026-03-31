@@ -668,6 +668,10 @@ def _cmd_buff_status(
             print("💡 Use 'sm buff watch' to poll until complete")
             return 1
 
+        # Extra settle wait when a post-CI review bot (e.g. Cursor Bugbot)
+        # is present.  completedAt being set means the bot has truly
+        # finished, but it may still be syncing its final comments.
+        # One extra interval is a reasonable buffer.
         if (
             watch
             and not settled_post_ci_feedback
@@ -681,6 +685,7 @@ def _cmd_buff_status(
             print()
             continue
 
+        # Final (authoritative) feedback gate check.
         feedback_result = _run_pr_feedback_gate(resolved_pr, str(project_root))
         if feedback_result.status != CheckStatus.PASSED:
             _fire_buff_hook(has_issues=True)
