@@ -14,6 +14,7 @@ import json
 import os
 import tempfile
 import time
+from pathlib import PurePath
 from typing import Any, Dict, List, Optional
 
 from slopmop.checks.base import (
@@ -250,9 +251,16 @@ class RepeatedCodeCheck(BaseCheck):
 
     def _format_result(self, report: dict[str, Any], duration: float) -> CheckResult:
         """Format the check result from parsed report."""
-        duplicates = report.get("duplicates", [])
+        raw_duplicates = report.get("duplicates", [])
+        duplicates = self._filter_duplicates(raw_duplicates)
         stats = report.get("statistics", {})
-        total_percentage = stats.get("total", {}).get("percentage", 0)
+        total_lines = stats.get("total", {}).get("lines", 0)
+        if len(duplicates) < len(raw_duplicates) and total_lines > 0:
+            # Recompute percentage from filtered set using original total lines
+            dup_lines = sum(d.get("lines", 0) for d in duplicates)
+            total_percentage = (dup_lines / total_lines) * 100
+        else:
+            total_percentage = stats.get("total", {}).get("percentage", 0)
 
         if total_percentage <= self.threshold:
             if len(duplicates) == 0:
@@ -362,7 +370,11 @@ class RepeatedCodeCheck(BaseCheck):
 
             report_path = os.path.join(report_output, "jscpd-report.json")
             if not os.path.exists(report_path):
-                if result.returncode == 0:
+                # jscpd produces no report when it finds nothing to scan.
+                # This happens when all files are excluded by --ignore patterns
+                # (exit 2) or when the scan area is genuinely empty (exit 0).
+                # Both cases mean 0% duplication — treat as PASSED.
+                if result.returncode in {0, 2}:
                     return self._create_result(
                         status=CheckStatus.PASSED,
                         duration=duration,
@@ -392,6 +404,44 @@ class RepeatedCodeCheck(BaseCheck):
             include_dirs=list(include_dirs),
             extensions={".py", ".js", ".ts", ".jsx", ".tsx"},
         )
+
+    @staticmethod
+    def _path_excluded(file_path: str, patterns: List[str]) -> bool:
+        """Return True if file_path matches any exclude pattern."""
+        pure = PurePath(file_path)
+        for pattern in patterns:
+            if pure.match(pattern):
+                return True
+            # Plain names with no glob chars: match as a path component
+            if not any(c in pattern for c in "*?[{"):
+                if pattern in pure.parts:
+                    return True
+        return False
+
+    def _filter_duplicates(
+        self, duplicates: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Remove pairs where either file matches an exclude_dirs pattern.
+
+        This is a Python-level safety net that ensures exclude_dirs works
+        even when jscpd's own --ignore flag behaves differently across
+        versions or environments.
+        """
+        config_excludes = self.config.get("exclude_dirs", [])
+        if not config_excludes:
+            return duplicates
+        return [
+            dup
+            for dup in duplicates
+            if not (
+                self._path_excluded(
+                    dup.get("firstFile", {}).get("name", ""), config_excludes
+                )
+                or self._path_excluded(
+                    dup.get("secondFile", {}).get("name", ""), config_excludes
+                )
+            )
+        ]
 
     def _format_duplicates(self, duplicates: List[Dict[str, Any]]) -> List[str]:
         """Format duplicate entries for display."""
