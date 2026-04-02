@@ -22,14 +22,7 @@ from typing import List
 
 import slopmop.cli.refit as _refit
 
-
-def _status_path(line: str) -> str:
-    """Extract the file path from a git status --porcelain line."""
-    path = line[2:].lstrip()
-    if " -> " in path:
-        # Rename: "R  old -> new" — track the new path
-        path = path.split(" -> ", 1)[1]
-    return path.strip().strip('"')
+_status_path = _refit._status_path  # shared helper — defined in refit.py
 
 
 def run_formatting_quarantine_commit(

@@ -188,16 +188,19 @@ def _current_head(project_root: Path) -> Optional[str]:
     return _git_output_or_none(project_root, "rev-parse", "HEAD")
 
 
+def _status_path(status_line: str) -> str:
+    """Extract the file path from a git status --porcelain line."""
+    path = status_line[2:].lstrip()
+    if " -> " in path:
+        # Rename: "R  old -> new" — track the new path
+        path = path.split(" -> ", 1)[1]
+    return path.strip().strip('"')
+
+
 def _is_slopmop_artifact(status_line: str) -> bool:
     if len(status_line) < 3:
         return False
-    # Git porcelain format: XY PATH (XY = 2-char status code).
-    # Use lstrip() after the status prefix to handle variable spacing
-    # between the status code and the path.
-    path = status_line[2:].lstrip()
-    if " -> " in path:
-        path = path.split(" -> ", 1)[1]
-    path = path.strip().strip('"')
+    path = _status_path(status_line)
     return path == ".slopmop" or path.startswith(".slopmop/")
 
 

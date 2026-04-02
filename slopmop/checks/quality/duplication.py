@@ -256,9 +256,11 @@ class RepeatedCodeCheck(BaseCheck):
         stats = report.get("statistics", {})
         total_lines = stats.get("total", {}).get("lines", 0)
         if len(duplicates) < len(raw_duplicates) and total_lines > 0:
-            # Recompute percentage from filtered set using original total lines
-            dup_lines = sum(d.get("lines", 0) for d in duplicates)
-            total_percentage = (dup_lines / total_lines) * 100
+            # Scale jscpd's own percentage by the ratio of remaining
+            # duplicates. Summing d["lines"] per entry would double-count
+            # any file region that appears in multiple duplicate pairs.
+            jscpd_pct = stats.get("total", {}).get("percentage", 0)
+            total_percentage = jscpd_pct * (len(duplicates) / len(raw_duplicates))
         else:
             total_percentage = stats.get("total", {}).get("percentage", 0)
 
