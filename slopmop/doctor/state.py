@@ -397,8 +397,11 @@ class StateCommitHookCheck(DoctorCheck):
     description = "Slop-mop pre-commit hook installed (will be parked by --start)"
     can_fix = True
 
-    def _hook_path(self, ctx: DoctorContext) -> Path:
-        return ctx.project_root / ".git" / "hooks" / "pre-commit"
+    def _hook_path(self, ctx: DoctorContext) -> Optional[Path]:
+        from slopmop.cli.hooks import _get_git_hooks_dir
+
+        hooks_dir = _get_git_hooks_dir(ctx.project_root)
+        return (hooks_dir / "pre-commit") if hooks_dir else None
 
     def _hook_is_slopmop(self, hook_path: Path) -> bool:
         """Return True when the hook was installed by slop-mop."""
@@ -414,7 +417,7 @@ class StateCommitHookCheck(DoctorCheck):
         hook_path = self._hook_path(ctx)
         data: dict[str, object] = {"hook_path": str(hook_path)}
 
-        if not hook_path.exists():
+        if not hook_path or not hook_path.exists():
             return self._ok("no commit hook installed", data=data)
 
         if not self._hook_is_slopmop(hook_path):
@@ -443,7 +446,11 @@ class StateCommitHookCheck(DoctorCheck):
     def fix(self, ctx: DoctorContext) -> DoctorResult:
         hook_path = self._hook_path(ctx)
 
-        if not hook_path.exists() or not self._hook_is_slopmop(hook_path):
+        if (
+            not hook_path
+            or not hook_path.exists()
+            or not self._hook_is_slopmop(hook_path)
+        ):
             return self._ok("nothing to fix — hook not present or not slop-mop managed")
 
         parked = hook_path.with_suffix(".refit-parked")

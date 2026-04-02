@@ -894,7 +894,7 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
     from slopmop.utils import ensure_slopmop_gitignored
 
     ensure_slopmop_gitignored(project_root)
-    park_slopmop_hook(project_root)
+    park_slopmop_hook(project_root, json_mode=getattr(args, "json_output", False))
     return True
 
 
@@ -1085,7 +1085,7 @@ def _cmd_refit_finish(args: argparse.Namespace) -> int:
     record_baseline(project_root)
     from slopmop.cli.hooks import restore_slopmop_hook
 
-    restore_slopmop_hook(project_root)
+    restore_slopmop_hook(project_root, json_mode=getattr(args, "json_output", False))
     _emit_standalone_protocol(
         args,
         project_root,
