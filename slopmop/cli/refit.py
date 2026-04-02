@@ -38,7 +38,10 @@ from slopmop.cli._refit_precheck import (
 )
 from slopmop.cli.buff import _load_json_file
 from slopmop.cli.scan_triage import write_json_out
-from slopmop.core.lock import SmLockError, sm_lock
+from slopmop.core.lock import (  # noqa: F401 – re-exported for test monkeypatching
+    SmLockError,
+    sm_lock,
+)
 from slopmop.core.registry import get_registry
 from slopmop.workflow.state_machine import RepoPhase
 from slopmop.workflow.state_store import read_phase
@@ -206,7 +209,8 @@ def _config_hash(project_root: Path) -> str:
     """
     import hashlib
 
-    config_path = project_root / ".sb_config.json"
+    config_file = os.environ.get("SB_CONFIG_FILE")
+    config_path = Path(config_file) if config_file else project_root / ".sb_config.json"
     if not config_path.exists():
         return ""
     return hashlib.sha256(config_path.read_bytes()).hexdigest()[:16]
@@ -883,9 +887,11 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
         )
         return False
 
+    from slopmop.cli.hooks import park_slopmop_hook
     from slopmop.utils import ensure_slopmop_gitignored
 
     ensure_slopmop_gitignored(project_root)
+    park_slopmop_hook(project_root)
     return True
 
 
@@ -1008,97 +1014,9 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
 
 
 def _cmd_refit_iterate(args: argparse.Namespace) -> int:
-    project_root = _project_root(args)
-    if not _ensure_remediation_phase(project_root):
-        _emit_standalone_protocol(
-            args,
-            project_root,
-            event="blocked_on_phase",
-            status="blocked_on_phase",
-            next_action=_MAINTENANCE_NEXT_ACTION,
-            human_lines=[
-                "Refit is only available while the repo is in remediation phase. "
-                "Run the normal swab/scour/buff workflow for maintenance repos."
-            ],
-        )
-        return 1
+    from slopmop.cli._refit_iterate_cmd import run_iterate
 
-    plan = _load_continue_plan(args, project_root)
-    if plan is None:
-        return 1
-
-    if plan.get("status") == "completed":
-        _emit_standalone_protocol(
-            args,
-            project_root,
-            event="already_completed",
-            status="already_completed",
-            next_action="Run `sm refit --finish` to transition to maintenance mode.",
-            human_lines=[
-                "Refit plan is already completed. "
-                "Run `sm refit --finish` to check results and transition to maintenance."
-            ],
-        )
-        return 0
-
-    if not _ensure_continue_branch(args, project_root, plan):
-        return 1
-
-    # Non-blocking config drift warning — agent may have edited .sb_config.json
-    # directly while refit was in flight, which can stale the gate list.
-    expected_cfg_hash = plan.get("config_hash", "")
-    if expected_cfg_hash and _config_hash(project_root) != expected_cfg_hash:
-        drift_protocol = _snapshot_protocol(
-            plan,
-            event="warn_config_drift",
-            next_action=(
-                "If the change was intentional, continue with `sm refit --iterate`. "
-                "If it may affect the gate list or thresholds, regenerate the plan "
-                "with `sm refit --start`."
-            ),
-            details={
-                "expected_hash": expected_cfg_hash,
-                "current_hash": _config_hash(project_root),
-            },
-        )
-        _emit_protocol(
-            args,
-            project_root,
-            drift_protocol,
-            [
-                "Warning: .sb_config.json has changed since the refit plan was "
-                "generated. The gate list may be stale.",
-                "If the change affects gate thresholds or disables a gate that is "
-                "still in the plan, regenerate with `sm refit --start`.",
-            ],
-        )
-
-    from slopmop.cli._refit_iteration import process_current_plan_item
-
-    try:
-        with sm_lock(project_root, "refit"):
-            while True:
-                result = process_current_plan_item(args, project_root, plan)
-                if result == _CONTINUE_LOOP:
-                    continue
-                return result
-    except SmLockError as exc:
-        protocol: Dict[str, Any] = {
-            "schema": _SCHEMA_VERSION,
-            "recorded_at": _iso_now(),
-            "event": "blocked_on_lock",
-            "status": "blocked_on_lock",
-            "project_root": str(project_root),
-            "next_action": "Wait for the active sm process to finish, then rerun `sm refit --iterate`.",
-            "details": {"message": str(exc)},
-        }
-        _emit_protocol(
-            args,
-            project_root,
-            protocol,
-            [f"Refit blocked: {exc}"],
-        )
-        return 1
+    return run_iterate(args)
 
 
 def _cmd_refit_finish(args: argparse.Namespace) -> int:
@@ -1162,6 +1080,9 @@ def _cmd_refit_finish(args: argparse.Namespace) -> int:
     from slopmop.workflow.state_store import record_baseline
 
     record_baseline(project_root)
+    from slopmop.cli.hooks import restore_slopmop_hook
+
+    restore_slopmop_hook(project_root)
     _emit_standalone_protocol(
         args,
         project_root,

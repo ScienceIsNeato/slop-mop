@@ -28,6 +28,20 @@ _HEAD_DRIFT_AGENT_COMMITTED_HINT = (
 
 _MAX_SURFACED_FINDINGS = 5
 
+# Statuses that indicate the agent has already made code changes to fix the
+# current gate and is now retrying.  The dirty-entry guard is bypassed for
+# these because dirty working-tree files are *expected* — the agent staged
+# them as part of the fix.  All other blocked statuses (including
+# blocked_on_dirty_entry itself) must not bypass the guard; if the worktree
+# is still dirty after being told to clean it, the guard should fire again.
+_RETRY_STATUSES_BYPASS_DIRTY_GUARD = frozenset(
+    {
+        "blocked_on_failure",
+        "blocked_on_dirty_worktree",
+        "blocked_on_commit",
+    }
+)
+
 
 def _summarise_failure_artifact(artifact_path: Path) -> List[str]:
     """Pull the top findings + fix_suggestion out of a scour artifact.
@@ -341,7 +355,7 @@ def process_current_plan_item(
     # would silently bundle the agent's unrelated changes into the gate-fix
     # commit, breaking commit attribution and potentially hiding real slop.
     current_item_status = str(current_item.get("status") or "")
-    if status_before and not current_item_status.startswith("blocked"):
+    if status_before and current_item_status not in _RETRY_STATUSES_BYPASS_DIRTY_GUARD:
         return _block_continue_plan(
             args,
             project_root,

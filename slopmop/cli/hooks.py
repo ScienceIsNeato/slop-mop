@@ -238,3 +238,81 @@ def cmd_commit_hooks(args: argparse.Namespace) -> int:
     else:
         print(f"❌ Unknown action: {args.hooks_action}")
         return 1
+
+
+# ---------------------------------------------------------------------------
+# Refit lifecycle helpers — park and restore the pre-commit hook so that
+# sm refit --start / --finish can manage it without any --no-verify bypass.
+# ---------------------------------------------------------------------------
+
+#: Suffix appended to the hook filename while a refit is in progress.
+HOOK_PARK_SUFFIX = ".refit-parked"
+
+
+def _pre_commit_hook_path(project_root: Path) -> Path:
+    """Return the canonical pre-commit hook path for *project_root*."""
+    return project_root / ".git" / "hooks" / "pre-commit"
+
+
+def _parked_hook_path(project_root: Path) -> Path:
+    """Return the park-aside path for the pre-commit hook."""
+    return _pre_commit_hook_path(project_root).with_suffix(HOOK_PARK_SUFFIX)
+
+
+def park_slopmop_hook(project_root: Path) -> None:
+    """Move the slop-mop pre-commit hook aside for the duration of a refit.
+
+    Only acts on hooks installed by slop-mop (identified by ``SB_HOOK_MARKER``).
+    Third-party hooks are left in place — they're not ours to manage and the
+    user has presumably arranged for them to work safely during refit.
+
+    After ``sm refit --finish``, call ``restore_slopmop_hook`` to put it back.
+    """
+    hook = _pre_commit_hook_path(project_root)
+    if not hook.exists():
+        return
+    try:
+        content = hook.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    if SB_HOOK_MARKER not in content:
+        return  # not ours — leave it alone
+
+    parked = _parked_hook_path(project_root)
+    try:
+        hook.rename(parked)
+        print(
+            f"ℹ️  Pre-commit hook parked for refit: {parked.name}\n"
+            "   It will be restored automatically by `sm refit --finish`."
+        )
+    except OSError as exc:
+        # Non-fatal: worst case the user gets their own hook running during
+        # refit, which is the pre-lifecycle-management status quo.
+        print(f"⚠️  Could not park pre-commit hook (continuing anyway): {exc}")
+
+
+def restore_slopmop_hook(project_root: Path) -> None:
+    """Restore a previously-parked slop-mop pre-commit hook after ``--finish``."""
+    parked = _parked_hook_path(project_root)
+    if not parked.exists():
+        return
+
+    hook = _pre_commit_hook_path(project_root)
+    if hook.exists():
+        # Something else installed a hook while refit was running.  Don't
+        # clobber it; leave the parked backup and warn the user.
+        print(
+            f"⚠️  Could not restore parked hook: {hook} already exists.\n"
+            f"   Parked backup kept at: {parked}"
+        )
+        return
+
+    try:
+        parked.rename(hook)
+        print(f"✅ Pre-commit hook restored from refit backup: {hook.name}")
+    except OSError as exc:
+        print(
+            f"⚠️  Could not restore parked hook (manual action needed): {exc}\n"
+            f"   Parked backup: {parked}\n"
+            f"   To restore manually: mv {parked} {hook}"
+        )

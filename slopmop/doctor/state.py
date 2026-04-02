@@ -375,7 +375,7 @@ class StateConfigCheck(DoctorCheck):
 
 
 class StateCommitHookCheck(DoctorCheck):
-    """Detect an active slop-mop pre-commit hook.
+    """Detect an active slop-mop pre-commit hook before a refit.
 
     During the refit rail, having a commit hook installed causes two problems:
 
@@ -385,16 +385,16 @@ class StateCommitHookCheck(DoctorCheck):
        rail-owned auto-commit would be blocked by whichever gates haven't
        been remediated yet.
 
-    ``sm refit --iterate`` bypasses the hook via ``--no-verify``, so its own
-    commits are safe.  However, any manual commit made during the refit
-    (e.g. the "add slop-mop config" setup commit) will trip the hook.
+    ``sm refit --start`` automatically parks a slop-mop-managed hook aside
+    (``pre-commit.refit-parked``) and ``sm refit --finish`` restores it.
+    This check surfaces the situation pre-emptively so users are aware;
+    ``--fix`` performs the same park step manually when needed.
 
-    The safest approach during refit is to temporarily uninstall the hook,
-    complete the refit, then reinstall.  ``--fix`` does that.
+    Third-party (non-slop-mop) hooks are not touched.
     """
 
     name = "state.commit_hook"
-    description = "Slop-mop pre-commit hook installed (interferes with refit rail)"
+    description = "Slop-mop pre-commit hook installed (will be parked by --start)"
     can_fix = True
 
     def _hook_path(self, ctx: DoctorContext) -> Path:
@@ -428,18 +428,13 @@ class StateCommitHookCheck(DoctorCheck):
             "slop-mop commit hook is installed",
             detail=(
                 f"Hook: {hook_path}\n"
-                "During a refit rail, this hook runs ``sm swab`` on every commit,\n"
-                "including manual commits made between iterations.  In a\n"
-                "high-slop codebase this will:\n"
-                "  • block the commit because non-remediated gates still fail\n"
-                "  • (in maintenance mode) auto-fix unrelated files, dirtying\n"
-                "    the worktree and confusing the rail's targeted-change model\n"
+                "``sm refit --start`` will park this hook automatically\n"
+                "(renamed to pre-commit.refit-parked) and restore it\n"
+                "when ``sm refit --finish`` completes.\n"
                 "\n"
-                "``sm refit --iterate`` uses --no-verify on its own commits so\n"
-                "the rail itself is safe.  Manual commits during the refit are not.\n"
-                "\n"
-                "Recommended: uninstall the hook before starting the refit,\n"
-                "then reinstall after `sm refit --finish`."
+                "If you need to start the refit without running --start\n"
+                "interactively, run ``sm doctor --fix state.commit_hook``\n"
+                "to park the hook manually."
             ),
             fix_hint="sm doctor --fix state.commit_hook",
             data=data,
@@ -451,22 +446,21 @@ class StateCommitHookCheck(DoctorCheck):
         if not hook_path.exists() or not self._hook_is_slopmop(hook_path):
             return self._ok("nothing to fix — hook not present or not slop-mop managed")
 
-        backup = hook_path.with_suffix(".pre-refit")
+        parked = hook_path.with_suffix(".refit-parked")
         try:
-            shutil.copy2(str(hook_path), str(backup))
-            hook_path.unlink()
+            hook_path.rename(parked)
         except OSError as exc:
             return self._fail(
-                "could not remove hook",
+                "could not park hook",
                 detail=f"Error: {exc}",
             )
 
         return self._ok(
-            "hook uninstalled (backed up)",
+            "hook parked (will be restored by `sm refit --finish`)",
             detail=(
-                f"Removed: {hook_path}\n"
-                f"Backup:  {backup}\n"
-                "Reinstall after refit: sm commit-hooks install"
+                f"Parked: {hook_path} → {parked}\n"
+                "Restore manually: mv "
+                f"{parked} {hook_path}"
             ),
-            data={"backup": str(backup)},
+            data={"parked_at": str(parked)},
         )
