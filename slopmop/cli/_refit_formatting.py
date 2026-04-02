@@ -87,7 +87,7 @@ def run_formatting_quarantine_commit(
 
     if not json_mode:
         print(
-            f"  → {len(changed)} file(s) reformatted."
+            f"  \u2192 {len(changed)} file(s) reformatted.\n"
             "  Committing as dedicated formatting commit…"
         )
 

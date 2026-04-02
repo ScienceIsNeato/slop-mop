@@ -35,6 +35,45 @@ MIN_TOKENS = 50
 MIN_LINES = 5
 
 
+def _glob_matches_path(path: str, pattern: str) -> bool:
+    """Match *path* against *pattern*, supporting ** on all Python versions.
+
+    ``PurePath.match`` only handles recursive ``**`` from Python 3.12+.
+    This function uses a hand-rolled regex conversion that works on 3.10+.
+    """
+    import re as _re
+
+    p = path.replace("\\", "/")
+    norm = pattern.replace("\\", "/")
+
+    result = ""
+    i = 0
+    n = len(norm)
+    while i < n:
+        if i <= n - 4 and norm[i : i + 4] == "/**/":
+            result += "/(?:.+/)?"
+            i += 4
+        elif i <= n - 3 and norm[i : i + 3] == "**/":
+            result += "(?:.+/)?"
+            i += 3
+        elif i <= n - 3 and norm[i : i + 3] == "/**":
+            result += "(?:/.+)?"
+            i += 3
+        elif i <= n - 2 and norm[i : i + 2] == "**":
+            result += ".*"
+            i += 2
+        elif norm[i] == "*":
+            result += "[^/]*"
+            i += 1
+        elif norm[i] == "?":
+            result += "[^/]"
+            i += 1
+        else:
+            result += _re.escape(norm[i])
+            i += 1
+    return bool(_re.search("(?:^|/)" + result + "$", p))
+
+
 class RepeatedCodeCheck(BaseCheck):
     """Cross-language repeated code detection.
 
@@ -415,7 +454,10 @@ class RepeatedCodeCheck(BaseCheck):
         """Return True if file_path matches any exclude pattern."""
         pure = PurePath(file_path)
         for pattern in patterns:
-            if pure.match(pattern):
+            if "**" in pattern:
+                if _glob_matches_path(file_path, pattern):
+                    return True
+            elif pure.match(pattern):
                 return True
             # Plain names with no glob chars: match as a path component
             if not any(c in pattern for c in "*?[{"):
