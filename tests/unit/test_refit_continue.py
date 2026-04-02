@@ -457,7 +457,7 @@ class TestCmdRefitContinue:
             ],
         }
         saves = []
-        heads = iter(["abc123", "abc123", "def456"])
+        heads = iter(["abc123", "abc123", "abc123", "def456"])
         statuses = iter([[" M app.py"], [" M app.py"]])
 
         monkeypatch.setattr(refit_mod, "_load_plan", Mock(return_value=plan))
@@ -601,6 +601,7 @@ class TestCmdRefitContinue:
                 "abc123",
                 "abc123",
                 "abc123",
+                "abc123",  # post_drain_head after item0 drain (no drain commit)
                 "def456",
                 "def456",
                 "def456",

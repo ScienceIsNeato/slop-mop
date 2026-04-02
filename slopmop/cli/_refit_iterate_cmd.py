@@ -19,7 +19,6 @@ def _emit_drift_warning(
 ) -> None:
     """Emit a non-blocking config-drift warning for the current iterate run."""
     import slopmop.cli.refit as _r
-    from slopmop.cli.scan_triage import write_json_out
 
     expected = plan.get("config_hash", "")
     if not (expected and _r._config_hash(project_root) != expected):
@@ -45,9 +44,12 @@ def _emit_drift_warning(
         "still in the plan, regenerate with `sm refit --start`.",
     ]
     if getattr(args, "json_output", False):
+        # Save to protocol file only; do not write to stdout here.
+        # The main protocol event comes from process_current_plan_item and
+        # must be the sole JSON object on stdout — a second object would
+        # make the output unparseable for consumers.
         drift_protocol.setdefault("protocol_file", str(_r._protocol_path(project_root)))
         _r._save_protocol(project_root, drift_protocol)
-        write_json_out(getattr(args, "output_file", None), drift_protocol)
         print(
             "Warning: .sb_config.json has changed since the refit plan was"
             " generated. The gate list may be stale.",

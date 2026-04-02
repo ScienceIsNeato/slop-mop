@@ -199,6 +199,11 @@ def _commit_and_advance(
     status_before_commit: Optional[List[str]] = None,
 ) -> int:
     _drain_before_commit(args, project_root, gate, status_before_commit or [])
+    # If drain created a commit, update expected_head now so a subsequent
+    # gate-fix commit failure doesn't trigger false HEAD-drift on next --iterate.
+    post_drain_head = _refit._current_head(project_root)
+    if post_drain_head and post_drain_head != plan.get("expected_head"):
+        plan["expected_head"] = post_drain_head
     commit_code, detail = _refit._commit_current_changes(
         project_root, str(current_item.get("commit_message"))
     )

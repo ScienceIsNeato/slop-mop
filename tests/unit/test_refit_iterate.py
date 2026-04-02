@@ -169,7 +169,7 @@ class TestDirtyEntryGuard:
             refit_mod, "_commit_current_changes", Mock(return_value=(0, "ok"))
         )
         # HEAD after commit is different from before.
-        heads = iter(["abc123", "abc123", "def456"])
+        heads = iter(["abc123", "abc123", "abc123", "def456"])
         monkeypatch.setattr(
             refit_mod, "_current_head", Mock(side_effect=lambda _root: next(heads))
         )
