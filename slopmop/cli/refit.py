@@ -70,10 +70,6 @@ _DOCTOR_PREFLIGHT_CHECKS = (
     "state.lock",
     "state.dir_permissions",
     "state.config_readable",
-    # A slop-mop commit hook will block manual commits during the refit and
-    # can auto-fix unrelated files in maintenance mode.  Warn so the agent
-    # can uninstall before the rail starts.
-    "state.commit_hook",
 )
 
 
@@ -695,24 +691,23 @@ def _status_is_same(before: List[str], after: List[str]) -> bool:
 
 
 def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]:
-    # Stage all changes.  `ensure_slopmop_gitignored` runs at --start time so
-    # .slopmop is always in .gitignore when --iterate runs; gitignored files
-    # are silently skipped by `git add -A`.
-    #
-    # We deliberately do NOT use a negative pathspec (`:!.slopmop`) here.
-    # In git ≥ 2.x, naming a gitignored path in ANY explicit pathspec —
-    # including a negative/exclusion one — triggers the
-    # "paths are ignored by one of your .gitignore files" error and a non-zero
-    # exit code, breaking the commit even though we were trying to EXCLUDE that
-    # path.  Since gitignore already handles the exclusion, the negative
-    # pathspec is both unnecessary and harmful.
-    #
-    # Edge case: if .slopmop files were committed to the repo before this refit
-    # started (i.e., tracked AND now gitignored), `git add -A` could re-stage
-    # them.  The `git rm --cached` step below unconditionally unstages them.
+    # Two-step add: first flush any tracked-file deletions/modifications,
+    # then stage everything new while explicitly excluding .slopmop.
+    # -c advice.addIgnoredFile=false suppresses the advisory warning that
+    # fires on git ≥2.39 when a gitignored path is named in a negative
+    # pathspec.  Genuine staging failures still propagate non-zero.
     for add_cmd in (
         ["git", "add", "-u"],
-        ["git", "add", "-A"],
+        [
+            "git",
+            "-c",
+            "advice.addIgnoredFile=false",
+            "add",
+            "-A",
+            "--",
+            ".",
+            ":!.slopmop",
+        ],
     ):
         add_result = subprocess.run(
             add_cmd,
@@ -725,22 +720,8 @@ def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]
             detail = (add_result.stderr or add_result.stdout or "").strip()
             return add_result.returncode, detail or "git add failed"
 
-    # Unstage any .slopmop artifacts that may have been staged above (only
-    # happens when .slopmop files are tracked in the repo).  --ignore-unmatch
-    # makes this a no-op when .slopmop is not staged, so it is always safe.
-    subprocess.run(
-        ["git", "rm", "--cached", "-r", "--quiet", "--ignore-unmatch", ".slopmop"],
-        cwd=project_root,
-        capture_output=True,
-        check=False,
-    )
-
     commit_result = subprocess.run(
-        # --no-verify bypasses any installed pre-commit hook.
-        # The refit rail runs its own gate validation before each commit;
-        # a hook running sm swab would block the commit because non-remediated
-        # gates still fail, deadlocking the rail.
-        ["git", "commit", "--no-verify", "-m", message],
+        ["git", "commit", "-m", message],
         cwd=project_root,
         capture_output=True,
         text=True,

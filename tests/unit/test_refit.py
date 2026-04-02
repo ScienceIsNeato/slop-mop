@@ -587,24 +587,23 @@ class TestCommitCurrentChanges:
         code, _ = refit_mod._commit_current_changes(tmp_path, "test commit")
 
         assert code == 0
-        # Two-step add: first -u (tracked files only), then plain -A.
-        # .slopmop is always gitignored at --iterate time (ensure_slopmop_gitignored
-        # runs at --start), so git add -A naturally skips it.
-        # We deliberately do NOT use a `:!.slopmop` negative pathspec: naming a
-        # gitignored path in any explicit pathspec (even a negative one) causes git
-        # to exit non-zero on some versions, which would break the commit.
+        # Two-step add: first -u (tracked files only), then -A with explicit
+        # :!.slopmop exclusion.  -c advice.addIgnoredFile=false suppresses the
+        # advisory warning that fires on git ≥2.39 when a gitignored path is
+        # named in a negative pathspec.
         assert captured_args[0] == ["git", "add", "-u"]
-        assert captured_args[1] == ["git", "add", "-A"]
-        # Third call is the --ignore-unmatch unstage safety net for .slopmop
-        assert captured_args[2] == [
+        assert captured_args[1] == [
             "git",
-            "rm",
-            "--cached",
-            "-r",
-            "--quiet",
-            "--ignore-unmatch",
-            ".slopmop",
+            "-c",
+            "advice.addIgnoredFile=false",
+            "add",
+            "-A",
+            "--",
+            ".",
+            ":!.slopmop",
         ]
+        # Third call is the commit — no --no-verify, no intermediate git rm.
+        assert captured_args[2] == ["git", "commit", "-m", "test commit"]
 
 
 class TestRunScour:
