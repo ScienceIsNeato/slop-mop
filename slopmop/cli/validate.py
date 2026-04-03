@@ -388,13 +388,37 @@ def _run_validation_locked(
         # or SARIF-to-stdout mode)
         executor.set_progress_callback(reporter.on_check_complete)
 
+    # Remediation-mode auto-fix suppression: in REMEDIATION phase, auto-fix
+    # defaults OFF to prevent unexpected file mutations in a high-slop codebase
+    # (e.g. a pre-commit hook reformatting 100+ unrelated files mid-refit).
+    # Maintenance mode restores the normal default (auto-fix ON).
+    # Override with --auto-fix to enable explicitly in remediation,
+    # or --no-auto-fix to suppress explicitly in maintenance.
+    auto_fix: bool
+    if args.no_auto_fix:
+        auto_fix = False
+    elif getattr(args, "explicit_auto_fix", False):
+        auto_fix = True
+    else:
+        phase = read_phase(project_root)
+        if phase == RepoPhase.REMEDIATION:
+            auto_fix = False
+            if not args.quiet and not json_mode and not sarif_to_stdout:
+                print(
+                    "ℹ  Remediation mode: auto-fix disabled "
+                    "(pass --auto-fix to enable, or run `sm refit --finish` "
+                    "to transition to maintenance mode)"
+                )
+        else:
+            auto_fix = True
+
     try:
         # Run checks
         summary = executor.run_checks(
             project_root=str(project_root),
             check_names=gates,
             config=config,
-            auto_fix=not args.no_auto_fix,
+            auto_fix=auto_fix,
             swabbing_time=swabbing_time,
             timings=timings,
             use_cache=not getattr(args, "no_cache", False),
@@ -519,6 +543,15 @@ def cmd_swab(args: argparse.Namespace) -> int:
     project_root = Path(getattr(args, "project_root", "."))
     if getattr(args, "json_file", None) is None:
         args.json_file = _default_json_artifact_path(project_root, "last_swab.json")
+
+    # Silently ensure .slopmop/ is gitignored on every swab run.
+    # Catches repos that skipped `sm init` and went straight to `sm swab`.
+    try:
+        from slopmop.utils import ensure_slopmop_gitignored
+
+        ensure_slopmop_gitignored(project_root)
+    except Exception:  # noqa: BLE001 — never block swab over gitignore housekeeping
+        pass
 
     config = load_config(project_root)
     register_custom_gates(config)

@@ -455,6 +455,11 @@ class TestBuffStatusCommand:
     def test_cmd_buff_watch_waits_once_for_post_ci_feedback_settle(
         self, monkeypatch, capsys
     ):
+        """Bugbot settle requires one extra poll wait after all CI checks complete.
+
+        When Bugbot's completedAt is set (truly finished), the watch loop fires
+        one settle sleep then runs the feedback gate once as the final verdict.
+        """
         args = argparse.Namespace(
             pr_or_action="watch",
             action_args=["85"],
@@ -487,8 +492,11 @@ class TestBuffStatusCommand:
                 "bucket": "neutral",
                 "state": "NEUTRAL",
                 "link": "https://cursor.com/docs/bugbot",
+                # completedAt set — Bugbot has truly finished
+                "completedAt": "2026-03-18T12:00:00Z",
             },
         ]
+        # Two fetches: settle wait, final check.
         fetch_checks = Mock(side_effect=[(checks, ""), (checks, "")])
         monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
@@ -500,9 +508,98 @@ class TestBuffStatusCommand:
         out = capsys.readouterr().out
         assert "Waiting one extra interval for review feedback to settle" in out
         assert "CI CLEAN" in out
+        # Two loop iterations, two fetch calls.
         assert fetch_checks.call_count == 2
-        feedback_gate.assert_called_once_with(85, "/repo")
-        sleep_mock.assert_called_once_with(7)
+        # Gate called once: final verdict only.
+        assert feedback_gate.call_count == 1
+        # One settle sleep.
+        assert sleep_mock.call_count == 1
+        sleep_mock.assert_called_with(7)
+
+    def test_cmd_buff_watch_treats_bugbot_with_no_completed_at_as_in_progress(
+        self, monkeypatch, capsys
+    ):
+        """Bugbot with no completedAt is still running — buff keeps polling.
+
+        Root cause of the bug: Bugbot shows bucket=skipping/neutral before it
+        has set completedAt, so it isn't actually done yet.  The fix is to
+        treat neutral/skipping checks without completedAt as in_progress.
+        """
+        args = argparse.Namespace(
+            pr_or_action="watch",
+            action_args=["85"],
+            interval=7,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        # First two polls: Bugbot has no completedAt — still in_progress
+        in_flight_checks = [
+            {
+                "name": "Primary Code Scanning Gate (blocking)",
+                "bucket": "pass",
+                "state": "SUCCESS",
+                "link": "https://example.test/check",
+            },
+            {
+                "name": "Cursor Bugbot",
+                "bucket": "skipping",
+                "state": "NEUTRAL",
+                "link": "https://cursor.com/docs/bugbot",
+                # No completedAt — Bugbot hasn't finished yet
+            },
+        ]
+        # Third poll: Bugbot sets completedAt — now truly done
+        done_checks = [
+            {
+                "name": "Primary Code Scanning Gate (blocking)",
+                "bucket": "pass",
+                "state": "SUCCESS",
+                "link": "https://example.test/check",
+            },
+            {
+                "name": "Cursor Bugbot",
+                "bucket": "skipping",
+                "state": "NEUTRAL",
+                "link": "https://cursor.com/docs/bugbot",
+                "completedAt": "2026-03-18T12:00:00Z",
+            },
+        ]
+        fetch_checks = Mock(
+            side_effect=[
+                (in_flight_checks, ""),  # poll 1: Bugbot in_progress
+                (in_flight_checks, ""),  # poll 2: still in_progress
+                (done_checks, ""),  # poll 3: Bugbot done — settle fires
+                (done_checks, ""),  # poll 4: final gate check
+            ]
+        )
+        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
+        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        sleep_mock = Mock()
+        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+
+        assert buff_mod.cmd_buff(args) == 0
+        out = capsys.readouterr().out
+        assert "CI CLEAN" in out
+        # 4 fetches: 2 in_progress polls, settle, final
+        assert fetch_checks.call_count == 4
+        # Gate called once after settle
+        assert feedback_gate.call_count == 1
+        # 3 sleeps: 2 in_progress polls + 1 settle
+        assert sleep_mock.call_count == 3
 
     def test_cmd_buff_status_no_checks_still_blocks_on_unresolved_feedback(
         self, monkeypatch, capsys
@@ -667,6 +764,8 @@ class TestBuffStatusCommand:
                 "bucket": "neutral",
                 "state": "NEUTRAL",
                 "link": "https://cursor.com/docs/bugbot",
+                # completedAt set — Bugbot has truly finished
+                "completedAt": "2026-03-18T12:00:00Z",
             },
         ]
         failed_pending_checks = [
@@ -683,6 +782,11 @@ class TestBuffStatusCommand:
                 "link": "https://cursor.com/docs/bugbot",
             },
         ]
+        # Sequence (single-phase settle with completedAt fix):
+        # 1. passing → settle fires (Bugbot has completedAt), sleep1, settled=True
+        # 2. failed+pending → reset settled=False, sleep2, continue
+        # 3. passing → settle fires again (settled=False), sleep3, settled=True
+        # 4. passing → final gate check → PASSED → success
         fetch_checks = Mock(
             side_effect=[
                 (passing_checks, ""),
@@ -703,7 +807,9 @@ class TestBuffStatusCommand:
             out.count("Waiting one extra interval for review feedback to settle") == 2
         )
         assert fetch_checks.call_count == 4
-        feedback_gate.assert_called_once_with(85, "/repo")
+        # Gate called once: final verdict only (no phase-2).
+        assert feedback_gate.call_count == 1
+        # 3 sleeps: settle, failed-reset, settle-again.
         assert sleep_mock.call_count == 3
 
     def test_cmd_buff_watch_fail_fast_exits_immediately(self, monkeypatch, capsys):

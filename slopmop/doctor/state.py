@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, cast
 
+from slopmop.cli.hooks import HOOK_PARK_SUFFIX
 from slopmop.core.config import config_file_path, state_dir_path
 from slopmop.core.lock import (
     _is_stale,
@@ -371,4 +372,103 @@ class StateConfigCheck(DoctorCheck):
             f"restored config from {backup}",
             detail=f"Broken file moved to: {aside}",
             data={"restored_from": str(backup), "moved_aside": str(aside)},
+        )
+
+
+class StateCommitHookCheck(DoctorCheck):
+    """Detect an active slop-mop pre-commit hook before a refit.
+
+    During the refit rail, having a commit hook installed causes two problems:
+
+    1. ``sm swab`` (invoked by the hook) would auto-fix unrelated files before
+       being assigned a gate, corrupting the worktree.
+    2. The hook validates ALL gates, not just the current one, so every
+       rail-owned auto-commit would be blocked by whichever gates haven't
+       been remediated yet.
+
+    ``sm refit --start`` automatically parks a slop-mop-managed hook aside
+    (``pre-commit.refit-parked``) and ``sm refit --finish`` restores it.
+    This check surfaces the situation pre-emptively so users are aware;
+    ``--fix`` performs the same park step manually when needed.
+
+    Third-party (non-slop-mop) hooks are not touched.
+    """
+
+    name = "state.commit_hook"
+    description = "Slop-mop pre-commit hook installed (will be parked by --start)"
+    can_fix = True
+
+    def _hook_path(self, ctx: DoctorContext) -> Optional[Path]:
+        from slopmop.cli.hooks import _get_git_hooks_dir
+
+        hooks_dir = _get_git_hooks_dir(ctx.project_root)
+        return (hooks_dir / "pre-commit") if hooks_dir else None
+
+    def _hook_is_slopmop(self, hook_path: Path) -> bool:
+        """Return True when the hook was installed by slop-mop."""
+        from slopmop.cli.hooks import SB_HOOK_MARKER
+
+        try:
+            content = hook_path.read_text(encoding="utf-8", errors="replace")
+            return SB_HOOK_MARKER in content
+        except OSError:
+            return False
+
+    def run(self, ctx: DoctorContext) -> DoctorResult:
+        hook_path = self._hook_path(ctx)
+        data: dict[str, object] = {"hook_path": str(hook_path)}
+
+        if not hook_path or not hook_path.exists():
+            return self._ok("no commit hook installed", data=data)
+
+        if not self._hook_is_slopmop(hook_path):
+            return self._ok(
+                "commit hook present but not slop-mop managed",
+                data=data,
+            )
+
+        data["managed_by_slopmop"] = True
+        return self._warn(
+            "slop-mop commit hook is installed",
+            detail=(
+                f"Hook: {hook_path}\n"
+                "``sm refit --start`` will park this hook automatically\n"
+                "(renamed to pre-commit.refit-parked) and restore it\n"
+                "when ``sm refit --finish`` completes.\n"
+                "\n"
+                "If you need to start the refit without running --start\n"
+                "interactively, run ``sm doctor --fix state.commit_hook``\n"
+                "to park the hook manually."
+            ),
+            fix_hint="sm doctor --fix state.commit_hook",
+            data=data,
+        )
+
+    def fix(self, ctx: DoctorContext) -> DoctorResult:
+        hook_path = self._hook_path(ctx)
+
+        if (
+            not hook_path
+            or not hook_path.exists()
+            or not self._hook_is_slopmop(hook_path)
+        ):
+            return self._ok("nothing to fix — hook not present or not slop-mop managed")
+
+        parked = hook_path.with_suffix(HOOK_PARK_SUFFIX)
+        try:
+            hook_path.rename(parked)
+        except OSError as exc:
+            return self._fail(
+                "could not park hook",
+                detail=f"Error: {exc}",
+            )
+
+        return self._ok(
+            "hook parked (will be restored by `sm refit --finish`)",
+            detail=(
+                f"Parked: {hook_path} → {parked}\n"
+                "Restore manually: mv "
+                f"{parked} {hook_path}"
+            ),
+            data={"parked_at": str(parked)},
         )

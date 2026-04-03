@@ -1068,7 +1068,8 @@ _CI_MODULE = "slopmop.cli.ci"
 class TestCategorizeChecks:
     """Direct tests for _categorize_checks bucket classification."""
 
-    def test_neutral_bucket_treated_as_completed(self):
+    def test_neutral_bucket_without_completed_at_is_in_progress(self):
+        """A neutral-bucket check with no completedAt is still in flight."""
         checks = [
             {
                 "name": "Cursor Bugbot",
@@ -1078,18 +1079,54 @@ class TestCategorizeChecks:
             }
         ]
         completed, in_progress, failed = _categorize_checks(checks)
+        assert len(completed) == 0
+        assert len(in_progress) == 1
+        assert in_progress[0][0] == "Cursor Bugbot"
+
+    def test_neutral_bucket_with_completed_at_is_completed(self):
+        """A neutral-bucket check with completedAt set has truly finished."""
+        checks = [
+            {
+                "name": "Cursor Bugbot",
+                "bucket": "neutral",
+                "link": "",
+                "state": "NEUTRAL",
+                "completedAt": "2026-03-18T12:00:00Z",
+            }
+        ]
+        completed, in_progress, failed = _categorize_checks(checks)
         assert len(completed) == 1
         assert len(in_progress) == 0
         assert completed[0][0] == "Cursor Bugbot"
 
-    def test_skipping_bucket_with_neutral_state_is_completed(self):
-        """Real-world case: gh returns bucket=skipping, state=NEUTRAL for Bugbot."""
+    def test_skipping_bucket_without_completed_at_is_in_progress(self):
+        """Real-world: gh returns bucket=skipping, state=NEUTRAL, no completedAt.
+
+        This is Cursor Bugbot still running — the check is in the neutral/skipping
+        state but hasn't set completedAt yet, so it's still posting comments.
+        """
         checks = [
             {
                 "name": "Cursor Bugbot",
                 "bucket": "skipping",
                 "link": "https://cursor.com",
                 "state": "NEUTRAL",
+            }
+        ]
+        completed, in_progress, failed = _categorize_checks(checks)
+        assert len(completed) == 0
+        assert len(in_progress) == 1
+        assert in_progress[0][0] == "Cursor Bugbot"
+
+    def test_skipping_bucket_with_completed_at_is_completed(self):
+        """gh returns bucket=skipping, state=NEUTRAL, completedAt set = truly done."""
+        checks = [
+            {
+                "name": "Cursor Bugbot",
+                "bucket": "skipping",
+                "link": "https://cursor.com",
+                "state": "NEUTRAL",
+                "completedAt": "2026-03-18T12:00:00Z",
             }
         ]
         completed, in_progress, failed = _categorize_checks(checks)
@@ -1102,12 +1139,13 @@ class TestCategorizeChecks:
             {"name": "lint", "bucket": "pass", "link": "", "state": ""},
             {"name": "test", "bucket": "fail", "link": "http://x", "state": ""},
             {"name": "deploy", "bucket": "pending", "link": "", "state": "PENDING"},
+            # skipping/NEUTRAL with no completedAt — still in flight
             {"name": "bugbot", "bucket": "skipping", "link": "", "state": "NEUTRAL"},
             {"name": "build", "bucket": "cancel", "link": "http://y", "state": ""},
         ]
         completed, in_progress, failed = _categorize_checks(checks)
-        assert len(completed) == 2  # pass + skipping/NEUTRAL
-        assert len(in_progress) == 1  # pending
+        assert len(completed) == 1  # pass only; bugbot has no completedAt
+        assert len(in_progress) == 2  # pending + skipping/NEUTRAL without completedAt
         assert len(failed) == 2  # fail + cancel
 
 

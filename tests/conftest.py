@@ -9,6 +9,21 @@ import pytest
 from slopmop.core.result import CheckResult, CheckStatus
 
 
+class _FakeLock:
+    """Synchronous no-op context manager for mocking sm_lock in refit tests."""
+
+    def __enter__(self):
+        return None
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def fake_lock(_project_root, _verb):
+    """Drop-in replacement for sm_lock that never blocks."""
+    return _FakeLock()
+
+
 @pytest.fixture
 def temp_project(tmp_path: Path) -> Generator[Path, None, None]:
     """Create a temporary project directory with Python files."""

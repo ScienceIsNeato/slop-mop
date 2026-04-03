@@ -38,7 +38,6 @@ from slopmop.cli._refit_precheck import (
 )
 from slopmop.cli.buff import _load_json_file
 from slopmop.cli.scan_triage import write_json_out
-from slopmop.core.lock import SmLockError, sm_lock
 from slopmop.core.registry import get_registry
 from slopmop.workflow.state_machine import RepoPhase
 from slopmop.workflow.state_store import read_phase
@@ -185,17 +184,35 @@ def _current_head(project_root: Path) -> Optional[str]:
     return _git_output_or_none(project_root, "rev-parse", "HEAD")
 
 
+def _status_path(status_line: str) -> str:
+    """Extract the file path from a git status --porcelain line."""
+    path = status_line[2:].lstrip()
+    if " -> " in path:
+        # Rename: "R  old -> new" — track the new path
+        path = path.split(" -> ", 1)[1]
+    return path.strip().strip('"')
+
+
 def _is_slopmop_artifact(status_line: str) -> bool:
     if len(status_line) < 3:
         return False
-    # Git porcelain format: XY PATH (XY = 2-char status code).
-    # Use lstrip() after the status prefix to handle variable spacing
-    # between the status code and the path.
-    path = status_line[2:].lstrip()
-    if " -> " in path:
-        path = path.split(" -> ", 1)[1]
-    path = path.strip().strip('"')
+    path = _status_path(status_line)
     return path == ".slopmop" or path.startswith(".slopmop/")
+
+
+def _config_hash(project_root: Path) -> str:
+    """Return a short SHA-256 digest of .sb_config.json for drift detection.
+
+    Returns an empty string when the config file does not exist so callers
+    can treat an absent config as "no hash recorded" without branching.
+    """
+    import hashlib
+
+    config_file = os.environ.get("SB_CONFIG_FILE")
+    config_path = Path(config_file) if config_file else project_root / ".sb_config.json"
+    if not config_path.exists():
+        return ""
+    return hashlib.sha256(config_path.read_bytes()).hexdigest()[:16]
 
 
 def _worktree_status(project_root: Path) -> List[str]:
@@ -406,7 +423,7 @@ def _phase_label_for_check(check: BaseCheck) -> str:
 
 def _commit_kind_for_check(name: str, check: BaseCheck) -> str:
     family = _gate_family(name)
-    if any(token in family for token in ("sloppy-formatting", ".format", "format")):
+    if check.is_formatting_gate:
         return "style"
     if any(
         token in family
@@ -545,6 +562,7 @@ def _build_plan(project_root: Path, scour_artifact_path: Path) -> Dict[str, Any]
         "project_root": str(project_root),
         "branch": branch,
         "expected_head": head,
+        "config_hash": _config_hash(project_root),
         "status": "ready",
         "current_index": 0,
         "current_gate": items[0]["gate"] if items else None,
@@ -676,11 +694,11 @@ def _status_is_same(before: List[str], after: List[str]) -> bool:
 
 
 def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]:
-    # Two-step add avoids "ignored file" errors on git ≥2.39 when
-    # Use -c advice.addIgnoredFile=false to suppress the warning that
-    # fires when .slopmop is in .gitignore but we reference it via a
-    # negative pathspec.  Without --ignore-errors, genuine staging
-    # failures (permissions, encoding, path-too-long) still fail loudly.
+    # Two-step add: first flush any tracked-file deletions/modifications,
+    # then stage everything new while explicitly excluding .slopmop.
+    # -c advice.addIgnoredFile=false suppresses the advisory warning that
+    # fires on git ≥2.39 when a gitignored path is named in a negative
+    # pathspec.  Genuine staging failures still propagate non-zero.
     for add_cmd in (
         ["git", "add", "-u"],
         [
@@ -868,9 +886,11 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
         )
         return False
 
+    from slopmop.cli.hooks import park_slopmop_hook
     from slopmop.utils import ensure_slopmop_gitignored
 
     ensure_slopmop_gitignored(project_root)
+    park_slopmop_hook(project_root, json_mode=getattr(args, "json_output", False))
     return True
 
 
@@ -964,6 +984,22 @@ def _generate_plan_from_trustworthy_scour(
     return 0
 
 
+def _run_formatting_quarantine_commit(
+    args: argparse.Namespace, project_root: Path
+) -> bool:
+    """Run all auto-fixable formatters and commit any changes as a dedicated
+    formatting-only commit before the initial scour.
+
+    Delegates to ``slopmop.cli._refit_formatting`` to keep this file within
+    the code-sprawl line limit.
+    """
+    from slopmop.cli._refit_formatting import (  # noqa: PLC0415
+        run_formatting_quarantine_commit,
+    )
+
+    return run_formatting_quarantine_commit(args, project_root)
+
+
 def _cmd_refit_start(args: argparse.Namespace) -> int:
     project_root = _project_root(args)
     if not _ensure_start_prerequisites(args, project_root):
@@ -971,72 +1007,15 @@ def _cmd_refit_start(args: argparse.Namespace) -> int:
     precheck = _run_start_precheck_stage(args, project_root)
     if precheck is None:
         return 1
+    if not _run_formatting_quarantine_commit(args, project_root):
+        return 1
     return _generate_plan_from_trustworthy_scour(args, project_root)
 
 
 def _cmd_refit_iterate(args: argparse.Namespace) -> int:
-    project_root = _project_root(args)
-    if not _ensure_remediation_phase(project_root):
-        _emit_standalone_protocol(
-            args,
-            project_root,
-            event="blocked_on_phase",
-            status="blocked_on_phase",
-            next_action=_MAINTENANCE_NEXT_ACTION,
-            human_lines=[
-                "Refit is only available while the repo is in remediation phase. "
-                "Run the normal swab/scour/buff workflow for maintenance repos."
-            ],
-        )
-        return 1
+    from slopmop.cli._refit_iterate_cmd import run_iterate
 
-    plan = _load_continue_plan(args, project_root)
-    if plan is None:
-        return 1
-
-    if plan.get("status") == "completed":
-        _emit_standalone_protocol(
-            args,
-            project_root,
-            event="already_completed",
-            status="already_completed",
-            next_action="Run `sm refit --finish` to transition to maintenance mode.",
-            human_lines=[
-                "Refit plan is already completed. "
-                "Run `sm refit --finish` to check results and transition to maintenance."
-            ],
-        )
-        return 0
-
-    if not _ensure_continue_branch(args, project_root, plan):
-        return 1
-
-    from slopmop.cli._refit_iteration import process_current_plan_item
-
-    try:
-        with sm_lock(project_root, "refit"):
-            while True:
-                result = process_current_plan_item(args, project_root, plan)
-                if result == _CONTINUE_LOOP:
-                    continue
-                return result
-    except SmLockError as exc:
-        protocol: Dict[str, Any] = {
-            "schema": _SCHEMA_VERSION,
-            "recorded_at": _iso_now(),
-            "event": "blocked_on_lock",
-            "status": "blocked_on_lock",
-            "project_root": str(project_root),
-            "next_action": "Wait for the active sm process to finish, then rerun `sm refit --iterate`.",
-            "details": {"message": str(exc)},
-        }
-        _emit_protocol(
-            args,
-            project_root,
-            protocol,
-            [f"Refit blocked: {exc}"],
-        )
-        return 1
+    return run_iterate(args)
 
 
 def _cmd_refit_finish(args: argparse.Namespace) -> int:
@@ -1100,6 +1079,9 @@ def _cmd_refit_finish(args: argparse.Namespace) -> int:
     from slopmop.workflow.state_store import record_baseline
 
     record_baseline(project_root)
+    from slopmop.cli.hooks import restore_slopmop_hook
+
+    restore_slopmop_hook(project_root, json_mode=getattr(args, "json_output", False))
     _emit_standalone_protocol(
         args,
         project_root,

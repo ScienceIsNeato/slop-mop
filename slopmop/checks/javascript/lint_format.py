@@ -54,6 +54,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
+    is_formatting_gate = True
 
     @property
     def name(self) -> str:

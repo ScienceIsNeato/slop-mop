@@ -371,6 +371,126 @@ class TestRepeatedCodeCheck:
         reason = check.skip_reason(str(tmp_path))
         assert "not applicable" in reason.lower()
 
+    # ── exclude_dirs post-filter ──────────────────────────────────────────
+
+    def test_path_excluded_glob_pattern(self):
+        """**/test.ts matches nested test.ts files."""
+        assert RepeatedCodeCheck._path_excluded(
+            "supabase/functions/users/test.ts", ["**/test.ts"]
+        )
+        assert not RepeatedCodeCheck._path_excluded("src/utils.ts", ["**/test.ts"])
+
+    def test_path_excluded_plain_dirname(self):
+        """Plain directory name matches files inside that directory."""
+        assert RepeatedCodeCheck._path_excluded(
+            "node_modules/lodash/index.ts", ["node_modules"]
+        )
+        assert not RepeatedCodeCheck._path_excluded("src/main.ts", ["node_modules"])
+
+    def test_filter_duplicates_removes_pairs_with_excluded_first_file(self):
+        """Pairs where firstFile is excluded are removed."""
+        check = RepeatedCodeCheck({"exclude_dirs": ["**/test.ts"]})
+        dupes = [
+            {
+                "firstFile": {"name": "supabase/functions/a/test.ts"},
+                "secondFile": {"name": "supabase/functions/b/test.ts"},
+                "lines": 10,
+            },
+            {
+                "firstFile": {"name": "src/main.ts"},
+                "secondFile": {"name": "src/utils.ts"},
+                "lines": 5,
+            },
+        ]
+        filtered = check._filter_duplicates(dupes)
+        assert len(filtered) == 1
+        assert filtered[0]["firstFile"]["name"] == "src/main.ts"
+
+    def test_filter_duplicates_removes_pairs_with_excluded_second_file(self):
+        """Pairs where secondFile is excluded are also removed."""
+        check = RepeatedCodeCheck({"exclude_dirs": ["**/test.ts"]})
+        dupes = [
+            {
+                "firstFile": {"name": "src/main.ts"},
+                "secondFile": {"name": "supabase/functions/b/test.ts"},
+                "lines": 8,
+            },
+        ]
+        filtered = check._filter_duplicates(dupes)
+        assert filtered == []
+
+    def test_filter_duplicates_no_exclude_dirs_is_noop(self):
+        """When exclude_dirs is empty, filtering is a no-op."""
+        check = RepeatedCodeCheck({})
+        dupes = [
+            {
+                "firstFile": {"name": "src/a.ts"},
+                "secondFile": {"name": "src/b.ts"},
+                "lines": 5,
+            }
+        ]
+        assert check._filter_duplicates(dupes) == dupes
+
+    def test_fix_suggestion_points_to_correct_config_key(self):
+        """fix_suggestion must reference laziness.gates.repeated-code, NOT the dead checks.* path.
+
+        Regression guard: the message previously said 'checks.repeated-code.exclude_dirs'
+        which is a non-existent JSON key. Users who followed it set patterns at the wrong
+        path, making _filter_duplicates receive an empty config_excludes and silently skip
+        the post-filter step.
+        """
+        check = RepeatedCodeCheck({"threshold": 5})
+        report = {
+            "duplicates": [
+                {
+                    "firstFile": {
+                        "name": "src/a.ts",
+                        "startLoc": {"line": 1},
+                        "endLoc": {"line": 5},
+                    },
+                    "secondFile": {
+                        "name": "src/b.ts",
+                        "startLoc": {"line": 10},
+                        "endLoc": {"line": 14},
+                    },
+                    "lines": 5,
+                }
+            ],
+            "statistics": {"total": {"lines": 100, "percentage": 50.0}},
+        }
+        result = check._format_result(report, 0.1)
+        assert result.fix_suggestion is not None
+        # Must NOT say "checks.repeated-code" (the wrong dead path)
+        assert "checks.repeated-code" not in result.fix_suggestion
+        # Must reference the correct JSON path or sm config --set syntax
+        assert (
+            "laziness.gates.repeated-code" in result.fix_suggestion
+            or "laziness:repeated-code" in result.fix_suggestion
+        )
+
+    def test_run_no_report_exit_code_2_is_passed(self, tmp_path):
+        """jscpd exit 2 with no report (all files excluded) should be PASSED."""
+        (tmp_path / "app.py").write_text("def test(): pass")
+        check = RepeatedCodeCheck({})
+
+        version_result = MagicMock()
+        version_result.returncode = 0
+
+        analysis_result = MagicMock()
+        analysis_result.returncode = 2
+        analysis_result.stderr = ""
+        analysis_result.stdout = ""
+
+        with (
+            patch.object(
+                check, "_run_command", side_effect=[version_result, analysis_result]
+            ),
+            patch("os.path.exists", return_value=False),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
 
 # ─── Ambiguity mine detection (AST function-name scan) ───────────────────
 

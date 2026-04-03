@@ -90,15 +90,58 @@ class SmResolutionCheck(DoctorCheck):
     name = "runtime.sm_resolution"
     description = "Active sm binary and PATH collision detection"
 
-    def run(self, ctx: DoctorContext) -> DoctorResult:
-        # Where does a bare ``sm`` resolve?
-        first = shutil.which("sm")
-        all_sm = _find_all_on_path("sm")
+    def _check_sm_collision(
+        self,
+        first: str,
+        all_sm: List[str],
+        project_root: "Path",
+        data: "dict[str, object]",
+    ) -> DoctorResult:
+        def _is_project_owned(p: str) -> bool:
+            rp = Path(p).resolve()
+            try:
+                return rp.is_relative_to(project_root)
+            except (TypeError, ValueError):
+                return False
 
-        # Where are *we* running from?  sys.argv[0] is the script entry
-        # point for console_scripts installs; sys.executable is the
-        # interpreter.  The more useful anchor is the slopmop package
-        # location itself.
+        active_is_project = _is_project_owned(first)
+        detail_lines = ["Multiple ``sm`` entries on PATH (first wins):"]
+        for i, path in enumerate(all_sm):
+            marker = " ← active" if i == 0 else ""
+            detail_lines.append(f"  {i+1}. {path}{marker}")
+
+        if active_is_project:
+            detail_lines += [
+                "",
+                "Active binary is in the project venv — other entries are shadowed.",
+            ]
+            return self._ok(
+                f"sm resolves to {first} (project venv)",
+                detail="\n".join(detail_lines),
+                data=data,
+            )
+
+        detail_lines += [
+            "",
+            "If this isn't the ``sm`` you expect, adjust PATH ordering or remove the shadowing install.",
+        ]
+        return self._warn(
+            f"{len(all_sm)} sm binaries on PATH",
+            detail="\n".join(detail_lines),
+            fix_hint=(
+                "type -a sm  # POSIX\n"
+                "where.exe sm  # Windows\n"
+                "Remove or reorder the unwanted entry."
+            ),
+            data=data,
+        )
+
+    def run(self, ctx: DoctorContext) -> DoctorResult:
+        # Compute all candidates first so we can fall back to _find_all_on_path
+        # on Windows where shutil.which() ignores extensionless scripts.
+        all_sm = _find_all_on_path("sm")
+        first = shutil.which("sm") or (all_sm[0] if all_sm else None)
+
         import slopmop
 
         pkg_root = Path(slopmop.__file__).resolve().parent
@@ -111,9 +154,6 @@ class SmResolutionCheck(DoctorCheck):
         }
 
         if not first:
-            # No ``sm`` on PATH at all.  Fine if running from source
-            # checkout (``python -m slopmop.sm doctor``); FAIL otherwise
-            # because the user can't actually invoke ``sm``.
             from slopmop.cli.upgrade import _running_from_source_checkout
 
             if _running_from_source_checkout():
@@ -137,53 +177,7 @@ class SmResolutionCheck(DoctorCheck):
             )
 
         if len(all_sm) > 1:
-            # Check if the active sm is the project's own venv install.
-            # When developing slop-mop itself, having venv/bin/sm +
-            # scripts/sm + a system pipx install is the expected layout
-            # — no warning needed as long as the project venv wins.
-            project_root = ctx.project_root
-
-            def _is_project_owned(p: str) -> bool:
-                rp = Path(p).resolve()
-                try:
-                    return rp.is_relative_to(project_root)
-                except (TypeError, ValueError):
-                    return False
-
-            active_is_project = first is not None and _is_project_owned(first)
-
-            detail_lines = ["Multiple ``sm`` entries on PATH (first wins):"]
-            for i, path in enumerate(all_sm):
-                marker = " ← active" if i == 0 else ""
-                detail_lines.append(f"  {i+1}. {path}{marker}")
-
-            if active_is_project:
-                detail_lines.append("")
-                detail_lines.append(
-                    "Active binary is in the project venv — other "
-                    "entries are shadowed."
-                )
-                return self._ok(
-                    f"sm resolves to {first} (project venv)",
-                    detail="\n".join(detail_lines),
-                    data=data,
-                )
-
-            detail_lines.append("")
-            detail_lines.append(
-                "If this isn't the ``sm`` you expect, adjust PATH ordering "
-                "or remove the shadowing install."
-            )
-            return self._warn(
-                f"{len(all_sm)} sm binaries on PATH",
-                detail="\n".join(detail_lines),
-                fix_hint=(
-                    "type -a sm  # POSIX\n"
-                    "where.exe sm  # Windows\n"
-                    "Remove or reorder the unwanted entry."
-                ),
-                data=data,
-            )
+            return self._check_sm_collision(first, all_sm, ctx.project_root, data)
 
         return self._ok(
             f"sm resolves to {first}",

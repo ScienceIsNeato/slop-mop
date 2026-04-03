@@ -13,13 +13,34 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 import slopmop.cli.refit as _refit
+from slopmop.cli._refit_formatting import (
+    drain_formatting_before_commit as _drain_before_commit,
+)
 
 _HEAD_DRIFT_NEXT_ACTION = (
     "Review the repo state, then rerun `sm refit --iterate` once HEAD is stable."
 )
 _HEAD_DRIFT_HUMAN_LINE = "Review the repo state before resuming."
+_HEAD_DRIFT_AGENT_COMMITTED_HINT = (
+    "If you manually committed a fix for this gate, "
+    "run `sm refit --skip` to mark it as resolved and advance to the next gate."
+)
 
 _MAX_SURFACED_FINDINGS = 5
+
+# Statuses that indicate the agent has already made code changes to fix the
+# current gate and is now retrying.  The dirty-entry guard is bypassed for
+# these because dirty working-tree files are *expected* — the agent staged
+# them as part of the fix.  All other blocked statuses (including
+# blocked_on_dirty_entry itself) must not bypass the guard; if the worktree
+# is still dirty after being told to clean it, the guard should fire again.
+_RETRY_STATUSES_BYPASS_DIRTY_GUARD = frozenset(
+    {
+        "blocked_on_failure",
+        "blocked_on_dirty_worktree",
+        "blocked_on_commit",
+    }
+)
 
 
 def _summarise_failure_artifact(artifact_path: Path) -> List[str]:
@@ -175,7 +196,14 @@ def _commit_and_advance(
     current_item: Dict[str, Any],
     gate: str,
     artifact_path: Path,
+    status_before_commit: Optional[List[str]] = None,
 ) -> int:
+    _drain_before_commit(args, project_root, gate, status_before_commit or [])
+    # If drain created a commit, update expected_head now so a subsequent
+    # gate-fix commit failure doesn't trigger false HEAD-drift on next --iterate.
+    post_drain_head = _refit._current_head(project_root)
+    if post_drain_head and post_drain_head != plan.get("expected_head"):
+        plan["expected_head"] = post_drain_head
     commit_code, detail = _refit._commit_current_changes(
         project_root, str(current_item.get("commit_message"))
     )
@@ -308,7 +336,8 @@ def process_current_plan_item(
                 next_action=_HEAD_DRIFT_NEXT_ACTION,
                 human_lines=[
                     "Refit blocked: HEAD changed unexpectedly since the plan last advanced. "
-                    + _HEAD_DRIFT_HUMAN_LINE
+                    + _HEAD_DRIFT_HUMAN_LINE,
+                    _HEAD_DRIFT_AGENT_COMMITTED_HINT,
                 ],
                 details={"expected_head": expected_head, "current_head": live_head},
             )
@@ -324,6 +353,38 @@ def process_current_plan_item(
             current_item=current_item,
             gate=gate,
         )
+
+    # Guard: block if the worktree is dirty before the gate runs and the
+    # agent hasn't been told to make fixes (i.e. is not in a blocked/retry
+    # state).  Without this guard, `git add -A` inside _commit_current_changes
+    # would silently bundle the agent's unrelated changes into the gate-fix
+    # commit, breaking commit attribution and potentially hiding real slop.
+    current_item_status = str(current_item.get("status") or "")
+    if status_before and current_item_status not in _RETRY_STATUSES_BYPASS_DIRTY_GUARD:
+        return _block_continue_plan(
+            args,
+            project_root,
+            plan,
+            event="blocked_on_dirty_entry",
+            status="blocked_on_dirty_entry",
+            next_action=(
+                "Commit, stash, or discard the uncommitted changes listed below, "
+                "then rerun `sm refit --iterate`."
+            ),
+            human_lines=[
+                f"Refit blocked on {gate}: worktree has uncommitted changes that "
+                "were not made by the refit pipeline.",
+                "These changes would be silently bundled into the gate-fix commit.",
+                "Commit, stash, or discard them, then rerun `sm refit --iterate`.",
+                "Uncommitted files: " + ", ".join(s.strip() for s in status_before),
+            ],
+            details={
+                "gate": gate,
+                "uncommitted_files": status_before,
+            },
+            current_item=current_item,
+        )
+
     artifact_path = _refit._continue_scour_path(project_root)
     exit_code = _refit._run_scour(project_root, artifact_path, gate=gate)
     live_head_after_run = _refit._current_head(project_root)
@@ -446,5 +507,5 @@ def process_current_plan_item(
             args, project_root, plan, current_item, gate, artifact_path
         )
     return _commit_and_advance(
-        args, project_root, plan, current_item, gate, artifact_path
+        args, project_root, plan, current_item, gate, artifact_path, status_after
     )

@@ -31,12 +31,17 @@ classifiers = [
 # Core runtime — only what the sm framework actually imports at the Python level.
 # All check tools (black, bandit, etc.) are invoked via subprocess and are optional.
 # Install extras for the tools you need: pipx install slopmop[all]
+# jinja2 is intentionally NOT listed here — it's used only inside the
+# jinja2_templates gate via a lazy import with a graceful fallback when absent.
 dependencies = [
-    "jinja2>=3.0.0",
     "tomli>=1.0.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
+# Template validation (jinja2_templates gate)
+templates = [
+    "jinja2>=3.0.0",
+]
 # Formatting & linting
 lint = [
     "black>=26.3.1",
@@ -80,6 +85,7 @@ tools = [
     "slopmop[analysis]",
     "slopmop[security]",
     "slopmop[testing]",
+    "slopmop[templates]",
 ]
 all = [
     "slopmop[tools]",

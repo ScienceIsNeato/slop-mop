@@ -122,6 +122,7 @@ class TestRegistry:
             "state.lock",
             "state.dir_permissions",
             "state.config_readable",
+            "state.commit_hook",
         }
 
 
@@ -142,6 +143,7 @@ class TestSelectChecks:
             "state.lock",
             "state.dir_permissions",
             "state.config_readable",
+            "state.commit_hook",
         }
 
     def test_multiple_patterns(self):

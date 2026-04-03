@@ -208,6 +208,16 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         help="Disable automatic fixing of issues",
     )
     parser.add_argument(
+        "--auto-fix",
+        dest="explicit_auto_fix",
+        action="store_true",
+        default=False,
+        help=(
+            "Force auto-fix on, even in remediation mode "
+            "(where auto-fix is off by default to prevent unexpected file mutations)."
+        ),
+    )
+    parser.add_argument(
         "--no-fail-fast",
         action="store_true",
         help="Continue running checks even after failures",

@@ -56,6 +56,7 @@ from slopmop.doctor.sm_env import (
     ToolInventoryCheck,
 )
 from slopmop.doctor.state import (
+    StateCommitHookCheck,
     StateConfigCheck,
     StateDirCheck,
     StateLockCheck,
@@ -91,6 +92,7 @@ ALL_CHECKS: List[type[DoctorCheck]] = [
     StateLockCheck,
     StateDirCheck,
     StateConfigCheck,
+    StateCommitHookCheck,
 ]
 
 CHECKS_BY_NAME: Dict[str, type[DoctorCheck]] = {c.name: c for c in ALL_CHECKS}
