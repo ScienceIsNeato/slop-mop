@@ -624,14 +624,49 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 return SecuritySubResult("semgrep", False, result.stderr[-300:])
             return SecuritySubResult("semgrep", True, "Scan completed")
 
-    def _run_detect_secrets(self, project_root: str) -> SecuritySubResult:
-        """Run detect-secrets hook."""
-        # Check for baseline file
-        config_file = self.config.get("config_file_path")
+    def _load_detect_secrets_allowlist(self, project_root: str) -> set[tuple[str, str]]:
+        """Load known (path, hashed_secret) pairs from the existing baseline file.
 
+        Returns an empty set if no baseline exists or if it cannot be parsed.
+        Never writes to the file — this is a read-only operation.
+        """
+        config_file = self.config.get("config_file_path")
+        if not config_file:
+            return set()
+        baseline_path = Path(project_root) / config_file
+        if not baseline_path.exists():
+            return set()
+        try:
+            baseline_raw: dict[str, Any] = json.loads(
+                baseline_path.read_text(encoding="utf-8")
+            )
+            baseline_results: dict[str, Any] = baseline_raw.get("results", {})
+            if not isinstance(baseline_results, dict):
+                return set()
+            known: set[tuple[str, str]] = set()
+            for bpath, bsecrets in baseline_results.items():
+                bpath_str: str = str(bpath)
+                if isinstance(bsecrets, list):
+                    for bs in cast(List[Any], bsecrets):
+                        if isinstance(bs, dict) and "hashed_secret" in bs:
+                            bs_dict: Dict[str, Any] = cast(Dict[str, Any], bs)
+                            known.add((bpath_str, str(bs_dict["hashed_secret"])))
+            return known
+        except (json.JSONDecodeError, OSError):
+            return set()
+
+    def _run_detect_secrets(self, project_root: str) -> SecuritySubResult:
+        """Run detect-secrets scan without touching the baseline file.
+
+        We intentionally do NOT pass ``--baseline`` to the ``scan`` command.
+        Passing ``--baseline`` causes detect-secrets to rewrite the file with
+        a fresh ``generated_at`` timestamp even when no secrets changed, which
+        pollutes the working tree and turns read-only validation into a commit
+        obligation.  We instead load the baseline ourselves and use its
+        ``results`` block as a read-only allowlist.
+        """
         cmd = [sys.executable, "-m", "detect_secrets", "scan"]
-        if config_file:
-            cmd.extend(["--baseline", config_file])
+        # No --baseline flag here — that would rewrite the file on every run.
 
         result = self._run_command(cmd, cwd=project_root, timeout=60)
 
@@ -643,6 +678,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                     report = cast(dict[str, Any], report_loaded)
                 else:
                     report = {}
+
+                # Build a read-only allowlist from the existing baseline file.
+                # Keys: (normalized_path, hashed_secret) — secrets already known/accepted.
+                known = self._load_detect_secrets_allowlist(project_root)
+
                 detected_any = report.get("results", {})
                 detected = (
                     cast(dict[str, Any], detected_any)
@@ -668,6 +708,10 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                             secrets.append(cast(dict[str, Any], secret_any))
                     filtered: list[dict[str, Any]] = []
                     for secret in secrets:
+                        # Skip if already present in the baseline allowlist.
+                        hashed = str(secret.get("hashed_secret", ""))
+                        if (path, hashed) in known:
+                            continue
                         if not self._is_detect_secrets_false_positive(
                             project_root, path, secret, line_cache
                         ):
@@ -688,19 +732,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                         f"  Potential secret in {path}: {', '.join(types)}"
                     )
                 detail = "\n".join(detail_lines)
-                # detect-secrets: per-file Findings (line_number available)
-                sarif: List[Finding] = []
-                for path, secrets in real_secrets.items():
-                    for s in secrets:
-                        ln = s.get("line_number")
-                        sarif.append(
-                            Finding(
-                                message=f"Potential secret: {s.get('type', '?')}",
-                                level=FindingLevel.ERROR,
-                                file=path,
-                                line=ln if isinstance(ln, int) else None,
-                            )
-                        )
+                sarif = self._build_detect_secrets_sarif(real_secrets)
                 return SecuritySubResult("detect-secrets", False, detail, sarif)
             except json.JSONDecodeError:
                 return SecuritySubResult("detect-secrets", True, "Scan completed")
@@ -710,6 +742,25 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             False,
             result.output[-300:] if result.output else "Scan failed",
         )
+
+    @staticmethod
+    def _build_detect_secrets_sarif(
+        real_secrets: dict[str, list[dict[str, Any]]],
+    ) -> List[Finding]:
+        """Build SARIF findings from detect-secrets results."""
+        sarif: List[Finding] = []
+        for path, secrets in real_secrets.items():
+            for s in secrets:
+                ln = s.get("line_number")
+                sarif.append(
+                    Finding(
+                        message=f"Potential secret: {s.get('type', '?')}",
+                        level=FindingLevel.ERROR,
+                        file=path,
+                        line=ln if isinstance(ln, int) else None,
+                    )
+                )
+        return sarif
 
 
 class SecurityCheck(SecurityLocalCheck):
