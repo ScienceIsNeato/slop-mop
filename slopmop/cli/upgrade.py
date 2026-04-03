@@ -436,13 +436,39 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         return 1
 
     if validation.returncode != 0:
+        details = validation.stdout.strip() or validation.stderr.strip()
         print(
-            f"❌ Upgrade installed {installed_version}, but validation failed. Backup: {backup_dir}",
+            f"❌ Upgrade installed {installed_version},"
+            f" but validation failed. Backup: {backup_dir}",
             file=sys.stderr,
         )
-        details = validation.stdout.strip() or validation.stderr.strip()
         if details:
             print(details, file=sys.stderr)
+
+        # Auto-file a barnacle so cleaning agents can pick it up.
+        try:
+            from slopmop.cli.barnacle import auto_file_barnacle  # noqa: PLC0415
+
+            bid = auto_file_barnacle(
+                command=f"sm upgrade  (→ {installed_version})",
+                expected="Post-upgrade validation (sm swab) passes clean",
+                actual=f"sm {VALIDATION_VERB} exited {validation.returncode}",
+                output_excerpt=details[:2000] if details else "",
+                blocker_type="blocking",
+                project_root=str(project_root),
+                reproduction_steps=[
+                    f"sm upgrade --to-version {installed_version}",
+                    f"sm {VALIDATION_VERB}",
+                ],
+            )
+            if bid:
+                print(
+                    f"🐚 Barnacle auto-filed: {bid}" f"  (sm barnacle show {bid})",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass  # Never let barnacle filing break the upgrade exit path
+
         return 1
 
     print(f"✅ Upgraded slopmop: {current_version} -> {installed_version}")
