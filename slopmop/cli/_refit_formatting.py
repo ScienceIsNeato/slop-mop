@@ -21,8 +21,24 @@ from pathlib import Path
 from typing import List
 
 import slopmop.cli.refit as _refit
+from slopmop.checks.base import BaseCheck
 
 _status_path = _refit._status_path  # shared helper — defined in refit.py
+
+
+def _collect_applicable_formatters(project_root_str: str) -> List[BaseCheck]:
+    """Return instances of all registered formatting gates that are applicable."""
+    from slopmop.core.registry import get_registry  # noqa: PLC0415
+
+    registry = get_registry()
+    applicable: List[BaseCheck] = []
+    for check_cls in registry._check_classes.values():
+        if not getattr(check_cls, "is_formatting_gate", False):
+            continue
+        check = check_cls(config={})
+        if check.is_applicable(project_root_str):
+            applicable.append(check)
+    return applicable
 
 
 def run_formatting_quarantine_commit(
@@ -38,13 +54,6 @@ def run_formatting_quarantine_commit(
     Returns True on success (commit made, or nothing to commit), False if a
     git operation fails.
     """
-    from slopmop.checks.javascript.lint_format import (  # noqa: PLC0415
-        JavaScriptLintFormatCheck,
-    )
-    from slopmop.checks.python.lint_format import (  # noqa: PLC0415
-        PythonLintFormatCheck,
-    )
-
     json_mode = getattr(args, "json_output", False)
     project_root_str = str(project_root)
 
@@ -53,29 +62,19 @@ def run_formatting_quarantine_commit(
             "🎨 Running formatters to quarantine style changes" " before gate analysis…"
         )
 
-    any_formatter_applicable = False
-
-    py_check = PythonLintFormatCheck(config={})
-    if py_check.is_applicable(project_root_str):
-        if not json_mode:
-            print("  → Python: autoflake + black + isort")
-        py_check.auto_fix(project_root_str)
-        any_formatter_applicable = True
-
-    js_check = JavaScriptLintFormatCheck(config={})
-    if js_check.is_applicable(project_root_str):
-        if not json_mode:
-            print("  → JavaScript/TypeScript: ESLint/Prettier or deno fmt")
-        js_check.auto_fix(project_root_str)
-        any_formatter_applicable = True
-
-    if not any_formatter_applicable:
+    applicable_checks = _collect_applicable_formatters(project_root_str)
+    if not applicable_checks:
         if not json_mode:
             print(
                 "  ℹ No formatter-applicable language detected"
                 " — skipping formatting commit."
             )
         return True
+
+    for check in applicable_checks:
+        if not json_mode:
+            print(f"  → {check.display_name}")
+        check.auto_fix(project_root_str)
 
     changed = _refit._worktree_status(project_root)
     if not changed:
@@ -152,28 +151,15 @@ def drain_formatting_before_commit(
     proceeds regardless so the remediation loop is never blocked by
     formatting housekeeping.
     """
-    from slopmop.checks.javascript.lint_format import (  # noqa: PLC0415
-        JavaScriptLintFormatCheck,
-    )
-    from slopmop.checks.python.lint_format import (  # noqa: PLC0415
-        PythonLintFormatCheck,
-    )
-
     json_mode = getattr(args, "json_output", False)
     project_root_str = str(project_root)
 
-    py_check = PythonLintFormatCheck(config={})
-    js_check = JavaScriptLintFormatCheck(config={})
-    py_applicable = py_check.is_applicable(project_root_str)
-    js_applicable = js_check.is_applicable(project_root_str)
-
-    if not py_applicable and not js_applicable:
+    applicable_checks = _collect_applicable_formatters(project_root_str)
+    if not applicable_checks:
         return True
 
-    if py_applicable:
-        py_check.auto_fix(project_root_str)
-    if js_applicable:
-        js_check.auto_fix(project_root_str)
+    for check in applicable_checks:
+        check.auto_fix(project_root_str)
 
     try:
         status_after_fmt = _refit._worktree_status(project_root)

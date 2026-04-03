@@ -257,11 +257,10 @@ class RepeatedCodeCheck(BaseCheck):
         stats = report.get("statistics", {})
         total_lines = stats.get("total", {}).get("lines", 0)
         if len(duplicates) < len(raw_duplicates) and total_lines > 0:
-            # Scale jscpd's own percentage by the ratio of remaining
-            # duplicates. Summing d["lines"] per entry would double-count
-            # any file region that appears in multiple duplicate pairs.
             jscpd_pct = stats.get("total", {}).get("percentage", 0)
-            total_percentage = jscpd_pct * (len(duplicates) / len(raw_duplicates))
+            total_percentage = self._compute_filtered_percentage(
+                jscpd_pct, raw_duplicates, duplicates
+            )
         else:
             total_percentage = stats.get("total", {}).get("percentage", 0)
 
@@ -410,6 +409,24 @@ class RepeatedCodeCheck(BaseCheck):
             include_dirs=list(include_dirs),
             extensions={".py", ".js", ".ts", ".jsx", ".tsx"},
         )
+
+    @staticmethod
+    def _compute_filtered_percentage(
+        jscpd_pct: float,
+        raw_duplicates: List[Dict[str, Any]],
+        duplicates: List[Dict[str, Any]],
+    ) -> float:
+        """Scale jscpd percentage by the ratio of retained to total duplicate lines.
+
+        Using pair count would weight a 500-line clone the same as a 5-line one.
+        Summing lines may double-count regions shared across pairs, but the error
+        cancels in the ratio since both numerator and denominator carry the same bias.
+        """
+        raw_dup_lines = sum(d.get("lines", 0) for d in raw_duplicates)
+        kept_dup_lines = sum(d.get("lines", 0) for d in duplicates)
+        if raw_dup_lines > 0:
+            return jscpd_pct * (kept_dup_lines / raw_dup_lines)
+        return jscpd_pct
 
     @staticmethod
     def _path_excluded(file_path: str, patterns: List[str]) -> bool:
