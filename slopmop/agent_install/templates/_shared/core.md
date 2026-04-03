@@ -86,27 +86,45 @@ available. Otherwise, run CLI commands from the project root.
 
 ### Live Dogfood Protocol
 
-For live refit efforts in real target repositories, run a strict state machine
-to capture friction and immediately harden slop-mop.
+For live refit efforts in real target repositories, use barnacles to hand off
+tool friction to the slop-mop maintainer and immediately resume remediation.
+
+A **barnacle** is a defect or unexpected behaviour in slop-mop itself,
+discovered while using it in a real repository.  The barnacle queue lives at
+`~/.slopmop/barnacles/` so every agent on the machine shares the same pool.
 
 #### State 1: Target Repository Remediation
 - Work in the target repository using normal `sm` rails.
-- If friction appears (slowdown, weird behavior, incorrect result), stop immediately.
-- Leave a pin with: repo, command/gate, exact error, and what was being attempted.
-- Transition to State 2.
+- If friction appears (slowdown, weird behaviour, incorrect result), stop immediately.
+- File a barnacle from the affected repo:
+  ```
+  sm barnacle file \
+    --command "sm <verb> [flags]" \
+    --expected "expected behaviour" \
+    --actual "what actually happened" \
+    --output "$(tail -20 .slopmop/last_swab.json 2>/dev/null)" \
+    --blocker-type blocking
+  ```
+- Note the barnacle ID and transition to State 2.
 
-#### State 2: Fix Slop-Mop Friction
-- Switch to slop-mop on a dedicated fix branch.
-- Implement the smallest targeted fix for the pinned friction.
-- Validate in slop-mop with `sm swab`.
-- Commit the fix on that branch.
+#### State 2: Fix Slop-Mop Friction (cleaning agent)
+- In slop-mop: `sm barnacle claim <id>` to register intent.
+- Switch to a dedicated fix branch.
+- Implement the smallest targeted fix.
+- Validate with `sm swab`.
+- Commit and resolve:
+  ```
+  sm barnacle resolve <id> --commit $(git rev-parse --short HEAD) \
+    --branch $(git branch --show-current) --notes "brief description"
+  ```
 - Transition to State 3.
 
 #### State 3: Test Fix Against Real Friction
 - Return to the original target-repo scenario and re-run the pinned command.
-- If the fix works: log resolution and return to State 1.
-- If the fix fails: return to State 2 and iterate.
+- If the fix works: return to State 1.
+- If it fails: file a new barnacle with additional context and return to State 2.
 
 #### Core Rule
-- Never push through friction in State 1. Always pause remediation, fix slop-mop,
-  and prove the fix in the real target workflow before resuming.
+- Never push through friction in State 1.  File a barnacle, fix slop-mop, and
+  prove the fix in the real target workflow before resuming.
+- Use `sm barnacle watch` to monitor for barnacles from other agents.

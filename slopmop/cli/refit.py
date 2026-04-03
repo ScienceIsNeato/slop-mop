@@ -138,7 +138,7 @@ def _validate_start_review_args(args: argparse.Namespace) -> Optional[str]:
     return None
 
 
-def _iso_now() -> str:
+def _iso_now() -> str:  # noqa: ambiguity-mine
     return datetime.now(timezone.utc).isoformat()
 
 
