@@ -22,7 +22,7 @@ from slopmop.migrations import planned_upgrade_migrations, run_upgrade_migration
 PACKAGE_NAME = "slopmop"
 PYPI_URL = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
 BACKUP_DIR_NAME = "backups"
-VALIDATION_VERB = "scour"
+VALIDATION_VERB = "swab"
 NO_MIGRATIONS = "none"
 SOURCE_CHECKOUT_UPGRADE_ERROR = (
     "sm upgrade must be run from an installed slopmop package, not from a "

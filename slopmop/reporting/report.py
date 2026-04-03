@@ -28,7 +28,6 @@ Actions annotations) slot in without touching enrichment logic.
 """
 
 import os
-import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Dict, List, Optional
@@ -134,10 +133,8 @@ JSON_SCHEMA_VERSION = "slopmop/v2"
 def _structured_console_lines(
     result: CheckResult,
     *,
-    details_path: Optional[str],
     verify_command: str,
     max_findings: int,
-    max_instructions: int,
 ) -> List[str]:
     """Return compact structured guidance lines for console output."""
     findings = result.findings[:max_findings]
@@ -150,21 +147,6 @@ def _structured_console_lines(
     if len(result.findings) > len(findings):
         lines.append(f"     ... and {len(result.findings) - len(findings)} more")
 
-    if result.why_it_matters:
-        lines.append("   WHY IT MATTERS:")
-        for wrapped in textwrap.wrap(result.why_it_matters, width=66):
-            lines.append(f"     {wrapped}")
-
-    instructions = [f.fix_strategy for f in findings if f.fix_strategy]
-    if not instructions and result.fix_suggestion:
-        instructions = [result.fix_suggestion]
-    if instructions:
-        lines.append("   EXACTLY WHAT TO DO:")
-        for index, instruction in enumerate(instructions[:max_instructions], start=1):
-            lines.append(f"     {index}. {instruction}")
-
-    if details_path:
-        lines.append(f"   FULL DETAILS: {details_path}")
     lines.append(f"   AFTER FIXING: {verify_command}")
     return lines
 
@@ -294,10 +276,8 @@ class RunReport:
         if result.why_it_matters and result.findings:
             return _structured_console_lines(
                 result,
-                details_path=self.per_gate_log_file(result.name),
                 verify_command=self.per_gate_verify_command(result.name),
                 max_findings=5 if self.verbose else 3,
-                max_instructions=5 if self.verbose else 3,
             )
         return self._output_preview_lines(result)
 
