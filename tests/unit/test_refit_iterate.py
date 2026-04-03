@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from unittest.mock import Mock
 
+from slopmop.cli import _refit_iterate_cmd as iterate_cmd_mod
 from slopmop.cli import refit as refit_mod
 from slopmop.cli._refit_iteration import _summarise_failure_artifact
 from tests.conftest import fake_lock as _fake_lock  # shared no-op sm_lock
@@ -116,7 +117,7 @@ class TestDirtyEntryGuard:
         monkeypatch.setattr(
             refit_mod, "_worktree_status", Mock(return_value=dirty_status)
         )
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
     def test_fresh_gate_with_dirty_worktree_blocks(
         self, monkeypatch, capsys, tmp_path: Path
@@ -224,7 +225,7 @@ class TestConfigDriftWarning:
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="abc123"))
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         result = refit_mod.cmd_refit(args)
         out = capsys.readouterr().out
@@ -251,7 +252,7 @@ class TestConfigDriftWarning:
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="abc123"))
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         refit_mod.cmd_refit(args)
         out = capsys.readouterr().out
@@ -290,7 +291,7 @@ class TestHeadDriftRecoveryHint:
         )
         # Live HEAD is ahead of expected — agent committed directly.
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="deadbeef"))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         out = capsys.readouterr().out

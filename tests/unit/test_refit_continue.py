@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from unittest.mock import Mock
 
+from slopmop.cli import _refit_iterate_cmd as iterate_cmd_mod
 from slopmop.cli import refit as refit_mod
 from tests.conftest import fake_lock as _fake_lock  # shared no-op sm_lock
 
@@ -90,7 +91,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="abc123"))
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         out = capsys.readouterr().out
@@ -140,7 +141,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(
             refit_mod, "_current_branch", Mock(return_value="feat/refit")
         )
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 0
         out = capsys.readouterr().out
@@ -235,7 +236,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(
             refit_mod, "_current_branch", Mock(return_value="feat/refit")
         )
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         payload = json.loads(
@@ -278,7 +279,7 @@ class TestCmdRefitContinue:
             "_worktree_status",
             Mock(side_effect=RuntimeError("git status failed")),
         )
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         payload = json.loads(
@@ -328,7 +329,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="abc123"))
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         payload = json.loads(capsys.readouterr().out)
@@ -378,7 +379,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="abc123"))
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         protocol_path = tmp_path / ".slopmop" / "refit" / "protocol.json"
@@ -424,7 +425,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="abc123"))
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=0))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 0
         out = capsys.readouterr().out
@@ -482,7 +483,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(
             refit_mod, "_commit_current_changes", Mock(return_value=(0, "committed"))
         )
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 0
         out = capsys.readouterr().out
@@ -535,7 +536,7 @@ class TestCmdRefitContinue:
             Mock(side_effect=lambda _root: next(statuses)),
         )
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=0))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         out = capsys.readouterr().out
@@ -648,7 +649,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(
             refit_mod, "_commit_current_changes", Mock(side_effect=_commit_changes)
         )
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         after_first = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -752,7 +753,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="new_head"))
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         # The plan's expected_head was updated to reflect the drift.
@@ -808,7 +809,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(refit_mod, "_current_head", Mock(return_value="new_head"))
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
         monkeypatch.setattr(refit_mod, "_run_scour", Mock(return_value=1))
-        monkeypatch.setattr(refit_mod, "sm_lock", _fake_lock)
+        monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
         # The plan's expected_head was updated despite completed items

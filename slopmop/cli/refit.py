@@ -38,10 +38,6 @@ from slopmop.cli._refit_precheck import (
 )
 from slopmop.cli.buff import _load_json_file
 from slopmop.cli.scan_triage import write_json_out
-from slopmop.core.lock import (  # noqa: F401 – re-exported for test monkeypatching
-    SmLockError,
-    sm_lock,
-)
 from slopmop.core.registry import get_registry
 from slopmop.workflow.state_machine import RepoPhase
 from slopmop.workflow.state_store import read_phase
@@ -427,7 +423,7 @@ def _phase_label_for_check(check: BaseCheck) -> str:
 
 def _commit_kind_for_check(name: str, check: BaseCheck) -> str:
     family = _gate_family(name)
-    if any(token in family for token in ("sloppy-formatting", ".format", "format")):
+    if check.is_formatting_gate:
         return "style"
     if any(
         token in family

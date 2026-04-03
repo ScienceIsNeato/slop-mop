@@ -1,10 +1,4 @@
-"""Handler for ``sm refit --iterate``.
-
-Extracted from ``refit.py`` to keep that file within the code-line limit.
-All imports from ``refit`` are lazy (inside the function body) to avoid
-circular-import issues — both modules are fully initialised by the time
-any function here is called.
-"""
+"""Iteration handler for ``sm refit --iterate``."""
 
 from __future__ import annotations
 
@@ -12,6 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 from typing import Any, Dict
+
+from slopmop.core.lock import SmLockError, sm_lock
 
 
 def _emit_drift_warning(
@@ -103,13 +99,13 @@ def run_iterate(args: argparse.Namespace) -> int:
     from slopmop.cli._refit_iteration import process_current_plan_item
 
     try:
-        with _r.sm_lock(project_root, "refit"):  # type: ignore[attr-defined]
+        with sm_lock(project_root, "refit"):
             while True:
                 result = process_current_plan_item(args, project_root, plan)
                 if result == _r._CONTINUE_LOOP:
                     continue
                 return result
-    except _r.SmLockError as exc:  # type: ignore[attr-defined]
+    except SmLockError as exc:
         protocol: Dict[str, Any] = {
             "schema": _r._SCHEMA_VERSION,
             "recorded_at": _r._iso_now(),

@@ -512,6 +512,11 @@ class BaseCheck(ABC):
     # directly on the class when they have equivalent context.
     REASONING: ClassVar[Optional[Reasoning]] = None
 
+    # Whether this gate is a pure formatter gate (zero logic changes).
+    # Used by refit to classify formatting-only commits as ``style:``
+    # rather than relying on gate-name string matching.
+    is_formatting_gate: ClassVar[bool] = False
+
     # Tools this gate needs at runtime.  Doctor uses this to verify
     # tool availability *before* the gate runs.  Opt-in: gates that
     # don't declare this are still diagnosed by tool_context heuristics

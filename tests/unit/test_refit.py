@@ -25,6 +25,7 @@ class _FakeCheck:
         self.full_name = full_name
         self.display_name = display_name
         self.remediation_churn = churn
+        self.is_formatting_gate = False
 
 
 class _FakeRegistry:
@@ -124,7 +125,7 @@ class TestCommitKindForCheck:
     """Commit type prefix derivation for auto-commits."""
 
     def _check(self, churn: RemediationChurn):
-        fake = SimpleNamespace(remediation_churn=churn)
+        fake = SimpleNamespace(remediation_churn=churn, is_formatting_gate=False)
         return fake
 
     def test_dependency_risk_gets_fix_not_test(self):
@@ -602,7 +603,6 @@ class TestCommitCurrentChanges:
             ".",
             ":!.slopmop",
         ]
-        # Third call is the commit — no --no-verify, no intermediate git rm.
         assert captured_args[2] == ["git", "commit", "-m", "test commit"]
 
 

@@ -96,6 +96,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     required_tools = ["black", "isort", "autoflake", "flake8"]
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
+    is_formatting_gate = True
 
     @property
     def name(self) -> str:
