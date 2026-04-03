@@ -71,13 +71,21 @@ def run_formatting_quarantine_commit(
             )
         return True
 
+    # Snapshot dirty files before running formatters so that upstream
+    # changes (e.g. .gitignore from ensure_slopmop_gitignored) are not
+    # bundled into the formatter-only commit.
+    pre_fmt_dirty = {_status_path(l) for l in _refit._worktree_status(project_root)}
+
     for check in applicable_checks:
         if not json_mode:
             print(f"  → {check.display_name}")
         check.auto_fix(project_root_str)
 
     changed = _refit._worktree_status(project_root)
-    if not changed:
+    formatter_paths = sorted(
+        _status_path(l) for l in changed if _status_path(l) not in pre_fmt_dirty
+    )
+    if not formatter_paths:
         if not json_mode:
             print(
                 "✅ Codebase already fully formatted" " — no formatting commit needed."
@@ -86,11 +94,11 @@ def run_formatting_quarantine_commit(
 
     if not json_mode:
         print(
-            f"  \u2192 {len(changed)} file(s) reformatted.\n"
+            f"  → {len(formatter_paths)} file(s) reformatted.\n"
             "  Committing as dedicated formatting commit…"
         )
 
-    code, _, err = _refit._git_output(project_root, "add", "-A")
+    code, _, err = _refit._git_output(project_root, "add", "--", *formatter_paths)
     if code != 0:
         _refit._emit_standalone_protocol(
             args,

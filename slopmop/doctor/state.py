@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, cast
 
+from slopmop.cli.hooks import HOOK_PARK_SUFFIX
 from slopmop.core.config import config_file_path, state_dir_path
 from slopmop.core.lock import (
     _is_stale,
@@ -453,7 +454,7 @@ class StateCommitHookCheck(DoctorCheck):
         ):
             return self._ok("nothing to fix — hook not present or not slop-mop managed")
 
-        parked = hook_path.with_suffix(".refit-parked")
+        parked = hook_path.with_suffix(HOOK_PARK_SUFFIX)
         try:
             hook_path.rename(parked)
         except OSError as exc:

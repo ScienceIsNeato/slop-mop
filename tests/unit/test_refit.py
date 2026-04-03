@@ -865,8 +865,12 @@ class TestRunFormattingQuarantineCommit:
             "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
             lambda self, root: False,
         )
+        # First call: pre-formatter snapshot (worktree clean).
+        # Second call: post-formatter status (formatter dirtied foo.py).
         monkeypatch.setattr(
-            refit_mod, "_worktree_status", Mock(return_value=[" M src/foo.py"])
+            refit_mod,
+            "_worktree_status",
+            Mock(side_effect=[[], [" M src/foo.py"]]),
         )
 
         git_calls: list = []
@@ -882,7 +886,7 @@ class TestRunFormattingQuarantineCommit:
         result = refit_mod._run_formatting_quarantine_commit(self._args(), tmp_path)
 
         assert result is True
-        assert ("add", "-A") in git_calls
+        assert ("add", "--", "src/foo.py") in git_calls
         assert any(a[0] == "commit" for a in git_calls)
         out = capsys.readouterr().out
         assert "abc12345" in out
@@ -904,7 +908,9 @@ class TestRunFormattingQuarantineCommit:
             lambda self, root: False,
         )
         monkeypatch.setattr(
-            refit_mod, "_worktree_status", Mock(return_value=[" M src/foo.py"])
+            refit_mod,
+            "_worktree_status",
+            Mock(side_effect=[[], [" M src/foo.py"]]),
         )
 
         def _fake_git(root, *args):
@@ -938,7 +944,9 @@ class TestRunFormattingQuarantineCommit:
             lambda self, root: False,
         )
         monkeypatch.setattr(
-            refit_mod, "_worktree_status", Mock(return_value=[" M src/foo.py"])
+            refit_mod,
+            "_worktree_status",
+            Mock(side_effect=[[], [" M src/foo.py"]]),
         )
 
         def _fake_git(root, *args):
