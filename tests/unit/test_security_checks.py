@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from slopmop.checks.security import (
@@ -644,19 +645,238 @@ class TestRunDetectSecrets:
 
         assert result.passed is False
 
-    def test_detect_secrets_with_baseline(self, tmp_path):
-        """Test _run_detect_secrets uses baseline config."""
-        check = SecurityLocalCheck({"config_file_path": "/path/to/baseline.json"})
+    def test_detect_secrets_never_passes_real_baseline_flag(self, tmp_path):
+        """detect-secrets scan must NOT receive the real .secrets.baseline as --baseline.
+
+        Passing the real baseline causes detect-secrets to rewrite the file on
+        every run (updated ``generated_at``), turning read-only validation into
+        a commit obligation.  When a temp plugin-config file is used, ``--baseline``
+        may be present but must point elsewhere.
+        """
+        baseline = tmp_path / ".secrets.baseline"
+        baseline.write_text(
+            json.dumps({"generated_at": "2026-01-01T00:00:00Z", "results": {}})
+        )
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps({"results": {}})
+        captured_cmd: list[str] = []
+
+        def _capture(cmd: list[str], **kwargs: Any) -> MagicMock:  # type: ignore[misc]
+            captured_cmd.extend(cmd)
+            return mock_result
+
+        with patch.object(check, "_run_command", side_effect=_capture):
+            check._run_detect_secrets(str(tmp_path))
+
+        real_baseline_path = str(tmp_path / ".secrets.baseline")
+        if "--baseline" in captured_cmd:
+            idx = captured_cmd.index("--baseline")
+            passed = captured_cmd[idx + 1]
+            assert passed != real_baseline_path, (
+                "The real .secrets.baseline must never be passed as --baseline to "
+                "detect-secrets scan — that rewrites the file on every run."
+            )
+
+    def test_detect_secrets_baseline_file_not_modified(self, tmp_path):
+        """Running the security check must NOT modify the .secrets.baseline file."""
+        original_content = json.dumps(
+            {"generated_at": "2026-01-01T00:00:00Z", "results": {}}, indent=2
+        )
+        baseline = tmp_path / ".secrets.baseline"
+        baseline.write_text(original_content)
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
         mock_result.output = json.dumps({"results": {}})
 
-        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+        with patch.object(check, "_run_command", return_value=mock_result):
             check._run_detect_secrets(str(tmp_path))
 
-        call_args = mock_run.call_args[0][0]
-        assert "--baseline" in call_args
-        assert "/path/to/baseline.json" in call_args
+        assert (
+            baseline.read_text() == original_content
+        ), ".secrets.baseline was modified during a read-only security scan"
+
+    def test_detect_secrets_baseline_allowlist_suppresses_known_hashes(self, tmp_path):
+        """Secrets already in the baseline allowlist should not be reported."""
+        hashed = "abc123def456"  # pragma: allowlist secret
+        baseline = tmp_path / ".secrets.baseline"
+        baseline.write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-01-01T00:00:00Z",
+                    "results": {
+                        "config.py": [
+                            {
+                                "type": "Secret Keyword",
+                                "hashed_secret": hashed,
+                                "line_number": 5,
+                            }  # pragma: allowlist secret
+                        ]
+                    },
+                }
+            )
+        )
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+        mock_result = MagicMock()
+        mock_result.success = True
+        # Scan finds the same secret — but it's in the baseline so should be suppressed
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "config.py": [
+                        {
+                            "type": "Secret Keyword",
+                            "hashed_secret": hashed,
+                            "line_number": 5,
+                        }  # pragma: allowlist secret
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True, "Secret already in baseline should be suppressed"
+
+    def test_detect_secrets_new_secret_not_in_baseline_reported(self, tmp_path):
+        """A new secret not in the baseline should still be reported."""
+        known_hash = "aaaaaaaaaaaa"  # pragma: allowlist secret
+        new_hash = "bbbbbbbbbbbb"  # pragma: allowlist secret
+        baseline = tmp_path / ".secrets.baseline"
+        baseline.write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-01-01T00:00:00Z",
+                    "results": {
+                        "config.py": [
+                            {
+                                "type": "Secret Keyword",
+                                "hashed_secret": known_hash,
+                                "line_number": 3,
+                            }  # pragma: allowlist secret
+                        ]
+                    },
+                }
+            )
+        )
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "config.py": [
+                        {
+                            "type": "Secret Keyword",
+                            "hashed_secret": new_hash,
+                            "line_number": 7,
+                        }  # pragma: allowlist secret
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is False
+        assert "config.py" in result.findings
+
+    def test_detect_secrets_path_dotslash_normalized(self, tmp_path):
+        """Baseline key './config.py' must suppress a scan finding of 'config.py'."""
+        hashed = "abc123def456"  # pragma: allowlist secret
+        baseline = tmp_path / ".secrets.baseline"
+        baseline.write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-01-01T00:00:00Z",
+                    "results": {
+                        "./config.py": [
+                            {
+                                "type": "Secret Keyword",
+                                "hashed_secret": hashed,
+                                "line_number": 5,
+                            }  # pragma: allowlist secret
+                        ]
+                    },
+                }
+            )
+        )
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+        mock_result = MagicMock()
+        mock_result.success = True
+        # Scan reports the same hash under bare path (no leading ./)
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "config.py": [
+                        {
+                            "type": "Secret Keyword",
+                            "hashed_secret": hashed,
+                            "line_number": 5,
+                        }  # pragma: allowlist secret
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True, (
+            "'./config.py' in baseline should match 'config.py' from scan report "
+            "(path normalization strips leading './')"
+        )
+
+    def test_detect_secrets_plugin_config_passed_via_temp_baseline(self, tmp_path):
+        """When the baseline has plugins_used, --baseline must point to a temp file.
+
+        The real .secrets.baseline must not be passed because detect-secrets
+        rewrites it; a throwaway temp file inside .slopmop/ carries the plugin
+        config instead.
+        """
+        baseline_content = {
+            "generated_at": "2026-01-01T00:00:00Z",
+            "plugins_used": [{"name": "HexHighEntropyString", "hex_limit": 3.0}],
+            "filters_used": [],
+            "results": {},
+        }
+        baseline = tmp_path / ".secrets.baseline"
+        baseline.write_text(json.dumps(baseline_content))
+
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps({"results": {}})
+        captured_cmd: list[str] = []
+
+        def _capture(cmd: list[str], **kwargs: Any) -> MagicMock:  # type: ignore[misc]
+            captured_cmd.extend(cmd)
+            return mock_result
+
+        with patch.object(check, "_run_command", side_effect=_capture):
+            check._run_detect_secrets(str(tmp_path))
+
+        assert (
+            "--baseline" in captured_cmd
+        ), "--baseline should be in cmd when baseline has plugins_used"
+        idx = captured_cmd.index("--baseline")
+        passed_path = captured_cmd[idx + 1]
+        real_baseline = str(tmp_path / ".secrets.baseline")
+        assert (
+            passed_path != real_baseline
+        ), "The real .secrets.baseline must never be the --baseline argument"
+        # Temp file must have been cleaned up
+        from pathlib import Path as _Path
+
+        assert not _Path(
+            passed_path
+        ).exists(), "Temp plugin-config baseline must be deleted after the scan"
+        # Real baseline must be unmodified
+        assert json.loads(baseline.read_text()) == baseline_content
 
 
 class TestSecurityCheck:
