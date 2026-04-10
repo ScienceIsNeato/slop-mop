@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from slopmop.cli.agent import cmd_agent
+    from slopmop.cli.audit import cmd_audit
     from slopmop.cli.buff import cmd_buff
     from slopmop.cli.config import cmd_config
     from slopmop.cli.detection import detect_project_type
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 
 _EXPORT_MAP = {
     "cmd_agent": ("slopmop.cli.agent", "cmd_agent"),
+    "cmd_audit": ("slopmop.cli.audit", "cmd_audit"),
     "cmd_buff": ("slopmop.cli.buff", "cmd_buff"),
     "cmd_commit_hooks": ("slopmop.cli.hooks", "cmd_commit_hooks"),
     "cmd_config": ("slopmop.cli.config", "cmd_config"),
@@ -59,6 +61,7 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "cmd_agent",
+    "cmd_audit",
     "cmd_commit_hooks",
     "cmd_config",
     "cmd_doctor",
