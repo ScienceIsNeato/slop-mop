@@ -5,15 +5,20 @@ Produces a structured report covering two lenses:
 1. **Git analytics** — who built this, what changes most, where bugs cluster,
    how fast the project is moving, and how often the team firefights.
 2. **Gate violations** — run every scour gate in reporting-only mode (no
-   auto-fix, no pass/fail exit code) and show what slop currently exists.
+   auto-fix, no pass/fail exit code) and expose what slop currently exists.
 
-Intended position in the lifecycle::
+This report is **informational only**.  Nothing here is enforced and nothing
+is auto-fixed.  Use it to orient yourself before a refit, to track progress
+during one, or to get a snapshot of a repo already in maintenance mode.
+The violations section will shrink as remediation proceeds; the git section
+reflects history and does not change based on workflow phase.
 
-    sm init  →  sm audit  →  sm refit  →  (swab / scour / buff loop)
+Requires ``sm init`` to have been run at least once (so ``.slopmop/`` exists).
+Otherwise, ``sm audit`` is idempotent and safe to run at any lifecycle stage.
 
-``sm audit`` has no side effects: it never writes to the working tree, never
-runs auto-fix, and always exits 0.  The report is written to
-``.slopmop/audit-report.md`` and printed to stdout.
+``sm audit`` never writes to the working tree, never runs auto-fix, and
+always exits 0.  The report is written to ``.slopmop/audit-report.md``
+and printed to stdout.
 
 Usage::
 
@@ -337,6 +342,13 @@ def _format_git_section(
 def _format_gate_section(gate_data: Optional[Dict[str, Any]]) -> List[str]:
     lines: List[str] = []
     lines.append(_section("🔍 GATE VIOLATION INVENTORY"))
+    lines.append(
+        "  This section is informational. Nothing is enforced or auto-fixed here."
+    )
+    lines.append(
+        "  Use it to understand current slop before, during, or after a refit."
+    )
+    lines.append("")
 
     if gate_data is None:
         lines.append("  (gate scan failed — check `sm doctor`)\n")
@@ -407,7 +419,12 @@ def _build_report(
         parts.extend(_format_gate_section(gate_data))
 
     parts.append(_separator_line("═"))
-    parts.append("Next step:  sm refit --start   (to begin structured remediation)")
+    parts.append(
+        "This report is informational. Nothing here is enforced or auto-fixed."
+    )
+    parts.append(
+        "Run `sm audit` again at any stage — violations shrink as you remediate."
+    )
     parts.append(_separator_line("═"))
     parts.append("")
     return "\n".join(parts)

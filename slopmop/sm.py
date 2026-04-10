@@ -709,7 +709,9 @@ def _add_audit_parser(
             "(churn hotspots, contributor risk, bug clusters, velocity, "
             "firefighting) and the current state of every scour gate.  "
             "No auto-fix, no pass/fail exit code.  "
-            "Intended position: after `sm init`, before `sm refit`."
+            "Informational only — safe to run at any lifecycle stage "
+            "(pre-refit, mid-refit, or in maintenance mode).  "
+            "Requires `sm init` to have been run first."
         ),
     )
     audit_parser.add_argument(
