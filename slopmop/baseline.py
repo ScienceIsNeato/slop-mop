@@ -41,13 +41,20 @@ def baseline_snapshot_path(project_root: str | Path) -> Path:
 
 
 def latest_run_artifact_path(project_root: str | Path) -> Optional[Path]:
-    """Return the newest persisted run artifact, if any."""
+    """Return the most comprehensive persisted run artifact, if any.
+
+    Scour covers all gate levels (swab + scour), so it is always preferred
+    when present, regardless of modification time.  If only swab has run,
+    that artifact is returned as a fallback.
+    """
     root = Path(project_root)
-    candidates = [root / _SLOPMOP_DIR / _LAST_SCOUR, root / _SLOPMOP_DIR / _LAST_SWAB]
-    existing = [path for path in candidates if path.exists() and path.is_file()]
-    if not existing:
-        return None
-    return max(existing, key=lambda path: path.stat().st_mtime)
+    scour_path = root / _SLOPMOP_DIR / _LAST_SCOUR
+    swab_path = root / _SLOPMOP_DIR / _LAST_SWAB
+    if scour_path.exists() and scour_path.is_file():
+        return scour_path
+    if swab_path.exists() and swab_path.is_file():
+        return swab_path
+    return None
 
 
 def generate_baseline_snapshot(project_root: str | Path) -> Tuple[Path, Path]:

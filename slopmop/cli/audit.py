@@ -192,8 +192,15 @@ def _firefighting(project_root: str, since: str) -> List[str]:
 
 def _run_gate_inventory(
     project_root: Path,
+    quiet: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    """Run scour with --no-auto-fix and return the JSON summary, or None."""
+    """Run scour with --no-auto-fix and return the JSON summary, or None.
+
+    When *quiet* is False (default) the scour progress display is left
+    connected to the terminal so the user sees the beautiful gate-by-gate
+    output rather than silence.  Pass ``quiet=True`` only in tests or
+    non-interactive contexts (e.g. JSON mode).
+    """
     artifact_path = project_root / ".slopmop" / "audit-gate-inventory.json"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -208,16 +215,22 @@ def _run_gate_inventory(
         str(artifact_path),
         "--project-root",
         str(project_root),
-        "--quiet",
     ]
+    if quiet:
+        command.append("--quiet")
+
     # audit does not hold a repo lock itself, so let scour acquire its
     # own lock normally.  Do NOT set SLOPMOP_SKIP_REPO_LOCK — that env
     # var is restricted to the refit pipeline and is rejected by any
     # other caller.
+    #
+    # When not in quiet mode, leave stdout/stderr connected to the
+    # terminal so the progress display renders live.  capture_output
+    # would silence it completely.
     subprocess.run(
         command,
         cwd=str(project_root),
-        capture_output=True,
+        capture_output=quiet,
         text=True,
         check=False,
     )
@@ -370,7 +383,11 @@ def _format_gate_section(gate_data: Optional[Dict[str, Any]]) -> List[str]:
 
     results: List[Dict[str, Any]] = gate_data.get("results", [])
     failing = [r for r in results if r.get("status") == "failed"]
-    passing = [r for r in results if r.get("status") == "passed"]
+    warned_list = [r for r in results if r.get("status") == "warned"]
+    # Passing gate names live in the top-level ``passed_gates`` list —
+    # they are NOT included in ``results`` (which only contains non-passing
+    # entries).  Reading ``results`` for passed status always yields 0.
+    passing_names: List[str] = gate_data.get("passed_gates", [])
 
     if failing:
         lines.append(_HLINE)
@@ -385,12 +402,20 @@ def _format_gate_section(gate_data: Optional[Dict[str, Any]]) -> List[str]:
                     lines.append(f"       {eline}")
         lines.append("")
 
-    if passing:
+    if warned_list:
         lines.append(_HLINE)
-        lines.append(f"PASSING GATES ({len(passing)})")
+        lines.append(f"WARNED GATES ({len(warned_list)})")
         lines.append(_HLINE)
-        for r in passing:
-            lines.append(f"  ✅  {r.get('name', '?')}")
+        for r in warned_list:
+            lines.append(f"  ⚠️   {r.get('name', '?')}")
+        lines.append("")
+
+    if passing_names:
+        lines.append(_HLINE)
+        lines.append(f"PASSING GATES ({len(passing_names)})")
+        lines.append(_HLINE)
+        for name in sorted(passing_names):
+            lines.append(f"  ✅  {name}")
         lines.append("")
 
     return lines
@@ -503,9 +528,12 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     gate_data: Optional[Dict[str, Any]] = None
     if include_gates:
-        if not quiet and not json_mode:
-            print("    Running gate inventory (no auto-fix, no exit code) …")
-        gate_data = _run_gate_inventory(project_root)
+        # In interactive mode let the scour progress display render live.
+        # In quiet/json mode suppress it to keep stdout clean.
+        suppress_scour_output = quiet or json_mode
+        if not suppress_scour_output:
+            print("\n── Gate inventory (sm scour --no-auto-fix) ──────────────\n")
+        gate_data = _run_gate_inventory(project_root, quiet=suppress_scour_output)
 
     if json_mode:
         payload = _build_json_payload(
