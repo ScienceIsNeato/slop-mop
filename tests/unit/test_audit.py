@@ -211,6 +211,15 @@ class TestRunGitCmd:
         )
         assert rc != 0
 
+    def test_returns_one_and_empty_string_on_os_error(self) -> None:
+        """When git is not installed, _run_git_cmd must not raise."""
+        from slopmop.cli.audit import _run_git_cmd
+
+        with patch("slopmop.cli.audit.subprocess.run", side_effect=OSError("no git")):
+            rc, output = _run_git_cmd(["rev-parse", "HEAD"], _REPO_ROOT)
+        assert rc == 1
+        assert output == ""
+
 
 class TestIsGitRepo:
     def test_git_repo_returns_true(self) -> None:
@@ -492,7 +501,7 @@ class TestCmdAudit:
     def test_json_mode_produces_valid_schema(self, tmp_path: Path) -> None:
         import io
 
-        from slopmop.cli.audit import cmd_audit
+        from slopmop.cli.audit import _DEFAULT_OUTPUT, cmd_audit
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
@@ -510,6 +519,8 @@ class TestCmdAudit:
         assert ret == 0
         payload = json.loads(buf.getvalue())
         assert payload["schema"] == "slopmop/audit/v1"
+        # report file should still be written even in json_output mode
+        assert (tmp_path / _DEFAULT_OUTPUT).exists()
 
     def test_writes_report_file_in_quiet_mode(self, tmp_path: Path) -> None:
         """In quiet mode, no stdout output, but the report file is still written."""

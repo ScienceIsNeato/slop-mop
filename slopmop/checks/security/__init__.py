@@ -12,9 +12,11 @@ with code files, not just Python projects.
 """
 
 import json
+import os
 import re
 import shutil
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -383,7 +385,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     def _is_path_excluded_for_detect_secrets(self, path: str) -> bool:
         """Return True when a path should be ignored by detect-secrets parsing."""
-        normalized = str(path).replace("\\", "/").lstrip("./")
+        s = str(path).replace("\\", "/")
+        normalized = s[2:] if s.startswith("./") else s
         if not normalized:
             return False
 
@@ -630,9 +633,12 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
         detect-secrets may report paths as ``./config.py`` or ``config.py`` and
         uses backslashes on Windows.  Normalise to a bare forward-slash path so
-        allowlist lookups are separator- and prefix-independent.
+        allowlist lookups are separator- and prefix-independent.  Only the exact
+        ``./`` prefix is stripped (not arbitrary leading dots/slashes) to avoid
+        corrupting dotfile names like ``.env``.
         """
-        return str(path).replace("\\", "/").lstrip("./")
+        s = str(path).replace("\\", "/")
+        return s[2:] if s.startswith("./") else s
 
     def _load_detect_secrets_allowlist(self, project_root: str) -> set[tuple[str, str]]:
         """Load known (normalized_path, hashed_secret) pairs from the baseline.
@@ -703,8 +709,19 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             }
             slopmop_dir = Path(project_root) / ".slopmop"
             slopmop_dir.mkdir(exist_ok=True)
-            tmp_path = slopmop_dir / "detect-secrets-plugin-config.json"
-            tmp_path.write_text(json.dumps(tmp_baseline, indent=2), encoding="utf-8")
+            fd, tmp_path_str = tempfile.mkstemp(
+                prefix="detect-secrets-plugin-config-",
+                suffix=".json",
+                dir=slopmop_dir,
+            )
+            tmp_path = Path(tmp_path_str)
+            try:
+                tmp_path.write_text(
+                    json.dumps(tmp_baseline, indent=2), encoding="utf-8"
+                )
+            finally:
+                # Close the fd returned by mkstemp; write_text opened its own handle.
+                os.close(fd)
             return str(tmp_path)
         except (json.JSONDecodeError, OSError):
             return None
@@ -712,7 +729,13 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
     def _run_detect_secrets(self, project_root: str) -> SecuritySubResult:
         """Run detect-secrets scan without touching the baseline file.
 
-        We intentionally do NOT pass ``--baseline`` to the ``scan`` command.
+        We intentionally do NOT pass the *real* ``--baseline`` to the scan
+        command — detect-secrets rewrites that file on every run (updating
+        ``generated_at``), which would dirty the working tree.  When the real
+        baseline contains ``plugins_used`` or ``filters_used`` config, we write
+        a throwaway baseline carrying only that config (no results) and pass
+        *that* as ``--baseline`` so detect-secrets honours the plugin/filter
+        settings.
         Passing ``--baseline`` causes detect-secrets to rewrite the file with
         a fresh ``generated_at`` timestamp even when no secrets changed, which
         pollutes the working tree and turns read-only validation into a commit

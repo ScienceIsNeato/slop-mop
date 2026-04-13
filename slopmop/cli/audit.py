@@ -16,9 +16,11 @@ reflects history and does not change based on workflow phase.
 Requires ``sm init`` to have been run at least once (so ``.slopmop/`` exists).
 Otherwise, ``sm audit`` is idempotent and safe to run at any lifecycle stage.
 
-``sm audit`` never writes to the working tree, never runs auto-fix, and
-always exits 0.  The report is written to ``.slopmop/audit-report.md``
-and printed to stdout.
+``sm audit`` does not modify tracked project files, never runs auto-fix, and
+always exits 0.  Generated artifacts (``.slopmop/audit-report.md``,
+``.slopmop/audit-gate-inventory.json``) are written to the gitignored
+``.slopmop/`` directory.  The report is also printed to stdout unless
+``--quiet`` or ``--json`` is active.
 
 Usage::
 
@@ -46,15 +48,22 @@ _HLINE = "─" * _SECTION_WIDTH
 
 
 def _run_git_cmd(args: List[str], cwd: str) -> Tuple[int, str]:
-    """Run a git command and return (returncode, stdout)."""
-    result = subprocess.run(
-        ["git"] + args,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.returncode, result.stdout
+    """Run a git command and return (returncode, stdout).
+
+    Returns ``(1, "")`` when ``git`` is not installed so callers can treat
+    a missing git binary the same as a failed command without crashing.
+    """
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode, result.stdout
+    except OSError:
+        return 1, ""
 
 
 def _is_git_repo(project_root: str) -> bool:
@@ -119,7 +128,7 @@ def _cross_reference(
 
 
 def _contributors(project_root: str) -> List[Tuple[int, str]]:
-    _, output = _run_git_cmd(["shortlog", "-sn", "--no-merges"], project_root)
+    _, output = _run_git_cmd(["shortlog", "-sn", "--no-merges", "HEAD"], project_root)
     result: List[Tuple[int, str]] = []
     for line in output.splitlines():
         line = line.strip()
@@ -136,7 +145,7 @@ def _contributors(project_root: str) -> List[Tuple[int, str]]:
 
 def _contributors_recent(project_root: str, since: str) -> List[Tuple[int, str]]:
     _, output = _run_git_cmd(
-        ["shortlog", "-sn", "--no-merges", f"--since={since}"],
+        ["shortlog", "-sn", "--no-merges", f"--since={since}", "HEAD"],
         project_root,
     )
     result: List[Tuple[int, str]] = []
@@ -514,9 +523,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
     include_git = not getattr(args, "no_git", False)
     include_gates = not getattr(args, "no_gates", False)
     output_path_str: Optional[str] = getattr(args, "output", None)
-    json_mode = getattr(args, "json_output", False) or (
-        not sys.stdout.isatty() and not sys.stderr.isatty()
-    )
+    json_flag = getattr(args, "json_output", None)
+    json_mode = json_flag is True or (json_flag is None and not sys.stdout.isatty())
     quiet = getattr(args, "quiet", False)
 
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -535,6 +543,22 @@ def cmd_audit(args: argparse.Namespace) -> int:
             print("\n── Gate inventory (sm scour --no-auto-fix) ──────────────\n")
         gate_data = _run_gate_inventory(project_root, quiet=suppress_scour_output)
 
+    # Always build and write the report file regardless of output mode.
+    report = _build_report(
+        str(project_root),
+        since,
+        top_n,
+        include_git,
+        include_gates,
+        gate_data,
+        timestamp,
+    )
+    output_path = Path(
+        output_path_str if output_path_str else project_root / _DEFAULT_OUTPUT
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report, encoding="utf-8")
+
     if json_mode:
         payload = _build_json_payload(
             str(project_root),
@@ -548,26 +572,13 @@ def cmd_audit(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2))
         return 0
 
-    report = _build_report(
-        str(project_root),
-        since,
-        top_n,
-        include_git,
-        include_gates,
-        gate_data,
-        timestamp,
-    )
-
-    # Write to file
-    output_path = Path(
-        output_path_str if output_path_str else project_root / _DEFAULT_OUTPUT
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(report, encoding="utf-8")
-
     # Print to stdout
     if not quiet:
         print(report)
-        print(f"📄  Report saved to {output_path.relative_to(project_root)}")
+        try:
+            rel: Path = output_path.relative_to(project_root)
+        except ValueError:
+            rel = output_path
+        print(f"📄  Report saved to {rel}")
 
     return 0

@@ -756,8 +756,14 @@ def _add_audit_parser(
         "--json",
         dest="json_output",
         action="store_true",
-        default=False,
+        default=None,
         help="Emit JSON instead of markdown",
+    )
+    audit_parser.add_argument(
+        "--no-json",
+        dest="json_output",
+        action="store_false",
+        help="Force markdown output (overrides auto-detection).",
     )
     audit_parser.add_argument(
         "--quiet",
