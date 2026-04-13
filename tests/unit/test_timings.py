@@ -740,3 +740,66 @@ class TestSaveTimingsWithResults:
         stats = load_timings(str(tmp_path))
         assert stats["check:a"].results == ()
         assert stats["check:a"].median == 1.0
+
+
+class TestSparklineOverrideLatest:
+    """``override_latest`` forces the rightmost sparkline bar to a specific color."""
+
+    def _make_stats(self) -> TimingStats:
+        return TimingStats(
+            median=1.0,
+            q1=0.9,
+            q3=1.1,
+            iqr=0.2,
+            historical_max=1.1,
+            sample_count=3,
+            samples=(1.0, 1.1, 0.9),
+            results=(),
+        )
+
+    def test_override_latest_colors_rightmost_bar(self) -> None:
+        """With no stored results, override_latest still produces colored output."""
+        from slopmop.reporting.timings import _RESULT_STATUS_COLORS
+
+        stats = self._make_stats()
+        spark = stats.sparkline(
+            max_width=3, colors_enabled=True, override_latest="failed"
+        )
+        fail_color = _RESULT_STATUS_COLORS["failed"]
+        assert fail_color in spark
+
+    def test_override_latest_passed_color(self) -> None:
+        from slopmop.reporting.timings import _RESULT_STATUS_COLORS
+
+        stats = self._make_stats()
+        spark = stats.sparkline(
+            max_width=3, colors_enabled=True, override_latest="passed"
+        )
+        pass_color = _RESULT_STATUS_COLORS["passed"]
+        assert pass_color in spark
+
+    def test_override_latest_unknown_status_does_not_crash(self) -> None:
+        """Unknown override_latest status produces a string without raising."""
+        stats = self._make_stats()
+        spark = stats.sparkline(
+            max_width=3,
+            colors_enabled=True,
+            override_latest="totally_unknown_status",
+        )
+        assert isinstance(spark, str)
+
+    def test_override_latest_ignored_when_fewer_than_two_samples(self) -> None:
+        """With fewer than 2 samples, sparkline returns empty string."""
+        stats = TimingStats(
+            median=1.0,
+            q1=0.9,
+            q3=1.1,
+            iqr=0.2,
+            historical_max=1.1,
+            sample_count=1,
+            samples=(1.0,),
+        )
+        result = stats.sparkline(
+            max_width=3, colors_enabled=True, override_latest="passed"
+        )
+        assert result == ""

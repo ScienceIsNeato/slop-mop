@@ -17,9 +17,16 @@ Three mismatch bugs motivate these tests:
 
 from __future__ import annotations
 
+import argparse
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unittest.mock import MagicMock, patch
 
 from slopmop.cli.audit import _format_gate_section
+
+# Real git repo root — used by git-analysis tests
+_REPO_ROOT = str(Path(__file__).parent.parent.parent)
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -183,3 +190,397 @@ class TestFormatGateSectionNoneInput:
         text = "\n".join(lines)
         # Should not raise and should mention the issue
         assert "gate scan failed" in text.lower() or "check" in text.lower()
+
+
+# ── Git helper unit tests ─────────────────────────────────────────────────────
+
+
+class TestRunGitCmd:
+    def test_returns_zero_and_output_for_valid_cmd(self) -> None:
+        from slopmop.cli.audit import _run_git_cmd
+
+        rc, output = _run_git_cmd(["rev-parse", "--is-inside-work-tree"], _REPO_ROOT)
+        assert rc == 0
+        assert "true" in output.lower()
+
+    def test_returns_nonzero_for_bad_ref(self) -> None:
+        from slopmop.cli.audit import _run_git_cmd
+
+        rc, _ = _run_git_cmd(
+            ["rev-parse", "nonexistent-ref-xyz-never-exists"], _REPO_ROOT
+        )
+        assert rc != 0
+
+
+class TestIsGitRepo:
+    def test_git_repo_returns_true(self) -> None:
+        from slopmop.cli.audit import _is_git_repo
+
+        assert _is_git_repo(_REPO_ROOT)
+
+    def test_non_git_dir_returns_false(self, tmp_path: Path) -> None:
+        from slopmop.cli.audit import _is_git_repo
+
+        assert not _is_git_repo(str(tmp_path))
+
+
+class TestPureGitHelpers:
+    """Tests for pure helper functions that do not need a real git repo."""
+
+    def test_cross_reference_empty_inputs(self) -> None:
+        from slopmop.cli.audit import _cross_reference
+
+        assert _cross_reference([], []) == []
+
+    def test_cross_reference_no_overlap(self) -> None:
+        from slopmop.cli.audit import _cross_reference
+
+        churn = [(10, "a.py"), (5, "b.py")]
+        bugs = [(3, "c.py")]
+        assert _cross_reference(churn, bugs) == []
+
+    def test_cross_reference_with_overlap(self) -> None:
+        from slopmop.cli.audit import _cross_reference
+
+        churn = [(10, "a.py"), (5, "b.py")]
+        bugs = [(3, "a.py"), (1, "b.py")]
+        result = _cross_reference(churn, bugs)
+        paths = [p for p, _, _ in result]
+        assert "a.py" in paths
+        assert "b.py" in paths
+
+    def test_cross_reference_sorted_by_combined_count(self) -> None:
+        from slopmop.cli.audit import _cross_reference
+
+        # a.py: churn=10, bugs=1 → 11; b.py: churn=2, bugs=8 → 10
+        churn = [(10, "a.py"), (2, "b.py")]
+        bugs = [(1, "a.py"), (8, "b.py")]
+        result = _cross_reference(churn, bugs)
+        assert result[0][0] == "a.py"
+
+
+class TestGitAnalysisHelpers:
+    """Exercise the git helpers against the real slop-mop repository."""
+
+    def test_churn_hotspots_returns_sorted_list(self) -> None:
+        from slopmop.cli.audit import _churn_hotspots
+
+        hotspots = _churn_hotspots(_REPO_ROOT, since="2 years ago", top_n=5)
+        assert isinstance(hotspots, list)
+        if len(hotspots) >= 2:
+            assert hotspots[0][0] >= hotspots[1][0]
+
+    def test_bug_commits_returns_list(self) -> None:
+        from slopmop.cli.audit import _bug_commits
+
+        result = _bug_commits(_REPO_ROOT, top_n=10)
+        assert isinstance(result, list)
+
+    def test_contributors_returns_sorted_by_count(self) -> None:
+        from slopmop.cli.audit import _contributors
+
+        result = _contributors(_REPO_ROOT)
+        assert isinstance(result, list)
+        # May be empty in some git environments (shallow clone, etc.)
+        if len(result) >= 2:
+            assert result[0][0] >= result[1][0]
+
+    def test_contributors_recent_returns_list(self) -> None:
+        from slopmop.cli.audit import _contributors_recent
+
+        result = _contributors_recent(_REPO_ROOT, since="1 year ago")
+        assert isinstance(result, list)
+
+    def test_velocity_by_month_oldest_first(self) -> None:
+        from slopmop.cli.audit import _velocity_by_month
+
+        result = _velocity_by_month(_REPO_ROOT)
+        assert isinstance(result, list)
+        if len(result) >= 2:
+            assert result[0][1] <= result[-1][1]
+
+    def test_firefighting_returns_list(self) -> None:
+        from slopmop.cli.audit import _firefighting
+
+        result = _firefighting(_REPO_ROOT, since="1 year ago")
+        assert isinstance(result, list)
+
+
+class TestFormatGitSection:
+    """_format_git_section against the real git repo covers most of the
+    git-analytics code path."""
+
+    def test_produces_expected_sections(self) -> None:
+        from slopmop.cli.audit import _format_git_section
+
+        lines = _format_git_section(_REPO_ROOT, since="2 years ago", top_n=5)
+        text = "\n".join(lines)
+        assert "WHO BUILT THIS" in text
+        assert "MOST CHANGED" in text
+        assert "COMMIT VELOCITY" in text
+        assert "FIREFIGHTING" in text
+
+    def test_non_git_dir_shows_skip_message(self, tmp_path: Path) -> None:
+        from slopmop.cli.audit import _format_git_section
+
+        lines = _format_git_section(str(tmp_path), since="1 year ago", top_n=5)
+        text = "\n".join(lines)
+        assert "not a git repository" in text
+
+
+class TestRunGateInventory:
+    """_run_gate_inventory with mocked subprocess."""
+
+    def test_returns_parsed_json_when_artifact_created(self, tmp_path: Path) -> None:
+        from slopmop.cli.audit import _run_gate_inventory
+
+        fake_data: Dict[str, Any] = {"summary": {"total_checks": 3, "passed": 3}}
+        artifact = tmp_path / ".slopmop" / "audit-gate-inventory.json"
+
+        def _write_artifact(*_args: Any, **_kwargs: Any) -> None:
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_text(json.dumps(fake_data), encoding="utf-8")
+
+        with patch("slopmop.cli.audit.subprocess.run", side_effect=_write_artifact):
+            result = _run_gate_inventory(tmp_path, quiet=True)
+
+        assert result == fake_data
+
+    def test_returns_none_when_no_artifact(self, tmp_path: Path) -> None:
+        from slopmop.cli.audit import _run_gate_inventory
+
+        with patch("slopmop.cli.audit.subprocess.run"):
+            result = _run_gate_inventory(tmp_path, quiet=True)
+        assert result is None
+
+    def test_quiet_adds_quiet_flag_to_command(self, tmp_path: Path) -> None:
+        from slopmop.cli.audit import _run_gate_inventory
+
+        calls: List[Any] = []
+
+        def _capture(*args: Any, **kwargs: Any) -> None:
+            calls.append(args[0])
+
+        with patch("slopmop.cli.audit.subprocess.run", side_effect=_capture):
+            _run_gate_inventory(tmp_path, quiet=True)
+
+        assert calls and "--quiet" in calls[0]
+
+    def test_non_quiet_omits_quiet_flag(self, tmp_path: Path) -> None:
+        from slopmop.cli.audit import _run_gate_inventory
+
+        calls: List[Any] = []
+
+        def _capture(*args: Any, **kwargs: Any) -> None:
+            calls.append(args[0])
+
+        with patch("slopmop.cli.audit.subprocess.run", side_effect=_capture):
+            _run_gate_inventory(tmp_path, quiet=False)
+
+        assert calls and "--quiet" not in calls[0]
+
+    def test_returns_none_on_invalid_json(self, tmp_path: Path) -> None:
+        from slopmop.cli.audit import _run_gate_inventory
+
+        artifact = tmp_path / ".slopmop" / "audit-gate-inventory.json"
+
+        def _write_bad(*_args: Any, **_kwargs: Any) -> None:
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_text("not json!!", encoding="utf-8")
+
+        with patch("slopmop.cli.audit.subprocess.run", side_effect=_write_bad):
+            result = _run_gate_inventory(tmp_path, quiet=True)
+
+        assert result is None
+
+
+class TestBuildReport:
+    def test_contains_header_and_informational_note(self) -> None:
+        from slopmop.cli.audit import _build_report
+
+        report = _build_report(
+            project_root=_REPO_ROOT,
+            since="1 year ago",
+            top_n=5,
+            include_git=False,
+            include_gates=False,
+            gate_data=None,
+            timestamp="2026-04-12T00:00:00Z",
+        )
+        assert "slop-mop audit report" in report
+        assert "informational" in report
+
+    def test_with_gate_data(self) -> None:
+        from slopmop.cli.audit import _build_report
+
+        gate_data = _make_gate_data(passed=2, passed_gates=["a:x", "b:y"])
+        report = _build_report(
+            project_root=_REPO_ROOT,
+            since="1 year ago",
+            top_n=5,
+            include_git=False,
+            include_gates=True,
+            gate_data=gate_data,
+            timestamp="2026-04-12T00:00:00Z",
+        )
+        assert "GATE VIOLATION INVENTORY" in report
+        assert "PASSING GATES (2)" in report
+
+    def test_with_git_analytics(self) -> None:
+        from slopmop.cli.audit import _build_report
+
+        report = _build_report(
+            project_root=_REPO_ROOT,
+            since="1 year ago",
+            top_n=5,
+            include_git=True,
+            include_gates=False,
+            gate_data=None,
+            timestamp="2026-04-12T00:00:00Z",
+        )
+        assert "GIT ANALYTICS" in report
+
+
+class TestBuildJsonPayload:
+    def test_schema_and_project_root_present(self) -> None:
+        from slopmop.cli.audit import _build_json_payload
+
+        payload = _build_json_payload(
+            project_root=_REPO_ROOT,
+            since="1 year ago",
+            top_n=5,
+            include_git=False,
+            include_gates=False,
+            gate_data=None,
+            timestamp="2026-04-12T00:00:00Z",
+        )
+        assert payload["schema"] == "slopmop/audit/v1"
+        assert "project_root" in payload
+
+    def test_gates_key_present_when_include_gates(self) -> None:
+        from slopmop.cli.audit import _build_json_payload
+
+        gate_data = _make_gate_data(passed=1, passed_gates=["a:x"])
+        payload = _build_json_payload(
+            project_root=_REPO_ROOT,
+            since="1 year ago",
+            top_n=5,
+            include_git=False,
+            include_gates=True,
+            gate_data=gate_data,
+            timestamp="2026-04-12T00:00:00Z",
+        )
+        assert "gates" in payload
+
+    def test_git_key_present_when_include_git(self) -> None:
+        from slopmop.cli.audit import _build_json_payload
+
+        payload = _build_json_payload(
+            project_root=_REPO_ROOT,
+            since="1 year ago",
+            top_n=3,
+            include_git=True,
+            include_gates=False,
+            gate_data=None,
+            timestamp="2026-04-12T00:00:00Z",
+        )
+        assert "git" in payload
+        assert "contributors_all_time" in payload["git"]
+
+
+class TestCmdAudit:
+    def test_json_mode_produces_valid_schema(self, tmp_path: Path) -> None:
+        import io
+
+        from slopmop.cli.audit import cmd_audit
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            since="1 year ago",
+            top=5,
+            no_git=True,
+            no_gates=True,
+            output=None,
+            json_output=True,
+            quiet=False,
+        )
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            ret = cmd_audit(args)
+        assert ret == 0
+        payload = json.loads(buf.getvalue())
+        assert payload["schema"] == "slopmop/audit/v1"
+
+    def test_writes_report_file_in_quiet_mode(self, tmp_path: Path) -> None:
+        """In quiet mode, no stdout output, but the report file is still written."""
+
+        from slopmop.cli.audit import cmd_audit
+
+        out_path = tmp_path / "report.md"
+        # isatty() must return True so that json_mode evaluates to False
+        fake_tty: MagicMock = MagicMock()
+        fake_tty.isatty.return_value = True
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            since="1 year ago",
+            top=5,
+            no_git=True,
+            no_gates=True,
+            output=str(out_path),
+            json_output=False,
+            quiet=True,
+        )
+        with patch("sys.stdout", fake_tty), patch("sys.stderr", fake_tty):
+            ret = cmd_audit(args)
+        assert ret == 0
+        assert out_path.exists()
+        content = out_path.read_text(encoding="utf-8")
+        assert "slop-mop audit report" in content
+
+    def test_non_quiet_prints_report_to_stdout(self, tmp_path: Path) -> None:
+        """Non-quiet, non-json mode prints the report to stdout."""
+        import io
+
+        from slopmop.cli.audit import cmd_audit
+
+        buf = io.StringIO()
+        buf.isatty = lambda: True  # type: ignore[attr-defined]
+        stderr_buf = io.StringIO()
+        stderr_buf.isatty = lambda: True  # type: ignore[attr-defined]
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            since="1 year ago",
+            top=5,
+            no_git=True,
+            no_gates=True,
+            output=str(tmp_path / "report.md"),
+            json_output=False,
+            quiet=False,
+        )
+        with patch("sys.stdout", buf), patch("sys.stderr", stderr_buf):
+            ret = cmd_audit(args)
+        assert ret == 0
+        assert "slop-mop audit report" in buf.getvalue()
+
+    def test_default_output_path_used_when_no_output_arg(self, tmp_path: Path) -> None:
+        """When output=None, the report is written to the default .slopmop path."""
+
+        from slopmop.cli.audit import _DEFAULT_OUTPUT, cmd_audit
+
+        fake_tty: MagicMock = MagicMock()
+        fake_tty.isatty.return_value = True
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            since="1 year ago",
+            top=5,
+            no_git=True,
+            no_gates=True,
+            output=None,
+            json_output=False,
+            quiet=True,
+        )
+        with patch("sys.stdout", fake_tty), patch("sys.stderr", fake_tty):
+            ret = cmd_audit(args)
+        assert ret == 0
+        default_out = tmp_path / _DEFAULT_OUTPUT
+        assert default_out.exists()
