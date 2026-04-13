@@ -385,8 +385,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
 
     def _is_path_excluded_for_detect_secrets(self, path: str) -> bool:
         """Return True when a path should be ignored by detect-secrets parsing."""
-        s = str(path).replace("\\", "/")
-        normalized = s[2:] if s.startswith("./") else s
+        normalized = self._normalize_ds_path(str(path))
         if not normalized:
             return False
 
@@ -723,6 +722,11 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                     json.dumps(tmp_baseline, indent=2), encoding="utf-8"
                 )
             except OSError:
+                # Clean up the orphaned temp file before signalling failure.
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 return None
             return str(tmp_path)
         except (json.JSONDecodeError, OSError):
