@@ -716,12 +716,14 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             )
             tmp_path = Path(tmp_path_str)
             try:
+                # Close the mkstemp fd before write_text so Windows does not
+                # raise a sharing-violation error when opening the file.
+                os.close(fd)
                 tmp_path.write_text(
                     json.dumps(tmp_baseline, indent=2), encoding="utf-8"
                 )
-            finally:
-                # Close the fd returned by mkstemp; write_text opened its own handle.
-                os.close(fd)
+            except OSError:
+                return None
             return str(tmp_path)
         except (json.JSONDecodeError, OSError):
             return None

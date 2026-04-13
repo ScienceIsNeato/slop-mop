@@ -263,15 +263,48 @@ def _section(title: str) -> str:
     return f"\n{'═' * _SECTION_WIDTH}\n{title}\n{'═' * _SECTION_WIDTH}\n"
 
 
+def _collect_git_data(
+    project_root: str,
+    since: str,
+    top_n: int,
+) -> Optional[Dict[str, Any]]:
+    """Run all git queries once and return a single dict.
+
+    Returns ``None`` when ``project_root`` is not a git repository so callers
+    can skip git sections without running a separate ``_is_git_repo`` check.
+    """
+    if not _is_git_repo(project_root):
+        return None
+    churn = _churn_hotspots(project_root, since, top_n)
+    bugs = _bug_commits(project_root, top_n)
+    hotspots = _cross_reference(churn, bugs)
+    all_contributors = _contributors(project_root)
+    recent_contributors = _contributors_recent(project_root, "6 months ago")
+    velocity = _velocity_by_month(project_root)
+    fires = _firefighting(project_root, since)
+    return {
+        "churn": churn,
+        "bugs": bugs,
+        "hotspots": hotspots,
+        "all_contributors": all_contributors,
+        "recent_contributors": recent_contributors,
+        "velocity": velocity,
+        "firefighting": fires,
+    }
+
+
 def _format_git_section(
     project_root: str,
     since: str,
     top_n: int,
+    git_data: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     lines: List[str] = []
     lines.append(_section("📊 GIT ANALYTICS"))
 
-    if not _is_git_repo(project_root):
+    if git_data is None:
+        git_data = _collect_git_data(project_root, since, top_n)
+    if git_data is None:
         lines.append("  (not a git repository — skipping git analysis)\n")
         return lines
 
@@ -279,8 +312,8 @@ def _format_git_section(
     lines.append(_HLINE)
     lines.append("WHO BUILT THIS")
     lines.append(_HLINE)
-    all_contributors = _contributors(project_root)
-    recent_contributors = _contributors_recent(project_root, since="6 months ago")
+    all_contributors = git_data["all_contributors"]
+    recent_contributors = git_data["recent_contributors"]
     recent_names = {name for _, name in recent_contributors}
     if all_contributors:
         total_commits = sum(c for c, _ in all_contributors)
@@ -300,7 +333,7 @@ def _format_git_section(
     lines.append(_HLINE)
     lines.append(f"MOST CHANGED (last {since})")
     lines.append(_HLINE)
-    churn = _churn_hotspots(project_root, since, top_n)
+    churn = git_data["churn"]
     if churn:
         for count, path in churn:
             lines.append(f"  {count:>5}  {path}")
@@ -312,7 +345,7 @@ def _format_git_section(
     lines.append(_HLINE)
     lines.append("BUG-KEYWORD COMMITS (all time)")
     lines.append(_HLINE)
-    bugs = _bug_commits(project_root, top_n)
+    bugs = git_data["bugs"]
     if bugs:
         for count, path in bugs:
             lines.append(f"  {count:>5}  {path}")
@@ -321,7 +354,7 @@ def _format_git_section(
     lines.append("")
 
     # 4. Cross-reference
-    hotspots = _cross_reference(churn, bugs)
+    hotspots = git_data["hotspots"]
     if hotspots:
         lines.append(_HLINE)
         lines.append(f"HIGH-RISK FILES (high churn AND high bug-commit count)")
@@ -334,7 +367,7 @@ def _format_git_section(
     lines.append(_HLINE)
     lines.append("COMMIT VELOCITY (by month)")
     lines.append(_HLINE)
-    velocity = _velocity_by_month(project_root)
+    velocity = git_data["velocity"]
     if velocity:
         max_count = max(c for c, _ in velocity) if velocity else 1
         bar_scale = min(1.0, 40 / max_count)
@@ -349,7 +382,7 @@ def _format_git_section(
     lines.append(_HLINE)
     lines.append(f"FIREFIGHTING (reverts/hotfixes, last {since})")
     lines.append(_HLINE)
-    fires = _firefighting(project_root, since)
+    fires = git_data["firefighting"]
     if fires:
         for hit in fires:
             lines.append(f"  {hit}")
@@ -438,6 +471,7 @@ def _build_report(
     include_gates: bool,
     gate_data: Optional[Dict[str, Any]],
     timestamp: str,
+    git_data: Optional[Dict[str, Any]] = None,
 ) -> str:
     parts: List[str] = []
     parts.append(f"# slop-mop audit report")
@@ -447,7 +481,7 @@ def _build_report(
     parts.append("")
 
     if include_git:
-        parts.extend(_format_git_section(project_root, since, top_n))
+        parts.extend(_format_git_section(project_root, since, top_n, git_data))
 
     if include_gates:
         parts.extend(_format_gate_section(gate_data))
@@ -475,6 +509,7 @@ def _build_json_payload(
     include_gates: bool,
     gate_data: Optional[Dict[str, Any]],
     timestamp: str,
+    git_data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "schema": _SCHEMA,
@@ -482,29 +517,32 @@ def _build_json_payload(
         "project_root": str(Path(project_root).resolve()),
     }
 
-    if include_git and _is_git_repo(project_root):
-        churn = _churn_hotspots(project_root, since, top_n)
-        bugs = _bug_commits(project_root, top_n)
-        hotspots = _cross_reference(churn, bugs)
-        payload["git"] = {
-            "contributors_all_time": [
-                {"commits": c, "author": n} for c, n in _contributors(project_root)
-            ],
-            "contributors_recent_6mo": [
-                {"commits": c, "author": n}
-                for c, n in _contributors_recent(project_root, "6 months ago")
-            ],
-            "churn_hotspots": [{"changes": c, "path": p} for c, p in churn],
-            "bug_clusters": [{"bug_commits": c, "path": p} for c, p in bugs],
-            "high_risk_files": [
-                {"path": p, "churn": ch, "bug_commits": bc}
-                for p, ch, bc in hotspots[:10]
-            ],
-            "velocity_by_month": [
-                {"month": m, "commits": c} for c, m in _velocity_by_month(project_root)
-            ],
-            "firefighting": _firefighting(project_root, since),
-        }
+    if include_git:
+        if git_data is None:
+            git_data = _collect_git_data(project_root, since, top_n)
+        if git_data is not None:
+            churn = git_data["churn"]
+            bugs = git_data["bugs"]
+            hotspots = git_data["hotspots"]
+            payload["git"] = {
+                "contributors_all_time": [
+                    {"commits": c, "author": n} for c, n in git_data["all_contributors"]
+                ],
+                "contributors_recent_6mo": [
+                    {"commits": c, "author": n}
+                    for c, n in git_data["recent_contributors"]
+                ],
+                "churn_hotspots": [{"changes": c, "path": p} for c, p in churn],
+                "bug_clusters": [{"bug_commits": c, "path": p} for c, p in bugs],
+                "high_risk_files": [
+                    {"path": p, "churn": ch, "bug_commits": bc}
+                    for p, ch, bc in hotspots[:10]
+                ],
+                "velocity_by_month": [
+                    {"month": m, "commits": c} for c, m in git_data["velocity"]
+                ],
+                "firefighting": git_data["firefighting"],
+            }
 
     if include_gates:
         payload["gates"] = gate_data or {}
@@ -534,6 +572,12 @@ def cmd_audit(args: argparse.Namespace) -> int:
         if include_git:
             print("    Collecting git analytics …")
 
+    # Collect git data once — reused by both the text report and the JSON payload
+    # to avoid redundant git subprocess calls in json_mode.
+    git_data: Optional[Dict[str, Any]] = None
+    if include_git:
+        git_data = _collect_git_data(str(project_root), since, top_n)
+
     gate_data: Optional[Dict[str, Any]] = None
     if include_gates:
         # In interactive mode let the scour progress display render live.
@@ -552,6 +596,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
         include_gates,
         gate_data,
         timestamp,
+        git_data,
     )
     output_path = Path(
         output_path_str if output_path_str else project_root / _DEFAULT_OUTPUT
@@ -568,6 +613,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
             include_gates,
             gate_data,
             timestamp,
+            git_data,
         )
         print(json.dumps(payload, indent=2))
         return 0
