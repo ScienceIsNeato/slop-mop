@@ -295,9 +295,11 @@ class ConsoleAdapter:
                     print("   ▸ after fixing: " + r.per_gate_verify_command(res.name))
 
     def _render_first_to_fix_hint(self) -> None:
-        """Call out the first blocking gate explicitly when one exists."""
+        """Call out the first blocking gate explicitly when 2+ failures exist."""
         first_gate = self.report.first_to_fix
         if not first_gate:
+            return
+        if len(self.report.failed) + len(self.report.errored) < 2:
             return
         print(f"🎯 Fix First: {first_gate}")
         log_path = self.report.per_gate_log_file(first_gate)

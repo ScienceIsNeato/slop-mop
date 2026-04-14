@@ -259,7 +259,39 @@ SCOPE_EXCLUDED_DIRS = {
     "logs",
     ".slopmop",
     ".egg-info",
+    ".specstory",  # IDE conversation-history artefacts
 }
+
+# Source-code file extensions used for project-size metrics (e.g. sm status).
+# Deliberately excludes docs, data, and binary files so the scope displayed
+# to users reflects actual code rather than generated or vendored content.
+SOURCE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".dart",
+        ".sh",
+        ".bash",
+        ".rb",
+        ".go",
+        ".rs",
+        ".java",
+        ".kt",
+        ".swift",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".php",
+        ".yml",
+        ".yaml",
+        ".toml",
+    }
+)
 
 
 def count_source_scope(
