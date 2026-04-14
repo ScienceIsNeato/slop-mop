@@ -697,6 +697,82 @@ def _add_status_parser(
     )
 
 
+def _add_audit_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the audit subcommand parser."""
+    audit_parser = subparsers.add_parser(
+        "audit",
+        help="Read-only codebase health snapshot (git analytics + gate inventory)",
+        description=(
+            "Produce a structured report covering git health analytics "
+            "(churn hotspots, contributor risk, bug clusters, velocity, "
+            "firefighting) and the current state of every scour gate.  "
+            "No auto-fix, no pass/fail exit code.  "
+            "Informational only — safe to run at any lifecycle stage "
+            "(pre-refit, mid-refit, or in maintenance mode).  "
+            "Requires `sm init` to have been run first."
+        ),
+    )
+    audit_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+    audit_parser.add_argument(
+        "--since",
+        type=str,
+        default="1 year ago",
+        help="Lookback window for git analytics (default: '1 year ago')",
+    )
+    audit_parser.add_argument(
+        "--top",
+        type=int,
+        default=20,
+        metavar="N",
+        help="Number of hotspot files to show (default: 20)",
+    )
+    audit_parser.add_argument(
+        "--no-git",
+        dest="no_git",
+        action="store_true",
+        help="Skip git analytics section",
+    )
+    audit_parser.add_argument(
+        "--no-gates",
+        dest="no_gates",
+        action="store_true",
+        help="Skip gate violation inventory section",
+    )
+    audit_parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Write report to this path (default: .slopmop/audit-report.md)",
+    )
+    audit_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=None,
+        help="Emit JSON instead of markdown",
+    )
+    audit_parser.add_argument(
+        "--no-json",
+        dest="json_output",
+        action="store_false",
+        help="Force markdown output (overrides auto-detection).",
+    )
+    audit_parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress progress messages; still writes the report file",
+    )
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser for sm CLI."""
     parser = argparse.ArgumentParser(
@@ -754,6 +830,7 @@ Examples:
     _add_init_parser(subparsers)
     _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
+    _add_audit_parser(subparsers)
 
     parser.add_argument(
         "--version",
@@ -769,6 +846,7 @@ def main(args: Optional[List[str]] = None) -> int:
     from slopmop import MissingDependencyError
     from slopmop.cli import (
         cmd_agent,
+        cmd_audit,
         cmd_buff,
         cmd_commit_hooks,
         cmd_config,
@@ -808,6 +886,7 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_help=cmd_help,
             cmd_init=cmd_init,
             cmd_agent=cmd_agent,
+            cmd_audit=cmd_audit,
             cmd_commit_hooks=cmd_commit_hooks,
         )
     except MissingDependencyError as exc:
@@ -848,6 +927,8 @@ def _dispatch(
         return handlers["cmd_agent"](parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return handlers["cmd_commit_hooks"](parsed_args)
+    elif parsed_args.verb == "audit":
+        return handlers["cmd_audit"](parsed_args)
     else:
         parser.print_help()
         return 0

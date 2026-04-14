@@ -671,13 +671,12 @@ class TestRunDetectSecrets:
             check._run_detect_secrets(str(tmp_path))
 
         real_baseline_path = str(tmp_path / ".secrets.baseline")
-        if "--baseline" in captured_cmd:
-            idx = captured_cmd.index("--baseline")
-            passed = captured_cmd[idx + 1]
-            assert passed != real_baseline_path, (
-                "The real .secrets.baseline must never be passed as --baseline to "
-                "detect-secrets scan — that rewrites the file on every run."
-            )
+        # baseline has no plugins_used/filters_used, so --baseline must be absent
+        assert "--baseline" not in captured_cmd, (
+            "No --baseline should be passed when the baseline has no "
+            "plugins_used or filters_used — _create_plugin_config_baseline "
+            "should have returned None and left the flag out."
+        )
 
     def test_detect_secrets_baseline_file_not_modified(self, tmp_path):
         """Running the security check must NOT modify the .secrets.baseline file."""

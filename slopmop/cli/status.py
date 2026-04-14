@@ -63,7 +63,7 @@ def _print_config_summary(
     disabled: List[str],
 ) -> None:
     """Print project configuration overview."""
-    from slopmop.checks.base import count_source_scope
+    from slopmop.checks.base import SOURCE_EXTENSIONS, count_source_scope
     from slopmop.reporting import print_project_header
 
     print_project_header(str(root))
@@ -80,8 +80,8 @@ def _print_config_summary(
 
     print(f"🔍 Gates: {swab_count} swab · {scour_count} scour-only")
 
-    # Project scope — lightweight file/LOC count
-    scope = count_source_scope(str(root))
+    # Project scope — source-file LOC only (excludes docs, data, binaries)
+    scope = count_source_scope(str(root), extensions=set(SOURCE_EXTENSIONS))
     if scope.files > 0:
         print(f"📏 Scope: {scope.format_compact()}")
 
@@ -122,9 +122,10 @@ def _format_gate_line(
     answers "is this a standard-tool wrapper or slop-mop's own analysis"
     at a glance — useful when triaging which gates to disable or tune.
     """
-    # Level badge
+    # Level badge — fixed width so the [level] column always aligns.
+    # "swab" is 4 chars, "scour" is 5; pad to 5 for consistent column width.
     if in_swab:
-        level_tag = "swab"
+        level_tag = "swab "
     elif in_scour:
         level_tag = "scour"
     else:
@@ -153,7 +154,11 @@ def _format_gate_line(
         }
         icon = _RESULT_ICONS.get(last_result, "?")
         sparkline = (
-            history.sparkline(max_width=10, colors_enabled=colors_enabled)
+            history.sparkline(
+                max_width=10,
+                colors_enabled=colors_enabled,
+                override_latest=last_result,
+            )
             if history is not None
             else ""
         )
@@ -733,10 +738,10 @@ def _build_status_dict(
         },
     }
 
-    # Project scope — same lightweight scan as the human output
-    from slopmop.checks.base import count_source_scope
+    # Project scope — source-file LOC only (matches human output)
+    from slopmop.checks.base import SOURCE_EXTENSIONS, count_source_scope
 
-    scope = count_source_scope(str(root))
+    scope = count_source_scope(str(root), extensions=set(SOURCE_EXTENSIONS))
     if scope.files > 0:
         result["scope"] = scope.to_dict()
 

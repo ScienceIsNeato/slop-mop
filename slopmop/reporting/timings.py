@@ -114,6 +114,7 @@ class TimingStats:
         self,
         max_width: int = 10,
         colors_enabled: bool = False,
+        override_latest: Optional[str] = None,
     ) -> str:
         """Render recent samples as a constant-width Unicode sparkline.
 
@@ -127,11 +128,20 @@ class TimingStats:
         passed, red for failed, etc.), merging timing + outcome into one
         visual.
 
+        *override_latest* lets the caller supply the most recent result
+        when it may not yet be recorded in ``self.results`` (e.g. the
+        last run was stored in ``last_swab.json`` but timing history
+        hasn't been flushed yet).  When set, the rightmost bar is
+        re-colored to match *override_latest* regardless of what
+        ``self.results[-1]`` says.
+
         Args:
             max_width: Exact number of visible characters to produce.
                        Uses the last *max_width* samples; pads with
                        placeholders if fewer samples exist.
             colors_enabled: Whether to color bars by result status.
+            override_latest: Optional result string ("passed", "failed",
+                             etc.) to force onto the rightmost bar.
 
         Returns:
             Sparkline string of exactly *max_width* display characters,
@@ -155,7 +165,7 @@ class TimingStats:
         pad_count = max_width - len(bars)
 
         # Apply per-bar result coloring when available
-        if colors_enabled and self.results:
+        if colors_enabled and (self.results or override_latest):
             result_window = self.results[-max_width:]
             # Align: results may be shorter than samples (legacy data)
             offset = len(bars) - len(result_window)
@@ -175,6 +185,14 @@ class TimingStats:
                         colored.append(bar)
                 else:
                     colored.append(bar)
+            # If the caller knows the true latest result (e.g. from
+            # last_swab.json, which may be newer than timing history),
+            # override the rightmost bar so it always matches the
+            # displayed "last: <result>" text.
+            if override_latest and bars:
+                override_color = _RESULT_STATUS_COLORS.get(override_latest, "")
+                if override_color:
+                    colored[-1] = f"{override_color}{bars[-1]}{reset}"
             return "".join(colored)
 
         # No coloring — plain text with placeholders
