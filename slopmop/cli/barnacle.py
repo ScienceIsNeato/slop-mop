@@ -25,6 +25,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import socket
 import sys
 import time
@@ -75,7 +76,7 @@ def _queue_dir() -> Path:
 
 
 def _iso_now() -> str:  # noqa: ambiguity-mine
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _short_id() -> str:
@@ -105,8 +106,7 @@ def _read_barnacle(path: Path) -> Dict[str, Any]:
 def _write_barnacle(data: Dict[str, Any]) -> Path:
     qdir = _queue_dir()
     qdir.mkdir(parents=True, exist_ok=True)
-    bid = data["id"]
-    path = qdir / f"{bid}.json"
+    path = _barnacle_path(data["id"])
     path.write_text(json.dumps(data, indent=2))
     return path
 
@@ -121,6 +121,8 @@ def _list_barnacles(status_filter: Optional[str] = None) -> List[Dict[str, Any]]
             b = _read_barnacle(p)
         except (json.JSONDecodeError, OSError):
             continue
+        if not isinstance(b, dict) or "id" not in b or "status" not in b:
+            continue  # skip corrupted entries
         if status_filter and status_filter != "all":
             if b.get("status") != status_filter:
                 continue
@@ -128,17 +130,43 @@ def _list_barnacles(status_filter: Optional[str] = None) -> List[Dict[str, Any]]
     return results
 
 
+_SAFE_PREFIX_RE = re.compile(r"^[a-zA-Z0-9\-_]+$")
+
+
 def _find_barnacle(bid_prefix: str) -> Optional[Dict[str, Any]]:
-    """Find a barnacle by full or prefix ID."""
+    """Find a barnacle by full or prefix ID.
+
+    Iterates only ``barnacle-*.json`` within the queue dir and matches on
+    ``Path.stem.startswith(bid_prefix)`` after validating the prefix contains
+    only safe characters.  Returns ``None`` if 0 or >1 matches are found.
+    """
+    if not _SAFE_PREFIX_RE.match(bid_prefix):
+        print(
+            f"❌ Invalid barnacle ID prefix (unsafe characters): {bid_prefix!r}",
+            file=sys.stderr,
+        )
+        return None
     qdir = _queue_dir()
     if not qdir.exists():
         return None
-    for p in sorted(qdir.glob(f"{bid_prefix}*.json")):
+    matches: List[Dict[str, Any]] = []
+    for p in sorted(qdir.glob("barnacle-*.json")):
+        if not p.stem.startswith(bid_prefix):
+            continue
         try:
-            return _read_barnacle(p)
+            matches.append(_read_barnacle(p))
         except (json.JSONDecodeError, OSError):
             continue
-    return None
+    if len(matches) == 0:
+        return None
+    if len(matches) > 1:
+        print(
+            f"❌ Ambiguous prefix '{bid_prefix}' matches {len(matches)} barnacles;"
+            " use a longer prefix.",
+            file=sys.stderr,
+        )
+        return None
+    return matches[0]
 
 
 def _installed_slopmop_version() -> str:
@@ -248,7 +276,8 @@ def cmd_barnacle_file(args: argparse.Namespace) -> int:
         "expected": getattr(args, "expected", "") or "",
         "actual": getattr(args, "actual", "") or "",
         "output_excerpt": getattr(args, "output_excerpt", "") or "",
-        "reproduction_steps": getattr(args, "reproduction_steps", None) or [],
+        "reproduction_steps": getattr(args, "reproduction_steps", None)
+        or [getattr(args, "command", "") or ""],
         "auto_filed": False,
         "claim": None,
         "resolution": None,
@@ -432,6 +461,10 @@ def cmd_barnacle_watch(args: argparse.Namespace) -> int:
     """Poll the queue for new open barnacles."""
     interval = getattr(args, "interval", 15)
     status_filter = getattr(args, "status", STATUS_OPEN)
+
+    if interval < 1:
+        print("❌ --interval must be at least 1 second.", file=sys.stderr)
+        return 1
 
     print(f"🐚 Watching barnacle queue  ({_queue_dir()})")
     print(f"   Filter: {status_filter} · interval: {interval}s · Ctrl+C to stop")

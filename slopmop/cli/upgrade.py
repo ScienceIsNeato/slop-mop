@@ -463,7 +463,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
             )
             if bid:
                 print(
-                    f"🐚 Barnacle auto-filed: {bid}" f"  (sm barnacle show {bid})",
+                    f"🐚 Barnacle auto-filed: {bid}\n" f"  (sm barnacle show {bid})",
                     file=sys.stderr,
                 )
         except Exception:

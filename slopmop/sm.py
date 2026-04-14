@@ -745,7 +745,7 @@ def _add_barnacle_parser(
     list_p = barnacle_sub.add_parser("list", help="List barnacles in the queue")
     list_p.add_argument(
         "--status",
-        choices=["open", "claimed", "resolved", "wont-fix", "all"],
+        choices=["open", "claimed", "resolved", "all"],
         default="open",
         help="Filter by status (default: open)",
     )

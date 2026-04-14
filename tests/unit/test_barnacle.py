@@ -22,6 +22,7 @@ from slopmop.cli.barnacle import (
     cmd_barnacle_list,
     cmd_barnacle_resolve,
     cmd_barnacle_show,
+    cmd_barnacle_watch,
 )
 
 # ---------------------------------------------------------------------------
@@ -80,7 +81,7 @@ class TestBarnacleId:
 class TestQueueDir:
     def test_default_is_home_slopmop(self):
         qdir = _queue_dir()
-        assert str(qdir).endswith(".slopmop/barnacles")
+        assert qdir.parts[-2:] == (".slopmop", "barnacles")
 
     def test_override_via_env(self, tmp_path, monkeypatch):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "queue"))
@@ -339,3 +340,44 @@ class TestCmdBarnacleDispatcher:
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "empty"))
         rc = cmd_barnacle(_args(barnacle_action="list"))
         assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# cmd_barnacle_watch
+# ---------------------------------------------------------------------------
+
+
+class TestCmdBarnacleWatch:
+    def test_invalid_interval_returns_nonzero(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
+        rc = cmd_barnacle_watch(_args(interval=0))
+        assert rc != 0
+        err = capsys.readouterr().err
+        assert "--interval" in err
+
+    def test_negative_interval_returns_nonzero(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
+        rc = cmd_barnacle_watch(_args(interval=-5))
+        assert rc != 0
+
+    def test_exits_on_keyboard_interrupt(self, tmp_path, monkeypatch, capsys):
+        """Watch exits cleanly on KeyboardInterrupt after finding new entries."""
+        import unittest.mock as mock
+
+        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
+        cmd_barnacle_file(_args(command="sm swab"))
+
+        call_count = 0
+
+        def _sleep_once(seconds):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 1:
+                raise KeyboardInterrupt
+
+        with mock.patch("slopmop.cli.barnacle.time.sleep", side_effect=_sleep_once):
+            rc = cmd_barnacle_watch(_args(interval=1, status="open"))
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "barnacle-" in out
