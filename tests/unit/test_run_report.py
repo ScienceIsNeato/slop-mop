@@ -567,8 +567,7 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "SLOP DETECTED" in out
-        assert "Fix First: myopia:code-sprawl" in out
-        assert "inspect details: .slopmop/logs/myopia_code-sprawl.log" in out
+        assert "Fix First: myopia:code-sprawl" not in out
         assert "after fixing: sm swab -g myopia:code-sprawl" in out
         assert "myopia:code-sprawl" in out
         assert "Move BigClass" in out
@@ -625,9 +624,9 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "WHAT'S BROKEN:" in out
-        assert "WHY IT MATTERS:" in out
-        assert "EXACTLY WHAT TO DO:" in out
-        assert "FULL DETAILS: .slopmop/logs/overconfidence_type-blindness.py.log" in out
+        assert "WHY IT MATTERS:" not in out
+        assert "EXACTLY WHAT TO DO:" not in out
+        assert "FULL DETAILS:" not in out
         assert "AFTER FIXING: sm swab -g overconfidence:type-blindness.py" in out
 
     def test_success_path_warns_on_time_budget_skips(self, capsys) -> None:
