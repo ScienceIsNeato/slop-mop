@@ -234,6 +234,16 @@ class TestLifecycle:
         rc = cmd_barnacle_resolve(_args(barnacle_id=bid))
         assert rc == 0  # second resolve is a no-op, not an error
 
+    def test_cannot_resolve_unclaimed(self, tmp_path, monkeypatch, capsys):
+        """Resolving an open barnacle (without claiming first) is rejected."""
+        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
+        cmd_barnacle_file(_args())
+        bid = next(tmp_path.glob("barnacle-*.json")).stem
+        rc = cmd_barnacle_resolve(_args(barnacle_id=bid))
+        assert rc != 0
+        err = capsys.readouterr().err
+        assert "claim" in err
+
 
 # ---------------------------------------------------------------------------
 # cmd_barnacle_show

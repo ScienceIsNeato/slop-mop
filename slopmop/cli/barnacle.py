@@ -158,6 +158,7 @@ def _find_barnacle(bid_prefix: str) -> Optional[Dict[str, Any]]:
         except (json.JSONDecodeError, OSError):
             continue
     if len(matches) == 0:
+        print(ERR_NOT_FOUND_FMT.format(bid_prefix), file=sys.stderr)
         return None
     if len(matches) > 1:
         print(
@@ -370,7 +371,6 @@ def cmd_barnacle_show(args: argparse.Namespace) -> int:
         return 1
     b = _find_barnacle(bid)
     if not b:
-        print(ERR_NOT_FOUND_FMT.format(bid), file=sys.stderr)
         return 1
     if getattr(args, "json_output", False):
         print(json.dumps(b, indent=2))
@@ -387,7 +387,6 @@ def cmd_barnacle_claim(args: argparse.Namespace) -> int:
         return 1
     b = _find_barnacle(bid)
     if not b:
-        print(ERR_NOT_FOUND_FMT.format(bid), file=sys.stderr)
         return 1
     if b.get("status") == STATUS_CLAIMED:
         claim_data: Dict[str, Any] = b.get("claim") or {}
@@ -425,11 +424,17 @@ def cmd_barnacle_resolve(args: argparse.Namespace) -> int:
         return 1
     b = _find_barnacle(bid)
     if not b:
-        print(ERR_NOT_FOUND_FMT.format(bid), file=sys.stderr)
         return 1
     if b.get("status") == STATUS_RESOLVED:
         print("⚠️  Already resolved")
         return 0
+    if b.get("status") != STATUS_CLAIMED:
+        print(
+            f"❌ Cannot resolve a barnacle with status '{b.get('status')}'; "
+            "run 'sm barnacle claim' first.",
+            file=sys.stderr,
+        )
+        return 1
 
     agent = getattr(args, "agent", None) or _default_agent()
     resolution: Dict[str, Any] = {
