@@ -148,6 +148,7 @@ def _find_barnacle(bid_prefix: str) -> Optional[Dict[str, Any]]:
         return None
     qdir = _queue_dir()
     if not qdir.exists():
+        print(ERR_NOT_FOUND_FMT.format(bid_prefix), file=sys.stderr)
         return None
     matches: List[Dict[str, Any]] = []
     for p in sorted(qdir.glob("barnacle-*.json")):
@@ -476,7 +477,6 @@ def cmd_barnacle_watch(args: argparse.Namespace) -> int:
     print()
 
     seen: set[str] = set()
-    poll = 0
     try:
         while True:
             barnacles = _list_barnacles(status_filter)
@@ -495,7 +495,6 @@ def cmd_barnacle_watch(args: argparse.Namespace) -> int:
                     print(f"     {excerpt}")
                 print(f"     → sm barnacle claim {b['id']}")
                 print()
-            poll += 1
             time.sleep(interval)
     except KeyboardInterrupt:
         print("\n🐚 Watch stopped.")
