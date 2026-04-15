@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
 from slopmop.checks.metadata import builtin_reasoning_for_check_class
 from slopmop.core.result import CheckDefinition
-from slopmop.utils import as_str_list
+from slopmop.utils import as_str_list, normalize_path_filter
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +19,6 @@ logger = logging.getLogger(__name__)
 def _dedupe_strings(values: List[str]) -> List[str]:
     """Deduplicate strings while preserving input order."""
     return list(dict.fromkeys(values))
-
-
-def _normalize_path_filter(value: str) -> str:
-    """Normalize a repo-relative path or glob from config/gitignore."""
-    normalized = value.strip()
-    if normalized.startswith("./"):
-        normalized = normalized[2:]
-    if normalized.startswith("/"):
-        normalized = normalized[1:]
-    if normalized.endswith("/") and not normalized.endswith("/**"):
-        normalized = normalized[:-1]
-    return normalized
 
 
 def _simple_path_filters(values: List[str]) -> List[str]:
@@ -76,14 +64,14 @@ def _merge_runtime_path_filters(
 
     gate_extra = as_str_list(merged.get("extra_exclude_paths"))
     gate_includes = {
-        _normalize_path_filter(value)
+        normalize_path_filter(value)
         for value in as_str_list(merged.get("include_paths"))
     }
 
     effective_paths = [
         normalized
         for normalized in (
-            _normalize_path_filter(value) for value in global_paths + gate_extra
+            normalize_path_filter(value) for value in global_paths + gate_extra
         )
         if normalized and normalized not in gate_includes
     ]

@@ -23,6 +23,7 @@ from slopmop.core.result import (
     ScopeInfo,
 )
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
+from slopmop.utils import is_path_excluded
 
 logger = logging.getLogger(__name__)
 
@@ -332,12 +333,12 @@ def count_source_scope(
                 continue
 
             # Skip excluded directories
-            parts = set(file_path.relative_to(root).parts)
-            if parts & excluded:
+            rel_path = file_path.relative_to(root)
+            if is_path_excluded(rel_path, excluded):
                 continue
 
             # Skip .egg-info directories (not exact match, contains pattern)
-            rel_str = str(file_path.relative_to(root))
+            rel_str = str(rel_path)
             if ".egg-info" in rel_str:
                 continue
 

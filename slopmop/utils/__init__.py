@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, cast
+from fnmatch import fnmatch
+from pathlib import Path, PurePosixPath
+from typing import Any, Iterable, cast
 
 _SLOPMOP_GITIGNORE_ENTRY = ".slopmop/"
 _SLOPMOP_GITIGNORE_COMMENT = "# slop-mop working directory (machine-local state)"
@@ -18,6 +19,50 @@ def as_str_list(value: Any) -> list[str]:
         if isinstance(item, str):
             result.append(item)
     return result
+
+
+def normalize_path_filter(value: str) -> str:
+    """Normalize a repo-relative path or glob from config/gitignore."""
+    normalized = value.strip().replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    if normalized.startswith("/"):
+        normalized = normalized[1:]
+    if normalized.endswith("/") and not normalized.endswith("/**"):
+        normalized = normalized[:-1]
+    return normalized
+
+
+def is_path_excluded(path: str | Path, raw_filters: Iterable[str]) -> bool:
+    """Return whether a repo-relative path matches any exclude filter.
+
+    Filters support:
+    - plain directory tokens like ``vendor``
+    - nested repo-relative paths like ``vendor/generated``
+    - glob patterns like ``**/*.snap``
+    """
+    rel_path = normalize_path_filter(str(path))
+    if not rel_path:
+        return False
+
+    rel_parts = PurePosixPath(rel_path).parts
+    for raw_filter in raw_filters:
+        normalized_filter = normalize_path_filter(raw_filter)
+        if not normalized_filter:
+            continue
+        if any(ch in normalized_filter for ch in "*?[]"):
+            if fnmatch(rel_path, normalized_filter):
+                return True
+            continue
+        if "/" in normalized_filter:
+            if rel_path == normalized_filter or rel_path.startswith(
+                f"{normalized_filter}/"
+            ):
+                return True
+            continue
+        if normalized_filter in rel_parts:
+            return True
+    return False
 
 
 def ensure_slopmop_gitignored(project_root: Path) -> bool:

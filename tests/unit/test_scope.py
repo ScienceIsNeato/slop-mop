@@ -247,6 +247,20 @@ class TestCountSourceScope:
         )
         assert scope.files == 1
 
+    def test_nested_exclude_paths(self, tmp_path):
+        """Slash-separated nested exclude paths are respected."""
+        (tmp_path / "keep.py").write_text("kept\n")
+        nested = tmp_path / "vendor" / "generated"
+        nested.mkdir(parents=True)
+        (nested / "skip.py").write_text("skipped\n")
+
+        scope = count_source_scope(
+            str(tmp_path),
+            extensions={".py"},
+            exclude_dirs={"vendor/generated"},
+        )
+        assert scope.files == 1
+
 
 class TestPythonCheckMixinScope:
     """Tests for PythonCheckMixin.measure_scope."""

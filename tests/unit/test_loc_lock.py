@@ -229,6 +229,21 @@ class TestLocLockExclusions:
 
         assert result.status == CheckStatus.PASSED
 
+    def test_respects_nested_custom_exclude_dirs(self, tmp_path):
+        """Slash-separated nested exclude_dirs paths are respected."""
+        gen_dir = tmp_path / "vendor" / "generated"
+        gen_dir.mkdir(parents=True)
+        content = "\n".join(f"x{i} = {i}" for i in range(2000))
+        (gen_dir / "huge.py").write_text(content)
+        (tmp_path / "main.py").write_text("x = 1")
+
+        check = LocLockCheck(
+            {"max_file_lines": 100, "exclude_dirs": ["vendor/generated"]}
+        )
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
     def test_excludes_migrations_by_default(self, tmp_path):
         """Migration files should be excluded from sprawl limits by default."""
         mig_dir = tmp_path / "migrations" / "versions"
