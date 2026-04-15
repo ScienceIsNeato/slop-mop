@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 _SLOPMOP_GITIGNORE_ENTRY = ".slopmop/"
 _SLOPMOP_GITIGNORE_COMMENT = "# slop-mop working directory (machine-local state)"
+
+
+def as_str_list(value: Any) -> list[str]:
+    """Return string items from a config value, dropping non-strings."""
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in cast(list[object], value):
+        if isinstance(item, str):
+            result.append(item)
+    return result
 
 
 def ensure_slopmop_gitignored(project_root: Path) -> bool:

@@ -60,6 +60,26 @@ class TestLoadConfig:
             result = load_config(tmp_path)
             assert result == {"override": True}
 
+    def test_loads_runtime_gitignore_excludes(self, tmp_path):
+        """.gitignore entries become runtime-wide exclude paths."""
+        (tmp_path / ".gitignore").write_text("dist/\n*.snap\n!keep.snap\n", encoding="utf-8")
+
+        result = load_config(tmp_path)
+
+        assert result["_global_exclude_paths"] == ["dist", "*.snap"]
+
+    def test_merges_config_excludes_with_gitignore_runtime_excludes(self, tmp_path):
+        """Top-level exclude_paths and .gitignore feed the shared runtime list."""
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps({"exclude_paths": ["vendor", "dist"]})
+        )
+        (tmp_path / ".gitignore").write_text("dist/\ngenerated/\n", encoding="utf-8")
+
+        result = load_config(tmp_path)
+
+        assert result["exclude_paths"] == ["vendor", "dist"]
+        assert result["_global_exclude_paths"] == ["vendor", "dist", "generated"]
+
 
 class TestSetupLogging:
     """Tests for setup_logging function."""

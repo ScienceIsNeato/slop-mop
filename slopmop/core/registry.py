@@ -11,8 +11,111 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
 from slopmop.checks.metadata import builtin_reasoning_for_check_class
 from slopmop.core.result import CheckDefinition
+from slopmop.utils import as_str_list
 
 logger = logging.getLogger(__name__)
+
+
+def _dedupe_strings(values: List[str]) -> List[str]:
+    """Deduplicate strings while preserving input order."""
+    return list(dict.fromkeys(values))
+
+
+def _normalize_path_filter(value: str) -> str:
+    """Normalize a repo-relative path or glob from config/gitignore."""
+    normalized = value.strip()
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    if normalized.startswith("/"):
+        normalized = normalized[1:]
+    if normalized.endswith("/") and not normalized.endswith("/**"):
+        normalized = normalized[:-1]
+    return normalized
+
+
+def _simple_path_filters(values: List[str]) -> List[str]:
+    """Return filters that can safely flow into exclude_dirs-style fields."""
+    simple: List[str] = []
+    for value in values:
+        if any(ch in value for ch in "*?[]"):
+            continue
+        simple.append(value)
+    return simple
+
+
+def _path_pattern_variants(value: str) -> List[str]:
+    """Expand one repo-relative filter into ignore-pattern variants."""
+    if any(ch in value for ch in "*?[]"):
+        return [value]
+
+    variants = [value]
+    if "/" in value:
+        variants.append(f"{value}/**")
+    else:
+        variants.extend(
+            [
+                f"**/{value}",
+                f"{value}/**",
+                f"**/{value}/**",
+            ]
+        )
+    return _dedupe_strings(variants)
+
+
+def _merge_runtime_path_filters(
+    check_class: Type[BaseCheck],
+    gate_config: Dict[str, Any],
+    full_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Merge repo-wide and gate-local runtime excludes into one gate config."""
+    merged = gate_config.copy()
+
+    global_paths = as_str_list(full_config.get("_global_exclude_paths"))
+    if not global_paths:
+        global_paths = as_str_list(full_config.get("exclude_paths"))
+
+    gate_extra = as_str_list(merged.get("extra_exclude_paths"))
+    gate_includes = {
+        _normalize_path_filter(value)
+        for value in as_str_list(merged.get("include_paths"))
+    }
+
+    effective_paths = [
+        normalized
+        for normalized in (
+            _normalize_path_filter(value) for value in global_paths + gate_extra
+        )
+        if normalized and normalized not in gate_includes
+    ]
+    effective_paths = _dedupe_strings(effective_paths)
+    if not effective_paths:
+        return merged
+
+    schema_names = {field.name for field in check_class({}).get_full_config_schema()}
+
+    if "exclude_dirs" in schema_names:
+        merged["exclude_dirs"] = _dedupe_strings(
+            as_str_list(merged.get("exclude_dirs"))
+            + _simple_path_filters(effective_paths)
+        )
+
+    pattern_values: List[str] = []
+    for value in effective_paths:
+        pattern_values.extend(_path_pattern_variants(value))
+    pattern_values = _dedupe_strings(pattern_values)
+
+    for field_name in ("ignore_patterns", "exclude_patterns"):
+        if field_name in schema_names:
+            merged[field_name] = _dedupe_strings(
+                as_str_list(merged.get(field_name)) + pattern_values
+            )
+
+    if "exclude_paths" in schema_names:
+        merged["exclude_paths"] = _dedupe_strings(
+            as_str_list(merged.get("exclude_paths")) + effective_paths
+        )
+
+    return merged
 
 
 # Built-in remediation order.
@@ -200,6 +303,7 @@ class CheckRegistry:
         # Extract gate-specific config from full config
         # Config structure: { "category": { "gates": { "check-name": {...} } } }
         gate_config = self._extract_gate_config(name, config)
+        gate_config = _merge_runtime_path_filters(check_class, gate_config, config)
         return check_class(gate_config)
 
     def _extract_gate_config(

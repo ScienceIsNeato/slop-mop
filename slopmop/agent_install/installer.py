@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
 
 from slopmop.agent_install.loader import load_assets
-from slopmop.agent_install.registry import TARGETS, expand_target
+from slopmop.agent_install.registry import (
+    TARGETS,
+    expand_target,
+    uses_user_home_destination,
+)
 
 
 @dataclass
@@ -25,6 +30,7 @@ def install_agent_templates(
 ) -> InstallReport:
     """Install template files for the given target into *project_root*."""
     project_root = project_root.resolve()
+    user_home = Path(os.path.expanduser("~")).resolve()
     report = InstallReport(project_root=project_root)
 
     target_keys = expand_target(target)
@@ -38,7 +44,10 @@ def install_agent_templates(
             continue
 
         for asset in assets:
-            destination = project_root / asset.destination_relpath
+            if uses_user_home_destination(key, asset.destination_relpath):
+                destination = user_home / asset.destination_relpath
+            else:
+                destination = project_root / asset.destination_relpath
             try:
                 if destination.exists() and not force:
                     report.skipped.append(destination)

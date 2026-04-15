@@ -482,7 +482,12 @@ def _get_repo_slug(project_root: str) -> str:
 def _post_pr_comment(
     project_root: str, owner: str, repo: str, pr_number: int, message: str
 ) -> None:
-    """Post a PR comment through gh CLI."""
+    """Post a PR comment through gh CLI.
+
+    ``gh pr comment`` can block on inherited stdin in some environments.
+    Force a non-interactive stdin so repeated ``sm buff resolve`` calls
+    stay deterministic.
+    """
 
     result = subprocess.run(
         [
@@ -498,6 +503,7 @@ def _post_pr_comment(
         capture_output=True,
         text=True,
         timeout=30,
+        stdin=subprocess.DEVNULL,
         cwd=project_root,
         check=False,
     )
@@ -527,6 +533,7 @@ def _resolve_review_thread(project_root: str, thread_id: str) -> None:
         capture_output=True,
         text=True,
         timeout=30,
+        stdin=subprocess.DEVNULL,
         cwd=project_root,
         check=False,
     )

@@ -294,7 +294,7 @@ class TestCreateParser:
 
         out = capsys.readouterr().out
         assert ".slopmop/tmp/.github/copilot-instructions.md" in out
-        assert ".slopmop/tmp/.copilot/skills/slopmop/SKILL.md" in out
+        assert "~/.copilot/skills/slopmop/SKILL.md" in out
 
     def test_agent_install_help_tolerates_missing_template_preview(
         self, monkeypatch, capsys

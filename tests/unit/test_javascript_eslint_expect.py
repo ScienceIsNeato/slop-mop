@@ -181,7 +181,7 @@ class TestJavaScriptExpectCheck:
         assert "timed out" in result.error
 
     def test_run_config_error(self, tmp_path):
-        """Test run() handles eslint config error (exit code 2)."""
+        """Harness/config mismatches warn instead of blocking swab."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
         (tmp_path / "app.test.js").write_text("test('x', () => {})")
         check = JavaScriptExpectCheck({})
@@ -198,8 +198,9 @@ class TestJavaScriptExpectCheck:
         ):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.ERROR
-        assert "configuration error" in result.error
+        assert result.status == CheckStatus.WARNED
+        assert "compatibility warning" in (result.error or "")
+        assert result.suppress_sarif is True
 
     def test_run_skips_no_test_files(self, tmp_path):
         """Test run() skips when no test files found."""

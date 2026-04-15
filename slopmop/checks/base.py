@@ -478,6 +478,26 @@ STANDARD_CONFIG_FIELDS = [
             "'scour' keeps it out of swab but still runs it during scour."
         ),
     ),
+    ConfigField(
+        name="extra_exclude_paths",
+        field_type="string[]",
+        default=[],
+        description=(
+            "Additional repo-relative paths or glob patterns to exclude for this "
+            "gate only."
+        ),
+        permissiveness="fewer_is_stricter",
+    ),
+    ConfigField(
+        name="include_paths",
+        field_type="string[]",
+        default=[],
+        description=(
+            "Repo-relative paths or glob patterns to re-include for this gate, "
+            "even when they are globally excluded."
+        ),
+        permissiveness="more_is_stricter",
+    ),
 ]
 
 

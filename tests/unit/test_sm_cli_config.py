@@ -13,7 +13,7 @@ class TestCmdConfig:
 
     def test_show_config(self, tmp_path, capsys):
         """--show displays configuration."""
-        config = {"laziness": {"enabled": True}}
+        config = {"laziness": {"enabled": True}, "exclude_paths": ["vendor", "docs"]}
         (tmp_path / ".sb_config.json").write_text(json.dumps(config))
 
         args = argparse.Namespace(
@@ -43,6 +43,7 @@ class TestCmdConfig:
         assert "Configuration" in captured.out
         assert "Available Quality Gates" in captured.out
         assert "Current PR number: none selected" in captured.out
+        assert "Repo-wide exclude paths: vendor, docs" in captured.out
         assert "Run 'sm config --show' to see all gates." not in captured.out
 
     def test_config_no_args_shows_usage_hints(self, tmp_path, capsys):
@@ -485,6 +486,70 @@ class TestCmdConfig:
         config = json.loads((tmp_path / ".sb_config.json").read_text())
         gate = config["overconfidence"]["gates"]["coverage-gaps.js"]
         assert gate["coverage_format"] == "deno"
+
+    def test_set_gate_extra_exclude_paths_field(self, tmp_path):
+        """--set supports the shared per-gate extra_exclude_paths field."""
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+            swab_off=None,
+            swab_on=None,
+            set_field=[
+                "laziness:repeated-code",
+                "extra_exclude_paths",
+                "[\"docs\", \"vendor/generated\"]",
+            ],
+            unset_field=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        gate = config["laziness"]["gates"]["repeated-code"]
+        assert gate["extra_exclude_paths"] == ["docs", "vendor/generated"]
+
+    def test_set_gate_include_paths_field(self, tmp_path):
+        """--set supports the shared per-gate include_paths field."""
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_time=None,
+            swab_off=None,
+            swab_on=None,
+            set_field=[
+                "myopia:string-duplication.py",
+                "include_paths",
+                "[\"docs\"]",
+            ],
+            unset_field=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        gate = config["myopia"]["gates"]["string-duplication.py"]
+        assert gate["include_paths"] == ["docs"]
 
     def test_unset_gate_field(self, tmp_path):
         """--unset removes a gate-specific field override."""

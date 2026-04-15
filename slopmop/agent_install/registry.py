@@ -61,6 +61,7 @@ TARGETS: Dict[str, InstallTarget] = {
 
 ALL_KEYS: Tuple[str, ...] = tuple(TARGETS.keys())
 INSTALL_HELP_PREVIEW_ROOT = PurePosixPath(".slopmop/tmp")
+INSTALL_HELP_HOME_PREVIEW_ROOT = PurePosixPath("~")
 
 ALIASES: Dict[str, List[str]] = {
     "all": list(ALL_KEYS),
@@ -81,9 +82,15 @@ def expand_target(target: str) -> List[str]:
     raise ValueError(f"Unknown agent install target: {target}")
 
 
+def uses_user_home_destination(target: str, destination_relpath: str) -> bool:
+    """Return whether a template asset installs under the user's home dir."""
+    return target == "copilot" and destination_relpath.startswith(".copilot/skills/")
+
+
 def preview_install_paths(
     target: str,
     preview_root: PurePosixPath = INSTALL_HELP_PREVIEW_ROOT,
+    home_preview_root: PurePosixPath = INSTALL_HELP_HOME_PREVIEW_ROOT,
 ) -> List[str]:
     """Return preview install destinations for one target.
 
@@ -95,7 +102,11 @@ def preview_install_paths(
     if target not in TARGETS:
         return []
 
-    return [
-        str(preview_root / PurePosixPath(asset.destination_relpath))
-        for asset in load_assets(TARGETS[target].template_dir)
-    ]
+    paths: List[str] = []
+    for asset in load_assets(TARGETS[target].template_dir):
+        relpath = PurePosixPath(asset.destination_relpath)
+        if uses_user_home_destination(target, asset.destination_relpath):
+            paths.append(str(home_preview_root / relpath))
+        else:
+            paths.append(str(preview_root / relpath))
+    return paths
