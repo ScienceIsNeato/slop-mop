@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from slopmop.utils import iso_now
+
 SCHEMA_VERSION = "slopmop/barnacle/v1"
 
 # Status constants
@@ -40,11 +42,8 @@ STATUS_OPEN = "open"
 STATUS_CLAIMED = "claimed"
 STATUS_RESOLVED = "resolved"
 STATUS_WONT_FIX = "wont-fix"
-VALID_STATUSES = (STATUS_OPEN, STATUS_CLAIMED, STATUS_RESOLVED, STATUS_WONT_FIX)
 
 BLOCKER_BLOCKING = "blocking"
-BLOCKER_NON_BLOCKING = "non-blocking"
-VALID_BLOCKER_TYPES = (BLOCKER_BLOCKING, BLOCKER_NON_BLOCKING)
 
 # Environment variable to override queue location (primarily for tests)
 QUEUE_DIR_ENVAR = "SLOPMOP_BARNACLE_DIR"
@@ -73,10 +72,6 @@ def _queue_dir() -> Path:
     if override:
         return Path(override)
     return Path.home() / ".slopmop" / "barnacles"
-
-
-def _iso_now() -> str:  # noqa: ambiguity-mine
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _short_id() -> str:
@@ -227,7 +222,7 @@ def auto_file_barnacle(
         data: Dict[str, Any] = {
             "schema": SCHEMA_VERSION,
             "id": bid,
-            "filed_at": _iso_now(),
+            "filed_at": iso_now(),
             "status": STATUS_OPEN,
             "filed_by": {
                 "agent": _default_agent(),
@@ -264,7 +259,7 @@ def cmd_barnacle_file(args: argparse.Namespace) -> int:
     data: Dict[str, Any] = {
         "schema": SCHEMA_VERSION,
         "id": bid,
-        "filed_at": _iso_now(),
+        "filed_at": iso_now(),
         "status": STATUS_OPEN,
         "filed_by": {
             "agent": getattr(args, "agent", None) or _default_agent(),
@@ -403,7 +398,7 @@ def cmd_barnacle_claim(args: argparse.Namespace) -> int:
 
     agent = getattr(args, "agent", None) or _default_agent()
     b["status"] = STATUS_CLAIMED
-    b["claim"] = {"agent": agent, "claimed_at": _iso_now()}
+    b["claim"] = {"agent": agent, "claimed_at": iso_now()}
     _write_barnacle(b)
 
     print(f"🟡 Claimed {b['id']}")
@@ -440,7 +435,7 @@ def cmd_barnacle_resolve(args: argparse.Namespace) -> int:
     agent = getattr(args, "agent", None) or _default_agent()
     resolution: Dict[str, Any] = {
         "agent": agent,
-        "resolved_at": _iso_now(),
+        "resolved_at": iso_now(),
         "fix_commit": getattr(args, "commit", None),
         "fix_branch": getattr(args, "branch", None),
         "notes": getattr(args, "notes", None),

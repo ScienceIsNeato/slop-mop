@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def iso_now() -> str:  # noqa: ambiguity-mine
+    """Return the current UTC time as an ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
 
 _SLOPMOP_GITIGNORE_ENTRY = ".slopmop/"
 _SLOPMOP_GITIGNORE_COMMENT = "# slop-mop working directory (machine-local state)"
