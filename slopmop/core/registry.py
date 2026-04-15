@@ -79,12 +79,18 @@ def _merge_runtime_path_filters(
     if not effective_paths:
         return merged
 
-    schema_names = {field.name for field in check_class({}).get_full_config_schema()}
+    schema_fields = check_class({}).get_full_config_schema()
+    schema_names = {field.name for field in schema_fields}
+    schema_defaults = {field.name: field.default for field in schema_fields}
+
+    def _list_setting(field_name: str) -> List[str]:
+        if field_name in merged:
+            return as_str_list(merged.get(field_name))
+        return as_str_list(schema_defaults.get(field_name))
 
     if "exclude_dirs" in schema_names:
         merged["exclude_dirs"] = _dedupe_strings(
-            as_str_list(merged.get("exclude_dirs"))
-            + _simple_path_filters(effective_paths)
+            _list_setting("exclude_dirs") + _simple_path_filters(effective_paths)
         )
 
     pattern_values: List[str] = []
@@ -95,12 +101,12 @@ def _merge_runtime_path_filters(
     for field_name in ("ignore_patterns", "exclude_patterns"):
         if field_name in schema_names:
             merged[field_name] = _dedupe_strings(
-                as_str_list(merged.get(field_name)) + pattern_values
+                _list_setting(field_name) + pattern_values
             )
 
     if "exclude_paths" in schema_names:
         merged["exclude_paths"] = _dedupe_strings(
-            as_str_list(merged.get("exclude_paths")) + effective_paths
+            _list_setting("exclude_paths") + effective_paths
         )
 
     return merged

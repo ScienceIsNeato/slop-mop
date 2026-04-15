@@ -598,6 +598,104 @@ class TestRunDetectSecrets:
         assert result.passed is False
         assert "app/config.py" in result.findings
 
+    def test_detect_secrets_ignores_git_sha_fields(self, tmp_path):
+        """Manifest-style git SHA references should not be treated as secrets."""
+        check = SecurityLocalCheck({})
+        scenarios_dir = tmp_path / "scenarios"
+        scenarios_dir.mkdir()
+        manifest = scenarios_dir / "happy-path-small.json"
+        manifest.write_text(
+            "\n".join(
+                [
+                    '{"fixture_base_sha": "f6049f7840ea4be9de6db24a9813c1a8212e38c3"}',
+                    '{"from_sha": "cc96da5f7c045a5b8652ce00b6ee074201673012"}',
+                    '{"to_sha": "742a795a416749884426cf98dc4c694d1b1fb68e"}',
+                ]
+            )
+            + "\n"
+        )
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "scenarios/happy-path-small.json": [
+                        {"type": "Hex High Entropy String", "line_number": 1},
+                        {"type": "Hex High Entropy String", "line_number": 2},
+                        {"type": "Hex High Entropy String", "line_number": 3},
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True
+
+    def test_detect_secrets_ignores_is_placeholder_sha_assertions(self, tmp_path):
+        """Helper assertions about SHAs should not trip detect-secrets."""
+        check = SecurityLocalCheck({})
+        helpers = tmp_path / "helpers.py"
+        helpers.write_text(
+            'assert not is_placeholder_sha("abcdef1234567890abcdef1234567890abcdef12")\n'
+        )
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "helpers.py": [
+                        {"type": "Hex High Entropy String", "line_number": 1}
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True
+
+    def test_detect_secrets_ignores_git_sha_context_from_neighbor_lines(self, tmp_path):
+        """Git SHA context can come from surrounding lines, not just the hit line."""
+        check = SecurityLocalCheck({})
+        helpers = tmp_path / "helpers.py"
+        helpers.write_text(
+            "\n".join(
+                [
+                    "branch = make_run_branch_name(",
+                    '    "happy-path-small",',
+                    '    "abcdef1234567890",',
+                    '    "run01",',
+                    ")",
+                    'if args[0] == "rev-parse":',
+                    '    return (0, "abc12345def", "")',
+                    'head = _current_head(project_root)',
+                    'Mock(return_value="deadbeef1234")',
+                ]
+            )
+            + "\n"
+        )
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    "helpers.py": [
+                        {"type": "Hex High Entropy String", "line_number": 3},
+                        {"type": "Hex High Entropy String", "line_number": 7},
+                        {"type": "Hex High Entropy String", "line_number": 9},
+                    ]
+                }
+            }
+        )
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True
+
     def test_safe_read_line_uses_cache_for_same_file(self, tmp_path):
         """Line lookup cache should avoid repeated file reads per path."""
         check = SecurityLocalCheck({})

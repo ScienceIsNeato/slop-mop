@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 from slopmop.cli.config import cmd_config
 from slopmop.sm import create_parser
 
+SHOW_ALL_GATES_HINT = "Run 'sm config --show' to see all gates."
+
 
 class TestCmdConfig:
     """Tests for cmd_config command handler."""
@@ -44,7 +46,7 @@ class TestCmdConfig:
         assert "Available Quality Gates" in captured.out
         assert "Current PR number: none selected" in captured.out
         assert "Repo-wide exclude paths: vendor, docs" in captured.out
-        assert "Run 'sm config --show' to see all gates." not in captured.out
+        assert SHOW_ALL_GATES_HINT not in captured.out
 
     def test_config_no_args_shows_usage_hints(self, tmp_path, capsys):
         """No args prints usage/help summary instead of full gate list."""
@@ -72,7 +74,7 @@ class TestCmdConfig:
         assert result == 0
         captured = capsys.readouterr()
         assert "Usage:" in captured.out
-        assert "Run 'sm config --show' to see all gates." in captured.out
+        assert SHOW_ALL_GATES_HINT in captured.out
         assert "Available Quality Gates" not in captured.out
 
     def test_config_no_args_counts_nested_disabled_gates(self, tmp_path, capsys):

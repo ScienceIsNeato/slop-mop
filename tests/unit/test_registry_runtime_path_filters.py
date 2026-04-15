@@ -50,3 +50,16 @@ class TestRuntimePathFilters:
         ignore_patterns = check.config["ignore_patterns"]
         assert "coverage/*.json" in ignore_patterns
         assert not any(pattern == "docs" or "docs/" in pattern for pattern in ignore_patterns)
+
+    def test_security_gate_keeps_default_excludes_when_global_paths_merge(self):
+        ensure_checks_registered()
+        config = {
+            "_global_exclude_paths": ["vendor", ".tmp"],
+        }
+
+        check = get_registry().get_check("myopia:vulnerability-blindness.py", config)
+
+        assert check is not None
+        assert "tests" in check.config["exclude_dirs"]
+        assert "vendor" in check.config["exclude_dirs"]
+        assert ".tmp" in check.config["exclude_dirs"]
