@@ -1,4 +1,4 @@
-"""Barnacle queue — file, claim, and resolve tool-friction reports.
+"""Barnacle queue — describe and resolve tool-friction reports.
 
 A barnacle is a defect or friction point in slop-mop itself, discovered
 by an agent while using the tool in a real repository.  The queue lives
@@ -7,13 +7,10 @@ so every agent on the same machine can see and act on the same pool.
 
 Lifecycle
 ---------
-open  →  claimed  →  resolved
-      →  wont-fix
+open  →  resolved
 
-Filing agents discover barnacles and run ``sm barnacle file``.
-Cleaning agents (typically the slop-mop maintainer) run
-``sm barnacle watch``, ``sm barnacle claim``, fix the issue, then
-``sm barnacle resolve``.
+Agents discover friction and run ``sm barnacle describe``.
+Once fixed, they run ``sm barnacle resolve`` with the fix commit.
 
 The barnacle verb mirrors the swab/scour/buff nautical theme: every
 agent is both a detector and a potential cleaner.
@@ -33,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from slopmop.utils import iso_now
+from slopmop.utils import git_current_branch, iso_now
 
 SCHEMA_VERSION = "slopmop/barnacle/v1"
 
@@ -171,23 +168,6 @@ def _installed_slopmop_version() -> str:
         return "unknown"
 
 
-def _git_branch(path: str) -> str:
-    try:
-        import subprocess  # noqa: PLC0415
-
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True,
-            text=True,
-            cwd=path,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip() or "unknown"
-    except Exception:
-        pass
-    return "unknown"
-
-
 # ---------------------------------------------------------------------------
 # Public auto-file helper (called by other sm commands)
 # ---------------------------------------------------------------------------
@@ -213,7 +193,7 @@ def auto_file_barnacle(
     """
     try:
         _queue_dir().mkdir(parents=True, exist_ok=True)
-        branch = _git_branch(project_root) if project_root else "unknown"
+        branch = git_current_branch(project_root) if project_root else "unknown"
         bid = _barnacle_id()
         data: Dict[str, Any] = {
             "schema": SCHEMA_VERSION,
@@ -234,7 +214,6 @@ def auto_file_barnacle(
             "output_excerpt": output_excerpt,
             "reproduction_steps": reproduction_steps or [command],
             "auto_filed": True,
-            "claim": None,
             "resolution": None,
         }
         _write_barnacle(data)
@@ -260,7 +239,7 @@ def cmd_barnacle_describe(args: argparse.Namespace) -> int:
         "filed_by": {
             "agent": getattr(args, "agent", None) or _default_agent(),
             "repo": project_root,
-            "branch": _git_branch(project_root),
+            "branch": git_current_branch(project_root),
             "slopmop_version": _installed_slopmop_version(),
         },
         "command": getattr(args, "command", "") or "",
@@ -336,12 +315,6 @@ def _print_barnacle(b: Dict[str, Any]) -> None:
         print("Reproduction steps:")
         for i, step in enumerate(b["reproduction_steps"], 1):
             print(f"  {i}. {step}")
-    if b.get("claim"):
-        claim = b["claim"]
-        print()
-        print(
-            f"Claimed by: {claim.get('agent', '?')}  at {claim.get('claimed_at', '?')}"
-        )
     if b.get("resolution"):
         res = b["resolution"]
         print()
