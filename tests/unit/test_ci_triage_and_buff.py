@@ -142,18 +142,20 @@ class TestScanTriageInternals:
 
     def test_latest_completed_run_id(self, monkeypatch):
         responses = [
-            json.dumps({"headRefName": "feat-x"}),
+            json.dumps({"headRefName": "feat-x", "headRefOid": "abc1234def5678"}),
             json.dumps(
                 [
                     {
                         "name": "other workflow",
                         "status": "completed",
                         "databaseId": 1,
+                        "headSha": "abc1234def5678",
                     },
                     {
                         "name": "slop-mop primary code scanning gate",
                         "status": "completed",
                         "databaseId": 321,
+                        "headSha": "abc1234def5678",
                     },
                 ]
             ),
@@ -162,20 +164,28 @@ class TestScanTriageInternals:
         monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
         assert triage.latest_completed_run_id("o/r", 84, triage.WORKFLOW_NAME) == 321
 
-    def test_workflow_run_state_prefers_latest_completed(self, monkeypatch):
+    def test_workflow_run_state_tracks_current_head_runs(self, monkeypatch):
         responses = [
-            json.dumps({"headRefName": "feat-x"}),
+            json.dumps({"headRefName": "feat-x", "headRefOid": "abc1234def5678"}),
             json.dumps(
                 [
                     {
                         "name": "slop-mop primary code scanning gate",
                         "status": "in_progress",
                         "databaseId": 500,
+                        "headSha": "abc1234def5678",
                     },
                     {
                         "name": "slop-mop primary code scanning gate",
                         "status": "completed",
                         "databaseId": 499,
+                        "headSha": "abc1234def5678",
+                    },
+                    {
+                        "name": "slop-mop primary code scanning gate",
+                        "status": "completed",
+                        "databaseId": 498,
+                        "headSha": "old1111deadbeef",
                     },
                 ]
             ),
@@ -184,16 +194,37 @@ class TestScanTriageInternals:
         monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
         state = triage._workflow_run_state("o/r", 84, triage.WORKFLOW_NAME)
         assert state["latest"]["databaseId"] == 500
+        assert state["latest_for_head"]["databaseId"] == 500
         assert state["latest_completed"]["databaseId"] == 499
+        assert state["latest_completed_for_head"]["databaseId"] == 499
 
     def test_latest_completed_run_id_error(self, monkeypatch):
         responses = [
-            json.dumps({"headRefName": "feat-x"}),
+            json.dumps({"headRefName": "feat-x", "headRefOid": "abc1234def5678"}),
             json.dumps([]),
         ]
 
         monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
         with pytest.raises(triage.TriageError):
+            triage.latest_completed_run_id("o/r", 84, triage.WORKFLOW_NAME)
+
+    def test_latest_completed_run_id_rejects_stale_branch_run(self, monkeypatch):
+        responses = [
+            json.dumps({"headRefName": "feat-x", "headRefOid": "abc1234def5678"}),
+            json.dumps(
+                [
+                    {
+                        "name": "slop-mop primary code scanning gate",
+                        "status": "completed",
+                        "databaseId": 500,
+                        "headSha": "old1111deadbeef",
+                    }
+                ]
+            ),
+        ]
+
+        monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
+        with pytest.raises(triage.TriageError, match="No 'slop-mop primary code scanning gate' run exists yet"):
             triage.latest_completed_run_id("o/r", 84, triage.WORKFLOW_NAME)
 
     def test_validate_open_pr_rejects_closed_pr(self, monkeypatch):
@@ -382,17 +413,38 @@ class TestScanTriageInternals:
             "_workflow_run_state",
             Mock(
                 return_value={
-                    "latest": {"databaseId": 201, "status": "in_progress"},
-                    "latest_completed": {"databaseId": 200, "status": "completed"},
+                    "branch": "feat-x",
+                    "head_sha": "abc1234def5678",
+                    "latest": {
+                        "databaseId": 201,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_completed": {
+                        "databaseId": 201,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_for_head": {
+                        "databaseId": 201,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_completed_for_head": {
+                        "databaseId": 201,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
                 }
             ),
         )
 
         def fake_build(doc, run_id, json_path, show_low_coverage, pr_number, ci_state):
-            assert run_id == 200
+            assert run_id == 201
             assert pr_number == 84
             assert ci_state is not None
-            assert ci_state["pending_newer_run"] is True
+            assert ci_state["head_sha"] == "abc1234def5678"
+            assert ci_state["pending_newer_run"] is False
             return ({"summary": {}, "actionable": [], "next_steps": []}, 0)
 
         monkeypatch.setattr(triage, "build_triage_payload", fake_build)
@@ -412,6 +464,91 @@ class TestScanTriageInternals:
         assert code == 0
         assert payload is not None
 
+    def test_run_triage_rejects_pending_current_head_run(self, monkeypatch):
+        monkeypatch.setattr(triage, "default_repo", Mock(return_value="o/r"))
+        monkeypatch.setattr(triage, "resolve_pr_number", Mock(return_value=84))
+        monkeypatch.setattr(
+            triage,
+            "_workflow_run_state",
+            Mock(
+                return_value={
+                    "branch": "feat-x",
+                    "head_sha": "abc1234def5678",
+                    "latest": {
+                        "databaseId": 201,
+                        "status": "in_progress",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_completed": {
+                        "databaseId": 200,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_for_head": {
+                        "databaseId": 201,
+                        "status": "in_progress",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_completed_for_head": {
+                        "databaseId": 200,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
+                }
+            ),
+        )
+
+        with pytest.raises(triage.TriageError, match="is still in_progress"):
+            triage.run_triage(
+                repo=None,
+                run_id=None,
+                pr_number=84,
+                workflow=triage.WORKFLOW_NAME,
+                artifact=triage.ARTIFACT_NAME,
+                show_low_coverage=False,
+                json_out=None,
+                print_output=False,
+            )
+
+    def test_run_triage_rejects_missing_current_head_run(self, monkeypatch):
+        monkeypatch.setattr(triage, "default_repo", Mock(return_value="o/r"))
+        monkeypatch.setattr(triage, "resolve_pr_number", Mock(return_value=84))
+        monkeypatch.setattr(
+            triage,
+            "_workflow_run_state",
+            Mock(
+                return_value={
+                    "branch": "feat-x",
+                    "head_sha": "abc1234def5678",
+                    "latest": {
+                        "databaseId": 200,
+                        "status": "completed",
+                        "headSha": "old1111deadbeef",
+                    },
+                    "latest_completed": {
+                        "databaseId": 200,
+                        "status": "completed",
+                        "headSha": "old1111deadbeef",
+                    },
+                }
+            ),
+        )
+
+        with pytest.raises(
+            triage.TriageError,
+            match="No 'slop-mop primary code scanning gate' run exists yet",
+        ):
+            triage.run_triage(
+                repo=None,
+                run_id=None,
+                pr_number=84,
+                workflow=triage.WORKFLOW_NAME,
+                artifact=triage.ARTIFACT_NAME,
+                show_low_coverage=False,
+                json_out=None,
+                print_output=False,
+            )
+
     def test_run_triage_uses_selected_pr_when_no_explicit_pr(self, monkeypatch):
         monkeypatch.setattr(triage, "default_repo", Mock(return_value="o/r"))
         monkeypatch.setattr(triage, "resolve_pr_number", Mock(return_value=85))
@@ -420,8 +557,28 @@ class TestScanTriageInternals:
             "_workflow_run_state",
             Mock(
                 return_value={
-                    "latest": {"databaseId": 201, "status": "completed"},
-                    "latest_completed": {"databaseId": 201, "status": "completed"},
+                    "branch": "feat-x",
+                    "head_sha": "abc1234def5678",
+                    "latest": {
+                        "databaseId": 201,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_completed": {
+                        "databaseId": 201,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_for_head": {
+                        "databaseId": 201,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
+                    "latest_completed_for_head": {
+                        "databaseId": 201,
+                        "status": "completed",
+                        "headSha": "abc1234def5678",
+                    },
                 }
             ),
         )

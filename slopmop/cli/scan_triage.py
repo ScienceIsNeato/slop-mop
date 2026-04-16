@@ -29,9 +29,6 @@ from slopmop.reporting.rail import (
 ARTIFACT_NAME = "slopmop-results"
 ARTIFACT_JSON = "slopmop-results.json"
 WORKFLOW_NAME = "slop-mop primary code scanning gate"
-NO_COMPLETED_RUN_MSG = (
-    "No completed runs found for that PR/workflow. Pass --run-id explicitly."
-)
 
 
 class TriageError(RuntimeError):
@@ -43,12 +40,17 @@ class _RunEntry(TypedDict, total=False):
     status: str
     conclusion: str
     createdAt: str
+    headSha: str
     name: str
 
 
-class _WorkflowRunState(TypedDict):
+class _WorkflowRunState(TypedDict, total=False):
+    branch: str
+    head_sha: str
     latest: _RunEntry
     latest_completed: _RunEntry
+    latest_for_head: _RunEntry
+    latest_completed_for_head: _RunEntry
 
 
 def _run_gh(args: list[str]) -> str:
@@ -183,9 +185,7 @@ def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
 
 def latest_completed_run_id(repo: str, pr_number: int, workflow: str) -> int:
     state = _workflow_run_state(repo, pr_number, workflow)
-    run_id = state["latest_completed"].get("databaseId")
-    if not isinstance(run_id, int):
-        raise TriageError(NO_COMPLETED_RUN_MSG)
+    run_id, _ci_state = _resolve_fresh_run(state, pr_number, workflow)
     return run_id
 
 
@@ -198,13 +198,16 @@ def _workflow_run_state(repo: str, pr_number: int, workflow: str) -> _WorkflowRu
             "--repo",
             repo,
             "--json",
-            "headRefName",
+            "headRefName,headRefOid",
         ]
     )
     pr_data = json.loads(pr_out)
     branch = str(pr_data.get("headRefName") or "").strip()
+    head_sha = str(pr_data.get("headRefOid") or "").strip()
     if not branch:
         raise TriageError(f"Could not resolve head branch for PR #{pr_number}.")
+    if not head_sha:
+        raise TriageError(f"Could not resolve head commit for PR #{pr_number}.")
 
     out = _run_gh(
         [
@@ -215,7 +218,7 @@ def _workflow_run_state(repo: str, pr_number: int, workflow: str) -> _WorkflowRu
             "--branch",
             branch,
             "--json",
-            "databaseId,status,conclusion,createdAt,name",
+            "databaseId,status,conclusion,createdAt,headSha,name",
             "--limit",
             "30",
         ]
@@ -239,21 +242,90 @@ def _workflow_run_state(repo: str, pr_number: int, workflow: str) -> _WorkflowRu
             "No workflow runs found for that PR/workflow. Pass --run-id explicitly."
         )
 
-    latest = matched[0]
-
-    latest_completed: _RunEntry | None = None
-    for run in matched:
-        if run.get("status") == "completed":
-            latest_completed = run
-            break
-
-    if latest_completed is None:
-        raise TriageError(NO_COMPLETED_RUN_MSG)
-
-    return {
-        "latest": latest,
-        "latest_completed": latest_completed,
+    state: _WorkflowRunState = {
+        "branch": branch,
+        "head_sha": head_sha,
+        "latest": matched[0],
     }
+    for run in matched:
+        if "latest_completed" not in state and run.get("status") == "completed":
+            state["latest_completed"] = run
+
+        if str(run.get("headSha") or "").strip() != head_sha:
+            continue
+
+        if "latest_for_head" not in state:
+            state["latest_for_head"] = run
+        if (
+            "latest_completed_for_head" not in state
+            and run.get("status") == "completed"
+        ):
+            state["latest_completed_for_head"] = run
+
+    return state
+
+
+def _short_sha(sha: str) -> str:
+    return sha[:12] if sha else "unknown"
+
+
+def _resolve_fresh_run(
+    state: _WorkflowRunState,
+    pr_number: int,
+    workflow: str,
+) -> tuple[int, dict[str, Any]]:
+    head_sha = str(state.get("head_sha") or "").strip()
+    latest_raw = state.get("latest")
+    if not isinstance(latest_raw, dict):
+        raise TriageError("Could not resolve the latest workflow run for that PR.")
+    latest = cast(_RunEntry, latest_raw)
+
+    latest_for_head_raw = state.get("latest_for_head")
+    latest_for_head = (
+        cast(_RunEntry, latest_for_head_raw)
+        if isinstance(latest_for_head_raw, dict)
+        else None
+    )
+
+    if latest_for_head is None:
+        latest_id = latest.get("databaseId")
+        latest_status = str(latest.get("status") or "unknown")
+        latest_sha = _short_sha(str(latest.get("headSha") or "").strip())
+        raise TriageError(
+            f"No '{workflow}' run exists yet for PR #{pr_number} head "
+            f"{_short_sha(head_sha)}. Latest seen run is {latest_id} for "
+            f"{latest_sha} ({latest_status}). GitHub may still be starting CI "
+            "for the newest push; retry shortly or use 'sm buff status'."
+        )
+
+    run_id = latest_for_head.get("databaseId")
+    if not isinstance(run_id, int):
+        raise TriageError(
+            f"Could not resolve workflow run id for PR #{pr_number} head "
+            f"{_short_sha(head_sha)}."
+        )
+
+    latest_status = str(latest_for_head.get("status") or "unknown")
+    if latest_status != "completed":
+        raise TriageError(
+            f"Latest '{workflow}' run for PR #{pr_number} head "
+            f"{_short_sha(head_sha)} is still {latest_status} (run {run_id}). "
+            "Wait for it to finish, then re-run 'sm buff inspect' or use "
+            "'sm buff status'/'sm buff watch'."
+        )
+
+    ci_state: dict[str, Any] = {
+        "head_sha": head_sha,
+        "latest_run_id": run_id,
+        "latest_status": latest_status,
+        "latest_conclusion": latest_for_head.get("conclusion"),
+        "latest_created_at": latest_for_head.get("createdAt"),
+        "triaged_run_id": run_id,
+        "triaged_is_latest": True,
+        "pending_newer_run": False,
+        "note": "",
+    }
+    return run_id, ci_state
 
 
 def download_results_json(repo: str, run_id: int, artifact_name: str) -> Path:
@@ -494,44 +566,11 @@ def run_triage(
         resolved_pr = resolve_pr_number(resolved_repo, pr_number)
         resolved_pr_number = resolved_pr
         state = _workflow_run_state(resolved_repo, resolved_pr, workflow)
-
-        latest = state["latest"]
-        latest_completed = state["latest_completed"]
-
-        triaged_run_id = latest_completed.get("databaseId")
-        if not isinstance(triaged_run_id, int):
-            raise TriageError(NO_COMPLETED_RUN_MSG)
-
-        latest_run_id = latest.get("databaseId")
-        latest_status = str(latest.get("status") or "unknown")
-
-        triaged_is_latest = latest_run_id == triaged_run_id
-        pending_newer_run = (not triaged_is_latest) and latest_status != "completed"
-
-        note = ""
-        if pending_newer_run:
-            note = (
-                "Using latest completed run while a newer CI run is still "
-                f"{latest_status}. Re-run buff after that run completes."
-            )
-        elif not triaged_is_latest:
-            note = (
-                "Using latest completed run; newer completed run(s) may exist. "
-                "Re-run buff to refresh."
-            )
-
-        ci_state = {
-            "latest_run_id": latest_run_id,
-            "latest_status": latest_status,
-            "latest_conclusion": latest.get("conclusion"),
-            "latest_created_at": latest.get("createdAt"),
-            "triaged_run_id": triaged_run_id,
-            "triaged_is_latest": triaged_is_latest,
-            "pending_newer_run": pending_newer_run,
-            "note": note,
-        }
-
-        resolved_run_id = triaged_run_id
+        resolved_run_id, ci_state = _resolve_fresh_run(
+            state,
+            resolved_pr,
+            workflow,
+        )
 
     json_path = download_results_json(resolved_repo, resolved_run_id, artifact)
     doc = _load_json(json_path)
