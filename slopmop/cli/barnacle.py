@@ -39,9 +39,7 @@ SCHEMA_VERSION = "slopmop/barnacle/v1"
 
 # Status constants
 STATUS_OPEN = "open"
-STATUS_CLAIMED = "claimed"
 STATUS_RESOLVED = "resolved"
-STATUS_WONT_FIX = "wont-fix"
 
 BLOCKER_BLOCKING = "blocking"
 
@@ -56,9 +54,7 @@ HELP_BARNACLE_ID = "Full or prefix barnacle ID"
 
 _STATUS_ICONS = {
     STATUS_OPEN: "🔴",
-    STATUS_CLAIMED: "🟡",
     STATUS_RESOLVED: "✅",
-    STATUS_WONT_FIX: "⬜",
 }
 
 
@@ -252,8 +248,8 @@ def auto_file_barnacle(
 # ---------------------------------------------------------------------------
 
 
-def cmd_barnacle_file(args: argparse.Namespace) -> int:
-    """File a new barnacle."""
+def cmd_barnacle_describe(args: argparse.Namespace) -> int:
+    """Describe a new barnacle."""
     project_root = str(Path(getattr(args, "project_root", ".")).resolve())
     bid = _barnacle_id()
     data: Dict[str, Any] = {
@@ -276,16 +272,15 @@ def cmd_barnacle_file(args: argparse.Namespace) -> int:
         "reproduction_steps": getattr(args, "reproduction_steps", None)
         or [getattr(args, "command", "") or ""],
         "auto_filed": False,
-        "claim": None,
         "resolution": None,
     }
     path = _write_barnacle(data)
-    print(f"🐚 Barnacle filed: {bid}")
+    print(f"🐚 Barnacle described: {bid}")
     print(f"   {path}")
     print(f"   Blocker: {data['blocker_type']}")
     print()
-    print(f"Cleaning agents can claim it with:")
-    print(f"  sm barnacle claim {bid}")
+    print(f"Resolve it with:")
+    print(f"  sm barnacle resolve {bid} --commit <SHA> --branch <branch>")
     return 0
 
 
@@ -375,43 +370,6 @@ def cmd_barnacle_show(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_barnacle_claim(args: argparse.Namespace) -> int:
-    """Claim a barnacle to address it."""
-    bid = getattr(args, "barnacle_id", None)
-    if not bid:
-        print(ERR_MISSING_ID, file=sys.stderr)
-        return 1
-    b = _find_barnacle(bid)
-    if not b:
-        return 1
-    if b.get("status") == STATUS_CLAIMED:
-        claim_data: Dict[str, Any] = b.get("claim") or {}
-        existing: str = claim_data.get("agent", "?")
-        print(f"⚠️  Already claimed by {existing}", file=sys.stderr)
-        return 1
-    if b.get("status") != STATUS_OPEN:
-        print(
-            f"❌ Cannot claim a barnacle with status: {b.get('status')}",
-            file=sys.stderr,
-        )
-        return 1
-
-    agent = getattr(args, "agent", None) or _default_agent()
-    b["status"] = STATUS_CLAIMED
-    b["claim"] = {"agent": agent, "claimed_at": iso_now()}
-    _write_barnacle(b)
-
-    print(f"🟡 Claimed {b['id']}")
-    print(f"   Repo:      {b.get('filed_by', {}).get('repo', '?')}")
-    print(f"   Command:   {b.get('command', '?')}")
-    print(f"   Expected:  {b.get('expected', '?')}")
-    print(f"   Actual:    {b.get('actual', '?')}")
-    print()
-    print(f"When fixed, resolve with:")
-    print(f"  sm barnacle resolve {b['id']} --commit <SHA> --branch <branch>")
-    return 0
-
-
 def cmd_barnacle_resolve(args: argparse.Namespace) -> int:
     """Resolve a barnacle with fix details."""
     bid = getattr(args, "barnacle_id", None)
@@ -424,13 +382,6 @@ def cmd_barnacle_resolve(args: argparse.Namespace) -> int:
     if b.get("status") == STATUS_RESOLVED:
         print("⚠️  Already resolved")
         return 0
-    if b.get("status") != STATUS_CLAIMED:
-        print(
-            f"❌ Cannot resolve a barnacle with status '{b.get('status')}'; "
-            "run 'sm barnacle claim' first.",
-            file=sys.stderr,
-        )
-        return 1
 
     agent = getattr(args, "agent", None) or _default_agent()
     resolution: Dict[str, Any] = {
@@ -458,44 +409,6 @@ def cmd_barnacle_resolve(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_barnacle_watch(args: argparse.Namespace) -> int:
-    """Poll the queue for new open barnacles."""
-    interval = getattr(args, "interval", 15)
-    status_filter = getattr(args, "status", STATUS_OPEN)
-
-    if interval < 1:
-        print("❌ --interval must be at least 1 second.", file=sys.stderr)
-        return 1
-
-    print(f"🐚 Watching barnacle queue  ({_queue_dir()})")
-    print(f"   Filter: {status_filter} · interval: {interval}s · Ctrl+C to stop")
-    print()
-
-    seen: set[str] = set()
-    try:
-        while True:
-            barnacles = _list_barnacles(status_filter)
-            new = [b for b in barnacles if b["id"] not in seen]
-            for b in new:
-                seen.add(b["id"])
-                icon = _STATUS_ICONS.get(b.get("status", ""), "❓")
-                blocker = (
-                    "  [BLOCKING]" if b.get("blocker_type") == BLOCKER_BLOCKING else ""
-                )
-                filed_by = b.get("filed_by", {})
-                print(f"  {icon} {b['id']}{blocker}")
-                print(f"     {b.get('command', '?')}  in  {filed_by.get('repo', '?')}")
-                excerpt = b.get("actual", "")[:78]
-                if excerpt:
-                    print(f"     {excerpt}")
-                print(f"     → sm barnacle claim {b['id']}")
-                print()
-            time.sleep(interval)
-    except KeyboardInterrupt:
-        print("\n🐚 Watch stopped.")
-    return 0
-
-
 # ---------------------------------------------------------------------------
 # Top-level dispatcher
 # ---------------------------------------------------------------------------
@@ -505,15 +418,13 @@ def cmd_barnacle(args: argparse.Namespace) -> int:
     """Dispatch barnacle subcommands."""
     action = getattr(args, "barnacle_action", None)
     dispatch = {
-        "file": cmd_barnacle_file,
+        "describe": cmd_barnacle_describe,
         "list": cmd_barnacle_list,
         "show": cmd_barnacle_show,
-        "claim": cmd_barnacle_claim,
         "resolve": cmd_barnacle_resolve,
-        "watch": cmd_barnacle_watch,
     }
     handler = dispatch.get(action or "")
     if not handler:
-        print("Usage: sm barnacle <file|list|show|claim|resolve|watch>")
+        print("Usage: sm barnacle <describe|list|show|resolve>")
         return 2
     return handler(args)

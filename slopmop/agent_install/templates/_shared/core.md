@@ -98,7 +98,7 @@ discovered while using it in a real repository.  The barnacle queue lives at
 - If friction appears (slowdown, weird behaviour, incorrect result), stop immediately.
 - File a barnacle from the affected repo:
   ```
-  sm barnacle file \
+  sm barnacle describe \
     --command "sm <verb> [flags]" \
     --expected "expected behaviour" \
     --actual "what actually happened" \
@@ -108,7 +108,6 @@ discovered while using it in a real repository.  The barnacle queue lives at
 - Note the barnacle ID and transition to State 2.
 
 #### State 2: Fix Slop-Mop Friction (cleaning agent)
-- In slop-mop: `sm barnacle claim <id>` to register intent.
 - Switch to a dedicated fix branch.
 - Implement the smallest targeted fix.
 - Validate with `sm swab`.
@@ -127,4 +126,3 @@ discovered while using it in a real repository.  The barnacle queue lives at
 #### Core Rule
 - Never push through friction in State 1.  File a barnacle, fix slop-mop, and
   prove the fix in the real target workflow before resuming.
-- Use `sm barnacle watch` to monitor for barnacles from other agents.

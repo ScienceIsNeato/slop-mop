@@ -705,39 +705,43 @@ def _add_barnacle_parser(
 
     barnacle_parser = subparsers.add_parser(
         "barnacle",
-        help="File, claim, and resolve tool-friction reports",
+        help="Describe and resolve tool-friction reports",
         description=(
             "Barnacle queue for slop-mop tool-friction reports.  "
             "Every agent is both a barnacle detector and a potential cleaner.\n\n"
             "Queue location: ~/.slopmop/barnacles/  "
             "(override: SLOPMOP_BARNACLE_DIR)\n\n"
-            "Lifecycle: open → claimed → resolved"
+            "Lifecycle: open → resolved"
         ),
     )
     barnacle_sub = barnacle_parser.add_subparsers(
         dest="barnacle_action", help="Action to perform"
     )
 
-    # ── file ──────────────────────────────────────────────────────────
-    file_p = barnacle_sub.add_parser("file", help="File a new barnacle report")
-    file_p.add_argument(
+    # ── describe ──────────────────────────────────────────────────────
+    describe_p = barnacle_sub.add_parser(
+        "describe", help="Describe a new barnacle report"
+    )
+    describe_p.add_argument(
         "--command", required=True, help="Command that triggered the friction"
     )
-    file_p.add_argument("--gate", help="Gate name if the friction is gate-specific")
-    file_p.add_argument("--expected", required=True, help="What should have happened")
-    file_p.add_argument("--actual", required=True, help="What actually happened")
-    file_p.add_argument(
+    describe_p.add_argument("--gate", help="Gate name if the friction is gate-specific")
+    describe_p.add_argument(
+        "--expected", required=True, help="What should have happened"
+    )
+    describe_p.add_argument("--actual", required=True, help="What actually happened")
+    describe_p.add_argument(
         "--output", dest="output_excerpt", help="Relevant terminal output excerpt"
     )
-    file_p.add_argument(
+    describe_p.add_argument(
         "--blocker-type",
         dest="blocker_type",
         choices=["blocking", "non-blocking"],
         default="blocking",
         help="Whether this barnacle blocks forward progress (default: blocking)",
     )
-    file_p.add_argument("--agent", help=HELP_AGENT)
-    file_p.add_argument(
+    describe_p.add_argument("--agent", help=HELP_AGENT)
+    describe_p.add_argument(
         "--project-root", default=".", help="Root of the affected repository"
     )
 
@@ -745,7 +749,7 @@ def _add_barnacle_parser(
     list_p = barnacle_sub.add_parser("list", help="List barnacles in the queue")
     list_p.add_argument(
         "--status",
-        choices=["open", "claimed", "resolved", "all"],
+        choices=["open", "resolved", "all"],
         default="open",
         help="Filter by status (default: open)",
     )
@@ -757,11 +761,6 @@ def _add_barnacle_parser(
         "--json", dest="json_output", action="store_true", help="Output as JSON"
     )
 
-    # ── claim ─────────────────────────────────────────────────────────
-    claim_p = barnacle_sub.add_parser("claim", help="Claim a barnacle to address it")
-    claim_p.add_argument("barnacle_id", help=HELP_BARNACLE_ID)
-    claim_p.add_argument("--agent", help=HELP_AGENT)
-
     # ── resolve ───────────────────────────────────────────────────────
     resolve_p = barnacle_sub.add_parser(
         "resolve", help="Resolve a barnacle with fix details"
@@ -771,21 +770,6 @@ def _add_barnacle_parser(
     resolve_p.add_argument("--branch", help="Fix branch name")
     resolve_p.add_argument("--notes", help="Any additional notes for the reporter")
     resolve_p.add_argument("--agent", help=HELP_AGENT)
-
-    # ── watch ─────────────────────────────────────────────────────────
-    watch_p = barnacle_sub.add_parser("watch", help="Poll the queue for new barnacles")
-    watch_p.add_argument(
-        "--status",
-        choices=["open", "claimed", "resolved", "all"],
-        default="open",
-        help="Filter by status (default: open)",
-    )
-    watch_p.add_argument(
-        "--interval",
-        type=int,
-        default=15,
-        help="Poll interval in seconds (default: 15)",
-    )
 
 
 def _add_audit_parser(

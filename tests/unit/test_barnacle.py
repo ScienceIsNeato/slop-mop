@@ -8,7 +8,6 @@ from unittest.mock import patch
 from slopmop.cli.barnacle import (
     QUEUE_DIR_ENVAR,
     SCHEMA_VERSION,
-    STATUS_CLAIMED,
     STATUS_OPEN,
     STATUS_RESOLVED,
     _barnacle_id,
@@ -17,12 +16,10 @@ from slopmop.cli.barnacle import (
     _queue_dir,
     auto_file_barnacle,
     cmd_barnacle,
-    cmd_barnacle_claim,
-    cmd_barnacle_file,
+    cmd_barnacle_describe,
     cmd_barnacle_list,
     cmd_barnacle_resolve,
     cmd_barnacle_show,
-    cmd_barnacle_watch,
 )
 
 # ---------------------------------------------------------------------------
@@ -50,7 +47,6 @@ def _args(**kwargs) -> argparse.Namespace:
         branch=None,
         notes=None,
         reproduction_steps=[],
-        interval=15,
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -89,14 +85,16 @@ class TestQueueDir:
 
 
 # ---------------------------------------------------------------------------
-# cmd_barnacle_file
+# cmd_barnacle_describe
 # ---------------------------------------------------------------------------
 
 
-class TestCmdBarnacleFile:
+class TestCmdBarnacleDescribe:
     def test_creates_json_file(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        rc = cmd_barnacle_file(_args(command="sm scour", expected="ok", actual="fail"))
+        rc = cmd_barnacle_describe(
+            _args(command="sm scour", expected="ok", actual="fail")
+        )
         assert rc == 0
         files = list(tmp_path.glob("barnacle-*.json"))
         assert len(files) == 1
@@ -107,15 +105,14 @@ class TestCmdBarnacleFile:
 
     def test_output_contains_id(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
+        cmd_barnacle_describe(_args())
         out = capsys.readouterr().out
         assert "barnacle-" in out
 
     def test_auto_filed_flag(self, tmp_path, monkeypatch):
-        """CLI-filed barnacles are never auto_filed (only auto_file_barnacle() sets True)."""
+        """CLI-described barnacles are never auto_filed (only auto_file_barnacle() sets True)."""
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        # passing auto_filed=True to _args has no effect — cmd_barnacle_file always writes False
-        cmd_barnacle_file(_args(auto_filed=True))
+        cmd_barnacle_describe(_args(auto_filed=True))
         data = json.loads(next(tmp_path.glob("barnacle-*.json")).read_text())
         assert data["auto_filed"] is False
 
@@ -135,8 +132,8 @@ class TestCmdBarnacleList:
 
     def test_files_show_in_list(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
-        cmd_barnacle_file(_args(command="sm refit"))
+        cmd_barnacle_describe(_args())
+        cmd_barnacle_describe(_args(command="sm refit"))
         rc = cmd_barnacle_list(_args(status="open"))
         assert rc == 0
         out = capsys.readouterr().out
@@ -144,7 +141,7 @@ class TestCmdBarnacleList:
 
     def test_all_status_filter(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
+        cmd_barnacle_describe(_args())
         rc = cmd_barnacle_list(_args(status="all"))
         assert rc == 0
 
@@ -161,13 +158,13 @@ class TestListAndFind:
 
     def test_list_filters_by_status(self, tmp_path, monkeypatch):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
+        cmd_barnacle_describe(_args())
         assert len(_list_barnacles("open")) == 1
-        assert len(_list_barnacles("claimed")) == 0
+        assert len(_list_barnacles("resolved")) == 0
 
     def test_find_by_prefix(self, tmp_path, monkeypatch):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
+        cmd_barnacle_describe(_args())
         files = list(tmp_path.glob("barnacle-*.json"))
         bid = files[0].stem
         # Find by first 20 characters
@@ -181,7 +178,7 @@ class TestListAndFind:
 
 
 # ---------------------------------------------------------------------------
-# File → Claim → Resolve lifecycle
+# open → resolved lifecycle
 # ---------------------------------------------------------------------------
 
 
@@ -189,18 +186,11 @@ class TestLifecycle:
     def test_full_lifecycle(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
 
-        # FILE
-        cmd_barnacle_file(_args(command="sm upgrade"))
+        # DESCRIBE
+        cmd_barnacle_describe(_args(command="sm upgrade"))
         files = list(tmp_path.glob("barnacle-*.json"))
         assert len(files) == 1
         bid = files[0].stem
-
-        # CLAIM
-        rc = cmd_barnacle_claim(_args(barnacle_id=bid, agent="test-agent"))
-        assert rc == 0
-        data = json.loads(files[0].read_text())
-        assert data["status"] == STATUS_CLAIMED
-        assert data["claim"]["agent"] == "test-agent"
 
         # RESOLVE
         rc = cmd_barnacle_resolve(
@@ -217,32 +207,13 @@ class TestLifecycle:
         assert data["status"] == STATUS_RESOLVED
         assert data["resolution"]["fix_commit"] == "abc1234"
 
-    def test_cannot_claim_already_claimed(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
-        bid = next(tmp_path.glob("barnacle-*.json")).stem
-        cmd_barnacle_claim(_args(barnacle_id=bid))
-        rc = cmd_barnacle_claim(_args(barnacle_id=bid))
-        assert rc != 0
-
     def test_resolve_already_resolved_is_noop(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
+        cmd_barnacle_describe(_args())
         bid = next(tmp_path.glob("barnacle-*.json")).stem
-        cmd_barnacle_claim(_args(barnacle_id=bid))
         cmd_barnacle_resolve(_args(barnacle_id=bid))
         rc = cmd_barnacle_resolve(_args(barnacle_id=bid))
         assert rc == 0  # second resolve is a no-op, not an error
-
-    def test_cannot_resolve_unclaimed(self, tmp_path, monkeypatch, capsys):
-        """Resolving an open barnacle (without claiming first) is rejected."""
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
-        bid = next(tmp_path.glob("barnacle-*.json")).stem
-        rc = cmd_barnacle_resolve(_args(barnacle_id=bid))
-        assert rc != 0
-        err = capsys.readouterr().err
-        assert "claim" in err
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +224,7 @@ class TestLifecycle:
 class TestCmdBarnacleShow:
     def test_show_renders_fields(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(
+        cmd_barnacle_describe(
             _args(command="sm buff", expected="buff ok", actual="buff fail")
         )
         bid = next(tmp_path.glob("barnacle-*.json")).stem
@@ -265,7 +236,7 @@ class TestCmdBarnacleShow:
 
     def test_show_json_flag(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args())
+        cmd_barnacle_describe(_args())
         capsys.readouterr()  # clear file command output
         bid = next(tmp_path.glob("barnacle-*.json")).stem
         rc = cmd_barnacle_show(_args(barnacle_id=bid, json_output=True))
@@ -341,53 +312,12 @@ class TestCmdBarnacleDispatcher:
         rc = cmd_barnacle(_args(barnacle_action=None))
         assert rc == 2
 
-    def test_file_action_dispatches(self, tmp_path, monkeypatch):
+    def test_describe_action_dispatches(self, tmp_path, monkeypatch):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        rc = cmd_barnacle(_args(barnacle_action="file"))
+        rc = cmd_barnacle(_args(barnacle_action="describe"))
         assert rc == 0
 
     def test_list_action_dispatches(self, tmp_path, monkeypatch):
         monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "empty"))
         rc = cmd_barnacle(_args(barnacle_action="list"))
         assert rc == 0
-
-
-# ---------------------------------------------------------------------------
-# cmd_barnacle_watch
-# ---------------------------------------------------------------------------
-
-
-class TestCmdBarnacleWatch:
-    def test_invalid_interval_returns_nonzero(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        rc = cmd_barnacle_watch(_args(interval=0))
-        assert rc != 0
-        err = capsys.readouterr().err
-        assert "--interval" in err
-
-    def test_negative_interval_returns_nonzero(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        rc = cmd_barnacle_watch(_args(interval=-5))
-        assert rc != 0
-
-    def test_exits_on_keyboard_interrupt(self, tmp_path, monkeypatch, capsys):
-        """Watch exits cleanly on KeyboardInterrupt after finding new entries."""
-        import unittest.mock as mock
-
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_file(_args(command="sm swab"))
-
-        call_count = 0
-
-        def _sleep_once(seconds):
-            nonlocal call_count
-            call_count += 1
-            if call_count >= 1:
-                raise KeyboardInterrupt
-
-        with mock.patch("slopmop.cli.barnacle.time.sleep", side_effect=_sleep_once):
-            rc = cmd_barnacle_watch(_args(interval=1, status="open"))
-
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "barnacle-" in out
