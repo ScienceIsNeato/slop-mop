@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from slopmop.core.lock import SmLockError, sm_lock
+from slopmop.utils import iso_now
 
 
 def _emit_drift_warning(
@@ -108,7 +109,7 @@ def run_iterate(args: argparse.Namespace) -> int:
     except SmLockError as exc:
         protocol: Dict[str, Any] = {
             "schema": _r._SCHEMA_VERSION,
-            "recorded_at": _r._iso_now(),
+            "recorded_at": iso_now(),
             "event": "blocked_on_lock",
             "status": "blocked_on_lock",
             "project_root": str(project_root),

@@ -737,6 +737,81 @@ def _add_status_parser(
     )
 
 
+def _add_barnacle_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the barnacle subcommand parser."""
+    from slopmop.cli.barnacle import HELP_AGENT, HELP_BARNACLE_ID  # noqa: PLC0415
+
+    barnacle_parser = subparsers.add_parser(
+        "barnacle",
+        help="Describe and resolve tool-friction reports",
+        description=(
+            "Barnacle queue for slop-mop tool-friction reports.  "
+            "Every agent is both a barnacle detector and a potential cleaner.\n\n"
+            "Queue location: ~/.slopmop/barnacles/  "
+            "(override: SLOPMOP_BARNACLE_DIR)\n\n"
+            "Lifecycle: open → resolved"
+        ),
+    )
+    barnacle_sub = barnacle_parser.add_subparsers(
+        dest="barnacle_action", help="Action to perform"
+    )
+
+    # ── describe ──────────────────────────────────────────────────────
+    describe_p = barnacle_sub.add_parser(
+        "describe", help="Describe a new barnacle report"
+    )
+    describe_p.add_argument(
+        "--command", required=True, help="Command that triggered the friction"
+    )
+    describe_p.add_argument("--gate", help="Gate name if the friction is gate-specific")
+    describe_p.add_argument(
+        "--expected", required=True, help="What should have happened"
+    )
+    describe_p.add_argument("--actual", required=True, help="What actually happened")
+    describe_p.add_argument(
+        "--output", dest="output_excerpt", help="Relevant terminal output excerpt"
+    )
+    describe_p.add_argument(
+        "--blocker-type",
+        dest="blocker_type",
+        choices=["blocking", "non-blocking"],
+        default="blocking",
+        help="Whether this barnacle blocks forward progress (default: blocking)",
+    )
+    describe_p.add_argument("--agent", help=HELP_AGENT)
+    describe_p.add_argument(
+        "--project-root", default=".", help="Root of the affected repository"
+    )
+
+    # ── list ──────────────────────────────────────────────────────────
+    list_p = barnacle_sub.add_parser("list", help="List barnacles in the queue")
+    list_p.add_argument(
+        "--status",
+        choices=["open", "resolved", "all"],
+        default="open",
+        help="Filter by status (default: open)",
+    )
+
+    # ── show ──────────────────────────────────────────────────────────
+    show_p = barnacle_sub.add_parser("show", help="Show full details for one barnacle")
+    show_p.add_argument("barnacle_id", help=HELP_BARNACLE_ID)
+    show_p.add_argument(
+        "--json", dest="json_output", action="store_true", help="Output as JSON"
+    )
+
+    # ── resolve ───────────────────────────────────────────────────────
+    resolve_p = barnacle_sub.add_parser(
+        "resolve", help="Resolve a barnacle with fix details"
+    )
+    resolve_p.add_argument("barnacle_id", help=HELP_BARNACLE_ID)
+    resolve_p.add_argument("--commit", help="Fix commit SHA")
+    resolve_p.add_argument("--branch", help="Fix branch name")
+    resolve_p.add_argument("--notes", help="Any additional notes for the reporter")
+    resolve_p.add_argument("--agent", help=HELP_AGENT)
+
+
 def _add_audit_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -830,6 +905,7 @@ Verbs:
   upgrade     Upgrade slop-mop and validate the result
   buff        Post-PR CI triage and next-step guidance
   refit       Structured remediation planning and continuation
+  barnacle    File, claim, and resolve tool-friction reports
   agent       Install agent integration templates
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
@@ -863,6 +939,7 @@ Examples:
     _add_buff_parser(subparsers)
     _add_sail_parser(subparsers)
     _add_refit_parser(subparsers)
+    _add_barnacle_parser(subparsers)
     _add_status_parser(subparsers)
     _add_doctor_parser(subparsers)
     _add_config_parser(subparsers)
@@ -887,6 +964,7 @@ def main(args: Optional[List[str]] = None) -> int:
     from slopmop.cli import (
         cmd_agent,
         cmd_audit,
+        cmd_barnacle,
         cmd_buff,
         cmd_commit_hooks,
         cmd_config,
@@ -918,6 +996,7 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_scour=cmd_scour,
             cmd_upgrade=cmd_upgrade,
             cmd_buff=cmd_buff,
+            cmd_barnacle=cmd_barnacle,
             cmd_sail=cmd_sail,
             cmd_refit=cmd_refit,
             cmd_status=cmd_status,
@@ -949,6 +1028,8 @@ def _dispatch(
         return handlers["cmd_upgrade"](parsed_args)
     elif parsed_args.verb == "buff":
         return handlers["cmd_buff"](parsed_args)
+    elif parsed_args.verb == "barnacle":
+        return handlers["cmd_barnacle"](parsed_args)
     elif parsed_args.verb == "sail":
         return handlers["cmd_sail"](parsed_args)
     elif parsed_args.verb == "refit":

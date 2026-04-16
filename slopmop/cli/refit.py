@@ -17,7 +17,6 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
@@ -39,6 +38,7 @@ from slopmop.cli._refit_precheck import (
 from slopmop.cli.buff import _load_json_file
 from slopmop.cli.scan_triage import write_json_out
 from slopmop.core.registry import get_registry
+from slopmop.utils import iso_now
 from slopmop.workflow.state_machine import RepoPhase
 from slopmop.workflow.state_store import read_phase
 
@@ -136,10 +136,6 @@ def _validate_start_review_args(args: argparse.Namespace) -> Optional[str]:
     ):
         return "--blocker-reason requires --record-blocker."
     return None
-
-
-def _iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _load_config(project_root: Path) -> Dict[str, Any]:
@@ -345,7 +341,7 @@ def _emit_standalone_protocol(
 ) -> None:
     protocol: Dict[str, Any] = {
         "schema": _SCHEMA_VERSION,
-        "recorded_at": _iso_now(),
+        "recorded_at": iso_now(),
         "event": event,
         "status": status,
         "project_root": str(project_root),
@@ -368,7 +364,7 @@ def _snapshot_protocol(
     current_item = items[current_index] if 0 <= current_index < len(items) else None
     protocol: Dict[str, Any] = {
         "schema": _SCHEMA_VERSION,
-        "recorded_at": _iso_now(),
+        "recorded_at": iso_now(),
         "event": event,
         "status": plan.get("status"),
         "project_root": plan.get("project_root"),
@@ -558,7 +554,7 @@ def _build_plan(project_root: Path, scour_artifact_path: Path) -> Dict[str, Any]
     head = _current_head(project_root)
     return {
         "schema": _SCHEMA_VERSION,
-        "generated_at": _iso_now(),
+        "generated_at": iso_now(),
         "project_root": str(project_root),
         "branch": branch,
         "expected_head": head,
