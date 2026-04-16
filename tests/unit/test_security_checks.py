@@ -671,7 +671,7 @@ class TestRunDetectSecrets:
                     ")",
                     'if args[0] == "rev-parse":',
                     '    return (0, "abc12345def", "")',
-                    'head = _current_head(project_root)',
+                    "head = _current_head(project_root)",
                     'Mock(return_value="deadbeef1234")',
                 ]
             )

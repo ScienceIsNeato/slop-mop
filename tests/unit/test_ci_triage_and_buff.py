@@ -224,7 +224,10 @@ class TestScanTriageInternals:
         ]
 
         monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
-        with pytest.raises(triage.TriageError, match="No 'slop-mop primary code scanning gate' run exists yet"):
+        with pytest.raises(
+            triage.TriageError,
+            match="No 'slop-mop primary code scanning gate' run exists yet",
+        ):
             triage.latest_completed_run_id("o/r", 84, triage.WORKFLOW_NAME)
 
     def test_validate_open_pr_rejects_closed_pr(self, monkeypatch):

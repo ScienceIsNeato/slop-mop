@@ -509,7 +509,7 @@ class TestCmdConfig:
             set_field=[
                 "laziness:repeated-code",
                 "extra_exclude_paths",
-                "[\"docs\", \"vendor/generated\"]",
+                '["docs", "vendor/generated"]',
             ],
             unset_field=None,
         )
@@ -541,7 +541,7 @@ class TestCmdConfig:
             set_field=[
                 "myopia:string-duplication.py",
                 "include_paths",
-                "[\"docs\"]",
+                '["docs"]',
             ],
             unset_field=None,
         )

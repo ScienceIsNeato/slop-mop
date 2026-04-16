@@ -199,7 +199,9 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
             Callable[..., _TemplateEnvironment],
             getattr(jinja2_module, "Environment"),
         )
-        loader_factory = cast(Callable[[str], object], getattr(jinja2_module, "FileSystemLoader"))
+        loader_factory = cast(
+            Callable[[str], object], getattr(jinja2_module, "FileSystemLoader")
+        )
         autoescape_factory = cast(
             Callable[[List[str]], object],
             getattr(jinja2_module, "select_autoescape"),

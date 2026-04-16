@@ -39,6 +39,7 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
 _GIT_SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+_HEX_HIGH_ENTROPY_STRING = "Hex High Entropy String"
 
 # Canonical remediations for common bandit test IDs.  These are the fixes
 # bandit's own docs prescribe — we're not guessing, we're relaying the
@@ -460,9 +461,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             "ios/flutter/ephemeral/"
         ):
             return True
-        if lower.endswith(".xcscheme") and detector_type == "Hex High Entropy String":
+        if lower.endswith(".xcscheme") and detector_type == _HEX_HIGH_ENTROPY_STRING:
             return True
-        if detector_type == "Hex High Entropy String":
+        if detector_type == _HEX_HIGH_ENTROPY_STRING:
             line_number = secret.get("line_number")
             line_text = self._safe_read_line(
                 project_root, normalized, line_number, line_cache
@@ -496,11 +497,14 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 or "make_run_branch_name(" in context_lower
                 or "rev-parse" in context_lower
                 or "_current_head" in context_lower
-                or any(token == "sha" or token == "head" or token.endswith("_sha") for token in tokens)
+                or any(
+                    token == "sha" or token == "head" or token.endswith("_sha")
+                    for token in tokens
+                )
             ):
                 return True
         if basename == ".metadata" and detector_type in {
-            "Hex High Entropy String",
+            _HEX_HIGH_ENTROPY_STRING,
             "Base64 High Entropy String",
         }:  # pragma: allowlist secret
             return True

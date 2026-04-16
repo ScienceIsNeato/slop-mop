@@ -62,7 +62,9 @@ class TestLoadConfig:
 
     def test_loads_runtime_gitignore_excludes(self, tmp_path):
         """.gitignore entries become runtime-wide exclude paths."""
-        (tmp_path / ".gitignore").write_text("dist/\n*.snap\n!keep.snap\n", encoding="utf-8")
+        (tmp_path / ".gitignore").write_text(
+            "dist/\n*.snap\n!keep.snap\n", encoding="utf-8"
+        )
 
         result = load_config(tmp_path)
 
