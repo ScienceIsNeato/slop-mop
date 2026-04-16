@@ -8,6 +8,7 @@ from typing import Any, Dict, List, cast
 
 import slopmop.cli.refit as _refit
 from slopmop.core.lock import SmLockError, sm_lock
+from slopmop.utils import iso_now
 
 
 def cmd_refit_skip(args: argparse.Namespace, project_root: Path) -> int:
@@ -58,7 +59,7 @@ def cmd_refit_skip(args: argparse.Namespace, project_root: Path) -> int:
     except SmLockError as exc:
         protocol: Dict[str, Any] = {
             "schema": _refit._SCHEMA_VERSION,
-            "recorded_at": _refit._iso_now(),
+            "recorded_at": iso_now(),
             "event": "blocked_on_lock",
             "status": "blocked_on_lock",
             "project_root": str(project_root),

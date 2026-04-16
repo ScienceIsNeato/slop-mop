@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
+
+
+def iso_now() -> str:  # noqa: ambiguity-mine
+    """Return the current UTC time as an ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
 
 _SLOPMOP_GITIGNORE_ENTRY = ".slopmop/"
 _SLOPMOP_GITIGNORE_COMMENT = "# slop-mop working directory (machine-local state)"
@@ -34,3 +43,19 @@ def ensure_slopmop_gitignored(project_root: Path) -> bool:
         )
 
     return True
+
+
+def git_current_branch(path: Optional[str] = None) -> str:
+    """Return the current git branch name, or ``"unknown"`` if it cannot be determined."""
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            cwd=path,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or "unknown"
+    except Exception:
+        pass
+    return "unknown"
