@@ -498,7 +498,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 or "rev-parse" in context_lower
                 or "_current_head" in context_lower
                 or any(
-                    token == "sha" or token == "head" or token.endswith("_sha")
+                    token == "sha" or token.endswith("_sha")
                     for token in tokens
                 )
             ):

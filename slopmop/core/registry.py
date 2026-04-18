@@ -22,6 +22,11 @@ def _simple_path_filters(values: List[str]) -> List[str]:
     for value in values:
         if any(ch in value for ch in "*?[]"):
             continue
+        if "/" in value:
+            # Nested paths like "vendor/generated" cannot safely flow into
+            # exclude_dirs-style fields on checks that use the old
+            # `part in excluded_set` pattern (splits on path components).
+            continue
         simple.append(value)
     return simple
 
