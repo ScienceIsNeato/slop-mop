@@ -497,10 +497,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 or "make_run_branch_name(" in context_lower
                 or "rev-parse" in context_lower
                 or "_current_head" in context_lower
-                or any(
-                    token == "sha" or token.endswith("_sha")
-                    for token in tokens
-                )
+                or any(token == "sha" or token.endswith("_sha") for token in tokens)
             ):
                 return True
         if basename == ".metadata" and detector_type in {
