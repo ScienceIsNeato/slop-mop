@@ -196,7 +196,6 @@ class TestScanTriageInternals:
         assert state["latest"]["databaseId"] == 500
         assert state["latest_for_head"]["databaseId"] == 500
         assert state["latest_completed"]["databaseId"] == 499
-        assert state["latest_completed_for_head"]["databaseId"] == 499
 
     def test_latest_completed_run_id_error(self, monkeypatch):
         responses = [
@@ -433,11 +432,6 @@ class TestScanTriageInternals:
                         "status": "completed",
                         "headSha": "abc1234def5678",
                     },
-                    "latest_completed_for_head": {
-                        "databaseId": 201,
-                        "status": "completed",
-                        "headSha": "abc1234def5678",
-                    },
                 }
             ),
         )
@@ -490,11 +484,6 @@ class TestScanTriageInternals:
                     "latest_for_head": {
                         "databaseId": 201,
                         "status": "in_progress",
-                        "headSha": "abc1234def5678",
-                    },
-                    "latest_completed_for_head": {
-                        "databaseId": 200,
-                        "status": "completed",
                         "headSha": "abc1234def5678",
                     },
                 }
@@ -573,11 +562,6 @@ class TestScanTriageInternals:
                         "headSha": "abc1234def5678",
                     },
                     "latest_for_head": {
-                        "databaseId": 201,
-                        "status": "completed",
-                        "headSha": "abc1234def5678",
-                    },
-                    "latest_completed_for_head": {
                         "databaseId": 201,
                         "status": "completed",
                         "headSha": "abc1234def5678",
