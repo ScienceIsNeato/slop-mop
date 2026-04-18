@@ -11,14 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
 from slopmop.checks.metadata import builtin_reasoning_for_check_class
 from slopmop.core.result import CheckDefinition
-from slopmop.utils import as_str_list, normalize_path_filter
+from slopmop.utils import as_str_list, dedupe_str_list, normalize_path_filter
 
 logger = logging.getLogger(__name__)
-
-
-def _dedupe_strings(values: List[str]) -> List[str]:
-    """Deduplicate strings while preserving input order."""
-    return list(dict.fromkeys(values))
 
 
 def _simple_path_filters(values: List[str]) -> List[str]:
@@ -47,7 +42,7 @@ def _path_pattern_variants(value: str) -> List[str]:
                 f"**/{value}/**",
             ]
         )
-    return _dedupe_strings(variants)
+    return dedupe_str_list(variants)
 
 
 def _merge_runtime_path_filters(
@@ -75,7 +70,7 @@ def _merge_runtime_path_filters(
         )
         if normalized and normalized not in gate_includes
     ]
-    effective_paths = _dedupe_strings(effective_paths)
+    effective_paths = dedupe_str_list(effective_paths)
     if not effective_paths:
         return merged
 
@@ -89,23 +84,23 @@ def _merge_runtime_path_filters(
         return as_str_list(schema_defaults.get(field_name))
 
     if "exclude_dirs" in schema_names:
-        merged["exclude_dirs"] = _dedupe_strings(
+        merged["exclude_dirs"] = dedupe_str_list(
             _list_setting("exclude_dirs") + _simple_path_filters(effective_paths)
         )
 
     pattern_values: List[str] = []
     for value in effective_paths:
         pattern_values.extend(_path_pattern_variants(value))
-    pattern_values = _dedupe_strings(pattern_values)
+    pattern_values = dedupe_str_list(pattern_values)
 
     for field_name in ("ignore_patterns", "exclude_patterns"):
         if field_name in schema_names:
-            merged[field_name] = _dedupe_strings(
+            merged[field_name] = dedupe_str_list(
                 _list_setting(field_name) + pattern_values
             )
 
     if "exclude_paths" in schema_names:
-        merged["exclude_paths"] = _dedupe_strings(
+        merged["exclude_paths"] = dedupe_str_list(
             _list_setting("exclude_paths") + effective_paths
         )
 

@@ -30,7 +30,11 @@ def install_agent_templates(
 ) -> InstallReport:
     """Install template files for the given target into *project_root*."""
     project_root = project_root.resolve()
-    user_home = Path(os.path.expanduser("~")).resolve()
+    _raw_home = os.path.expanduser("~")
+    if _raw_home.startswith("~") or not Path(_raw_home).is_absolute():
+        user_home: Path | None = None
+    else:
+        user_home = Path(_raw_home).resolve()
     report = InstallReport(project_root=project_root)
 
     target_keys = expand_target(target)
@@ -45,6 +49,12 @@ def install_agent_templates(
 
         for asset in assets:
             if uses_user_home_destination(key, asset.destination_relpath):
+                if user_home is None:
+                    report.errors.append(
+                        f"{asset.destination_relpath}: skipped — cannot resolve "
+                        "user home directory (HOME may be unset)"
+                    )
+                    continue
                 destination = user_home / asset.destination_relpath
             else:
                 destination = project_root / asset.destination_relpath

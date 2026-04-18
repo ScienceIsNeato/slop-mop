@@ -50,7 +50,6 @@ class _WorkflowRunState(TypedDict, total=False):
     latest: _RunEntry
     latest_completed: _RunEntry
     latest_for_head: _RunEntry
-    latest_completed_for_head: _RunEntry
 
 
 def _run_gh(args: list[str]) -> str:
@@ -256,11 +255,6 @@ def _workflow_run_state(repo: str, pr_number: int, workflow: str) -> _WorkflowRu
 
         if "latest_for_head" not in state:
             state["latest_for_head"] = run
-        if (
-            "latest_completed_for_head" not in state
-            and run.get("status") == "completed"
-        ):
-            state["latest_completed_for_head"] = run
 
     return state
 

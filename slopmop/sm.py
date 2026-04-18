@@ -51,14 +51,9 @@ from slopmop.cli.parser_builders import (
     RefitParserBuilder,
 )
 from slopmop.constants import PROJECT_ROOT_HELP
-from slopmop.utils import as_str_list
+from slopmop.utils import as_str_list, dedupe_str_list
 
 logger = logging.getLogger(__name__)
-
-
-def _dedupe_str_list(values: list[str]) -> list[str]:
-    """Deduplicate strings while preserving order."""
-    return list(dict.fromkeys(values))
 
 
 def _load_gitignore_exclude_paths(project_root: Path) -> list[str]:
@@ -73,7 +68,12 @@ def _load_gitignore_exclude_paths(project_root: Path) -> list[str]:
         return []
 
     paths: list[str] = []
-    for raw_line in gitignore_path.read_text(encoding="utf-8").splitlines():
+    try:
+        gitignore_text = gitignore_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        logger.warning(f"Failed to decode .gitignore as UTF-8: {e}")
+        return []
+    for raw_line in gitignore_text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or line.startswith("!"):
             continue
@@ -85,7 +85,7 @@ def _load_gitignore_exclude_paths(project_root: Path) -> list[str]:
             line = line[:-1]
         if line:
             paths.append(line)
-    return _dedupe_str_list(paths)
+    return dedupe_str_list(paths)
 
 
 def load_config(project_root: Path) -> Dict[str, Any]:
@@ -118,7 +118,7 @@ def load_config(project_root: Path) -> Dict[str, Any]:
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse config: {e}")
 
-    runtime_excludes = _dedupe_str_list(
+    runtime_excludes = dedupe_str_list(
         as_str_list(base.get("exclude_paths"))
         + _load_gitignore_exclude_paths(project_root)
     )

@@ -115,3 +115,8 @@ def git_current_branch(path: Optional[str] = None) -> str:
     except Exception:
         pass
     return "unknown"
+
+
+def dedupe_str_list(values: list[str]) -> list[str]:
+    """Deduplicate strings while preserving input order."""
+    return list(dict.fromkeys(values))
