@@ -187,25 +187,24 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
 
         try:
             jinja2_module = importlib.import_module("jinja2")
-        except ImportError:
+            environment_factory = cast(
+                Callable[..., _TemplateEnvironment],
+                getattr(jinja2_module, "Environment"),
+            )
+            loader_factory = cast(
+                Callable[[str], object], getattr(jinja2_module, "FileSystemLoader")
+            )
+            autoescape_factory = cast(
+                Callable[[List[str]], object],
+                getattr(jinja2_module, "select_autoescape"),
+            )
+        except (ImportError, AttributeError):
             return self._create_result(
                 status=CheckStatus.SKIPPED,
                 duration=time.time() - start_time,
                 output="Jinja2 not installed.",
                 fix_suggestion="Install: pip install jinja2",
             )
-
-        environment_factory = cast(
-            Callable[..., _TemplateEnvironment],
-            getattr(jinja2_module, "Environment"),
-        )
-        loader_factory = cast(
-            Callable[[str], object], getattr(jinja2_module, "FileSystemLoader")
-        )
-        autoescape_factory = cast(
-            Callable[[List[str]], object],
-            getattr(jinja2_module, "select_autoescape"),
-        )
 
         env = environment_factory(
             loader=loader_factory(templates_path),

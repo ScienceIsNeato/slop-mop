@@ -16,6 +16,12 @@ from slopmop.utils import as_str_list, dedupe_str_list, normalize_path_filter
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=None)
+def _cached_check_schema_fields(check_class: Type[BaseCheck]) -> Tuple[Any, ...]:
+    """Cache the full config schema per check class (schema is static per class)."""
+    return tuple(check_class({}).get_full_config_schema())
+
+
 def _simple_path_filters(values: List[str]) -> List[str]:
     """Return filters that can safely flow into exclude_dirs-style fields."""
     simple: List[str] = []
@@ -79,7 +85,7 @@ def _merge_runtime_path_filters(
     if not effective_paths:
         return merged
 
-    schema_fields = check_class({}).get_full_config_schema()
+    schema_fields = _cached_check_schema_fields(check_class)
     schema_names = {field.name for field in schema_fields}
     schema_defaults = {field.name: field.default for field in schema_fields}
 
