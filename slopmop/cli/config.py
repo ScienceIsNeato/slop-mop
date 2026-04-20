@@ -14,6 +14,7 @@ from slopmop.core.config import (
 )
 from slopmop.core.config import set_current_pr_number as set_current_pr_selection
 from slopmop.core.registry import get_registry
+from slopmop.utils import as_str_list
 
 _UNKNOWN_GATE_MSG = "❌ Unknown gate: {gate_name}"
 
@@ -24,20 +25,9 @@ def _as_dict(value: Any) -> dict[str, Any] | None:
     return None
 
 
-def _as_str_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    items = cast(list[Any], value)
-    result: list[str] = []
-    for item in items:
-        if isinstance(item, str):
-            result.append(item)
-    return result
-
-
 def _is_gate_enabled(cfg: dict[str, Any], full_name: str) -> bool:
     """Return whether a gate is enabled across both config representations."""
-    disabled = _as_str_list(cfg.get("disabled_gates", []))
+    disabled = as_str_list(cfg.get("disabled_gates", []))
     if full_name in disabled:
         return False
     if ":" not in full_name:
@@ -81,7 +71,7 @@ def _set_gate_enabled(cfg: dict[str, Any], full_name: str, enabled: bool) -> Non
             gates[gate] = gate_cfg
         gate_cfg["enabled"] = enabled
 
-    disabled = _as_str_list(cfg.get("disabled_gates", []))
+    disabled = as_str_list(cfg.get("disabled_gates", []))
     if enabled:
         disabled = [g for g in disabled if g != full_name]
     elif full_name not in disabled:
@@ -414,6 +404,9 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
         print(f"🔀 Current PR number: {current_pr_number}")
     else:
         print("🔀 Current PR number: none selected")
+    repo_exclude_paths = as_str_list(config.get("exclude_paths"))
+    if repo_exclude_paths:
+        print(f"🚫 Repo-wide exclude paths: {', '.join(repo_exclude_paths)}")
     print()
 
     registry = get_registry()

@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
 from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.utils import is_path_excluded
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +137,7 @@ def hash_file_scope(
             except ValueError:
                 continue
 
-            parts = rel.parts
-            if any(p in excluded or ".egg-info" in p for p in parts):
+            if is_path_excluded(rel, excluded) or ".egg-info" in rel.as_posix():
                 continue
 
             if file_path.suffix not in extensions:

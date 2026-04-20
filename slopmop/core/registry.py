@@ -11,8 +11,111 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
 from slopmop.checks.metadata import builtin_reasoning_for_check_class
 from slopmop.core.result import CheckDefinition
+from slopmop.utils import as_str_list, dedupe_str_list, normalize_path_filter
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=None)
+def _cached_check_schema_fields(check_class: Type[BaseCheck]) -> Tuple[Any, ...]:
+    """Cache the full config schema per check class (schema is static per class)."""
+    return tuple(check_class({}).get_full_config_schema())
+
+
+def _simple_path_filters(values: List[str]) -> List[str]:
+    """Return filters that can safely flow into exclude_dirs-style fields."""
+    simple: List[str] = []
+    for value in values:
+        if any(ch in value for ch in "*?[]"):
+            continue
+        if "/" in value:
+            # Nested paths like "vendor/generated" cannot safely flow into
+            # exclude_dirs-style fields on checks that use the old
+            # `part in excluded_set` pattern (splits on path components).
+            continue
+        simple.append(value)
+    return simple
+
+
+def _path_pattern_variants(value: str) -> List[str]:
+    """Expand one repo-relative filter into ignore-pattern variants."""
+    if any(ch in value for ch in "*?[]"):
+        return [value]
+
+    variants = [value]
+    if "/" in value:
+        variants.append(f"{value}/**")
+    else:
+        variants.extend(
+            [
+                f"**/{value}",
+                f"{value}/**",
+                f"**/{value}/**",
+            ]
+        )
+    return dedupe_str_list(variants)
+
+
+def _merge_runtime_path_filters(
+    check_class: Type[BaseCheck],
+    gate_config: Dict[str, Any],
+    full_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Merge repo-wide and gate-local runtime excludes into one gate config."""
+    merged = gate_config.copy()
+
+    global_paths = as_str_list(full_config.get("_global_exclude_paths"))
+    if not global_paths:
+        global_paths = as_str_list(full_config.get("exclude_paths"))
+
+    gate_extra = as_str_list(merged.get("extra_exclude_paths"))
+    gate_includes = {
+        normalize_path_filter(value)
+        for value in as_str_list(merged.get("include_paths"))
+    }
+
+    effective_paths = [
+        normalized
+        for normalized in (
+            normalize_path_filter(value) for value in global_paths + gate_extra
+        )
+        if normalized and normalized not in gate_includes
+    ]
+    effective_paths = dedupe_str_list(effective_paths)
+    if not effective_paths:
+        return merged
+
+    schema_fields = _cached_check_schema_fields(check_class)
+    schema_names = {field.name for field in schema_fields}
+    schema_defaults = {field.name: field.default for field in schema_fields}
+
+    def _list_setting(field_name: str) -> List[str]:
+        if field_name in merged:
+            return as_str_list(merged.get(field_name))
+        return as_str_list(schema_defaults.get(field_name))
+
+    if "exclude_dirs" in schema_names:
+        merged["exclude_dirs"] = dedupe_str_list(
+            _list_setting("exclude_dirs") + _simple_path_filters(effective_paths)
+        )
+
+    pattern_values: List[str] = []
+    for value in effective_paths:
+        pattern_values.extend(_path_pattern_variants(value))
+    pattern_values = dedupe_str_list(pattern_values)
+
+    for field_name in ("ignore_patterns", "exclude_patterns"):
+        if field_name in schema_names:
+            merged[field_name] = dedupe_str_list(
+                _list_setting(field_name) + pattern_values
+            )
+
+    if "exclude_paths" in schema_names:
+        merged["exclude_paths"] = dedupe_str_list(
+            _list_setting("exclude_paths") + effective_paths
+        )
+
+    return merged
 
 
 # Built-in remediation order.
@@ -200,6 +303,7 @@ class CheckRegistry:
         # Extract gate-specific config from full config
         # Config structure: { "category": { "gates": { "check-name": {...} } } }
         gate_config = self._extract_gate_config(name, config)
+        gate_config = _merge_runtime_path_filters(check_class, gate_config, config)
         return check_class(gate_config)
 
     def _extract_gate_config(

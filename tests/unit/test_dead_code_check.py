@@ -131,7 +131,7 @@ class TestDeadCodeCheck:
     # --- Command building ---
 
     @patch("slopmop.checks.quality.dead_code.find_tool", return_value=None)
-    def test_build_command_basic(self, mock_find, check, tmp_path):
+    def test_build_command_basic(self, _mock_find, check, tmp_path):
         """Test basic command structure."""
         cmd = check._build_command(str(tmp_path))
         assert cmd[0] == "vulture"

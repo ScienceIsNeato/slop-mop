@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 
 from slopmop.agent_install.registry import (
+    INSTALL_HELP_HOME_PREVIEW_ROOT,
     INSTALL_HELP_PREVIEW_ROOT,
     TARGETS,
     cli_choices,
@@ -168,8 +169,9 @@ class AgentParserBuilder:
             "agent",
             help="Install agent integration templates",
             description=(
-                "Install repo-local templates for AI coding agents so they discover "
-                "and use the slop-mop swab/scour/buff workflow consistently."
+                "Install project and agent-home templates for AI coding agents so "
+                "they discover and use the slop-mop swab/scour/buff workflow "
+                "consistently."
             ),
         )
         agent_subparsers = agent_parser.add_subparsers(
@@ -182,8 +184,9 @@ class AgentParserBuilder:
             help="Install template files for common agent runtimes",
             description=(
                 "Install template files for common agent runtimes.\n\n"
-                "Preview install destinations (using the help preview root "
-                f"{INSTALL_HELP_PREVIEW_ROOT}):\n"
+                "Preview install destinations (using help preview roots "
+                f"{INSTALL_HELP_PREVIEW_ROOT} for repo files and "
+                f"{INSTALL_HELP_HOME_PREVIEW_ROOT} for user-home files):\n"
                 f"{self._preview_install_summary()}"
             ),
             formatter_class=argparse.RawTextHelpFormatter,

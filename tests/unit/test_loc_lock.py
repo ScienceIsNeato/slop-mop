@@ -11,6 +11,14 @@ from slopmop.checks.quality.loc_lock import (
 from slopmop.core.result import CheckStatus
 
 
+def _python_assignment_lines(count: int, indent: str = "") -> list[str]:
+    return [f"{indent}x{i} = {i}" for i in range(count)]
+
+
+def _js_const_assignment_lines(count: int, indent: str = "") -> list[str]:
+    return [f"{indent}const x{i} = {i};" for i in range(count)]
+
+
 class TestLocLockCheck:
     """Tests for LocLockCheck."""
 
@@ -74,7 +82,7 @@ class TestLocLockFileLength:
 
     def test_fails_long_file(self, tmp_path):
         """Test fails when file exceeds limit."""
-        content = "\n".join(f"x{i} = {i}" for i in range(150))
+        content = "\n".join(_python_assignment_lines(150))
         (tmp_path / "long.py").write_text(content)
 
         check = LocLockCheck({"max_file_lines": 100})
@@ -86,7 +94,7 @@ class TestLocLockFileLength:
 
     def test_respects_default_file_limit(self, tmp_path):
         """Test uses default 1000 line limit."""
-        content = "\n".join(f"x{i} = {i}" for i in range(999))
+        content = "\n".join(_python_assignment_lines(999))
         (tmp_path / "under.py").write_text(content)
 
         check = LocLockCheck({})
@@ -96,7 +104,7 @@ class TestLocLockFileLength:
 
     def test_fails_over_default_file_limit(self, tmp_path):
         """Test fails when file exceeds default 1000 line limit."""
-        content = "\n".join(f"x{i} = {i}" for i in range(1001))
+        content = "\n".join(_python_assignment_lines(1001))
         (tmp_path / "over.py").write_text(content)
 
         check = LocLockCheck({})
@@ -128,8 +136,7 @@ def short_function():
         """Test fails when function exceeds limit."""
         lines = ["def long_function():"]
         lines.append('    """Long function."""')
-        for i in range(25):
-            lines.append(f"    x{i} = {i}")
+        lines.extend(_python_assignment_lines(25, indent="    "))
         lines.append("    return x0")
 
         (tmp_path / "long.py").write_text("\n".join(lines))
@@ -143,8 +150,7 @@ def short_function():
     def test_respects_default_function_limit(self, tmp_path):
         """Test uses default 100 line limit for functions."""
         lines = ["def almost_too_long():"]
-        for i in range(98):
-            lines.append(f"    x{i} = {i}")
+        lines.extend(_python_assignment_lines(98, indent="    "))
         lines.append("    return x0")
 
         (tmp_path / "ok.py").write_text("\n".join(lines))
@@ -207,7 +213,7 @@ class TestLocLockExclusions:
         """Test excludes venv directory."""
         venv_dir = tmp_path / "venv" / "lib"
         venv_dir.mkdir(parents=True)
-        content = "\n".join(f"x{i} = {i}" for i in range(2000))
+        content = "\n".join(_python_assignment_lines(2000))
         (venv_dir / "huge.py").write_text(content)
         (tmp_path / "main.py").write_text("x = 1")
 
@@ -220,7 +226,7 @@ class TestLocLockExclusions:
         """Test respects custom exclude_dirs config."""
         gen_dir = tmp_path / "generated"
         gen_dir.mkdir()
-        content = "\n".join(f"x{i} = {i}" for i in range(2000))
+        content = "\n".join(_python_assignment_lines(2000))
         (gen_dir / "huge.py").write_text(content)
         (tmp_path / "main.py").write_text("x = 1")
 
@@ -229,11 +235,26 @@ class TestLocLockExclusions:
 
         assert result.status == CheckStatus.PASSED
 
+    def test_respects_nested_custom_exclude_dirs(self, tmp_path):
+        """Slash-separated nested exclude_dirs paths are respected."""
+        gen_dir = tmp_path / "vendor" / "generated"
+        gen_dir.mkdir(parents=True)
+        content = "\n".join(_python_assignment_lines(2000))
+        (gen_dir / "huge.py").write_text(content)
+        (tmp_path / "main.py").write_text("x = 1")
+
+        check = LocLockCheck(
+            {"max_file_lines": 100, "exclude_dirs": ["vendor/generated"]}
+        )
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
     def test_excludes_migrations_by_default(self, tmp_path):
         """Migration files should be excluded from sprawl limits by default."""
         mig_dir = tmp_path / "migrations" / "versions"
         mig_dir.mkdir(parents=True)
-        content = "\n".join(f"x{i} = {i}" for i in range(2000))
+        content = "\n".join(_python_assignment_lines(2000))
         (mig_dir / "0001_initial.py").write_text(content)
         (tmp_path / "main.py").write_text("x = 1")
 
@@ -265,8 +286,7 @@ class TestLocLockLanguageSupport:
     def test_detects_async_python_functions(self, tmp_path):
         """Test detects long async functions in Python."""
         lines = ["async def long_async():"]
-        for i in range(15):
-            lines.append(f"    x{i} = {i}")
+        lines.extend(_python_assignment_lines(15, indent="    "))
         lines.append("    return x0")
 
         (tmp_path / "async.py").write_text("\n".join(lines))
@@ -279,7 +299,7 @@ class TestLocLockLanguageSupport:
 
     def test_checks_only_specified_extensions(self, tmp_path):
         """Test only checks specified extensions when configured."""
-        py_content = "\n".join(f"x{i} = {i}" for i in range(200))
+        py_content = "\n".join(_python_assignment_lines(200))
         (tmp_path / "long.py").write_text(py_content)
         js_content = "\n".join(f"const x{i} = {i};" for i in range(200))
         (tmp_path / "long.js").write_text(js_content)
@@ -303,7 +323,7 @@ class TestLocLockOutput:
 
     def test_includes_fix_suggestion(self, tmp_path):
         """Test failure includes fix suggestion."""
-        content = "\n".join(f"x{i} = {i}" for i in range(200))
+        content = "\n".join(_python_assignment_lines(200))
         (tmp_path / "long.py").write_text(content)
 
         check = LocLockCheck({"max_file_lines": 100})
@@ -537,7 +557,7 @@ class TestMoveTarget:
         break up inside it".  Moving the class moves the method too.
         Only top-level definitions are candidates.
         """
-        body = "\n".join(f"        x{i} = {i}" for i in range(45))
+        body = "\n".join(_python_assignment_lines(45, indent="        "))
         src = f"class Wrapper:\n    def huge(self):\n{body}\n\ndef small(): pass\n"
         hit = _find_biggest_python_definition(src)
         assert hit is not None
@@ -651,7 +671,7 @@ class TestFindingGuidance:
         it's done.
         """
         # 25-line function, limit 10 → over by 15.
-        body = "\n".join(f"    x{i} = {i}" for i in range(24))
+        body = "\n".join(_python_assignment_lines(24, indent="    "))
         (tmp_path / "func.py").write_text(f"def bloated():\n{body}\n")
 
         check = LocLockCheck({"max_function_lines": 10})

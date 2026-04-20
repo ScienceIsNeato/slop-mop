@@ -41,6 +41,14 @@ def _expand_targets(target: str) -> List[str]:
     return expand_target(target)
 
 
+def _display_install_path(project_root: Path, path: Path) -> str:
+    """Render installed paths relative to the repo when possible."""
+    try:
+        return str(path.relative_to(project_root))
+    except ValueError:
+        return str(path)
+
+
 def cmd_agent(args: argparse.Namespace) -> int:
     """Handle the ``sm agent`` command."""
     if args.agent_action != "install":
@@ -73,11 +81,11 @@ def cmd_agent(args: argparse.Namespace) -> int:
     if report.installed:
         print("Installed/updated:")
         for path in report.installed:
-            print(f"  - {path.relative_to(report.project_root)}")
+            print(f"  - {_display_install_path(report.project_root, path)}")
     if report.skipped:
         print("Skipped (already exists, use --force to overwrite):")
         for path in report.skipped:
-            print(f"  - {path.relative_to(report.project_root)}")
+            print(f"  - {_display_install_path(report.project_root, path)}")
     print()
     print("Next steps:")
     print("  1. Restart your agent session if it caches command/rule discovery")

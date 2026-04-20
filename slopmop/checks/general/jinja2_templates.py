@@ -4,9 +4,10 @@ Compiles all templates in the project to catch syntax errors early.
 Far faster than discovering them at runtime.
 """
 
+import importlib
 import os
 import time
-from typing import List, Optional
+from typing import Any, Callable, List, Optional, Protocol, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -18,6 +19,13 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+
+
+class _TemplateEnvironment(Protocol):
+    """Minimal Jinja2 Environment protocol used by this check."""
+
+    def get_template(self, name: str) -> Any:
+        """Load and compile one template by relative path."""
 
 
 class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
@@ -178,8 +186,19 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
         templates_path = os.path.join(project_root, templates_dir)
 
         try:
-            from jinja2 import Environment, FileSystemLoader, select_autoescape
-        except ImportError:
+            jinja2_module = importlib.import_module("jinja2")
+            environment_factory = cast(
+                Callable[..., _TemplateEnvironment],
+                getattr(jinja2_module, "Environment"),
+            )
+            loader_factory = cast(
+                Callable[[str], object], getattr(jinja2_module, "FileSystemLoader")
+            )
+            autoescape_factory = cast(
+                Callable[[List[str]], object],
+                getattr(jinja2_module, "select_autoescape"),
+            )
+        except (ImportError, AttributeError):
             return self._create_result(
                 status=CheckStatus.SKIPPED,
                 duration=time.time() - start_time,
@@ -187,9 +206,9 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
                 fix_suggestion="Install: pip install jinja2",
             )
 
-        env = Environment(
-            loader=FileSystemLoader(templates_path),
-            autoescape=select_autoescape(
+        env = environment_factory(
+            loader=loader_factory(templates_path),
+            autoescape=autoescape_factory(
                 ["html", "htm", "xml", "j2", "jinja", "jinja2"]
             ),
         )

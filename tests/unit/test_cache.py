@@ -798,6 +798,23 @@ class TestHashFileScope:
         )
         assert fp1 == fp2
 
+    def test_nested_exclude_dirs(self, tmp_path):
+        """Nested exclude paths are ignored in scoped fingerprint."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.py").write_text("x = 1")
+        fp1 = hash_file_scope(
+            str(tmp_path), ["src"], {".py"}, {}, exclude_dirs={"src/vendor/generated"}
+        )
+
+        generated = src / "vendor" / "generated"
+        generated.mkdir(parents=True)
+        (generated / "lib.py").write_text("y = 2")
+        fp2 = hash_file_scope(
+            str(tmp_path), ["src"], {".py"}, {}, exclude_dirs={"src/vendor/generated"}
+        )
+        assert fp1 == fp2
+
     def test_nonexistent_dir_produces_valid_fingerprint(self, tmp_path):
         """Scope pointing to a nonexistent dir still returns a hash."""
         fp = hash_file_scope(str(tmp_path), ["nonexistent"], {".py"}, {})

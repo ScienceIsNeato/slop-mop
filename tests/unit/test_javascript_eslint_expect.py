@@ -7,6 +7,11 @@ from unittest.mock import MagicMock, patch
 from slopmop.checks.javascript.eslint_expect import JavaScriptExpectCheck
 from slopmop.core.result import CheckStatus
 
+EMPTY_JS_TEST = "test('x', () => {})"
+MODULE_EXPORTS_JS = "module.exports = {}"
+PASSING_JS_TEST = "test('works', () => { expect(1).toBe(1); })"
+NO_ASSERTIONS_MESSAGE = "Test has no assertions"
+
 
 class TestJavaScriptExpectCheck:
     """Tests for JavaScriptExpectCheck (eslint-plugin-jest expect-expect)."""
@@ -40,20 +45,20 @@ class TestJavaScriptExpectCheck:
         """Test is_applicable returns True for JS projects with test files."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
         (tmp_path / "src").mkdir()
-        (tmp_path / "src" / "app.test.js").write_text("test('x', () => {})")
+        (tmp_path / "src" / "app.test.js").write_text(EMPTY_JS_TEST)
         check = JavaScriptExpectCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
     def test_is_applicable_no_package_json(self, tmp_path):
         """Test is_applicable returns False without package.json."""
-        (tmp_path / "app.test.js").write_text("test('x', () => {})")
+        (tmp_path / "app.test.js").write_text(EMPTY_JS_TEST)
         check = JavaScriptExpectCheck({})
         assert check.is_applicable(str(tmp_path)) is False
 
     def test_is_applicable_no_test_files(self, tmp_path):
         """Test is_applicable returns False when no test files exist."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "index.js").write_text("module.exports = {}")
+        (tmp_path / "index.js").write_text(MODULE_EXPORTS_JS)
         check = JavaScriptExpectCheck({})
         assert check.is_applicable(str(tmp_path)) is False
 
@@ -67,9 +72,7 @@ class TestJavaScriptExpectCheck:
     def test_run_passes_all_tests_have_assertions(self, tmp_path):
         """Test run() passes when all tests have assertions."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "app.test.js").write_text(
-            "test('works', () => { expect(1).toBe(1); })"
-        )
+        (tmp_path / "app.test.js").write_text(PASSING_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         mock_result = MagicMock()
@@ -102,7 +105,7 @@ class TestJavaScriptExpectCheck:
                         {
                             "ruleId": "jest/expect-expect",
                             "line": 1,
-                            "message": "Test has no assertions",
+                            "message": NO_ASSERTIONS_MESSAGE,
                         }
                     ],
                 }
@@ -139,7 +142,7 @@ class TestJavaScriptExpectCheck:
                         {
                             "ruleId": "jest/expect-expect",
                             "line": 1,
-                            "message": "Test has no assertions",
+                            "message": NO_ASSERTIONS_MESSAGE,
                         }
                     ],
                 }
@@ -164,7 +167,7 @@ class TestJavaScriptExpectCheck:
     def test_run_timeout(self, tmp_path):
         """Test run() handles eslint timeout."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "app.test.js").write_text("test('x', () => {})")
+        (tmp_path / "app.test.js").write_text(EMPTY_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         mock_result = MagicMock()
@@ -181,9 +184,9 @@ class TestJavaScriptExpectCheck:
         assert "timed out" in result.error
 
     def test_run_config_error(self, tmp_path):
-        """Test run() handles eslint config error (exit code 2)."""
+        """Harness/config mismatches warn instead of blocking swab."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "app.test.js").write_text("test('x', () => {})")
+        (tmp_path / "app.test.js").write_text(EMPTY_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         mock_result = MagicMock()
@@ -198,13 +201,14 @@ class TestJavaScriptExpectCheck:
         ):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.ERROR
-        assert "configuration error" in result.error
+        assert result.status == CheckStatus.WARNED
+        assert "compatibility warning" in (result.error or "")
+        assert result.suppress_sarif is True
 
     def test_run_skips_no_test_files(self, tmp_path):
         """Test run() skips when no test files found."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "index.js").write_text("module.exports = {}")
+        (tmp_path / "index.js").write_text(MODULE_EXPORTS_JS)
         check = JavaScriptExpectCheck({})
 
         result = check.run(str(tmp_path))
@@ -248,9 +252,9 @@ class TestJavaScriptExpectCheck:
         """Test _find_test_files excludes node_modules."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
         (tmp_path / "src").mkdir()
-        (tmp_path / "src" / "app.test.js").write_text("test('x', () => {})")
+        (tmp_path / "src" / "app.test.js").write_text(EMPTY_JS_TEST)
         (tmp_path / "node_modules").mkdir()
-        (tmp_path / "node_modules" / "dep.test.js").write_text("test('x', () => {})")
+        (tmp_path / "node_modules" / "dep.test.js").write_text(EMPTY_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         files = check._find_test_files(str(tmp_path))
@@ -262,9 +266,9 @@ class TestJavaScriptExpectCheck:
         """Test _find_test_files respects exclude_dirs config."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
         (tmp_path / "src").mkdir()
-        (tmp_path / "src" / "app.test.js").write_text("test('x', () => {})")
+        (tmp_path / "src" / "app.test.js").write_text(EMPTY_JS_TEST)
         (tmp_path / "generated").mkdir()
-        (tmp_path / "generated" / "gen.test.js").write_text("test('x', () => {})")
+        (tmp_path / "generated" / "gen.test.js").write_text(EMPTY_JS_TEST)
         check = JavaScriptExpectCheck({"exclude_dirs": ["generated"]})
 
         files = check._find_test_files(str(tmp_path))
@@ -284,7 +288,7 @@ class TestJavaScriptExpectCheck:
                         {
                             "ruleId": "jest/expect-expect",
                             "line": 5,
-                            "message": "Test has no assertions",
+                            "message": NO_ASSERTIONS_MESSAGE,
                         },
                         {
                             "ruleId": "no-unused-vars",
@@ -343,7 +347,7 @@ class TestJavaScriptExpectCheck:
     def test_run_non_parseable_success(self, tmp_path):
         """Test run() treats non-JSON exit-0 as passed."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "app.test.js").write_text("test('x', () => { expect(1).toBe(1); })")
+        (tmp_path / "app.test.js").write_text(PASSING_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         mock_result = MagicMock()
@@ -363,7 +367,7 @@ class TestJavaScriptExpectCheck:
     def test_run_non_parseable_failure(self, tmp_path):
         """Test run() reports error for non-JSON non-zero exit."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "app.test.js").write_text("test('x', () => {})")
+        (tmp_path / "app.test.js").write_text(EMPTY_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         mock_result = MagicMock()
@@ -384,7 +388,7 @@ class TestJavaScriptExpectCheck:
     def test_run_npm_install_fails(self, tmp_path):
         """Test run() reports error when eslint dep install fails."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "app.test.js").write_text("test('x', () => {})")
+        (tmp_path / "app.test.js").write_text(EMPTY_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         mock_result = MagicMock()
@@ -400,9 +404,7 @@ class TestJavaScriptExpectCheck:
     def test_run_uses_absolute_parser_path_for_typescript(self, tmp_path):
         """Test run() passes absolute path to @typescript-eslint/parser for .ts files."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "app.test.ts").write_text(
-            "test('works', () => { expect(1).toBe(1); })"
-        )
+        (tmp_path / "app.test.ts").write_text(PASSING_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         commands_run: list = []
@@ -436,9 +438,7 @@ class TestJavaScriptExpectCheck:
     def test_run_omits_parser_for_plain_js(self, tmp_path):
         """Test run() does not include --parser when only .js test files exist."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
-        (tmp_path / "app.test.js").write_text(
-            "test('works', () => { expect(1).toBe(1); })"
-        )
+        (tmp_path / "app.test.js").write_text(PASSING_JS_TEST)
         check = JavaScriptExpectCheck({})
 
         commands_run: list = []
