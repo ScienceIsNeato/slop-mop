@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
@@ -30,11 +29,10 @@ def install_agent_templates(
 ) -> InstallReport:
     """Install template files for the given target into *project_root*."""
     project_root = project_root.resolve()
-    _raw_home = os.path.expanduser("~")
-    if _raw_home.startswith("~") or not Path(_raw_home).is_absolute():
-        user_home: Path | None = None
-    else:
-        user_home = Path(_raw_home).resolve()
+    try:
+        user_home: Path | None = Path.home().resolve()
+    except RuntimeError:
+        user_home = None
     report = InstallReport(project_root=project_root)
 
     target_keys = expand_target(target)
