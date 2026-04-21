@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from datetime import datetime, timezone
 from fnmatch import fnmatch
@@ -41,6 +42,24 @@ def normalize_path_filter(value: str) -> str:
     return normalized
 
 
+def _glob_match(path: str, pattern: str) -> bool:
+    """Match a posix-style path against a glob pattern.
+
+    Unlike ``fnmatch``, ``**`` is treated as a recursive wildcard that
+    matches zero or more path components (e.g. ``**/*.snap`` matches both
+    ``bar.snap`` at the root and ``foo/bar/baz.snap`` in subdirectories).
+    """
+    if "**" not in pattern:
+        return fnmatch(path, pattern)
+    segments = pattern.split("**/")
+    escaped = [
+        re.escape(seg).replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
+        for seg in segments
+    ]
+    regex = "(?:[^/]+/)*".join(escaped)
+    return bool(re.fullmatch(regex, path))
+
+
 def is_path_excluded(path: str | Path, raw_filters: Iterable[str]) -> bool:
     """Return whether a repo-relative path matches any exclude filter.
 
@@ -59,7 +78,7 @@ def is_path_excluded(path: str | Path, raw_filters: Iterable[str]) -> bool:
         if not normalized_filter:
             continue
         if any(ch in normalized_filter for ch in "*?[]"):
-            if fnmatch(rel_path, normalized_filter):
+            if _glob_match(rel_path, normalized_filter):
                 return True
             continue
         if "/" in normalized_filter:
