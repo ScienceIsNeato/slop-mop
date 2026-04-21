@@ -12,6 +12,7 @@ from slopmop.agent_install.registry import (
     expand_target,
     uses_user_home_destination,
 )
+from slopmop.utils import posix_relpath_to_path
 
 
 @dataclass
@@ -53,9 +54,13 @@ def install_agent_templates(
                         "user home directory (HOME may be unset)"
                     )
                     continue
-                destination = user_home / asset.destination_relpath
+                destination = user_home / posix_relpath_to_path(
+                    asset.destination_relpath
+                )
             else:
-                destination = project_root / asset.destination_relpath
+                destination = project_root / posix_relpath_to_path(
+                    asset.destination_relpath
+                )
             try:
                 if destination.exists() and not force:
                     report.skipped.append(destination)

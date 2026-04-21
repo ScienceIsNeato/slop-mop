@@ -47,17 +47,45 @@ def _glob_match(path: str, pattern: str) -> bool:
 
     Unlike ``fnmatch``, ``**`` is treated as a recursive wildcard that
     matches zero or more path components (e.g. ``**/*.snap`` matches both
-    ``bar.snap`` at the root and ``foo/bar/baz.snap`` in subdirectories).
+    ``bar.snap`` at the root and ``foo/bar/baz.snap`` in subdirectories;
+    ``vendor/**`` matches ``vendor/foo`` and ``vendor/foo/bar``).
     """
     if "**" not in pattern:
         return fnmatch(path, pattern)
-    segments = pattern.split("**/")
-    escaped = [
-        re.escape(seg).replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
-        for seg in segments
-    ]
-    regex = "(?:[^/]+/)*".join(escaped)
-    return bool(re.fullmatch(regex, path))
+    # Translate the glob to a regex character-by-character so that ** always
+    # means "any characters including /" regardless of position.
+    i = 0
+    parts: list[str] = []
+    while i < len(pattern):
+        if pattern[i : i + 2] == "**":
+            i += 2
+            if i < len(pattern) and pattern[i] == "/":
+                # **/ at the start/middle — matches zero or more dir components
+                i += 1
+                parts.append("(?:.+/)?")
+            else:
+                # trailing ** — matches anything remaining (including subdirs)
+                parts.append(".*")
+        elif pattern[i] == "*":
+            parts.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            parts.append("[^/]")
+            i += 1
+        else:
+            parts.append(re.escape(pattern[i]))
+            i += 1
+    return bool(re.fullmatch("".join(parts), path))
+
+
+def posix_relpath_to_path(posix_relpath: str) -> Path:
+    """Convert a posix-style relative path string to a native OS ``Path``.
+
+    ``pathlib`` accepts forward slashes on all platforms, so this is
+    equivalent to ``Path(posix_relpath)`` but makes the conversion intent
+    explicit and provides a single place to update if the approach changes.
+    """
+    return Path(posix_relpath)
 
 
 def is_path_excluded(path: str | Path, raw_filters: Iterable[str]) -> bool:
