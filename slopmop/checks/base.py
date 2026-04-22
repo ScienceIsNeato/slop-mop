@@ -28,6 +28,24 @@ from slopmop.utils import is_path_excluded
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class GateDiagnosticResult:
+    """A gate-specific health observation surfaced by ``sm doctor``.
+
+    Gates that know about their own failure modes beyond "is the binary
+    present?" can return these from ``BaseCheck.diagnose()``.  The doctor
+    framework collects them and renders them alongside the standard tool
+    presence checks.
+
+    ``severity`` must be one of ``"ok"``, ``"warn"``, or ``"fail"``.
+    """
+
+    severity: str  # "ok" | "warn" | "fail"
+    summary: str
+    detail: str = ""
+    fix_hint: str = ""
+
+
 class GateLevel(Enum):
     """Gate execution level — controls which commands include this gate.
 
@@ -577,6 +595,13 @@ class BaseCheck(ABC):
     # venv), but SM_TOOL gates should list specific executables.
     required_tools: ClassVar[List[str]] = []
 
+    # Minimum version constraints for tools declared in ``required_tools``.
+    # Maps tool name → PEP 440 version specifier string (e.g. ``">=24.0"``).
+    # Doctor uses this to call ``<tool> --version`` and warn when the
+    # installed version does not satisfy the constraint.  Opt-in: most
+    # gates leave this empty.
+    required_tool_versions: ClassVar[Dict[str, str]] = {}
+
     # How to install missing tools.  Doctor reads this to generate
     # actionable remediation hints.  Use "pip" for Python-ecosystem
     # tools, or a freeform string like "Install {tool} from https://..."
@@ -804,6 +829,29 @@ class BaseCheck(ABC):
             True if fix was successful, False otherwise
         """
         return False
+
+    def diagnose(self, project_root: str) -> List[GateDiagnosticResult]:
+        """Return gate-specific health observations for ``sm doctor``.
+
+        Gates that know their own failure modes beyond "is the binary present?"
+        can override this to surface actionable hints.  For example, a coverage
+        gate might return a ``warn`` result if no ``.coverage`` data file is
+        present, since that's the most common reason coverage checks fail.
+
+        Doctor calls this for every applicable, enabled gate and renders the
+        results alongside the standard tool inventory.
+
+        The default implementation returns an empty list — no gate-specific
+        issues.  Gates opt in by overriding.
+
+        Args:
+            project_root: Absolute path to the project root directory.
+
+        Returns:
+            A list of :class:`GateDiagnosticResult` observations.  Empty
+            means "no gate-specific issues found."
+        """
+        return []
 
     @property
     def why_it_matters(self) -> Optional[str]:

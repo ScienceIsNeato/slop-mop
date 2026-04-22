@@ -44,6 +44,7 @@ from slopmop.doctor.sm_env import (
 )
 from slopmop.doctor.state import (
     StateConfigCheck,
+    StateConfigGateRefsCheck,
     StateDirCheck,
     StateLockCheck,
     _find_newest_config_backup,
@@ -972,3 +973,63 @@ class TestFormatAge:
 
     def test_negative_clamps_to_zero(self):
         assert _format_seconds_age(-10) == "0s"
+
+
+# ── StateConfigGateRefsCheck ─────────────────────────────────────────────────
+
+
+class TestStateConfigGateRefsCheck:
+    """Tests for the gate-ref validation doctor check."""
+
+    def _write_config(self, tmp_path: Path, data: dict) -> None:
+        from slopmop.core.config import CONFIG_FILE
+
+        (tmp_path / CONFIG_FILE).write_text(
+            json.dumps(data, indent=2) + "\n", encoding="utf-8"
+        )
+
+    def _run(self, tmp_path: Path) -> object:
+        ctx = DoctorContext(project_root=tmp_path)
+        return StateConfigGateRefsCheck().run(ctx)
+
+    def test_skip_when_no_config(self, tmp_path: Path):
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.SKIP
+
+    def test_skip_when_config_unparseable(self, tmp_path: Path):
+        from slopmop.core.config import CONFIG_FILE
+
+        (tmp_path / CONFIG_FILE).write_text("not json", encoding="utf-8")
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.SKIP
+
+    def test_ok_when_empty_config(self, tmp_path: Path):
+        self._write_config(tmp_path, {})
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.OK
+
+    def test_ok_when_all_refs_valid(self, tmp_path: Path):
+        # Use a gate that definitely exists: laziness:sloppy-formatting.py
+        from slopmop.checks import ensure_checks_registered
+        from slopmop.core.registry import get_registry
+
+        ensure_checks_registered()
+        valid_gate = next(iter(get_registry().list_checks()))
+        self._write_config(tmp_path, {"disabled_gates": [valid_gate]})
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.OK
+
+    def test_warn_on_unknown_disabled_gate(self, tmp_path: Path):
+        self._write_config(
+            tmp_path, {"disabled_gates": ["myopia:nonexistent-gate-xyz"]}
+        )
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.WARN
+        assert "myopia:nonexistent-gate-xyz" in (r.detail or "")
+
+    def test_warn_on_unknown_flat_config_key(self, tmp_path: Path):
+        self._write_config(
+            tmp_path, {"category:completely-bogus-gate": {"enabled": False}}
+        )
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.WARN

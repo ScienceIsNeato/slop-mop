@@ -63,7 +63,7 @@ if ! command -v sm >/dev/null 2>&1; then
 fi
 
 mkdir -p .slopmop
-sm {verb} --swabbing-time 0 --json-file {json_file}
+sm {verb} --swabbing-timeout 0 --json-file {json_file}
 result=$?
 
 if [ $result -ne 0 ]; then

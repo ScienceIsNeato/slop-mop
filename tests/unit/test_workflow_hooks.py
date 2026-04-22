@@ -22,7 +22,7 @@ class TestCmdSwabHook:
             "output_format": "console",
             "no_cache": True,
             "gates": None,
-            "swabbing_time": None,
+            "swabbing_timeout": None,
             "output_file": None,
         }
         data.update(overrides)

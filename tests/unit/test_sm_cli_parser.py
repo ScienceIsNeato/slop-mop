@@ -167,21 +167,21 @@ class TestCreateParser:
             "overconfidence:coverage-gaps.py",
         ]
 
-    def test_swabbing_time_flag(self):
+    def test_swabbing_timeout_flag(self):
         parser = create_parser()
-        args = parser.parse_args(["swab", "--swabbing-time", "30"])
+        args = parser.parse_args(["swab", "--swabbing-timeout", "30"])
         assert args.verb == "swab"
-        assert args.swabbing_time == 30
+        assert args.swabbing_timeout == 30
 
-    def test_swabbing_time_default_none(self):
+    def test_swabbing_timeout_default_none(self):
         parser = create_parser()
         args = parser.parse_args(["scour"])
-        assert args.swabbing_time is None
+        assert args.swabbing_timeout is None
 
-    def test_swabbing_time_zero_disables(self):
+    def test_swabbing_timeout_zero_disables(self):
         parser = create_parser()
-        args = parser.parse_args(["swab", "--swabbing-time", "0"])
-        assert args.swabbing_time == 0
+        args = parser.parse_args(["swab", "--swabbing-timeout", "0"])
+        assert args.swabbing_timeout == 0
 
     def test_no_cache_flag_default_false(self):
         parser = create_parser()

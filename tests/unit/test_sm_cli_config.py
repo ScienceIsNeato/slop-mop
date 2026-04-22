@@ -28,7 +28,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         with patch("slopmop.checks.ensure_checks_registered"):
@@ -60,7 +60,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         with patch("slopmop.checks.ensure_checks_registered"):
@@ -104,7 +104,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         result = cmd_config(args)
@@ -143,7 +143,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         with (
@@ -176,7 +176,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         result = cmd_config(args)
@@ -203,7 +203,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         result = cmd_config(args)
@@ -240,7 +240,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         result = cmd_config(args)
@@ -278,7 +278,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         result = cmd_config(args)
@@ -288,12 +288,12 @@ class TestCmdConfig:
         assert "gate: myopia:vulnerability-blindness.py" in out
         assert "❌ DISABLED" in out
 
-    def test_config_swabbing_time_parser(self):
-        """config --swabbing-time flag parses correctly."""
+    def test_config_swabbing_timeout_parser(self):
+        """config --swabbing-timeout flag parses correctly."""
         parser = create_parser()
-        args = parser.parse_args(["config", "--swabbing-time", "45"])
+        args = parser.parse_args(["config", "--swabbing-timeout", "45"])
         assert args.verb == "config"
-        assert args.swabbing_time == 45
+        assert args.swabbing_timeout == 45
 
     def test_config_swab_off_parser(self):
         """config --swab-off flag parses correctly."""
@@ -345,8 +345,8 @@ class TestCmdConfig:
             "coverage_format",
         ]
 
-    def test_set_swabbing_time(self, tmp_path):
-        """--swabbing-time updates config file."""
+    def test_set_swabbing_timeout(self, tmp_path):
+        """--swabbing-timeout updates config file."""
         (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
 
         args = argparse.Namespace(
@@ -359,7 +359,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=30,
+            swabbing_timeout=30,
         )
 
         with patch("slopmop.checks.ensure_checks_registered"):
@@ -367,12 +367,12 @@ class TestCmdConfig:
 
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert config["swabbing_time"] == 30
+        assert config["swabbing_timeout"] == 30
 
-    def test_disable_swabbing_time(self, tmp_path):
-        """--swabbing-time 0 removes swabbing_time from config."""
+    def test_disable_swabbing_timeout(self, tmp_path):
+        """--swabbing-timeout 0 removes swabbing_timeout from config."""
         (tmp_path / ".sb_config.json").write_text(
-            json.dumps({"version": "1.0", "swabbing_time": 20})
+            json.dumps({"version": "1.0", "swabbing_timeout": 20})
         )
 
         args = argparse.Namespace(
@@ -385,7 +385,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=0,
+            swabbing_timeout=0,
         )
 
         with patch("slopmop.checks.ensure_checks_registered"):
@@ -393,7 +393,7 @@ class TestCmdConfig:
 
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert "swabbing_time" not in config
+        assert "swabbing_timeout" not in config
 
     def test_swab_off_gate(self, tmp_path):
         """--swab-off keeps a gate out of swab while leaving it enabled."""
@@ -410,7 +410,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
             swab_off="myopia:vulnerability-blindness.py",
             swab_on=None,
         )
@@ -445,7 +445,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
             swab_off=None,
             swab_on="myopia:dependency-risk.py",
         )
@@ -471,7 +471,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
             swab_off=None,
             swab_on=None,
             set_field=[
@@ -503,7 +503,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
             swab_off=None,
             swab_on=None,
             set_field=[
@@ -535,7 +535,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
             swab_off=None,
             swab_on=None,
             set_field=[
@@ -581,7 +581,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
             swab_off=None,
             swab_on=None,
             set_field=None,
@@ -610,7 +610,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         result = cmd_config(args)
@@ -636,7 +636,7 @@ class TestCmdConfig:
             include_dir=None,
             exclude_dir=None,
             json=None,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
 
         result = cmd_config(args)

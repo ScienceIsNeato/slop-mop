@@ -143,6 +143,7 @@ class TestSelectChecks:
             "state.lock",
             "state.dir_permissions",
             "state.config_readable",
+            "state.config_gate_refs",
             "state.commit_hook",
         }
 

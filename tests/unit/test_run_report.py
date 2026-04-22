@@ -379,9 +379,9 @@ class TestJsonAdapter:
         out = JsonAdapter.render(report)
         warnings = out.get("runtime_warnings")
         assert isinstance(warnings, list)
-        assert warnings[0]["code"] == "swabbing_time_budget_skipped"
+        assert warnings[0]["code"] == "swabbing_timeout_budget_skipped"
         assert warnings[0]["skipped_timed_checks"] == 1
-        assert warnings[0]["suggested_command"] == "sm swab --swabbing-time 0"
+        assert warnings[0]["suggested_command"] == "sm swab --swabbing-timeout 0"
 
     def test_runtime_warning_absent_without_time_budget_skips(self) -> None:
         summary = _summary([_result("p", CheckStatus.PASSED)])
@@ -640,7 +640,7 @@ class TestConsoleAdapter:
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
         assert "Swabbing-time budget skipped 1 timed check(s)" in out
-        assert "sm swab --swabbing-time 0" in out
+        assert "sm swab --swabbing-timeout 0" in out
 
     def test_failure_path_warns_on_time_budget_skips(self, capsys) -> None:
         summary = _summary(

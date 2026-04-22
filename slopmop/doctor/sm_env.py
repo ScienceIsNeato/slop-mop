@@ -22,9 +22,10 @@ surfaces as a FAIL here rather than a silent gate skip.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from slopmop.checks.base import find_tool
 from slopmop.cli.detection import REQUIRED_TOOLS
@@ -137,57 +138,128 @@ def _group_install_hints(missing: List[Tuple[str, str, str]]) -> str:
     return "\n".join(unique)
 
 
+# ---------------------------------------------------------------------------
+# Version-constraint helpers
+# ---------------------------------------------------------------------------
+
+_VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?(?:\.\d+)?)")
+
+
+def _parse_tool_version(tool_path: str) -> Optional[str]:
+    """Run ``<tool> --version`` and extract the first semver-like string."""
+    try:
+        result = subprocess.run(
+            [tool_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        output = (result.stdout + result.stderr).strip()
+        m = _VERSION_RE.search(output)
+        return m.group(1) if m else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _check_version_constraint(tool: str, path: str, spec: str) -> Optional[str]:
+    """Return an error message if ``tool`` at ``path`` does not satisfy ``spec``.
+
+    Returns ``None`` when the constraint is satisfied or the version cannot
+    be determined (conservative: don't warn on unreadable version output).
+    """
+    try:
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import Version
+    except ImportError:
+        return None  # packaging not available — skip silently
+
+    raw = _parse_tool_version(path)
+    if raw is None:
+        return None  # can't read version — don't false-positive
+
+    try:
+        installed = Version(raw)
+        if installed not in SpecifierSet(spec):
+            return f"found {raw}, requires {spec}"
+    except Exception:  # noqa: BLE001
+        return None  # malformed spec or version — skip
+
+    return None
+
+
 class ToolInventoryCheck(DoctorCheck):
     name = "sm_env.tool_inventory"
     description = "Gate-required tools resolvable via find_tool()"
 
-    def run(self, ctx: DoctorContext) -> DoctorResult:
-        root = str(ctx.project_root)
+    def _resolve_tools(self, root: str) -> Tuple[
+        Dict[str, str],
+        List[Tuple[str, str, str]],
+        List[Tuple[str, str]],
+    ]:
+        """Iterate REQUIRED_TOOLS and classify as resolved/missing/rejected."""
         validator = get_validator()
-
         resolved: Dict[str, str] = {}
         missing: List[Tuple[str, str, str]] = []
         validator_rejects: List[Tuple[str, str]] = []
-        seen_tools: set[str] = set()
+        seen: set[str] = set()
 
         for tool_name, check_name, install_cmd in REQUIRED_TOOLS:
-            if tool_name in seen_tools:
-                # Same tool guards multiple gates — first encounter
-                # already classified it.  Skip entirely.
+            if tool_name in seen:
                 continue
-            seen_tools.add(tool_name)
-
+            seen.add(tool_name)
             path = find_tool(tool_name, root)
             if not path:
                 missing.append((tool_name, check_name, install_cmd))
                 continue
-
             resolved[tool_name] = path
-            # Does the validator actually accept this resolved path?
-            # This is the Windows .exe tripwire.
             try:
                 validator.validate([path, "--version"])
             except SecurityError as exc:
                 validator_rejects.append((tool_name, str(exc).splitlines()[0]))
 
-        data: Dict[str, Any] = {
-            "resolved": resolved,
-            "missing": [{"tool": t, "gate": g, "install": c} for t, g, c in missing],
-            "validator_rejects": [
-                {"tool": t, "error": e} for t, e in validator_rejects
-            ],
-        }
+        return resolved, missing, validator_rejects
 
-        if not missing and not validator_rejects:
-            return self._ok(
-                f"all {len(resolved)} gate tools resolvable",
-                detail="\n".join(f"  {t:<16} {p}" for t, p in sorted(resolved.items())),
-                data=data,
-            )
+    def _collect_version_violations(
+        self, resolved: Dict[str, str], root: str
+    ) -> List[Tuple[str, str, str]]:
+        """Check required_tool_versions constraints for all registered gates."""
+        violations: List[Tuple[str, str, str]] = []
+        try:
+            from slopmop.checks import ensure_checks_registered  # noqa: PLC0415
+            from slopmop.core.registry import get_registry  # noqa: PLC0415
 
-        # Build a combined report so validator rejects don't hide
-        # missing tools — the user would otherwise fix one, re-run, then
-        # discover the other.
+            ensure_checks_registered()
+            registry = get_registry()
+            seen: set[str] = set()
+            for gate_name in registry.list_checks():
+                check_cls = registry._check_classes.get(gate_name)
+                if check_cls is None:
+                    continue
+                for tool, spec in getattr(
+                    check_cls, "required_tool_versions", {}
+                ).items():
+                    if tool in seen:
+                        continue
+                    seen.add(tool)
+                    path = resolved.get(tool) or find_tool(tool, root)
+                    if not path:
+                        continue
+                    msg = _check_version_constraint(tool, path, spec)
+                    if msg:
+                        violations.append((tool, gate_name, msg))
+        except Exception:  # noqa: BLE001 — advisory only
+            pass
+        return violations
+
+    def _build_report(
+        self,
+        resolved: Dict[str, str],
+        missing: List[Tuple[str, str, str]],
+        validator_rejects: List[Tuple[str, str]],
+        version_violations: List[Tuple[str, str, str]],
+        data: Dict[str, Any],
+    ) -> DoctorResult:
+        """Assemble the failure/warning report from collected issues."""
         summary_bits: List[str] = []
         detail_lines: List[str] = []
         fix_lines: List[str] = []
@@ -196,17 +268,15 @@ class ToolInventoryCheck(DoctorCheck):
             summary_bits.append(
                 f"{len(validator_rejects)} tool(s) rejected by allowlist"
             )
-            detail_lines.append(
-                "Tools resolved on disk but REJECTED by the subprocess "
-                "allowlist — gates will fail at invocation:"
-            )
-            detail_lines.append("")
+            detail_lines += [
+                "Tools resolved on disk but REJECTED by the subprocess allowlist:",
+                "",
+            ]
             for tool, err in validator_rejects:
                 detail_lines.append(f"  {tool:<16} {resolved[tool]}")
                 detail_lines.append(f"                   {err}")
             fix_lines.append(
-                "Validator rejects are a slopmop bug — please file an "
-                "issue with this output at "
+                "Validator rejects are a slopmop bug — file an issue at "
                 "https://github.com/ScienceIsNeato/slopmop/issues"
             )
 
@@ -214,17 +284,55 @@ class ToolInventoryCheck(DoctorCheck):
             summary_bits.append(f"{len(missing)} tool(s) missing")
             if detail_lines:
                 detail_lines.append("")
-            detail_lines.append("Missing tools block these gates:")
-            detail_lines.append("")
+            detail_lines += ["Missing tools block these gates:", ""]
             for tool, gate, _ in missing:
                 detail_lines.append(f"  {tool:<16} → {gate}")
             fix_lines.append(_group_install_hints(missing))
 
-        return self._fail(
-            "; ".join(summary_bits),
-            detail="\n".join(detail_lines),
-            fix_hint="\n".join(fix_lines),
-            data=data,
+        if version_violations:
+            summary_bits.append(
+                f"{len(version_violations)} version constraint(s) not met"
+            )
+            if detail_lines:
+                detail_lines.append("")
+            detail_lines += ["Version constraints not satisfied:", ""]
+            for tool, gate, msg in version_violations:
+                detail_lines.append(f"  {tool:<16} {msg}  (required by {gate})")
+
+        kw: Dict[str, Any] = {
+            "detail": "\n".join(detail_lines),
+            "fix_hint": "\n".join(fix_lines) if fix_lines else None,
+            "data": data,
+        }
+        if missing or validator_rejects:
+            return self._fail("; ".join(summary_bits), **kw)
+        return self._warn("; ".join(summary_bits), **kw)
+
+    def run(self, ctx: DoctorContext) -> DoctorResult:
+        root = str(ctx.project_root)
+        resolved, missing, validator_rejects = self._resolve_tools(root)
+        version_violations = self._collect_version_violations(resolved, root)
+
+        data: Dict[str, Any] = {
+            "resolved": resolved,
+            "missing": [{"tool": t, "gate": g, "install": c} for t, g, c in missing],
+            "validator_rejects": [
+                {"tool": t, "error": e} for t, e in validator_rejects
+            ],
+            "version_violations": [
+                {"tool": t, "gate": g, "message": m} for t, g, m in version_violations
+            ],
+        }
+
+        if not missing and not validator_rejects and not version_violations:
+            return self._ok(
+                f"all {len(resolved)} gate tools resolvable",
+                detail="\n".join(f"  {t:<16} {p}" for t, p in sorted(resolved.items())),
+                data=data,
+            )
+
+        return self._build_report(
+            resolved, missing, validator_rejects, version_violations, data
         )
 
 
@@ -355,5 +463,101 @@ class GateReadinessCheck(DoctorCheck):
             + _group_install_hints(
                 [(t, "", cmd) for t, _, cmd in REQUIRED_TOOLS if t in missing_tools]
             ),
+            data=data,
+        )
+
+
+class GateDiagnosticsCheck(DoctorCheck):
+    """Call each gate's optional ``diagnose()`` hook and surface results.
+
+    Some gates know their own failure modes better than a generic tool-
+    presence check does.  For example, a coverage gate might warn that
+    there is no ``.coverage`` data file — the most common reason it fails
+    even when pytest is installed and working.
+
+    This check iterates all applicable, enabled gates and calls
+    ``diagnose(project_root)`` on any that override the default (which
+    returns ``[]``).  Results are aggregated by severity: any ``fail``
+    returns a FAIL, any ``warn`` returns a WARN, empty → OK.
+
+    Gates that haven't overridden ``diagnose()`` are silently skipped.
+    """
+
+    name = "sm_env.gate_diagnostics"
+    description = "Gate-specific diagnostics from BaseCheck.diagnose() hooks"
+
+    def run(self, ctx: DoctorContext) -> DoctorResult:
+        from slopmop.checks import ensure_checks_registered  # noqa: PLC0415
+        from slopmop.checks.base import BaseCheck  # noqa: PLC0415
+        from slopmop.checks.custom import register_custom_gates  # noqa: PLC0415
+        from slopmop.core.registry import get_registry  # noqa: PLC0415
+
+        ensure_checks_registered()
+        config: Dict[str, Any] = {}
+        try:
+            cfg_path = ctx.project_root / ".sb_config.json"
+            if cfg_path.exists():
+                import json  # noqa: PLC0415
+
+                config = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            pass
+        register_custom_gates(config)
+        registry = get_registry()
+
+        root = str(ctx.project_root)
+        fails: List[Tuple[str, str, str]] = []  # (gate, summary, detail)
+        warns: List[Tuple[str, str, str]] = []
+
+        for gate_name, check_cls in registry._check_classes.items():
+            # Only bother calling diagnose() on gates that override it.
+            if check_cls.diagnose is BaseCheck.diagnose:
+                continue
+
+            try:
+                instance: BaseCheck = check_cls(config=config)
+                results = instance.diagnose(root)
+            except Exception:  # noqa: BLE001 — gate author error → skip
+                continue
+
+            for r in results:
+                bucket = fails if r.severity == "fail" else warns
+                bucket.append((gate_name, r.summary, r.detail or ""))
+
+        data: Dict[str, Any] = {
+            "fails": [{"gate": g, "summary": s} for g, s, _ in fails],
+            "warns": [{"gate": g, "summary": s} for g, s, _ in warns],
+        }
+
+        if not fails and not warns:
+            return self._ok("no gate-specific diagnostics reported", data=data)
+
+        lines: List[str] = []
+        if fails:
+            lines.append(f"FAIL ({len(fails)} gate(s)):")
+            for gate, summary, detail in fails:
+                lines.append(f"  [{gate}] {summary}")
+                if detail:
+                    for dl in detail.splitlines():
+                        lines.append(f"    {dl}")
+        if warns:
+            if lines:
+                lines.append("")
+            lines.append(f"WARN ({len(warns)} gate(s)):")
+            for gate, summary, detail in warns:
+                lines.append(f"  [{gate}] {summary}")
+                if detail:
+                    for dl in detail.splitlines():
+                        lines.append(f"    {dl}")
+
+        if fails:
+            return self._fail(
+                f"{len(fails)} gate(s) reported diagnostic failures",
+                detail="\n".join(lines),
+                data=data,
+            )
+        return self._warn(
+            f"{len(warns)} gate(s) reported diagnostic warnings",
+            detail="\n".join(lines),
             data=data,
         )

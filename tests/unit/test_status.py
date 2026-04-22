@@ -204,7 +204,7 @@ class TestPrintConfigSummary:
         assert "sloppy-formatting.py" in captured.out
 
     def test_prints_time_budget(self, tmp_path, capsys):
-        config = {"swabbing_time": 120}
+        config = {"swabbing_timeout": 120}
         _print_config_summary(
             tmp_path, config, swab_count=3, scour_count=1, disabled=[]
         )
@@ -651,10 +651,10 @@ class TestPrintConfigSummary:
         assert "5 scour" in out
 
     def test_shows_time_budget(self, capsys, tmp_path):
-        """Shows swabbing-time budget when configured."""
+        """Shows swabbing-timeout budget when configured."""
         _print_config_summary(
             tmp_path,
-            {"swabbing_time": 30},
+            {"swabbing_timeout": 30},
             swab_count=10,
             scour_count=3,
             disabled=[],

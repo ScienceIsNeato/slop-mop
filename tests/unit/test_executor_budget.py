@@ -17,7 +17,7 @@ class TestSwabbingTimeBudget:
     slots are packed with heavier checks that fit projected time.
 
     Integration tests that verify actual budget expiry use checks that
-    sleep >1s (since swabbing_time is int, minimum positive is 1).
+    sleep >1s (since swabbing_timeout is int, minimum positive is 1).
     """
 
     def _make_registry(self, *check_specs):
@@ -34,7 +34,7 @@ class TestSwabbingTimeBudget:
     # ── Basic budget behaviour ────────────────────────────────────────
 
     def test_no_budget_runs_all(self, tmp_path):
-        """Without swabbing_time, all checks run regardless of timings."""
+        """Without swabbing_timeout, all checks run regardless of timings."""
         registry = self._make_registry(
             ("fast", 0.01, CheckStatus.PASSED),
             ("slow", 0.01, CheckStatus.PASSED),
@@ -45,14 +45,14 @@ class TestSwabbingTimeBudget:
         summary = executor.run_checks(
             str(tmp_path),
             ["overconfidence:fast", "overconfidence:slow"],
-            swabbing_time=None,
+            swabbing_timeout=None,
             timings=timings,
         )
         assert summary.total_checks == 2
         assert summary.passed == 2
 
     def test_zero_budget_disables_limit(self, tmp_path):
-        """swabbing_time=0 means no limit — all gates run."""
+        """swabbing_timeout=0 means no limit — all gates run."""
         registry = self._make_registry(
             ("check", 0.01, CheckStatus.PASSED),
         )
@@ -62,13 +62,13 @@ class TestSwabbingTimeBudget:
         summary = executor.run_checks(
             str(tmp_path),
             ["overconfidence:check"],
-            swabbing_time=0,
+            swabbing_timeout=0,
             timings=timings,
         )
         assert summary.passed == 1
 
     def test_negative_budget_disables_limit(self, tmp_path):
-        """swabbing_time=-1 means no limit — all gates run."""
+        """swabbing_timeout=-1 means no limit — all gates run."""
         registry = self._make_registry(
             ("check", 0.01, CheckStatus.PASSED),
         )
@@ -78,7 +78,7 @@ class TestSwabbingTimeBudget:
         summary = executor.run_checks(
             str(tmp_path),
             ["overconfidence:check"],
-            swabbing_time=-1,
+            swabbing_timeout=-1,
             timings=timings,
         )
         assert summary.passed == 1
@@ -94,7 +94,7 @@ class TestSwabbingTimeBudget:
         summary = executor.run_checks(
             str(tmp_path),
             ["overconfidence:a", "overconfidence:b"],
-            swabbing_time=1,
+            swabbing_timeout=1,
             timings={},
         )
         assert summary.passed == 2
@@ -111,7 +111,7 @@ class TestSwabbingTimeBudget:
         summary = executor.run_checks(
             str(tmp_path),
             ["overconfidence:known", "overconfidence:unknown"],
-            swabbing_time=5,
+            swabbing_timeout=5,
             timings=timings,
         )
 
@@ -142,7 +142,7 @@ class TestSwabbingTimeBudget:
         summary = executor.run_checks(
             str(tmp_path),
             ["overconfidence:blocker", "overconfidence:victim"],
-            swabbing_time=1,
+            swabbing_timeout=1,
             timings=timings,
         )
 
@@ -176,7 +176,7 @@ class TestSwabbingTimeBudget:
                 "overconfidence:untimed",
                 "overconfidence:timed-victim",
             ],
-            swabbing_time=1,
+            swabbing_timeout=1,
             timings=timings,
         )
 
@@ -204,7 +204,7 @@ class TestSwabbingTimeBudget:
             budget_active=False,
             budget_expired=False,
             budget_elapsed=0.0,
-            swabbing_time=None,
+            swabbing_timeout=None,
         )
         assert result == ["b", "c", "a"]
 
@@ -224,7 +224,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=True,
             budget_elapsed=25.0,
-            swabbing_time=20,
+            swabbing_timeout=20,
         )
 
         assert result == ["untimed1"]
@@ -251,7 +251,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=True,
             budget_elapsed=22.5,
-            swabbing_time=20,
+            swabbing_timeout=20,
         )
 
         output = executor._results["gate1"].output
@@ -273,7 +273,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=False,
             budget_elapsed=0.0,
-            swabbing_time=60,
+            swabbing_timeout=60,
         )
 
         assert len(result) == 4
@@ -293,7 +293,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=False,
             budget_elapsed=0.0,
-            swabbing_time=60,
+            swabbing_timeout=60,
         )
 
         # 2 untimed fill 2 slots; timed picks fast lane t3 then heavy lane t1.
@@ -315,7 +315,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=False,
             budget_elapsed=0.0,
-            swabbing_time=60,
+            swabbing_timeout=60,
         )
 
         assert result == ["b"]
@@ -337,7 +337,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=False,
             budget_elapsed=2.0,
-            swabbing_time=10,
+            swabbing_timeout=10,
         )
 
         assert result == []
@@ -358,7 +358,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=False,
             budget_elapsed=0.0,
-            swabbing_time=60,
+            swabbing_timeout=60,
         )
 
         assert result == []
@@ -377,7 +377,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=False,
             budget_elapsed=0.0,
-            swabbing_time=60,
+            swabbing_timeout=60,
         )
 
         assert len(result) == 2
@@ -397,7 +397,7 @@ class TestSwabbingTimeBudget:
             budget_active=True,
             budget_expired=False,
             budget_elapsed=0.0,
-            swabbing_time=60,
+            swabbing_timeout=60,
         )
 
         assert result == ["u1", "u2"]
@@ -414,7 +414,7 @@ class TestSwabbingTimeBudget:
             names=["gate-a", "gate-b"],
             timings={"gate-a": 15.0, "gate-b": 8.5},
             elapsed=22.5,
-            swabbing_time=20,
+            swabbing_timeout=20,
         )
 
         assert len(executor._results) == 2

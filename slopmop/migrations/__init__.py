@@ -138,6 +138,84 @@ def _rename_source_duplication(project_root: Path) -> None:
         config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
+# ===================================================================
+# Migration: rename-dart-gates (0.11.1 → 0.12.0)
+# ===================================================================
+
+# Old dart gate names → new category:gate names
+_DART_GATE_RENAMES: dict[str, str] = {
+    "overconfidence:flutter-analyze": "overconfidence:missing-annotations.dart",
+    "overconfidence:flutter-test": "overconfidence:untested-code.dart",
+    "laziness:dart-format-check": "laziness:sloppy-formatting.dart",
+    # Also handle bare names that may appear in disabled_gates
+    "flutter-analyze": "overconfidence:missing-annotations.dart",
+    "flutter-test": "overconfidence:untested-code.dart",
+    "dart-format-check": "laziness:sloppy-formatting.dart",
+}
+
+
+def _rename_dart_gates(project_root: Path) -> None:
+    """Rename old flutter-analyze/flutter-test/dart-format-check gate references."""
+    config_path = project_root / _CONFIG_FILE
+    if not config_path.exists():
+        return
+
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        data: Dict[str, Any] = json.loads(raw)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    changed = False
+
+    # --- disabled_gates list ------------------------------------------------
+    disabled_raw = data.get("disabled_gates")
+    if isinstance(disabled_raw, list):
+        disabled_list: List[Any] = cast(List[Any], disabled_raw)
+        new_disabled: List[str] = []
+        for entry in disabled_list:
+            name: str = str(entry)
+            mapped = _DART_GATE_RENAMES.get(name, name)
+            if mapped != name:
+                changed = True
+            new_disabled.append(mapped)
+        if changed:
+            data["disabled_gates"] = new_disabled
+
+    # --- flat colon-keyed gate config ---------------------------------------
+    for old_key, new_key in list(_DART_GATE_RENAMES.items()):
+        if ":" in old_key and old_key in data:
+            data[new_key] = data.pop(old_key)
+            changed = True
+
+    if changed:
+        config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+# ===================================================================
+# Migration: rename-swabbing-time-to-timeout (0.14.1 → 0.15.0)
+# ===================================================================
+
+
+def _rename_swabbing_time(project_root: Path) -> None:
+    """Rename config key swabbing_time → swabbing_timeout."""
+    config_path = project_root / _CONFIG_FILE
+    if not config_path.exists():
+        return
+
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        data: Dict[str, Any] = json.loads(raw)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    if "swabbing_time" not in data:
+        return
+
+    data["swabbing_timeout"] = data.pop("swabbing_time")
+    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Migration registry
 # ---------------------------------------------------------------------------
@@ -148,6 +226,18 @@ _MIGRATIONS: List[UpgradeMigration] = [
         min_version="0.11.0",
         max_version="0.11.1",
         apply=_rename_source_duplication,
+    ),
+    UpgradeMigration(
+        key="rename-dart-gates",
+        min_version="0.11.1",
+        max_version="0.12.0",
+        apply=_rename_dart_gates,
+    ),
+    UpgradeMigration(
+        key="rename-swabbing-time-to-timeout",
+        min_version="0.14.1",
+        max_version="0.15.0",
+        apply=_rename_swabbing_time,
     ),
 ]
 

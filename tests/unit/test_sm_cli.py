@@ -220,7 +220,7 @@ class TestGitHooksFunctions:
         # Should use PATH-based sm lookup
         assert "command -v sm" in script
         # Should write structured output for LLM consumption
-        assert "--swabbing-time 0" in script
+        assert "--swabbing-timeout 0" in script
         assert "--json-file .slopmop/last_swab.json" in script
         assert "--json --output-file" not in script
         assert "Structured results:" in script
@@ -231,7 +231,7 @@ class TestGitHooksFunctions:
         script = _generate_hook_script("scour")
         assert "sm scour" in script
         assert "# Command: sm scour" in script
-        assert "--swabbing-time 0" in script
+        assert "--swabbing-timeout 0" in script
         assert "--json-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
@@ -600,7 +600,7 @@ class TestScourDisablesFailFast:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=False,
         )
 
@@ -1004,7 +1004,7 @@ class TestValidateJsonOutputFile:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=True,
             output_file=str(output_file),
             sarif_output=False,
@@ -1043,7 +1043,7 @@ class TestUnknownGateValidation:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=False,
             no_cache=False,
         )
@@ -1085,7 +1085,7 @@ class TestUnknownGateValidation:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=False,
             no_cache=False,
         )
@@ -1134,7 +1134,7 @@ class TestPreloadedValidationConfig:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=False,
             no_cache=False,
             sarif_output=False,

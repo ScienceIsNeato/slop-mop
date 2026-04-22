@@ -34,7 +34,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 from slopmop.cli.hooks import HOOK_PARK_SUFFIX
 from slopmop.core.config import config_file_path, state_dir_path
@@ -471,4 +471,116 @@ class StateCommitHookCheck(DoctorCheck):
                 f"{parked} {hook_path}"
             ),
             data={"parked_at": str(parked)},
+        )
+
+
+def _extract_gate_refs_from_config(data: Dict[str, Any]) -> List[str]:
+    """Return all gate names referenced in a parsed .sb_config.json dict.
+
+    Covers:
+    - ``disabled_gates`` list (flat gate names like ``"myopia:ambiguity-mines.py"``)
+    - Flat top-level keys with a colon (``"myopia:some-gate"``)
+    - Hierarchical ``{"myopia": {"gates": {"some-gate": ...}}}`` sections —
+      gate names are looked up as ``"category:name"``
+    """
+    refs: List[str] = []
+
+    # --- disabled_gates list ------------------------------------------------
+    disabled_obj: object = data.get("disabled_gates")
+    if isinstance(disabled_obj, list):
+        for item in cast(List[object], disabled_obj):
+            if isinstance(item, str):
+                refs.append(item)
+
+    # --- flat colon-keyed gate config ---------------------------------------
+    for key in data:
+        if isinstance(key, str) and ":" in key and not key.startswith("_"):
+            # Keys like "myopia:ambiguity-mines.py" are flat gate refs.
+            refs.append(key)
+
+    # --- hierarchical category → gates dict ---------------------------------
+    for category_key, category_val in data.items():
+        if not isinstance(category_key, str) or ":" in category_key:
+            continue
+        if not isinstance(category_val, dict):
+            continue
+        cat_dict = cast(Dict[str, Any], category_val)
+        gates_raw: object = cat_dict.get("gates")
+        if isinstance(gates_raw, dict):
+            for gate_name in cast(Dict[object, Any], gates_raw):
+                if isinstance(gate_name, str):
+                    refs.append(f"{category_key}:{gate_name}")
+
+    return list(dict.fromkeys(refs))  # deduplicate while preserving order
+
+
+class StateConfigGateRefsCheck(DoctorCheck):
+    """Warn when ``.sb_config.json`` references gate names not in the registry.
+
+    Stale gate refs silently have no effect — the config key is ignored and
+    the user has no idea their tuning is a no-op.  This check surfaces them
+    before they become a debugging mystery.
+
+    Covers the three config shapes: ``disabled_gates`` list, flat
+    ``"category:gate"`` keys, and hierarchical
+    ``{"category": {"gates": {"gate": ...}}}`` blocks.
+
+    Skipped when config is absent or unparseable (``state.config_readable``
+    already covers those cases).
+    """
+
+    name = "state.config_gate_refs"
+    description = "Gate names in .sb_config.json exist in the registry"
+
+    def run(self, ctx: DoctorContext) -> DoctorResult:
+        from slopmop.checks import ensure_checks_registered  # noqa: PLC0415
+        from slopmop.checks.custom import register_custom_gates  # noqa: PLC0415
+        from slopmop.core.registry import get_registry  # noqa: PLC0415
+
+        path = config_file_path(ctx.project_root)
+        doc_data: Dict[str, Any] = {"config_file": str(path)}
+
+        if not path.exists():
+            return self._skip("no config (nothing to validate)", data=doc_data)
+
+        try:
+            raw = path.read_text(encoding="utf-8")
+            cfg: Dict[str, Any] = json.loads(raw)
+        except (OSError, json.JSONDecodeError):
+            return self._skip(
+                "config unreadable — state.config_readable will report this",
+                data=doc_data,
+            )
+
+        ensure_checks_registered()
+        register_custom_gates(cfg)
+        registry = get_registry()
+        known = set(registry.list_checks())
+
+        refs = _extract_gate_refs_from_config(cfg)
+        unknown = [r for r in refs if r not in known]
+
+        doc_data["referenced_gates"] = refs
+        doc_data["unknown_gates"] = unknown
+
+        if not unknown:
+            return self._ok(
+                f"all {len(refs)} referenced gate(s) exist in registry",
+                data=doc_data,
+            )
+
+        detail_lines = ["Gate names in config not found in registry:"]
+        for name in unknown:
+            detail_lines.append(f"  {name}")
+        detail_lines.append("")
+        detail_lines.append(
+            "These config entries have no effect. "
+            "Remove them or check for typos / version renames."
+        )
+
+        return self._warn(
+            f"{len(unknown)} unknown gate ref(s) in config",
+            detail="\n".join(detail_lines),
+            fix_hint="sm doctor --list-checks  # see available gate names",
+            data=doc_data,
         )

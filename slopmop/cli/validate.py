@@ -32,32 +32,35 @@ def _default_json_artifact_path(project_root: Path, artifact_name: str) -> str:
     return str(project_root / ".slopmop" / artifact_name)
 
 
-def _resolve_swabbing_time(
+def _resolve_swabbing_timeout(
     args: argparse.Namespace,
     project_root: Path,
     preloaded_config: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
-    """Resolve effective swabbing-time budget for this run.
+    """Resolve effective swabbing-timeout budget for this run.
 
     Resolution order:
-    1. CLI ``--swabbing-time``
+    1. CLI ``--swabbing-timeout``
     2. ``.sb_config.json`` value
     3. None (no budget)
     """
-    swabbing_time: Optional[int] = getattr(args, "swabbing_time", None)
-    if swabbing_time is None:
+    swabbing_timeout: Optional[int] = getattr(args, "swabbing_timeout", None)
+    if swabbing_timeout is None:
         if preloaded_config is not None:
             config = preloaded_config
         else:
             from slopmop.sm import load_config
 
             config = load_config(project_root)
-        config_val = config.get("swabbing_time")
+        config_val = config.get("swabbing_timeout")
+        if config_val is None:
+            # Backward-compat: accept the deprecated key name
+            config_val = config.get("swabbing_time")
         if isinstance(config_val, (int, float)) and config_val > 0:
-            swabbing_time = int(config_val)
+            swabbing_timeout = int(config_val)
 
-    if swabbing_time is not None and swabbing_time > 0:
-        return int(swabbing_time)
+    if swabbing_timeout is not None and swabbing_timeout > 0:
+        return int(swabbing_timeout)
     return None
 
 
@@ -92,15 +95,15 @@ def _print_header(
     project_root: Path,
     gates: List[str],
     args: argparse.Namespace,
-    swabbing_time: "Optional[int]" = None,
+    swabbing_timeout: "Optional[int]" = None,
 ) -> None:
     """Print validation header.
 
     Single-line banner with optional time budget appended.
     """
     parts = ["\u2728 scanning the code for slop to mop"]
-    if swabbing_time is not None and swabbing_time > 0:
-        parts.append(f"  \u23f1\ufe0f  Time budget: {swabbing_time}s")
+    if swabbing_timeout is not None and swabbing_timeout > 0:
+        parts.append(f"  \u23f1\ufe0f  Time budget: {swabbing_timeout}s")
     print("".join(parts))
     print()
 
@@ -206,7 +209,7 @@ def _run_validation(
     verb = level_name or "validation"
     lock_stale_after: Optional[float] = None
     lock_expected_duration: Optional[float] = None
-    resolved_swabbing_time: Optional[int] = None
+    resolved_swabbing_timeout: Optional[int] = None
 
     timing_averages = load_timing_averages(str(project_root))
     historical_estimate = (
@@ -216,15 +219,15 @@ def _run_validation(
     )
 
     if level_name == "swab":
-        resolved_swabbing_time = _resolve_swabbing_time(
+        resolved_swabbing_timeout = _resolve_swabbing_timeout(
             args,
             project_root,
             preloaded_config=preloaded_config,
         )
-        if resolved_swabbing_time is not None:
-            lock_stale_after = float(resolved_swabbing_time * 3)
+        if resolved_swabbing_timeout is not None:
+            lock_stale_after = float(resolved_swabbing_timeout * 3)
             lock_expected_duration = min(
-                max(float(resolved_swabbing_time), 1.0),
+                max(float(resolved_swabbing_timeout), 1.0),
                 max(float(historical_estimate), 1.0),
             )
         else:
@@ -238,7 +241,7 @@ def _run_validation(
             gates,
             level_name,
             project_root,
-            resolved_swabbing_time=resolved_swabbing_time,
+            resolved_swabbing_timeout=resolved_swabbing_timeout,
             preloaded_config=preloaded_config,
             custom_gates_registered=custom_gates_registered,
         )
@@ -271,7 +274,7 @@ def _run_validation_locked(
     gates: List[str],
     level_name: Optional[str],
     project_root: Path,
-    resolved_swabbing_time: Optional[int] = None,
+    resolved_swabbing_timeout: Optional[int] = None,
     *,
     preloaded_config: Optional[Dict[str, Any]] = None,
     custom_gates_registered: bool = False,
@@ -308,7 +311,7 @@ def _run_validation_locked(
     # RunReport + ConsoleAdapter own the end-of-run summary)
     reporter = ConsoleReporter(quiet=args.quiet, verbose=args.verbose)
 
-    # Load configuration (must happen early — swabbing-time default lives here)
+    # Load configuration (must happen early — swabbing-timeout default lives here)
     config = (
         preloaded_config if preloaded_config is not None else load_config(project_root)
     )
@@ -352,12 +355,12 @@ def _run_validation_locked(
         and not getattr(args, "static", False)
     )
 
-    # Handle time budget (swabbing-time).
+    # Handle time budget (swabbing-timeout).
     # Only applies to swab, not scour.  Read from CLI flag first,
     # fall back to config value.  <= 0 means no limit.
-    swabbing_time: Optional[int] = resolved_swabbing_time
-    if swabbing_time is None:
-        swabbing_time = _resolve_swabbing_time(
+    swabbing_timeout: Optional[int] = resolved_swabbing_timeout
+    if swabbing_timeout is None:
+        swabbing_timeout = _resolve_swabbing_timeout(
             args,
             project_root,
             preloaded_config=preloaded_config,
@@ -365,15 +368,15 @@ def _run_validation_locked(
 
     # Only enforce for swab runs
     if level_name != "swab":
-        swabbing_time = None
+        swabbing_timeout = None
 
     # Print header BEFORE starting dynamic display
     if not args.quiet and not json_mode and not sarif_to_stdout:
-        _print_header(project_root, gates, args, swabbing_time=swabbing_time)
+        _print_header(project_root, gates, args, swabbing_timeout=swabbing_timeout)
 
     # Load timing history for budget filtering
     timings: Optional[dict[str, float]] = None
-    if swabbing_time is not None and swabbing_time > 0:
+    if swabbing_timeout is not None and swabbing_timeout > 0:
         timings = load_timing_averages(str(project_root))
 
     # Set up dynamic display if appropriate
@@ -419,7 +422,7 @@ def _run_validation_locked(
             check_names=gates,
             config=config,
             auto_fix=auto_fix,
-            swabbing_time=swabbing_time,
+            swabbing_timeout=swabbing_timeout,
             timings=timings,
             use_cache=not getattr(args, "no_cache", False),
         )
