@@ -19,8 +19,8 @@ def ctx(tmp_path: Path) -> DoctorContext:  # noqa: ambiguity-mine
     return DoctorContext(project_root=tmp_path)
 
 
-from tests.unit.conftest import mk_python_project as _mk_python_project, mk_project_venv as _mk_project_venv
-
+from tests.unit.conftest import mk_project_venv as _mk_project_venv
+from tests.unit.conftest import mk_python_project as _mk_python_project
 
 # ── tests ─────────────────────────────────────────────────────────────────
 

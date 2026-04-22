@@ -69,8 +69,8 @@ def _mk_lock(root: Path, meta: dict) -> Path:  # noqa: ambiguity-mine
     return lock_file
 
 
-from tests.unit.conftest import mk_python_project as _mk_python_project, mk_project_venv as _mk_project_venv
-
+from tests.unit.conftest import mk_project_venv as _mk_project_venv
+from tests.unit.conftest import mk_python_project as _mk_python_project
 
 # ── runtime.* ────────────────────────────────────────────────────────────
 
