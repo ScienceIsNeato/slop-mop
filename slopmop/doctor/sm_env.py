@@ -503,7 +503,9 @@ class GateDiagnosticsCheck(DoctorCheck):
             if cfg_path.exists():
                 import json  # noqa: PLC0415
 
-                config = json.loads(cfg_path.read_text(encoding="utf-8"))
+                loaded: object = json.loads(cfg_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    config = loaded  # type: ignore[assignment]  # narrowed above
         except Exception:  # noqa: BLE001
             pass
         register_custom_gates(config)

@@ -241,7 +241,12 @@ def _rename_swabbing_time(project_root: Path) -> None:
     if "swabbing_time" not in data:
         return
 
-    data["swabbing_timeout"] = data.pop("swabbing_time")
+    if "swabbing_timeout" not in data:
+        # Rename: no new key present yet — safe to migrate.
+        data["swabbing_timeout"] = data.pop("swabbing_time")
+    else:
+        # New key already set — just drop the stale legacy key.
+        del data["swabbing_time"]
     config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
