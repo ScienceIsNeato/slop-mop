@@ -394,7 +394,7 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
     print()
 
     # Show swabbing-timeout setting
-    swabbing_timeout = config.get("swabbing_timeout")
+    swabbing_timeout = config.get("swabbing_timeout", config.get("swabbing_time"))
     if isinstance(swabbing_timeout, (int, float)) and swabbing_timeout > 0:
         print(f"⏱️  Swabbing-timeout budget: {int(swabbing_timeout)}s")
     else:
@@ -489,6 +489,7 @@ def _set_swabbing_timeout(
         print("✅ Swabbing-timeout budget disabled (no limit)")
     else:
         config["swabbing_timeout"] = seconds
+        config.pop("swabbing_time", None)  # also remove legacy key
         config_file.write_text(json.dumps(config, indent=2))
         print(f"✅ Swabbing-timeout budget set to {seconds}s")
     return 0

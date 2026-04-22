@@ -74,7 +74,7 @@ def _print_config_summary(
     else:
         print("📄 Config: none (using defaults)")
 
-    swabbing_timeout = config.get("swabbing_timeout")
+    swabbing_timeout = config.get("swabbing_timeout", config.get("swabbing_time"))
     if isinstance(swabbing_timeout, (int, float)) and swabbing_timeout > 0:
         print(f"⏱️  Time budget: {int(swabbing_timeout)}s")
 
@@ -729,7 +729,7 @@ def _build_status_dict(
     result: Dict[str, Any] = {
         "project_root": str(root),
         "config_file": str(root / ".sb_config.json"),
-        "swabbing_timeout": config.get("swabbing_timeout"),
+        "swabbing_timeout": config.get("swabbing_timeout", config.get("swabbing_time")),
         "gates": {
             "swab_count": len(swab_gates),
             "scour_only_count": len(scour_only_gates),
