@@ -72,6 +72,17 @@ def _glob_match(path: str, pattern: str) -> bool:
         elif pattern[i] == "?":
             parts.append("[^/]")
             i += 1
+        elif pattern[i] == "[":
+            # Character class — pass through verbatim to preserve [Bb], [^x], etc.
+            j = i + 1
+            if j < len(pattern) and pattern[j] in ("!", "^"):
+                j += 1
+            if j < len(pattern) and pattern[j] == "]":
+                j += 1  # ] immediately after opening bracket is a literal ]
+            while j < len(pattern) and pattern[j] != "]":
+                j += 1
+            parts.append(pattern[i : j + 1])
+            i = j + 1
         else:
             parts.append(re.escape(pattern[i]))
             i += 1
