@@ -639,7 +639,7 @@ class TestConsoleAdapter:
         report = RunReport.from_summary(summary)
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
-        assert "Swabbing-time budget skipped 1 timed check(s)" in out
+        assert "Swabbing-timeout budget skipped 1 timed check(s)" in out
         assert "sm swab --swabbing-timeout 0" in out
 
     def test_failure_path_warns_on_time_budget_skips(self, capsys) -> None:
@@ -652,7 +652,7 @@ class TestConsoleAdapter:
         report = RunReport.from_summary(summary)
         ConsoleAdapter(report).render()
         out = capsys.readouterr().out
-        assert "Swabbing-time budget skipped 1 timed check(s)" in out
+        assert "Swabbing-timeout budget skipped 1 timed check(s)" in out
 
     def test_cache_hint_renders_when_cached_results_present(self, capsys) -> None:
         summary = _summary(

@@ -552,6 +552,12 @@ class StateConfigGateRefsCheck(DoctorCheck):
                 data=doc_data,
             )
 
+        if not isinstance(cfg, dict):
+            return self._skip(
+                "config root is not a JSON object — state.config_readable will report this",
+                data=doc_data,
+            )
+
         ensure_checks_registered()
         register_custom_gates(cfg)
         registry = get_registry()

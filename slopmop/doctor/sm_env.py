@@ -148,6 +148,10 @@ _VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?(?:\.\d+)?)")
 def _parse_tool_version(tool_path: str) -> Optional[str]:
     """Run ``<tool> --version`` and extract the first semver-like string."""
     try:
+        get_validator().validate([tool_path, "--version"])
+    except SecurityError:
+        return None
+    try:
         result = subprocess.run(
             [tool_path, "--version"],
             capture_output=True,
@@ -509,20 +513,32 @@ class GateDiagnosticsCheck(DoctorCheck):
         fails: List[Tuple[str, str, str]] = []  # (gate, summary, detail)
         warns: List[Tuple[str, str, str]] = []
 
+        from slopmop.doctor.gate_preflight import _gate_enabled  # noqa: PLC0415
+
         for gate_name, check_cls in registry._check_classes.items():
             # Only bother calling diagnose() on gates that override it.
             if check_cls.diagnose is BaseCheck.diagnose:
                 continue
 
+            # Skip gates disabled in config.
+            if not _gate_enabled(config, gate_name):
+                continue
+
             try:
                 instance: BaseCheck = check_cls(config=config)
+                # Skip gates not applicable to this project.
+                if not instance.is_applicable(root):
+                    continue
                 results = instance.diagnose(root)
             except Exception:  # noqa: BLE001 — gate author error → skip
                 continue
 
             for r in results:
-                bucket = fails if r.severity == "fail" else warns
-                bucket.append((gate_name, r.summary, r.detail or ""))
+                if r.severity == "fail":
+                    fails.append((gate_name, r.summary, r.detail or ""))
+                elif r.severity == "warn":
+                    warns.append((gate_name, r.summary, r.detail or ""))
+                # "ok" and unknown severities are silently ignored
 
         data: Dict[str, Any] = {
             "fails": [{"gate": g, "summary": s} for g, s, _ in fails],

@@ -166,7 +166,33 @@ def _rename_dart_gates(project_root: Path) -> None:
     except (json.JSONDecodeError, OSError):
         return
 
+    if not isinstance(data, dict):
+        return
+
     changed = False
+
+    # --- hierarchical format: {category: {gates: {old_name: cfg}}} ----------
+    _DART_HIER_RENAMES: Dict[str, Dict[str, str]] = {
+        "overconfidence": {
+            "flutter-analyze": "missing-annotations.dart",
+            "flutter-test": "untested-code.dart",
+        },
+        "laziness": {
+            "dart-format-check": "sloppy-formatting.dart",
+        },
+    }
+    for category, gate_map in _DART_HIER_RENAMES.items():
+        cat_raw = data.get(category)
+        if not isinstance(cat_raw, dict):
+            continue
+        gates_raw = cast(Dict[str, Any], cat_raw).get("gates")
+        if not isinstance(gates_raw, dict):
+            continue
+        gates_dict: Dict[str, Any] = cast(Dict[str, Any], gates_raw)
+        for old_name, new_name in gate_map.items():
+            if old_name in gates_dict:
+                gates_dict[new_name] = gates_dict.pop(old_name)
+                changed = True
 
     # --- disabled_gates list ------------------------------------------------
     disabled_raw = data.get("disabled_gates")
@@ -207,6 +233,9 @@ def _rename_swabbing_time(project_root: Path) -> None:
         raw = config_path.read_text(encoding="utf-8")
         data: Dict[str, Any] = json.loads(raw)
     except (json.JSONDecodeError, OSError):
+        return
+
+    if not isinstance(data, dict):
         return
 
     if "swabbing_time" not in data:

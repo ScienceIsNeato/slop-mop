@@ -104,7 +104,7 @@ class JsonAdapter:
                 {
                     "code": "swabbing_timeout_budget_skipped",
                     "message": (
-                        "Swabbing-time budget skipped timed checks; "
+                        "Swabbing-timeout budget skipped timed checks; "
                         "run full coverage when needed."
                     ),
                     "skipped_timed_checks": budget_skips,
@@ -330,7 +330,7 @@ class ConsoleAdapter:
             return
 
         print(
-            "   ⚠️  Swabbing-time budget skipped "
+            "   ⚠️  Swabbing-timeout budget skipped "
             f"{skipped_for_budget} timed check(s); "
             "run `sm swab --swabbing-timeout 0` for full coverage."
         )

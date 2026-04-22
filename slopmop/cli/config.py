@@ -484,6 +484,7 @@ def _set_swabbing_timeout(
     """Set or disable the swabbing-timeout budget."""
     if seconds <= 0:
         config.pop("swabbing_timeout", None)
+        config.pop("swabbing_time", None)  # also remove legacy key
         config_file.write_text(json.dumps(config, indent=2))
         print("✅ Swabbing-timeout budget disabled (no limit)")
     else:
