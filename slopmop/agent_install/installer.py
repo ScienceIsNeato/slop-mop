@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import List
 
 from slopmop.agent_install.loader import load_assets
-from slopmop.agent_install.registry import TARGETS, expand_target
+from slopmop.agent_install.registry import (
+    TARGETS,
+    expand_target,
+    uses_user_home_destination,
+)
+from slopmop.utils import posix_relpath_to_path
 
 
 @dataclass
@@ -25,6 +30,10 @@ def install_agent_templates(
 ) -> InstallReport:
     """Install template files for the given target into *project_root*."""
     project_root = project_root.resolve()
+    try:
+        user_home: Path | None = Path.home().resolve()
+    except RuntimeError:
+        user_home = None
     report = InstallReport(project_root=project_root)
 
     target_keys = expand_target(target)
@@ -38,7 +47,20 @@ def install_agent_templates(
             continue
 
         for asset in assets:
-            destination = project_root / asset.destination_relpath
+            if uses_user_home_destination(key, asset.destination_relpath):
+                if user_home is None:
+                    report.errors.append(
+                        f"{asset.destination_relpath}: skipped — cannot resolve "
+                        "user home directory (HOME may be unset)"
+                    )
+                    continue
+                destination = user_home / posix_relpath_to_path(
+                    asset.destination_relpath
+                )
+            else:
+                destination = project_root / posix_relpath_to_path(
+                    asset.destination_relpath
+                )
             try:
                 if destination.exists() and not force:
                     report.skipped.append(destination)

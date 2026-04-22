@@ -362,7 +362,7 @@ class TestDynamicDisplay:
         assert display._animation_thread is None
 
     @patch("sys.stdout.isatty", return_value=False)
-    def test_start_non_tty(self, mock_isatty: MagicMock) -> None:
+    def test_start_non_tty(self, _mock_isatty: MagicMock) -> None:
         """Test start in non-TTY mode doesn't start animation."""
         display = DynamicDisplay(quiet=False)
         display._is_tty = False

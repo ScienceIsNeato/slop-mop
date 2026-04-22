@@ -58,7 +58,7 @@ class TestPythonTypeCheckingCheck:
         "slopmop.checks.python.type_checking._find_pyright",
         return_value=None,
     )
-    def test_run_pyright_not_installed(self, mock_find, tmp_path):
+    def test_run_pyright_not_installed(self, _mock_find, tmp_path):
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
@@ -74,7 +74,7 @@ class TestPythonTypeCheckingCheck:
         "slopmop.checks.python.type_checking._find_pyright",
         return_value="/usr/bin/pyright",
     )
-    def test_run_success(self, mock_find, tmp_path):
+    def test_run_success(self, _mock_find, tmp_path):
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
@@ -102,7 +102,7 @@ class TestPythonTypeCheckingCheck:
         "slopmop.checks.python.type_checking._find_pyright",
         return_value="/usr/bin/pyright",
     )
-    def test_run_with_errors(self, mock_find, tmp_path):
+    def test_run_with_errors(self, _mock_find, tmp_path):
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
@@ -142,7 +142,7 @@ class TestPythonTypeCheckingCheck:
         "slopmop.checks.python.type_checking._find_pyright",
         return_value="/usr/bin/pyright",
     )
-    def test_run_timeout(self, mock_find, tmp_path):
+    def test_run_timeout(self, _mock_find, tmp_path):
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()

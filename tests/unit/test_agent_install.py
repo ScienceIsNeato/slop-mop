@@ -9,6 +9,7 @@ import pytest
 from slopmop.agent_install.loader import _load_shared_core, load_assets
 from slopmop.agent_install.registry import (
     ALL_KEYS,
+    INSTALL_HELP_HOME_PREVIEW_ROOT,
     INSTALL_HELP_PREVIEW_ROOT,
     TARGETS,
     cli_choices,
@@ -265,17 +266,20 @@ class TestAgentHelpers:
         assert "CLAUDE.md" in paths
 
     def test_copilot_produces_instructions_and_skill(self):
-        """Copilot target installs instructions plus repo-local skill."""
+        """Copilot target installs repo instructions plus a user-home skill."""
         templates = _templates_for_target("copilot")
         paths = [t.relative_path for t in templates]
         assert ".github/copilot-instructions.md" in paths
         assert ".copilot/skills/slopmop/SKILL.md" in paths
 
     def test_copilot_preview_paths_use_repo_local_tmp_root(self):
-        """Help preview paths should use the deterministic .slopmop/tmp root."""
+        """Help preview paths should separate repo and user-home installs."""
         paths = preview_install_paths("copilot")
         assert f"{INSTALL_HELP_PREVIEW_ROOT}/.github/copilot-instructions.md" in paths
-        assert f"{INSTALL_HELP_PREVIEW_ROOT}/.copilot/skills/slopmop/SKILL.md" in paths
+        assert (
+            f"{INSTALL_HELP_HOME_PREVIEW_ROOT}/.copilot/skills/slopmop/SKILL.md"
+            in paths
+        )
 
     def test_aider_produces_two_files(self):
         """Aider target installs .aider.conf.yml and CONVENTIONS.md."""
@@ -297,8 +301,10 @@ class TestAgentHelpers:
 class TestCmdAgent:
     """Command-level behavior for installs."""
 
-    def test_install_all_targets(self, tmp_path):
+    def test_install_all_targets(self, tmp_path, monkeypatch):
         """Default install writes all supported templates."""
+        home_dir = tmp_path.parent / f"{tmp_path.name}-home"
+        monkeypatch.setenv("HOME", str(home_dir))
         args = _make_args(tmp_path)
 
         result = cmd_agent(args)
@@ -313,7 +319,7 @@ class TestCmdAgent:
         assert (tmp_path / ".claude/skills/slopmop/SKILL.md").exists()
         assert (tmp_path / "CLAUDE.md").exists()
         assert (tmp_path / ".github/copilot-instructions.md").exists()
-        assert (tmp_path / ".copilot/skills/slopmop/SKILL.md").exists()
+        assert (home_dir / ".copilot/skills/slopmop/SKILL.md").exists()
         assert (tmp_path / ".windsurf/rules/slopmop.md").exists()
         assert (tmp_path / ".clinerules/slopmop.md").exists()
         assert (tmp_path / ".roo/rules/01-slopmop.md").exists()
@@ -407,17 +413,21 @@ class TestCmdAgent:
         core_body = cline.strip()
         assert core_body in copilot
 
-    def test_install_single_target(self, tmp_path):
+    def test_install_single_target(self, tmp_path, monkeypatch, capsys):
         """Installing a single target only writes that target's files."""
+        home_dir = tmp_path.parent / f"{tmp_path.name}-home"
+        monkeypatch.setenv("HOME", str(home_dir))
         args = _make_args(tmp_path, target="copilot")
         result = cmd_agent(args)
 
         assert result == 0
         assert (tmp_path / ".github/copilot-instructions.md").exists()
-        assert (tmp_path / ".copilot/skills/slopmop/SKILL.md").exists()
+        assert (home_dir / ".copilot/skills/slopmop/SKILL.md").exists()
         # Other targets should not be present
         assert not (tmp_path / ".cursor/rules/slopmop-swab.mdc").exists()
         assert not (tmp_path / ".claude/commands/sm-swab.md").exists()
+        out = capsys.readouterr().out
+        assert str(home_dir / ".copilot/skills/slopmop/SKILL.md") in out
 
     def test_project_root_missing(self, tmp_path):
         """Returns usage error when project root does not exist."""

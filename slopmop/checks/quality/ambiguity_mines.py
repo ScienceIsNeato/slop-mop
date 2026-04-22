@@ -31,6 +31,7 @@ from slopmop.checks.base import (
     count_source_scope,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+from slopmop.utils import is_path_excluded
 
 _AMBIGUITY_MINE_FIX = (
     "Consolidate duplicate function definitions to eliminate ambiguity mines."
@@ -310,13 +311,19 @@ class AmbiguityMinesCheck(BaseCheck):
                 dirs[:] = [
                     d
                     for d in dirs
-                    if d not in skip_dirs and not d.endswith(".egg-info")
+                    if not d.endswith(".egg-info")
+                    and not is_path_excluded(
+                        os.path.relpath(os.path.join(root, d), project_root),
+                        skip_dirs,
+                    )
                 ]
                 for fname in files:
                     if not fname.endswith(".py") or fname == "conftest.py":
                         continue
                     fpath = os.path.join(root, fname)
                     rel = os.path.relpath(fpath, project_root)
+                    if is_path_excluded(rel, skip_dirs):
+                        continue
                     if rel in seen_files:
                         continue
                     seen_files.add(rel)

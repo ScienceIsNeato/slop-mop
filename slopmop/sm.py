@@ -51,8 +51,41 @@ from slopmop.cli.parser_builders import (
     RefitParserBuilder,
 )
 from slopmop.constants import PROJECT_ROOT_HELP
+from slopmop.utils import as_str_list, dedupe_str_list
 
 logger = logging.getLogger(__name__)
+
+
+def _load_gitignore_exclude_paths(project_root: Path) -> list[str]:
+    """Return raw path filters from the project's .gitignore.
+
+    This is intentionally lightweight: comments, blank lines, and negation
+    rules are ignored; everything else is treated as an exclude candidate
+    that downstream runtime config can translate for individual gates.
+    """
+    gitignore_path = project_root / ".gitignore"
+    if not gitignore_path.exists():
+        return []
+
+    paths: list[str] = []
+    try:
+        gitignore_text = gitignore_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        logger.warning(f"Failed to decode .gitignore as UTF-8: {e}")
+        return []
+    for raw_line in gitignore_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        if line.startswith("./"):
+            line = line[2:]
+        if line.startswith("/"):
+            line = line[1:]
+        if line.endswith("/") and not line.endswith("/**"):
+            line = line[:-1]
+        if line:
+            paths.append(line)
+    return dedupe_str_list(paths)
 
 
 def load_config(project_root: Path) -> Dict[str, Any]:
@@ -84,6 +117,13 @@ def load_config(project_root: Path) -> Dict[str, Any]:
             base = _deep_merge(base, local)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse config: {e}")
+
+    runtime_excludes = dedupe_str_list(
+        as_str_list(base.get("exclude_paths"))
+        + _load_gitignore_exclude_paths(project_root)
+    )
+    if runtime_excludes:
+        base["_global_exclude_paths"] = runtime_excludes
 
     return base
 

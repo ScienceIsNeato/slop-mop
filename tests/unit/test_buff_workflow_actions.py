@@ -421,3 +421,25 @@ class TestBuffProjectRootHelpers:
         monkeypatch.setattr(buff_mod.os, "getcwd", Mock(return_value="/cwd"))
 
         assert buff_mod._project_root_from_cwd() == "/cwd"
+
+
+class TestBuffGhHelpers:
+    def test_post_pr_comment_uses_devnull_stdin(self, monkeypatch):
+        runner = Mock(return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+        monkeypatch.setattr(buff_mod.subprocess, "run", runner)
+
+        buff_mod._post_pr_comment("/repo", "owner", "repo", 85, "done")
+
+        assert runner.call_count == 1
+        assert runner.call_args.kwargs["stdin"] is buff_mod.subprocess.DEVNULL
+        assert runner.call_args.kwargs["timeout"] == 30
+
+    def test_resolve_review_thread_uses_devnull_stdin(self, monkeypatch):
+        runner = Mock(return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+        monkeypatch.setattr(buff_mod.subprocess, "run", runner)
+
+        buff_mod._resolve_review_thread("/repo", "PRRT_abc")
+
+        assert runner.call_count == 1
+        assert runner.call_args.kwargs["stdin"] is buff_mod.subprocess.DEVNULL
+        assert runner.call_args.kwargs["timeout"] == 30

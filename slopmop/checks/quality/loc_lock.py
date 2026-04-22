@@ -32,6 +32,7 @@ from slopmop.core.result import (
     FindingLevel,
     ScopeInfo,
 )
+from slopmop.utils import is_path_excluded
 
 logger = logging.getLogger(__name__)
 
@@ -406,8 +407,7 @@ class LocLockCheck(BaseCheck):
 
     def _should_skip_path(self, path: Path, excluded_dirs: Set[str]) -> bool:
         """Check if path should be skipped."""
-        parts = path.parts
-        return any(excluded in parts for excluded in excluded_dirs)
+        return is_path_excluded(path, excluded_dirs)
 
     def _get_extensions(self) -> Set[str]:
         """Get file extensions to check."""
@@ -457,10 +457,11 @@ class LocLockCheck(BaseCheck):
                     continue
                 if file_path.suffix not in extensions:
                     continue
-                if self._should_skip_path(file_path, excluded_dirs):
+                rel_path_obj = file_path.relative_to(root)
+                if self._should_skip_path(rel_path_obj, excluded_dirs):
                     continue
 
-                rel_path = str(file_path.relative_to(root))
+                rel_path = str(rel_path_obj)
 
                 try:
                     content = file_path.read_text(encoding="utf-8", errors="ignore")

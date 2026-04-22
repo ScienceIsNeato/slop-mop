@@ -329,15 +329,27 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
         # ESLint returns exit code 1 for lint errors, 2 for config errors
         if result.returncode == 2:
             return self._create_result(
-                status=CheckStatus.ERROR,
+                status=CheckStatus.WARNED,
                 duration=duration,
-                error="ESLint configuration error",
                 output=result.output,
+                error="ESLint harness compatibility warning",
+                status_detail="could not analyze test files",
+                findings=[
+                    Finding(
+                        message=(
+                            "hand-wavy-tests.js could not analyze one or more test files "
+                            "because its isolated ESLint harness hit a configuration or "
+                            "parser compatibility problem."
+                        ),
+                        level=FindingLevel.WARNING,
+                    )
+                ],
+                suppress_sarif=True,
                 fix_suggestion=(
-                    "This may indicate eslint-plugin-jest or "
-                    "@typescript-eslint/parser couldn't be loaded. "
-                    "Ensure node/npm is on PATH and try: "
-                    "npm install eslint@8 eslint-plugin-jest"
+                    "This gate uses its own isolated ESLint setup. If the repo uses "
+                    "syntax or parser settings the harness cannot parse yet, the gate "
+                    "warns instead of blocking the whole swab. Re-run just this gate "
+                    "after toolchain changes: sm swab -g deceptiveness:hand-wavy-tests.js"
                 ),
             )
 

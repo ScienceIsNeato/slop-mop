@@ -59,7 +59,7 @@ def iter_template_assets(template_dir: str) -> Iterator[TemplateAsset]:
         if entry.is_dir():
             continue
         entry_str = str(entry)
-        rel = entry_str[len(base_str) :].lstrip("/")
+        rel = entry_str[len(base_str) :].lstrip("/\\").replace("\\", "/")
         raw = entry.read_bytes()
         if _CORE_PLACEHOLDER in raw:
             if core is None:

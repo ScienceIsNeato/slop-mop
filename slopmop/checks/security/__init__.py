@@ -38,6 +38,8 @@ from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
+_GIT_SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+_HEX_HIGH_ENTROPY_STRING = "Hex High Entropy String"
 
 # Canonical remediations for common bandit test IDs.  These are the fixes
 # bandit's own docs prescribe — we're not guessing, we're relaying the
@@ -451,6 +453,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         lower = normalized.lower()
         basename = Path(normalized).name.lower()
         detector_type = str(secret.get("type", ""))
+        line_text = ""
 
         if "/.slopmop/" in lower or lower.startswith(".slopmop/"):
             return True
@@ -458,10 +461,47 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             "ios/flutter/ephemeral/"
         ):
             return True
-        if lower.endswith(".xcscheme") and detector_type == "Hex High Entropy String":
+        if lower.endswith(".xcscheme") and detector_type == _HEX_HIGH_ENTROPY_STRING:
             return True
+        if detector_type == _HEX_HIGH_ENTROPY_STRING:
+            line_number = secret.get("line_number")
+            line_text = self._safe_read_line(
+                project_root, normalized, line_number, line_cache
+            )
+            context_parts = [line_text]
+            if isinstance(line_number, int):
+                for offset in (2, 1):
+                    if line_number > offset:
+                        context_parts.insert(
+                            0,
+                            self._safe_read_line(
+                                project_root,
+                                normalized,
+                                line_number - offset,
+                                line_cache,
+                            ),
+                        )
+                for offset in (1, 2):
+                    context_parts.append(
+                        self._safe_read_line(
+                            project_root,
+                            normalized,
+                            line_number + offset,
+                            line_cache,
+                        )
+                    )
+            context_lower = "\n".join(part for part in context_parts if part).lower()
+            tokens = set(re.findall(r"[a-z0-9_]+", context_lower))
+            if _GIT_SHA_RE.search(context_lower) and (
+                "is_placeholder_sha(" in context_lower
+                or "make_run_branch_name(" in context_lower
+                or "rev-parse" in context_lower
+                or "_current_head" in context_lower
+                or any(token == "sha" or token.endswith("_sha") for token in tokens)
+            ):
+                return True
         if basename == ".metadata" and detector_type in {
-            "Hex High Entropy String",
+            _HEX_HIGH_ENTROPY_STRING,
             "Base64 High Entropy String",
         }:  # pragma: allowlist secret
             return True
@@ -471,9 +511,10 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
         ):
             return True
         if detector_type.lower() == ("se" "cret " "key" "word"):
-            line_text = self._safe_read_line(
-                project_root, normalized, secret.get("line_number"), line_cache
-            )
+            if not line_text:
+                line_text = self._safe_read_line(
+                    project_root, normalized, secret.get("line_number"), line_cache
+                )
             line_lower = line_text.lower()
             # Accessing secret env/config keys is not a leaked secret.
             if ".config.get(" in line_lower or "os.getenv(" in line_lower:

@@ -40,6 +40,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+from slopmop.utils import is_path_excluded
 
 # ---------------------------------------------------------------------------
 # File classification
@@ -269,7 +270,7 @@ class InteractiveAssumptionsCheck(BaseCheck):
                 rel = path.relative_to(root)
             except ValueError:
                 continue
-            if set(rel.parts) & excluded:
+            if is_path_excluded(rel, excluded):
                 continue
 
             files_scanned += 1

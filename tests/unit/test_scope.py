@@ -15,6 +15,9 @@ from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary, Scop
 from slopmop.reporting.display import config
 from slopmop.reporting.display.renderer import build_category_header
 
+NO_SLOP_DETECTED = "NO SLOP DETECTED"
+TWO_LINE_PYTHON_SOURCE = "x = 1\ny = 2\n"
+
 
 class TestScopeInfo:
     """Tests for ScopeInfo dataclass."""
@@ -247,6 +250,20 @@ class TestCountSourceScope:
         )
         assert scope.files == 1
 
+    def test_nested_exclude_paths(self, tmp_path):
+        """Slash-separated nested exclude paths are respected."""
+        (tmp_path / "keep.py").write_text("kept\n")
+        nested = tmp_path / "vendor" / "generated"
+        nested.mkdir(parents=True)
+        (nested / "skip.py").write_text("skipped\n")
+
+        scope = count_source_scope(
+            str(tmp_path),
+            extensions={".py"},
+            exclude_dirs={"vendor/generated"},
+        )
+        assert scope.files == 1
+
 
 class TestPythonCheckMixinScope:
     """Tests for PythonCheckMixin.measure_scope."""
@@ -277,7 +294,7 @@ class TestPythonCheckMixinScope:
             def run(self, root):
                 return CheckResult("test", CheckStatus.PASSED, 0.0)
 
-        (tmp_path / "main.py").write_text("x = 1\ny = 2\n")
+        (tmp_path / "main.py").write_text(TWO_LINE_PYTHON_SOURCE)
         (tmp_path / "test.js").write_text("var x;\n")
 
         check = TestCheck(config={})
@@ -369,7 +386,7 @@ class TestConsoleSummaryScope:
         ConsoleAdapter(RunReport.from_summary(summary)).render()
 
         captured = capsys.readouterr()
-        assert "NO SLOP DETECTED" in captured.out
+        assert NO_SLOP_DETECTED in captured.out
         # Scope should NOT be in the validation summary
         assert "47 files" not in captured.out
         assert "3,200 LOC" not in captured.out
@@ -386,7 +403,7 @@ class TestConsoleSummaryScope:
         ConsoleAdapter(RunReport.from_summary(summary)).render()
 
         captured = capsys.readouterr()
-        assert "NO SLOP DETECTED" in captured.out
+        assert NO_SLOP_DETECTED in captured.out
         assert "files" not in captured.out
 
     def test_summary_failure_no_scope_in_summary(self, capsys):

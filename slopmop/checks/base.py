@@ -23,6 +23,7 @@ from slopmop.core.result import (
     ScopeInfo,
 )
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
+from slopmop.utils import is_path_excluded
 
 logger = logging.getLogger(__name__)
 
@@ -332,12 +333,12 @@ def count_source_scope(
                 continue
 
             # Skip excluded directories
-            parts = set(file_path.relative_to(root).parts)
-            if parts & excluded:
+            rel_path = file_path.relative_to(root)
+            if is_path_excluded(rel_path, excluded):
                 continue
 
             # Skip .egg-info directories (not exact match, contains pattern)
-            rel_str = str(file_path.relative_to(root))
+            rel_str = str(rel_path)
             if ".egg-info" in rel_str:
                 continue
 
@@ -477,6 +478,26 @@ STANDARD_CONFIG_FIELDS = [
             "Execution rail for this gate. 'swab' runs it in both swab and scour; "
             "'scour' keeps it out of swab but still runs it during scour."
         ),
+    ),
+    ConfigField(
+        name="extra_exclude_paths",
+        field_type="string[]",
+        default=[],
+        description=(
+            "Additional repo-relative paths or glob patterns to exclude for this "
+            "gate only."
+        ),
+        permissiveness="fewer_is_stricter",
+    ),
+    ConfigField(
+        name="include_paths",
+        field_type="string[]",
+        default=[],
+        description=(
+            "Repo-relative paths or glob patterns to re-include for this gate, "
+            "even when they are globally excluded."
+        ),
+        permissiveness="more_is_stricter",
     ),
 ]
 
