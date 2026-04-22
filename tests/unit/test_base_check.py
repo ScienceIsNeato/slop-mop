@@ -8,6 +8,7 @@ from slopmop.checks.base import (
     BaseCheck,
     Flaw,
     GateCategory,
+    GateDiagnosticResult,
     ToolContext,
     find_tool,
 )
@@ -737,3 +738,22 @@ class TestJavaScriptCheckMixin:
         reason = self.mixin.skip_reason(str(tmp_path))
         # With package.json but no JS files, it returns the JS files message
         assert "JavaScript" in reason or "not applicable" in reason.lower()
+
+
+class TestGateDiagnosticResult:
+    def test_diagnose_default_returns_empty_list(self, tmp_path):
+        """BaseCheck.diagnose() default implementation returns []."""
+        from slopmop.checks.python.lint_format import PythonLintFormatCheck
+
+        instance = PythonLintFormatCheck(config={})
+        results = instance.diagnose(str(tmp_path))
+        assert results == []
+
+    def test_gate_diagnostic_result_fields(self):
+        r = GateDiagnosticResult(
+            severity="warn", summary="test warning", detail="some detail"
+        )
+        assert r.severity == "warn"
+        assert r.summary == "test warning"
+        assert r.detail == "some detail"
+        assert r.fix_hint == ""  # default

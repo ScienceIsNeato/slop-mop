@@ -299,6 +299,12 @@ class TestRenameSwabbingTime:
         _rename_swabbing_time(tmp_path)  # should not raise
         assert not (tmp_path / ".sb_config.json").exists()
 
+    def test_no_op_when_config_invalid_json(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("not json!", encoding="utf-8")
+        _rename_swabbing_time(tmp_path)  # should not raise
+        # File should be unchanged
+        assert (tmp_path / ".sb_config.json").read_text() == "not json!"
+
     def test_end_to_end_via_registry(self, tmp_path: Path):
         self._write_config(tmp_path, {"swabbing_time": 15})
         applied = run_upgrade_migrations(tmp_path, "0.14.1", "0.15.0")
@@ -366,6 +372,11 @@ class TestRenameDartGates:
     def test_no_op_when_config_missing(self, tmp_path: Path):
         _rename_dart_gates(tmp_path)  # should not raise
         assert not (tmp_path / ".sb_config.json").exists()
+
+    def test_no_op_when_config_invalid_json(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("{{bad json}}", encoding="utf-8")
+        _rename_dart_gates(tmp_path)  # should not raise
+        assert (tmp_path / ".sb_config.json").read_text() == "{{bad json}}"
 
     def test_end_to_end_via_registry(self, tmp_path: Path):
         self._write_config(

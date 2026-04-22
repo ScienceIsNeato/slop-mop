@@ -72,7 +72,7 @@ security = [
 ]
 # Testing frameworks (for sm's own tests & PROJECT-context checks)
 testing = [
-    "pytest>=7.0.0",
+    "pytest>=9.0.3",
     "pytest-cov>=4.0.0",
     "pytest-testmon>=2.0.0",
     "diff-cover>=7.0.0",
