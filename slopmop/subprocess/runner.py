@@ -5,11 +5,13 @@ are validated before execution, and proper timeout handling is implemented.
 """
 
 import logging
+import os
+import signal
 import subprocess  # nosec B404 - subprocess is core to this module's purpose
 import threading
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .validator import CommandValidator, get_validator
 
@@ -79,6 +81,69 @@ class SubprocessRunner:
         self._process_lock = threading.Lock()
         self._running_processes: Dict[int, subprocess.Popen[str]] = {}
 
+    @staticmethod
+    def _popen_process_group_kwargs() -> Dict[str, Any]:
+        """Return kwargs that isolate each child into its own process group."""
+        if os.name == "nt":
+            return {
+                "creationflags": getattr(
+                    subprocess,
+                    "CREATE_NEW_PROCESS_GROUP",
+                    0,
+                )
+            }
+        return {"start_new_session": True}
+
+    @staticmethod
+    def _signal_process_tree(
+        process: subprocess.Popen[str], sig: signal.Signals
+    ) -> None:
+        """Signal the full process tree for one tracked child."""
+        if process.poll() is not None:
+            return
+
+        if os.name == "nt":
+            if sig == signal.SIGTERM:
+                process.terminate()
+            else:
+                process.kill()
+            return
+
+        try:
+            pgid = os.getpgid(process.pid)
+        except ProcessLookupError:
+            return
+
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return
+
+    def _terminate_process_tree(
+        self,
+        process: subprocess.Popen[str],
+        *,
+        wait_timeout: float = 5.0,
+    ) -> bool:
+        """Terminate a process tree, escalating to SIGKILL if needed."""
+        if process.poll() is not None:
+            return False
+
+        self._signal_process_tree(process, signal.SIGTERM)
+        try:
+            process.wait(timeout=wait_timeout)
+            return True
+        except subprocess.TimeoutExpired:
+            self._signal_process_tree(process, signal.SIGKILL)
+            try:
+                process.wait(timeout=wait_timeout)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Process %s did not exit after SIGKILL",
+                    process.pid,
+                )
+            return True
+
     def run(
         self,
         command: List[str],
@@ -123,6 +188,7 @@ class SubprocessRunner:
                 cwd=cwd,
                 env=env,
                 text=True,
+                **self._popen_process_group_kwargs(),
             )
 
             # Track the process
@@ -143,8 +209,8 @@ class SubprocessRunner:
                 )
 
             except subprocess.TimeoutExpired:
-                # Kill the process on timeout
-                process.kill()
+                # Kill the full process tree on timeout.
+                self._terminate_process_tree(process)
                 stdout, stderr = process.communicate()
                 duration = time.time() - start_time
 
@@ -251,6 +317,7 @@ class SubprocessRunner:
                 cwd=cwd,
                 env=env,
                 text=True,
+                **self._popen_process_group_kwargs(),
             )
         )
 
@@ -271,12 +338,8 @@ class SubprocessRunner:
         count = 0
         for process in processes:
             try:
-                process.terminate()
-                process.wait(timeout=5)
-                count += 1
-            except subprocess.TimeoutExpired:
-                process.kill()
-                count += 1
+                if self._terminate_process_tree(process):
+                    count += 1
             except Exception as e:
                 logger.warning(f"Failed to terminate process {process.pid}: {e}")
 

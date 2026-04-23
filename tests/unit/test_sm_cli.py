@@ -955,6 +955,74 @@ class TestValidateSmLockError:
         mock_run_locked.assert_not_called()
         assert "reserved for internal nested validation runs" in capsys.readouterr().err
 
+    @patch("slopmop.cli.validate.get_runner")
+    @patch("slopmop.cli.validate._run_validation_locked", return_value=0)
+    @patch("slopmop.cli.validate.sm_lock")
+    @patch("slopmop.cli.validate.max_expected_duration", return_value=30.0)
+    @patch("slopmop.cli.validate.load_timing_averages", return_value={})
+    def test_validation_cleans_up_tracked_subprocesses_on_success(
+        self,
+        _mock_timings,
+        _mock_expected_duration,
+        mock_lock,
+        mock_run_locked,
+        mock_get_runner,
+        tmp_path,
+    ):
+        from slopmop.cli.validate import _run_validation
+
+        mock_lock.return_value.__enter__.return_value = None
+        mock_lock.return_value.__exit__.return_value = None
+        mock_runner = MagicMock()
+        mock_get_runner.return_value = mock_runner
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+
+        result = _run_validation(args, [], None)
+
+        assert result == 0
+        mock_run_locked.assert_called_once()
+        mock_runner.terminate_all.assert_called_once()
+
+    @patch("slopmop.cli.validate.get_runner")
+    @patch(
+        "slopmop.cli.validate._run_validation_locked",
+        side_effect=KeyboardInterrupt,
+    )
+    @patch("slopmop.cli.validate.sm_lock")
+    @patch("slopmop.cli.validate.max_expected_duration", return_value=30.0)
+    @patch("slopmop.cli.validate.load_timing_averages", return_value={})
+    def test_validation_cleans_up_tracked_subprocesses_on_interrupt(
+        self,
+        _mock_timings,
+        _mock_expected_duration,
+        mock_lock,
+        _mock_run_locked,
+        mock_get_runner,
+        tmp_path,
+    ):
+        from slopmop.cli.validate import _run_validation
+
+        mock_lock.return_value.__enter__.return_value = None
+        mock_lock.return_value.__exit__.return_value = None
+        mock_runner = MagicMock()
+        mock_get_runner.return_value = mock_runner
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+
+        with pytest.raises(KeyboardInterrupt):
+            _run_validation(args, [], None)
+
+        mock_runner.terminate_all.assert_called_once()
+
 
 class TestValidateJsonOutputFile:
     """Regression tests for JSON output-file behavior in validate pipeline."""

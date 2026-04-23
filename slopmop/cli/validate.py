@@ -5,9 +5,12 @@ top-level commands.
 """
 
 import argparse
+import contextlib
 import json
 import os
+import signal
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -23,6 +26,7 @@ from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.report import RunReport
 from slopmop.reporting.timings import clear_timings, load_timing_averages
+from slopmop.subprocess.runner import get_runner
 from slopmop.workflow.state_machine import RepoPhase
 from slopmop.workflow.state_store import read_phase
 
@@ -177,6 +181,32 @@ def _should_skip_repo_lock() -> bool | None:
     return True
 
 
+@contextlib.contextmanager
+def _translate_termination_signals() -> Any:
+    """Convert SIGINT/SIGTERM into Python exceptions so cleanup can run."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    previous_handlers: Dict[signal.Signals, Any] = {}
+
+    def _raise_termination(signum: int, _frame: Any) -> None:
+        if signum == signal.SIGINT:
+            raise KeyboardInterrupt
+        raise SystemExit(128 + signum)
+
+    handled_signals = (signal.SIGINT, signal.SIGTERM)
+    for handled in handled_signals:
+        previous_handlers[handled] = signal.getsignal(handled)
+        signal.signal(handled, _raise_termination)
+
+    try:
+        yield
+    finally:
+        for handled, previous in previous_handlers.items():
+            signal.signal(handled, previous)
+
+
 def _run_validation(
     args: argparse.Namespace,
     gates: List[str],
@@ -257,16 +287,20 @@ def _run_validation(
         return _run_locked()
 
     try:
-        with sm_lock(
-            project_root,
-            verb,
-            stale_after_seconds=lock_stale_after,
-            expected_duration_seconds=lock_expected_duration,
-        ):
-            return _run_locked()
-    except SmLockError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+        with _translate_termination_signals():
+            try:
+                with sm_lock(
+                    project_root,
+                    verb,
+                    stale_after_seconds=lock_stale_after,
+                    expected_duration_seconds=lock_expected_duration,
+                ):
+                    return _run_locked()
+            except SmLockError as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
+    finally:
+        get_runner().terminate_all()
 
 
 def _run_validation_locked(

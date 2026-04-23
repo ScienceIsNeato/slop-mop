@@ -3,8 +3,9 @@
 import json
 import logging
 import os
+import shlex
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -20,6 +21,8 @@ from slopmop.constants import ISSUES_FOUND_TEMPLATE, NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
+
+_SHELL_OPERATORS = {"&&", "||", ";", "|"}
 
 
 class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
@@ -105,6 +108,255 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def can_auto_fix(self) -> bool:
         return True
 
+    @staticmethod
+    def _load_package_scripts(project_root: str) -> dict[str, str]:
+        """Load package.json scripts, returning {} on parse errors."""
+        pkg_path = os.path.join(project_root, "package.json")
+        if not os.path.isfile(pkg_path):
+            return {}
+
+        try:
+            with open(pkg_path, encoding="utf-8") as fh:
+                pkg = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+        if not isinstance(pkg, dict):
+            return {}
+
+        pkg_dict: dict[object, object] = cast(dict[object, object], pkg)
+        scripts_obj = pkg_dict.get("scripts", {})
+        if not isinstance(scripts_obj, dict):
+            return {}
+
+        scripts = cast(dict[object, object], scripts_obj)
+
+        typed_scripts: dict[str, str] = {}
+        for name, command in scripts.items():
+            if isinstance(name, str) and isinstance(command, str):
+                typed_scripts[name] = command
+        return typed_scripts
+
+    @staticmethod
+    def _tool_args_from_tokens(tokens: List[str], tool: str) -> Optional[List[str]]:
+        """Return argv after a direct tool invocation inside a script segment."""
+        if not tokens:
+            return None
+
+        if tokens[0] == tool:
+            return tokens[1:]
+
+        if tokens[0] in ("npx", "bunx"):
+            index = 1
+            while index < len(tokens) and tokens[index].startswith("-"):
+                index += 1
+            if index < len(tokens) and tokens[index] == tool:
+                return tokens[index + 1 :]
+
+        if len(tokens) >= 2 and tokens[0] in ("npm", "pnpm") and tokens[1] == "exec":
+            index = 2
+            if index < len(tokens) and tokens[index] == "--":
+                index += 1
+            while index < len(tokens) and tokens[index].startswith("-"):
+                index += 1
+            if index < len(tokens) and tokens[index] == tool:
+                return tokens[index + 1 :]
+
+        if len(tokens) >= 2 and tokens[0] == "yarn" and tokens[1] == tool:
+            return tokens[2:]
+
+        return None
+
+    @classmethod
+    def _extract_tool_args_from_script(
+        cls, command: str, tool: str
+    ) -> Optional[List[str]]:
+        """Extract argv for a tool from one package.json script."""
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None
+
+        segment: List[str] = []
+        for token in tokens:
+            if token in _SHELL_OPERATORS:
+                if segment:
+                    args = cls._tool_args_from_tokens(segment, tool)
+                    if args is not None:
+                        return args
+                    segment = []
+                continue
+            segment.append(token)
+
+        if segment:
+            return cls._tool_args_from_tokens(segment, tool)
+        return None
+
+    @classmethod
+    def _extract_node_tool_args(
+        cls,
+        project_root: str,
+        tool: str,
+        preferred_scripts: tuple[str, ...],
+    ) -> List[str]:
+        """Extract scoped tool args from package.json scripts when available."""
+        scripts = cls._load_package_scripts(project_root)
+        if not scripts:
+            return []
+
+        for script_name in preferred_scripts:
+            command = scripts.get(script_name)
+            if command is None:
+                continue
+            args = cls._extract_tool_args_from_script(command, tool)
+            if args is not None:
+                return args
+
+        for command in scripts.values():
+            args = cls._extract_tool_args_from_script(command, tool)
+            if args is not None:
+                return args
+
+        return []
+
+    @staticmethod
+    def _strip_flag(args: List[str], flag: str) -> List[str]:
+        return [arg for arg in args if arg != flag]
+
+    @staticmethod
+    def _strip_flag_with_value(args: List[str], flag: str) -> List[str]:
+        stripped: List[str] = []
+        skip_next = False
+        for arg in args:
+            if skip_next:
+                skip_next = False
+                continue
+            if arg == flag:
+                skip_next = True
+                continue
+            stripped.append(arg)
+        return stripped
+
+    @staticmethod
+    def _has_positional_arg(args: List[str], options_with_values: set[str]) -> bool:
+        skip_next = False
+        for arg in args:
+            if skip_next:
+                skip_next = False
+                continue
+            if arg in options_with_values:
+                skip_next = True
+                continue
+            if arg == "--":
+                return True
+            if not arg.startswith("-"):
+                return True
+        return False
+
+    @classmethod
+    def _get_node_eslint_args(cls, project_root: str, *, for_fix: bool) -> List[str]:
+        raw_args = cls._extract_node_tool_args(
+            project_root,
+            "eslint",
+            preferred_scripts=(
+                (
+                    "lint:fix",
+                    "lint:auto-fix",
+                    "lint:strict",
+                    "lint:errors-only",
+                    "lint",
+                )
+                if for_fix
+                else (
+                    "lint:errors-only",
+                    "lint",
+                    "lint:strict",
+                    "lint:fix",
+                    "lint:auto-fix",
+                )
+            ),
+        )
+        args = cls._strip_flag(list(raw_args), "--fix")
+        args = cls._strip_flag(args, "--quiet")
+        args = cls._strip_flag_with_value(args, "--format")
+        args = cls._strip_flag_with_value(args, "--max-warnings")
+
+        if not cls._has_positional_arg(
+            args,
+            {
+                "--config",
+                "--ext",
+                "--fix-type",
+                "--format",
+                "--ignore-pattern",
+                "--parser",
+                "--plugin",
+                "--rule",
+                "--stdin-filename",
+            },
+        ):
+            args.append(".")
+
+        if for_fix:
+            args.append("--fix")
+        else:
+            args.extend(["--format", "json"])
+        return args
+
+    @classmethod
+    def _get_node_prettier_args(
+        cls, project_root: str, *, for_write: bool
+    ) -> List[str]:
+        raw_args = cls._extract_node_tool_args(
+            project_root,
+            "prettier",
+            preferred_scripts=(
+                (
+                    "format:fix",
+                    "format:auto-fix",
+                    "format:check",
+                )
+                if for_write
+                else (
+                    "format:check",
+                    "format:auto-fix",
+                    "format:fix",
+                )
+            ),
+        )
+        args = cls._strip_flag(list(raw_args), "--check")
+        args = cls._strip_flag(args, "--write")
+
+        if not cls._has_positional_arg(
+            args,
+            {
+                "--cache-location",
+                "--config",
+                "--find-config-path",
+                "--ignore-path",
+                "--log-level",
+                "--parser",
+                "--plugin",
+            },
+        ):
+            args.append(".")
+
+        mode = "--write" if for_write else "--check"
+        return [mode, *args]
+
+    def _node_fix_suggestion(self, project_root: str) -> str:
+        eslint_cmd = shlex.join(
+            ["npx", "eslint", *self._get_node_eslint_args(project_root, for_fix=True)]
+        )
+        prettier_cmd = shlex.join(
+            [
+                "npx",
+                "prettier",
+                *self._get_node_prettier_args(project_root, for_write=True),
+            ]
+        )
+        return f"Run: {eslint_cmd} && {prettier_cmd}"
+
     def auto_fix(self, project_root: str) -> bool:
         """Auto-fix formatting issues."""
         is_deno = self.is_deno_project(project_root)
@@ -182,24 +434,18 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
     def _auto_fix_node(self, project_root: str) -> bool:
         fixed = False
+        prettier_args = self._get_node_prettier_args(project_root, for_write=True)
 
         # Install deps if needed
         if not self.has_node_modules(project_root):
             npm_cmd = self._get_npm_install_command(project_root)
             self._run_command(npm_cmd, cwd=project_root, timeout=120)
 
-        # Run ESLint fix
+        # Keep implicit Node auto-fix formatter-only. Type-aware ESLint --fix
+        # can be arbitrarily expensive in hook/agent contexts and is better
+        # left as an explicit user action via the gate's fix suggestion.
         result = self._run_command(
-            ["npx", "--yes", "eslint", ".", "--fix"],
-            cwd=project_root,
-            timeout=60,
-        )
-        if result.success:
-            fixed = True
-
-        # Run Prettier
-        result = self._run_command(
-            ["npx", "--yes", "prettier", "--write", "."],
+            ["npx", "--yes", "prettier", *prettier_args],
             cwd=project_root,
             timeout=60,
         )
@@ -310,7 +556,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
             error=msg,
             fix_suggestion=(
                 "Run: deno lint --fix && deno fmt "
-                "&& npx eslint . --fix && npx prettier --write ."
+                f"&& {self._node_fix_suggestion(project_root)[5:]}"
             ),
             findings=all_findings or [Finding(message=msg, level=FindingLevel.ERROR)],
         )
@@ -446,7 +692,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 duration=duration,
                 output="\n".join(output_parts),
                 error=msg,
-                fix_suggestion="Run: npx eslint . --fix && npx prettier --write .",
+                fix_suggestion=self._node_fix_suggestion(project_root),
                 findings=eslint_findings
                 or [Finding(message=msg, level=FindingLevel.ERROR)],
             )
@@ -460,7 +706,13 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def _check_eslint(self, project_root: str) -> Tuple[Optional[str], List[Finding]]:
         """Check ESLint."""
         result = self._run_command(
-            ["npx", "--yes", "eslint", ".", "--format", "json"],
+            [
+                "npx",
+                "--yes",
+                "eslint",
+                *self._get_node_eslint_args(project_root, for_fix=False),
+                "--quiet",
+            ],
             cwd=project_root,
             timeout=60,
         )
@@ -506,7 +758,12 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
     def _check_prettier(self, project_root: str) -> Optional[str]:
         """Check Prettier formatting."""
         result = self._run_command(
-            ["npx", "--yes", "prettier", "--check", "."],
+            [
+                "npx",
+                "--yes",
+                "prettier",
+                *self._get_node_prettier_args(project_root, for_write=False),
+            ],
             cwd=project_root,
             timeout=60,
         )
