@@ -106,7 +106,7 @@ def _create_remote_release_branch(work: Path, branch_name: str, version: str) ->
     return release_sha
 
 
-def _write_fake_gh(fake_bin: Path, log_path: Path) -> None:
+def _write_fake_gh(fake_bin: Path) -> None:
     fake_gh = fake_bin / "gh"
     fake_gh.write_text(
         "#!/bin/sh\n"
@@ -140,7 +140,7 @@ def test_release_script_reuses_existing_remote_branch_on_rerun(tmp_path: Path) -
     fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir()
     gh_log = tmp_path / "gh.log"
-    _write_fake_gh(fake_bin, gh_log)
+    _write_fake_gh(fake_bin)
 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
@@ -186,7 +186,7 @@ def test_release_script_reuses_existing_open_pr_without_creating_another(
     fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir()
     gh_log = tmp_path / "gh.log"
-    _write_fake_gh(fake_bin, gh_log)
+    _write_fake_gh(fake_bin)
 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"

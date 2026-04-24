@@ -50,7 +50,7 @@ existing_pr_url() {
         --base main \
         --state open \
         --json url \
-        --jq '.[0].url' \
+    --jq '.[0].url // empty' \
         2>/dev/null || true
 }
 

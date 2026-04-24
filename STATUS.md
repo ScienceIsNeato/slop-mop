@@ -9,14 +9,22 @@ Branch: `fix/sm-env-release-perms`
   - Verified with a live `gh pr list --jq '.[0].url'` probe that no-match output is
     an empty string in this environment, so the reported `null` early-exit bug did
     not reproduce.
+- Hardened `scripts/release.sh` anyway by making the `gh --jq` filter explicit:
+  `'.[0].url // empty'`.
 - Extended `tests/unit/test_release_script.py` with explicit coverage for the
   existing-open-PR reuse path, asserting that reruns reuse the PR URL and do not
   invoke `gh pr create` again.
+- Removed the unused `log_path` parameter from the fake-`gh` test helper.
 - Updated `.github/workflows/slopmop.yml` so CI's explicit unit-test list now
   includes `tests/unit/test_release_script.py`.
 
-**Next:** Run focused validation, then resolve PR #147 review threads with code
-evidence for the testing fixes and probe evidence for the invalid logic comment.
+**Validation:**
+- `pytest tests/unit/test_release_script.py -q` ✅
+- `bash -n scripts/release.sh` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit, push branch, resolve the remaining PR #147 threads, then rerun
+`sm buff inspect 147` / `sm buff watch 147`.
 
 ## 2026-04-24 Delta: release rerun idempotency for existing remote branch
 
