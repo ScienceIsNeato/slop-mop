@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
-from slopmop.checks.mixins import discover_supabase_deno_test_glob
+from slopmop.checks.mixins import (
+    discover_supabase_deno_test_glob,
+    looks_like_python_project,
+)
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
 # Used during `sm init` to auto-disable checks whose tools aren't available.
@@ -233,8 +236,7 @@ def _detect_python(
     if detected_languages is not None:
         return bool(detected_languages & _PYTHON_LANGS)
 
-    py_indicators = ["setup.py", "pyproject.toml", "requirements.txt", "Pipfile"]
-    return any((project_root / p).exists() for p in py_indicators)
+    return looks_like_python_project(project_root)
 
 
 def _detect_javascript(

@@ -159,6 +159,20 @@ class TestStaleApplicability:
         findings = check_stale_applicability(tmp_path, config, set())
         assert findings == []
 
+    def test_requirements_only_does_not_trigger_python_stale_warning(
+        self, tmp_path: Path
+    ):
+        """requirements.txt alone should not count as Python for stale config debt."""
+        (tmp_path / "requirements.txt").write_text("pytest\n")
+        config = {
+            "laziness": {
+                "enabled": True,
+                "gates": {"sloppy-formatting.py": {"enabled": False}},
+            },
+        }
+        findings = check_stale_applicability(tmp_path, config, set())
+        assert findings == []
+
     def test_no_finding_when_gate_enabled(self, tmp_path: Path):
         """Gate is enabled → no debt."""
         _make_python_project(tmp_path)

@@ -468,9 +468,15 @@ class TestPythonCheckMixin:
         (tmp_path / "pyproject.toml").touch()
         assert self.mixin.is_python_project(str(tmp_path)) is True
 
-    def test_is_python_project_with_requirements(self, tmp_path):
-        """Test is_python_project returns True with requirements.txt."""
+    def test_is_python_project_false_with_requirements_only(self, tmp_path):
+        """requirements.txt alone should not enable Python gates."""
         (tmp_path / "requirements.txt").touch()
+        assert self.mixin.is_python_project(str(tmp_path)) is False
+
+    def test_is_python_project_with_requirements_and_py_files(self, tmp_path):
+        """requirements.txt plus Python files should count as Python."""
+        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "main.py").touch()
         assert self.mixin.is_python_project(str(tmp_path)) is True
 
     def test_is_python_project_with_py_files(self, tmp_path):

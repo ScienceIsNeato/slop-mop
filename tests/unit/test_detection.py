@@ -26,9 +26,16 @@ class TestDetectProjectType:
         assert result["has_python"] is True
         assert result["has_pytest"] is True
 
-    def test_detects_python_project_from_requirements(self, tmp_path):
-        """Detects Python from requirements.txt."""
+    def test_requirements_alone_does_not_imply_python_project(self, tmp_path):
+        """requirements.txt alone is too weak to enable Python gates."""
         (tmp_path / "requirements.txt").write_text("flask==2.0")
+        result = detect_project_type(tmp_path)
+        assert result["has_python"] is False
+
+    def test_detects_python_project_from_requirements_and_py_files(self, tmp_path):
+        """requirements.txt plus Python sources should detect Python."""
+        (tmp_path / "requirements.txt").write_text("flask==2.0")
+        (tmp_path / "app.py").write_text("print('hi')\n")
         result = detect_project_type(tmp_path)
         assert result["has_python"] is True
 

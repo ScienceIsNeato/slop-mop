@@ -33,6 +33,7 @@ from slopmop.checks.base import (
     RemediationChurn,
     ToolContext,
 )
+from slopmop.checks.mixins import looks_like_python_project
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
@@ -48,11 +49,8 @@ _LANGUAGE_SUFFIXES: Dict[str, str] = {
 
 
 def _has_python_markers(root: Path) -> bool:
-    """Quick check for Python project markers (no full file scan)."""
-    for marker in ("setup.py", "pyproject.toml", "requirements.txt", "Pipfile"):
-        if (root / marker).exists():
-            return True
-    return False
+    """Quick check for whether Python gates should matter in this repo."""
+    return looks_like_python_project(root)
 
 
 def _has_javascript_markers(root: Path) -> bool:

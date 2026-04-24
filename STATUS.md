@@ -1,5 +1,30 @@
 # Project Status
 
+## 2026-04-24 Delta: requirements-only repos no longer activate Python gates
+
+Branch: `friction`
+
+**Work completed:**
+- Tightened Python project heuristics so `requirements.txt` alone no longer
+  marks a repo as Python for slop-mop detection and applicability.
+- Aligned three surfaces to use the same rule:
+  - `slopmop/cli/detection.py` for `sm init`
+  - `slopmop/checks/mixins.py` for Python gate applicability
+  - `slopmop/checks/quality/config_debt.py` for `silenced-gates`
+- Added regressions so requirements-only repos without `.py` files:
+  - do not detect as Python during init
+  - do not make Python gates applicable at runtime
+  - do not trigger stale Python disabled-gate warnings
+- Updated Python-check tests that previously used `requirements.txt` as the
+  only Python-project marker.
+
+**Validation:**
+- `pytest tests/unit/test_detection.py tests/unit/test_base_check.py tests/unit/test_config_debt_check.py tests/unit/test_python_checks.py -q` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit this barnacle fix on `friction`, then either rerun `sm init`
+in fogofdog with this build or take the next barnacle.
+
 ## 2026-04-24 Delta: timing history ignores cached and failed runs
 
 Branch: `friction`

@@ -81,6 +81,28 @@ def has_project_venv(project_root: str | Path) -> bool:
     return False
 
 
+def has_python_source_files(project_root: str | Path) -> bool:
+    """Return True when the repo contains at least one Python source file."""
+    return any(Path(project_root).rglob("*.py"))
+
+
+def looks_like_python_project(project_root: str | Path) -> bool:
+    """Return True for repos with strong Python evidence.
+
+    ``requirements.txt`` is treated as a weak signal: it only counts when the
+    repo also contains Python source files. This avoids enabling Python gates in
+    JS/TS repos that carry a requirements file for incidental tooling.
+    """
+    root = Path(project_root)
+    if any(
+        (root / marker).exists() for marker in ("setup.py", "pyproject.toml", "Pipfile")
+    ):
+        return True
+    if has_python_source_files(root):
+        return True
+    return (root / "requirements.txt").exists() and has_python_source_files(root)
+
+
 def resolve_project_python(project_root: str | Path) -> tuple[str, str]:
     """Return ``(python_path, source)`` for *project_root*.
 
@@ -430,8 +452,7 @@ class PythonCheckMixin:
 
     def has_python_files(self, project_root: str) -> bool:
         """Check if project has Python files."""
-        root = Path(project_root)
-        return any(root.rglob("*.py"))
+        return has_python_source_files(project_root)
 
     def has_setup_py(self, project_root: str) -> bool:
         """Check if project has setup.py."""
@@ -447,12 +468,7 @@ class PythonCheckMixin:
 
     def is_python_project(self, project_root: str) -> bool:
         """Check if this is a Python project."""
-        return (
-            self.has_python_files(project_root)
-            or self.has_setup_py(project_root)
-            or self.has_pyproject_toml(project_root)
-            or self.has_requirements_txt(project_root)
-        )
+        return looks_like_python_project(project_root)
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping Python checks."""
