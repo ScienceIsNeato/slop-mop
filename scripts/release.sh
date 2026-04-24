@@ -183,7 +183,7 @@ if [[ "$PR_CREATE_EXIT" -ne 0 ]]; then
     PR_ERROR="$(cat "$PR_ERROR_FILE")"
     rm -f "$PR_BODY_FILE" "$PR_ERROR_FILE"
     if [[ "$PR_ERROR" == *"GitHub Actions is not permitted to create or approve pull requests"* ]]; then
-        die "gh pr create failed because this token cannot create pull requests. Configure BUMP_VERSION_TOKEN for Prepare Release and rerun the workflow."
+        die "gh pr create failed because this token cannot create pull requests. Enable 'Allow GitHub Actions to create and approve pull requests' in repository Actions settings, or rerun with a GH_TOKEN that has pull-request write access."
     fi
     if [[ -n "$PR_ERROR" ]]; then
         printf '%s\n' "$PR_ERROR" >&2

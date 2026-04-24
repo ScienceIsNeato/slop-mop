@@ -309,9 +309,7 @@ class ToolInventoryCheck(DoctorCheck):
             "fix_hint": "\n".join(fix_lines) if fix_lines else None,
             "data": data,
         }
-        if missing or validator_rejects or version_violations:
-            return self._fail("; ".join(summary_bits), **kw)
-        return self._warn("; ".join(summary_bits), **kw)
+        return self._fail("; ".join(summary_bits), **kw)
 
     def run(self, ctx: DoctorContext) -> DoctorResult:
         root = str(ctx.project_root)
