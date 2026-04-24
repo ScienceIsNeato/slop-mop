@@ -49,6 +49,7 @@ from slopmop.doctor.project_env import (
 )
 from slopmop.doctor.runtime import PlatformCheck, SmResolutionCheck
 from slopmop.doctor.sm_env import (
+    GateDiagnosticsCheck,
     GateReadinessCheck,
     InstallModeCheck,
     PypiVersionCheck,
@@ -58,6 +59,7 @@ from slopmop.doctor.sm_env import (
 from slopmop.doctor.state import (
     StateCommitHookCheck,
     StateConfigCheck,
+    StateConfigGateRefsCheck,
     StateDirCheck,
     StateLockCheck,
 )
@@ -84,6 +86,7 @@ ALL_CHECKS: List[type[DoctorCheck]] = [
     SmPipCheck,
     ToolInventoryCheck,
     GateReadinessCheck,
+    GateDiagnosticsCheck,
     ProjectVenvCheck,
     ProjectPipCheck,
     ProjectPipAuditRemediabilityCheck,
@@ -92,6 +95,7 @@ ALL_CHECKS: List[type[DoctorCheck]] = [
     StateLockCheck,
     StateDirCheck,
     StateConfigCheck,
+    StateConfigGateRefsCheck,
     StateCommitHookCheck,
 ]
 

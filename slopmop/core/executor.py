@@ -190,7 +190,7 @@ class CheckExecutor:
         check_names: List[str],
         config: Optional[Dict[str, Any]] = None,
         auto_fix: bool = True,
-        swabbing_time: Optional[int] = None,
+        swabbing_timeout: Optional[int] = None,
         timings: Optional[Dict[str, float]] = None,
         use_cache: bool = True,
     ) -> ExecutionSummary:
@@ -201,7 +201,7 @@ class CheckExecutor:
             check_names: List of check names or aliases to run
             config: Configuration dictionary
             auto_fix: Whether to attempt auto-fixing issues
-            swabbing_time: Wall-clock time budget in seconds.  Gates
+            swabbing_timeout: Wall-clock time budget in seconds.  Gates
                 with historical timing data are scheduled using a
                 budget-aware dual-lane strategy until budget expires,
                 then skipped.
@@ -352,7 +352,7 @@ class CheckExecutor:
         # ── Time budget ───────────────────────────────────────────────
         # Budget enforcement now happens at runtime inside
         # _execute_with_dependencies() using wall-clock time, not as a
-        # pre-filter.  swabbing_time is passed through so the execution
+        # pre-filter.  swabbing_timeout is passed through so the execution
         # loop can stop scheduling timed gates once wall-clock time
         # exceeds the budget.
 
@@ -386,7 +386,7 @@ class CheckExecutor:
             project_root,
             auto_fix,
             timings=timings,
-            swabbing_time=swabbing_time,
+            swabbing_timeout=swabbing_timeout,
         )
 
         # Persist cache if any entries were added/updated
@@ -589,7 +589,7 @@ class CheckExecutor:
         project_root: str,
         auto_fix: bool,
         timings: Optional[Dict[str, float]] = None,
-        swabbing_time: Optional[int] = None,
+        swabbing_timeout: Optional[int] = None,
     ) -> None:
         """Execute checks respecting dependencies with wall-clock budget.
 
@@ -618,7 +618,7 @@ class CheckExecutor:
             project_root: Project root path
             auto_fix: Whether to auto-fix
             timings: Optional historical timing map (name → seconds)
-            swabbing_time: Time budget in seconds (None or ≤0 = no limit)
+            swabbing_timeout: Time budget in seconds (None or ≤0 = no limit)
         """
         check_map = {c.full_name: c for c in checks}
         completed: Set[str] = set()
@@ -627,7 +627,7 @@ class CheckExecutor:
         available_results: Dict[str, CheckResult] = {}
         buffered_results: Dict[str, CheckResult] = {}
 
-        budget_active = swabbing_time is not None and swabbing_time > 0
+        budget_active = swabbing_timeout is not None and swabbing_timeout > 0
         budget_start = time.time()
         budget_expired = False
         budget_elapsed: float = 0.0
@@ -680,8 +680,8 @@ class CheckExecutor:
                 # ── Wall-clock budget check ────────────────────────
                 if budget_active and not budget_expired:
                     budget_elapsed = time.time() - budget_start
-                    assert swabbing_time is not None  # for type checker
-                    if budget_elapsed >= swabbing_time:
+                    assert swabbing_timeout is not None  # for type checker
+                    if budget_elapsed >= swabbing_timeout:
                         budget_expired = True
 
                 # ── Determine which gates to submit ────────────────
@@ -694,7 +694,7 @@ class CheckExecutor:
                     budget_active,
                     budget_expired,
                     budget_elapsed,
-                    swabbing_time,
+                    swabbing_timeout,
                 )
 
                 # Submit selected gates
@@ -806,7 +806,7 @@ class CheckExecutor:
         budget_active: bool,
         budget_expired: bool,
         budget_elapsed: float,
-        swabbing_time: Optional[int],
+        swabbing_timeout: Optional[int],
     ) -> List[str]:
         """Choose which ready gates to submit this iteration.
 
@@ -840,7 +840,7 @@ class CheckExecutor:
             budget_active: Whether a positive budget was configured.
             budget_expired: Whether wall-clock time exceeded the budget.
             budget_elapsed: Seconds elapsed since execution started.
-            swabbing_time: The configured budget in seconds.
+            swabbing_timeout: The configured budget in seconds.
 
         Returns:
             List of check names to submit to the thread pool.
@@ -858,7 +858,7 @@ class CheckExecutor:
         if budget_expired:
             # Budget expired: skip all timed gates, run only untimed.
             # Add to completed so dependents get FAILED_DEPENDENCY.
-            self._record_budget_skips(timed, timings, budget_elapsed, swabbing_time)
+            self._record_budget_skips(timed, timings, budget_elapsed, swabbing_timeout)
             for name in timed:
                 pending.discard(name)
                 completed.add(name)
@@ -875,13 +875,15 @@ class CheckExecutor:
         to_submit = untimed[:available_slots]
         remaining_slots = max(0, available_slots - len(to_submit))
 
-        if remaining_slots > 0 and timed and swabbing_time is not None:
+        if remaining_slots > 0 and timed and swabbing_timeout is not None:
             # Project remaining budget by accounting for elapsed wall-clock
             # and expected duration already in-flight.
             inflight_est = sum(
                 timings.get(name, 0.0) for name in futures.values() if name in timings
             )
-            budget_left = max(0.0, float(swabbing_time) - budget_elapsed - inflight_est)
+            budget_left = max(
+                0.0, float(swabbing_timeout) - budget_elapsed - inflight_est
+            )
 
             # If we have no projected room left, defer timed submissions.
             # Pending gates remain pending and may run later if estimates
@@ -983,7 +985,7 @@ class CheckExecutor:
         names: List[str],
         timings: Dict[str, float],
         elapsed: float,
-        swabbing_time: Optional[int],
+        swabbing_timeout: Optional[int],
     ) -> None:
         """Record TIME_BUDGET skip results and fire callbacks.
 
@@ -994,7 +996,7 @@ class CheckExecutor:
             names: Gate names to mark as budget-skipped.
             timings: Historical timing map (name → seconds).
             elapsed: Wall-clock seconds elapsed when budget expired.
-            swabbing_time: Configured budget in seconds.
+            swabbing_timeout: Configured budget in seconds.
         """
         for name in names:
             est = timings.get(name, 0)
@@ -1004,7 +1006,7 @@ class CheckExecutor:
                 duration=0,
                 output=(
                     f"Skipped — estimated {est:.1f}s "
-                    f"(budget {swabbing_time}s expired "
+                    f"(budget {swabbing_timeout}s expired "
                     f"after {elapsed:.1f}s wall-clock)"
                 ),
                 skip_reason=SkipReason.TIME_BUDGET,

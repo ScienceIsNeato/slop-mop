@@ -220,7 +220,7 @@ class TestGitHooksFunctions:
         # Should use PATH-based sm lookup
         assert "command -v sm" in script
         # Should write structured output for LLM consumption
-        assert "--swabbing-time 0" in script
+        assert "--swabbing-timeout 0" in script
         assert "--json-file .slopmop/last_swab.json" in script
         assert "--json --output-file" not in script
         assert "Structured results:" in script
@@ -231,7 +231,7 @@ class TestGitHooksFunctions:
         script = _generate_hook_script("scour")
         assert "sm scour" in script
         assert "# Command: sm scour" in script
-        assert "--swabbing-time 0" in script
+        assert "--swabbing-timeout 0" in script
         assert "--json-file .slopmop/last_scour.json" in script
 
     def test_parse_hook_info_new_format(self):
@@ -600,7 +600,7 @@ class TestScourDisablesFailFast:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=False,
         )
 
@@ -955,6 +955,74 @@ class TestValidateSmLockError:
         mock_run_locked.assert_not_called()
         assert "reserved for internal nested validation runs" in capsys.readouterr().err
 
+    @patch("slopmop.cli.validate.get_runner")
+    @patch("slopmop.cli.validate._run_validation_locked", return_value=0)
+    @patch("slopmop.cli.validate.sm_lock")
+    @patch("slopmop.cli.validate.max_expected_duration", return_value=30.0)
+    @patch("slopmop.cli.validate.load_timing_averages", return_value={})
+    def test_validation_cleans_up_tracked_subprocesses_on_success(
+        self,
+        _mock_timings,
+        _mock_expected_duration,
+        mock_lock,
+        mock_run_locked,
+        mock_get_runner,
+        tmp_path,
+    ):
+        from slopmop.cli.validate import _run_validation
+
+        mock_lock.return_value.__enter__.return_value = None
+        mock_lock.return_value.__exit__.return_value = None
+        mock_runner = MagicMock()
+        mock_get_runner.return_value = mock_runner
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+
+        result = _run_validation(args, [], None)
+
+        assert result == 0
+        mock_run_locked.assert_called_once()
+        mock_runner.terminate_all.assert_called_once()
+
+    @patch("slopmop.cli.validate.get_runner")
+    @patch(
+        "slopmop.cli.validate._run_validation_locked",
+        side_effect=KeyboardInterrupt,
+    )
+    @patch("slopmop.cli.validate.sm_lock")
+    @patch("slopmop.cli.validate.max_expected_duration", return_value=30.0)
+    @patch("slopmop.cli.validate.load_timing_averages", return_value={})
+    def test_validation_cleans_up_tracked_subprocesses_on_interrupt(
+        self,
+        _mock_timings,
+        _mock_expected_duration,
+        mock_lock,
+        _mock_run_locked,
+        mock_get_runner,
+        tmp_path,
+    ):
+        from slopmop.cli.validate import _run_validation
+
+        mock_lock.return_value.__enter__.return_value = None
+        mock_lock.return_value.__exit__.return_value = None
+        mock_runner = MagicMock()
+        mock_get_runner.return_value = mock_runner
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+        )
+
+        with pytest.raises(KeyboardInterrupt):
+            _run_validation(args, [], None)
+
+        mock_runner.terminate_all.assert_called_once()
+
 
 class TestValidateJsonOutputFile:
     """Regression tests for JSON output-file behavior in validate pipeline."""
@@ -1004,7 +1072,7 @@ class TestValidateJsonOutputFile:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=True,
             output_file=str(output_file),
             sarif_output=False,
@@ -1043,7 +1111,7 @@ class TestUnknownGateValidation:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=False,
             no_cache=False,
         )
@@ -1085,7 +1153,7 @@ class TestUnknownGateValidation:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=False,
             no_cache=False,
         )
@@ -1134,7 +1202,7 @@ class TestPreloadedValidationConfig:
             no_auto_fix=True,
             static=True,
             clear_history=False,
-            swabbing_time=None,
+            swabbing_timeout=None,
             json_output=False,
             no_cache=False,
             sarif_output=False,

@@ -1,5 +1,9 @@
 """Tests for subprocess runner."""
 
+import os
+import signal
+import sys
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,6 +15,17 @@ from slopmop.subprocess.runner import (
     run_command,
 )
 from slopmop.subprocess.validator import SecurityError
+
+
+def _pid_exists(pid: int) -> bool:
+    """Return True when the process still exists."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 class TestSubprocessResult:
@@ -144,6 +159,38 @@ class TestSubprocessRunner:
         assert result.timed_out
         assert not result.success
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="Process-group tree cleanup is exercised on POSIX runners.",
+    )
+    def test_timeout_kills_spawned_child_process(self):
+        """Timing out a parent command should also kill its spawned child."""
+        mock_validator = MagicMock()
+        mock_validator.validate = MagicMock()
+        runner = SubprocessRunner(validator=mock_validator)
+        child_pid = None
+        parent_code = (
+            "import subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+            "print(child.pid, flush=True)\n"
+            "time.sleep(30)\n"
+        )
+
+        try:
+            result = runner.run([sys.executable, "-c", parent_code], timeout=1)
+
+            child_pid = int(result.stdout.strip().splitlines()[0])
+
+            deadline = time.time() + 2
+            while time.time() < deadline and _pid_exists(child_pid):
+                time.sleep(0.05)
+
+            assert result.timed_out
+            assert not _pid_exists(child_pid)
+        finally:
+            if child_pid and _pid_exists(child_pid):
+                os.kill(child_pid, signal.SIGKILL)
+
     def test_run_command_fails(self):
         """Test running a command that fails."""
         runner = SubprocessRunner()
@@ -207,6 +254,42 @@ class TestSubprocessRunner:
 
         # Cleanup
         process.wait()
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="Process-group tree cleanup is exercised on POSIX runners.",
+    )
+    def test_terminate_all_kills_spawned_child_processes(self):
+        """terminate_all should tear down the full child process tree."""
+        mock_validator = MagicMock()
+        mock_validator.validate = MagicMock()
+        runner = SubprocessRunner(validator=mock_validator)
+        child_pid = None
+        parent_code = (
+            "import subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+            "print(child.pid, flush=True)\n"
+            "time.sleep(30)\n"
+        )
+        process = None
+
+        try:
+            process, _pid = runner.start_background([sys.executable, "-c", parent_code])
+            child_pid = int(process.stdout.readline().strip())
+
+            assert runner.terminate_all() == 1
+
+            deadline = time.time() + 2
+            while time.time() < deadline and _pid_exists(child_pid):
+                time.sleep(0.05)
+
+            assert not _pid_exists(child_pid)
+        finally:
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait()
+            if child_pid and _pid_exists(child_pid):
+                os.kill(child_pid, signal.SIGKILL)
 
     def test_run_captures_stderr(self):
         """Test that stderr is captured."""

@@ -189,7 +189,7 @@ class TestSwabArgs:
         "verbose",
         "quiet",
         "static",
-        "swabbing_time",
+        "swabbing_timeout",
         "clear_history",
         "ignore_baseline_failures",
     )

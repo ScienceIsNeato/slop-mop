@@ -393,12 +393,12 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
     print(f"📄 Config file: {config_file}")
     print()
 
-    # Show swabbing-time setting
-    swabbing_time = config.get("swabbing_time")
-    if isinstance(swabbing_time, (int, float)) and swabbing_time > 0:
-        print(f"⏱️  Swabbing-time budget: {int(swabbing_time)}s")
+    # Show swabbing-timeout setting
+    swabbing_timeout = config.get("swabbing_timeout", config.get("swabbing_time"))
+    if isinstance(swabbing_timeout, (int, float)) and swabbing_timeout > 0:
+        print(f"⏱️  Swabbing-timeout budget: {int(swabbing_timeout)}s")
     else:
-        print("⏱️  Swabbing-time budget: no limit")
+        print("⏱️  Swabbing-timeout budget: no limit")
     current_pr_number = get_current_pr_number(project_root)
     if isinstance(current_pr_number, int):
         print(f"🔀 Current PR number: {current_pr_number}")
@@ -478,16 +478,20 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
     return 0
 
 
-def _set_swabbing_time(config_file: Path, config: dict[str, Any], seconds: int) -> int:
-    """Set or disable the swabbing-time budget."""
+def _set_swabbing_timeout(
+    config_file: Path, config: dict[str, Any], seconds: int
+) -> int:
+    """Set or disable the swabbing-timeout budget."""
     if seconds <= 0:
-        config.pop("swabbing_time", None)
+        config.pop("swabbing_timeout", None)
+        config.pop("swabbing_time", None)  # also remove legacy key
         config_file.write_text(json.dumps(config, indent=2))
-        print("✅ Swabbing-time budget disabled (no limit)")
+        print("✅ Swabbing-timeout budget disabled (no limit)")
     else:
-        config["swabbing_time"] = seconds
+        config["swabbing_timeout"] = seconds
+        config.pop("swabbing_time", None)  # also remove legacy key
         config_file.write_text(json.dumps(config, indent=2))
-        print(f"✅ Swabbing-time budget set to {seconds}s")
+        print(f"✅ Swabbing-timeout budget set to {seconds}s")
     return 0
 
 
@@ -562,7 +566,7 @@ def _show_usage_hints(project_root: Path, config: dict[str, Any]) -> int:
     print("  sm config --swab-on  <gate>        Run gate in swab + scour")
     print("  sm config --set <gate> <field> <value>    Set a gate field")
     print("  sm config --unset <gate> <field>          Remove a gate field override")
-    print("  sm config --swabbing-time <secs>   Set time budget")
+    print("  sm config --swabbing-timeout <secs>   Set time budget")
     print("  sm config --current-pr-number <n>  Select working PR")
     print("  sm config --clear-current-pr       Clear selected PR")
     print("  sm config --json <file>            Merge config JSON")
@@ -627,8 +631,8 @@ def cmd_config(args: argparse.Namespace) -> int:
     if args.disable:
         return _disable_gate(config_file, config, args.disable)
 
-    if getattr(args, "swabbing_time", None) is not None:
-        return _set_swabbing_time(config_file, config, args.swabbing_time)
+    if getattr(args, "swabbing_timeout", None) is not None:
+        return _set_swabbing_timeout(config_file, config, args.swabbing_timeout)
 
     if getattr(args, "swab_off", None):
         return _set_gate_swab_membership(

@@ -102,13 +102,13 @@ class JsonAdapter:
         if budget_skips > 0:
             warnings.append(
                 {
-                    "code": "swabbing_time_budget_skipped",
+                    "code": "swabbing_timeout_budget_skipped",
                     "message": (
-                        "Swabbing-time budget skipped timed checks; "
+                        "Swabbing-timeout budget skipped timed checks; "
                         "run full coverage when needed."
                     ),
                     "skipped_timed_checks": budget_skips,
-                    "suggested_command": "sm swab --swabbing-time 0",
+                    "suggested_command": "sm swab --swabbing-timeout 0",
                 }
             )
 
@@ -323,16 +323,16 @@ class ConsoleAdapter:
                 print(f"     💡 {res.fix_suggestion}")
 
     def _render_time_budget_warning(self) -> None:
-        """Warn when timed gates were skipped due to swabbing-time budget."""
+        """Warn when timed gates were skipped due to swabbing-timeout budget."""
         counts = self.report.summary.skip_reason_summary()
         skipped_for_budget = counts.get("time", 0)
         if skipped_for_budget <= 0:
             return
 
         print(
-            "   ⚠️  Swabbing-time budget skipped "
+            "   ⚠️  Swabbing-timeout budget skipped "
             f"{skipped_for_budget} timed check(s); "
-            "run `sm swab --swabbing-time 0` for full coverage."
+            "run `sm swab --swabbing-timeout 0` for full coverage."
         )
 
     def _render_cache_refresh_hint(self) -> None:

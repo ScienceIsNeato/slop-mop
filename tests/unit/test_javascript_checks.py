@@ -366,7 +366,7 @@ class TestJavaScriptLintFormatCheck:
         assert check.can_auto_fix() is True
 
     def test_auto_fix_with_node_modules(self, tmp_path):
-        """Test auto_fix() runs eslint and prettier."""
+        """Test auto_fix() runs Prettier for Node projects."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
         (tmp_path / "node_modules").mkdir()
         check = JavaScriptLintFormatCheck({})
@@ -374,10 +374,15 @@ class TestJavaScriptLintFormatCheck:
         mock_result = MagicMock()
         mock_result.success = True
 
-        with patch.object(check, "_run_command", return_value=mock_result):
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
             result = check.auto_fix(str(tmp_path))
 
         assert result is True
+        mock_run.assert_called_once_with(
+            ["npx", "--yes", "prettier", "--write", "."],
+            cwd=str(tmp_path),
+            timeout=60,
+        )
 
     def test_auto_fix_installs_deps(self, tmp_path):
         """Test auto_fix() installs deps when node_modules missing."""
@@ -390,27 +395,118 @@ class TestJavaScriptLintFormatCheck:
         with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
             result = check.auto_fix(str(tmp_path))
 
-        # Should call npm install, eslint --fix, prettier --write
-        assert mock_run.call_count == 3
+        # Should call npm install, then prettier --write
+        assert mock_run.call_count == 2
         assert result is True
 
-    def test_auto_fix_eslint_fails_prettier_succeeds(self, tmp_path):
-        """Test auto_fix() returns True if prettier succeeds even if eslint fails."""
+    def test_auto_fix_returns_true_when_prettier_succeeds(self, tmp_path):
+        """Test auto_fix() returns True when Prettier succeeds."""
         (tmp_path / "package.json").write_text('{"name": "test"}')
         (tmp_path / "node_modules").mkdir()
         check = JavaScriptLintFormatCheck({})
 
-        eslint_result = MagicMock()
-        eslint_result.success = False
         prettier_result = MagicMock()
         prettier_result.success = True
 
-        with patch.object(
-            check, "_run_command", side_effect=[eslint_result, prettier_result]
-        ):
+        with patch.object(check, "_run_command", return_value=prettier_result):
             result = check.auto_fix(str(tmp_path))
 
         assert result is True
+
+    def test_run_uses_scoped_package_scripts_for_node(self, tmp_path):
+        """run() should reuse scoped ESLint/Prettier argv from package scripts."""
+        pkg = {
+            "name": "test",
+            "scripts": {
+                "lint:fix": "eslint src --ext .ts,.tsx --fix",
+                "format:check": "prettier --check src/",
+            },
+        }
+        (tmp_path / "package.json").write_text(json.dumps(pkg))
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptLintFormatCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = ""
+        mock_result.stdout = "[]"
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        commands = [call.args[0] for call in mock_run.call_args_list]
+        assert [
+            "npx",
+            "--yes",
+            "eslint",
+            "src",
+            "--ext",
+            ".ts,.tsx",
+            "--format",
+            "json",
+            "--quiet",
+        ] in commands
+        assert ["npx", "--yes", "prettier", "--check", "src/"] in commands
+
+    def test_run_strips_max_warnings_from_strict_lint_script(self, tmp_path):
+        """run() should not inherit warning-blocking flags from lint:strict."""
+        pkg = {
+            "name": "test",
+            "scripts": {
+                "lint:strict": "eslint src --ext .ts,.tsx --max-warnings 0",
+                "format:check": "prettier --check src/",
+            },
+        }
+        (tmp_path / "package.json").write_text(json.dumps(pkg))
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptLintFormatCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = ""
+        mock_result.stdout = "[]"
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        eslint_command = mock_run.call_args_list[0].args[0]
+        assert eslint_command == [
+            "npx",
+            "--yes",
+            "eslint",
+            "src",
+            "--ext",
+            ".ts,.tsx",
+            "--format",
+            "json",
+            "--quiet",
+        ]
+
+    def test_auto_fix_uses_scoped_package_scripts_for_node(self, tmp_path):
+        """auto_fix() should normalize scoped package scripts for Prettier."""
+        pkg = {
+            "name": "test",
+            "scripts": {
+                "lint:strict": "eslint src --ext .ts,.tsx --max-warnings 0",
+                "format:check": "prettier --check src/",
+            },
+        }
+        (tmp_path / "package.json").write_text(json.dumps(pkg))
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptLintFormatCheck({})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            result = check.auto_fix(str(tmp_path))
+
+        assert result is True
+        commands = [call.args[0] for call in mock_run.call_args_list]
+        assert ["npx", "--yes", "prettier", "--write", "src/"] in commands
+        assert not any(cmd[:3] == ["npx", "--yes", "eslint"] for cmd in commands)
 
     def test_run_without_node_modules_installs(self, tmp_path):
         """Test run() installs deps when node_modules missing."""

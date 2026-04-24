@@ -5,7 +5,9 @@ from pathlib import Path
 
 from slopmop.migrations import (
     UpgradeMigration,
+    _rename_dart_gates,
     _rename_source_duplication,
+    _rename_swabbing_time,
     planned_upgrade_migrations,
     run_upgrade_migrations,
 )
@@ -268,3 +270,120 @@ class TestRenameSourceDuplication:
         result = self._read_config(tmp_path)
         assert "source-duplication" not in result["myopia"]["gates"]
         assert "ambiguity-mines.py" in result["myopia"]["gates"]
+
+
+class TestRenameSwabbingTime:
+    def _write_config(self, tmp_path: Path, data: dict) -> None:
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(data, indent=2) + "\n", encoding="utf-8"
+        )
+
+    def _read_config(self, tmp_path: Path) -> dict:
+        return json.loads((tmp_path / ".sb_config.json").read_text(encoding="utf-8"))
+
+    def test_renames_swabbing_time_key(self, tmp_path: Path):
+        self._write_config(tmp_path, {"swabbing_time": 30, "enabled": True})
+        _rename_swabbing_time(tmp_path)
+        result = self._read_config(tmp_path)
+        assert "swabbing_time" not in result
+        assert result["swabbing_timeout"] == 30
+        assert result["enabled"] is True
+
+    def test_no_op_when_key_absent(self, tmp_path: Path):
+        self._write_config(tmp_path, {"swabbing_timeout": 30})
+        _rename_swabbing_time(tmp_path)
+        result = self._read_config(tmp_path)
+        assert result == {"swabbing_timeout": 30}
+
+    def test_no_op_when_config_missing(self, tmp_path: Path):
+        _rename_swabbing_time(tmp_path)  # should not raise
+        assert not (tmp_path / ".sb_config.json").exists()
+
+    def test_no_op_when_config_invalid_json(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("not json!", encoding="utf-8")
+        _rename_swabbing_time(tmp_path)  # should not raise
+        # File should be unchanged
+        assert (tmp_path / ".sb_config.json").read_text() == "not json!"
+
+    def test_end_to_end_via_registry(self, tmp_path: Path):
+        self._write_config(tmp_path, {"swabbing_time": 15})
+        applied = run_upgrade_migrations(tmp_path, "0.14.1", "0.15.0")
+        assert "rename-swabbing-time-to-timeout" in applied
+        result = self._read_config(tmp_path)
+        assert "swabbing_time" not in result
+        assert result["swabbing_timeout"] == 15
+
+
+class TestRenameDartGates:
+    def _write_config(self, tmp_path: Path, data: dict) -> None:
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(data, indent=2) + "\n", encoding="utf-8"
+        )
+
+    def _read_config(self, tmp_path: Path) -> dict:
+        return json.loads((tmp_path / ".sb_config.json").read_text(encoding="utf-8"))
+
+    def test_renames_flutter_analyze_in_disabled_gates(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {"disabled_gates": ["overconfidence:flutter-analyze", "other-gate"]},
+        )
+        _rename_dart_gates(tmp_path)
+        result = self._read_config(tmp_path)
+        assert "overconfidence:flutter-analyze" not in result["disabled_gates"]
+        assert "overconfidence:missing-annotations.dart" in result["disabled_gates"]
+        assert "other-gate" in result["disabled_gates"]
+
+    def test_renames_all_three_dart_gates_in_disabled(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {
+                "disabled_gates": [
+                    "overconfidence:flutter-analyze",
+                    "overconfidence:flutter-test",
+                    "laziness:dart-format-check",
+                ]
+            },
+        )
+        _rename_dart_gates(tmp_path)
+        result = self._read_config(tmp_path)
+        assert result["disabled_gates"] == [
+            "overconfidence:missing-annotations.dart",
+            "overconfidence:untested-code.dart",
+            "laziness:sloppy-formatting.dart",
+        ]
+
+    def test_renames_flat_gate_config_key(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {"overconfidence:flutter-analyze": {"enabled": False}},
+        )
+        _rename_dart_gates(tmp_path)
+        result = self._read_config(tmp_path)
+        assert "overconfidence:flutter-analyze" not in result
+        assert result["overconfidence:missing-annotations.dart"] == {"enabled": False}
+
+    def test_no_op_when_no_dart_refs(self, tmp_path: Path):
+        original = {"disabled_gates": ["myopia:ambiguity-mines.py"]}
+        self._write_config(tmp_path, original)
+        _rename_dart_gates(tmp_path)
+        assert self._read_config(tmp_path) == original
+
+    def test_no_op_when_config_missing(self, tmp_path: Path):
+        _rename_dart_gates(tmp_path)  # should not raise
+        assert not (tmp_path / ".sb_config.json").exists()
+
+    def test_no_op_when_config_invalid_json(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("{{bad json}}", encoding="utf-8")
+        _rename_dart_gates(tmp_path)  # should not raise
+        assert (tmp_path / ".sb_config.json").read_text() == "{{bad json}}"
+
+    def test_end_to_end_via_registry(self, tmp_path: Path):
+        self._write_config(
+            tmp_path,
+            {"disabled_gates": ["overconfidence:flutter-test"]},
+        )
+        applied = run_upgrade_migrations(tmp_path, "0.11.1", "0.12.0")
+        assert "rename-dart-gates" in applied
+        result = self._read_config(tmp_path)
+        assert result["disabled_gates"] == ["overconfidence:untested-code.dart"]

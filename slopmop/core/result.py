@@ -38,7 +38,7 @@ class SkipReason(Enum):
     FAILED_DEPENDENCY = "dep"  # A prerequisite check failed
     NOT_APPLICABLE = "n/a"  # Check doesn't apply (e.g. no Python files)
     DISABLED = "off"  # Turned off in .sb_config.json
-    TIME_BUDGET = "time"  # Would exceed --swabbing-time budget
+    TIME_BUDGET = "time"  # Would exceed --swabbing-timeout budget
     SUPERSEDED = "sup"  # Replaced by a more thorough check in this run
 
     def __str__(self) -> str:

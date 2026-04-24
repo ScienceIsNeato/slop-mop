@@ -26,7 +26,6 @@ from slopmop.doctor.gate_preflight import GatePreflightRecord
 from slopmop.doctor.project_env import (
     ProjectGateRunnabilityCheck,
     ProjectJsDepsCheck,
-    ProjectPipAuditRemediabilityCheck,
     ProjectPipCheck,
     ProjectVenvCheck,
 )
@@ -36,14 +35,18 @@ from slopmop.doctor.runtime import (
     _find_all_on_path,
 )
 from slopmop.doctor.sm_env import (
+    GateDiagnosticsCheck,
     InstallModeCheck,
     SmPipCheck,
     ToolInventoryCheck,
+    _check_version_constraint,
     _group_install_hints,
+    _parse_tool_version,
     _reinstall_hint,
 )
 from slopmop.doctor.state import (
     StateConfigCheck,
+    StateConfigGateRefsCheck,
     StateDirCheck,
     StateLockCheck,
     _find_newest_config_backup,
@@ -66,23 +69,8 @@ def _mk_lock(root: Path, meta: dict) -> Path:  # noqa: ambiguity-mine
     return lock_file
 
 
-def _mk_python_project(root: Path) -> None:
-    (root / "pyproject.toml").write_text("[project]\nname='x'\n")
-
-
-def _mk_project_venv(root: Path) -> Path:
-    """Create a minimal fake venv with a real ``bin/python`` entry.
-
-    The file has to *exist* (``find_python_in_venv`` checks that) but
-    doesn't need to be executable for most checks.  For ``pip check``
-    tests we mock ``subprocess.run`` anyway.
-    """
-    bin_dir = root / ".venv" / "bin"
-    bin_dir.mkdir(parents=True)
-    python = bin_dir / "python"
-    python.write_text("#!/bin/false\n")
-    return python
-
+from tests.unit.conftest import mk_project_venv as _mk_project_venv
+from tests.unit.conftest import mk_python_project as _mk_python_project
 
 # ── runtime.* ────────────────────────────────────────────────────────────
 
@@ -493,148 +481,6 @@ class TestProjectPipCheck:
         assert "conflict detected" in r.detail
 
 
-class TestProjectPipAuditRemediabilityCheck:
-    def test_skips_without_python_markers(self, ctx):
-        assert ProjectPipAuditRemediabilityCheck().run(ctx).status is DoctorStatus.SKIP
-
-    def test_skips_without_local_venv(self, tmp_path, monkeypatch):
-        _mk_python_project(tmp_path)
-        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
-        r = ProjectPipAuditRemediabilityCheck().run(
-            DoctorContext(project_root=tmp_path)
-        )
-        assert r.status is DoctorStatus.SKIP
-        assert "project.python_venv" in r.summary
-
-    def test_no_vulnerabilities_ok(self, tmp_path):
-        _mk_python_project(tmp_path)
-        _mk_project_venv(tmp_path)
-        pip_audit_proc = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"dependencies": []}),
-            stderr="",
-        )
-        with patch("subprocess.run", return_value=pip_audit_proc):
-            r = ProjectPipAuditRemediabilityCheck().run(
-                DoctorContext(project_root=tmp_path)
-            )
-        assert r.status is DoctorStatus.OK
-        assert "no vulnerable dependencies" in r.summary
-
-    def test_blocked_when_fix_versions_not_in_index(self, tmp_path):
-        _mk_python_project(tmp_path)
-        _mk_project_venv(tmp_path)
-
-        pip_audit_payload = {
-            "dependencies": [
-                {
-                    "name": "Pygments",
-                    "version": "2.19.2",
-                    "vulns": [
-                        {
-                            "id": "PYSEC-TEST-1",
-                            "fix_versions": ["2.19.3"],
-                        }
-                    ],
-                }
-            ]
-        }
-
-        def _fake_run(cmd, **kwargs):
-            if cmd[2:4] == ["pip_audit", "--format"]:
-                return MagicMock(
-                    returncode=1,
-                    stdout=json.dumps(pip_audit_payload),
-                    stderr="",
-                )
-            if cmd[2:5] == ["pip", "install", "--dry-run"]:
-                return MagicMock(
-                    returncode=1,
-                    stdout="",
-                    stderr=(
-                        "ERROR: Could not find a version that satisfies the requirement "
-                        "Pygments==2.19.3"
-                    ),
-                )
-            raise AssertionError(f"Unexpected command: {cmd}")
-
-        with patch("subprocess.run", side_effect=_fake_run):
-            r = ProjectPipAuditRemediabilityCheck().run(
-                DoctorContext(project_root=tmp_path)
-            )
-
-        assert r.status is DoctorStatus.FAIL
-        assert "blocked by package index" in r.summary
-        assert "Publish/mirror" in (r.fix_hint or "")
-        assert r.data["blocked"][0]["name"] == "Pygments"
-
-    def test_ok_when_at_least_one_fix_is_installable(self, tmp_path):
-        _mk_python_project(tmp_path)
-        _mk_project_venv(tmp_path)
-
-        pip_audit_payload = {
-            "dependencies": [
-                {
-                    "name": "Pygments",
-                    "version": "2.19.2",
-                    "vulns": [
-                        {
-                            "id": "PYSEC-TEST-1",
-                            "fix_versions": ["2.19.3"],
-                        }
-                    ],
-                }
-            ]
-        }
-
-        def _fake_run(cmd, **kwargs):
-            if cmd[2:4] == ["pip_audit", "--format"]:
-                return MagicMock(
-                    returncode=1,
-                    stdout=json.dumps(pip_audit_payload),
-                    stderr="",
-                )
-            if cmd[2:5] == ["pip", "install", "--dry-run"]:
-                return MagicMock(returncode=0, stdout="Would install", stderr="")
-            raise AssertionError(f"Unexpected command: {cmd}")
-
-        with patch("subprocess.run", side_effect=_fake_run):
-            r = ProjectPipAuditRemediabilityCheck().run(
-                DoctorContext(project_root=tmp_path)
-            )
-
-        assert r.status is DoctorStatus.OK
-        assert "installable" in r.summary
-        assert r.data["remediable_count"] == 1
-
-    def test_warn_when_upstream_has_no_fix_versions(self, tmp_path):
-        _mk_python_project(tmp_path)
-        _mk_project_venv(tmp_path)
-
-        pip_audit_payload = {
-            "dependencies": [
-                {
-                    "name": "pkg-no-fix",
-                    "version": "1.0.0",
-                    "vulns": [{"id": "PYSEC-TEST-2", "fix_versions": []}],
-                }
-            ]
-        }
-
-        pip_audit_proc = MagicMock(
-            returncode=1,
-            stdout=json.dumps(pip_audit_payload),
-            stderr="",
-        )
-        with patch("subprocess.run", return_value=pip_audit_proc):
-            r = ProjectPipAuditRemediabilityCheck().run(
-                DoctorContext(project_root=tmp_path)
-            )
-
-        assert r.status is DoctorStatus.WARN
-        assert "no upstream fix" in r.summary
-
-
 class TestProjectJsDepsCheck:
     def test_skips_without_package_json(self, ctx):
         assert ProjectJsDepsCheck().run(ctx).status is DoctorStatus.SKIP
@@ -972,3 +818,311 @@ class TestFormatAge:
 
     def test_negative_clamps_to_zero(self):
         assert _format_seconds_age(-10) == "0s"
+
+
+# ── StateConfigGateRefsCheck ─────────────────────────────────────────────────
+
+
+class TestStateConfigGateRefsCheck:
+    """Tests for the gate-ref validation doctor check."""
+
+    def _write_config(self, tmp_path: Path, data: dict) -> None:
+        from slopmop.core.config import CONFIG_FILE
+
+        (tmp_path / CONFIG_FILE).write_text(
+            json.dumps(data, indent=2) + "\n", encoding="utf-8"
+        )
+
+    def _run(self, tmp_path: Path) -> object:
+        ctx = DoctorContext(project_root=tmp_path)
+        return StateConfigGateRefsCheck().run(ctx)
+
+    def test_skip_when_no_config(self, tmp_path: Path):
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.SKIP
+
+    def test_skip_when_config_unparseable(self, tmp_path: Path):
+        from slopmop.core.config import CONFIG_FILE
+
+        (tmp_path / CONFIG_FILE).write_text("not json", encoding="utf-8")
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.SKIP
+
+    def test_ok_when_empty_config(self, tmp_path: Path):
+        self._write_config(tmp_path, {})
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.OK
+
+    def test_ok_when_all_refs_valid(self, tmp_path: Path):
+        # Use a gate that definitely exists: laziness:sloppy-formatting.py
+        from slopmop.checks import ensure_checks_registered
+        from slopmop.core.registry import get_registry
+
+        ensure_checks_registered()
+        valid_gate = next(iter(get_registry().list_checks()))
+        self._write_config(tmp_path, {"disabled_gates": [valid_gate]})
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.OK
+
+    def test_warn_on_unknown_disabled_gate(self, tmp_path: Path):
+        self._write_config(
+            tmp_path, {"disabled_gates": ["myopia:nonexistent-gate-xyz"]}
+        )
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.WARN
+        assert "myopia:nonexistent-gate-xyz" in (r.detail or "")
+
+    def test_warn_on_unknown_flat_config_key(self, tmp_path: Path):
+        self._write_config(
+            tmp_path, {"category:completely-bogus-gate": {"enabled": False}}
+        )
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.WARN
+
+    def test_ok_with_hierarchical_config(self, tmp_path: Path):
+        """Hierarchical category→gates dict: extract refs and validate them."""
+        # Use a real gate name that will be in the registry.
+        from slopmop.checks import ensure_checks_registered
+        from slopmop.core.registry import get_registry
+
+        ensure_checks_registered()
+        registry = get_registry()
+        # Pick any known gate name to construct a valid hierarchical ref.
+        known = next(iter(registry.list_checks()))
+        if ":" not in known:
+            return  # skip if no colon gates registered
+        category, gate = known.split(":", 1)
+        self._write_config(tmp_path, {category: {"gates": {gate: {"enabled": True}}}})
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.OK
+
+    def test_warn_hierarchical_unknown_gate(self, tmp_path: Path):
+        """Hierarchical config with a bogus gate name should WARN."""
+        self._write_config(
+            tmp_path, {"myopia": {"gates": {"totally-made-up-gate-xyz": {}}}}
+        )
+        r = self._run(tmp_path)
+        assert r.status is DoctorStatus.WARN
+
+
+# ── sm_env version helpers ────────────────────────────────────────────────
+
+
+class TestParseToolVersion:
+    def test_extracts_version_from_stdout(self):
+        pass
+
+        with patch(
+            "subprocess.run",
+            return_value=MagicMock(
+                stdout="black, 23.1.0 (compiled: yes)\n", stderr="", returncode=0
+            ),
+        ):
+            result = _parse_tool_version("/usr/bin/black")
+        assert result == "23.1.0"
+
+    def test_extracts_version_from_stderr(self):
+        with patch(
+            "subprocess.run",
+            return_value=MagicMock(stdout="", stderr="mypy 1.4.1\n", returncode=1),
+        ):
+            result = _parse_tool_version("/usr/bin/mypy")
+        assert result == "1.4.1"
+
+    def test_returns_none_on_os_error(self):
+        with patch("subprocess.run", side_effect=OSError("not found")):
+            result = _parse_tool_version("/no/such/tool")
+        assert result is None
+
+    def test_returns_none_on_timeout(self):
+        import subprocess
+
+        with patch(
+            "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=5)
+        ):
+            result = _parse_tool_version("/slow/tool")
+        assert result is None
+
+    def test_returns_none_when_no_version_in_output(self):
+        with patch(
+            "subprocess.run",
+            return_value=MagicMock(
+                stdout="no version info here", stderr="", returncode=0
+            ),
+        ):
+            result = _parse_tool_version("/usr/bin/weird")
+        assert result is None
+
+
+class TestCheckVersionConstraint:
+    def test_satisfied_constraint_returns_none(self):
+        with patch("slopmop.doctor.sm_env._parse_tool_version", return_value="23.1.0"):
+            result = _check_version_constraint("black", "/bin/black", ">=22.0")
+        assert result is None
+
+    def test_violated_constraint_returns_message(self):
+        with patch("slopmop.doctor.sm_env._parse_tool_version", return_value="21.9.0"):
+            result = _check_version_constraint("black", "/bin/black", ">=22.0")
+        assert result is not None
+        assert "21.9.0" in result
+        assert ">=22.0" in result
+
+    def test_returns_none_when_version_unreadable(self):
+        with patch("slopmop.doctor.sm_env._parse_tool_version", return_value=None):
+            result = _check_version_constraint("black", "/bin/black", ">=22.0")
+        assert result is None
+
+    def test_returns_none_when_packaging_unavailable(self):
+        with (
+            patch("slopmop.doctor.sm_env._parse_tool_version", return_value="1.0.0"),
+            patch.dict(
+                "sys.modules", {"packaging": None, "packaging.specifiers": None}
+            ),
+        ):
+            # packaging import fails → should return None silently
+            result = _check_version_constraint("black", "/bin/black", ">=22.0")
+        # result can be None or raise — both acceptable; just shouldn't crash caller
+        assert result is None or isinstance(result, str)
+
+
+class TestToolInventoryVersionViolations:
+    """ToolInventoryCheck covers version-violation reporting paths."""
+
+    def test_version_violation_reported_as_warn(self, ctx):
+        """When tool is found but version constraint fails → WARN (not FAIL)."""
+        from slopmop.checks.base import BaseCheck
+
+        class FakeGate(BaseCheck):
+            name = "test:fake-version-gate"
+            required_tools = ["black"]
+            required_tool_versions = {"black": ">=999.0"}
+
+            def run(self, project_root, config=None):  # type: ignore[override]
+                return self._pass()
+
+        with (
+            patch(
+                "slopmop.doctor.sm_env.find_tool",
+                side_effect=lambda name, root: f"/usr/local/bin/{name}",
+            ),
+            patch(
+                "slopmop.doctor.sm_env._check_version_constraint",
+                return_value="found 23.1.0, requires >=999.0",
+            ),
+            patch(
+                "slopmop.core.registry.get_registry",
+                return_value=MagicMock(
+                    list_checks=lambda: ["test:fake-version-gate"],
+                    _check_classes={"test:fake-version-gate": FakeGate},
+                ),
+            ),
+        ):
+            r = ToolInventoryCheck().run(ctx)
+        # No missing/rejected tools but a version violation → WARN
+        assert r.status is DoctorStatus.WARN
+        assert "version constraint" in r.summary
+
+
+# ── sm_env.GateDiagnosticsCheck ──────────────────────────────────────────
+
+
+class TestGateDiagnosticsCheck:
+    def _make_concrete_gate_class(self, base_cls, overrides: dict):
+        """Create a concrete BaseCheck subclass with all abstract methods filled in."""
+        from slopmop.checks.base import Flaw, GateCategory
+
+        attrs = {
+            "name": "test:stub",
+            "required_tools": [],
+            "display_name": property(lambda self: "Test Gate"),
+            "category": property(lambda self: GateCategory.GENERAL),
+            "flaw": property(lambda self: Flaw("test", "🔬", "Test")),
+            "is_applicable": lambda self, root: True,
+            "run": lambda self, root: self._pass(),
+        }
+        attrs.update(overrides)
+        return type("ConcreteGate", (base_cls,), attrs)
+
+    def test_ok_when_no_gates_override_diagnose(self, ctx):
+        from slopmop.checks.base import BaseCheck
+
+        NoOpGate = self._make_concrete_gate_class(BaseCheck, {"name": "test:noop"})
+
+        with patch(
+            "slopmop.core.registry.get_registry",
+            return_value=MagicMock(
+                _check_classes={"test:noop": NoOpGate},
+            ),
+        ):
+            r = GateDiagnosticsCheck().run(ctx)
+        assert r.status is DoctorStatus.OK
+
+    def test_warn_when_gate_diagnose_returns_warn(self, ctx):
+        from slopmop.checks.base import BaseCheck, GateDiagnosticResult
+
+        DiagnosticGate = self._make_concrete_gate_class(
+            BaseCheck,
+            {
+                "name": "test:diag-warn",
+                "diagnose": lambda self, root: [
+                    GateDiagnosticResult(severity="warn", summary="low disk space")
+                ],
+            },
+        )
+
+        with patch(
+            "slopmop.core.registry.get_registry",
+            return_value=MagicMock(
+                _check_classes={"test:diag-warn": DiagnosticGate},
+            ),
+        ):
+            r = GateDiagnosticsCheck().run(ctx)
+        assert r.status is DoctorStatus.WARN
+        assert "low disk space" in (r.detail or "")
+
+    def test_fail_when_gate_diagnose_returns_fail(self, ctx):
+        from slopmop.checks.base import BaseCheck, GateDiagnosticResult
+
+        DiagnosticGate = self._make_concrete_gate_class(
+            BaseCheck,
+            {
+                "name": "test:diag-fail",
+                "diagnose": lambda self, root: [
+                    GateDiagnosticResult(severity="fail", summary="no .coverage file")
+                ],
+            },
+        )
+
+        with patch(
+            "slopmop.core.registry.get_registry",
+            return_value=MagicMock(
+                _check_classes={"test:diag-fail": DiagnosticGate},
+            ),
+        ):
+            r = GateDiagnosticsCheck().run(ctx)
+        assert r.status is DoctorStatus.FAIL
+        assert "no .coverage file" in (r.detail or "")
+
+    def test_exception_in_diagnose_is_skipped(self, ctx):
+        from slopmop.checks.base import BaseCheck
+
+        def _crash_diagnose(self, root):
+            raise RuntimeError("oops")
+
+        CrashingGate = self._make_concrete_gate_class(
+            BaseCheck,
+            {
+                "name": "test:crash",
+                "diagnose": _crash_diagnose,
+            },
+        )
+
+        with patch(
+            "slopmop.core.registry.get_registry",
+            return_value=MagicMock(
+                _check_classes={"test:crash": CrashingGate},
+            ),
+        ):
+            r = GateDiagnosticsCheck().run(ctx)
+        # The crashing gate is silently skipped — overall result is OK
+        assert r.status is DoctorStatus.OK

@@ -285,7 +285,7 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         help="Clear all timing history before running",
     )
     parser.add_argument(
-        "--swabbing-time",
+        "--swabbing-timeout",
         type=int,
         metavar="SECONDS",
         default=None,
@@ -294,6 +294,14 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
             "timing data are skipped when the budget would be exceeded. "
             "Overrides the config-file default. Set to 0 to disable."
         ),
+    )
+    parser.add_argument(
+        "--swabbing-time",
+        type=int,
+        metavar="SECONDS",
+        default=None,
+        dest="swabbing_timeout",
+        help=argparse.SUPPRESS,  # deprecated alias for --swabbing-timeout
     )
     _add_output_flags(parser)
 
@@ -446,10 +454,17 @@ def _add_config_parser(
         help="Update configuration from JSON file",
     )
     config_parser.add_argument(
+        "--swabbing-timeout",
+        type=int,
+        metavar="SECONDS",
+        help="Set the swabbing-timeout budget (seconds). 0 or negative disables the limit.",
+    )
+    config_parser.add_argument(
         "--swabbing-time",
         type=int,
         metavar="SECONDS",
-        help="Set the swabbing-time budget (seconds). 0 or negative disables the limit.",
+        dest="swabbing_timeout",
+        help=argparse.SUPPRESS,  # deprecated alias for --swabbing-timeout
     )
     config_parser.add_argument(
         "--swab-off",
