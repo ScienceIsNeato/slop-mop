@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from slopmop.checks.base import find_tool
 from slopmop.checks.mixins import (
+    _PYTHON_SOURCE_EXCLUDE_DIRS,
     discover_supabase_deno_test_glob,
     has_python_source_files,
 )
@@ -73,18 +74,7 @@ _C_CPP_LANGS = {
 }
 _DART_LANGS = {"dart"}
 _SCC_SUMMARY_ROWS = {"total", "totals", "sum", "header"}
-_DETECTION_EXCLUDED_DIRS = {
-    ".git",
-    "node_modules",
-    "venv",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".slopmop",
-}
+_DETECTION_EXCLUDED_DIRS = _PYTHON_SOURCE_EXCLUDE_DIRS
 _MAX_NESTED_SCAN_DEPTH = 4
 
 

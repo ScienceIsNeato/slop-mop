@@ -1,5 +1,24 @@
 # Project Status
 
+## 2026-04-24 Delta: PR 149 final follow-up on shared exclude dirs
+
+Branch: `friction`
+
+**Work completed:**
+- Deduplicated the detection-layer excluded-directory set by aliasing
+  `slopmop/cli/detection.py` to the shared Python source exclusion set defined
+  in `slopmop/checks/mixins.py`.
+- Kept the detection-local `_DETECTION_EXCLUDED_DIRS` name so existing detection
+  call sites still read clearly while future exclusion changes stay in one place.
+- Added a regression test proving detection and the mixin helper share the same
+  exclusion set object.
+
+**Validation:**
+- `pytest tests/unit/test_detection.py -q` ✅
+
+**Next:** Commit and push this final thread fix, resolve the last PR #149
+comment, and rerun `sm buff watch`.
+
 ## 2026-04-24 Delta: PR 149 follow-up on detection module structure
 
 Branch: `friction`

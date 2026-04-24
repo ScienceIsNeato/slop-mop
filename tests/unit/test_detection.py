@@ -6,12 +6,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import slopmop.cli.detection as detection_module
+from slopmop.checks.mixins import _PYTHON_SOURCE_EXCLUDE_DIRS
 from slopmop.cli.detection import _normalize_language_key, detect_project_type
 
 
 def test_detection_module_keeps_docstring() -> None:
     """The module docstring should stay at the top of detection.py."""
     assert detection_module.__doc__ == "Project type detection for slop-mop CLI."
+
+
+def test_detection_uses_shared_excluded_dir_set() -> None:
+    """Detection and Python source scans should not carry diverging exclude sets."""
+    assert detection_module._DETECTION_EXCLUDED_DIRS is _PYTHON_SOURCE_EXCLUDE_DIRS
 
 
 class TestDetectProjectType:
