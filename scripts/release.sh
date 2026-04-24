@@ -34,6 +34,26 @@ usage() {
     exit 1
 }
 
+pyproject_version_from_stream() {
+    python3 -c "
+import sys
+import tomllib
+
+print(tomllib.loads(sys.stdin.read())['project']['version'])
+"
+}
+
+existing_pr_url() {
+    local branch_name="$1"
+    gh pr list \
+        --head "$branch_name" \
+        --base main \
+        --state open \
+        --json url \
+    --jq '.[0].url // empty' \
+        2>/dev/null || true
+}
+
 # ── Validate input ───────────────────────────────────────
 
 BUMP="${1:-}"
@@ -88,6 +108,10 @@ TAG_NAME="v${NEW_VERSION}"
 
 echo "🔼 Bump: $BUMP → $NEW_VERSION"
 
+# ── Build changelog from main before any branch switching ───────────────
+
+CHANGELOG=$(git log --oneline "v${CURRENT_VERSION}..HEAD" 2>/dev/null || echo "(no previous tag found)")
+
 # ── Ensure no tag or branch collision ────────────────────
 
 if git rev-parse "$TAG_NAME" &>/dev/null 2>&1; then
@@ -95,17 +119,31 @@ if git rev-parse "$TAG_NAME" &>/dev/null 2>&1; then
 fi
 
 if git rev-parse --verify "$BRANCH_NAME" &>/dev/null 2>&1; then
-    die "Branch $BRANCH_NAME already exists. Delete it first."
+    die "Branch $BRANCH_NAME already exists locally. Delete it first or switch away from it."
+fi
+
+REMOTE_BRANCH_EXISTS=false
+if git ls-remote --exit-code --heads origin "$BRANCH_NAME" >/dev/null 2>&1; then
+    REMOTE_BRANCH_EXISTS=true
 fi
 
 # ── Create release branch ───────────────────────────────
 
-git checkout -b "$BRANCH_NAME"
+if [[ "$REMOTE_BRANCH_EXISTS" == "true" ]]; then
+    echo "ℹ️  Remote branch $BRANCH_NAME already exists. Reusing it..."
+    git fetch origin "$BRANCH_NAME" >/dev/null 2>&1 || die "Could not fetch existing remote branch $BRANCH_NAME"
 
-# ── Bump version in pyproject.toml ───────────────────────
+    REMOTE_VERSION="$(git show FETCH_HEAD:pyproject.toml 2>/dev/null | pyproject_version_from_stream 2>/dev/null || true)"
+    if [[ "$REMOTE_VERSION" != "$NEW_VERSION" ]]; then
+        die "Remote branch $BRANCH_NAME already exists but targets version ${REMOTE_VERSION:-unknown}, not $NEW_VERSION. Inspect or delete the branch first."
+    fi
+else
+    git checkout -b "$BRANCH_NAME"
 
-# Use python to do a precise in-place replacement (no sed portability issues)
-python3 -c "
+    # ── Bump version in pyproject.toml ───────────────────────
+
+    # Use python to do a precise in-place replacement (no sed portability issues)
+    python3 -c "
 import re, pathlib
 p = pathlib.Path('pyproject.toml')
 text = p.read_text()
@@ -120,29 +158,26 @@ p.write_text(text)
 print('✅ pyproject.toml updated')
 "
 
-# ── Verify the bump ─────────────────────────────────────
+    # ── Verify the bump ─────────────────────────────────────
 
-VERIFY_VERSION=$(python3 -c "
+    VERIFY_VERSION=$(python3 -c "
 import tomllib
 with open('pyproject.toml', 'rb') as f:
     print(tomllib.load(f)['project']['version'])
 ")
 
-if [[ "$VERIFY_VERSION" != "$NEW_VERSION" ]]; then
-    die "Version verification failed: expected $NEW_VERSION, got $VERIFY_VERSION"
+    if [[ "$VERIFY_VERSION" != "$NEW_VERSION" ]]; then
+        die "Version verification failed: expected $NEW_VERSION, got $VERIFY_VERSION"
+    fi
+
+    # ── Commit + push ────────────────────────────────────────
+
+    git add pyproject.toml
+    git commit -m "chore: bump version to ${NEW_VERSION} for PyPI release"
+
+    echo "🚀 Pushing $BRANCH_NAME..."
+    git push -u origin "$BRANCH_NAME"
 fi
-
-# ── Generate changelog snippet ───────────────────────────
-
-CHANGELOG=$(git log --oneline "v${CURRENT_VERSION}..HEAD" 2>/dev/null || echo "(no previous tag found)")
-
-# ── Commit + push ────────────────────────────────────────
-
-git add pyproject.toml
-git commit -m "chore: bump version to ${NEW_VERSION} for PyPI release"
-
-echo "🚀 Pushing $BRANCH_NAME..."
-git push -u origin "$BRANCH_NAME"
 
 # ── Create PR ────────────────────────────────────────────
 
@@ -168,6 +203,20 @@ PR_BODY_FILE=".tmp/release_pr_body.md"
 PR_ERROR_FILE=".tmp/release_pr_error.log"
 
 echo "$PR_BODY" > "$PR_BODY_FILE"
+
+EXISTING_PR_URL="$(existing_pr_url "$BRANCH_NAME")"
+if [[ -n "$EXISTING_PR_URL" ]]; then
+    rm -f "$PR_BODY_FILE" "$PR_ERROR_FILE"
+    echo ""
+    echo "════════════════════════════════════════════════════════════"
+    echo "✅ Release v${NEW_VERSION} prepared!"
+    echo ""
+    echo "   PR:     $EXISTING_PR_URL"
+    echo "   Branch: $BRANCH_NAME"
+    echo "   Note:   Reused existing open release PR"
+    echo "════════════════════════════════════════════════════════════"
+    exit 0
+fi
 
 set +e
 PR_URL=$(gh pr create \
