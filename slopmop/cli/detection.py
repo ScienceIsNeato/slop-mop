@@ -1,3 +1,8 @@
+from slopmop.checks.mixins import (
+    discover_supabase_deno_test_glob,
+    has_python_source_files,
+)
+
 """Project type detection for slop-mop CLI."""
 
 import json
@@ -8,7 +13,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple, cast
 from slopmop.checks.base import find_tool
 from slopmop.checks.mixins import (
     discover_supabase_deno_test_glob,
-    looks_like_python_project,
 )
 
 # Tools required by specific checks: (tool_name, check_name, install_command)
@@ -220,8 +224,10 @@ def _detect_python(
 ) -> bool:
     """Check for Python project indicators.
 
-    Manifest fallback.  We do NOT glob ``**/*.py`` because real-world
-    polyglot repos routinely ship stray Python utility scripts:
+    Manifest fallback. Strong manifests (`setup.py`, `pyproject.toml`,
+    `Pipfile`) count immediately. `requirements.txt` is weaker evidence, so we
+    only treat it as Python when a bounded source scan also finds `.py` files
+    outside excluded junk directories.
 
     * curl/             — test-case generators in tests/*.py
     * pocketbase/       — doc-build scripts
@@ -236,7 +242,18 @@ def _detect_python(
     if detected_languages is not None:
         return bool(detected_languages & _PYTHON_LANGS)
 
-    return looks_like_python_project(project_root)
+    strong_indicators = ["setup.py", "pyproject.toml", "Pipfile"]
+    if any((project_root / indicator).exists() for indicator in strong_indicators):
+        return True
+
+    if not (project_root / "requirements.txt").exists():
+        return False
+
+    return has_python_source_files(
+        project_root,
+        exclude_dirs=_DETECTION_EXCLUDED_DIRS,
+        max_depth=_MAX_NESTED_SCAN_DEPTH,
+    )
 
 
 def _detect_javascript(

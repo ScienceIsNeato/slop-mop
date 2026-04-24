@@ -173,6 +173,23 @@ class TestStaleApplicability:
         findings = check_stale_applicability(tmp_path, config, set())
         assert findings == []
 
+    def test_requirements_with_python_only_in_excluded_dir_stays_absent(
+        self, tmp_path: Path
+    ):
+        """Excluded dirs should not make config debt think Python is present."""
+        (tmp_path / "requirements.txt").write_text("pytest\n")
+        nested = tmp_path / "node_modules" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "tool.py").write_text("print('hi')\n")
+        config = {
+            "laziness": {
+                "enabled": True,
+                "gates": {"sloppy-formatting.py": {"enabled": False}},
+            },
+        }
+        findings = check_stale_applicability(tmp_path, config, set())
+        assert findings == []
+
     def test_no_finding_when_gate_enabled(self, tmp_path: Path):
         """Gate is enabled → no debt."""
         _make_python_project(tmp_path)

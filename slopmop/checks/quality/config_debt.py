@@ -33,10 +33,23 @@ from slopmop.checks.base import (
     RemediationChurn,
     ToolContext,
 )
-from slopmop.checks.mixins import looks_like_python_project
+from slopmop.checks.mixins import has_python_source_files
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
+_PYTHON_CONFIG_DEBT_EXCLUDED_DIRS = {
+    ".git",
+    "node_modules",
+    "venv",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".slopmop",
+}
+_PYTHON_CONFIG_DEBT_MAX_DEPTH = 4
 
 CONFIG_FILE = ".sb_config.json"
 
@@ -50,7 +63,16 @@ _LANGUAGE_SUFFIXES: Dict[str, str] = {
 
 def _has_python_markers(root: Path) -> bool:
     """Quick check for whether Python gates should matter in this repo."""
-    return looks_like_python_project(root)
+    for marker in ("setup.py", "pyproject.toml", "Pipfile"):
+        if (root / marker).exists():
+            return True
+    if not (root / "requirements.txt").exists():
+        return False
+    return has_python_source_files(
+        root,
+        exclude_dirs=_PYTHON_CONFIG_DEBT_EXCLUDED_DIRS,
+        max_depth=_PYTHON_CONFIG_DEBT_MAX_DEPTH,
+    )
 
 
 def _has_javascript_markers(root: Path) -> bool:

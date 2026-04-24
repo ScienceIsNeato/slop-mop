@@ -431,6 +431,13 @@ class TestPythonCheckMixin:
         (subdir / "test.py").touch()
         assert self.mixin.has_python_files(str(tmp_path)) is True
 
+    def test_has_python_files_ignores_excluded_dirs(self, tmp_path):
+        """Excluded junk dirs should not make a repo look like Python."""
+        nested = tmp_path / "node_modules" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "tool.py").touch()
+        assert self.mixin.has_python_files(str(tmp_path)) is False
+
     def test_has_setup_py_true(self, tmp_path):
         """Test has_setup_py returns True when setup.py exists."""
         (tmp_path / "setup.py").touch()

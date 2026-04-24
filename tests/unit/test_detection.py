@@ -39,6 +39,17 @@ class TestDetectProjectType:
         result = detect_project_type(tmp_path)
         assert result["has_python"] is True
 
+    def test_requirements_with_python_only_in_excluded_dir_stays_non_python(
+        self, tmp_path
+    ):
+        """requirements.txt should ignore Python files tucked under excluded dirs."""
+        (tmp_path / "requirements.txt").write_text("flask==2.0")
+        nested = tmp_path / "node_modules" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "tool.py").write_text("print('hi')\n")
+        result = detect_project_type(tmp_path)
+        assert result["has_python"] is False
+
     def test_detects_javascript_project(self, tmp_path):
         """Detects JavaScript from package.json."""
         (tmp_path / "package.json").write_text("{}")

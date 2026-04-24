@@ -1,5 +1,27 @@
 # Project Status
 
+## 2026-04-24 Delta: PR 149 review follow-up on Python detection helpers
+
+Branch: `friction`
+
+**Work completed:**
+- Tightened the follow-up to the requirements-only Python detection fix after PR
+  review on #149.
+- Simplified `looks_like_python_project()` so it no longer contains dead code or
+  redundant Python-source traversals.
+- Reworked init-time and config-debt Python detection to keep `requirements.txt`
+  as weak evidence via bounded scans instead of broad recursive repo walks.
+- Added regressions proving excluded directories like `node_modules/` do not make
+  requirements-only repos look like Python.
+
+**Validation:**
+- `pytest tests/unit/test_detection.py tests/unit/test_base_check.py tests/unit/test_config_debt_check.py -q` ✅
+- `./sm swab -g overconfidence:type-blindness.py` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit and push this PR #149 review follow-up, then resolve the
+remaining review threads via `sm buff`.
+
 ## 2026-04-24 Delta: stale init applicability now repaired via upgrade migration
 
 Branch: `friction`
