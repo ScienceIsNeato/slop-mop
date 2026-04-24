@@ -1,5 +1,27 @@
 # Project Status
 
+## 2026-04-24 Delta: timing history ignores cached and failed runs
+
+Branch: `friction`
+
+**Work completed:**
+- Tightened `slopmop/reporting/display/dynamic.py` so historical timing samples are
+  only persisted for completed, non-cached checks with trustworthy terminal
+  statuses.
+- Excluded failed and cached results from `.slopmop/timings.json` updates so ETA
+  history only learns from real full executions.
+- Added regression coverage in `tests/unit/test_display_timings.py` to prove:
+  - failed checks do not get persisted to timing history
+  - cached checks do not create or refresh timing-history files
+
+**Validation:**
+- `pytest tests/unit/test_display_timings.py -q` ✅
+- `./sm swab -g overconfidence:type-blindness.py` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit this barnacle fix on `friction`, then take the next reported
+barnacle.
+
 ## 2026-04-24 Delta: PR 147 buff follow-up
 
 Branch: `fix/sm-env-release-perms`
