@@ -1,5 +1,31 @@
 # Project Status
 
+## 2026-04-24 Delta: release rerun idempotency for existing remote branch
+
+Branch: `fix/sm-env-release-perms`
+
+**Work completed:**
+- Hardened `scripts/release.sh` so reruns no longer fail late on
+  `git push` when `origin/release/vX.Y.Z` already exists from a prior partial
+  run.
+- Added remote release-branch detection before local branch creation/push.
+- Reuse path now:
+  - fetches the existing remote release branch
+  - verifies its `pyproject.toml` version matches the expected target version
+  - skips re-bumping/re-pushing when the branch is already correct
+- Added open-PR reuse so reruns return success with the existing release PR URL
+  instead of failing on duplicate PR creation.
+- Added regression coverage in `tests/unit/test_release_script.py` for the exact
+  rerun case: remote release branch exists, local branch does not, and the
+  script should create the PR without pushing again.
+
+**Validation:**
+- `pytest tests/unit/test_release_script.py -q` ✅
+- `bash -n scripts/release.sh` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit, push branch, and update the existing PR with the rerun fix.
+
 ## 2026-04-23 Delta: sm_env review follow-up + prepare-release token fix
 
 Branch: `fix/sm-env-release-perms`
