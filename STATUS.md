@@ -1,5 +1,67 @@
 # Project Status
 
+## 2026-04-23 Delta: sm_env review follow-up + prepare-release token fix
+
+Branch: `fix/sm-env-release-perms`
+
+**Work completed:**
+- Fixed `sm_env.tool_inventory` version-constraint handling in
+  `slopmop/doctor/sm_env.py`:
+  - version checks are now deduped by `(tool, spec)` instead of tool name alone,
+    so a later stricter gate constraint cannot be skipped by an earlier looser one
+  - version-only violations now return `FAIL` instead of `WARN`, matching
+    `required_tool_versions` as a hard requirement
+- Added regression coverage in `tests/unit/test_doctor_checks.py` for:
+  - version-only violations failing hard
+  - later stricter constraints on the same tool still being evaluated
+- Fixed `.github/workflows/prepare-release.yml` to prefer a higher-privilege
+  `BUMP_VERSION_TOKEN` when configured, while falling back to `github.token`
+  for repos where the default Actions token can still create release PRs.
+
+**Validation:**
+- `pytest tests/unit/test_doctor_checks.py -q` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit and push `fix/sm-env-release-perms`.
+
+---
+
+## 2026-04-23 Delta: prepare-release fallback removal + actionable PR failure
+
+Branch: `fix/sm-env-release-perms`
+
+**Work completed:**
+- Tightened `.github/workflows/prepare-release.yml` so the workflow now requires
+  `BUMP_VERSION_TOKEN` explicitly instead of silently falling back to the default
+  Actions token for PR creation.
+- Added an early workflow error message explaining why the secret is required in
+  this repo.
+- Hardened `scripts/release.sh` so `gh pr create` failures surface an actionable
+  error when the token cannot create pull requests.
+- Switched release-script temp files from `/tmp` to workspace-local `.tmp/`.
+
+**Next:** Validate shell syntax + full swab, then amend this branch with the new fix.
+
+---
+
+## 2026-04-23 Delta: repo Actions permission fixed for release PR creation
+
+Branch: `fix/sm-env-release-perms`
+
+**Work completed:**
+- Updated the live GitHub repo setting for `ScienceIsNeato/slop-mop` so Actions is
+  now allowed to create and approve pull requests.
+  - `default_workflow_permissions`: `read`
+  - `can_approve_pull_request_reviews`: `true`
+- Reverted `.github/workflows/prepare-release.yml` from the temporary
+  `BUMP_VERSION_TOKEN` requirement back to the normal `github.token` path.
+- Kept the improved `scripts/release.sh` PR-creation error reporting and `.tmp/`
+  temp-file behavior.
+
+**Next:** Re-run local validation, then commit and push the workflow cleanup.
+
+---
+
 ## 2026-04-23 Delta: JS gate hang mitigation + subprocess tree cleanup
 
 Branch: `feat/backlog-batch-134-113-96`

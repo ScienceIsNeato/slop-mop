@@ -36,7 +36,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Use the default GITHUB_TOKEN — it can push branches + create PRs.
+          token: ${{ github.token }}
+          # Repo settings now allow Actions to create release PRs.
           # Post-merge publishing is handled by release.yml on main, so there is
           # no manual tag-push handoff in this workflow.
 
