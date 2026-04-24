@@ -8,6 +8,7 @@ from slopmop.migrations import (
     _rename_dart_gates,
     _rename_source_duplication,
     _rename_swabbing_time,
+    _sync_built_in_gate_applicability,
     planned_upgrade_migrations,
     run_upgrade_migrations,
 )
@@ -118,6 +119,10 @@ class TestMigrationRegistry:
     def test_rename_source_duplication_is_registered(self):
         keys = planned_upgrade_migrations("0.11.0", "0.11.1")
         assert "rename-source-duplication-gates" in keys
+
+    def test_sync_built_in_gate_applicability_is_registered(self):
+        keys = planned_upgrade_migrations("0.15.0", "0.15.1")
+        assert "sync-built-in-gate-applicability" in keys
 
 
 class TestRenameSourceDuplication:
@@ -387,3 +392,82 @@ class TestRenameDartGates:
         assert "rename-dart-gates" in applied
         result = self._read_config(tmp_path)
         assert result["disabled_gates"] == ["overconfidence:untested-code.dart"]
+
+
+class TestSyncBuiltInGateApplicability:
+    def _write_config(self, tmp_path: Path, data: dict) -> None:
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(data, indent=2) + "\n", encoding="utf-8"
+        )
+
+    def _read_config(self, tmp_path: Path) -> dict:
+        return json.loads((tmp_path / ".sb_config.json").read_text(encoding="utf-8"))
+
+    def test_disables_python_gates_for_requirements_only_repo(self, tmp_path: Path):
+        (tmp_path / "requirements.txt").write_text("pytest\n", encoding="utf-8")
+        (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+        self._write_config(
+            tmp_path,
+            {
+                "laziness": {
+                    "enabled": True,
+                    "gates": {
+                        "sloppy-formatting.py": {"enabled": True},
+                        "sloppy-formatting.js": {"enabled": True},
+                    },
+                },
+                "overconfidence": {
+                    "enabled": True,
+                    "gates": {
+                        "untested-code.py": {"enabled": True, "test_dirs": ["tests"]},
+                    },
+                },
+            },
+        )
+
+        _sync_built_in_gate_applicability(tmp_path)
+        result = self._read_config(tmp_path)
+
+        assert result["laziness"]["gates"]["sloppy-formatting.py"]["enabled"] is False
+        assert result["overconfidence"]["gates"]["untested-code.py"]["enabled"] is False
+        assert result["laziness"]["gates"]["sloppy-formatting.js"]["enabled"] is True
+
+    def test_preserves_python_gates_for_real_python_repo(self, tmp_path: Path):
+        (tmp_path / "requirements.txt").write_text("pytest\n", encoding="utf-8")
+        (tmp_path / "main.py").write_text("print('hi')\n", encoding="utf-8")
+        self._write_config(
+            tmp_path,
+            {
+                "laziness": {
+                    "enabled": True,
+                    "gates": {
+                        "sloppy-formatting.py": {"enabled": True},
+                    },
+                },
+            },
+        )
+
+        _sync_built_in_gate_applicability(tmp_path)
+        result = self._read_config(tmp_path)
+
+        assert result["laziness"]["gates"]["sloppy-formatting.py"]["enabled"] is True
+
+    def test_end_to_end_via_registry(self, tmp_path: Path):
+        (tmp_path / "requirements.txt").write_text("pytest\n", encoding="utf-8")
+        self._write_config(
+            tmp_path,
+            {
+                "laziness": {
+                    "enabled": True,
+                    "gates": {
+                        "sloppy-formatting.py": {"enabled": True},
+                    },
+                },
+            },
+        )
+
+        applied = run_upgrade_migrations(tmp_path, "0.15.0", "0.15.1")
+
+        assert "sync-built-in-gate-applicability" in applied
+        result = self._read_config(tmp_path)
+        assert result["laziness"]["gates"]["sloppy-formatting.py"]["enabled"] is False

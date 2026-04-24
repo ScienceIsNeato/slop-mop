@@ -250,6 +250,73 @@ def _rename_swabbing_time(project_root: Path) -> None:
     config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
+# ===================================================================
+# Migration: sync-built-in-gate-applicability (0.15.0 → 0.15.1)
+# ===================================================================
+
+
+def _sync_built_in_gate_applicability(project_root: Path) -> None:
+    """Disable built-in gates that are no longer applicable for this repo.
+
+    This is intentionally one-way: it turns stale enabled gates off when the
+    current applicability rules say they should not run. It does NOT auto-enable
+    newly applicable gates, which remains an intentional opt-in config action.
+    """
+    config_path = project_root / _CONFIG_FILE
+    if not config_path.exists():
+        return
+
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        data: Dict[str, Any] = json.loads(raw)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    if not isinstance(data, dict):
+        return
+
+    from slopmop.checks import ensure_checks_registered
+    from slopmop.core.registry import get_registry
+
+    ensure_checks_registered()
+    registry = get_registry()
+
+    changed = False
+
+    for full_name_any in registry.list_checks():
+        if not isinstance(full_name_any, str) or ":" not in full_name_any:
+            continue
+        full_name = full_name_any
+        category, gate_name = full_name.split(":", 1)
+
+        category_raw = data.get(category)
+        if not isinstance(category_raw, dict):
+            continue
+        category_dict = cast(Dict[str, Any], category_raw)
+        gates_value: object = category_dict.get("gates")
+        if not isinstance(gates_value, dict) or gate_name not in gates_value:
+            continue
+        gates_dict = cast(Dict[str, Any], gates_value)
+
+        gate_cfg_value: object = gates_dict.get(gate_name)
+        if not isinstance(gate_cfg_value, dict):
+            continue
+        gate_cfg = cast(Dict[str, Any], gate_cfg_value)
+
+        check = registry.get_check(full_name, data)
+        if check is None or check.is_applicable(str(project_root)):
+            continue
+
+        if gate_cfg.get("enabled") is False:
+            continue
+
+        gate_cfg["enabled"] = False
+        changed = True
+
+    if changed:
+        config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Migration registry
 # ---------------------------------------------------------------------------
@@ -272,6 +339,12 @@ _MIGRATIONS: List[UpgradeMigration] = [
         min_version="0.14.1",
         max_version="0.15.0",
         apply=_rename_swabbing_time,
+    ),
+    UpgradeMigration(
+        key="sync-built-in-gate-applicability",
+        min_version="0.15.0",
+        max_version="0.15.1",
+        apply=_sync_built_in_gate_applicability,
     ),
 ]
 

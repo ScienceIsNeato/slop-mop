@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-04-24 Delta: stale init applicability now repaired via upgrade migration
+
+Branch: `friction`
+
+**Work completed:**
+- Added a built-in upgrade migration in `slopmop/migrations/__init__.py` that
+  disables built-in gates which are no longer applicable under current slop-mop
+  heuristics.
+- Chose the upgrade migration rail for this barnacle instead of telling users to
+  rerun `sm init` as a repair step.
+- Added migration coverage proving requirements-only repos without Python source:
+  - have stale Python gates turned off during upgrade
+  - keep JavaScript gates enabled
+  - preserve Python gates for real Python repos
+
+**Validation:**
+- `pytest tests/unit/test_upgrade_migrations.py -q` ✅
+- `./sm swab -g overconfidence:type-blindness.py` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit this migration fix on `friction`, then decide separately whether
+  a doctor repair command is still worth adding for already-upgraded repos.
+
 ## 2026-04-24 Delta: requirements-only repos no longer activate Python gates
 
 Branch: `friction`
