@@ -1,5 +1,23 @@
 # Project Status
 
+## 2026-04-24 Delta: PR 147 buff follow-up
+
+Branch: `fix/sm-env-release-perms`
+
+**Work completed:**
+- Investigated PR #147 review thread about `existing_pr_url` in `scripts/release.sh`.
+  - Verified with a live `gh pr list --jq '.[0].url'` probe that no-match output is
+    an empty string in this environment, so the reported `null` early-exit bug did
+    not reproduce.
+- Extended `tests/unit/test_release_script.py` with explicit coverage for the
+  existing-open-PR reuse path, asserting that reruns reuse the PR URL and do not
+  invoke `gh pr create` again.
+- Updated `.github/workflows/slopmop.yml` so CI's explicit unit-test list now
+  includes `tests/unit/test_release_script.py`.
+
+**Next:** Run focused validation, then resolve PR #147 review threads with code
+evidence for the testing fixes and probe evidence for the invalid logic comment.
+
 ## 2026-04-24 Delta: release rerun idempotency for existing remote branch
 
 Branch: `fix/sm-env-release-perms`

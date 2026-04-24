@@ -113,6 +113,9 @@ def _write_fake_gh(fake_bin: Path, log_path: Path) -> None:
         "set -eu\n"
         'printf \'%s\\n\' "$*" >> "$GH_LOG"\n'
         'if [ "${1:-}" = "pr" ] && [ "${2:-}" = "list" ]; then\n'
+        '  if [ -n "${GH_EXISTING_PR_URL:-}" ]; then\n'
+        "    printf '%s\\n' \"$GH_EXISTING_PR_URL\"\n"
+        "  fi\n"
         "  exit 0\n"
         "fi\n"
         'if [ "${1:-}" = "pr" ] && [ "${2:-}" = "create" ]; then\n'
@@ -168,3 +171,50 @@ def test_release_script_reuses_existing_remote_branch_on_rerun(tmp_path: Path) -
     gh_calls = gh_log.read_text(encoding="utf-8").splitlines()
     assert any(call.startswith("pr list ") for call in gh_calls)
     assert any(call.startswith("pr create ") for call in gh_calls)
+
+
+@pytest.mark.skipif(
+    not (_HAS_BASH and _HAS_GIT),
+    reason="bash and git are required for release.sh regression coverage",
+)
+def test_release_script_reuses_existing_open_pr_without_creating_another(
+    tmp_path: Path,
+) -> None:
+    work = _init_release_repo(tmp_path)
+    release_sha = _create_remote_release_branch(work, "release/v0.15.0", "0.15.0")
+
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    gh_log = tmp_path / "gh.log"
+    _write_fake_gh(fake_bin, gh_log)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    env["GH_LOG"] = str(gh_log)
+    env["GH_EXISTING_PR_URL"] = "https://example.test/pr/existing"
+
+    result = _run_release_command(work, "bash", "scripts/release.sh", "minor", env=env)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "https://example.test/pr/existing" in result.stdout
+    assert "Reused existing open release PR" in result.stdout
+    assert "Pushing release/v0.15.0" not in result.stdout
+
+    current_branch = _checked(
+        work, "git", "branch", "--show-current", label="git branch --show-current"
+    )
+    assert current_branch == "main"
+
+    remote_head = _checked(
+        work,
+        "git",
+        "ls-remote",
+        "origin",
+        "refs/heads/release/v0.15.0",
+        label="git ls-remote release",
+    ).split()[0]
+    assert remote_head == release_sha
+
+    gh_calls = gh_log.read_text(encoding="utf-8").splitlines()
+    assert any(call.startswith("pr list ") for call in gh_calls)
+    assert not any(call.startswith("pr create ") for call in gh_calls)

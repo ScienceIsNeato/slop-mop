@@ -35,7 +35,7 @@ jobs:
         run: pip install -e ".[all]"
 
       - name: Run validator and doctor unit tests
-        run: python -m pytest tests/unit/test_subprocess_validator.py tests/unit/test_doctor.py tests/unit/test_doctor_checks.py -v
+        run: python -m pytest tests/unit/test_subprocess_validator.py tests/unit/test_doctor.py tests/unit/test_doctor_checks.py tests/unit/test_release_script.py -v
 
   dogfood:
     name: Final Dogfood Sanity Check (blocking)
