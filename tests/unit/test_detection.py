@@ -5,7 +5,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import slopmop.cli.detection as detection_module
 from slopmop.cli.detection import _normalize_language_key, detect_project_type
+
+
+def test_detection_module_keeps_docstring() -> None:
+    """The module docstring should stay at the top of detection.py."""
+    assert detection_module.__doc__ == "Project type detection for slop-mop CLI."
 
 
 class TestDetectProjectType:

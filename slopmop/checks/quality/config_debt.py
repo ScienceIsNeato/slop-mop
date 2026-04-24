@@ -37,18 +37,6 @@ from slopmop.checks.mixins import has_python_source_files
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 logger = logging.getLogger(__name__)
-_PYTHON_CONFIG_DEBT_EXCLUDED_DIRS = {
-    ".git",
-    "node_modules",
-    "venv",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".slopmop",
-}
 _PYTHON_CONFIG_DEBT_MAX_DEPTH = 4
 
 CONFIG_FILE = ".sb_config.json"
@@ -68,11 +56,7 @@ def _has_python_markers(root: Path) -> bool:
             return True
     if not (root / "requirements.txt").exists():
         return False
-    return has_python_source_files(
-        root,
-        exclude_dirs=_PYTHON_CONFIG_DEBT_EXCLUDED_DIRS,
-        max_depth=_PYTHON_CONFIG_DEBT_MAX_DEPTH,
-    )
+    return has_python_source_files(root, max_depth=_PYTHON_CONFIG_DEBT_MAX_DEPTH)
 
 
 def _has_javascript_markers(root: Path) -> bool:

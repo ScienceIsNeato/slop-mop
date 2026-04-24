@@ -1,8 +1,3 @@
-from slopmop.checks.mixins import (
-    discover_supabase_deno_test_glob,
-    has_python_source_files,
-)
-
 """Project type detection for slop-mop CLI."""
 
 import json
@@ -13,6 +8,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, cast
 from slopmop.checks.base import find_tool
 from slopmop.checks.mixins import (
     discover_supabase_deno_test_glob,
+    has_python_source_files,
 )
 
 # Tools required by specific checks: (tool_name, check_name, install_command)

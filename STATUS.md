@@ -1,5 +1,25 @@
 # Project Status
 
+## 2026-04-24 Delta: PR 149 follow-up on detection module structure
+
+Branch: `friction`
+
+**Work completed:**
+- Moved the Python detection helper import back below the module docstring in
+  `slopmop/cli/detection.py` so the file keeps its module documentation and a
+  single canonical mixins import block.
+- Removed the duplicated Python excluded-directory constant from
+  `slopmop/checks/quality/config_debt.py` so the quick config-debt probe uses
+  the shared mixin defaults instead of a copied set.
+- Added a regression test proving the detection module keeps its top-level
+  docstring intact.
+
+**Validation:**
+- `pytest tests/unit/test_detection.py tests/unit/test_config_debt_check.py -q` ✅
+
+**Next:** Commit and push this final PR #149 follow-up, resolve the remaining
+review threads, and re-enter `sm buff watch`.
+
 ## 2026-04-24 Delta: PR 149 review follow-up on Python detection helpers
 
 Branch: `friction`
