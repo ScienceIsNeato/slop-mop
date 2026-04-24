@@ -32,11 +32,16 @@ jobs:
   prepare:
     name: Prepare Release (${{ inputs.bump }})
     runs-on: ubuntu-latest
+    env:
+      # Some repos disable PR creation for the default Actions token.
+      # Prefer a higher-privilege bot token when configured, but keep the
+      # default token path working for repos that allow it.
+      RELEASE_TOKEN: ${{ secrets.BUMP_VERSION_TOKEN || github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Use the default GITHUB_TOKEN — it can push branches + create PRs.
+          token: ${{ env.RELEASE_TOKEN }}
           # Post-merge publishing is handled by release.yml on main, so there is
           # no manual tag-push handoff in this workflow.
 
@@ -51,5 +56,5 @@ jobs:
 
       - name: Run release script
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ env.RELEASE_TOKEN }}
         run: ./scripts/release.sh ${{ inputs.bump }}

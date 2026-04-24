@@ -234,7 +234,7 @@ class ToolInventoryCheck(DoctorCheck):
 
             ensure_checks_registered()
             registry = get_registry()
-            seen: set[str] = set()
+            seen: set[Tuple[str, str]] = set()
             for gate_name in registry.list_checks():
                 check_cls = registry._check_classes.get(gate_name)
                 if check_cls is None:
@@ -242,9 +242,10 @@ class ToolInventoryCheck(DoctorCheck):
                 for tool, spec in getattr(
                     check_cls, "required_tool_versions", {}
                 ).items():
-                    if tool in seen:
+                    key = (tool, spec)
+                    if key in seen:
                         continue
-                    seen.add(tool)
+                    seen.add(key)
                     path = resolved.get(tool) or find_tool(tool, root)
                     if not path:
                         continue
@@ -308,7 +309,7 @@ class ToolInventoryCheck(DoctorCheck):
             "fix_hint": "\n".join(fix_lines) if fix_lines else None,
             "data": data,
         }
-        if missing or validator_rejects:
+        if missing or validator_rejects or version_violations:
             return self._fail("; ".join(summary_bits), **kw)
         return self._warn("; ".join(summary_bits), **kw)
 
