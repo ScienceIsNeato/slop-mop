@@ -1,5 +1,23 @@
 # Project Status
 
+## 2026-04-24 Delta: PR 149 final follow-up on empty exclude sets
+
+Branch: `friction`
+
+**Work completed:**
+- Fixed `has_python_source_files()` in `slopmop/checks/mixins.py` so an explicit
+  empty `exclude_dirs` set no longer falls back to the default exclusion list.
+- Preserved the default behavior for `None` while restoring the typed meaning of
+  `set()` as “exclude nothing.”
+- Added regression coverage proving an explicit empty exclude set allows Python
+  files under otherwise excluded directories to be seen.
+
+**Validation:**
+- `pytest tests/unit/test_base_check.py -q` ✅
+
+**Next:** Commit and push this final thread fix, resolve the last PR #149
+comment, and rerun `sm buff watch`.
+
 ## 2026-04-24 Delta: PR 149 final follow-up on shared exclude dirs
 
 Branch: `friction`

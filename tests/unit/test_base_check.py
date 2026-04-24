@@ -12,7 +12,11 @@ from slopmop.checks.base import (
     ToolContext,
     find_tool,
 )
-from slopmop.checks.mixins import JavaScriptCheckMixin, PythonCheckMixin
+from slopmop.checks.mixins import (
+    JavaScriptCheckMixin,
+    PythonCheckMixin,
+    has_python_source_files,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -437,6 +441,13 @@ class TestPythonCheckMixin:
         nested.mkdir(parents=True)
         (nested / "tool.py").touch()
         assert self.mixin.has_python_files(str(tmp_path)) is False
+
+    def test_has_python_source_files_honors_empty_exclude_set(self, tmp_path):
+        """An explicit empty exclude set should disable directory exclusions."""
+        nested = tmp_path / "node_modules" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "tool.py").touch()
+        assert has_python_source_files(tmp_path, exclude_dirs=set()) is True
 
     def test_has_setup_py_true(self, tmp_path):
         """Test has_setup_py returns True when setup.py exists."""

@@ -105,7 +105,7 @@ def has_python_source_files(
     first match instead of paying for a full recursive glob.
     """
     root = Path(project_root)
-    excluded = exclude_dirs or _PYTHON_SOURCE_EXCLUDE_DIRS
+    excluded = exclude_dirs if exclude_dirs is not None else _PYTHON_SOURCE_EXCLUDE_DIRS
 
     for dirpath, dirnames, filenames in os.walk(root):
         rel_parts = Path(dirpath).relative_to(root).parts
