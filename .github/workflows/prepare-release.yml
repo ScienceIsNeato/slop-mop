@@ -33,20 +33,11 @@ jobs:
     name: Prepare Release (${{ inputs.bump }})
     runs-on: ubuntu-latest
     steps:
-      - name: Verify release token configured
-        env:
-          RELEASE_TOKEN: ${{ secrets.BUMP_VERSION_TOKEN }}
-        run: |
-          if [[ -z "$RELEASE_TOKEN" ]]; then
-            echo "::error::BUMP_VERSION_TOKEN is required for Prepare Release."
-            echo "::error::This repo does not allow the default GitHub Actions token to create release PRs."
-            exit 1
-          fi
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.BUMP_VERSION_TOKEN }}
+          token: ${{ github.token }}
+          # Repo settings now allow Actions to create release PRs.
           # Post-merge publishing is handled by release.yml on main, so there is
           # no manual tag-push handoff in this workflow.
 
@@ -61,5 +52,5 @@ jobs:
 
       - name: Run release script
         env:
-          GH_TOKEN: ${{ secrets.BUMP_VERSION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/release.sh ${{ inputs.bump }}

@@ -44,6 +44,24 @@ Branch: `fix/sm-env-release-perms`
 
 ---
 
+## 2026-04-23 Delta: repo Actions permission fixed for release PR creation
+
+Branch: `fix/sm-env-release-perms`
+
+**Work completed:**
+- Updated the live GitHub repo setting for `ScienceIsNeato/slop-mop` so Actions is
+  now allowed to create and approve pull requests.
+  - `default_workflow_permissions`: `read`
+  - `can_approve_pull_request_reviews`: `true`
+- Reverted `.github/workflows/prepare-release.yml` from the temporary
+  `BUMP_VERSION_TOKEN` requirement back to the normal `github.token` path.
+- Kept the improved `scripts/release.sh` PR-creation error reporting and `.tmp/`
+  temp-file behavior.
+
+**Next:** Re-run local validation, then commit and push the workflow cleanup.
+
+---
+
 ## 2026-04-23 Delta: JS gate hang mitigation + subprocess tree cleanup
 
 Branch: `feat/backlog-batch-134-113-96`
