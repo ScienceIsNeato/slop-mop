@@ -163,15 +163,35 @@ bump on \`main\` and run \`release.yml\`, which will:
 3. Publish to PyPI
 4. Create the version tag and GitHub Release with auto-generated notes"
 
-echo "$PR_BODY" > /tmp/release_pr_body.md
+mkdir -p .tmp
+PR_BODY_FILE=".tmp/release_pr_body.md"
+PR_ERROR_FILE=".tmp/release_pr_error.log"
 
+echo "$PR_BODY" > "$PR_BODY_FILE"
+
+set +e
 PR_URL=$(gh pr create \
     --title "chore: bump version to ${NEW_VERSION} for PyPI release" \
-    --body-file /tmp/release_pr_body.md \
+    --body-file "$PR_BODY_FILE" \
     --base main \
-    --head "$BRANCH_NAME")
+    --head "$BRANCH_NAME" \
+    2>"$PR_ERROR_FILE")
+PR_CREATE_EXIT=$?
+set -e
 
-rm -f /tmp/release_pr_body.md
+if [[ "$PR_CREATE_EXIT" -ne 0 ]]; then
+    PR_ERROR="$(cat "$PR_ERROR_FILE")"
+    rm -f "$PR_BODY_FILE" "$PR_ERROR_FILE"
+    if [[ "$PR_ERROR" == *"GitHub Actions is not permitted to create or approve pull requests"* ]]; then
+        die "gh pr create failed because this token cannot create pull requests. Configure BUMP_VERSION_TOKEN for Prepare Release and rerun the workflow."
+    fi
+    if [[ -n "$PR_ERROR" ]]; then
+        printf '%s\n' "$PR_ERROR" >&2
+    fi
+    die "gh pr create failed"
+fi
+
+rm -f "$PR_BODY_FILE" "$PR_ERROR_FILE"
 
 echo ""
 echo "════════════════════════════════════════════════════════════"
