@@ -1,5 +1,23 @@
 # Project Status
 
+## 2026-04-25 Delta: README field-guide rewrite
+
+Branch: `docs/readme-field-guide`
+
+**Work completed:**
+- Rewrote `README.md` as a shorter field guide instead of a sprawling manual.
+- Kept the core orientation: what slop-mop is, how to run it, what the main
+  workflow verbs do, and where deeper docs live.
+- Removed sales-style framing and long protocol theory from the README path.
+- Kept the tone plain, direct, and no-hype per `my_voice.mdc`.
+
+**Validation so far:**
+- README length check: 269 lines ✅
+- README relative markdown links resolve ✅
+- README hype/em-dash scan clean ✅
+
+**Next:** Run `sm swab`, fix any docs fallout, then commit the README rewrite.
+
 ## 2026-04-24 Delta: PR 149 final follow-up on empty exclude sets
 
 Branch: `friction`
