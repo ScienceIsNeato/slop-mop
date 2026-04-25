@@ -207,11 +207,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - run: python -m pip install "slopmop[all]"
-      - run: sm swab --json --output-file .slopmop/last_swab.json
+      - run: sm swab
 ```
 
 This repo's own workflow is in
@@ -236,8 +238,8 @@ sm agent install --target cursor
 sm agent install --target claude
 ```
 
-The canonical agent workflow for this repo is in [AGENTS.md](AGENTS.md). The
-short version: run the rail, fix what it reports, do not bypass the gate.
+The short version for agents: run the rail, fix what it reports, do not bypass
+the gate.
 
 ## Custom Gates
 

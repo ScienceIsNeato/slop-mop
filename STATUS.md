@@ -9,14 +9,16 @@ Branch: `docs/readme-field-guide`
 - Kept the core orientation: what slop-mop is, how to run it, what the main
   workflow verbs do, and where deeper docs live.
 - Removed sales-style framing and long protocol theory from the README path.
-- Kept the tone plain, direct, and no-hype per `my_voice.mdc`.
+- Kept the tone plain, direct, and no-hype throughout the rewrite.
 
-**Validation so far:**
-- README length check: 269 lines ✅
+**Validation:**
+- README length stayed under the target range ✅
 - README relative markdown links resolve ✅
 - README hype/em-dash scan clean ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (non-blocking dependency-risk warning only)
 
-**Next:** Run `sm swab`, fix any docs fallout, then commit the README rewrite.
+**Next:** Resolve PR #150 review feedback and re-run `sm buff watch`.
 
 ## 2026-04-24 Delta: PR 149 final follow-up on empty exclude sets
 
