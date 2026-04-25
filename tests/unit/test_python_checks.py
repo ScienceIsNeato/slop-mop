@@ -138,13 +138,13 @@ class TestPythonTestsCheck:
 
     def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
         """Skip reason uses the generic applicable message for Python projects."""
-        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "pyproject.toml").touch()
         check = PythonTestsCheck({})
         assert check.skip_reason(str(tmp_path)) == "Python tests check not applicable"
 
     def test_run_fails_when_no_python_tests_exist(self, tmp_path):
         """No test files should fail with explicit fix guidance."""
-        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "pyproject.toml").touch()
         check = PythonTestsCheck({})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -363,7 +363,7 @@ class TestPythonCoverageCheck:
 
     def test_is_applicable_python_project(self, tmp_path):
         """Test is_applicable returns True for Python project with tests."""
-        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "pyproject.toml").touch()
         (tmp_path / "tests").mkdir()
         (tmp_path / "tests" / "test_example.py").write_text("def test_one(): pass")
         check = PythonCoverageCheck({})
@@ -475,7 +475,7 @@ class TestPythonCoverageCheck:
 
     def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
         """Skip reason uses coverage-specific generic message for Python projects."""
-        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "pyproject.toml").touch()
         check = PythonCoverageCheck({})
         assert (
             check.skip_reason(str(tmp_path)) == "Python coverage check not applicable"
@@ -483,7 +483,7 @@ class TestPythonCoverageCheck:
 
     def test_run_fails_when_no_python_tests_exist(self, tmp_path):
         """No tests should fail before coverage parsing with actionable guidance."""
-        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "pyproject.toml").touch()
         check = PythonCoverageCheck({})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
@@ -1075,13 +1075,13 @@ class TestPythonDiffCoverageCheck:
 
     def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
         """Skip reason uses diff-coverage specific generic message for Python projects."""
-        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "pyproject.toml").touch()
         check = PythonDiffCoverageCheck({})
         assert check.skip_reason(str(tmp_path)) == "Diff coverage check not applicable"
 
     def test_run_fails_when_no_python_tests_exist(self, tmp_path):
         """No tests should fail before invoking diff-cover."""
-        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "pyproject.toml").touch()
         check = PythonDiffCoverageCheck({})
         result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED

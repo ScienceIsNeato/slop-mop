@@ -5,7 +5,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import slopmop.cli.detection as detection_module
+from slopmop.checks.mixins import _PYTHON_SOURCE_EXCLUDE_DIRS
 from slopmop.cli.detection import _normalize_language_key, detect_project_type
+
+
+def test_detection_module_keeps_docstring() -> None:
+    """The module docstring should stay at the top of detection.py."""
+    assert detection_module.__doc__ == "Project type detection for slop-mop CLI."
+
+
+def test_detection_uses_shared_excluded_dir_set() -> None:
+    """Detection and Python source scans should not carry diverging exclude sets."""
+    assert detection_module._DETECTION_EXCLUDED_DIRS is _PYTHON_SOURCE_EXCLUDE_DIRS
 
 
 class TestDetectProjectType:
@@ -26,11 +38,29 @@ class TestDetectProjectType:
         assert result["has_python"] is True
         assert result["has_pytest"] is True
 
-    def test_detects_python_project_from_requirements(self, tmp_path):
-        """Detects Python from requirements.txt."""
+    def test_requirements_alone_does_not_imply_python_project(self, tmp_path):
+        """requirements.txt alone is too weak to enable Python gates."""
         (tmp_path / "requirements.txt").write_text("flask==2.0")
         result = detect_project_type(tmp_path)
+        assert result["has_python"] is False
+
+    def test_detects_python_project_from_requirements_and_py_files(self, tmp_path):
+        """requirements.txt plus Python sources should detect Python."""
+        (tmp_path / "requirements.txt").write_text("flask==2.0")
+        (tmp_path / "app.py").write_text("print('hi')\n")
+        result = detect_project_type(tmp_path)
         assert result["has_python"] is True
+
+    def test_requirements_with_python_only_in_excluded_dir_stays_non_python(
+        self, tmp_path
+    ):
+        """requirements.txt should ignore Python files tucked under excluded dirs."""
+        (tmp_path / "requirements.txt").write_text("flask==2.0")
+        nested = tmp_path / "node_modules" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "tool.py").write_text("print('hi')\n")
+        result = detect_project_type(tmp_path)
+        assert result["has_python"] is False
 
     def test_detects_javascript_project(self, tmp_path):
         """Detects JavaScript from package.json."""

@@ -40,6 +40,18 @@ from slopmop.core.result import (
 )
 
 logger = logging.getLogger(__name__)
+_PYTHON_SOURCE_EXCLUDE_DIRS = {
+    ".git",
+    "node_modules",
+    "venv",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".slopmop",
+}
 
 # ---------------------------------------------------------------------------
 # Free-function project introspection helpers
@@ -79,6 +91,49 @@ def has_project_venv(project_root: str | Path) -> bool:
         if (root / venv_dir / "Scripts" / "python.exe").exists():
             return True
     return False
+
+
+def has_python_source_files(
+    project_root: str | Path,
+    *,
+    exclude_dirs: set[str] | None = None,
+    max_depth: int | None = None,
+) -> bool:
+    """Return True when the repo contains at least one Python source file.
+
+    Uses ``os.walk`` so callers can prune known junk directories and stop at the
+    first match instead of paying for a full recursive glob.
+    """
+    root = Path(project_root)
+    excluded = exclude_dirs if exclude_dirs is not None else _PYTHON_SOURCE_EXCLUDE_DIRS
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_parts = Path(dirpath).relative_to(root).parts
+        depth = len(rel_parts)
+        if max_depth is not None and depth >= max_depth:
+            dirnames[:] = []
+        else:
+            dirnames[:] = [name for name in dirnames if name not in excluded]
+
+        if any(name.endswith(".py") for name in filenames):
+            return True
+
+    return False
+
+
+def looks_like_python_project(project_root: str | Path) -> bool:
+    """Return True for repos with strong Python evidence.
+
+    ``requirements.txt`` alone is too weak: JS/TS repos often carry one for
+    incidental tooling. Runtime Python gates should matter when we see Python
+    source, or one of the strong Python manifests.
+    """
+    root = Path(project_root)
+    if any(
+        (root / marker).exists() for marker in ("setup.py", "pyproject.toml", "Pipfile")
+    ):
+        return True
+    return has_python_source_files(root)
 
 
 def resolve_project_python(project_root: str | Path) -> tuple[str, str]:
@@ -430,8 +485,7 @@ class PythonCheckMixin:
 
     def has_python_files(self, project_root: str) -> bool:
         """Check if project has Python files."""
-        root = Path(project_root)
-        return any(root.rglob("*.py"))
+        return has_python_source_files(project_root)
 
     def has_setup_py(self, project_root: str) -> bool:
         """Check if project has setup.py."""
@@ -447,12 +501,7 @@ class PythonCheckMixin:
 
     def is_python_project(self, project_root: str) -> bool:
         """Check if this is a Python project."""
-        return (
-            self.has_python_files(project_root)
-            or self.has_setup_py(project_root)
-            or self.has_pyproject_toml(project_root)
-            or self.has_requirements_txt(project_root)
-        )
+        return looks_like_python_project(project_root)
 
     def skip_reason(self, project_root: str) -> str:
         """Return reason for skipping Python checks."""

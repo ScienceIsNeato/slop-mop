@@ -1,5 +1,154 @@
 # Project Status
 
+## 2026-04-24 Delta: PR 149 final follow-up on empty exclude sets
+
+Branch: `friction`
+
+**Work completed:**
+- Fixed `has_python_source_files()` in `slopmop/checks/mixins.py` so an explicit
+  empty `exclude_dirs` set no longer falls back to the default exclusion list.
+- Preserved the default behavior for `None` while restoring the typed meaning of
+  `set()` as “exclude nothing.”
+- Added regression coverage proving an explicit empty exclude set allows Python
+  files under otherwise excluded directories to be seen.
+
+**Validation:**
+- `pytest tests/unit/test_base_check.py -q` ✅
+
+**Next:** Commit and push this final thread fix, resolve the last PR #149
+comment, and rerun `sm buff watch`.
+
+## 2026-04-24 Delta: PR 149 final follow-up on shared exclude dirs
+
+Branch: `friction`
+
+**Work completed:**
+- Deduplicated the detection-layer excluded-directory set by aliasing
+  `slopmop/cli/detection.py` to the shared Python source exclusion set defined
+  in `slopmop/checks/mixins.py`.
+- Kept the detection-local `_DETECTION_EXCLUDED_DIRS` name so existing detection
+  call sites still read clearly while future exclusion changes stay in one place.
+- Added a regression test proving detection and the mixin helper share the same
+  exclusion set object.
+
+**Validation:**
+- `pytest tests/unit/test_detection.py -q` ✅
+
+**Next:** Commit and push this final thread fix, resolve the last PR #149
+comment, and rerun `sm buff watch`.
+
+## 2026-04-24 Delta: PR 149 follow-up on detection module structure
+
+Branch: `friction`
+
+**Work completed:**
+- Moved the Python detection helper import back below the module docstring in
+  `slopmop/cli/detection.py` so the file keeps its module documentation and a
+  single canonical mixins import block.
+- Removed the duplicated Python excluded-directory constant from
+  `slopmop/checks/quality/config_debt.py` so the quick config-debt probe uses
+  the shared mixin defaults instead of a copied set.
+- Added a regression test proving the detection module keeps its top-level
+  docstring intact.
+
+**Validation:**
+- `pytest tests/unit/test_detection.py tests/unit/test_config_debt_check.py -q` ✅
+
+**Next:** Commit and push this final PR #149 follow-up, resolve the remaining
+review threads, and re-enter `sm buff watch`.
+
+## 2026-04-24 Delta: PR 149 review follow-up on Python detection helpers
+
+Branch: `friction`
+
+**Work completed:**
+- Tightened the follow-up to the requirements-only Python detection fix after PR
+  review on #149.
+- Simplified `looks_like_python_project()` so it no longer contains dead code or
+  redundant Python-source traversals.
+- Reworked init-time and config-debt Python detection to keep `requirements.txt`
+  as weak evidence via bounded scans instead of broad recursive repo walks.
+- Added regressions proving excluded directories like `node_modules/` do not make
+  requirements-only repos look like Python.
+
+**Validation:**
+- `pytest tests/unit/test_detection.py tests/unit/test_base_check.py tests/unit/test_config_debt_check.py -q` ✅
+- `./sm swab -g overconfidence:type-blindness.py` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit and push this PR #149 review follow-up, then resolve the
+remaining review threads via `sm buff`.
+
+## 2026-04-24 Delta: stale init applicability now repaired via upgrade migration
+
+Branch: `friction`
+
+**Work completed:**
+- Added a built-in upgrade migration in `slopmop/migrations/__init__.py` that
+  disables built-in gates which are no longer applicable under current slop-mop
+  heuristics.
+- Chose the upgrade migration rail for this barnacle instead of telling users to
+  rerun `sm init` as a repair step.
+- Added migration coverage proving requirements-only repos without Python source:
+  - have stale Python gates turned off during upgrade
+  - keep JavaScript gates enabled
+  - preserve Python gates for real Python repos
+
+**Validation:**
+- `pytest tests/unit/test_upgrade_migrations.py -q` ✅
+- `./sm swab -g overconfidence:type-blindness.py` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit this migration fix on `friction`, then decide separately whether
+  a doctor repair command is still worth adding for already-upgraded repos.
+
+## 2026-04-24 Delta: requirements-only repos no longer activate Python gates
+
+Branch: `friction`
+
+**Work completed:**
+- Tightened Python project heuristics so `requirements.txt` alone no longer
+  marks a repo as Python for slop-mop detection and applicability.
+- Aligned three surfaces to use the same rule:
+  - `slopmop/cli/detection.py` for `sm init`
+  - `slopmop/checks/mixins.py` for Python gate applicability
+  - `slopmop/checks/quality/config_debt.py` for `silenced-gates`
+- Added regressions so requirements-only repos without `.py` files:
+  - do not detect as Python during init
+  - do not make Python gates applicable at runtime
+  - do not trigger stale Python disabled-gate warnings
+- Updated Python-check tests that previously used `requirements.txt` as the
+  only Python-project marker.
+
+**Validation:**
+- `pytest tests/unit/test_detection.py tests/unit/test_base_check.py tests/unit/test_config_debt_check.py tests/unit/test_python_checks.py -q` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit this barnacle fix on `friction`, then either rerun `sm init`
+in fogofdog with this build or take the next barnacle.
+
+## 2026-04-24 Delta: timing history ignores cached and failed runs
+
+Branch: `friction`
+
+**Work completed:**
+- Tightened `slopmop/reporting/display/dynamic.py` so historical timing samples are
+  only persisted for completed, non-cached checks with trustworthy terminal
+  statuses.
+- Excluded failed and cached results from `.slopmop/timings.json` updates so ETA
+  history only learns from real full executions.
+- Added regression coverage in `tests/unit/test_display_timings.py` to prove:
+  - failed checks do not get persisted to timing history
+  - cached checks do not create or refresh timing-history files
+
+**Validation:**
+- `pytest tests/unit/test_display_timings.py -q` ✅
+- `./sm swab -g overconfidence:type-blindness.py` ✅
+- `./sm swab` ✅ (17/17 checks passed)
+
+**Next:** Commit this barnacle fix on `friction`, then take the next reported
+barnacle.
+
 ## 2026-04-24 Delta: PR 147 buff follow-up
 
 Branch: `fix/sm-env-release-perms`

@@ -12,7 +12,11 @@ from slopmop.checks.base import (
     ToolContext,
     find_tool,
 )
-from slopmop.checks.mixins import JavaScriptCheckMixin, PythonCheckMixin
+from slopmop.checks.mixins import (
+    JavaScriptCheckMixin,
+    PythonCheckMixin,
+    has_python_source_files,
+)
 from slopmop.core.result import CheckResult, CheckStatus
 
 
@@ -431,6 +435,20 @@ class TestPythonCheckMixin:
         (subdir / "test.py").touch()
         assert self.mixin.has_python_files(str(tmp_path)) is True
 
+    def test_has_python_files_ignores_excluded_dirs(self, tmp_path):
+        """Excluded junk dirs should not make a repo look like Python."""
+        nested = tmp_path / "node_modules" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "tool.py").touch()
+        assert self.mixin.has_python_files(str(tmp_path)) is False
+
+    def test_has_python_source_files_honors_empty_exclude_set(self, tmp_path):
+        """An explicit empty exclude set should disable directory exclusions."""
+        nested = tmp_path / "node_modules" / "pkg"
+        nested.mkdir(parents=True)
+        (nested / "tool.py").touch()
+        assert has_python_source_files(tmp_path, exclude_dirs=set()) is True
+
     def test_has_setup_py_true(self, tmp_path):
         """Test has_setup_py returns True when setup.py exists."""
         (tmp_path / "setup.py").touch()
@@ -468,9 +486,15 @@ class TestPythonCheckMixin:
         (tmp_path / "pyproject.toml").touch()
         assert self.mixin.is_python_project(str(tmp_path)) is True
 
-    def test_is_python_project_with_requirements(self, tmp_path):
-        """Test is_python_project returns True with requirements.txt."""
+    def test_is_python_project_false_with_requirements_only(self, tmp_path):
+        """requirements.txt alone should not enable Python gates."""
         (tmp_path / "requirements.txt").touch()
+        assert self.mixin.is_python_project(str(tmp_path)) is False
+
+    def test_is_python_project_with_requirements_and_py_files(self, tmp_path):
+        """requirements.txt plus Python files should count as Python."""
+        (tmp_path / "requirements.txt").touch()
+        (tmp_path / "main.py").touch()
         assert self.mixin.is_python_project(str(tmp_path)) is True
 
     def test_is_python_project_with_py_files(self, tmp_path):

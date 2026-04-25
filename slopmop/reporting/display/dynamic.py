@@ -39,6 +39,11 @@ from slopmop.reporting.display.renderer import (
 from slopmop.reporting.display.state import CheckDisplayInfo, DisplayState
 from slopmop.reporting.timings import TimingStats, load_timings, save_timings
 
+_TIMING_HISTORY_STATUSES = {
+    CheckStatus.PASSED,
+    CheckStatus.WARNED,
+}
+
 
 class DynamicDisplay:
     """Dynamic terminal display with live updates.
@@ -112,18 +117,20 @@ class DynamicDisplay:
         Args:
             project_root: Project root directory
         """
-        durations = {
-            name: info.duration
-            for name, info in self._checks.items()
-            if info.state == DisplayState.COMPLETED and info.duration > 0
-        }
-        results = {
-            name: info.result.status.value
-            for name, info in self._checks.items()
-            if info.state == DisplayState.COMPLETED
-            and info.duration > 0
-            and info.result is not None
-        }
+        durations: Dict[str, float] = {}
+        results: Dict[str, str] = {}
+        for name, info in self._checks.items():
+            result = info.result
+            if (
+                info.state != DisplayState.COMPLETED
+                or info.duration <= 0
+                or result is None
+                or result.cached
+                or result.status not in _TIMING_HISTORY_STATUSES
+            ):
+                continue
+            durations[name] = info.duration
+            results[name] = result.status.value
         if durations:
             save_timings(project_root, durations, results=results)
 

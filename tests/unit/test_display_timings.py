@@ -40,6 +40,48 @@ class TestDisplayTimingPersistence:
         timings_file = tmp_path / ".slopmop" / "timings.json"
         assert not timings_file.exists()
 
+    def test_save_historical_timings_skips_failed_checks(self, tmp_path) -> None:
+        """Failed checks should not contribute bogus timing history."""
+        display = DynamicDisplay(quiet=True)
+
+        display.on_check_start("test:passed")
+        display.on_check_complete(
+            CheckResult(name="test:passed", status=CheckStatus.PASSED, duration=2.5)
+        )
+        display.on_check_start("test:failed")
+        display.on_check_complete(
+            CheckResult(name="test:failed", status=CheckStatus.FAILED, duration=8.0)
+        )
+
+        display.save_historical_timings(str(tmp_path))
+
+        timings_file = tmp_path / ".slopmop" / "timings.json"
+        data = json.loads(timings_file.read_text())
+
+        assert "test:passed" in data
+        assert "test:failed" not in data
+
+    def test_save_historical_timings_skips_cached_checks(self, tmp_path) -> None:
+        """Cached checks should never refresh timing history timestamps."""
+        display = DynamicDisplay(quiet=True)
+
+        display._checks["test:cached"] = CheckDisplayInfo(
+            name="test:cached",
+            state=DisplayState.COMPLETED,
+            result=CheckResult(
+                name="test:cached",
+                status=CheckStatus.PASSED,
+                duration=2.5,
+                cached=True,
+            ),
+            duration=2.5,
+        )
+
+        display.save_historical_timings(str(tmp_path))
+
+        timings_file = tmp_path / ".slopmop" / "timings.json"
+        assert not timings_file.exists()
+
     def test_load_historical_timings(self, tmp_path) -> None:
         """Test load_historical_timings loads timing data."""
         timings_dir = tmp_path / ".slopmop"
