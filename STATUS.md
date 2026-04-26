@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-04-26 Delta: PR 150 README continuity follow-up
+
+Branch: `docs/readme-field-guide`
+
+**Work completed:**
+- Added `docs/CI.md` so the README links to a public CI template instead of
+  embedding workflow YAML inline.
+- Added a short post-init starting-point section covering baseline mode and
+  refit without pretending the README is the full manual.
+- Updated README wording around greased rails, code-centric vs process-centric
+  verbs, custom gates, and barnacles.
+- Removed optional install extras detail from the README path.
+
+**Validation so far:**
+- README/docs link and no-hype scan ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (expected unresolved PR feedback warning until threads are
+  resolved; non-blocking dependency-risk warning remains)
+
+**Next:** Commit, push, then resolve PR #150 review threads.
+
 ## 2026-04-25 Delta: README field-guide rewrite
 
 Branch: `docs/readme-field-guide`

@@ -9,8 +9,9 @@
 
 Slop-mop is a quality gate runner for AI-assisted codebases.
 
-It does not try to make agents smart. It gives them rails. Run the tool, read
-what failed, fix that thing, run it again.
+It does not try to make agents smart. It gives them greased rails: a path of
+least resistance toward more maintainable choices. Run the tool, read what
+failed, fix that thing, run it again.
 
 That is the whole idea.
 
@@ -33,6 +34,23 @@ Set up a repo:
 
 ```bash
 sm init
+```
+
+Choose a starting point.
+
+If the repo is already carrying failures, create a baseline and report only new
+failures while you clean up:
+
+```bash
+sm status --generate-baseline-snapshot
+sm swab --ignore-baseline-failures
+```
+
+If you want slop-mop to walk the repo through a structured cleanup first, use
+refit instead:
+
+```bash
+sm refit --start
 ```
 
 Run the normal loop:
@@ -68,10 +86,10 @@ Slop-mop has four verbs you will actually use:
 
 | Verb | What it is for | When to run it |
 | --- | --- | --- |
-| `sm sail` | Pick the next workflow step | When you are not sure what to do next |
-| `sm swab` | Fast local feedback | After meaningful code changes |
-| `sm scour` | Thorough pre-PR sweep | Before opening or updating a PR |
-| `sm buff` | CI and review follow-up | After CI completes or review feedback lands |
+| `sm swab` | Code-centric local feedback | After meaningful code changes |
+| `sm scour` | Code-centric pre-PR sweep | Before opening or updating a PR |
+| `sm buff` | Process-centric CI and review follow-up | After CI completes or review feedback lands |
+| `sm sail` | Process-centric next-step selection | When you are not sure what to do next |
 
 The boring version:
 
@@ -126,7 +144,7 @@ sm buff
 
 Refit is slower and more deliberate. Maintenance is the day-to-day loop.
 
-## Install Options
+## Install Notes
 
 Most users should install everything:
 
@@ -142,18 +160,6 @@ pipx install slopmop
 
 Minimal install gives you the framework. Gates that need tools like `black`,
 `pyright`, `bandit`, or `pytest` will tell you what is missing.
-
-Extras are available if you want narrower installs:
-
-| Extra | Adds |
-| --- | --- |
-| `lint` | formatting and lint tools |
-| `typing` | type checkers |
-| `analysis` | dead-code and complexity tools |
-| `security` | security and dependency scanners |
-| `testing` | pytest, coverage, and diff coverage tools |
-| `templates` | Jinja template validation |
-| `all` | all of the above |
 
 Developer setup details live in [DEVELOPING.md](DEVELOPING.md).
 
@@ -192,35 +198,10 @@ blocking every unrelated change while you clean them up deliberately.
 
 ## CI
 
-Run slop-mop in CI the same way you run it locally:
+Run slop-mop in CI the same way you run it locally: install it, check out enough
+git history for history-aware gates, then run the gate command.
 
-```yaml
-name: slop-mop
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-jobs:
-  swab:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: python -m pip install "slopmop[all]"
-      - run: sm swab
-```
-
-This repo's own workflow is in
-[.github/workflows/slopmop-sarif.yml](.github/workflows/slopmop-sarif.yml).
-
-For PR closure, use `sm buff` after CI finishes. It checks CI state, unresolved
-review threads, and the next action the agent should take.
+See [docs/CI.md](docs/CI.md) for a GitHub Actions template.
 
 ## Agent Setup
 
@@ -238,13 +219,14 @@ sm agent install --target cursor
 sm agent install --target claude
 ```
 
-The short version for agents: run the rail, fix what it reports, do not bypass
+The short version for agents: ride the rail, fix what it reports, do not bypass
 the gate.
 
 ## Custom Gates
 
-Slop-mop can run repo-specific checks alongside built-in gates. Use this when a
-project has local rules that generic linting will never know about.
+Slop-mop's CI framework is well adapted to existing checks that are not covered
+by built-in gates. Add your own check as a custom gate and manage it like any
+other slop-mop quality gate.
 
 Start with [NEW_GATE_PROTOCOL.md](NEW_GATE_PROTOCOL.md).
 
@@ -256,6 +238,12 @@ That is useful information. Do not route around it with ad-hoc commands and
 pretend the rail is fine. Fix the gate, tune the config, or file the bug. The
 point is not obedience. The point is making the correct workflow easier than the
 wrong one.
+
+For slop-mop tooling friction, start with:
+
+```bash
+sm barnacle --help
+```
 
 ## Contributing
 
