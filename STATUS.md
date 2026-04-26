@@ -18,8 +18,13 @@ Branch: `docs/readme-field-guide`
 - `./sm swab` ✅
 - `./sm scour` ✅ (expected unresolved PR feedback warning until threads are
   resolved; non-blocking dependency-risk warning remains)
+- PR #150 review threads resolved via `sm buff resolve` ✅
+- `./sm buff verify 150` ✅
+- `./sm buff watch 150` ✅
+- `./sm buff inspect 150` ✅ (ready for finalization; non-blocking
+  dependency-risk warning remains)
 
-**Next:** Commit, push, then resolve PR #150 review threads.
+**Next:** PR #150 is ready for finalization/merge.
 
 ## 2026-04-25 Delta: README field-guide rewrite
 
