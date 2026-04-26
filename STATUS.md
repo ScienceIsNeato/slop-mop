@@ -1,5 +1,51 @@
 # Project Status
 
+## 2026-04-26 Delta: PR 150 README continuity follow-up
+
+Branch: `docs/readme-field-guide`
+
+**Work completed:**
+- Added `docs/CI.md` so the README links to a public CI template instead of
+  embedding workflow YAML inline.
+- Added a short post-init starting-point section covering baseline mode and
+  refit without pretending the README is the full manual.
+- Updated README wording around greased rails, code-centric vs process-centric
+  verbs, custom gates, and barnacles.
+- Removed optional install extras detail from the README path.
+
+**Validation so far:**
+- README/docs link and no-hype scan ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (expected unresolved PR feedback warning until threads are
+  resolved; non-blocking dependency-risk warning remains)
+- PR #150 review threads resolved via `sm buff resolve` ✅
+- `./sm buff verify 150` ✅
+- `./sm buff watch 150` ✅
+- `./sm buff inspect 150` ✅ (ready for finalization; non-blocking
+  dependency-risk warning remains)
+
+**Next:** PR #150 is ready for finalization/merge.
+
+## 2026-04-25 Delta: README field-guide rewrite
+
+Branch: `docs/readme-field-guide`
+
+**Work completed:**
+- Rewrote `README.md` as a shorter field guide instead of a sprawling manual.
+- Kept the core orientation: what slop-mop is, how to run it, what the main
+  workflow verbs do, and where deeper docs live.
+- Removed sales-style framing and long protocol theory from the README path.
+- Kept the tone plain, direct, and no-hype throughout the rewrite.
+
+**Validation:**
+- README length stayed under the target range ✅
+- README relative markdown links resolve ✅
+- README hype/em-dash scan clean ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (non-blocking dependency-risk warning only)
+
+**Next:** Resolve PR #150 review feedback and re-run `sm buff watch`.
+
 ## 2026-04-24 Delta: PR 149 final follow-up on empty exclude sets
 
 Branch: `friction`
