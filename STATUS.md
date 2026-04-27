@@ -12,11 +12,17 @@ Branch: `docs/consolidate-docs`
   from old status/history notes.
 - Reviewed root config files and kept them at the repository root because the
   surrounding tools discover them there.
+- Addressed PR #152 feedback by adding a GitHub-detectable contributing stub
+  and clarifying the workflow diagram `--check` usage comment.
 
 **Validation so far:**
 - Local Markdown link checker ✅
 - `./sm swab` ✅
 - `./sm scour` ✅ (known non-blocking dependency-risk warning remains)
+- `./sm swab` after PR feedback fixes ✅
+- `./sm scour` after PR feedback fixes ✅ (expected unresolved-feedback warning
+  until threads are resolved; known non-blocking dependency-risk warning
+  remains)
 
 ## 2026-04-26 Delta: Badge and coverage follow-up
 

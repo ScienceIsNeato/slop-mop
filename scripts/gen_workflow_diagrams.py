@@ -4,7 +4,7 @@
 Usage::
 
     python scripts/gen_workflow_diagrams.py           # writes DOCS/WORKFLOW.md
-    python scripts/gen_workflow_diagrams.py --check   # exits non-zero if docs are stale
+    python scripts/gen_workflow_diagrams.py --check   # exits non-zero if DOCS/WORKFLOW.md is stale
 
 The diagrams are derived entirely from
 ``slopmop.workflow.state_machine.TRANSITIONS`` — the Python objects ARE the
