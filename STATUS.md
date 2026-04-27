@@ -2,7 +2,7 @@
 
 ## 2026-04-27 Delta: DOCS layout cleanup
 
-Branch: `docs/badges-and-coverage`
+Branch: `docs/consolidate-docs`
 
 **Work in progress:**
 - Renamed the documentation folder from `docs/` to `DOCS/` for consistency.
