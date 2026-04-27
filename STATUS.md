@@ -1,5 +1,43 @@
 # Project Status
 
+## 2026-04-26 Delta: Badge and coverage follow-up
+
+Branch: `docs/badges-and-coverage`
+
+**Work completed:**
+- Started the badge follow-up from updated `main` after PR #150 merged.
+- Updated the README badge block to keep the primary gate, PyPI, Python
+  versions, license, latest release, and coverage signals.
+- Added Codecov upload for the existing `coverage.xml` output in the primary
+  workflow, authenticated with GitHub OIDC.
+- Documented coverage badge requirements in `docs/CI.md`.
+- Addressed PR #151 feedback by making coverage publication conditional and
+  non-blocking while hardening SARIF verdict steps with `always()` guards.
+- Addressed PR #151 OIDC scoping feedback by moving `id-token: write` to the
+  coverage-uploading job.
+
+**Validation so far:**
+- `./sm swab -g overconfidence:untested-code.py --no-cache` ✅
+  (`coverage.xml` exists)
+- `./sm swab -g overconfidence:coverage-gaps.py --no-cache` ✅
+- `./sm scour -g myopia:just-this-once.py --no-cache` ✅
+- README/docs link and no-hype scan ✅
+- Workflow/docs diagnostics clean ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (non-blocking dependency-risk warning remains)
+- PR #151 workflow feedback fix diagnostics clean ✅
+- `./sm swab` after feedback fix ✅
+- `./sm scour` after feedback fix ✅ (expected unresolved PR feedback warning
+  until threads are resolved; non-blocking dependency-risk warning remains)
+- PR #151 OIDC scoping diagnostics clean ✅
+- `./sm swab` after OIDC scoping fix ✅
+- `./sm scour` after OIDC scoping fix ✅ (expected unresolved PR feedback
+  warning until the thread is resolved; non-blocking dependency-risk warning
+  remains)
+
+**Next:** Commit/push the OIDC scoping fix, resolve the final review thread,
+and re-run `sm buff`.
+
 ## 2026-04-26 Delta: PR 150 README continuity follow-up
 
 Branch: `docs/readme-field-guide`

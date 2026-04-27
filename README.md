@@ -1,10 +1,12 @@
 # 🪣 Slop-Mop
 
 <p>
-  <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/v/slopmop.svg" alt="PyPI version"/></a>
   <a href="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop-sarif.yml"><img src="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop-sarif.yml/badge.svg" alt="Primary code scanning gate"/></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"/></a>
-  <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Attribution-blue.svg" alt="License"/></a>
+  <a href="https://codecov.io/gh/ScienceIsNeato/slop-mop"><img src="https://codecov.io/gh/ScienceIsNeato/slop-mop/branch/main/graph/badge.svg" alt="Coverage"/></a>
+  <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/v/slopmop.svg" alt="PyPI version"/></a>
+  <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/pyversions/slopmop.svg" alt="Python versions"/></a>
+  <a href="https://github.com/ScienceIsNeato/slop-mop/releases"><img src="https://img.shields.io/github/v/release/ScienceIsNeato/slop-mop?display_name=tag&amp;sort=semver" alt="Latest GitHub release"/></a>
+  <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Slop--Mop%20Attribution%20v1.0-blue.svg" alt="License"/></a>
 </p>
 
 Slop-mop is a quality gate runner for AI-assisted codebases.
