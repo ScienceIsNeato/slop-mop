@@ -4,7 +4,7 @@ Each migration is a deterministic Python function keyed by a version range.
 When ``sm upgrade`` runs, applicable migrations execute in stepwise order
 between the old and new package versions.
 
-See ``docs/MIGRATIONS.md`` for the authoring process.
+See ``DOCS/MIGRATIONS.md`` for the authoring process.
 """
 
 from __future__ import annotations

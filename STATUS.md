@@ -1,5 +1,29 @@
 # Project Status
 
+## 2026-04-27 Delta: DOCS layout cleanup
+
+Branch: `docs/consolidate-docs`
+
+**Work in progress:**
+- Renamed the documentation folder from `docs/` to `DOCS/` for consistency.
+- Moved root documentation into `DOCS/`, leaving `README.md` and `LICENSE` at
+  the repository root.
+- Removed `NEXT_PHASE.md`; it was stale planning material and only referenced
+  from old status/history notes.
+- Reviewed root config files and kept them at the repository root because the
+  surrounding tools discover them there.
+- Addressed PR #152 feedback by adding a GitHub-detectable contributing stub
+  and clarifying the workflow diagram `--check` usage comment.
+
+**Validation so far:**
+- Local Markdown link checker ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (known non-blocking dependency-risk warning remains)
+- `./sm swab` after PR feedback fixes ✅
+- `./sm scour` after PR feedback fixes ✅ (expected unresolved-feedback warning
+  until threads are resolved; known non-blocking dependency-risk warning
+  remains)
+
 ## 2026-04-26 Delta: Badge and coverage follow-up
 
 Branch: `docs/badges-and-coverage`

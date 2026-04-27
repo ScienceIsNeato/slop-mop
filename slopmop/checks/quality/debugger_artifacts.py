@@ -76,6 +76,7 @@ _DEFAULT_EXCLUDE = SCOPE_EXCLUDED_DIRS | {
     "examples",
     "example",
     "docs",
+    "DOCS",
     "vendor",
     "third_party",
 }
