@@ -1,5 +1,16 @@
 # Project Status
 
+## 2026-04-27 Delta: PyPI README link hotfix
+
+Branch: `docs/fix-pypi-readme-links`
+
+**Work in progress:**
+- Fixed README links that PyPI rendered as project-relative 404s by changing
+  local doc/license links to absolute GitHub URLs.
+
+**Validation so far:**
+- Pending.
+
 ## 2026-04-27 Delta: DOCS layout cleanup
 
 Branch: `docs/consolidate-docs`

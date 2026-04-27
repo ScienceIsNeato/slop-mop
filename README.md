@@ -99,7 +99,7 @@ The boring version:
 write code -> sm swab -> commit -> sm scour -> push/open PR -> sm buff
 ```
 
-The workflow state machine is documented in [DOCS/WORKFLOW.md](DOCS/WORKFLOW.md).
+The workflow state machine is documented in [DOCS/WORKFLOW.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/WORKFLOW.md).
 
 ## What It Checks
 
@@ -121,7 +121,7 @@ code, formatting drift, repeated code, stale docs, and silenced gates.
 The local change looks fine, but the repo-wide picture is worse. This catches
 duplication, security issues, dependency risk, and similar cross-cutting mess.
 
-The full gate reasoning lives in [DOCS/GATE_REASONING.md](DOCS/GATE_REASONING.md).
+The full gate reasoning lives in [DOCS/GATE_REASONING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/GATE_REASONING.md).
 
 ## Refit vs Maintenance
 
@@ -163,7 +163,7 @@ pipx install slopmop
 Minimal install gives you the framework. Gates that need tools like `black`,
 `pyright`, `bandit`, or `pytest` will tell you what is missing.
 
-Developer setup details live in [DOCS/DEVELOPING.md](DOCS/DEVELOPING.md).
+Developer setup details live in [DOCS/DEVELOPING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/DEVELOPING.md).
 
 ## Configuration
 
@@ -182,7 +182,7 @@ Disabling a gate should be temporary. If a gate is wrong, tune it or file the
 tooling bug. If the repo is not ready yet, use refit or baseline mode instead of
 pretending the problem is gone.
 
-Migration behavior is documented in [DOCS/MIGRATIONS.md](DOCS/MIGRATIONS.md).
+Migration behavior is documented in [DOCS/MIGRATIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/MIGRATIONS.md).
 
 ## Baselines
 
@@ -203,7 +203,7 @@ blocking every unrelated change while you clean them up deliberately.
 Run slop-mop in CI the same way you run it locally: install it, check out enough
 git history for history-aware gates, then run the gate command.
 
-See [DOCS/CI.md](DOCS/CI.md) for a GitHub Actions template.
+See [DOCS/CI.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CI.md) for a GitHub Actions template.
 
 ## Agent Setup
 
@@ -230,7 +230,7 @@ Slop-mop's CI framework is well adapted to existing checks that are not covered
 by built-in gates. Add your own check as a custom gate and manage it like any
 other slop-mop quality gate.
 
-Start with [DOCS/NEW_GATE_PROTOCOL.md](DOCS/NEW_GATE_PROTOCOL.md).
+Start with [DOCS/NEW_GATE_PROTOCOL.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/NEW_GATE_PROTOCOL.md).
 
 ## When To Push Back On The Tool
 
@@ -249,14 +249,14 @@ sm barnacle --help
 
 ## Contributing
 
-For repo conventions, see [DOCS/CONVENTIONS.md](DOCS/CONVENTIONS.md).
+For repo conventions, see [DOCS/CONVENTIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CONVENTIONS.md).
 
-For contribution guidance, see [DOCS/CONTRIBUTING.md](DOCS/CONTRIBUTING.md).
+For contribution guidance, see [DOCS/CONTRIBUTING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CONTRIBUTING.md).
 
-For local development, see [DOCS/DEVELOPING.md](DOCS/DEVELOPING.md).
+For local development, see [DOCS/DEVELOPING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/DEVELOPING.md).
 
 ## License
 
-Slop-mop uses the [Slop-Mop Attribution License v1.0](LICENSE).
+Slop-mop uses the [Slop-Mop Attribution License v1.0](https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE).
 
 If you use it, attribution is required.
