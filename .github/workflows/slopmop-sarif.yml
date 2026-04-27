@@ -74,6 +74,7 @@ permissions:
   contents: read
   security-events: write
   actions: read
+  id-token: write
 
 jobs:
   scan:
@@ -165,6 +166,23 @@ jobs:
         with:
           name: slopmop-results
           path: slopmop-results.json
+
+      - name: Verify coverage report exists
+        run: |
+          test -f coverage.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          use_oidc: true
+          fail_ci_if_error: true
 
       - name: Summarise SARIF failures
         # When scour fails, parse the SARIF and surface the top
