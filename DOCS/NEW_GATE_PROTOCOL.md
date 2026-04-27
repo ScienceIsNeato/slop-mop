@@ -18,7 +18,7 @@ If you're not sure the gate belongs in slop-mop permanently, **start by running 
 
 If the answer to all three is yes, that's a strong signal to promote it to a built-in gate. Open a feature request or PR with evidence from your custom gate usage — what it caught, what the false-positive rate was, how agents responded to its output.
 
-See the [Custom Gates section in the README](README.md#custom-gates) for the config format.
+See the [Custom Gates section in the README](../README.md#custom-gates) for the config format.
 
 ### Selection Criteria
 

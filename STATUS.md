@@ -1,5 +1,23 @@
 # Project Status
 
+## 2026-04-27 Delta: DOCS layout cleanup
+
+Branch: `docs/badges-and-coverage`
+
+**Work in progress:**
+- Renamed the documentation folder from `docs/` to `DOCS/` for consistency.
+- Moved root documentation into `DOCS/`, leaving `README.md` and `LICENSE` at
+  the repository root.
+- Removed `NEXT_PHASE.md`; it was stale planning material and only referenced
+  from old status/history notes.
+- Reviewed root config files and kept them at the repository root because the
+  surrounding tools discover them there.
+
+**Validation so far:**
+- Local Markdown link checker ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (known non-blocking dependency-risk warning remains)
+
 ## 2026-04-26 Delta: Badge and coverage follow-up
 
 Branch: `docs/badges-and-coverage`

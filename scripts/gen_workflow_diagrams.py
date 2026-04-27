@@ -3,7 +3,7 @@
 
 Usage::
 
-    python scripts/gen_workflow_diagrams.py           # writes docs/WORKFLOW.md
+    python scripts/gen_workflow_diagrams.py           # writes DOCS/WORKFLOW.md
     python scripts/gen_workflow_diagrams.py --check   # exits non-zero if docs are stale
 
 The diagrams are derived entirely from
@@ -37,7 +37,7 @@ from slopmop.workflow.state_machine import (  # noqa: E402
     WorkflowState,
 )
 
-OUTPUT_PATH = REPO_ROOT / "docs" / "WORKFLOW.md"
+OUTPUT_PATH = REPO_ROOT / "DOCS" / "WORKFLOW.md"
 
 # ── State diagram ─────────────────────────────────────────────────────────
 
@@ -333,7 +333,7 @@ def main() -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Exit non-zero if docs/WORKFLOW.md is stale (for CI).",
+        help="Exit non-zero if DOCS/WORKFLOW.md is stale (for CI).",
     )
     args = parser.parse_args()
 
