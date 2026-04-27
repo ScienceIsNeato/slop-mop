@@ -4,12 +4,15 @@
 
 Branch: `docs/fix-pypi-readme-links`
 
-**Work in progress:**
+**Work completed:**
 - Fixed README links that PyPI rendered as project-relative 404s by changing
   local doc/license links to absolute GitHub URLs.
 
-**Validation so far:**
-- Pending.
+**Validation:**
+- README local-link scan ✅
+- GitHub doc/license URL spot checks ✅
+- `sm swab --no-cache` ✅
+- `sm scour --no-cache` ✅
 
 ## 2026-04-27 Delta: DOCS layout cleanup
 
