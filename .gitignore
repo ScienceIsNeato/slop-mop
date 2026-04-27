@@ -58,6 +58,9 @@ AGENTS.md
 .windsurfrules
 .agents/
 .copilot/
+.clinerules/
+.roo/
+.windsurf/
 .slopmop/
 
 # Claude Code session state (hooks, settings, transcripts)

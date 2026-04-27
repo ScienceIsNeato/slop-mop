@@ -1,5 +1,21 @@
 # Project Status
 
+## 2026-04-27 Delta: Repo cleanup follow-up
+
+Branch: `docs/repo-small-cleanup`
+
+**Work completed:**
+- Removing tracked local agent-install outputs for Cline, Roo, and Windsurf;
+  GitHub/Copilot's generated output was already ignored and untracked.
+- Keeping source templates under `slopmop/agent_install/templates/` tracked.
+- Cleaning up duplicated README install guidance.
+
+**Validation:**
+- `sm swab -g overconfidence:missing-annotations.py --no-cache` ✅
+  (targeted rerun after an initial contradictory gate report)
+- `sm swab --no-cache` ✅
+- `sm scour --no-cache` ✅
+
 ## 2026-04-27 Delta: PyPI README link hotfix
 
 Branch: `docs/fix-pypi-readme-links`

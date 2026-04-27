@@ -146,15 +146,9 @@ sm buff
 
 Refit is slower and more deliberate. Maintenance is the day-to-day loop.
 
-## Install Notes
+## Minimal Install
 
-Most users should install everything:
-
-```bash
-pipx install slopmop[all]
-```
-
-Minimal install:
+If you only want the framework without optional gate dependencies:
 
 ```bash
 pipx install slopmop
@@ -220,6 +214,10 @@ sm agent install --target copilot
 sm agent install --target cursor
 sm agent install --target claude
 ```
+
+Generated agent files are local workspace configuration. They should stay out
+of source control; the reusable source templates live in this repository under
+`slopmop/agent_install/templates/`.
 
 The short version for agents: ride the rail, fix what it reports, do not bypass
 the gate.
