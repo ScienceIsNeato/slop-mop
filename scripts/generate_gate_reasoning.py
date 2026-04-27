@@ -27,17 +27,17 @@ def main() -> int:
     group.add_argument(
         "--update",
         action="store_true",
-        help="Update docs/GATE_REASONING.md in-place",
+        help="Update DOCS/GATE_REASONING.md in-place",
     )
     group.add_argument(
         "--check",
         action="store_true",
-        help="Exit 1 if docs/GATE_REASONING.md is stale",
+        help="Exit 1 if DOCS/GATE_REASONING.md is stale",
     )
     parser.add_argument(
         "--doc",
         type=Path,
-        default=_project_root / "docs" / "GATE_REASONING.md",
+        default=_project_root / "DOCS" / "GATE_REASONING.md",
         help="Path to the generated gate-reasoning doc",
     )
     args = parser.parse_args()
