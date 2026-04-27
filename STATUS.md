@@ -13,6 +13,8 @@ Branch: `docs/badges-and-coverage`
 - Documented coverage badge requirements in `docs/CI.md`.
 - Addressed PR #151 feedback by making coverage publication conditional and
   non-blocking while hardening SARIF verdict steps with `always()` guards.
+- Addressed PR #151 OIDC scoping feedback by moving `id-token: write` to the
+  coverage-uploading job.
 
 **Validation so far:**
 - `./sm swab -g overconfidence:untested-code.py --no-cache` ✅
@@ -27,9 +29,14 @@ Branch: `docs/badges-and-coverage`
 - `./sm swab` after feedback fix ✅
 - `./sm scour` after feedback fix ✅ (expected unresolved PR feedback warning
   until threads are resolved; non-blocking dependency-risk warning remains)
+- PR #151 OIDC scoping diagnostics clean ✅
+- `./sm swab` after OIDC scoping fix ✅
+- `./sm scour` after OIDC scoping fix ✅ (expected unresolved PR feedback
+  warning until the thread is resolved; non-blocking dependency-risk warning
+  remains)
 
-**Next:** Commit/push the PR #151 feedback fix, resolve review threads, and
-re-run `sm buff`.
+**Next:** Commit/push the OIDC scoping fix, resolve the final review thread,
+and re-run `sm buff`.
 
 ## 2026-04-26 Delta: PR 150 README continuity follow-up
 

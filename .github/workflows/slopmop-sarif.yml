@@ -67,19 +67,24 @@ on:
   schedule:
     - cron: '0 6 * * 1'
 
-# upload-sarif needs security-events: write.  actions: read lets it
-# correlate the upload with the workflow run.  contents: read is the
-# bare minimum for checkout.
+# upload-sarif needs security-events: write. actions: read lets it correlate
+# the upload with the workflow run. contents: read is the bare minimum for
+# checkout. Jobs that need narrower permissions add them at the job level.
 permissions:
   contents: read
   security-events: write
   actions: read
-  id-token: write
 
 jobs:
   scan:
     name: Primary Code Scanning Gate (blocking)
     runs-on: ubuntu-latest
+    # Codecov OIDC only belongs on the job that uploads coverage.
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
