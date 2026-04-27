@@ -11,6 +11,8 @@ Branch: `docs/badges-and-coverage`
 - Added Codecov upload for the existing `coverage.xml` output in the primary
   workflow, authenticated with GitHub OIDC.
 - Documented coverage badge requirements in `docs/CI.md`.
+- Addressed PR #151 feedback by making coverage publication conditional and
+  non-blocking while hardening SARIF verdict steps with `always()` guards.
 
 **Validation so far:**
 - `./sm swab -g overconfidence:untested-code.py --no-cache` ✅
@@ -21,8 +23,13 @@ Branch: `docs/badges-and-coverage`
 - Workflow/docs diagnostics clean ✅
 - `./sm swab` ✅
 - `./sm scour` ✅ (non-blocking dependency-risk warning remains)
+- PR #151 workflow feedback fix diagnostics clean ✅
+- `./sm swab` after feedback fix ✅
+- `./sm scour` after feedback fix ✅ (expected unresolved PR feedback warning
+  until threads are resolved; non-blocking dependency-risk warning remains)
 
-**Next:** Create the badge follow-up PR and run the `sm buff` rail.
+**Next:** Commit/push the PR #151 feedback fix, resolve review threads, and
+re-run `sm buff`.
 
 ## 2026-04-26 Delta: PR 150 README continuity follow-up
 

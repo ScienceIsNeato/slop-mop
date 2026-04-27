@@ -41,6 +41,10 @@ If you want a coverage badge, upload `coverage.xml` to a public coverage
 reporter after `sm swab` or `sm scour` runs. This repo uploads it to Codecov in
 the primary workflow and authenticates the upload with GitHub OIDC.
 
+Keep the upload best-effort. The primary gate should block on slop-mop findings,
+not on a coverage service outage. If `coverage.xml` is not produced, skip the
+upload and let the slop-mop verdict own the check result.
+
 This repo's own workflow is
 [.github/workflows/slopmop-sarif.yml](../.github/workflows/slopmop-sarif.yml).
 
