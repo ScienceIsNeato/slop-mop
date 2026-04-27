@@ -22,7 +22,7 @@ Branch: `docs/badges-and-coverage`
 - `./sm swab` ✅
 - `./sm scour` ✅ (non-blocking dependency-risk warning remains)
 
-**Next:** Commit and push the branch for the badge follow-up PR.
+**Next:** Create the badge follow-up PR and run the `sm buff` rail.
 
 ## 2026-04-26 Delta: PR 150 README continuity follow-up
 
