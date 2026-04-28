@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 _SCRIPT = (
@@ -51,6 +52,23 @@ def test_main_writes_requirements_file(tmp_path: Path) -> None:
 
     assert result == 0
     assert "tomli>=1.0.0" in output.read_text(encoding="utf-8")
+
+
+def test_main_empty_argv_does_not_fall_back_to_sys_argv(
+    monkeypatch, tmp_path: Path
+) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        "[project]\n" "dependencies = ['tomli>=1.0.0']\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["generate_requirements_txt.py", "--check"])
+
+    result = _MODULE.main([])
+
+    assert result == 0
+    assert "tomli>=1.0.0" in (tmp_path / "requirements.txt").read_text(encoding="utf-8")
 
 
 def test_main_check_reports_out_of_sync(tmp_path: Path, capsys) -> None:

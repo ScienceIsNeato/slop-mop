@@ -15,6 +15,9 @@ Branch: `codex/release-prep-final`
 - Fixed `scripts/sm` worktree root detection after barnacle
   `barnacle-20260428-044041-b52a564f`; linked Git worktrees now validate as
   standalone project roots instead of scanning sibling worktrees under `.tmp/`.
+- Fixed follow-up Bugbot feedback so `scripts/generate_requirements_txt.py`
+  treats `main([])` as an explicit empty argv instead of falling back to
+  process arguments.
 - Restored current README/DOCS link conventions after the stale PR base.
 
 **Validation so far:**

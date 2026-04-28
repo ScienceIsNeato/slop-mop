@@ -84,7 +84,7 @@ def parse_generate_requirements_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parse_generate_requirements_args(argv or sys.argv[1:])
+    args = parse_generate_requirements_args(sys.argv[1:] if argv is None else argv)
     pyproject_path = Path(args.pyproject)
     output_path = Path(args.output)
     rendered = render_requirements(load_pyproject(pyproject_path))
