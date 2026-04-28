@@ -1,0 +1,28 @@
+{
+  "myopia:source-duplication": {
+    "enabled": true,
+    "threshold": 4,
+    "include_dirs": [
+      "src"
+    ],
+    "exclude_dirs": [
+      "generated"
+    ]
+  },
+  "overconfidence:flutter-analyze": {
+    "enabled": true
+  },
+  "overconfidence:flutter-test": {
+    "enabled": true
+  },
+  "laziness:dart-format-check": {
+    "enabled": true
+  },
+  "laziness:sloppy-formatting.py": {
+    "enabled": true
+  },
+  "disabled_gates": [
+    "myopia:source-duplication",
+    "laziness:dart-format-check"
+  ]
+}

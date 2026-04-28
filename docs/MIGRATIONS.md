@@ -103,9 +103,11 @@ python3 -m slopmop.utils.generate_base_config
 
 ### 5. Verify
 
-The `myopia:missing-upgrade-migration` custom scour gate will fail if you
-change gate names in the template without updating `slopmop/migrations/__init__.py`.
-Run `sm scour` to confirm coverage.
+The migration coverage check (`python3 scripts/check_migration_coverage.py`)
+will fail if you change gate names in the template without updating
+`slopmop/migrations/__init__.py`.
+
+Run it locally, or run `sm scour` as part of the normal PR pass.
 
 ## Example: gate rename (0.11 → 0.12)
 

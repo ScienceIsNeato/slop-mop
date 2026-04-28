@@ -1,0 +1,8 @@
+{
+  "from_version": "0.14.1",
+  "to_version": "0.15.1",
+  "applied_migrations": [
+    "rename-swabbing-time-to-timeout",
+    "sync-built-in-gate-applicability"
+  ]
+}

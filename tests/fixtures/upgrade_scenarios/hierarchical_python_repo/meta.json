@@ -1,0 +1,8 @@
+{
+  "from_version": "0.11.0",
+  "to_version": "0.15.1",
+  "applied_migrations": [
+    "rename-source-duplication-gates",
+    "rename-dart-gates"
+  ]
+}

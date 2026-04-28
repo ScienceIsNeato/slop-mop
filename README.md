@@ -22,6 +22,16 @@ coverage, complexity creep, stale config, unhandled PR feedback.
 
 It is opinionated. Sometimes loudly. That is on purpose.
 
+## Project Status
+
+slop-mop is still pre-1.0. The current public policy surface for release and
+stability expectations lives here:
+
+- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
+- [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
+- [docs/RELEASING.md](docs/RELEASING.md)
+- [SECURITY.md](SECURITY.md)
+
 ## Quick Start
 
 Install it:

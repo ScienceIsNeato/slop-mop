@@ -1,0 +1,48 @@
+{
+  "myopia": {
+    "enabled": true,
+    "gates": {
+      "source-duplication": {
+        "enabled": true,
+        "threshold": 6,
+        "include_dirs": [
+          "src"
+        ],
+        "exclude_dirs": [
+          "generated"
+        ]
+      }
+    }
+  },
+  "laziness": {
+    "enabled": true,
+    "gates": {
+      "sloppy-formatting.py": {
+        "enabled": true
+      },
+      "dart-format-check": {
+        "enabled": true
+      }
+    }
+  },
+  "overconfidence": {
+    "enabled": true,
+    "gates": {
+      "untested-code.py": {
+        "enabled": true,
+        "test_dirs": [
+          "tests"
+        ]
+      },
+      "flutter-analyze": {
+        "enabled": true
+      },
+      "flutter-test": {
+        "enabled": true
+      }
+    }
+  },
+  "disabled_gates": [
+    "myopia:source-duplication"
+  ]
+}

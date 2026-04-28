@@ -531,6 +531,7 @@ class TestClassifyInstall:
             prefix="/usr",
             base_prefix="/usr",
             virtual_env="",
+            direct_url={},
         )
         assert mode == "system"
 
@@ -542,5 +543,6 @@ class TestClassifyInstall:
             prefix="/home/user/.local/pipx/venvs/slopmop",
             base_prefix="/usr",
             virtual_env="",
+            direct_url={},
         )
         assert mode == "pipx"

@@ -1,0 +1,31 @@
+{
+  "swabbing_timeout": 45,
+  "laziness": {
+    "enabled": true,
+    "gates": {
+      "sloppy-formatting.py": {
+        "enabled": true
+      },
+      "sloppy-formatting.dart": {
+        "enabled": false
+      }
+    }
+  },
+  "overconfidence": {
+    "enabled": true,
+    "gates": {
+      "untested-code.py": {
+        "enabled": true,
+        "test_dirs": [
+          "tests"
+        ]
+      },
+      "missing-annotations.dart": {
+        "enabled": false
+      },
+      "untested-code.dart": {
+        "enabled": false
+      }
+    }
+  }
+}

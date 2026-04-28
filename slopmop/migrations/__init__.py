@@ -283,6 +283,12 @@ def _sync_built_in_gate_applicability(project_root: Path) -> None:
 
     changed = False
 
+    def _maybe_disable_gate(gate_cfg: Dict[str, Any]) -> bool:
+        if gate_cfg.get("enabled") is False:
+            return False
+        gate_cfg["enabled"] = False
+        return True
+
     for full_name_any in registry.list_checks():
         if not isinstance(full_name_any, str) or ":" not in full_name_any:
             continue
@@ -290,28 +296,27 @@ def _sync_built_in_gate_applicability(project_root: Path) -> None:
         category, gate_name = full_name.split(":", 1)
 
         category_raw = data.get(category)
-        if not isinstance(category_raw, dict):
-            continue
-        category_dict = cast(Dict[str, Any], category_raw)
-        gates_value: object = category_dict.get("gates")
-        if not isinstance(gates_value, dict) or gate_name not in gates_value:
-            continue
-        gates_dict = cast(Dict[str, Any], gates_value)
-
-        gate_cfg_value: object = gates_dict.get(gate_name)
-        if not isinstance(gate_cfg_value, dict):
-            continue
-        gate_cfg = cast(Dict[str, Any], gate_cfg_value)
-
         check = registry.get_check(full_name, data)
         if check is None or check.is_applicable(str(project_root)):
             continue
 
-        if gate_cfg.get("enabled") is False:
-            continue
+        if isinstance(category_raw, dict):
+            category_dict = cast(Dict[str, Any], category_raw)
+            gates_value: object = category_dict.get("gates")
+            if isinstance(gates_value, dict) and gate_name in gates_value:
+                gates_dict = cast(Dict[str, Any], gates_value)
+                gate_cfg_value: object = gates_dict.get(gate_name)
+                if isinstance(gate_cfg_value, dict):
+                    changed = (
+                        _maybe_disable_gate(cast(Dict[str, Any], gate_cfg_value))
+                        or changed
+                    )
 
-        gate_cfg["enabled"] = False
-        changed = True
+        flat_gate_cfg = data.get(full_name)
+        if isinstance(flat_gate_cfg, dict):
+            changed = (
+                _maybe_disable_gate(cast(Dict[str, Any], flat_gate_cfg)) or changed
+            )
 
     if changed:
         config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
