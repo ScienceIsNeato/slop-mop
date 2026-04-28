@@ -16,14 +16,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SLOP_MOP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Determine project root: if slop-mop has a .git directory (not file),
-# it's the primary project. Otherwise it's a submodule and we go up one level.
-if [ -d "$SLOP_MOP_DIR/.git" ]; then
-    # slop-mop IS the project (standalone or development)
-    PROJECT_ROOT="$SLOP_MOP_DIR"
-else
+# Determine project root. A Git worktree also has a .git file, so do not treat
+# every .git file as a submodule. Only step up to the parent project when Git
+# reports that this checkout is actually inside a superproject.
+SUPERPROJECT_ROOT=""
+if command -v git &>/dev/null; then
+    SUPERPROJECT_ROOT="$(git -C "$SLOP_MOP_DIR" rev-parse --show-superproject-working-tree 2>/dev/null || true)"
+fi
+
+if [ -n "$SUPERPROJECT_ROOT" ]; then
     # slop-mop is a submodule (.git is a file pointing to parent's .git/modules/)
     PROJECT_ROOT="$(cd "$SLOP_MOP_DIR/.." && pwd)"
+else
+    # slop-mop IS the project (standalone clone, primary checkout, or worktree)
+    PROJECT_ROOT="$SLOP_MOP_DIR"
 fi
 
 if [ ! -d "$SLOP_MOP_DIR/slopmop" ]; then

@@ -8,7 +8,7 @@ slop-mop currently supports security fixes on a best-effort basis for:
 - `main` before the next release is cut
 
 The broader compatibility and support contract lives in
-[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+[DOCS/COMPATIBILITY.md](DOCS/COMPATIBILITY.md).
 
 Pre-1.0 releases do not have long-term support branches. If a fix is only
 practical on the latest release line, older releases may be closed as

@@ -493,6 +493,47 @@ class TestSyncBuiltInGateApplicability:
         assert result["laziness:sloppy-formatting.dart"]["enabled"] is False
         assert result["overconfidence:missing-annotations.dart"]["enabled"] is False
 
+    def test_skips_unconfigured_gates_before_applicability_probe(
+        self, monkeypatch, tmp_path: Path
+    ):
+        self._write_config(
+            tmp_path,
+            {
+                "laziness:sloppy-formatting.py": {"enabled": True},
+            },
+        )
+        probed: list[str] = []
+
+        class FakeCheck:
+            def is_applicable(self, _project_root: str) -> bool:
+                return True
+
+        class FakeRegistry:
+            def list_checks(self) -> list[str]:
+                return [
+                    "laziness:sloppy-formatting.py",
+                    "myopia:vulnerability-blindness.py",
+                ]
+
+            def get_check(self, full_name: str, _data: dict) -> FakeCheck:
+                probed.append(full_name)
+                if full_name == "myopia:vulnerability-blindness.py":
+                    raise AssertionError("unconfigured gates should not be probed")
+                return FakeCheck()
+
+        monkeypatch.setattr(
+            "slopmop.checks.ensure_checks_registered",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            "slopmop.core.registry.get_registry",
+            lambda: FakeRegistry(),
+        )
+
+        _sync_built_in_gate_applicability(tmp_path)
+
+        assert probed == ["laziness:sloppy-formatting.py"]
+
 
 class TestRealWorldUpgradeScenarios:
     @pytest.mark.parametrize(

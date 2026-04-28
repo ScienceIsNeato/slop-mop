@@ -46,7 +46,7 @@ Minor releases may still evolve:
 When that happens:
 
 - ship an automated `sm upgrade` migration when the change is automatable
-- update [docs/MIGRATIONS.md](MIGRATIONS.md) when migration authoring rules
+- update [DOCS/MIGRATIONS.md](MIGRATIONS.md) when migration authoring rules
   change
 - call out the change in release notes
 - document any manual follow-up when automation is not practical

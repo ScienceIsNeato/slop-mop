@@ -67,9 +67,9 @@ on:
   schedule:
     - cron: '0 6 * * 1'
 
-# upload-sarif needs security-events: write.  actions: read lets it
-# correlate the upload with the workflow run.  contents: read is the
-# bare minimum for checkout.
+# upload-sarif needs security-events: write. actions: read lets it correlate
+# the upload with the workflow run. contents: read is the bare minimum for
+# checkout. Jobs that need narrower permissions add them at the job level.
 permissions:
   contents: read
   security-events: write
@@ -79,6 +79,12 @@ jobs:
   scan:
     name: Primary Code Scanning Gate (blocking)
     runs-on: ubuntu-latest
+    # Codecov OIDC only belongs on the job that uploads coverage.
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -171,11 +177,36 @@ jobs:
           name: slopmop-results
           path: slopmop-results.json
 
+      - name: Verify coverage report exists
+        if: always()
+        run: |
+          if [ -f coverage.xml ]; then
+            echo "coverage.xml found; coverage upload steps can run."
+          else
+            echo "coverage.xml was not produced by sm scour; skipping coverage upload."
+          fi
+
+      - name: Upload coverage report
+        if: always() && hashFiles('coverage.xml') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+      - name: Upload coverage to Codecov
+        if: always() && hashFiles('coverage.xml') != ''
+        uses: codecov/codecov-action@v5
+        continue-on-error: true
+        with:
+          files: coverage.xml
+          use_oidc: true
+          fail_ci_if_error: false
+
       - name: Summarise SARIF failures
         # When scour fails, parse the SARIF and surface the top
         # failing rule IDs directly in the check output so reviewers
         # don't have to click through to the Security tab.
-        if: steps.scour.outcome == 'failure'
+        if: always() && steps.scour.outcome == 'failure'
         run: |
           source .venv/bin/activate
           python3 scripts/summarize_scour_failure.py \
@@ -190,7 +221,7 @@ jobs:
         # Without this, continue-on-error above would let everything
         # through.  The SARIF is uploaded either way — this just
         # controls the green/red check mark.
-        if: steps.scour.outcome == 'failure'
+        if: always() && steps.scour.outcome == 'failure'
         run: |
           if [ -f .scour-failure-summary.txt ]; then
             echo "::group::Scour failure summary"

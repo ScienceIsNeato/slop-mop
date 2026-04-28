@@ -9,7 +9,7 @@ This branch already addresses the following release-readiness items:
 
 - release artifact verification in `.github/workflows/release.yml`
 - generated `requirements.txt` sync from `pyproject.toml`
-- public `SECURITY.md`, `docs/RELEASING.md`, and `docs/COMPATIBILITY.md`
+- public `SECURITY.md`, `DOCS/RELEASING.md`, and `DOCS/COMPATIBILITY.md`
 - CI migration-coverage enforcement
 - CI unit-test coverage signal and artifact publication
 - fixture-based `sm upgrade` regression scenarios

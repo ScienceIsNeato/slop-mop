@@ -1,5 +1,120 @@
 # Project Status
 
+## 2026-04-27 Delta: PR 156 release prep takeover
+
+Branch: `codex/release-prep-final`
+
+**Work in progress:**
+- Took over PR #156 after CI passed but two review threads remained.
+- Merged current `origin/main` into the branch and resolved the `docs/` to
+  `DOCS/` directory conflict by keeping the new release-prep docs under
+  `DOCS/`.
+- Fixed the Python 3.10 `tomllib` review comment and tightened upgrade
+  applicability probing so unconfigured gates are skipped before check
+  instantiation.
+- Fixed `scripts/sm` worktree root detection after barnacle
+  `barnacle-20260428-044041-b52a564f`; linked Git worktrees now validate as
+  standalone project roots instead of scanning sibling worktrees under `.tmp/`.
+- Restored current README/DOCS link conventions after the stale PR base.
+
+**Validation so far:**
+- `sm swab --no-cache --output-file .slopmop/last_swab.json` passes with 14
+  checks.
+- `sm scour --no-cache --output-file .slopmop/last_scour.json` passes with 15
+  checks and one non-blocking dependency-risk warning.
+
+## 2026-04-27 Delta: Repo cleanup follow-up
+
+Branch: `docs/repo-small-cleanup`
+
+**Work completed:**
+- Removing tracked local agent-install outputs for Cline, Roo, and Windsurf;
+  GitHub/Copilot's generated output was already ignored and untracked.
+- Keeping source templates under `slopmop/agent_install/templates/` tracked.
+- Cleaning up duplicated README install guidance.
+
+**Validation:**
+- `sm swab -g overconfidence:missing-annotations.py --no-cache` ✅
+  (targeted rerun after an initial contradictory gate report)
+- `sm swab --no-cache` ✅
+- `sm scour --no-cache` ✅
+
+## 2026-04-27 Delta: PyPI README link hotfix
+
+Branch: `docs/fix-pypi-readme-links`
+
+**Work completed:**
+- Fixed README links that PyPI rendered as project-relative 404s by changing
+  local doc/license links to absolute GitHub URLs.
+
+**Validation:**
+- README local-link scan ✅
+- GitHub doc/license URL spot checks ✅
+- `sm swab --no-cache` ✅
+- `sm scour --no-cache` ✅
+
+## 2026-04-27 Delta: DOCS layout cleanup
+
+Branch: `docs/consolidate-docs`
+
+**Work in progress:**
+- Renamed the documentation folder from `docs/` to `DOCS/` for consistency.
+- Moved root documentation into `DOCS/`, leaving `README.md` and `LICENSE` at
+  the repository root.
+- Removed `NEXT_PHASE.md`; it was stale planning material and only referenced
+  from old status/history notes.
+- Reviewed root config files and kept them at the repository root because the
+  surrounding tools discover them there.
+- Addressed PR #152 feedback by adding a GitHub-detectable contributing stub
+  and clarifying the workflow diagram `--check` usage comment.
+
+**Validation so far:**
+- Local Markdown link checker ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (known non-blocking dependency-risk warning remains)
+- `./sm swab` after PR feedback fixes ✅
+- `./sm scour` after PR feedback fixes ✅ (expected unresolved-feedback warning
+  until threads are resolved; known non-blocking dependency-risk warning
+  remains)
+
+## 2026-04-26 Delta: Badge and coverage follow-up
+
+Branch: `docs/badges-and-coverage`
+
+**Work completed:**
+- Started the badge follow-up from updated `main` after PR #150 merged.
+- Updated the README badge block to keep the primary gate, PyPI, Python
+  versions, license, latest release, and coverage signals.
+- Added Codecov upload for the existing `coverage.xml` output in the primary
+  workflow, authenticated with GitHub OIDC.
+- Documented coverage badge requirements in `docs/CI.md`.
+- Addressed PR #151 feedback by making coverage publication conditional and
+  non-blocking while hardening SARIF verdict steps with `always()` guards.
+- Addressed PR #151 OIDC scoping feedback by moving `id-token: write` to the
+  coverage-uploading job.
+
+**Validation so far:**
+- `./sm swab -g overconfidence:untested-code.py --no-cache` ✅
+  (`coverage.xml` exists)
+- `./sm swab -g overconfidence:coverage-gaps.py --no-cache` ✅
+- `./sm scour -g myopia:just-this-once.py --no-cache` ✅
+- README/docs link and no-hype scan ✅
+- Workflow/docs diagnostics clean ✅
+- `./sm swab` ✅
+- `./sm scour` ✅ (non-blocking dependency-risk warning remains)
+- PR #151 workflow feedback fix diagnostics clean ✅
+- `./sm swab` after feedback fix ✅
+- `./sm scour` after feedback fix ✅ (expected unresolved PR feedback warning
+  until threads are resolved; non-blocking dependency-risk warning remains)
+- PR #151 OIDC scoping diagnostics clean ✅
+- `./sm swab` after OIDC scoping fix ✅
+- `./sm scour` after OIDC scoping fix ✅ (expected unresolved PR feedback
+  warning until the thread is resolved; non-blocking dependency-risk warning
+  remains)
+
+**Next:** Commit/push the OIDC scoping fix, resolve the final review thread,
+and re-run `sm buff`.
+
 ## 2026-04-26 Delta: PR 150 README continuity follow-up
 
 Branch: `docs/readme-field-guide`

@@ -1,10 +1,12 @@
 # 🪣 Slop-Mop
 
 <p>
-  <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/v/slopmop.svg" alt="PyPI version"/></a>
   <a href="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop-sarif.yml"><img src="https://github.com/ScienceIsNeato/slop-mop/actions/workflows/slopmop-sarif.yml/badge.svg" alt="Primary code scanning gate"/></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"/></a>
-  <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Attribution-blue.svg" alt="License"/></a>
+  <a href="https://codecov.io/gh/ScienceIsNeato/slop-mop"><img src="https://codecov.io/gh/ScienceIsNeato/slop-mop/branch/main/graph/badge.svg" alt="Coverage"/></a>
+  <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/v/slopmop.svg" alt="PyPI version"/></a>
+  <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/pyversions/slopmop.svg" alt="Python versions"/></a>
+  <a href="https://github.com/ScienceIsNeato/slop-mop/releases"><img src="https://img.shields.io/github/v/release/ScienceIsNeato/slop-mop?display_name=tag&amp;sort=semver" alt="Latest GitHub release"/></a>
+  <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Slop--Mop%20Attribution%20v1.0-blue.svg" alt="License"/></a>
 </p>
 
 Slop-mop is a quality gate runner for AI-assisted codebases.
@@ -27,10 +29,10 @@ It is opinionated. Sometimes loudly. That is on purpose.
 slop-mop is still pre-1.0. The current public policy surface for release and
 stability expectations lives here:
 
-- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
-- [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
-- [docs/RELEASING.md](docs/RELEASING.md)
-- [SECURITY.md](SECURITY.md)
+- [DOCS/COMPATIBILITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/COMPATIBILITY.md)
+- [DOCS/MIGRATIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/MIGRATIONS.md)
+- [DOCS/RELEASING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/RELEASING.md)
+- [SECURITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/SECURITY.md)
 
 ## Quick Start
 
@@ -107,7 +109,7 @@ The boring version:
 write code -> sm swab -> commit -> sm scour -> push/open PR -> sm buff
 ```
 
-The workflow state machine is documented in [docs/WORKFLOW.md](docs/WORKFLOW.md).
+The workflow state machine is documented in [DOCS/WORKFLOW.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/WORKFLOW.md).
 
 ## What It Checks
 
@@ -129,7 +131,7 @@ code, formatting drift, repeated code, stale docs, and silenced gates.
 The local change looks fine, but the repo-wide picture is worse. This catches
 duplication, security issues, dependency risk, and similar cross-cutting mess.
 
-The full gate reasoning lives in [docs/GATE_REASONING.md](docs/GATE_REASONING.md).
+The full gate reasoning lives in [DOCS/GATE_REASONING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/GATE_REASONING.md).
 
 ## Refit vs Maintenance
 
@@ -154,15 +156,9 @@ sm buff
 
 Refit is slower and more deliberate. Maintenance is the day-to-day loop.
 
-## Install Notes
+## Minimal Install
 
-Most users should install everything:
-
-```bash
-pipx install slopmop[all]
-```
-
-Minimal install:
+If you only want the framework without optional gate dependencies:
 
 ```bash
 pipx install slopmop
@@ -171,7 +167,7 @@ pipx install slopmop
 Minimal install gives you the framework. Gates that need tools like `black`,
 `pyright`, `bandit`, or `pytest` will tell you what is missing.
 
-Developer setup details live in [DEVELOPING.md](DEVELOPING.md).
+Developer setup details live in [DOCS/DEVELOPING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/DEVELOPING.md).
 
 ## Configuration
 
@@ -190,7 +186,7 @@ Disabling a gate should be temporary. If a gate is wrong, tune it or file the
 tooling bug. If the repo is not ready yet, use refit or baseline mode instead of
 pretending the problem is gone.
 
-Migration behavior is documented in [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
+Migration behavior is documented in [DOCS/MIGRATIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/MIGRATIONS.md).
 
 ## Baselines
 
@@ -211,7 +207,7 @@ blocking every unrelated change while you clean them up deliberately.
 Run slop-mop in CI the same way you run it locally: install it, check out enough
 git history for history-aware gates, then run the gate command.
 
-See [docs/CI.md](docs/CI.md) for a GitHub Actions template.
+See [DOCS/CI.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CI.md) for a GitHub Actions template.
 
 ## Agent Setup
 
@@ -229,6 +225,10 @@ sm agent install --target cursor
 sm agent install --target claude
 ```
 
+Generated agent files are local workspace configuration. They should stay out
+of source control; the reusable source templates live in this repository under
+`slopmop/agent_install/templates/`.
+
 The short version for agents: ride the rail, fix what it reports, do not bypass
 the gate.
 
@@ -238,7 +238,7 @@ Slop-mop's CI framework is well adapted to existing checks that are not covered
 by built-in gates. Add your own check as a custom gate and manage it like any
 other slop-mop quality gate.
 
-Start with [NEW_GATE_PROTOCOL.md](NEW_GATE_PROTOCOL.md).
+Start with [DOCS/NEW_GATE_PROTOCOL.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/NEW_GATE_PROTOCOL.md).
 
 ## When To Push Back On The Tool
 
@@ -257,14 +257,14 @@ sm barnacle --help
 
 ## Contributing
 
-For repo conventions, see [CONVENTIONS.md](CONVENTIONS.md).
+For repo conventions, see [DOCS/CONVENTIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CONVENTIONS.md).
 
-For contribution guidance, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For contribution guidance, see [DOCS/CONTRIBUTING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CONTRIBUTING.md).
 
-For local development, see [DEVELOPING.md](DEVELOPING.md).
+For local development, see [DOCS/DEVELOPING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/DEVELOPING.md).
 
 ## License
 
-Slop-mop uses the [Slop-Mop Attribution License v1.0](LICENSE).
+Slop-mop uses the [Slop-Mop Attribution License v1.0](https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE).
 
 If you use it, attribution is required.

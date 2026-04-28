@@ -25,7 +25,7 @@ release.
 Before merging a release-bump PR:
 
 - `requirements.txt` is in sync with `pyproject.toml`
-- config migrations and `docs/MIGRATIONS.md` are updated for any breaking
+- config migrations and `DOCS/MIGRATIONS.md` are updated for any breaking
   config or gate-name changes
 - the primary code-scanning gate is green on the release PR
 - the unit-test coverage job published a sane coverage summary for the branch
@@ -57,6 +57,6 @@ After the workflow completes:
 
 ## Stability Expectations
 
-See [docs/COMPATIBILITY.md](COMPATIBILITY.md) for the public compatibility and
+See [DOCS/COMPATIBILITY.md](COMPATIBILITY.md) for the public compatibility and
 support contract. This document stays focused on the mechanics of cutting and
 verifying a release.

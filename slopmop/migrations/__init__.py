@@ -4,7 +4,7 @@ Each migration is a deterministic Python function keyed by a version range.
 When ``sm upgrade`` runs, applicable migrations execute in stepwise order
 between the old and new package versions.
 
-See ``docs/MIGRATIONS.md`` for the authoring process.
+See ``DOCS/MIGRATIONS.md`` for the authoring process.
 """
 
 from __future__ import annotations
@@ -295,11 +295,8 @@ def _sync_built_in_gate_applicability(project_root: Path) -> None:
         full_name = full_name_any
         category, gate_name = full_name.split(":", 1)
 
+        gate_configs: List[Dict[str, Any]] = []
         category_raw = data.get(category)
-        check = registry.get_check(full_name, data)
-        if check is None or check.is_applicable(str(project_root)):
-            continue
-
         if isinstance(category_raw, dict):
             category_dict = cast(Dict[str, Any], category_raw)
             gates_value: object = category_dict.get("gates")
@@ -307,16 +304,21 @@ def _sync_built_in_gate_applicability(project_root: Path) -> None:
                 gates_dict = cast(Dict[str, Any], gates_value)
                 gate_cfg_value: object = gates_dict.get(gate_name)
                 if isinstance(gate_cfg_value, dict):
-                    changed = (
-                        _maybe_disable_gate(cast(Dict[str, Any], gate_cfg_value))
-                        or changed
-                    )
+                    gate_configs.append(cast(Dict[str, Any], gate_cfg_value))
 
         flat_gate_cfg = data.get(full_name)
         if isinstance(flat_gate_cfg, dict):
-            changed = (
-                _maybe_disable_gate(cast(Dict[str, Any], flat_gate_cfg)) or changed
-            )
+            gate_configs.append(cast(Dict[str, Any], flat_gate_cfg))
+
+        if not gate_configs:
+            continue
+
+        check = registry.get_check(full_name, data)
+        if check is None or check.is_applicable(str(project_root)):
+            continue
+
+        for gate_cfg in gate_configs:
+            changed = _maybe_disable_gate(gate_cfg) or changed
 
     if changed:
         config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

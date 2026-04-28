@@ -129,7 +129,7 @@ def main() -> int:
     print("to removed gates.  Add an upgrade migration to rename or clean up.")
     print()
     print(f"Add a migration to {_MIGRATION_PATH}")
-    print("See docs/MIGRATIONS.md for the authoring process.")
+    print("See DOCS/MIGRATIONS.md for the authoring process.")
     return 1
 
 
