@@ -261,6 +261,22 @@ class TestStaleGateReferences:
         assert len(warnings) == 1
         assert "Unknown slop-mop gate reference" in warnings[0]
 
+    def test_find_stale_refs_scans_nested_general_section(self):
+        """Nested ``general.gates`` must be scanned (not a bogus ``quality`` key)."""
+        issues = find_stale_gate_references(
+            {
+                "general": {
+                    "gates": {
+                        "vanished-gate.py": {"enabled": True},
+                    },
+                },
+            },
+            ["laziness:sloppy-formatting.py"],
+        )
+        assert len(issues) == 1
+        assert issues[0].reference == "general:vanished-gate.py"
+        assert issues[0].location == "general.gates"
+
 
 class TestRenameSourceDuplication:
     """Tests for the 0.11.0→0.11.1 gate rename migration."""

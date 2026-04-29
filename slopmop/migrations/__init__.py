@@ -55,10 +55,10 @@ class StaleGateReference:
 
 _CONFIG_CATEGORY_KEYS = {
     "deceptiveness",
+    "general",
     "laziness",
     "myopia",
     "overconfidence",
-    "quality",
 }
 
 
