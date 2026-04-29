@@ -1,5 +1,38 @@
 # Project Status
 
+## 2026-04-29 Delta: Barnacle queue cleanup + isolation fix
+
+Branch: `backlog_cleaning`  ·  PR `#157`
+
+**What landed:**
+- `b569bd7` fix(jinja2-templates): allow explicit opt-out via `templates_dir: null`
+  - Resolves `barnacle-20260429-064411-a0cf832c` (broken-templates gate forced
+    fake placeholder dirs in repos with no Jinja2 templates).
+- `1a93978` fix(tests): isolate `SLOPMOP_BARNACLE_DIR` per-test
+  - Root cause for the recurring `sm upgrade  (→ 0.9.1) ·
+    test_upgrade_reports_validatio0` barnacle stream.
+  - `cmd_upgrade` calls `auto_file_barnacle` on validation failure;
+    `test_upgrade_reports_validation_failure` exercises that path with a
+    mocked failure, so every run was leaking a real barnacle into
+    `~/.slopmop/barnacles/`. The autouse fixture in `tests/conftest.py`
+    now points the queue at a per-test tmp dir.
+  - Updated `tests/unit/test_barnacle.py::TestQueueDir::test_default_is_home_slopmop`
+    to `monkeypatch.delenv` the override before asserting the default.
+
+**Validation:**
+- `sm swab -g overconfidence:type-blindness.py` ✅ (after narrowing
+  `configured` to `str` in `skip_reason`)
+- `sm swab` ✅ all 14 swab gates green pre- and post-commit (pre-commit
+  hook re-validated each commit on the way in).
+
+**Queue housekeeping:**
+- Resolved 106 open barnacles (1 broken-templates + 105 duplicate upgrade
+  validation reports) via `sm barnacle resolve`. Queue is now empty.
+
+**CI:**
+- `gh pr view 157` => OPEN, MERGEABLE; all 4 checks IN_PROGRESS on the
+  latest push.
+
 ## 2026-04-29 Delta: PR takeover check (current session)
 
 Branch: `backlog_cleaning`
