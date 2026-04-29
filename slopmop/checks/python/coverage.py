@@ -460,12 +460,22 @@ def _parse_unified_diff(diff_text: str) -> Dict[str, Set[int]]:
     the hunk header). Deletions and ``---``/``+++`` headers are ignored.
     Returns an empty dict for an empty diff. The path returned is the
     repo-relative head path (``b/`` prefix stripped).
+
+    ``+++ `` is ambiguous: Git emits ``+++ b/path`` only immediately after a
+    ``--- `` old-path header, but a *hunk* addition whose body begins with
+    ``++`` appears as the same ``+++ ...`` prefix. We therefore treat ``+++ ``
+    as a new-file header only in that post-``--- `` position.
     """
     result: Dict[str, Set[int]] = {}
     current_file: Optional[str] = None
     current_line = 0
+    expecting_new_path_header = False
     for raw in diff_text.splitlines():
-        if raw.startswith("+++ "):
+        if raw.startswith("--- "):
+            expecting_new_path_header = True
+            continue
+        if raw.startswith("+++ ") and expecting_new_path_header:
+            expecting_new_path_header = False
             path = raw[4:].strip()
             if path == "/dev/null":
                 current_file = None
@@ -473,6 +483,10 @@ def _parse_unified_diff(diff_text: str) -> Dict[str, Set[int]]:
                 current_file = path[2:] if path.startswith("b/") else path
             continue
         if raw.startswith("---"):
+            continue
+        if raw.startswith("+++ ") and current_file is not None:
+            result.setdefault(current_file, set()).add(current_line)
+            current_line += 1
             continue
         if raw.startswith("@@"):
             m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)?", raw)

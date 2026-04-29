@@ -1062,6 +1062,18 @@ class TestParseUnifiedDiff:
     def test_empty_diff(self):
         assert _parse_unified_diff("") == {}
 
+    def test_added_line_body_starting_with_plus_plus(self):
+        """Hunk line ``+++ value`` is ``+`` plus body ``++ value``, not a path."""
+        diff = (
+            "diff --git a/foo.py b/foo.py\n"
+            "--- a/foo.py\n"
+            "+++ b/foo.py\n"
+            "@@ -0,0 +1,2 @@\n"
+            "+normal\n"
+            "+++ value\n"
+        )
+        assert _parse_unified_diff(diff) == {"foo.py": {1, 2}}
+
 
 class TestParseCoverageXmlLines:
     """``_parse_coverage_xml_lines`` classifies Cobertura lines as hit/miss/partial."""
