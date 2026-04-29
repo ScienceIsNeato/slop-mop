@@ -10,8 +10,10 @@ import ast
 import os
 import re
 import time
+import xml.etree.ElementTree as ET  # nosec B405 - parsing our own pytest-cov output
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple, Union, cast
+from typing import Dict, List, Optional, Set, Tuple, Union, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -450,37 +452,285 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
         return None
 
 
-def _parse_diff_cover_files(output: str) -> List[Finding]:
-    """Parse diff-cover output for per-file coverage violations.
+def _parse_unified_diff(diff_text: str) -> Dict[str, Set[int]]:
+    """Parse ``git diff --unified=0`` output into ``{file: {head_line, ...}}``.
 
-    diff-cover prints lines like:
-        src/module.py (80.0%): Missing lines 12-15, 42
-    or
-        src/module.py (80.0%)
-
-    Returns one Finding per file that appears in the output.
+    Walks the unified diff body and collects every ``+`` line, mapping it to
+    its line number in the head revision (the ``+<start>,<count>`` side of
+    the hunk header). Deletions and ``---``/``+++`` headers are ignored.
+    Returns an empty dict for an empty diff. The path returned is the
+    repo-relative head path (``b/`` prefix stripped).
     """
+    result: Dict[str, Set[int]] = {}
+    current_file: Optional[str] = None
+    current_line = 0
+    for raw in diff_text.splitlines():
+        if raw.startswith("+++ "):
+            path = raw[4:].strip()
+            if path == "/dev/null":
+                current_file = None
+            else:
+                current_file = path[2:] if path.startswith("b/") else path
+            continue
+        if raw.startswith("---"):
+            continue
+        if raw.startswith("@@"):
+            m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)?", raw)
+            if m:
+                current_line = int(m.group(1))
+            continue
+        if current_file is None:
+            continue
+        if raw.startswith("+"):
+            result.setdefault(current_file, set()).add(current_line)
+            current_line += 1
+        elif raw.startswith("-"):
+            # Deletion: does not consume a head-side line number.
+            continue
+        else:
+            # Context line. ``--unified=0`` should not produce these, but
+            # behave correctly if a caller invokes us with context > 0.
+            current_line += 1
+    return result
+
+
+def _parse_coverage_xml_lines(xml_text: str) -> Dict[str, Dict[int, str]]:
+    """Parse Cobertura ``coverage.xml`` into ``{filename: {line_no: status}}``.
+
+    Status is one of ``"hit"``, ``"miss"``, ``"partial"``:
+      * ``miss``    — ``hits == 0``
+      * ``partial`` — ``hits > 0`` AND ``branch="true"`` AND
+                      ``condition-coverage`` < 100% (i.e. some branches at
+                      this line were never taken)
+      * ``hit``     — otherwise
+
+    Lines that are not statements (blank, comments, decorators on their
+    own line) are simply absent from the per-line mapping; callers that
+    intersect with a diff treat absent lines as non-executable and skip.
+
+    The ``filename`` is the repo-relative path emitted by coverage.py
+    (matches the path layout in ``git diff``).
+    """
+    result: Dict[str, Dict[int, str]] = {}
+    root = ET.fromstring(xml_text)  # nosec B314 - trusted, our own pytest-cov output
+    for cls in root.iter("class"):
+        filename = cls.get("filename")
+        if not filename:
+            continue
+        per_line = result.setdefault(filename, {})
+        for line in cls.iter("line"):
+            number_attr = line.get("number")
+            hits_attr = line.get("hits")
+            if number_attr is None or hits_attr is None:
+                continue
+            try:
+                lineno = int(number_attr)
+                hits = int(hits_attr)
+            except ValueError:
+                continue
+            if hits == 0:
+                per_line[lineno] = "miss"
+                continue
+            if line.get("branch") == "true":
+                cond = line.get("condition-coverage") or ""
+                m = re.match(r"(\d+)%", cond)
+                if m and int(m.group(1)) < 100:
+                    per_line[lineno] = "partial"
+                    continue
+            per_line[lineno] = "hit"
+    return result
+
+
+@dataclass
+class _FileDiffCov:
+    """Per-file diff-coverage breakdown.
+
+    ``hits``/``misses``/``partials`` are sorted lists of head-side line
+    numbers. Lines that were in the diff but absent from coverage data
+    (non-statements like blank lines or comments) are dropped before the
+    report is built and never appear here.
+    """
+
+    filename: str
+    hits: List[int] = field(default_factory=lambda: [])
+    misses: List[int] = field(default_factory=lambda: [])
+    partials: List[int] = field(default_factory=lambda: [])
+
+    @property
+    def total(self) -> int:
+        return len(self.hits) + len(self.misses) + len(self.partials)
+
+    @property
+    def percent(self) -> float:
+        if self.total == 0:
+            return 100.0
+        return 100.0 * len(self.hits) / self.total
+
+
+@dataclass
+class _DiffCoverageReport:
+    """Aggregate diff-coverage report across every file in the diff."""
+
+    files: List[_FileDiffCov]
+    compare_branch: str
+
+    @property
+    def total_hits(self) -> int:
+        return sum(len(f.hits) for f in self.files)
+
+    @property
+    def total_misses(self) -> int:
+        return sum(len(f.misses) for f in self.files)
+
+    @property
+    def total_partials(self) -> int:
+        return sum(len(f.partials) for f in self.files)
+
+    @property
+    def total_lines(self) -> int:
+        return self.total_hits + self.total_misses + self.total_partials
+
+    @property
+    def percent(self) -> float:
+        if self.total_lines == 0:
+            return 100.0
+        return 100.0 * self.total_hits / self.total_lines
+
+
+def _compute_diff_coverage(
+    diff_lines: Dict[str, Set[int]],
+    coverage: Dict[str, Dict[int, str]],
+    compare_branch: str,
+) -> _DiffCoverageReport:
+    """Classify each diffed line as hit/miss/partial via ``coverage`` data.
+
+    Files that don't appear in ``coverage`` (test files, non-Python files,
+    files under coverage's ``omit``) are silently skipped, matching the
+    behavior of ``diff-cover``. Within a tracked file, diffed lines that
+    aren't statements (no entry in the per-line map) are also skipped.
+    Files that end up with zero classified lines are dropped from the
+    report so the output stays signal-only.
+    """
+    files: List[_FileDiffCov] = []
+    for filename in sorted(diff_lines):
+        cov_per_line = coverage.get(filename)
+        if cov_per_line is None:
+            continue
+        report = _FileDiffCov(filename=filename)
+        for lineno in sorted(diff_lines[filename]):
+            status = cov_per_line.get(lineno)
+            if status == "hit":
+                report.hits.append(lineno)
+            elif status == "miss":
+                report.misses.append(lineno)
+            elif status == "partial":
+                report.partials.append(lineno)
+        if report.total > 0:
+            files.append(report)
+    return _DiffCoverageReport(files=files, compare_branch=compare_branch)
+
+
+def _compact_line_ranges(lines: List[int]) -> str:
+    """Compact ``[1, 2, 3, 5, 7, 8]`` into ``"1-3,5,7-8"``.
+
+    Input may be unsorted; output is sorted ascending. An empty input
+    yields ``""``.
+    """
+    if not lines:
+        return ""
+    sorted_lines = sorted(set(lines))
+    ranges: List[str] = []
+    start = sorted_lines[0]
+    prev = start
+    for n in sorted_lines[1:]:
+        if n == prev + 1:
+            prev = n
+            continue
+        ranges.append(f"{start}-{prev}" if prev != start else f"{start}")
+        start = prev = n
+    ranges.append(f"{start}-{prev}" if prev != start else f"{start}")
+    return ",".join(ranges)
+
+
+def _format_diff_coverage_output(report: _DiffCoverageReport) -> str:
+    """Render a human-readable diff-coverage summary.
+
+    Layout intentionally mirrors the original ``diff-cover`` block so
+    existing log scrapers and human muscle memory keep working, with a
+    small augmentation: we now show ``Partial`` line numbers as a
+    distinct bucket and add a ``Hit`` row in the totals.
+    """
+    lines: List[str] = []
+    lines.append("-------------")
+    lines.append("Diff Coverage (partial-aware)")
+    lines.append(f"Diff: {report.compare_branch}...HEAD")
+    lines.append("-------------")
+    if not report.files:
+        lines.append("No coverage-tracked changes to evaluate.")
+    for f in report.files:
+        miss_str = _compact_line_ranges(f.misses)
+        partial_str = _compact_line_ranges(f.partials)
+        suffix_parts: List[str] = []
+        if miss_str:
+            suffix_parts.append(f"Missing {miss_str}")
+        if partial_str:
+            suffix_parts.append(f"Partial {partial_str}")
+        suffix = "; ".join(suffix_parts)
+        if suffix:
+            lines.append(f"{f.filename} ({f.percent:.1f}%): {suffix}")
+        else:
+            lines.append(f"{f.filename} (100.0%)")
+    lines.append("-------------")
+    lines.append(f"Total:    {report.total_lines} lines")
+    lines.append(f"Hit:      {report.total_hits} lines")
+    lines.append(f"Missing:  {report.total_misses} lines")
+    lines.append(f"Partial:  {report.total_partials} lines")
+    lines.append(f"Coverage: {report.percent:.1f}%")
+    lines.append("-------------")
+    return "\n".join(lines)
+
+
+def _build_diff_coverage_findings(report: _DiffCoverageReport) -> List[Finding]:
+    """One Finding per file that has any miss or partial line."""
     findings: List[Finding] = []
-    # Pattern: indented filename followed by (NN.N%) and optional missing lines
-    pattern = re.compile(
-        r"^\s*(\S+\.py)\s+\((\d+(?:\.\d+)?)%\)(?::\s*Missing lines\s+(.+))?$",
-        re.MULTILINE,
-    )
-    for m in pattern.finditer(output):
-        filepath, pct, missing = m.group(1), m.group(2), m.group(3)
-        msg = f"Coverage {pct}% on changed lines"
-        if missing:
-            msg += f" — missing: {missing.strip()}"
-        findings.append(Finding(message=msg, file=filepath, level=FindingLevel.ERROR))
+    for f in report.files:
+        if not f.misses and not f.partials:
+            continue
+        bits: List[str] = [f"Coverage {f.percent:.1f}% on changed lines"]
+        if f.misses:
+            bits.append(f"missing {_compact_line_ranges(f.misses)}")
+        if f.partials:
+            bits.append(f"partial {_compact_line_ranges(f.partials)}")
+        findings.append(
+            Finding(
+                message=" — ".join(bits),
+                file=f.filename,
+                level=FindingLevel.ERROR,
+            )
+        )
     return findings
 
 
 class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
-    """Coverage enforcement on changed files only.
+    """Coverage enforcement on changed files only — partial-aware.
 
-    Wraps diff-cover to check coverage on files changed vs the
-    compare branch. Ensures new/modified code is tested even when
-    overall project coverage is acceptable.
+    Reads ``coverage.xml`` (Cobertura) generated by the
+    ``overconfidence:untested-code.py`` gate, intersects it with
+    ``git diff --unified=0 <compare_branch>...HEAD`` to find lines added
+    or modified on this branch, and classifies each diffed line as
+    ``hit``/``miss``/``partial``:
+
+      * ``miss``    — line was never executed (``hits == 0``).
+      * ``partial`` — line was executed but at least one branch on the
+                      line was not taken (``branch="true"`` and
+                      ``condition-coverage`` < 100%).
+      * ``hit``     — line executed and (if branched) all branches taken.
+
+    Counting partials as **misses** in the percentage matches Codecov's
+    ``codecov/patch`` semantics, so the two engines agree on the
+    numerator for the same diff. (Targets may still differ — slop-mop's
+    threshold is fixed at 80% by default; Codecov defaults to base
+    coverage.)
 
     Level: scour (needs PR diff context)
 
@@ -490,10 +740,11 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
       Threshold: 80% on changed lines.
 
     Common failures:
-      Changed lines below 80%: Write tests for the new code
-          shown in the output. Focus on the specific lines listed.
-      No diff: This is fine — no changed files means nothing to
-          check. Gate passes automatically.
+      Changed lines below 80%: Write tests for the new code shown in the
+          output. Each file lists missing lines and partial-branch lines
+          separately — fix the misses with new tests, fix the partials
+          by widening test inputs to take the other branch.
+      No diff: Gate passes automatically.
 
     Re-check:
       sm scour -g myopia:just-this-once.py --verbose
@@ -513,7 +764,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
 
     @property
     def gate_description(self) -> str:
-        return "📈 Coverage on changed lines only (diff-cover)"
+        return "📈 Coverage on changed lines only (partial-aware)"
 
     @property
     def category(self) -> GateCategory:
@@ -546,6 +797,67 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
+
+        early = self._check_prerequisites(project_root, start_time)
+        if early is not None:
+            return early
+
+        coverage_file = os.path.join(project_root, "coverage.xml")
+        compare_branch = _get_compare_branch()
+
+        diff_result = self._run_command(
+            [
+                "git",
+                "diff",
+                "--unified=0",
+                f"{compare_branch}...HEAD",
+                "--",
+                "*.py",
+            ],
+            cwd=project_root,
+            timeout=30,
+        )
+        duration = time.time() - start_time
+
+        if not diff_result.success:
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=duration,
+                output=diff_result.output,
+                error=(
+                    "git diff failed; ensure the compare branch "
+                    f"({compare_branch}) is fetched."
+                ),
+            )
+
+        diff_lines = _parse_unified_diff(diff_result.output)
+        if not diff_lines:
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=duration,
+                output="No changed Python files to check coverage on.",
+            )
+
+        try:
+            coverage_xml = Path(coverage_file).read_text(encoding="utf-8")
+            coverage_data = _parse_coverage_xml_lines(coverage_xml)
+        except (OSError, ET.ParseError) as exc:
+            return self._create_result(
+                status=CheckStatus.ERROR,
+                duration=duration,
+                error=f"Could not parse coverage.xml: {exc}",
+                fix_suggestion="Re-run python-tests to regenerate coverage data.",
+            )
+
+        return self._evaluate_report(
+            _compute_diff_coverage(diff_lines, coverage_data, compare_branch),
+            duration,
+        )
+
+    def _check_prerequisites(
+        self, project_root: str, start_time: float
+    ) -> Optional[CheckResult]:
+        """Return an early result if preconditions are unmet, else None."""
         test_dirs = self.config.get("test_dirs", ["tests"])
         if not has_python_test_files(project_root, test_dirs):
             message = skip_reason_no_test_files(test_dirs)
@@ -560,13 +872,11 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
                 findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )
 
-        # PROJECT check: bail early when no project venv exists
         venv_warn = self.check_project_venv_or_warn(project_root, start_time)
         if venv_warn is not None:
             return venv_warn
 
         coverage_file = os.path.join(project_root, "coverage.xml")
-
         if not _wait_for_coverage_xml(coverage_file):
             return self._create_result(
                 status=CheckStatus.ERROR,
@@ -574,51 +884,41 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
                 error=COVERAGE_XML_NOT_FOUND,
                 fix_suggestion="Run python-tests first to generate coverage data",
             )
+        return None
 
-        compare_branch = _get_compare_branch()
-        cmd = [
-            self.get_project_python(project_root),
-            "-m",
-            "diff_cover.diff_cover_tool",
-            "coverage.xml",
-            f"--compare-branch={compare_branch}",
-            f"--fail-under={COVERAGE_THRESHOLD}",
-        ]
+    def _evaluate_report(
+        self,
+        report: _DiffCoverageReport,
+        duration: float,
+    ) -> CheckResult:
+        """Turn the computed report into a PASSED or FAILED result."""
+        output = _format_diff_coverage_output(report)
 
-        result = self._run_command(cmd, cwd=project_root, timeout=60)
-        duration = time.time() - start_time
-
-        if result.success:
+        if not report.files or report.percent >= COVERAGE_THRESHOLD:
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=duration,
-                output=f"Changed files have adequate coverage (vs {compare_branch})",
+                output=output,
             )
 
-        # diff-cover not finding changes is fine
-        if "No diff" in result.output:
-            return self._create_result(
-                status=CheckStatus.PASSED,
-                duration=duration,
-                output="No changed files to check coverage on",
-            )
-
-        diff_findings = _parse_diff_cover_files(result.output)
-        if not diff_findings:
-            diff_findings = [
+        findings = _build_diff_coverage_findings(report)
+        if not findings:
+            findings = [
                 Finding(
-                    message=(f"Changed files have <{COVERAGE_THRESHOLD}% coverage"),
+                    message=f"Changed files have <{COVERAGE_THRESHOLD}% coverage",
                     level=FindingLevel.ERROR,
                 )
             ]
-
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
-            output=result.output,
+            output=output,
             error=f"Changed files have <{COVERAGE_THRESHOLD}% coverage",
-            fix_suggestion="Add tests for the new code shown above.",
-            findings=diff_findings,
+            fix_suggestion=(
+                "Misses need new tests; partials need test inputs that "
+                "exercise the un-taken branch on the listed lines."
+            ),
+            findings=findings,
         )
 
 

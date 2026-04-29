@@ -5,10 +5,17 @@ from unittest.mock import MagicMock, patch
 from slopmop.checks.python.coverage import (
     PythonCoverageCheck,
     PythonDiffCoverageCheck,
+    _build_diff_coverage_findings,
     _characterise_block,
+    _compact_line_ranges,
+    _compute_diff_coverage,
+    _DiffCoverageReport,
+    _FileDiffCov,
     _first_range,
+    _format_diff_coverage_output,
     _get_compare_branch,
-    _parse_diff_cover_files,
+    _parse_coverage_xml_lines,
+    _parse_unified_diff,
     _resolve_uncovered_range,
     _test_file_for,
 )
@@ -978,39 +985,315 @@ class TestResolveUncoveredRange:
         assert "except" in result
 
 
-class TestParseDiffCoverFiles:
-    """Tests for _parse_diff_cover_files() — diff-cover output parsing."""
+class TestParseUnifiedDiff:
+    """``_parse_unified_diff`` extracts head-line numbers from git diff output."""
 
-    def test_with_missing_lines(self):
-        output = "  src/mod.py (75.0%): Missing lines 12-15, 42\n"
-        findings = _parse_diff_cover_files(output)
-        assert len(findings) == 1
-        assert findings[0].file == "src/mod.py"
-        assert "75.0%" in findings[0].message
-        assert "missing" in findings[0].message.lower()
-
-    def test_without_missing_lines(self):
-        output = "  src/mod.py (85.0%)\n"
-        findings = _parse_diff_cover_files(output)
-        assert len(findings) == 1
-        assert "85.0%" in findings[0].message
-
-    def test_multiple_files(self):
-        output = (
-            "  src/a.py (70.0%): Missing lines 1-5\n"
-            "  src/b.py (60.0%): Missing lines 10\n"
+    def test_pure_addition(self):
+        diff = (
+            "diff --git a/foo.py b/foo.py\n"
+            "--- a/foo.py\n"
+            "+++ b/foo.py\n"
+            "@@ -0,0 +1,3 @@\n"
+            "+line one\n"
+            "+line two\n"
+            "+line three\n"
         )
-        findings = _parse_diff_cover_files(output)
-        assert len(findings) == 2
+        assert _parse_unified_diff(diff) == {"foo.py": {1, 2, 3}}
 
-    def test_no_matches_returns_empty(self):
-        output = "Total: 100% coverage\nDone.\n"
-        findings = _parse_diff_cover_files(output)
-        assert findings == []
+    def test_replacement_block_records_only_added_lines(self):
+        diff = (
+            "diff --git a/foo.py b/foo.py\n"
+            "--- a/foo.py\n"
+            "+++ b/foo.py\n"
+            "@@ -10,2 +10,3 @@\n"
+            "-old a\n"
+            "-old b\n"
+            "+new a\n"
+            "+new b\n"
+            "+new c\n"
+        )
+        assert _parse_unified_diff(diff) == {"foo.py": {10, 11, 12}}
+
+    def test_pure_deletion_yields_no_added_lines(self):
+        diff = (
+            "diff --git a/foo.py b/foo.py\n"
+            "--- a/foo.py\n"
+            "+++ b/foo.py\n"
+            "@@ -5,2 +4,0 @@\n"
+            "-gone\n"
+            "-also gone\n"
+        )
+        assert _parse_unified_diff(diff) == {}
+
+    def test_deleted_file_skipped(self):
+        diff = (
+            "diff --git a/old.py b/old.py\n"
+            "deleted file mode 100644\n"
+            "--- a/old.py\n"
+            "+++ /dev/null\n"
+            "@@ -1,2 +0,0 @@\n"
+            "-bye\n"
+            "-bye\n"
+        )
+        assert _parse_unified_diff(diff) == {}
+
+    def test_multiple_files_and_hunks(self):
+        diff = (
+            "diff --git a/a.py b/a.py\n"
+            "--- a/a.py\n"
+            "+++ b/a.py\n"
+            "@@ -1,0 +1,1 @@\n"
+            "+a1\n"
+            "@@ -10,0 +12,2 @@\n"
+            "+a12\n"
+            "+a13\n"
+            "diff --git a/b.py b/b.py\n"
+            "--- a/b.py\n"
+            "+++ b/b.py\n"
+            "@@ -3,1 +3,1 @@\n"
+            "-old\n"
+            "+new at 3\n"
+        )
+        assert _parse_unified_diff(diff) == {
+            "a.py": {1, 12, 13},
+            "b.py": {3},
+        }
+
+    def test_empty_diff(self):
+        assert _parse_unified_diff("") == {}
+
+
+class TestParseCoverageXmlLines:
+    """``_parse_coverage_xml_lines`` classifies Cobertura lines as hit/miss/partial."""
+
+    def _xml(self, lines_xml: str) -> str:
+        return (
+            '<?xml version="1.0" ?>\n'
+            "<coverage>\n"
+            "  <packages>\n"
+            "    <package>\n"
+            "      <classes>\n"
+            '        <class filename="src/foo.py">\n'
+            "          <lines>\n"
+            f"            {lines_xml}\n"
+            "          </lines>\n"
+            "        </class>\n"
+            "      </classes>\n"
+            "    </package>\n"
+            "  </packages>\n"
+            "</coverage>\n"
+        )
+
+    def test_plain_hit(self):
+        xml = self._xml('<line number="1" hits="3"/>')
+        assert _parse_coverage_xml_lines(xml) == {"src/foo.py": {1: "hit"}}
+
+    def test_plain_miss(self):
+        xml = self._xml('<line number="2" hits="0"/>')
+        assert _parse_coverage_xml_lines(xml) == {"src/foo.py": {2: "miss"}}
+
+    def test_branch_full_is_hit(self):
+        xml = self._xml(
+            '<line number="3" hits="1" branch="true" '
+            'condition-coverage="100% (2/2)"/>'
+        )
+        assert _parse_coverage_xml_lines(xml) == {"src/foo.py": {3: "hit"}}
+
+    def test_branch_partial(self):
+        xml = self._xml(
+            '<line number="4" hits="1" branch="true" '
+            'condition-coverage="50% (1/2)" missing-branches="6"/>'
+        )
+        assert _parse_coverage_xml_lines(xml) == {"src/foo.py": {4: "partial"}}
+
+    def test_zero_hit_branch_is_miss_not_partial(self):
+        # hits=0 always wins, even on a branch line.
+        xml = self._xml(
+            '<line number="5" hits="0" branch="true" ' 'condition-coverage="0% (0/2)"/>'
+        )
+        assert _parse_coverage_xml_lines(xml) == {"src/foo.py": {5: "miss"}}
+
+    def test_skips_lines_missing_required_attrs(self):
+        xml = self._xml(
+            '<line number="6"/>\n            <line number="7" hits="not-a-number"/>'
+        )
+        # Both lines are dropped silently; class still appears with empty map.
+        assert _parse_coverage_xml_lines(xml) == {"src/foo.py": {}}
+
+
+class TestComputeDiffCoverage:
+    """``_compute_diff_coverage`` intersects diff lines with coverage data."""
+
+    def test_classifies_hit_miss_partial(self):
+        diff = {"a.py": {1, 2, 3, 4}}
+        coverage = {
+            "a.py": {
+                1: "hit",
+                2: "miss",
+                3: "partial",
+                4: "hit",
+            }
+        }
+        report = _compute_diff_coverage(diff, coverage, "origin/main")
+        assert len(report.files) == 1
+        f = report.files[0]
+        assert f.hits == [1, 4]
+        assert f.misses == [2]
+        assert f.partials == [3]
+        assert f.percent == 50.0
+        assert report.percent == 50.0
+        assert report.total_lines == 4
+
+    def test_drops_files_not_in_coverage(self):
+        diff = {"src/main.py": {1}, "tests/test_main.py": {1}}
+        coverage = {"src/main.py": {1: "hit"}}
+        report = _compute_diff_coverage(diff, coverage, "origin/main")
+        assert [f.filename for f in report.files] == ["src/main.py"]
+
+    def test_drops_diff_lines_not_in_coverage_data(self):
+        # Comment / blank lines: in the diff but absent from coverage.
+        diff = {"a.py": {1, 2, 3}}
+        coverage = {"a.py": {1: "hit", 3: "hit"}}
+        report = _compute_diff_coverage(diff, coverage, "origin/main")
+        assert report.files[0].hits == [1, 3]
+        assert report.files[0].misses == []
+        assert report.files[0].partials == []
+        assert report.total_lines == 2
+
+    def test_file_with_zero_classified_lines_dropped(self):
+        diff = {"a.py": {99}}  # diffed but not a statement
+        coverage = {"a.py": {}}
+        report = _compute_diff_coverage(diff, coverage, "origin/main")
+        assert report.files == []
+        assert report.percent == 100.0
+
+    def test_empty_diff(self):
+        report = _compute_diff_coverage({}, {}, "origin/main")
+        assert report.files == []
+        assert report.total_lines == 0
+        assert report.percent == 100.0
+
+
+class TestCompactLineRanges:
+    """``_compact_line_ranges`` collapses line lists into Cobertura-style ranges."""
+
+    def test_consecutive(self):
+        assert _compact_line_ranges([1, 2, 3]) == "1-3"
+
+    def test_singleton(self):
+        assert _compact_line_ranges([42]) == "42"
+
+    def test_mixed(self):
+        assert _compact_line_ranges([1, 2, 3, 5, 7, 8, 10]) == "1-3,5,7-8,10"
+
+    def test_unsorted_input(self):
+        assert _compact_line_ranges([5, 1, 3, 2]) == "1-3,5"
+
+    def test_empty(self):
+        assert _compact_line_ranges([]) == ""
+
+    def test_dedupes(self):
+        assert _compact_line_ranges([1, 1, 2]) == "1-2"
+
+
+class TestFormatDiffCoverageOutput:
+    """``_format_diff_coverage_output`` renders the human-readable summary."""
+
+    def test_includes_partials_in_per_file_line(self):
+        report = _DiffCoverageReport(
+            files=[
+                _FileDiffCov(
+                    filename="src/x.py",
+                    hits=[1, 2],
+                    misses=[3, 4],
+                    partials=[5],
+                )
+            ],
+            compare_branch="origin/main",
+        )
+        out = _format_diff_coverage_output(report)
+        assert "src/x.py (40.0%): Missing 3-4; Partial 5" in out
+        assert "Total:    5 lines" in out
+        assert "Hit:      2 lines" in out
+        assert "Missing:  2 lines" in out
+        assert "Partial:  1 lines" in out
+        assert "Coverage: 40.0%" in out
+        assert "origin/main...HEAD" in out
+
+    def test_full_coverage_file_has_no_suffix(self):
+        report = _DiffCoverageReport(
+            files=[_FileDiffCov(filename="src/x.py", hits=[1, 2, 3])],
+            compare_branch="origin/main",
+        )
+        out = _format_diff_coverage_output(report)
+        assert "src/x.py (100.0%)" in out
+        assert "Missing" not in out.split("src/x.py (100.0%)")[1].split("---")[0]
+
+    def test_empty_report(self):
+        report = _DiffCoverageReport(files=[], compare_branch="origin/main")
+        out = _format_diff_coverage_output(report)
+        assert "No coverage-tracked changes to evaluate." in out
+        assert "Coverage: 100.0%" in out
+
+
+class TestBuildDiffCoverageFindings:
+    """``_build_diff_coverage_findings`` emits one Finding per non-clean file."""
+
+    def test_one_finding_per_problem_file(self):
+        report = _DiffCoverageReport(
+            files=[
+                _FileDiffCov(filename="a.py", hits=[1, 2]),
+                _FileDiffCov(filename="b.py", hits=[1], misses=[2], partials=[3]),
+                _FileDiffCov(filename="c.py", hits=[1], misses=[2]),
+            ],
+            compare_branch="origin/main",
+        )
+        findings = _build_diff_coverage_findings(report)
+        assert {f.file for f in findings} == {"b.py", "c.py"}
+
+    def test_finding_message_lists_missing_and_partial(self):
+        report = _DiffCoverageReport(
+            files=[
+                _FileDiffCov(
+                    filename="a.py", hits=[1], misses=[2, 3], partials=[5, 6, 7]
+                )
+            ],
+            compare_branch="origin/main",
+        )
+        findings = _build_diff_coverage_findings(report)
+        assert len(findings) == 1
+        msg = findings[0].message
+        assert "missing 2-3" in msg
+        assert "partial 5-7" in msg
 
 
 class TestPythonDiffCoverageCheck:
-    """Tests for PythonDiffCoverageCheck high-level behavior."""
+    """High-level behavior of the rewired diff-coverage gate."""
+
+    COVERAGE_XML = (
+        '<?xml version="1.0" ?>\n'
+        "<coverage>\n"
+        "  <packages>\n"
+        "    <package>\n"
+        "      <classes>\n"
+        '        <class filename="src/main.py">\n'
+        "          <lines>\n"
+        '            <line number="10" hits="1"/>\n'
+        '            <line number="11" hits="0"/>\n'
+        '            <line number="12" hits="1" branch="true" '
+        'condition-coverage="50% (1/2)"/>\n'
+        "          </lines>\n"
+        "        </class>\n"
+        "      </classes>\n"
+        "    </package>\n"
+        "  </packages>\n"
+        "</coverage>\n"
+    )
+
+    def _setup_python_project(self, tmp_path):
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
+        (tmp_path / "coverage.xml").write_text(self.COVERAGE_XML)
 
     def test_name(self):
         check = PythonDiffCoverageCheck({})
@@ -1027,65 +1310,115 @@ class TestPythonDiffCoverageCheck:
         check = PythonDiffCoverageCheck({})
         assert check.is_applicable(str(tmp_path)) is True
 
-    def test_run_success(self, tmp_path):
-        (tmp_path / "tests").mkdir()
-        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
-        (tmp_path / "coverage.xml").write_text("<coverage/>")
+    def test_run_passes_when_diff_is_empty(self, tmp_path):
+        self._setup_python_project(tmp_path)
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
-            returncode=0, stdout="100% coverage", stderr="", duration=0.5
+            returncode=0, stdout="", stderr="", duration=0.1
         )
         check = PythonDiffCoverageCheck({}, runner=mock_runner)
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
             result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
+        assert "No changed Python files" in result.output
 
-    def test_run_no_diff(self, tmp_path):
-        (tmp_path / "tests").mkdir()
-        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
-        (tmp_path / "coverage.xml").write_text("<coverage/>")
+    def test_run_passes_when_diff_lines_all_hit(self, tmp_path):
+        self._setup_python_project(tmp_path)
+        diff = (
+            "diff --git a/src/main.py b/src/main.py\n"
+            "--- a/src/main.py\n"
+            "+++ b/src/main.py\n"
+            "@@ -9,0 +10,1 @@\n"
+            "+executed line\n"
+        )
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
-            returncode=1, stdout="No diff found", stderr="", duration=0.5
+            returncode=0, stdout=diff, stderr="", duration=0.1
         )
         check = PythonDiffCoverageCheck({}, runner=mock_runner)
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
             result = check.run(str(tmp_path))
         assert result.status == CheckStatus.PASSED
+        assert "Coverage: 100.0%" in result.output
 
-    def test_run_failure_with_findings(self, tmp_path):
-        (tmp_path / "tests").mkdir()
-        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
-        (tmp_path / "coverage.xml").write_text("<coverage/>")
+    def test_run_fails_when_partials_drag_below_threshold(self, tmp_path):
+        # Diff covers lines 10 (hit), 11 (miss), 12 (partial) — 1/3 = 33%.
+        self._setup_python_project(tmp_path)
+        diff = (
+            "diff --git a/src/main.py b/src/main.py\n"
+            "--- a/src/main.py\n"
+            "+++ b/src/main.py\n"
+            "@@ -9,0 +10,3 @@\n"
+            "+a\n"
+            "+b\n"
+            "+c\n"
+        )
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
-            returncode=1,
-            stdout="  src/a.py (50.0%): Missing lines 1-10\n",
-            stderr="",
-            duration=0.5,
+            returncode=0, stdout=diff, stderr="", duration=0.1
         )
         check = PythonDiffCoverageCheck({}, runner=mock_runner)
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
             result = check.run(str(tmp_path))
         assert result.status == CheckStatus.FAILED
-        assert result.findings
+        assert "Missing 11" in result.output
+        assert "Partial 12" in result.output
+        assert "Coverage: 33.3%" in result.output
+        assert any("partial" in (f.message or "").lower() for f in result.findings)
 
-    def test_run_failure_no_parseable_findings(self, tmp_path):
-        (tmp_path / "tests").mkdir()
-        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
-        (tmp_path / "coverage.xml").write_text("<coverage/>")
+    def test_run_skips_files_outside_coverage_scope(self, tmp_path):
+        # Diff touches a test file (not in coverage.xml) — should pass with
+        # "no coverage-tracked changes" message.
+        self._setup_python_project(tmp_path)
+        diff = (
+            "diff --git a/tests/test_x.py b/tests/test_x.py\n"
+            "--- a/tests/test_x.py\n"
+            "+++ b/tests/test_x.py\n"
+            "@@ -1,0 +1,1 @@\n"
+            "+# new test comment\n"
+        )
         mock_runner = MagicMock()
         mock_runner.run.return_value = SubprocessResult(
-            returncode=1,
-            stdout="Something went wrong\n",
-            stderr="",
-            duration=0.5,
+            returncode=0, stdout=diff, stderr="", duration=0.1
         )
         check = PythonDiffCoverageCheck({}, runner=mock_runner)
         with patch.object(check, "check_project_venv_or_warn", return_value=None):
             result = check.run(str(tmp_path))
-        assert result.status == CheckStatus.FAILED
-        assert len(result.findings) == 1
+        assert result.status == CheckStatus.PASSED
+        assert "No coverage-tracked changes" in result.output
+
+    def test_run_returns_error_when_git_diff_fails(self, tmp_path):
+        self._setup_python_project(tmp_path)
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=128, stdout="", stderr="bad ref", duration=0.1
+        )
+        check = PythonDiffCoverageCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.ERROR
+        assert "git diff failed" in (result.error or "")
+
+    def test_run_returns_error_when_coverage_xml_unparseable(self, tmp_path):
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
+        (tmp_path / "coverage.xml").write_text("not xml at all <<<")
+        diff = (
+            "diff --git a/src/main.py b/src/main.py\n"
+            "--- a/src/main.py\n"
+            "+++ b/src/main.py\n"
+            "@@ -0,0 +1,1 @@\n"
+            "+x\n"
+        )
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout=diff, stderr="", duration=0.1
+        )
+        check = PythonDiffCoverageCheck({}, runner=mock_runner)
+        with patch.object(check, "check_project_venv_or_warn", return_value=None):
+            result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.ERROR
+        assert "coverage.xml" in (result.error or "")
 
     def test_run_no_coverage_xml(self, tmp_path):
         (tmp_path / "tests").mkdir()

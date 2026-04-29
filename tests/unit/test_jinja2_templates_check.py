@@ -67,6 +67,31 @@ class TestTemplateValidationCheck:
         check = TemplateValidationCheck({"templates_dir": None})
         assert check.is_applicable(str(tmp_path)) is True
 
+    def test_skip_reason_no_config_key(self, tmp_path):
+        check = TemplateValidationCheck({})
+        assert "No templates_dir configured" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_explicit_null(self, tmp_path):
+        check = TemplateValidationCheck({"templates_dir": None})
+        assert "explicitly null" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_non_string_value(self, tmp_path):
+        check = TemplateValidationCheck({"templates_dir": 42})
+        assert "not a usable string" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_empty_string(self, tmp_path):
+        check = TemplateValidationCheck({"templates_dir": ""})
+        assert "not a usable string" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_dir_does_not_exist(self, tmp_path):
+        check = TemplateValidationCheck({"templates_dir": "no_such_dir"})
+        assert "does not exist" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_dir_exists_fallback(self, tmp_path):
+        (tmp_path / "tpl").mkdir()
+        check = TemplateValidationCheck({"templates_dir": "tpl"})
+        assert "No Jinja2 templates detected" in check.skip_reason(str(tmp_path))
+
     def test_run_no_templates_dir(self, tmp_path):
         """Test run skips when no templates_dir configured."""
         check = TemplateValidationCheck({})

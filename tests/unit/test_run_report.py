@@ -713,6 +713,116 @@ class TestPorcelainAdapter:
         assert "fix: Split the file by concept" in out
         assert "next: sm swab -g laziness:code-sprawl" in out
 
+    def test_summary_line_includes_warn_skip_and_na(self) -> None:
+        summary = _summary(
+            [
+                _result("a", CheckStatus.FAILED),
+                _result("b", CheckStatus.PASSED),
+                _result("c", CheckStatus.WARNED),
+                _result(
+                    "d",
+                    CheckStatus.NOT_APPLICABLE,
+                    skip_reason=SkipReason.NOT_APPLICABLE,
+                ),
+                _result(
+                    "e",
+                    CheckStatus.SKIPPED,
+                    skip_reason=SkipReason.FAIL_FAST,
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "1 warn" in out
+        assert "1 n/a" in out
+        assert "1 skip" in out
+
+    def test_detail_line_finding_with_file_and_line(self) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "g",
+                    CheckStatus.FAILED,
+                    findings=[Finding(message="oops", file="a.py", line=42)],
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "a.py:42" in out
+        assert "oops" in out
+
+    def test_detail_line_finding_file_only(self) -> None:
+        summary = _summary(
+            [
+                _result(
+                    "g",
+                    CheckStatus.FAILED,
+                    findings=[Finding(message="oops", file="a.py")],
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "a.py - oops" in out
+
+    def test_detail_line_error_fallback(self) -> None:
+        summary = _summary([_result("g", CheckStatus.FAILED, error="something broke")])
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "something broke" in out
+
+    def test_detail_line_output_fallback(self) -> None:
+        summary = _summary([_result("g", CheckStatus.FAILED, output="line1\nline2")])
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "line1" in out
+
+    def test_cache_metadata_in_output(self) -> None:
+        from unittest.mock import patch as mock_patch
+
+        summary = _summary([_result("a", CheckStatus.PASSED)])
+        report = RunReport.from_summary(summary, level="swab")
+        with mock_patch.object(
+            report,
+            "cache_metadata",
+            return_value={
+                "cached_results": 3,
+                "total_ran": 5,
+                "refresh_command": "sm swab --no-cache",
+            },
+        ):
+            out = PorcelainAdapter.render(report)
+        assert "cache: 3/5 cached" in out
+        assert "fresh: sm swab --no-cache" in out
+
+    def test_multiple_failures_show_first_verify_command(self) -> None:
+        summary = _summary(
+            [
+                _result("a", CheckStatus.FAILED, output="fail a"),
+                _result("b", CheckStatus.FAILED, output="fail b"),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "first:" in out
+
+    def test_budget_skips_warning_in_output(self) -> None:
+        pass
+
+        summary = _summary(
+            [
+                _result(
+                    "timed",
+                    CheckStatus.SKIPPED,
+                    skip_reason=SkipReason.TIME_BUDGET,
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "timed check(s) skipped" in out
+
 
 # ─── role badge helper ───────────────────────────────────────────────────
 

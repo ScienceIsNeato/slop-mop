@@ -103,6 +103,31 @@ class TestLoadConfig:
 
         assert load_config(tmp_path) == {}
 
+    def test_load_config_non_dict_json_is_ignored(self, tmp_path):
+        """A JSON file containing a list (not a dict) is treated like bad config."""
+        (tmp_path / ".sb_config.json").write_text("[1,2,3]", encoding="utf-8")
+        result = load_config(tmp_path)
+        assert result == {}
+
+    def test_warn_on_stale_config_references_swallows_exceptions(self, tmp_path):
+        """_warn_on_stale_config_references must never raise, even on import errors."""
+        from slopmop.sm import _warn_on_stale_config_references
+
+        with patch(
+            "slopmop.migrations.stale_gate_reference_warnings",
+            side_effect=RuntimeError("boom"),
+        ):
+            _warn_on_stale_config_references({"laziness:x": {}})
+
+    def test_warn_on_stale_config_references_emits_warnings(self, tmp_path):
+        from slopmop.sm import _warn_on_stale_config_references
+
+        with patch(
+            "slopmop.migrations.stale_gate_reference_warnings",
+            return_value=["Stale: laziness:x"],
+        ):
+            _warn_on_stale_config_references({"laziness:x": {}})
+
 
 class TestSetupLogging:
     """Tests for setup_logging function."""
@@ -1244,3 +1269,57 @@ class TestPreloadedValidationConfig:
         assert result == 0
         mock_load_config.assert_not_called()
         mock_register_custom_gates.assert_not_called()
+
+
+class TestValidatePorcelainOutput:
+    """Porcelain-mode output path through _run_validation."""
+
+    @patch("builtins.print")
+    @patch("slopmop.cli.validate.PorcelainAdapter")
+    @patch("slopmop.cli.validate.RunReport.from_summary")
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_porcelain_mode_uses_porcelain_adapter(
+        self,
+        _mock_config,
+        _mock_registry,
+        mock_executor_cls,
+        _mock_reporter,
+        mock_from_summary,
+        mock_porcelain_adapter,
+        mock_print,
+        tmp_path,
+    ):
+        from slopmop.cli.validate import _run_validation
+
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+
+        mock_report = MagicMock()
+        mock_from_summary.return_value = mock_report
+        mock_porcelain_adapter.render.return_value = "sm swab: 0 fail"
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=True,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=True,
+            static=True,
+            clear_history=False,
+            swabbing_timeout=None,
+            json_output=False,
+            output_file=None,
+            sarif_output=False,
+            no_cache=False,
+            porcelain=True,
+        )
+
+        result = _run_validation(args, ["gate1"], "swab")
+
+        assert result == 0
+        mock_porcelain_adapter.render.assert_called_once()
+        mock_print.assert_called_once_with("sm swab: 0 fail")

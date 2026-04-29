@@ -196,6 +196,71 @@ class TestStaleGateReferences:
 
         assert result["slopmop_version"] == "9.9.9"
 
+    def test_stamp_config_version_noop_if_no_config_file(self, tmp_path: Path):
+        stamp_config_version(tmp_path, "1.0.0")
+        assert not (tmp_path / ".sb_config.json").exists()
+
+    def test_stamp_config_version_noop_on_invalid_json(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("NOT JSON", encoding="utf-8")
+        stamp_config_version(tmp_path, "1.0.0")
+        assert (tmp_path / ".sb_config.json").read_text() == "NOT JSON"
+
+    def test_stamp_config_version_noop_on_non_dict_json(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("[1,2,3]", encoding="utf-8")
+        stamp_config_version(tmp_path, "1.0.0")
+        assert (tmp_path / ".sb_config.json").read_text() == "[1,2,3]"
+
+    def test_stamp_config_version_noop_when_already_matches(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text(
+            '{"slopmop_version": "9.9.9"}', encoding="utf-8"
+        )
+        stamp_config_version(tmp_path, "9.9.9")
+        data = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert data == {"slopmop_version": "9.9.9"}
+
+    def test_dedupe_stale_references_removes_exact_duplicates(self):
+        from slopmop.migrations import StaleGateReference, _dedupe_stale_references
+
+        refs = [
+            StaleGateReference(reference="a:b", location="disabled_gates"),
+            StaleGateReference(reference="a:b", location="disabled_gates"),
+            StaleGateReference(reference="c:d", location="flat gate config"),
+        ]
+        deduped = _dedupe_stale_references(refs)
+        assert len(deduped) == 2
+
+    def test_find_stale_refs_skips_known_registry_name(self):
+        issues = find_stale_gate_references(
+            {"disabled_gates": ["laziness:sloppy-formatting.py"]},
+            ["laziness:sloppy-formatting.py"],
+        )
+        assert issues == []
+
+    def test_find_stale_refs_disabled_entries_with_known_replacement(self):
+        issues = find_stale_gate_references(
+            {"disabled_gates": ["overconfidence:flutter-test"]},
+            ["overconfidence:untested-code.dart"],
+        )
+        assert len(issues) == 1
+        assert issues[0].replacements
+
+    def test_stale_gate_warnings_with_replacements(self):
+        warnings = stale_gate_reference_warnings(
+            {"disabled_gates": ["overconfidence:flutter-test"]},
+            ["overconfidence:untested-code.dart"],
+        )
+        assert len(warnings) == 1
+        assert "Stale slop-mop gate reference" in warnings[0]
+        assert "->" in warnings[0]
+
+    def test_stale_gate_warnings_without_replacements(self):
+        warnings = stale_gate_reference_warnings(
+            {"laziness:vanished-gate.py": {"enabled": True}},
+            ["laziness:sloppy-formatting.py"],
+        )
+        assert len(warnings) == 1
+        assert "Unknown slop-mop gate reference" in warnings[0]
+
 
 class TestRenameSourceDuplication:
     """Tests for the 0.11.0→0.11.1 gate rename migration."""
