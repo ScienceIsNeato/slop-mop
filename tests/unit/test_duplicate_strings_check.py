@@ -1,5 +1,6 @@
 """Tests for string duplication check (wrapper for find-duplicate-strings)."""
 
+import json
 import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -486,6 +487,33 @@ class TestStringDuplicationCheck:
         with patch.object(check, "_load_strip_function", return_value=None):
             result = check._preprocess_python_files(str(tmp_path), config)
             assert result is None
+
+    @patch.object(StringDuplicationCheck, "_run_command")
+    def test_run_writes_per_file_string_inventory(self, mock_run, check, tmp_path):
+        """Run stores per-file string counts for incremental scans."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "example.py").write_text(
+            '"""ignored module docstring"""\n'
+            'FIRST = "shared release prep literal"\n'
+            'SECOND = "shared release prep literal"\n'
+        )
+        mock_result = MagicMock()
+        mock_result.stdout = "[]"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        with patch.object(
+            check, "_get_tool_path", return_value=Path("/fake/tool/index.js")
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        inventory_path = tmp_path / ".slopmop" / "string-duplication-inventory.json"
+        inventory = json.loads(inventory_path.read_text())
+        file_inventory = inventory["files"]["src/example.py"]
+        assert file_inventory["strings"]["shared release prep literal"] == 2
+        assert "ignored module docstring" not in file_inventory["strings"]
 
 
 class TestStringDuplicationCacheInputs:

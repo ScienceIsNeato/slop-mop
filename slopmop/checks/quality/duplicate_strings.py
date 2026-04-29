@@ -2,8 +2,10 @@
 
 import fnmatch
 import glob as globmod
+import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -21,6 +23,11 @@ from slopmop.checks.base import (
     count_source_scope,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+
+STRING_DUPLICATION_INVENTORY = "string-duplication-inventory.json"
+STRING_LITERAL_PATTERN = re.compile(
+    r"(?:\"[^\"\\]*(?:\\.[^\"\\]*)*\"|'[^'\\]*(?:\\.[^'\\]*)*')"
+)
 
 
 class StringDuplicationCheck(BaseCheck):
@@ -521,6 +528,111 @@ class StringDuplicationCheck(BaseCheck):
 
         return tmp_dir
 
+    def _write_string_inventory(
+        self,
+        project_root: str,
+        scan_root: str,
+        config: Dict[str, Any],
+        *,
+        remap_to_project_root: bool,
+    ) -> None:
+        """Persist per-file literal counts for future incremental scans."""
+        inventory = self._build_string_inventory(
+            project_root,
+            scan_root,
+            config,
+            remap_to_project_root=remap_to_project_root,
+        )
+        output_dir = Path(project_root) / ".slopmop"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / STRING_DUPLICATION_INVENTORY
+        output_path.write_text(
+            json.dumps(inventory, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    def _build_string_inventory(
+        self,
+        project_root: str,
+        scan_root: str,
+        config: Dict[str, Any],
+        *,
+        remap_to_project_root: bool,
+    ) -> Dict[str, Any]:
+        files: Dict[str, Dict[str, Any]] = {}
+        project_path = Path(project_root)
+        scan_path = Path(scan_root)
+
+        for scan_file in self._iter_inventory_files(scan_root, config):
+            try:
+                rel_path = scan_file.resolve().relative_to(scan_path.resolve())
+            except ValueError:
+                rel_path = Path(scan_file.name)
+
+            original_file = (
+                project_path / rel_path if remap_to_project_root else scan_file
+            )
+            file_key = rel_path.as_posix()
+            files[file_key] = {
+                "sha256": self._file_sha256(original_file),
+                "strings": self._extract_file_strings(scan_file),
+            }
+
+        return {
+            "version": 1,
+            "generated_by": self.full_name,
+            "include_patterns": config.get("include_patterns", ["**/*.py"]),
+            "ignore_patterns": config.get("ignore_patterns", []),
+            "files": files,
+        }
+
+    def _iter_inventory_files(
+        self, scan_root: str, config: Dict[str, Any]
+    ) -> List[Path]:
+        include_patterns = cast(List[str], config.get("include_patterns", ["**/*.py"]))
+        ignore_patterns = cast(List[str], config.get("ignore_patterns", []))
+        root = Path(scan_root)
+        files: List[Path] = []
+
+        for pattern in include_patterns:
+            if not pattern.endswith(".py"):
+                continue
+            for file_path in globmod.glob(str(root / pattern), recursive=True):
+                candidate = Path(file_path)
+                try:
+                    rel_path = candidate.relative_to(root).as_posix()
+                except ValueError:
+                    rel_path = candidate.name
+                if any(
+                    fnmatch.fnmatch(rel_path, ignored) for ignored in ignore_patterns
+                ):
+                    continue
+                files.append(candidate)
+
+        return sorted(set(files))
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        try:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            return ""
+
+    @staticmethod
+    def _extract_file_strings(path: Path) -> Dict[str, int]:
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return {}
+
+        strings: Dict[str, int] = {}
+        for match in STRING_LITERAL_PATTERN.finditer(source):
+            value = match.group(0)[1:-1]
+            if not value:
+                continue
+            strings[value] = strings.get(value, 0) + 1
+        return strings
+
     @staticmethod
     def _to_findings(
         filtered: List[Dict[str, Any]], project_root: str
@@ -585,6 +697,15 @@ class StringDuplicationCheck(BaseCheck):
         try:
             cmd = self._build_command(effective_config, tool_path)
             result = self._run_command(cmd, cwd=scan_root)
+            try:
+                self._write_string_inventory(
+                    project_root,
+                    scan_root,
+                    effective_config,
+                    remap_to_project_root=bool(tmp_dir),
+                )
+            except OSError:
+                pass
         except Exception as e:
             return self._create_result(
                 status=CheckStatus.ERROR,

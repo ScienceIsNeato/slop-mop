@@ -1,8 +1,30 @@
 # Project Status
 
+## 2026-04-28 Delta: Release prep string inventory
+
+Branch: `codex/release-prep-final`
+
+**Work completed:**
+- Started issue #124 from `DOCS/RELEASE_PREP_HANDOFF.md` with the smallest
+  release-safe performance foundation.
+- Added a per-file string duplication inventory artifact at
+  `.slopmop/string-duplication-inventory.json` with file hashes and literal
+  counts, giving the gate durable data for future incremental scans without
+  changing current verdict behavior.
+- Covered inventory generation from the docstring-stripped scan tree so
+  module docstrings stay out of the persisted counts.
+
+**Validation:**
+- `./sm swab -g laziness:sloppy-formatting.py --no-cache` ✅
+- `./sm swab -g overconfidence:type-blindness.py --no-cache` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache` ✅
+- `./sm swab -g myopia:string-duplication.py --no-cache` ✅
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+
 ## 2026-04-29 Delta: Release prep doctor diagnostics
 
-Branch: `release-prep/doctor-gaps`
+Branch: `codex/release-prep-final`
 
 **Work completed:**
 - Started the remaining `DOCS/RELEASE_PREP_HANDOFF.md` work with issue #113.
