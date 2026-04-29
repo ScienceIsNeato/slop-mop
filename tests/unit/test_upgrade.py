@@ -27,6 +27,7 @@ from slopmop.cli.upgrade import (
     _validated_pypi_url,
     cmd_upgrade,
 )
+from tests.upgrade_scenario_helpers import materialize_upgrade_scenario
 
 
 class TestDetectInstallType:
@@ -36,7 +37,7 @@ class TestDetectInstallType:
             prefix="/Users/me/.local/pipx/venvs/slopmop",
             base_prefix="/usr/local/Cellar/python/3.13",
             virtual_env=None,
-            direct_url=None,
+            direct_url={},
         )
         assert detected == "pipx"
 
@@ -46,7 +47,7 @@ class TestDetectInstallType:
             prefix="/tmp/project/.venv",
             base_prefix="/opt/homebrew/Cellar/python/3.13",
             virtual_env="/tmp/project/.venv",
-            direct_url=None,
+            direct_url={},
         )
         assert detected == "venv"
 
@@ -56,7 +57,7 @@ class TestDetectInstallType:
             prefix="/tmp/project/.venv",
             base_prefix="/opt/homebrew/Cellar/python/3.13",
             virtual_env=None,
-            direct_url=None,
+            direct_url={},
         )
         assert detected == "venv"
 
@@ -81,7 +82,7 @@ class TestDetectInstallType:
                 prefix="/usr/local",
                 base_prefix="/usr/local",
                 virtual_env="",
-                direct_url=None,
+                direct_url={},
             )
         except RuntimeError as exc:
             assert "supports pipx installs or pip installs" in str(exc)
@@ -94,7 +95,8 @@ class TestMetadataHelpers:
     def test_distribution_direct_url_handles_missing_package(self, _mock_distribution):
         assert _distribution_direct_url() is None
 
-    def test_is_editable_install_false_without_payload(self):
+    @patch("slopmop.cli.upgrade._distribution_direct_url", return_value=None)
+    def test_is_editable_install_false_without_payload(self, _mock_direct_url):
         assert _is_editable_install(None) is False
 
     @patch("slopmop.cli.upgrade.subprocess.run")
@@ -445,6 +447,76 @@ class TestUpgradeCommand:
         assert cmd_upgrade(args) == 1
         err = capsys.readouterr().err
         assert "bad install" in err
+
+    @pytest.mark.parametrize(
+        "scenario_name",
+        [
+            "hierarchical_python_repo",
+            "flat_python_repo",
+            "hierarchical_applicability_repo",
+            "flat_applicability_repo",
+        ],
+    )
+    @patch("slopmop.cli.upgrade._validate_upgraded_install")
+    @patch("slopmop.cli.upgrade._run_upgrade_install")
+    @patch("slopmop.cli.upgrade._installed_version_fresh")
+    @patch("slopmop.cli.upgrade._detect_install_type", return_value="venv")
+    @patch("slopmop.cli.upgrade._installed_version")
+    @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
+    def test_upgrade_runs_real_migrations_for_fixture_scenarios(
+        self,
+        _mock_checkout,
+        _mock_installed,
+        _mock_detect,
+        _mock_installed_fresh,
+        _mock_run_install,
+        mock_validate,
+        scenario_name,
+        tmp_path,
+        capsys,
+    ):
+        before, expected, meta = materialize_upgrade_scenario(tmp_path, scenario_name)
+        _mock_installed.return_value = meta["from_version"]
+        _mock_installed_fresh.return_value = meta["to_version"]
+        mock_validate.return_value = subprocess.CompletedProcess(
+            args=["python", "-m", "slopmop", "swab"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            check=False,
+            to_version=meta["to_version"],
+            verbose=False,
+        )
+
+        assert cmd_upgrade(args) == 0
+
+        out = capsys.readouterr().out
+        assert (
+            f"Upgraded slopmop: {meta['from_version']} -> {meta['to_version']}" in out
+        )
+        assert f"🔄 Migrations: {', '.join(meta['applied_migrations'])}" in out
+
+        upgraded = json.loads(
+            (tmp_path / ".sb_config.json").read_text(encoding="utf-8")
+        )
+        assert upgraded == expected
+
+        backups = sorted((tmp_path / ".slopmop" / "backups").iterdir())
+        assert len(backups) == 1
+        backup_dir = backups[0]
+        manifest = json.loads(
+            (backup_dir / "manifest.json").read_text(encoding="utf-8")
+        )
+        assert manifest["from_version"] == meta["from_version"]
+        assert manifest["target_version"] == meta["to_version"]
+        assert manifest["install_type"] == "venv"
+        assert (
+            json.loads((backup_dir / ".sb_config.json").read_text(encoding="utf-8"))
+            == before
+        )
 
 
 class TestUpgradeCommandLine:

@@ -1,0 +1,58 @@
+{
+  "myopia": {
+    "enabled": true,
+    "gates": {
+      "ambiguity-mines.py": {
+        "enabled": true,
+        "include_dirs": [
+          "src"
+        ],
+        "exclude_dirs": [
+          "generated"
+        ]
+      }
+    }
+  },
+  "laziness": {
+    "enabled": true,
+    "gates": {
+      "sloppy-formatting.py": {
+        "enabled": true
+      },
+      "sloppy-formatting.dart": {
+        "enabled": true
+      },
+      "repeated-code": {
+        "enabled": true,
+        "threshold": 6,
+        "include_dirs": [
+          "src"
+        ],
+        "exclude_dirs": [
+          "generated"
+        ]
+      }
+    }
+  },
+  "overconfidence": {
+    "enabled": true,
+    "gates": {
+      "untested-code.py": {
+        "enabled": true,
+        "test_dirs": [
+          "tests"
+        ]
+      },
+      "missing-annotations.dart": {
+        "enabled": true
+      },
+      "untested-code.dart": {
+        "enabled": true
+      }
+    }
+  },
+  "disabled_gates": [
+    "myopia:ambiguity-mines.py",
+    "laziness:repeated-code"
+  ]
+}

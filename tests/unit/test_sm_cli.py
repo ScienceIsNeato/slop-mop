@@ -82,6 +82,27 @@ class TestLoadConfig:
         assert result["exclude_paths"] == ["vendor", "dist"]
         assert result["_global_exclude_paths"] == ["vendor", "dist", "generated"]
 
+    def test_loads_pyproject_slopmop_config(self, tmp_path):
+        """pyproject.toml [tool.slopmop] provides committed config."""
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.slopmop]\n" "exclude_paths = ['vendor']\n" "swabbing_timeout = 45\n",
+            encoding="utf-8",
+        )
+
+        result = load_config(tmp_path)
+
+        assert result["exclude_paths"] == ["vendor"]
+        assert result["swabbing_timeout"] == 45
+
+    def test_ignores_non_table_pyproject_slopmop_config(self, tmp_path):
+        """Invalid [tool.slopmop] shape is ignored instead of leaking Unknown."""
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool]\nslopmop = 'invalid'\n",
+            encoding="utf-8",
+        )
+
+        assert load_config(tmp_path) == {}
+
 
 class TestSetupLogging:
     """Tests for setup_logging function."""

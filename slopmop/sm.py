@@ -36,7 +36,7 @@ import os
 import sys
 import textwrap
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -135,9 +135,12 @@ def _load_pyproject_config(project_root: Path) -> Dict[str, Any]:
         return {}
     try:
         with open(pyproject_path, "rb") as f:
-            data: Dict[str, Any] = tomllib.load(f)
-        tool_cfg: Dict[str, Any] = data.get("tool", {})
-        return dict(tool_cfg.get("slopmop", {}))
+            data = cast(Dict[str, Any], tomllib.load(f))
+        tool_cfg = cast(Dict[str, Any], data.get("tool", {}))
+        slopmop_cfg = tool_cfg.get("slopmop", {})
+        if isinstance(slopmop_cfg, dict):
+            return dict(cast(Dict[str, Any], slopmop_cfg))
+        return {}
     except Exception as e:
         logger.debug(f"Failed to read [tool.slopmop] from pyproject.toml: {e}")
         return {}

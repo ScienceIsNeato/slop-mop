@@ -1,0 +1,4 @@
+{
+  "requirements.txt": "pytest\n",
+  "src/main.py": "print('hi')\n"
+}

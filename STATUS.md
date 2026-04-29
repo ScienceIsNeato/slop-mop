@@ -1,5 +1,71 @@
 # Project Status
 
+## 2026-04-28 Delta: Release prep string inventory
+
+Branch: `codex/release-prep-final`
+
+**Work completed:**
+- Started issue #124 from `DOCS/RELEASE_PREP_HANDOFF.md` with the smallest
+  release-safe performance foundation.
+- Added a per-file string duplication inventory artifact at
+  `.slopmop/string-duplication-inventory.json` with file hashes and literal
+  counts, giving the gate durable data for future incremental scans without
+  changing current verdict behavior.
+- Covered inventory generation from the docstring-stripped scan tree so
+  module docstrings stay out of the persisted counts.
+
+**Validation:**
+- `./sm swab -g laziness:sloppy-formatting.py --no-cache` ✅
+- `./sm swab -g overconfidence:type-blindness.py --no-cache` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache` ✅
+- `./sm swab -g myopia:string-duplication.py --no-cache` ✅
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+
+## 2026-04-29 Delta: Release prep doctor diagnostics
+
+Branch: `codex/release-prep-final`
+
+**Work completed:**
+- Started the remaining `DOCS/RELEASE_PREP_HANDOFF.md` work with issue #113.
+- Added built-in gate diagnostics for Python whole-repo and diff coverage gates
+  so `sm doctor` can explain missing `coverage.xml` before agents chase the
+  downstream coverage failures.
+- Covered both missing and present coverage XML behavior in Python gate tests.
+
+**Validation:**
+- `./sm doctor sm_env.gate_diagnostics --project-root "$PWD" --no-json` ✅
+  (reported the new missing-coverage XML warnings before coverage data existed)
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+## 2026-04-27 Delta: PR 156 release prep takeover
+
+Branch: `codex/release-prep-final`
+
+**Work in progress:**
+- Took over PR #156 after CI passed but two review threads remained.
+- Merged current `origin/main` into the branch and resolved the `docs/` to
+  `DOCS/` directory conflict by keeping the new release-prep docs under
+  `DOCS/`.
+- Fixed the Python 3.10 `tomllib` review comment and tightened upgrade
+  applicability probing so unconfigured gates are skipped before check
+  instantiation.
+- Fixed `scripts/sm` worktree root detection after barnacle
+  `barnacle-20260428-044041-b52a564f`; linked Git worktrees now validate as
+  standalone project roots instead of scanning sibling worktrees under `.tmp/`.
+- Fixed follow-up Bugbot feedback so `scripts/generate_requirements_txt.py`
+  treats `main([])` as an explicit empty argv instead of falling back to
+  process arguments.
+- Restored current README/DOCS link conventions after the stale PR base.
+
+**Validation so far:**
+- `sm swab --no-cache --output-file .slopmop/last_swab.json` passes with 14
+  checks.
+- `sm scour --no-cache --output-file .slopmop/last_scour.json` passes with 15
+  checks and one non-blocking dependency-risk warning.
+
 ## 2026-04-27 Delta: Repo cleanup follow-up
 
 Branch: `docs/repo-small-cleanup`

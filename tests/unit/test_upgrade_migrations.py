@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from slopmop.migrations import (
     UpgradeMigration,
     _rename_dart_gates,
@@ -12,6 +14,7 @@ from slopmop.migrations import (
     planned_upgrade_migrations,
     run_upgrade_migrations,
 )
+from tests.upgrade_scenario_helpers import materialize_upgrade_scenario
 
 
 class TestUpgradeMigration:
@@ -471,3 +474,117 @@ class TestSyncBuiltInGateApplicability:
         assert "sync-built-in-gate-applicability" in applied
         result = self._read_config(tmp_path)
         assert result["laziness"]["gates"]["sloppy-formatting.py"]["enabled"] is False
+
+    def test_disables_flat_dart_gate_configs_for_python_repo(self, tmp_path: Path):
+        (tmp_path / "requirements.txt").write_text("pytest\n", encoding="utf-8")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hi')\n", encoding="utf-8")
+        self._write_config(
+            tmp_path,
+            {
+                "laziness:sloppy-formatting.dart": {"enabled": True},
+                "overconfidence:missing-annotations.dart": {"enabled": True},
+            },
+        )
+
+        _sync_built_in_gate_applicability(tmp_path)
+        result = self._read_config(tmp_path)
+
+        assert result["laziness:sloppy-formatting.dart"]["enabled"] is False
+        assert result["overconfidence:missing-annotations.dart"]["enabled"] is False
+
+    def test_skips_unconfigured_gates_before_applicability_probe(
+        self, monkeypatch, tmp_path: Path
+    ):
+        self._write_config(
+            tmp_path,
+            {
+                "laziness:sloppy-formatting.py": {"enabled": True},
+            },
+        )
+        probed: list[str] = []
+
+        class FakeCheck:
+            def is_applicable(self, _project_root: str) -> bool:
+                return True
+
+        class FakeRegistry:
+            def list_checks(self) -> list[str]:
+                return [
+                    "laziness:sloppy-formatting.py",
+                    "myopia:vulnerability-blindness.py",
+                ]
+
+            def get_check(self, full_name: str, _data: dict) -> FakeCheck:
+                probed.append(full_name)
+                if full_name == "myopia:vulnerability-blindness.py":
+                    raise AssertionError("unconfigured gates should not be probed")
+                return FakeCheck()
+
+        monkeypatch.setattr(
+            "slopmop.checks.ensure_checks_registered",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            "slopmop.core.registry.get_registry",
+            lambda: FakeRegistry(),
+        )
+
+        _sync_built_in_gate_applicability(tmp_path)
+
+        assert probed == ["laziness:sloppy-formatting.py"]
+
+
+class TestRealWorldUpgradeScenarios:
+    @pytest.mark.parametrize(
+        "scenario_name",
+        [
+            "hierarchical_python_repo",
+            "flat_python_repo",
+            "hierarchical_applicability_repo",
+            "flat_applicability_repo",
+        ],
+    )
+    def test_full_chain_real_world_config_snapshots(
+        self, tmp_path: Path, scenario_name: str
+    ):
+        _before, expected, meta = materialize_upgrade_scenario(tmp_path, scenario_name)
+
+        applied = run_upgrade_migrations(
+            tmp_path,
+            meta["from_version"],
+            meta["to_version"],
+        )
+        result = json.loads((tmp_path / ".sb_config.json").read_text(encoding="utf-8"))
+
+        assert applied == meta["applied_migrations"]
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "scenario_name",
+        [
+            "hierarchical_python_repo",
+            "flat_python_repo",
+            "hierarchical_applicability_repo",
+            "flat_applicability_repo",
+        ],
+    )
+    def test_full_chain_real_world_snapshots_are_idempotent(
+        self, tmp_path: Path, scenario_name: str
+    ):
+        _before, _expected, meta = materialize_upgrade_scenario(tmp_path, scenario_name)
+        run_upgrade_migrations(
+            tmp_path,
+            meta["from_version"],
+            meta["to_version"],
+        )
+
+        first = (tmp_path / ".sb_config.json").read_text(encoding="utf-8")
+        run_upgrade_migrations(
+            tmp_path,
+            meta["from_version"],
+            meta["to_version"],
+        )
+        second = (tmp_path / ".sb_config.json").read_text(encoding="utf-8")
+
+        assert second == first

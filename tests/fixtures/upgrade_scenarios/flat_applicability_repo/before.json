@@ -1,0 +1,15 @@
+{
+  "swabbing_time": 15,
+  "laziness:sloppy-formatting.dart": {
+    "enabled": true
+  },
+  "laziness:sloppy-formatting.py": {
+    "enabled": true
+  },
+  "overconfidence:missing-annotations.dart": {
+    "enabled": true
+  },
+  "overconfidence:untested-code.dart": {
+    "enabled": true
+  }
+}

@@ -155,7 +155,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install build tools
-        run: python -m pip install --upgrade pip build
+        run: python -m pip install --upgrade pip build twine
 
       - name: Build sdist and wheel
         run: python -m build
@@ -169,6 +169,24 @@ jobs:
             exit 1
           fi
           echo "✅ Version match: $EXPECTED_VERSION"
+
+      - name: Validate package metadata
+        run: python -m twine check dist/*
+
+      - name: Smoke test built wheel in a clean venv
+        run: |
+          python -m venv .venv-smoke
+          source .venv-smoke/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+          sm --version
+          sm --help >/dev/null
+          TMP_REPO="$(mktemp -d)"
+          cd "$TMP_REPO"
+          git init -q
+          printf "print('hello')\n" > hello.py
+          sm init >/dev/null
+          sm swab --help >/dev/null
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -1,0 +1,4 @@
+{
+  "requirements.txt": "pytest\n",
+  "src/main.py": "def greet(name: str) -> str:\n    return f\"hi {name}\"\n"
+}
