@@ -704,7 +704,7 @@ class StringDuplicationCheck(BaseCheck):
                     effective_config,
                     remap_to_project_root=bool(tmp_dir),
                 )
-            except OSError:
+            except Exception:
                 pass
         except Exception as e:
             return self._create_result(

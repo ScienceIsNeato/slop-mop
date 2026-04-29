@@ -383,6 +383,28 @@ class TestStringDuplicationCheck:
             assert result.status == CheckStatus.ERROR
             assert "failed" in result.error.lower()
 
+    @patch.object(StringDuplicationCheck, "_run_command")
+    def test_run_ignores_inventory_write_errors(self, mock_run, check, tmp_path):
+        """Best-effort inventory failures should not fail the gate."""
+        mock_result = MagicMock()
+        mock_result.stdout = "[]"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        with (
+            patch.object(
+                check, "_get_tool_path", return_value=Path("/fake/tool/index.js")
+            ),
+            patch.object(
+                check,
+                "_write_string_inventory",
+                side_effect=ValueError("bad inventory"),
+            ),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+
     def test_load_strip_function_success(self, check):
         """Test loading the strip_docstrings function from vendored tool."""
         fn = check._load_strip_function()
