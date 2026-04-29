@@ -75,7 +75,10 @@ class TestBarnacleId:
 
 
 class TestQueueDir:
-    def test_default_is_home_slopmop(self):
+    def test_default_is_home_slopmop(self, monkeypatch):
+        # The autouse isolation fixture sets SLOPMOP_BARNACLE_DIR for safety;
+        # this test verifies the genuine default, so drop the override first.
+        monkeypatch.delenv(QUEUE_DIR_ENVAR, raising=False)
         qdir = _queue_dir()
         assert qdir.parts[-2:] == (".slopmop", "barnacles")
 
