@@ -11,8 +11,12 @@ from slopmop.migrations import (
     _rename_source_duplication,
     _rename_swabbing_time,
     _sync_built_in_gate_applicability,
+    find_stale_gate_references,
+    migrate_known_config_references,
     planned_upgrade_migrations,
     run_upgrade_migrations,
+    stale_gate_reference_warnings,
+    stamp_config_version,
 )
 from tests.upgrade_scenario_helpers import materialize_upgrade_scenario
 
@@ -126,6 +130,71 @@ class TestMigrationRegistry:
     def test_sync_built_in_gate_applicability_is_registered(self):
         keys = planned_upgrade_migrations("0.15.0", "0.15.1")
         assert "sync-built-in-gate-applicability" in keys
+
+    def test_stamp_config_version_is_registered(self):
+        keys = planned_upgrade_migrations("0.15.1", "0.15.2")
+        assert "stamp-config-version" in keys
+
+
+class TestStaleGateReferences:
+    def test_finds_known_nested_and_disabled_stale_refs(self):
+        issues = find_stale_gate_references(
+            {
+                "disabled_gates": ["overconfidence:flutter-test"],
+                "myopia": {"gates": {"source-duplication": {"enabled": True}}},
+            },
+            [
+                "overconfidence:untested-code.dart",
+                "myopia:ambiguity-mines.py",
+                "laziness:repeated-code",
+            ],
+        )
+
+        by_ref = {issue.reference: issue for issue in issues}
+        assert by_ref["overconfidence:flutter-test"].replacements == (
+            "overconfidence:untested-code.dart",
+        )
+        assert by_ref["myopia:source-duplication"].replacements == (
+            "myopia:ambiguity-mines.py",
+            "laziness:repeated-code",
+        )
+
+    def test_warns_for_unknown_colon_gate(self):
+        warnings = stale_gate_reference_warnings(
+            {"laziness:vanished-gate.py": {"enabled": True}},
+            ["laziness:sloppy-formatting.py"],
+        )
+
+        assert len(warnings) == 1
+        assert "Unknown slop-mop gate reference" in warnings[0]
+        assert "laziness:vanished-gate.py" in warnings[0]
+
+    def test_init_migration_applies_known_reference_updates(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "disabled_gates": ["overconfidence:flutter-analyze"],
+                    "swabbing_time": 7,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        applied = migrate_known_config_references(tmp_path)
+        result = json.loads((tmp_path / ".sb_config.json").read_text())
+
+        assert applied == ["known-gate-reference-migrations"]
+        assert result["disabled_gates"] == ["overconfidence:missing-annotations.dart"]
+        assert result["swabbing_timeout"] == 7
+        assert "swabbing_time" not in result
+
+    def test_stamp_config_version_records_writer_version(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
+
+        stamp_config_version(tmp_path, "9.9.9")
+        result = json.loads((tmp_path / ".sb_config.json").read_text())
+
+        assert result["slopmop_version"] == "9.9.9"
 
 
 class TestRenameSourceDuplication:

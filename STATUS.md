@@ -1,5 +1,41 @@
 # Project Status
 
+## 2026-04-29 Delta: PR takeover check (current session)
+
+Branch: `backlog_cleaning`
+
+**Work completed:**
+- Checked live PR state to take over the currently active PR.
+- `sm buff inspect --json --output-file .slopmop/last_buff.json` reported stale configured PR `#92` (merged).
+- Verified GitHub PR state for the current branch and account:
+  - `gh pr view --json number,state,title,url,headRefName,baseRefName` => no PR for `backlog_cleaning`.
+  - `gh pr status` => no open PRs created by this account and none requesting review.
+
+**Result:**
+- There is no open PR to take over right now from this branch/account context.
+
+## 2026-04-29 Delta: Branch-to-PR validation pass (in progress)
+
+Branch: `backlog_cleaning`
+
+**Work completed:**
+- Ran `sm swab --output-file .slopmop/last_swab.json` to validate current WIP before PR/push.
+- Fixed failing `overconfidence:untested-code.py` tests:
+  - Updated upgrade scenario assertion to account for stamped `slopmop_version`.
+  - Restored missing helper namespace builder in `TestPorcelainMode`.
+
+**Next:**
+- Re-run targeted swab gate, then full `sm swab` and `sm scour`.
+- If green, proceed with non-`git` publish/create-PR path via `gh pr create`.
+
+**Validation results:**
+- `sm swab -g overconfidence:untested-code.py --output-file .slopmop/last_swab_iterate_state.json` ✅
+- `sm swab --output-file .slopmop/last_swab.json` ✅
+- `sm scour --output-file .slopmop/last_scour.json` ✅ (non-blocking dependency-risk warning remains)
+
+**Blocker:**
+- User rule forbids invoking `git` directly, so this agent cannot create local commits or perform explicit `git push` for the new local fixes without help/exception.
+
 ## 2026-04-28 Delta: Release prep string inventory
 
 Branch: `codex/release-prep-final`

@@ -21,7 +21,12 @@ from slopmop.core.executor import CheckExecutor
 from slopmop.core.lock import SmLockError, max_expected_duration, sm_lock
 from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
-from slopmop.reporting.adapters import ConsoleAdapter, JsonAdapter, SarifAdapter
+from slopmop.reporting.adapters import (
+    ConsoleAdapter,
+    JsonAdapter,
+    PorcelainAdapter,
+    SarifAdapter,
+)
 from slopmop.reporting.console import ConsoleReporter
 from slopmop.reporting.dynamic import DynamicDisplay
 from slopmop.reporting.report import RunReport
@@ -80,6 +85,11 @@ def _is_json_mode(args: argparse.Namespace) -> bool:
     if explicit is not None:
         return explicit
     return False
+
+
+def _is_porcelain_mode(args: argparse.Namespace) -> bool:
+    """Return whether validation should print token-terse agent output."""
+    return bool(getattr(args, "porcelain", False))
 
 
 def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
@@ -317,11 +327,12 @@ def _run_validation_locked(
     from slopmop.sm import load_config
 
     json_mode = _is_json_mode(args)
+    porcelain_mode = _is_porcelain_mode(args)
 
     # Clear timing history if requested
     if getattr(args, "clear_history", False):
         if clear_timings(str(project_root)):
-            if not args.quiet and not json_mode:
+            if not args.quiet and not json_mode and not porcelain_mode:
                 print("🗑️  Timing history cleared")
 
     # Create executor.
@@ -382,6 +393,7 @@ def _run_validation_locked(
     )
     use_dynamic = (
         not json_mode
+        and not porcelain_mode
         and not sarif_to_stdout
         and sys.stdout.isatty()
         and not os.environ.get("NO_COLOR")
@@ -405,7 +417,7 @@ def _run_validation_locked(
         swabbing_timeout = None
 
     # Print header BEFORE starting dynamic display
-    if not args.quiet and not json_mode and not sarif_to_stdout:
+    if not args.quiet and not json_mode and not porcelain_mode and not sarif_to_stdout:
         _print_header(project_root, gates, args, swabbing_timeout=swabbing_timeout)
 
     # Load timing history for budget filtering
@@ -420,7 +432,7 @@ def _run_validation_locked(
         dynamic_display, deferred_failures = _setup_dynamic_display(
             executor, reporter, args.quiet, project_root
         )
-    elif not json_mode and not sarif_to_stdout:
+    elif not json_mode and not porcelain_mode and not sarif_to_stdout:
         # Fall back to traditional reporter (no progress in JSON mode
         # or SARIF-to-stdout mode)
         executor.set_progress_callback(reporter.on_check_complete)
@@ -440,7 +452,12 @@ def _run_validation_locked(
         phase = read_phase(project_root)
         if phase == RepoPhase.REMEDIATION:
             auto_fix = False
-            if not args.quiet and not json_mode and not sarif_to_stdout:
+            if (
+                not args.quiet
+                and not json_mode
+                and not porcelain_mode
+                and not sarif_to_stdout
+            ):
                 print(
                     "ℹ  Remediation mode: auto-fix disabled "
                     "(pass --auto-fix to enable, or run `sm refit --finish` "
@@ -552,6 +569,8 @@ def _run_validation_locked(
                 # so callers can consume it directly in pipelines.
                 Path(output_file).write_text(json_payload, encoding="utf-8")
             print(json_payload)
+        elif porcelain_mode:
+            print(PorcelainAdapter.render(report))
         else:
             ConsoleAdapter(report).render()
 

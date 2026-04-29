@@ -17,7 +17,11 @@ from pathlib import Path
 from typing import Dict, List, Literal, Optional, TypedDict, cast
 
 from slopmop.core.config import config_file_path, state_dir_path
-from slopmop.migrations import planned_upgrade_migrations, run_upgrade_migrations
+from slopmop.migrations import (
+    planned_upgrade_migrations,
+    run_upgrade_migrations,
+    stamp_config_version,
+)
 
 PACKAGE_NAME = "slopmop"
 PYPI_URL = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
@@ -428,6 +432,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         applied_migrations = run_upgrade_migrations(
             project_root, current_version, installed_version
         )
+        stamp_config_version(project_root, installed_version)
         validation = _validate_upgraded_install(
             project_root, getattr(args, "verbose", False)
         )

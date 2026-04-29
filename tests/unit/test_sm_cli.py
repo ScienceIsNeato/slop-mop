@@ -320,7 +320,9 @@ class TestCmdCommitHooks:
         assert result == 0
         hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
         assert hook_file.exists()
-        assert "sm swab" in hook_file.read_text()
+        hook_text = hook_file.read_text()
+        assert "sm swab --porcelain" in hook_text
+        assert "--json-file .slopmop/last_swab.json" in hook_text
 
     def test_uninstall_hook(self, tmp_path, capsys):
         """Uninstall removes managed hooks."""

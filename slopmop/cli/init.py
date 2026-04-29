@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, cast
 
+from slopmop import __version__
 from slopmop.cli.config import _as_dict, _deep_merge
 from slopmop.cli.detection import detect_project_type
 
@@ -537,6 +538,8 @@ def _write_config(
         except json.JSONDecodeError:
             pass
 
+    base_config["slopmop_version"] = __version__
+
     # Re-apply suggested gates after merge so rerunning init refreshes gate
     # definitions (and still keeps user-defined custom gates intact).
     _refresh_suggested_custom_gates(base_config, suggested_custom)
@@ -565,6 +568,13 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     config_file = project_root / ".sb_config.json"
     setup_config_file = Path(args.config) if args.config else None
+
+    if config_file.exists():
+        from slopmop.migrations import migrate_known_config_references
+
+        migrated = migrate_known_config_references(project_root)
+        if migrated:
+            print(f"🔄 Migrated existing config: {', '.join(migrated)}")
 
     from slopmop.reporting import print_project_header
 

@@ -22,6 +22,7 @@ from slopmop.core.result import (
 from slopmop.reporting.adapters import (
     ConsoleAdapter,
     JsonAdapter,
+    PorcelainAdapter,
     SarifAdapter,
     _role_badge,
 )
@@ -672,6 +673,45 @@ class TestConsoleAdapter:
         out = capsys.readouterr().out
         assert "from cache" in out
         assert "sm swab --no-cache" in out
+
+
+class TestPorcelainAdapter:
+    def test_success_is_single_summary_line(self) -> None:
+        summary = _summary(
+            [
+                _result("a", CheckStatus.PASSED),
+                _result(
+                    "n",
+                    CheckStatus.NOT_APPLICABLE,
+                    skip_reason=SkipReason.NOT_APPLICABLE,
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+
+        assert PorcelainAdapter.render(report) == "sm swab: 0 fail · 1 pass · 1 n/a"
+
+    def test_failure_lists_actionable_detail_and_next_command(self) -> None:
+        summary = _summary(
+            [
+                _result("p", CheckStatus.PASSED),
+                _result(
+                    "laziness:code-sprawl",
+                    CheckStatus.FAILED,
+                    output="tests/big.py - too large",
+                    fix_suggestion="Split the file by concept",
+                ),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+
+        out = PorcelainAdapter.render(report)
+
+        assert "sm swab: 1 fail · 1 pass" in out
+        assert "laziness:code-sprawl" in out
+        assert "tests/big.py - too large" in out
+        assert "fix: Split the file by concept" in out
+        assert "next: sm swab -g laziness:code-sprawl" in out
 
 
 # ─── role badge helper ───────────────────────────────────────────────────

@@ -502,7 +502,12 @@ class TestUpgradeCommand:
         upgraded = json.loads(
             (tmp_path / ".sb_config.json").read_text(encoding="utf-8")
         )
-        assert upgraded == expected
+        # Upgrade now stamps the config with the installed package version.
+        assert upgraded.get("slopmop_version") == meta["to_version"]
+        expected_without_version = {
+            k: v for k, v in upgraded.items() if k != "slopmop_version"
+        }
+        assert expected_without_version == expected
 
         backups = sorted((tmp_path / ".slopmop" / "backups").iterdir())
         assert len(backups) == 1

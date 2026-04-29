@@ -52,7 +52,7 @@ def _generate_hook_script(verb: str) -> str:
 {SB_HOOK_MARKER}
 #
 # Pre-commit hook managed by slop-mop
-# Command: sm {verb}
+# Command: sm {verb} --porcelain
 # To remove: sm commit-hooks uninstall
 #
 
@@ -63,7 +63,7 @@ if ! command -v sm >/dev/null 2>&1; then
 fi
 
 mkdir -p .slopmop
-sm {verb} --swabbing-timeout 0 --json-file {json_file}
+sm {verb} --porcelain --swabbing-timeout 0 --json-file {json_file}
 result=$?
 
 if [ $result -ne 0 ]; then
