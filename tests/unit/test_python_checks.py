@@ -490,6 +490,34 @@ class TestPythonCoverageCheck:
         assert "No Python test files" in (result.error or "")
         assert result.fix_suggestion is not None
 
+    def test_diagnose_warns_when_coverage_xml_is_missing(self, tmp_path):
+        """Doctor surfaces the common missing coverage.xml preflight issue."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hello')")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_main.py").write_text(
+            "def test_main():\n    assert True\n"
+        )
+
+        diagnostics = PythonCoverageCheck({}).diagnose(str(tmp_path))
+
+        assert len(diagnostics) == 1
+        assert diagnostics[0].severity == "warn"
+        assert diagnostics[0].summary == "coverage.xml is missing"
+        assert "overconfidence:untested-code.py" in diagnostics[0].fix_hint
+
+    def test_diagnose_passes_when_coverage_xml_exists(self, tmp_path):
+        """Coverage doctor diagnostic is quiet when XML data is present."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hello')")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_main.py").write_text(
+            "def test_main():\n    assert True\n"
+        )
+        (tmp_path / "coverage.xml").write_text("<coverage />")
+
+        assert PythonCoverageCheck({}).diagnose(str(tmp_path)) == []
+
 
 class TestPythonStaticAnalysisCheck:
     """Tests for PythonStaticAnalysisCheck."""
@@ -1072,6 +1100,19 @@ class TestPythonDiffCoverageCheck:
         ):
             result = check.run(str(tmp_path))
         assert result.status == CheckStatus.ERROR
+
+    def test_diagnose_warns_when_coverage_xml_is_missing(self, tmp_path):
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hello')")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
+
+        diagnostics = PythonDiffCoverageCheck({}).diagnose(str(tmp_path))
+
+        assert len(diagnostics) == 1
+        assert diagnostics[0].severity == "warn"
+        assert diagnostics[0].summary == "coverage.xml is missing"
+        assert "overconfidence:untested-code.py" in diagnostics[0].fix_hint
 
     def test_skip_reason_python_project_not_applicable_message(self, tmp_path):
         """Skip reason uses diff-coverage specific generic message for Python projects."""

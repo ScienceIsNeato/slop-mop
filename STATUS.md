@@ -1,5 +1,23 @@
 # Project Status
 
+## 2026-04-29 Delta: Release prep doctor diagnostics
+
+Branch: `release-prep/doctor-gaps`
+
+**Work completed:**
+- Started the remaining `DOCS/RELEASE_PREP_HANDOFF.md` work with issue #113.
+- Added built-in gate diagnostics for Python whole-repo and diff coverage gates
+  so `sm doctor` can explain missing `coverage.xml` before agents chase the
+  downstream coverage failures.
+- Covered both missing and present coverage XML behavior in Python gate tests.
+
+**Validation:**
+- `./sm doctor sm_env.gate_diagnostics --project-root "$PWD" --no-json` ✅
+  (reported the new missing-coverage XML warnings before coverage data existed)
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
 ## 2026-04-27 Delta: PR 156 release prep takeover
 
 Branch: `codex/release-prep-final`
