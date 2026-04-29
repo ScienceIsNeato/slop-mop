@@ -1,5 +1,17 @@
 # Project Status
 
+## 2026-04-29 Delta: PR #157 buff — Bugbot stale-gate category fix
+
+- **Commit:** `5ea9031` — `_CONFIG_CATEGORY_KEYS` had `quality` but
+  `GateCategory.GENERAL` is `general`; `find_stale_gate_references` now
+  scans nested `general.gates`. Regression:
+  `test_find_stale_refs_scans_nested_general_section`.
+- **Thread:** `PRRT_kwDORBxXu85-WoRM` resolved via `sm buff resolve`
+  (`fixed_in_code`).
+- **`sm buff verify 157`:** clean (no unresolved threads).
+- **`sm buff inspect 157`:** blocked until code-scanning run for `5ea9031`
+  finishes; use `sm buff watch 157` then re-run inspect.
+
 ## 2026-04-29 Delta: Barnacle queue cleanup + isolation fix
 
 Branch: `backlog_cleaning`  ·  PR `#157`
