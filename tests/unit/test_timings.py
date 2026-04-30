@@ -373,7 +373,7 @@ class TestSaveTimings:
             )
         )
 
-        # 70.0s >= 6.6 * 10 (ratio) and > 6.6 + 5 (min gap) — triggers reset
+        # 70.0 / 6.6 = 10.6 >= _CACHE_POISON_RATIO (10.0) — triggers reset
         save_timings(str(tmp_path), {"check:a": 70.0}, results={"check:a": "passed"})
 
         path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
@@ -439,17 +439,19 @@ class TestSaveTimings:
         for i in range(MAX_SAMPLES):
             save_timings(str(tmp_path), {"check:a": float(i)})
 
-        # One more should evict the oldest
-        save_timings(str(tmp_path), {"check:a": 999.0})
+        # One more should evict the oldest.  Use float(MAX_SAMPLES) so the new
+        # value is the natural next integer — not a dramatic outlier that would
+        # accidentally trigger cache-poison reset detection.
+        save_timings(str(tmp_path), {"check:a": float(MAX_SAMPLES)})
 
         path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
         data = json.loads(path.read_text())
 
         samples = data["check:a"]["samples"]
         assert len(samples) == MAX_SAMPLES
-        # Oldest (0.0) should be gone, newest (999.0) present
+        # Oldest (0.0) should be gone, newest present
         assert samples[0] == 1.0
-        assert samples[-1] == 999.0
+        assert samples[-1] == float(MAX_SAMPLES)
 
     def test_creates_directory(self, tmp_path: Path) -> None:
         """Creates .slopmop directory if needed."""

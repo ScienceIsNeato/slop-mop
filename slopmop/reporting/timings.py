@@ -49,10 +49,13 @@ MAX_AGE_DAYS = 30
 # samples, but older versions or interrupted runs may have already polluted
 # timing history. If a new real run is dramatically slower than every stored
 # sample, the old history is more harmful than helpful for ETA/budgeting.
-_CACHE_POISON_MIN_DURATION = 5.0  # seconds — real run must be at least this long
-_CACHE_POISON_MIN_GAP = 5.0  # seconds — gap above historical max
-_CACHE_POISON_RATIO = 10.0  # new run must be at least 10x the old max
-_CACHE_POISON_FAST_HISTORY_MAX = 10.0  # seconds — entries faster than this are suspect
+#
+# Detection uses a single dimensionless ratio — no absolute-second thresholds.
+# A new duration that is at least _CACHE_POISON_RATIO times the historical
+# maximum implies the two populations differ by at least one order of magnitude,
+# which under a log-normal timing model is a statistically sound criterion for
+# concluding they were drawn from fundamentally different processes.
+_CACHE_POISON_RATIO = 10.0  # new_duration / max(history) must meet this threshold
 
 TIMINGS_DIR = ".slopmop"
 TIMINGS_FILE = "timings.json"
@@ -315,26 +318,31 @@ def _should_reset_implausibly_fast_history(
     samples: List[float],
     new_duration: float,
 ) -> bool:
-    """Return True when old samples look like cached/short-circuit timings.
+    """Return True when existing samples appear to be cached/short-circuit timings.
 
-    A single slow run can be noise, so the threshold is deliberately blunt:
-    the previous history must be entirely sub-10s, and the new real duration
-    must be at least 5s, at least 5s slower than the previous maximum, and at
-    least 3x slower than that maximum. This targets histories like
-    ``[0.6, 3.4, 6.6]`` followed by a real 27.9s run without resetting ordinary
-    variance or synthetic stress samples.
+    Uses a single scale-invariant criterion: ``new_duration / max(samples)``
+    must reach *_CACHE_POISON_RATIO* (default 10×).  No absolute-second
+    thresholds are used, so the check is equally effective for sub-second
+    checks and multi-minute checks.
+
+    Rationale: timing samples from real runs and from cache-hit short-circuits
+    follow different log-normal distributions.  Requiring the new sample to
+    exceed the empirical upper bound of the stored history by a full order of
+    magnitude makes it statistically implausible that both populations share
+    the same underlying process — the stored history is almost certainly
+    from the faster (cached) distribution and should be discarded.
+
+    At least two existing samples are required so a single noisy data point
+    cannot trigger a spurious reset.
     """
-    if new_duration < _CACHE_POISON_MIN_DURATION or not samples:
+    if len(samples) < 2:
         return False
 
     historical_max = max(samples)
-    if historical_max <= 0 or historical_max > _CACHE_POISON_FAST_HISTORY_MAX:
+    if historical_max <= 0:
         return False
 
-    return (
-        new_duration >= historical_max * _CACHE_POISON_RATIO
-        and new_duration - historical_max >= _CACHE_POISON_MIN_GAP
-    )
+    return new_duration / historical_max >= _CACHE_POISON_RATIO
 
 
 def load_timings(project_root: str) -> Dict[str, TimingStats]:
