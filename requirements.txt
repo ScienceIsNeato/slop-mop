@@ -9,6 +9,7 @@
 
 # Core runtime
 tomli>=1.0.0; python_version < '3.11'
+packaging>=21.0
 
 # Static analysis
 vulture>=2.14
