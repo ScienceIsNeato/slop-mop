@@ -1,5 +1,57 @@
 # Project Status
 
+## 2026-04-30 Delta: Timing history cache-poison fix
+
+Branch: `docs/pypi-readme-1.0-polish`
+
+**Work in progress:**
+- Investigated swab timing history showing cached-run-looking expected times.
+- Confirmed cached results are already skipped on fresh timing saves, but old
+  implausibly-fast samples can remain in `.slopmop/timings.json` and keep
+  expected durations wrong.
+- Added conservative self-healing in timing persistence: when a real full run is
+  wildly slower than an all-fast history, reset that poisoned history and seed
+  from the real sample.
+- Added regression coverage for poisoned fast history and normal timing drift.
+
+**Validation so far:**
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/timing_fix_tests.json` ✅
+- `./sm swab -g overconfidence:type-blindness.py --no-cache --output-file .slopmop/timing_fix_type.json` ✅
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains; PR #159 had one
+  README style thread)
+- Fixed PR #159 README figure-caption feedback by using HTML `<code>` tags in
+  the `<figcaption>`.
+- `./sm buff verify 159` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Re-run final swab after this status update, commit, and push.
+
+## 2026-04-30 Delta: PyPI README 1.0.1 polish
+
+Branch: `docs/pypi-readme-1.0-polish`
+
+**Work in progress:**
+- Synced to released `main` after 1.0.0 published.
+- Started a patch-release README branch and bumped `pyproject.toml` to `1.0.1`
+  so PyPI can receive the long-description fixes.
+- Added a human-readable `sm swab` figure asset for the top of the README.
+- Updated README guidance to make refit the first-class onboarding path and
+  baseline mode the temporary fallback.
+- Added `sm status` to the main verb table, tightened doc links for PyPI, and
+  simplified CI guidance.
+
+**Next:** Run `sm swab`, then `sm scour`, fix any failures, commit, and push.
+
+**Validation:**
+- README stale-link/text scan ✅
+- Rendered and inspected `assets/sm-swab-human-readable.png` ✅
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
 ## 2026-04-29 Delta: 1.0.0 release branch
 
 Branch: `release/v1.0.0`

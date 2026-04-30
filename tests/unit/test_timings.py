@@ -355,23 +355,103 @@ class TestSaveTimings:
 
         assert data["check:a"]["samples"] == [10.0, 5.0]
 
+    def test_resets_implausibly_fast_history_before_append(
+        self, tmp_path: Path
+    ) -> None:
+        """A real slow run should replace history poisoned by cached timings."""
+        timings_dir = tmp_path / TIMINGS_DIR
+        timings_dir.mkdir()
+        (timings_dir / TIMINGS_FILE).write_text(
+            json.dumps(
+                {
+                    "check:a": {
+                        "samples": [0.6, 3.4, 6.6],
+                        "results": ["passed", "passed", "passed"],
+                        "last_updated": time.time(),
+                    }
+                }
+            )
+        )
+
+        # 70.0 / 6.6 = 10.6 >= _CACHE_POISON_RATIO (10.0) — triggers reset
+        save_timings(str(tmp_path), {"check:a": 70.0}, results={"check:a": "passed"})
+
+        path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
+        data = json.loads(path.read_text())
+
+        assert data["check:a"]["samples"] == [70.0]
+        assert data["check:a"]["results"] == ["passed"]
+        assert data["check:a"]["cache_poison_reset_applied"] is True
+
+    def test_cache_poison_reset_only_fires_once(self, tmp_path: Path) -> None:
+        """Once the reset marker is set, a second qualifying run appends normally."""
+        timings_dir = tmp_path / TIMINGS_DIR
+        timings_dir.mkdir()
+        (timings_dir / TIMINGS_FILE).write_text(
+            json.dumps(
+                {
+                    "check:a": {
+                        "samples": [0.6, 3.4, 6.6],
+                        "results": ["passed", "passed", "passed"],
+                        "cache_poison_reset_applied": True,
+                        "last_updated": time.time(),
+                    }
+                }
+            )
+        )
+
+        # Would normally trigger the reset, but marker is already set.
+        save_timings(str(tmp_path), {"check:a": 70.0}, results={"check:a": "passed"})
+
+        path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
+        data = json.loads(path.read_text())
+
+        # History preserved (no reset) — 70.0 appended to existing samples.
+        assert data["check:a"]["samples"] == [0.6, 3.4, 6.6, 70.0]
+
+    def test_keeps_plausible_history_when_appending(self, tmp_path: Path) -> None:
+        """Ordinary timing drift should still preserve existing samples."""
+        timings_dir = tmp_path / TIMINGS_DIR
+        timings_dir.mkdir()
+        (timings_dir / TIMINGS_FILE).write_text(
+            json.dumps(
+                {
+                    "check:a": {
+                        "samples": [10.0, 12.0],
+                        "results": ["passed", "passed"],
+                        "last_updated": time.time(),
+                    }
+                }
+            )
+        )
+
+        save_timings(str(tmp_path), {"check:a": 17.0}, results={"check:a": "passed"})
+
+        path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
+        data = json.loads(path.read_text())
+
+        assert data["check:a"]["samples"] == [10.0, 12.0, 17.0]
+        assert data["check:a"]["results"] == ["passed", "passed", "passed"]
+
     def test_fifo_cap_at_max_samples(self, tmp_path: Path) -> None:
         """Sample list is capped at MAX_SAMPLES (oldest dropped)."""
         # Write MAX_SAMPLES samples
         for i in range(MAX_SAMPLES):
             save_timings(str(tmp_path), {"check:a": float(i)})
 
-        # One more should evict the oldest
-        save_timings(str(tmp_path), {"check:a": 999.0})
+        # One more should evict the oldest.  Use float(MAX_SAMPLES) so the new
+        # value is the natural next integer — not a dramatic outlier that would
+        # accidentally trigger cache-poison reset detection.
+        save_timings(str(tmp_path), {"check:a": float(MAX_SAMPLES)})
 
         path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
         data = json.loads(path.read_text())
 
         samples = data["check:a"]["samples"]
         assert len(samples) == MAX_SAMPLES
-        # Oldest (0.0) should be gone, newest (999.0) present
+        # Oldest (0.0) should be gone, newest present
         assert samples[0] == 1.0
-        assert samples[-1] == 999.0
+        assert samples[-1] == float(MAX_SAMPLES)
 
     def test_creates_directory(self, tmp_path: Path) -> None:
         """Creates .slopmop directory if needed."""

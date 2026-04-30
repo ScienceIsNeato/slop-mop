@@ -45,6 +45,18 @@ MAX_ENTRIES = 100
 # timing file from accumulating obsolete data.
 MAX_AGE_DAYS = 30
 
+# Cached or otherwise short-circuited runs should not be recorded as timing
+# samples, but older versions or interrupted runs may have already polluted
+# timing history. If a new real run is dramatically slower than every stored
+# sample, the old history is more harmful than helpful for ETA/budgeting.
+#
+# Detection uses a single dimensionless ratio — no absolute-second thresholds.
+# A new duration that is at least _CACHE_POISON_RATIO times the historical
+# maximum implies the two populations differ by at least one order of magnitude,
+# which under a log-normal timing model is a statistically sound criterion for
+# concluding they were drawn from fundamentally different processes.
+_CACHE_POISON_RATIO = 10.0  # new_duration / max(history) must meet this threshold
+
 TIMINGS_DIR = ".slopmop"
 TIMINGS_FILE = "timings.json"
 
@@ -302,6 +314,37 @@ def _migrate_v1_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _should_reset_implausibly_fast_history(
+    samples: List[float],
+    new_duration: float,
+) -> bool:
+    """Return True when existing samples appear to be cached/short-circuit timings.
+
+    Uses a single scale-invariant criterion: ``new_duration / max(samples)``
+    must reach *_CACHE_POISON_RATIO* (default 10×).  No absolute-second
+    thresholds are used, so the check is equally effective for sub-second
+    checks and multi-minute checks.
+
+    Rationale: timing samples from real runs and from cache-hit short-circuits
+    follow different log-normal distributions.  Requiring the new sample to
+    exceed the empirical upper bound of the stored history by a full order of
+    magnitude makes it statistically implausible that both populations share
+    the same underlying process — the stored history is almost certainly
+    from the faster (cached) distribution and should be discarded.
+
+    At least two existing samples are required so a single noisy data point
+    cannot trigger a spurious reset.
+    """
+    if len(samples) < 2:
+        return False
+
+    historical_max = max(samples)
+    if historical_max <= 0:
+        return False
+
+    return new_duration / historical_max >= _CACHE_POISON_RATIO
+
+
 def load_timings(project_root: str) -> Dict[str, TimingStats]:
     """Load historical check timings from disk.
 
@@ -473,6 +516,26 @@ def save_timings(
             samples: List[float] = entry.get("samples", [])
             if not isinstance(samples, list):
                 samples = []
+            samples = [float(sample) for sample in samples]
+
+            # If old history is clearly made of cached/short-circuit timings,
+            # restart from the real sample instead of letting bad medians linger.
+            # Applied at most once per entry — marked so it never fires again.
+            cache_poison_reset_applied = bool(entry.get("cache_poison_reset_applied"))
+            if (
+                not cache_poison_reset_applied
+                and _should_reset_implausibly_fast_history(samples, rounded)
+            ):
+                logger.debug(
+                    "Resetting implausibly fast timing history for %s: "
+                    "max=%s new=%s",
+                    name,
+                    max(samples),
+                    rounded,
+                )
+                cache_poison_reset_applied = True
+                samples = []
+                entry["results"] = []
             samples.append(rounded)
 
             # Result history — kept in sync with samples
@@ -494,6 +557,8 @@ def save_timings(
             }
             if result_list:
                 entry_data["results"] = result_list
+            if cache_poison_reset_applied:
+                entry_data["cache_poison_reset_applied"] = True
             raw[name] = entry_data
         else:
             entry_data = {

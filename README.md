@@ -11,6 +11,15 @@
 
 Slop-mop is a quality gate runner for AI-assisted codebases.
 
+<figure>
+  <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/sm-swab-human-readable.png" alt="Human-readable sm swab output showing grouped quality gates and a no slop detected summary" />
+  <figcaption>
+    The default <code>sm swab</code> view is built for humans: grouped gates,
+    progress, timings, and a clear final verdict. Agent loops can use
+    <code>--porcelain</code> when they need terse output instead.
+  </figcaption>
+</figure>
+
 It does not try to make agents smart. It gives them greased rails: a path of
 least resistance toward more maintainable choices. Run the tool, read what
 failed, fix that thing, run it again.
@@ -50,19 +59,21 @@ sm init
 
 Choose a starting point.
 
-If the repo is already carrying failures, create a baseline and report only new
-failures while you clean up:
+For an existing repo, start with refit. It walks the project through a
+structured cleanup before you enter the day-to-day maintenance loop:
+
+```bash
+sm refit --start
+sm refit --iterate
+sm refit --finish
+```
+
+If you cannot do the full refit right now, generate a baseline as a temporary
+escape hatch. That keeps new failures loud while you come back to the cleanup:
 
 ```bash
 sm status --generate-baseline-snapshot
 sm swab --ignore-baseline-failures
-```
-
-If you want slop-mop to walk the repo through a structured cleanup first, use
-refit instead:
-
-```bash
-sm refit --start
 ```
 
 Run the normal loop:
@@ -94,10 +105,11 @@ It reads the current workflow state and runs the next obvious slop-mop verb.
 
 ## The Loop
 
-Slop-mop has four verbs you will actually use:
+Slop-mop has five verbs you will actually use:
 
 | Verb | What it is for | When to run it |
 | --- | --- | --- |
+| `sm status` | Workflow state and baseline snapshots | When you need current state or a temporary baseline |
 | `sm swab` | Code-centric local feedback | After meaningful code changes |
 | `sm scour` | Code-centric pre-PR sweep | Before opening or updating a PR |
 | `sm buff` | Process-centric CI and review follow-up | After CI completes or review feedback lands |
@@ -137,8 +149,8 @@ The full gate reasoning lives in [DOCS/GATE_REASONING.md](https://github.com/Sci
 
 There are two modes.
 
-Use **refit** when a repo is already dirty and you need a structured cleanup
-plan:
+Use **refit** first when a repo is already dirty and you need a structured
+cleanup plan:
 
 ```bash
 sm refit --start
@@ -154,7 +166,9 @@ sm scour
 sm buff
 ```
 
-Refit is slower and more deliberate. Maintenance is the day-to-day loop.
+Refit is the first-class onboarding path. Baseline mode is secondary: use it
+only to unblock yourself temporarily when you cannot run the full refit yet.
+Maintenance is the day-to-day loop after the repo is in decent shape.
 
 ## Minimal Install
 
@@ -183,15 +197,16 @@ sm config --disable laziness:complexity-creep.py
 ```
 
 Disabling a gate should be temporary. If a gate is wrong, tune it or file the
-tooling bug. If the repo is not ready yet, use refit or baseline mode instead of
-pretending the problem is gone.
+tooling bug. If the repo is not ready yet, use refit first. Use baseline mode
+only as a short-term unblocker when refit is not practical in the moment.
 
 Migration behavior is documented in [DOCS/MIGRATIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/MIGRATIONS.md).
 
 ## Baselines
 
-Sometimes you inherit a repo that is already messy. Slop-mop can snapshot the
-current failures so new failures stay loud while old ones get paid down.
+Sometimes you inherit a repo that is already messy and cannot stop for a full
+refit. Slop-mop can snapshot the current failures so new failures stay loud
+while old ones get paid down.
 
 ```bash
 sm status --generate-baseline-snapshot
@@ -199,13 +214,14 @@ sm swab --ignore-baseline-failures
 sm scour --ignore-baseline-failures
 ```
 
-This is not a way to hide problems. It is a way to stop old problems from
-blocking every unrelated change while you clean them up deliberately.
+This is not a way to hide problems or skip refit. It is a temporary unblocker:
+stop old problems from blocking every unrelated change, then come back and clean
+them up deliberately.
 
 ## CI
 
-Run slop-mop in CI the same way you run it locally: install it, check out enough
-git history for history-aware gates, then run the gate command.
+Run slop-mop in CI the same way you run it locally: install it and run the gate
+command.
 
 See [DOCS/CI.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CI.md) for a GitHub Actions template.
 
