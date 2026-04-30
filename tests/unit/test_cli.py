@@ -639,3 +639,37 @@ class TestInitDoesNotMutateProjectFiles:
         # sm init artifacts must be created
         assert (tmp_path / ".sb_config.json").exists()
         assert (tmp_path / ".sb_config.json.template").exists()
+
+
+class TestInitMigrationBranch:
+    """Cover the 'if migrated:' print branch in cmd_init."""
+
+    def test_existing_config_triggers_migration_print(self, tmp_path, capsys):
+        import argparse
+        from unittest.mock import patch
+
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps({"swabbing_time": 30}), encoding="utf-8"
+        )
+        (tmp_path / "main.py").write_text("print('hi')\n")
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            config=None,
+            non_interactive=True,
+        )
+
+        with (
+            patch("slopmop.cli.status.run_status", return_value=0),
+            patch(
+                "slopmop.migrations.migrate_known_config_references",
+                return_value=["known-gate-reference-migrations"],
+            ) as mock_migrate,
+        ):
+            from slopmop.cli.init import cmd_init
+
+            assert cmd_init(args) == 0
+
+        mock_migrate.assert_called_once()
+        captured = capsys.readouterr()
+        assert "Migrated existing config" in captured.out

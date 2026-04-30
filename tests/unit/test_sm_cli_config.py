@@ -295,6 +295,20 @@ class TestCmdConfig:
         assert args.verb == "config"
         assert args.swabbing_timeout == 45
 
+    def test_swab_porcelain_parser(self):
+        """swab --porcelain flag parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["swab", "--porcelain"])
+        assert args.verb == "swab"
+        assert args.porcelain is True
+
+    def test_scour_porcelain_parser(self):
+        """scour --porcelain flag parses correctly."""
+        parser = create_parser()
+        args = parser.parse_args(["scour", "--porcelain"])
+        assert args.verb == "scour"
+        assert args.porcelain is True
+
     def test_config_swab_off_parser(self):
         """config --swab-off flag parses correctly."""
         parser = create_parser()

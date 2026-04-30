@@ -15,7 +15,7 @@ If you find yourself writing ``[r for r in summary.results if ...]``
 inside an adapter, that's RunReport's job — add a property there.
 """
 
-from typing import Dict, List, cast
+from typing import Dict, List, Optional, cast
 
 from slopmop.constants import ROLE_BADGES, format_duration_suffix
 from slopmop.core.result import CheckResult
@@ -155,6 +155,74 @@ class SarifAdapter:
         # still validates, fingerprints just won't resolve file content.
         root = report.project_root or "."
         return SarifReporter(root).generate(report.summary)
+
+
+class PorcelainAdapter:
+    """Render terse, stable validation output for agent hot loops."""
+
+    @staticmethod
+    def render(report: RunReport) -> str:
+        """Return a compact line-oriented validation summary."""
+        lines = [PorcelainAdapter._summary_line(report)]
+        for result in report.actionable:
+            lines.append(result.name)
+            detail = PorcelainAdapter._detail_line(result)
+            if detail:
+                lines.append(f"  {detail}")
+            if result.fix_suggestion:
+                lines.append(f"  fix: {result.fix_suggestion}")
+            lines.append(f"  next: {report.per_gate_verify_command(result.name)}")
+
+        if report.verify_command and len(report.actionable) > 1:
+            lines.append(f"first: {report.verify_command}")
+
+        cache = report.cache_metadata()
+        if cache:
+            lines.append(
+                "cache: "
+                f"{cache['cached_results']}/{cache['total_ran']} cached; "
+                f"fresh: {cache['refresh_command']}"
+            )
+
+        budget_skips = report.summary.skip_reason_summary().get("time", 0)
+        if budget_skips:
+            lines.append(
+                f"warning: {budget_skips} timed check(s) skipped; "
+                "fresh: sm swab --swabbing-timeout 0"
+            )
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _summary_line(report: RunReport) -> str:
+        summary = report.summary
+        parts = [
+            f"{summary.failed + summary.errors} fail",
+            f"{summary.passed} pass",
+        ]
+        if summary.warned:
+            parts.append(f"{summary.warned} warn")
+        if summary.not_applicable:
+            parts.append(f"{summary.not_applicable} n/a")
+        if summary.skipped:
+            parts.append(f"{summary.skipped} skip")
+        return f"sm {report.level or 'validation'}: " + " · ".join(parts)
+
+    @staticmethod
+    def _detail_line(result: CheckResult) -> Optional[str]:
+        if result.findings:
+            finding = result.findings[0]
+            location = finding.file or "(location unknown)"
+            if finding.file and finding.line is not None:
+                location = f"{finding.file}:{finding.line}"
+            return f"{location} - {finding.message}"
+        if result.error:
+            return result.error
+        for raw_line in result.output.splitlines():
+            line = raw_line.strip()
+            if line and "✅" not in line:
+                return line
+        return None
 
 
 class ConsoleAdapter:

@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from slopmop.cli.validate import (
+    _is_porcelain_mode,
     _parse_quality_gates,
     _print_header,
     _resolve_swabbing_timeout,
@@ -74,6 +75,17 @@ class TestParseQualityGates:
             self._ns(["myopia:code-sprawl,laziness:dead-code.py"])
         )
         assert result == ["myopia:code-sprawl", "laziness:dead-code.py"]
+
+
+class TestPorcelainMode:
+    def _ns(self, gates):
+        return argparse.Namespace(quality_gates=gates)
+
+    def test_defaults_to_false(self):
+        assert _is_porcelain_mode(argparse.Namespace()) is False
+
+    def test_reads_flag(self):
+        assert _is_porcelain_mode(argparse.Namespace(porcelain=True)) is True
 
     def test_multiple_args_are_merged(self):
         result = _parse_quality_gates(

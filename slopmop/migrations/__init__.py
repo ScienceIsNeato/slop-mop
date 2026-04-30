@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, cast
+from typing import Any, Callable, Dict, Iterable, List, Sequence, cast
 
 from packaging.version import Version
 
@@ -42,6 +42,24 @@ class UpgradeMigration:
         return from_v < Version(self.max_version) <= to_v and from_v >= Version(
             self.min_version
         )
+
+
+@dataclass(frozen=True)
+class StaleGateReference:
+    """A config reference to a gate that is no longer registered."""
+
+    reference: str
+    location: str
+    replacements: tuple[str, ...] = ()
+
+
+_CONFIG_CATEGORY_KEYS = {
+    "deceptiveness",
+    "general",
+    "laziness",
+    "myopia",
+    "overconfidence",
+}
 
 
 # ===================================================================
@@ -152,6 +170,131 @@ _DART_GATE_RENAMES: dict[str, str] = {
     "flutter-test": "overconfidence:untested-code.dart",
     "dart-format-check": "laziness:sloppy-formatting.dart",
 }
+
+_KNOWN_GATE_REPLACEMENTS: dict[str, tuple[str, ...]] = {
+    "myopia:source-duplication": (
+        "myopia:ambiguity-mines.py",
+        "laziness:repeated-code",
+    ),
+    **{old_name: (new_name,) for old_name, new_name in _DART_GATE_RENAMES.items()},
+}
+
+
+def _replacement_for(reference: str) -> tuple[str, ...]:
+    return _KNOWN_GATE_REPLACEMENTS.get(reference, ())
+
+
+def _dedupe_stale_references(
+    references: list[StaleGateReference],
+) -> list[StaleGateReference]:
+    seen: set[tuple[str, str]] = set()
+    deduped: list[StaleGateReference] = []
+    for reference in references:
+        key = (reference.location, reference.reference)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(reference)
+    return deduped
+
+
+def find_stale_gate_references(
+    config: dict[str, Any], registry_names: Sequence[str]
+) -> list[StaleGateReference]:
+    """Return stale gate references from both legacy and nested config forms."""
+    registry_set = set(registry_names)
+    stale: list[StaleGateReference] = []
+
+    def _record(reference: str, location: str) -> None:
+        if reference in registry_set:
+            return
+        replacements = _replacement_for(reference)
+        if replacements or ":" in reference:
+            stale.append(
+                StaleGateReference(
+                    reference=reference,
+                    location=location,
+                    replacements=replacements,
+                )
+            )
+
+    disabled_raw = config.get("disabled_gates")
+    if isinstance(disabled_raw, list):
+        disabled_entries = cast(list[Any], disabled_raw)
+        for entry in disabled_entries:
+            if isinstance(entry, str):
+                _record(entry, "disabled_gates")
+
+    for key, value in config.items():
+        if ":" in key and isinstance(value, dict):
+            category = key.split(":", 1)[0]
+            if category in _CONFIG_CATEGORY_KEYS:
+                _record(key, "flat gate config")
+            continue
+        if key not in _CONFIG_CATEGORY_KEYS or not isinstance(value, dict):
+            continue
+        section = cast(dict[str, Any], value)
+        gates_raw: object = section.get("gates")
+        if not isinstance(gates_raw, dict):
+            continue
+        gates = cast(dict[str, Any], gates_raw)
+        for gate_name_raw in gates:
+            if isinstance(gate_name_raw, str):
+                _record(f"{key}:{gate_name_raw}", f"{key}.gates")
+
+    return _dedupe_stale_references(stale)
+
+
+def stale_gate_reference_warnings(
+    config: dict[str, Any], registry_names: Sequence[str]
+) -> list[str]:
+    """Format stale gate references as concise user-facing warnings."""
+    warnings: list[str] = []
+    for issue in find_stale_gate_references(config, registry_names):
+        if issue.replacements:
+            replacement = ", ".join(issue.replacements)
+            warnings.append(
+                "Stale slop-mop gate reference in "
+                f"{issue.location}: {issue.reference} -> {replacement}. "
+                "Run `sm init --non-interactive` or `sm upgrade` to migrate config."
+            )
+        else:
+            warnings.append(
+                "Unknown slop-mop gate reference in "
+                f"{issue.location}: {issue.reference}. "
+                "Run `sm config --show` to inspect available gates."
+            )
+    return warnings
+
+
+def stamp_config_version(project_root: str | Path, version: str) -> None:
+    """Persist the slop-mop package version that last wrote local config."""
+    config_path = Path(project_root) / _CONFIG_FILE
+    if not config_path.exists():
+        return
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    if not isinstance(data, dict):
+        return
+    config = cast(dict[str, Any], data)
+    if config.get("slopmop_version") == version:
+        return
+    config["slopmop_version"] = version
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+
+def migrate_known_config_references(project_root: str | Path) -> list[str]:
+    """Apply known gate-reference migrations without needing version metadata."""
+    root = Path(project_root)
+    config_path = root / _CONFIG_FILE
+    before = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    _rename_source_duplication(root)
+    _rename_dart_gates(root)
+    _rename_swabbing_time(root)
+    after = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    return ["known-gate-reference-migrations"] if before != after else []
 
 
 def _rename_dart_gates(project_root: Path) -> None:
@@ -352,6 +495,12 @@ _MIGRATIONS: List[UpgradeMigration] = [
         min_version="0.15.0",
         max_version="0.15.1",
         apply=_sync_built_in_gate_applicability,
+    ),
+    UpgradeMigration(
+        key="stamp-config-version",
+        min_version="0.15.1",
+        max_version="0.15.2",
+        apply=lambda root: stamp_config_version(root, "0.15.2"),
     ),
 ]
 

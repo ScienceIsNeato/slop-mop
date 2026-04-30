@@ -62,6 +62,36 @@ class TestTemplateValidationCheck:
         check = TemplateValidationCheck({"templates_dir": "templates"})
         assert check.is_applicable(str(tmp_path)) is True
 
+    def test_is_applicable_explicit_no_templates(self, tmp_path):
+        """Explicit templates_dir: null is treated as actionable config."""
+        check = TemplateValidationCheck({"templates_dir": None})
+        assert check.is_applicable(str(tmp_path)) is True
+
+    def test_skip_reason_no_config_key(self, tmp_path):
+        check = TemplateValidationCheck({})
+        assert "No templates_dir configured" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_explicit_null(self, tmp_path):
+        check = TemplateValidationCheck({"templates_dir": None})
+        assert "explicitly null" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_non_string_value(self, tmp_path):
+        check = TemplateValidationCheck({"templates_dir": 42})
+        assert "not a usable string" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_empty_string(self, tmp_path):
+        check = TemplateValidationCheck({"templates_dir": ""})
+        assert "not a usable string" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_dir_does_not_exist(self, tmp_path):
+        check = TemplateValidationCheck({"templates_dir": "no_such_dir"})
+        assert "does not exist" in check.skip_reason(str(tmp_path))
+
+    def test_skip_reason_dir_exists_fallback(self, tmp_path):
+        (tmp_path / "tpl").mkdir()
+        check = TemplateValidationCheck({"templates_dir": "tpl"})
+        assert "No Jinja2 templates detected" in check.skip_reason(str(tmp_path))
+
     def test_run_no_templates_dir(self, tmp_path):
         """Test run skips when no templates_dir configured."""
         check = TemplateValidationCheck({})
@@ -70,6 +100,14 @@ class TestTemplateValidationCheck:
         assert result.status == CheckStatus.SKIPPED
         assert "No templates_dir configured" in result.output
         assert ".sb_config.json" in result.fix_suggestion
+
+    def test_run_explicit_no_templates_passes(self, tmp_path):
+        """templates_dir: null should pass without requiring fake directories."""
+        check = TemplateValidationCheck({"templates_dir": None})
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert "explicitly declares no Jinja2 templates" in result.output
 
     def test_run_with_template_smoke_test(self, tmp_path):
         """Test run uses existing template smoke test when available."""

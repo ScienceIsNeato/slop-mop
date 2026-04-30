@@ -56,6 +56,21 @@ from slopmop.utils import as_str_list, dedupe_str_list
 logger = logging.getLogger(__name__)
 
 
+def _warn_on_stale_config_references(config: Dict[str, Any]) -> None:
+    """Warn when local config names gates the registry no longer knows."""
+    try:
+        from slopmop.checks import ensure_checks_registered
+        from slopmop.core.registry import get_registry
+        from slopmop.migrations import stale_gate_reference_warnings
+
+        ensure_checks_registered()
+        registry_names = get_registry().list_checks()
+        for warning in stale_gate_reference_warnings(config, registry_names):
+            logger.warning(warning)
+    except Exception as exc:  # noqa: BLE001 - config loading must stay robust
+        logger.debug("stale config reference check failed: %s", exc)
+
+
 def _load_gitignore_exclude_paths(project_root: Path) -> list[str]:
     """Return raw path filters from the project's .gitignore.
 
@@ -114,7 +129,10 @@ def load_config(project_root: Path) -> Dict[str, Any]:
     if config_path.exists():
         try:
             local = json.loads(config_path.read_text())
-            base = _deep_merge(base, local)
+            if isinstance(local, dict):
+                local_dict = cast(Dict[str, Any], local)
+                _warn_on_stale_config_references(local_dict)
+                base = _deep_merge(base, local_dict)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse config: {e}")
 
@@ -276,6 +294,11 @@ def _add_validation_flags(parser: argparse.ArgumentParser) -> None:
         "-q",
         action="store_true",
         help="Minimal output (only show failures)",
+    )
+    parser.add_argument(
+        "--porcelain",
+        action="store_true",
+        help="Token-terse agent output: one summary line plus actionable failures.",
     )
     parser.add_argument(
         "--static",

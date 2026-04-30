@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 
 # Import all checks to ensure they're registered
 # noqa: E402 - must come after registry import
+from slopmop import __version__  # noqa: E402
 from slopmop.checks import ensure_checks_registered  # noqa: E402
 from slopmop.checks.base import BaseCheck, ConfigField, GateCategory
 from slopmop.core.config import CONFIG_FILE
@@ -119,6 +120,7 @@ def generate_base_config(
 
     config: Dict[str, Any] = {
         "version": "1.0",
+        "slopmop_version": __version__,
         "swabbing_timeout": 20,
     }
 

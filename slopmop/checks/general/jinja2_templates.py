@@ -90,28 +90,53 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        # Applicable if templates_dir is configured and exists
+        # Applicable when templates are configured, or explicitly opted out.
+        if self._is_explicit_no_templates():
+            return True
         return self._get_templates_dir(project_root) is not None
 
     def skip_reason(self, project_root: str) -> str:
         """Explain why templates check is not applicable."""
-        configured = self.config.get("templates_dir")
-        if not configured:
+        if "templates_dir" not in self.config:
             return "No templates_dir configured in .sb_config.json"
+        if self._is_explicit_no_templates():
+            return (
+                "templates_dir is explicitly null (repo declares no Jinja2 templates)"
+            )
+        configured = self.config.get("templates_dir")
+        if not isinstance(configured, str) or not configured:
+            return "templates_dir is configured but not a usable string"
         templates_path = os.path.join(project_root, configured)
         if not os.path.isdir(templates_path):
             return f"Configured templates_dir '{configured}' does not exist"
         return "No Jinja2 templates detected"
 
+    def _is_explicit_no_templates(self) -> bool:
+        """True when config intentionally declares no templates."""
+        return (
+            "templates_dir" in self.config and self.config.get("templates_dir") is None
+        )
+
     def _get_templates_dir(self, project_root: str) -> Optional[str]:
         """Get templates directory from config."""
         configured = self.config.get("templates_dir")
-        if configured and os.path.isdir(os.path.join(project_root, configured)):
+        if (
+            isinstance(configured, str)
+            and configured
+            and os.path.isdir(os.path.join(project_root, configured))
+        ):
             return configured
         return None
 
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
+
+        if self._is_explicit_no_templates():
+            return self._create_result(
+                status=CheckStatus.PASSED,
+                duration=time.time() - start_time,
+                output="templates_dir is null; repository explicitly declares no Jinja2 templates.",
+            )
 
         # Check for dedicated template smoke test first (needs project venv)
         template_test = os.path.join(

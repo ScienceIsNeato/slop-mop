@@ -11,8 +11,12 @@ from slopmop.migrations import (
     _rename_source_duplication,
     _rename_swabbing_time,
     _sync_built_in_gate_applicability,
+    find_stale_gate_references,
+    migrate_known_config_references,
     planned_upgrade_migrations,
     run_upgrade_migrations,
+    stale_gate_reference_warnings,
+    stamp_config_version,
 )
 from tests.upgrade_scenario_helpers import materialize_upgrade_scenario
 
@@ -126,6 +130,152 @@ class TestMigrationRegistry:
     def test_sync_built_in_gate_applicability_is_registered(self):
         keys = planned_upgrade_migrations("0.15.0", "0.15.1")
         assert "sync-built-in-gate-applicability" in keys
+
+    def test_stamp_config_version_is_registered(self):
+        keys = planned_upgrade_migrations("0.15.1", "0.15.2")
+        assert "stamp-config-version" in keys
+
+
+class TestStaleGateReferences:
+    def test_finds_known_nested_and_disabled_stale_refs(self):
+        issues = find_stale_gate_references(
+            {
+                "disabled_gates": ["overconfidence:flutter-test"],
+                "myopia": {"gates": {"source-duplication": {"enabled": True}}},
+            },
+            [
+                "overconfidence:untested-code.dart",
+                "myopia:ambiguity-mines.py",
+                "laziness:repeated-code",
+            ],
+        )
+
+        by_ref = {issue.reference: issue for issue in issues}
+        assert by_ref["overconfidence:flutter-test"].replacements == (
+            "overconfidence:untested-code.dart",
+        )
+        assert by_ref["myopia:source-duplication"].replacements == (
+            "myopia:ambiguity-mines.py",
+            "laziness:repeated-code",
+        )
+
+    def test_warns_for_unknown_colon_gate(self):
+        warnings = stale_gate_reference_warnings(
+            {"laziness:vanished-gate.py": {"enabled": True}},
+            ["laziness:sloppy-formatting.py"],
+        )
+
+        assert len(warnings) == 1
+        assert "Unknown slop-mop gate reference" in warnings[0]
+        assert "laziness:vanished-gate.py" in warnings[0]
+
+    def test_init_migration_applies_known_reference_updates(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "disabled_gates": ["overconfidence:flutter-analyze"],
+                    "swabbing_time": 7,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        applied = migrate_known_config_references(tmp_path)
+        result = json.loads((tmp_path / ".sb_config.json").read_text())
+
+        assert applied == ["known-gate-reference-migrations"]
+        assert result["disabled_gates"] == ["overconfidence:missing-annotations.dart"]
+        assert result["swabbing_timeout"] == 7
+        assert "swabbing_time" not in result
+
+    def test_stamp_config_version_records_writer_version(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("{}", encoding="utf-8")
+
+        stamp_config_version(tmp_path, "9.9.9")
+        result = json.loads((tmp_path / ".sb_config.json").read_text())
+
+        assert result["slopmop_version"] == "9.9.9"
+
+    def test_stamp_config_version_noop_if_no_config_file(self, tmp_path: Path):
+        stamp_config_version(tmp_path, "1.0.0")
+        assert not (tmp_path / ".sb_config.json").exists()
+
+    def test_stamp_config_version_noop_on_invalid_json(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("NOT JSON", encoding="utf-8")
+        stamp_config_version(tmp_path, "1.0.0")
+        assert (tmp_path / ".sb_config.json").read_text() == "NOT JSON"
+
+    def test_stamp_config_version_noop_on_non_dict_json(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("[1,2,3]", encoding="utf-8")
+        stamp_config_version(tmp_path, "1.0.0")
+        assert (tmp_path / ".sb_config.json").read_text() == "[1,2,3]"
+
+    def test_stamp_config_version_noop_when_already_matches(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text(
+            '{"slopmop_version": "9.9.9"}', encoding="utf-8"
+        )
+        stamp_config_version(tmp_path, "9.9.9")
+        data = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert data == {"slopmop_version": "9.9.9"}
+
+    def test_dedupe_stale_references_removes_exact_duplicates(self):
+        from slopmop.migrations import StaleGateReference, _dedupe_stale_references
+
+        refs = [
+            StaleGateReference(reference="a:b", location="disabled_gates"),
+            StaleGateReference(reference="a:b", location="disabled_gates"),
+            StaleGateReference(reference="c:d", location="flat gate config"),
+        ]
+        deduped = _dedupe_stale_references(refs)
+        assert len(deduped) == 2
+
+    def test_find_stale_refs_skips_known_registry_name(self):
+        issues = find_stale_gate_references(
+            {"disabled_gates": ["laziness:sloppy-formatting.py"]},
+            ["laziness:sloppy-formatting.py"],
+        )
+        assert issues == []
+
+    def test_find_stale_refs_disabled_entries_with_known_replacement(self):
+        issues = find_stale_gate_references(
+            {"disabled_gates": ["overconfidence:flutter-test"]},
+            ["overconfidence:untested-code.dart"],
+        )
+        assert len(issues) == 1
+        assert issues[0].replacements
+
+    def test_stale_gate_warnings_with_replacements(self):
+        warnings = stale_gate_reference_warnings(
+            {"disabled_gates": ["overconfidence:flutter-test"]},
+            ["overconfidence:untested-code.dart"],
+        )
+        assert len(warnings) == 1
+        assert "Stale slop-mop gate reference" in warnings[0]
+        assert "->" in warnings[0]
+
+    def test_stale_gate_warnings_without_replacements(self):
+        warnings = stale_gate_reference_warnings(
+            {"laziness:vanished-gate.py": {"enabled": True}},
+            ["laziness:sloppy-formatting.py"],
+        )
+        assert len(warnings) == 1
+        assert "Unknown slop-mop gate reference" in warnings[0]
+
+    def test_find_stale_refs_scans_nested_general_section(self):
+        """Nested ``general.gates`` must be scanned (not a bogus ``quality`` key)."""
+        issues = find_stale_gate_references(
+            {
+                "general": {
+                    "gates": {
+                        "vanished-gate.py": {"enabled": True},
+                    },
+                },
+            },
+            ["laziness:sloppy-formatting.py"],
+        )
+        assert len(issues) == 1
+        assert issues[0].reference == "general:vanished-gate.py"
+        assert issues[0].location == "general.gates"
 
 
 class TestRenameSourceDuplication:
