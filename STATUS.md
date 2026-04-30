@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-04-30 Delta: PyPI README 1.0.1 polish
+
+Branch: `docs/pypi-readme-1.0-polish`
+
+**Work in progress:**
+- Synced to released `main` after 1.0.0 published.
+- Started a patch-release README branch and bumped `pyproject.toml` to `1.0.1`
+  so PyPI can receive the long-description fixes.
+- Added a human-readable `sm swab` figure asset for the top of the README.
+- Updated README guidance to make refit the first-class onboarding path and
+  baseline mode the temporary fallback.
+- Added `sm status` to the main verb table, tightened doc links for PyPI, and
+  simplified CI guidance.
+
+**Next:** Run `sm swab`, then `sm scour`, fix any failures, commit, and push.
+
+**Validation:**
+- README stale-link/text scan ✅
+- Rendered and inspected `assets/sm-swab-human-readable.png` ✅
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
 ## 2026-04-29 Delta: 1.0.0 release branch
 
 Branch: `release/v1.0.0`
