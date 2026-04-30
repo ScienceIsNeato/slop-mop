@@ -26,7 +26,7 @@ It is opinionated. Sometimes loudly. That is on purpose.
 
 ## Project Status
 
-slop-mop is still pre-1.0. The current public policy surface for release and
+slop-mop has reached 1.0.0. The current public policy surface for release and
 stability expectations lives here:
 
 - [DOCS/COMPATIBILITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/COMPATIBILITY.md)

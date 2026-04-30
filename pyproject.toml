@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slopmop"
-version = "0.15.1"
+version = "1.0.0"
 description = "Quality gates for AI-assisted codebases — catch the slop LLMs leave behind."
 readme = "README.md"
 license = {text = "Slop-Mop Attribution License v1.0"}
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["quality-gate", "linting", "testing", "ci-cd", "code-quality", "ai", "llm", "vibe-coding"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: Other/Proprietary License",
     "Operating System :: OS Independent",

@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-04-29 Delta: 1.0.0 release branch
+
+Branch: `release/v1.0.0`
+
+**Work in progress:**
+- Synced local `main` to `origin/main` after PR #157 merged.
+- Stashed the stale local `backlog_cleaning` work as
+  `pre-1.0-main-sync-stale-wip` before switching branches.
+- Started the 1.0.0 release branch from current `main`.
+- Bumped package metadata to `1.0.0` and updated release-facing docs from
+  pre-1.0 language to the stable 1.x contract.
+
+**Validation so far:**
+- Stale release-text scan is clean for release-facing files; remaining `0.15.x`
+  hits are migration history and upgrade fixtures.
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --no-cache --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Commit and push the release branch without creating a PR automatically.
+
 ## 2026-04-29 Delta: PR #157 buff — Bugbot stale-gate category fix
 
 - **Commit:** `5ea9031` — `_CONFIG_CATEGORY_KEYS` had `quality` but

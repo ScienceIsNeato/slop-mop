@@ -1,10 +1,8 @@
 # Compatibility and Support
 
-slop-mop is still pre-1.0. The project is trying to be disciplined about
-compatibility, but it is not claiming a frozen surface yet.
-
-This document is the public contract for what users should expect from releases
-before 1.0.0.
+Starting with 1.0.0, slop-mop treats its documented CLI, config, and release
+surfaces as stable. The project can still evolve, but user-visible breakage
+needs a migration path or a clearly documented major release boundary.
 
 ## Support Scope
 
@@ -13,13 +11,13 @@ The actively supported surfaces are:
 - the latest published PyPI release
 - `main`, when validating an upcoming release or an unreleased fix
 
-Pre-1.0 releases do not have long-term support branches. Fixes land in `main`
-first. Older releases may be closed as unsupported instead of backported.
+The latest minor release receives active fixes. Fixes land in `main` first;
+older release lines may be closed as unsupported instead of backported unless a
+security or severe data-loss issue warrants a targeted patch.
 
-## Versioning Expectations Before 1.0
+## Versioning Expectations
 
-slop-mop uses semantic-looking versions, but pre-1.0 rules are intentionally
-stricter than "anything goes" and looser than a true 1.x contract.
+slop-mop follows semantic versioning for the documented public surface.
 
 ### Patch releases
 
@@ -31,19 +29,19 @@ Patch releases should avoid intentional breakage in:
 - release/install behavior from supported package entry points
 
 Bug fixes, dependency bumps, and additive flags are fine. Intentional breakage
-in a patch release needs a very strong reason and should be called out
-explicitly in release notes.
+in a patch release needs a very strong reason, a migration or compatibility
+shim when practical, and explicit release notes.
 
 ### Minor releases
 
-Minor releases may still evolve:
+Minor releases may add or deprecate:
 
 - gate names
 - config structure
 - machine-readable output formats
 - agent-install templates and workflow scaffolding
 
-When that happens:
+When a minor release changes behavior:
 
 - ship an automated `sm upgrade` migration when the change is automatable
 - update [DOCS/MIGRATIONS.md](MIGRATIONS.md) when migration authoring rules
@@ -53,11 +51,13 @@ When that happens:
 
 ## Config and Output Compatibility
 
-Before 1.0.0:
+For 1.x releases:
 
-- committed config templates may change between minor releases
+- committed config templates may gain new optional settings between minor
+  releases
 - existing user configs should keep working via migration whenever practical
-- JSON and SARIF output should be treated as evolving integration surfaces
+- JSON, SARIF, and porcelain output should avoid incompatible changes inside a
+  minor release line
 
 If a change intentionally breaks an integration surface, the release notes
 should say so plainly rather than hiding it inside a generic changelog entry.
@@ -85,20 +85,10 @@ otherwise.
 
 ## Deprecation Policy
 
-Pre-1.0 does not guarantee a long deprecation window, but the project should
-still avoid surprise removals.
+The project should avoid surprise removals.
 
 The expectation is:
 
 - additive changes can land immediately
 - renames/removals should come with a migration when possible
 - release notes should call out behavior changes that require user action
-
-## 1.0 Trigger
-
-When slop-mop reaches 1.0.0, this document should be tightened into a stable
-1.x compatibility contract with:
-
-- explicit backward-compatibility promises
-- a documented support window
-- a clearer policy for deprecations and removals
