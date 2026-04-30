@@ -35,6 +35,7 @@ classifiers = [
 # jinja2_templates gate via a lazy import with a graceful fallback when absent.
 dependencies = [
     "tomli>=1.0.0; python_version < '3.11'",
+    "packaging>=21.0",
 ]
 
 [project.optional-dependencies]
