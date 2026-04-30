@@ -45,6 +45,15 @@ MAX_ENTRIES = 100
 # timing file from accumulating obsolete data.
 MAX_AGE_DAYS = 30
 
+# Cached or otherwise short-circuited runs should not be recorded as timing
+# samples, but older versions or interrupted runs may have already polluted
+# timing history. If a new real run is dramatically slower than every stored
+# sample, the old history is more harmful than helpful for ETA/budgeting.
+_CACHE_POISON_MIN_DURATION = 5.0
+_CACHE_POISON_MIN_GAP = 5.0
+_CACHE_POISON_RATIO = 3.0
+_CACHE_POISON_FAST_HISTORY_MAX = 10.0
+
 TIMINGS_DIR = ".slopmop"
 TIMINGS_FILE = "timings.json"
 
@@ -302,6 +311,32 @@ def _migrate_v1_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _should_reset_implausibly_fast_history(
+    samples: List[float],
+    new_duration: float,
+) -> bool:
+    """Return True when old samples look like cached/short-circuit timings.
+
+    A single slow run can be noise, so the threshold is deliberately blunt:
+    the previous history must be entirely sub-10s, and the new real duration
+    must be at least 5s, at least 5s slower than the previous maximum, and at
+    least 3x slower than that maximum. This targets histories like
+    ``[0.6, 3.4, 6.6]`` followed by a real 27.9s run without resetting ordinary
+    variance or synthetic stress samples.
+    """
+    if new_duration < _CACHE_POISON_MIN_DURATION or not samples:
+        return False
+
+    historical_max = max(samples)
+    if historical_max <= 0 or historical_max > _CACHE_POISON_FAST_HISTORY_MAX:
+        return False
+
+    return (
+        new_duration >= historical_max * _CACHE_POISON_RATIO
+        and new_duration - historical_max >= _CACHE_POISON_MIN_GAP
+    )
+
+
 def load_timings(project_root: str) -> Dict[str, TimingStats]:
     """Load historical check timings from disk.
 
@@ -473,6 +508,20 @@ def save_timings(
             samples: List[float] = entry.get("samples", [])
             if not isinstance(samples, list):
                 samples = []
+            samples = [float(sample) for sample in samples]
+
+            # If old history is clearly made of cached/short-circuit timings,
+            # restart from the real sample instead of letting bad medians linger.
+            if _should_reset_implausibly_fast_history(samples, rounded):
+                logger.debug(
+                    "Resetting implausibly fast timing history for %s: "
+                    "max=%s new=%s",
+                    name,
+                    max(samples),
+                    rounded,
+                )
+                samples = []
+                entry["results"] = []
             samples.append(rounded)
 
             # Result history — kept in sync with samples

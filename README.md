@@ -14,9 +14,9 @@ Slop-mop is a quality gate runner for AI-assisted codebases.
 <figure>
   <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/sm-swab-human-readable.png" alt="Human-readable sm swab output showing grouped quality gates and a no slop detected summary" />
   <figcaption>
-    The default `sm swab` view is built for humans: grouped gates, progress,
-    timings, and a clear final verdict. Agent loops can use `--porcelain` when
-    they need terse output instead.
+    The default <code>sm swab</code> view is built for humans: grouped gates,
+    progress, timings, and a clear final verdict. Agent loops can use
+    <code>--porcelain</code> when they need terse output instead.
   </figcaption>
 </figure>
 

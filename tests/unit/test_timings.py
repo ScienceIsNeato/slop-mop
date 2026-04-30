@@ -355,6 +355,56 @@ class TestSaveTimings:
 
         assert data["check:a"]["samples"] == [10.0, 5.0]
 
+    def test_resets_implausibly_fast_history_before_append(
+        self, tmp_path: Path
+    ) -> None:
+        """A real slow run should replace history poisoned by cached timings."""
+        timings_dir = tmp_path / TIMINGS_DIR
+        timings_dir.mkdir()
+        (timings_dir / TIMINGS_FILE).write_text(
+            json.dumps(
+                {
+                    "check:a": {
+                        "samples": [0.6, 3.4, 6.6],
+                        "results": ["passed", "passed", "passed"],
+                        "last_updated": time.time(),
+                    }
+                }
+            )
+        )
+
+        save_timings(str(tmp_path), {"check:a": 27.9}, results={"check:a": "passed"})
+
+        path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
+        data = json.loads(path.read_text())
+
+        assert data["check:a"]["samples"] == [27.9]
+        assert data["check:a"]["results"] == ["passed"]
+
+    def test_keeps_plausible_history_when_appending(self, tmp_path: Path) -> None:
+        """Ordinary timing drift should still preserve existing samples."""
+        timings_dir = tmp_path / TIMINGS_DIR
+        timings_dir.mkdir()
+        (timings_dir / TIMINGS_FILE).write_text(
+            json.dumps(
+                {
+                    "check:a": {
+                        "samples": [10.0, 12.0],
+                        "results": ["passed", "passed"],
+                        "last_updated": time.time(),
+                    }
+                }
+            )
+        )
+
+        save_timings(str(tmp_path), {"check:a": 17.0}, results={"check:a": "passed"})
+
+        path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
+        data = json.loads(path.read_text())
+
+        assert data["check:a"]["samples"] == [10.0, 12.0, 17.0]
+        assert data["check:a"]["results"] == ["passed", "passed", "passed"]
+
     def test_fifo_cap_at_max_samples(self, tmp_path: Path) -> None:
         """Sample list is capped at MAX_SAMPLES (oldest dropped)."""
         # Write MAX_SAMPLES samples
