@@ -1,7 +1,7 @@
 # Releasing Slop-Mop
 
-slop-mop is still pre-1.0, so releases should optimize for **verification**
-over speed. The mechanics are automated; the judgment call is still human.
+slop-mop releases should optimize for **verification** over speed. The
+mechanics are automated; the judgment call is still human.
 
 ## Release Flow
 
