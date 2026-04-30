@@ -49,10 +49,10 @@ MAX_AGE_DAYS = 30
 # samples, but older versions or interrupted runs may have already polluted
 # timing history. If a new real run is dramatically slower than every stored
 # sample, the old history is more harmful than helpful for ETA/budgeting.
-_CACHE_POISON_MIN_DURATION = 5.0
-_CACHE_POISON_MIN_GAP = 5.0
-_CACHE_POISON_RATIO = 3.0
-_CACHE_POISON_FAST_HISTORY_MAX = 10.0
+_CACHE_POISON_MIN_DURATION = 5.0  # seconds — real run must be at least this long
+_CACHE_POISON_MIN_GAP = 5.0  # seconds — gap above historical max
+_CACHE_POISON_RATIO = 10.0  # new run must be at least 10x the old max
+_CACHE_POISON_FAST_HISTORY_MAX = 10.0  # seconds — entries faster than this are suspect
 
 TIMINGS_DIR = ".slopmop"
 TIMINGS_FILE = "timings.json"
@@ -512,7 +512,12 @@ def save_timings(
 
             # If old history is clearly made of cached/short-circuit timings,
             # restart from the real sample instead of letting bad medians linger.
-            if _should_reset_implausibly_fast_history(samples, rounded):
+            # Applied at most once per entry — marked so it never fires again.
+            cache_poison_reset_applied = bool(entry.get("cache_poison_reset_applied"))
+            if (
+                not cache_poison_reset_applied
+                and _should_reset_implausibly_fast_history(samples, rounded)
+            ):
                 logger.debug(
                     "Resetting implausibly fast timing history for %s: "
                     "max=%s new=%s",
@@ -520,6 +525,7 @@ def save_timings(
                     max(samples),
                     rounded,
                 )
+                cache_poison_reset_applied = True
                 samples = []
                 entry["results"] = []
             samples.append(rounded)
@@ -543,6 +549,8 @@ def save_timings(
             }
             if result_list:
                 entry_data["results"] = result_list
+            if cache_poison_reset_applied:
+                entry_data["cache_poison_reset_applied"] = True
             raw[name] = entry_data
         else:
             entry_data = {

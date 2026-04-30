@@ -373,13 +373,41 @@ class TestSaveTimings:
             )
         )
 
-        save_timings(str(tmp_path), {"check:a": 27.9}, results={"check:a": "passed"})
+        # 70.0s >= 6.6 * 10 (ratio) and > 6.6 + 5 (min gap) — triggers reset
+        save_timings(str(tmp_path), {"check:a": 70.0}, results={"check:a": "passed"})
 
         path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
         data = json.loads(path.read_text())
 
-        assert data["check:a"]["samples"] == [27.9]
+        assert data["check:a"]["samples"] == [70.0]
         assert data["check:a"]["results"] == ["passed"]
+        assert data["check:a"]["cache_poison_reset_applied"] is True
+
+    def test_cache_poison_reset_only_fires_once(self, tmp_path: Path) -> None:
+        """Once the reset marker is set, a second qualifying run appends normally."""
+        timings_dir = tmp_path / TIMINGS_DIR
+        timings_dir.mkdir()
+        (timings_dir / TIMINGS_FILE).write_text(
+            json.dumps(
+                {
+                    "check:a": {
+                        "samples": [0.6, 3.4, 6.6],
+                        "results": ["passed", "passed", "passed"],
+                        "cache_poison_reset_applied": True,
+                        "last_updated": time.time(),
+                    }
+                }
+            )
+        )
+
+        # Would normally trigger the reset, but marker is already set.
+        save_timings(str(tmp_path), {"check:a": 70.0}, results={"check:a": "passed"})
+
+        path = tmp_path / TIMINGS_DIR / TIMINGS_FILE
+        data = json.loads(path.read_text())
+
+        # History preserved (no reset) — 70.0 appended to existing samples.
+        assert data["check:a"]["samples"] == [0.6, 3.4, 6.6, 70.0]
 
     def test_keeps_plausible_history_when_appending(self, tmp_path: Path) -> None:
         """Ordinary timing drift should still preserve existing samples."""
