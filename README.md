@@ -135,7 +135,7 @@ This catches missing tests, coverage gaps, and type-blindness that slips through
 because the code *runs*.
 
 **Deceptiveness**  
-Tests pass, but do they acutally prove anything? Bogus assertions, debugger
+Tests pass, but do they actually prove anything? Bogus assertions, debugger
 artifacts, tests that exist to make the coverage report happy. Slop-mop sees
 through it.
 
