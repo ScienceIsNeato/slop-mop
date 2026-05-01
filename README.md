@@ -263,7 +263,7 @@ Start with [DOCS/NEW_GATE_PROTOCOL.md](https://github.com/ScienceIsNeato/slop-mo
 Sometimes slop-mop is wrong.
 
 That's useful information. Don't route around it with ad-hoc commands and
-pretend the rail is fine. Fix the gate, tune the confg, file the bug. The
+pretend the rail is fine. Fix the gate, tune the config, file the bug. The
 point isn't obedience - it's making the correct path the path of least
 resistance.
 
