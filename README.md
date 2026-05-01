@@ -9,22 +9,21 @@
   <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Slop--Mop%20Attribution%20v1.0-blue.svg" alt="License"/></a>
 </p>
 
-Slop-mop is a quality gate runner for AI-assisted codebases.
+Slop-mop steers agents towards choices that maximize long-term repostiry maintainability
+and stability by making the easy choices the right choices. 
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop heraldic" width="300" align="right"/>
 
-It does not try to make agents smart. It gives them greased rails: a path of
-least resistance toward more maintainable choices. Run the tool, read what
-failed, fix that thing, run it again.
+It does not try to turn agents into what they arent. Rather, slopmop takes LLM's strenghts
+and points those assets at their own weaknesses. It does so via greased rails: a path of
+least resistance toward more maintainable choices. The hard work is already done in the 
+gate creation and orchestration - the agent just has to run the check and do exactly what sm
+tells it to.
 
-That is the whole idea.
+Don't make sloppy choices. Keep moving forward and address dept relentlessly.
+Don't think - just fix and be an earnest member of this codebase: that is the whole idea.
 
-Agents are good at closing the ticket in front of them. They are less good at
-not leaving the codebase worse than they found it. Slop-mop looks for the mess
-that still passes normal checks: shallow tests, duplicated logic, missing
-coverage, complexity creep, stale config, unhandled PR feedback.
-
-It is opinionated. Sometimes loudly. That is on purpose.
+It is purposefully opinionated, as structure begets adherence to best practices.
 
 ## Project Status
 
@@ -114,7 +113,8 @@ The boring version:
 write code -> sm swab -> commit -> sm scour -> push/open PR -> sm buff
 ```
 
-The workflow state machine is documented in [DOCS/WORKFLOW.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/WORKFLOW.md).
+Not sure where you are in that loop? `sm sail` figures it out for you.
+Full state machine: [DOCS/WORKFLOW.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/WORKFLOW.md).
 
 <figure>
   <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/sm-swab-human-readable.png" alt="Human-readable sm swab output showing grouped quality gates and a no slop detected summary" />
@@ -130,29 +130,32 @@ The workflow state machine is documented in [DOCS/WORKFLOW.md](https://github.co
 Slop-mop groups gates around four common agent failure modes.
 
 **Overconfidence**  
-Code exists, but is it tested? Typed? Covered? This catches missing tests,
-coverage gaps, and type-checking blind spots.
+The code compiles. Tests pass. That's not the same as being tested or covered.
+This catches missing tests, coverage gaps, and type-blindness that slips through
+because the code *runs*.
 
 **Deceptiveness**  
-Tests pass, but do they prove anything? This catches bogus tests, debugger
-artifacts, and other signs that the repo only looks clean.
+Tests pass, but do they acutally prove anything? Bogus assertions, debugger
+artifacts, tests that exist to make the coverage report happy. Slop-mop sees
+through it.
 
 **Laziness**  
-The code works, but it is starting to rot. This catches complexity creep, dead
-code, formatting drift, repeated code, stale docs, and silenced gates.
+Working code rots. Complexity creep, dead code, formating drift, repeated
+logic - these compound quietly until the codebase becomes unnavigable.
+Catch them while they're small.
 
 **Myopia**  
-The local change looks fine, but the repo-wide picture is worse. This catches
-duplication, security issues, dependency risk, and similar cross-cutting mess.
+Your change looks fine. The repo-wide picture might not be. Duplication,
+security gaps, dependency risk - things that only show up when you zoom out
+past the file you're in.
 
 The full gate reasoning lives in [DOCS/GATE_REASONING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/GATE_REASONING.md).
 
 ## Refit vs Maintenance
 
-There are two modes.
-
-Use **refit** first when a repo is already dirty and you need a structured
-cleanup plan:
+New repo or inherited mess? Start with refit. It builds a remediation plan
+and walks you through gate-by-gate until the codebase is clean enough to
+enter the maintenance loop:
 
 ```bash
 sm refit --start
@@ -160,7 +163,7 @@ sm refit --iterate
 sm refit --finish
 ```
 
-Use **maintenance** once the repo is in decent shape:
+Once you're in decent shape, maintenance is just the loop:
 
 ```bash
 sm swab
@@ -168,9 +171,8 @@ sm scour
 sm buff
 ```
 
-Refit is the first-class onboarding path. Baseline mode is secondary: use it
-only to unblock yourself temporarily when you cannot run the full refit yet.
-Maintenance is the day-to-day loop after the repo is in decent shape.
+Don't skip refit to go straight to maintenance on a dirty repo. You'll spend
+more time fighting the gates than fixing the code. Do the work upfront.
 
 ## Minimal Install
 
@@ -199,16 +201,14 @@ sm config --disable laziness:complexity-creep.py
 ```
 
 Disabling a gate should be temporary. If a gate is wrong, tune it or file the
-tooling bug. If the repo is not ready yet, use refit first. Use baseline mode
-only as a short-term unblocker when refit is not practical in the moment.
+bug. Don't just silence it and move on - that's how slop accumulates.
 
 Migration behavior is documented in [DOCS/MIGRATIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/MIGRATIONS.md).
 
 ## Baselines
 
-Sometimes you inherit a repo that is already messy and cannot stop for a full
-refit. Slop-mop can snapshot the current failures so new failures stay loud
-while old ones get paid down.
+Inherited a mess and can't stop to fix it all right now? Snapshot the current
+failures. New failures stay loud, old ones get paid down over time:
 
 ```bash
 sm status --generate-baseline-snapshot
@@ -216,9 +216,9 @@ sm swab --ignore-baseline-failures
 sm scour --ignore-baseline-failures
 ```
 
-This is not a way to hide problems or skip refit. It is a temporary unblocker:
-stop old problems from blocking every unrelated change, then come back and clean
-them up deliberately.
+This isn't a way to hide problems. It's a way to stop old debt from blocking
+every unreleated change while you work back to a clean state. Don't live in
+baseline mode - it's a temporay unblocker, not a permanent config.
 
 ## CI
 
@@ -262,10 +262,10 @@ Start with [DOCS/NEW_GATE_PROTOCOL.md](https://github.com/ScienceIsNeato/slop-mo
 
 Sometimes slop-mop is wrong.
 
-That is useful information. Do not route around it with ad-hoc commands and
-pretend the rail is fine. Fix the gate, tune the config, or file the bug. The
-point is not obedience. The point is making the correct workflow easier than the
-wrong one.
+That's useful information. Don't route around it with ad-hoc commands and
+pretend the rail is fine. Fix the gate, tune the confg, file the bug. The
+point isn't obedience - it's making the correct path the path of least
+resistance.
 
 For slop-mop tooling friction, start with:
 
