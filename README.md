@@ -11,14 +11,7 @@
 
 Slop-mop is a quality gate runner for AI-assisted codebases.
 
-<figure>
-  <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/sm-swab-human-readable.png" alt="Human-readable sm swab output showing grouped quality gates and a no slop detected summary" />
-  <figcaption>
-    The default <code>sm swab</code> view is built for humans: grouped gates,
-    progress, timings, and a clear final verdict. Agent loops can use
-    <code>--porcelain</code> when they need terse output instead.
-  </figcaption>
-</figure>
+<img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop heraldic" width="300" align="right"/>
 
 It does not try to make agents smart. It gives them greased rails: a path of
 least resistance toward more maintainable choices. Run the tool, read what
@@ -122,6 +115,15 @@ write code -> sm swab -> commit -> sm scour -> push/open PR -> sm buff
 ```
 
 The workflow state machine is documented in [DOCS/WORKFLOW.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/WORKFLOW.md).
+
+<figure>
+  <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/sm-swab-human-readable.png" alt="Human-readable sm swab output showing grouped quality gates and a no slop detected summary" />
+  <figcaption>
+    The default <code>sm swab</code> view is built for humans: grouped gates,
+    progress, timings, and a clear final verdict. Agent loops can use
+    <code>--porcelain</code> when they need terse output instead.
+  </figcaption>
+</figure>
 
 ## What It Checks
 
