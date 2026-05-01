@@ -9,7 +9,7 @@
   <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Slop--Mop%20Attribution%20v1.0-blue.svg" alt="License"/></a>
 </p>
 
-Slop-mop steers agents towards choices that maximize long-term repostiry maintainability
+Slop-mop steers agents towards choices that maximize long-term repository maintainability
 and stability by making the easy choices the right choices. 
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop heraldic" width="300" align="right"/>
