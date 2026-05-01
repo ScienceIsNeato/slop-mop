@@ -218,7 +218,7 @@ sm scour --ignore-baseline-failures
 
 This isn't a way to hide problems. It's a way to stop old debt from blocking
 every unreleated change while you work back to a clean state. Don't live in
-baseline mode - it's a temporay unblocker, not a permanent config.
+baseline mode - it's a temporary unblocker, not a permanent config.
 
 ## CI
 
