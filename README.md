@@ -20,7 +20,7 @@ least resistance toward more maintainable choices. The hard work is already done
 gate creation and orchestration - the agent just has to run the check and do exactly what sm
 tells it to.
 
-Don't make sloppy choices. Keep moving forward and address dept relentlessly.
+Don't make sloppy choices. Keep moving forward and address debt relentlessly.
 Don't think - just fix and be an earnest member of this codebase: that is the whole idea.
 
 It is purposefully opinionated, as structure begets adherence to best practices.
