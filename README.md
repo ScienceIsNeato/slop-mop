@@ -14,7 +14,7 @@ and stability by making the easy choices the right choices.
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop heraldic" width="300" align="right"/>
 
-It does not try to turn agents into what they arent. Rather, slopmop takes LLM's strenghts
+It does not try to turn agents into what they aren't. Rather, slopmop takes LLM's strenghts
 and points those assets at their own weaknesses. It does so via greased rails: a path of
 least resistance toward more maintainable choices. The hard work is already done in the 
 gate creation and orchestration - the agent just has to run the check and do exactly what sm
