@@ -14,14 +14,14 @@ and stability by making the easy choices the right choices.
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop heraldic" width="300" align="right"/>
 
-It does not try to turn agents into what they aren't. Rather, slopmop takes LLM's strenghts
+It does not try to turn agents into what they aren't. Rather, slop-mop takes LLMs' strengths
 and points those assets at their own weaknesses. It does so via greased rails: a path of
 least resistance toward more maintainable choices. The hard work is already done in the 
 gate creation and orchestration - the agent just has to run the check and do exactly what sm
 tells it to.
 
 Don't make sloppy choices. Keep moving forward and address debt relentlessly.
-Don't think - just fix and be an earnest member of this codebase: that is the whole idea.
+Resist the urge to side-step the check. Just fix what it flags and keep moving: that is the whole idea.
 
 It is purposefully opinionated, as structure begets adherence to best practices.
 
@@ -135,9 +135,9 @@ This catches missing tests, coverage gaps, and type-blindness that slips through
 because the code *runs*.
 
 **Deceptiveness**  
-Tests pass, but do they actually prove anything? Bogus assertions, debugger
-artifacts, tests that exist to make the coverage report happy. Slop-mop sees
-through it.
+Tests pass, but do they actually prove anything? Bogus assertions, tests that
+exist to make the coverage report happy, leftover debug traces that signal the
+code was never properly cleaned up before shipping. Slop-mop sees through it.
 
 **Laziness**  
 Working code rots. Complexity creep, dead code, formatting drift, repeated
@@ -217,7 +217,7 @@ sm scour --ignore-baseline-failures
 ```
 
 This isn't a way to hide problems. It's a way to stop old debt from blocking
-every unreleated change while you work back to a clean state. Don't live in
+every unrelated change while you work back to a clean state. Don't live in
 baseline mode - it's a temporary unblocker, not a permanent config.
 
 ## CI
