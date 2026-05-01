@@ -140,7 +140,7 @@ artifacts, tests that exist to make the coverage report happy. Slop-mop sees
 through it.
 
 **Laziness**  
-Working code rots. Complexity creep, dead code, formating drift, repeated
+Working code rots. Complexity creep, dead code, formatting drift, repeated
 logic - these compound quietly until the codebase becomes unnavigable.
 Catch them while they're small.
 
