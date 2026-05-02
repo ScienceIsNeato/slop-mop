@@ -250,6 +250,40 @@ of source control; the reusable source templates live in this repository under
 The short version for agents: ride the rail, fix what it reports, do not bypass
 the gate.
 
+## PR Review and Bot Integration
+
+Slop-mop closes the loop on PR feedback too, not just local code quality. Once
+a PR is open, review comments accumulate from humans, Copilot, and Cursor's
+bugbot. Left unaddressed, they block the merge and erode reviewer trust. `sm buff`
+handles this:
+
+```bash
+sm buff inspect <PR>      # triage CI results + fetch all unresolved threads
+sm buff resolve <PR> <ID> # post a reply and resolve the thread
+sm buff verify <PR>       # confirm nothing is still open
+sm buff watch <PR>        # poll CI until it finishes
+```
+
+The `myopia:ignored-feedback` gate enforces this during `sm scour` - it fails
+if unresolved review threads exist, so you can't accidentally push with open
+comments.
+
+### Copilot and Cursor Bugbot
+
+Both Copilot code review and Cursor's bugbot catch things slop-mop deliberately
+doesn't try to own: logic errors in your specific domain, API misuse, missing
+null checks in context-dependent code. They're trained on human review patterns;
+slop-mop is optimized for the failure modes unique to agent-generated code.
+
+Run them in parallel, not as alternatives. The combination covers more ground:
+
+- slop-mop: duplication, complexity creep, coverage gaps, unaddressed feedback
+- Copilot / bugbot: logic correctness, style conformance, domain-specific hazards
+
+When a bot leaves a comment, treat it like a human reviewer left it. Use
+`sm buff resolve` to reply and close the thread - the same workflow applies
+regardless of who opened it.
+
 ## Custom Gates
 
 Slop-mop's CI framework is well adapted to existing checks that are not covered
