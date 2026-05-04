@@ -71,6 +71,9 @@ PY
 python3 -m venv venv
 "$PROJ/venv/bin/pip" install -q pytest pytest-cov pytest-testmon coverage
 
+# Keep the demo commit focused on the project files, not the virtualenv.
+printf '%s\n' 'venv/' > .gitignore
+
 git add -A
 git commit -q -m "demo: pricing module with bogus test + uncovered code"
 
