@@ -11,7 +11,6 @@ from slopmop.cli.barnacle import (
     SCHEMA_VERSION,
     BarnacleIssue,
     _collect_metadata,
-    _redact_url,
     auto_file_barnacle,
     build_barnacle_issue,
     cmd_barnacle,
@@ -25,9 +24,12 @@ from slopmop.cli.barnacle import (
 def _metadata() -> dict[str, object]:
     return {
         "schema": SCHEMA_VERSION,
+        "cwd": "/worktree",
         "repo": {
             "root": "/repo",
+            "remote": "git@example.com:owner/repo.git",
             "branch": "main",
+            "commit": "abc123",
             "dirty": False,
         },
         "agent": {"name": "test-agent", "source": "unit-test"},
@@ -51,7 +53,6 @@ def _issue(**kwargs) -> BarnacleIssue:
         reproduction_steps=["sm swab"],
         things_tried=["sm swab --no-cache"],
         metadata=_metadata(),
-        include_sensitive_metadata=False,
     )
     defaults.update(kwargs)
     return BarnacleIssue(**defaults)
@@ -77,85 +78,34 @@ def _args(**kwargs) -> argparse.Namespace:
         dry_run=False,
         body_file=None,
         json_output=False,
-        include_sensitive_metadata=False,
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
 
 
-class TestRedactUrl:
-    def test_strips_user_and_password_from_https(self):
-        url = "https://oauth2:TOKEN@github.com/owner/repo.git"
-        assert _redact_url(url) == "https://github.com/owner/repo.git"
-
-    def test_strips_token_only_from_https(self):
-        url = "https://TOKEN@github.com/owner/repo.git"
-        assert _redact_url(url) == "https://github.com/owner/repo.git"
-
-    def test_preserves_https_without_credentials(self):
-        url = "https://github.com/owner/repo.git"
-        assert _redact_url(url) == url
-
-    def test_preserves_ssh_url_unchanged(self):
-        url = "git@github.com:owner/repo.git"
-        assert _redact_url(url) == url
-
-    def test_preserves_unknown_on_error(self):
-        assert _redact_url("unknown") == "unknown"
-
-    def test_preserves_port_when_present(self):
-        url = "https://user:pass@github.example.com:8443/owner/repo.git"
-        assert _redact_url(url) == "https://github.example.com:8443/owner/repo.git"
-
-
 class TestCollectMetadata:
-    def test_default_omits_sensitive_fields(self, tmp_path):
-        with (
-            patch("slopmop.cli.barnacle._run_git", return_value="unknown"),
-            patch("slopmop.cli.barnacle._git_dirty", return_value=False),
-            patch("slopmop.cli.barnacle.git_current_branch", return_value="main"),
-        ):
-            meta = _collect_metadata(str(tmp_path), "agent")
-
-        repo = meta["repo"]
-        assert repo["root"].startswith("(redacted")
-        assert repo["remote"].startswith("(redacted")
-        assert repo["branch"].startswith("(redacted")
-        assert repo["commit"].startswith("(redacted")
-        assert meta["cwd"].startswith("(redacted")
-
-    def test_include_sensitive_adds_remote_commit_cwd(self, tmp_path):
+    def test_includes_repository_metadata_by_default(self, tmp_path):
         with (
             patch(
                 "slopmop.cli.barnacle._run_git",
                 side_effect=[
-                    "https://github.com/owner/repo.git",  # remote.origin.url
-                    "abc123",  # rev-parse HEAD
+                    "https://user:TOKEN@github.com/owner/repo.git",
+                    "abc123",
                 ],
             ),
             patch("slopmop.cli.barnacle._git_dirty", return_value=False),
             patch("slopmop.cli.barnacle.git_current_branch", return_value="main"),
+            patch("slopmop.cli.barnacle.os.getcwd", return_value="/worktree"),
         ):
-            meta = _collect_metadata(str(tmp_path), "agent", include_sensitive=True)
+            meta = _collect_metadata(str(tmp_path), "agent")
 
-        assert "remote" in meta["repo"]
-        assert "commit" in meta["repo"]
-        assert "cwd" in meta
-
-    def test_include_sensitive_redacts_remote_credentials(self, tmp_path):
-        with (
-            patch(
-                "slopmop.cli.barnacle._run_git",
-                return_value="https://user:TOKEN@github.com/owner/repo.git",
-            ),
-            patch("slopmop.cli.barnacle._git_dirty", return_value=False),
-            patch("slopmop.cli.barnacle.git_current_branch", return_value="main"),
-        ):
-            meta = _collect_metadata(str(tmp_path), "agent", include_sensitive=True)
-
-        assert "TOKEN" not in meta["repo"]["remote"]
-        assert "user" not in meta["repo"]["remote"]
-        assert meta["repo"]["remote"] == "https://github.com/owner/repo.git"
+        repo = meta["repo"]
+        assert repo["root"] == str(tmp_path.resolve())
+        assert repo["remote"] == "https://user:TOKEN@github.com/owner/repo.git"
+        assert repo["branch"] == "main"
+        assert repo["commit"] == "abc123"
+        assert repo["dirty"] is False
+        assert meta["cwd"] == "/worktree"
 
 
 class TestBuildBarnacleIssue:
@@ -169,24 +119,13 @@ class TestBuildBarnacleIssue:
         assert issue.repo == DEFAULT_REPO
         assert issue.labels == DEFAULT_LABELS
         assert issue.reproduction_steps == ["sm swab"]
-        collect.assert_called_once_with("/repo", "test-agent", False)
+        collect.assert_called_once_with("/repo", "test-agent")
 
     def test_keeps_existing_barnacle_prefix_case_insensitively(self):
         with patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()):
             issue = build_barnacle_issue(_args(title="[BARNACLE] already tagged"))
 
         assert issue.title == "[BARNACLE] already tagged"
-
-    def test_sensitive_metadata_requires_explicit_opt_in(self):
-        with patch(
-            "slopmop.cli.barnacle._collect_metadata", return_value=_metadata()
-        ) as collect:
-            issue = build_barnacle_issue(
-                _args(project_root="/repo", include_sensitive_metadata=True)
-            )
-
-        assert issue.include_sensitive_metadata is True
-        collect.assert_called_once_with("/repo", "test-agent", True)
 
 
 class TestRenderIssueBody:
@@ -201,7 +140,7 @@ class TestRenderIssueBody:
         assert "- Barnacle: true" in body
         assert "myopia:test.py" in body
         assert SCHEMA_VERSION in body
-        assert "Source Repository: (redacted" in body
+        assert "Source Repository: /repo" in body
 
     def test_strips_barnacle_summary_case_insensitively(self):
         body = render_issue_body(_issue(title="[BARNACLE] noisy prefix"))
@@ -269,6 +208,21 @@ class TestCreateBarnacleIssue:
         fallback_command = run.call_args_list[1].args[0]
         assert "barnacle" not in fallback_command
         assert "bug" in fallback_command
+
+    def test_does_not_retry_for_non_label_error_mentioning_barnacle(self, tmp_path):
+        failed = subprocess.CompletedProcess(
+            args=["gh"],
+            returncode=1,
+            stdout="",
+            stderr="failed creating issue titled [barnacle] network error",
+        )
+        with patch("slopmop.cli.barnacle.subprocess.run", return_value=failed) as run:
+            result, _body_path = create_barnacle_issue(
+                _issue(project_root=str(tmp_path))
+            )
+
+        assert result.returncode == 1
+        assert run.call_count == 1
 
     def test_missing_gh_raises_runtime_error(self, tmp_path):
         with patch(

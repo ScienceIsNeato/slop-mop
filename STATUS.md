@@ -1,5 +1,36 @@
 # Project Status
 
+## 2026-05-04 Delta: Barnacle metadata redaction removed
+
+Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
+
+**Work completed:**
+- Removed the barnacle metadata redaction/opt-in path per product direction.
+- Barnacle issue bodies now include repo root, remote URL, branch, commit, cwd,
+  dirty state, platform, and agent metadata by default.
+- Removed `--include-sensitive-metadata` from `sm barnacle file` / `describe`.
+- Updated barnacle tests to expect raw metadata, including remote URL userinfo
+  when present.
+- Re-ran the real demo barnacle after removing redaction:
+  https://github.com/ScienceIsNeato/slop-mop/issues/171
+- Tightened missing-label retry detection so `[barnacle]` title text in an
+  unrelated `gh issue create` error no longer strips the barnacle label.
+
+**Validation:**
+- `./sm swab -g laziness:sloppy-formatting.py --output-file .slopmop/remove_redaction_format.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/remove_redaction_tests.json` ✅
+- `./sm barnacle file ... --json` ✅ filed issue #171 with raw metadata
+- `./sm swab --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+- `./sm swab -g laziness:sloppy-formatting.py --output-file .slopmop/remove_redaction_retry_format.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/remove_redaction_retry_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅ after retry-detection fix
+- `./sm scour --output-file .slopmop/last_scour.json` ✅ after retry-detection fix
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Amend commit, resolve the Bugbot thread, and push.
+
 ## 2026-05-04 Delta: PR #169 buff feedback fixes
 
 Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
@@ -10,8 +41,8 @@ Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
   remained.
 - Fixed barnacle issue intake feedback:
   - Case-insensitive `[barnacle]` prefix stripping for issue summaries.
-  - Default-redacted repo/cwd/remote/branch/commit metadata, with explicit
-    `--include-sensitive-metadata` opt-in and remote URL userinfo redaction.
+  - Initially added default-redacted repo/cwd/remote/branch/commit metadata;
+    later removed in favor of always reporting raw metadata by default.
   - `sm barnacle describe` deprecation notice now goes to stderr so `--json`
     stdout stays machine-readable.
   - Reused the already-rendered issue body for dry-run, artifact writes, and

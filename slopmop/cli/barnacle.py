@@ -18,7 +18,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-from urllib.parse import urlparse, urlunparse
 
 from slopmop.utils import git_current_branch, iso_now
 
@@ -30,7 +29,14 @@ AUTO_FILE_DISABLED_ENVAR = "SLOPMOP_DISABLE_BARNACLE_AUTO_FILE"
 
 HELP_AGENT = "Agent identifier (default: user@hostname)"
 _BARNACLE_PREFIX_RE = re.compile(r"^\[barnacle\]\s*", re.IGNORECASE)
-_REDACTED = "(redacted; pass --include-sensitive-metadata to include)"
+_MISSING_LABEL_MARKERS = (
+    "not found",
+    "does not exist",
+    "not exist",
+    "could not resolve",
+    "couldn't find",
+    "unable to resolve",
+)
 
 
 @dataclass(frozen=True)
@@ -52,7 +58,6 @@ class BarnacleIssue:
     reproduction_steps: Sequence[str]
     things_tried: Sequence[str]
     metadata: Dict[str, Any]
-    include_sensitive_metadata: bool = False
 
 
 def _default_agent() -> str:
@@ -100,61 +105,18 @@ def _git_dirty(project_root: str) -> bool:
     return bool(result.stdout.strip())
 
 
-def _redact_url(url: str) -> str:
-    """Strip embedded credentials from a git remote URL.
-
-    Only HTTPS/HTTP URLs can carry embedded credentials; SSH ``git@`` URLs
-    do not contain real secrets and are returned unchanged.
-    """
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme in ("http", "https") and (parsed.username or parsed.password):
-            netloc = parsed.hostname or ""
-            if parsed.port:
-                netloc = f"{netloc}:{parsed.port}"
-            return urlunparse(
-                (
-                    parsed.scheme,
-                    netloc,
-                    parsed.path,
-                    parsed.params,
-                    parsed.query,
-                    parsed.fragment,
-                )
-            )
-    except Exception:
-        pass
-    return url
-
-
-def _repo_metadata(root: str, include_sensitive: bool) -> Dict[str, Any]:
-    if not include_sensitive:
-        return {
-            "root": _REDACTED,
-            "remote": _REDACTED,
-            "branch": _REDACTED,
-            "commit": _REDACTED,
-            "dirty": _git_dirty(root),
-        }
+def _repo_metadata(root: str) -> Dict[str, Any]:
     return {
         "root": root,
-        "remote": _redact_url(_run_git(root, "config", "--get", "remote.origin.url")),
+        "remote": _run_git(root, "config", "--get", "remote.origin.url"),
         "branch": git_current_branch(root),
         "commit": _run_git(root, "rev-parse", "HEAD"),
         "dirty": _git_dirty(root),
     }
 
 
-def _collect_metadata(
-    project_root: str, agent: str, include_sensitive: bool = False
-) -> Dict[str, Any]:
-    """Collect environment metadata for a barnacle issue.
-
-    By default only non-sensitive fields are included.  Pass
-    ``include_sensitive=True`` (via ``--include-sensitive-metadata``) to also
-    include the remote URL (with credentials redacted), the HEAD commit SHA,
-    and the current working directory.
-    """
+def _collect_metadata(project_root: str, agent: str) -> Dict[str, Any]:
+    """Collect environment metadata for a barnacle issue."""
     root = str(Path(project_root).resolve())
     metadata: Dict[str, Any] = {
         "schema": SCHEMA_VERSION,
@@ -162,8 +124,8 @@ def _collect_metadata(
         "slopmop_version": _installed_slopmop_version(),
         "python_version": platform.python_version(),
         "platform": platform.platform(),
-        "cwd": os.getcwd() if include_sensitive else _REDACTED,
-        "repo": _repo_metadata(root, include_sensitive),
+        "cwd": os.getcwd(),
+        "repo": _repo_metadata(root),
         "agent": {
             "name": agent,
             "source": os.environ.get("SLOPMOP_AGENT_SOURCE", "unknown"),
@@ -208,7 +170,6 @@ def build_barnacle_issue(args: argparse.Namespace) -> BarnacleIssue:
     agent = getattr(args, "agent", None) or _default_agent()
     command = getattr(args, "command", "") or ""
     labels = tuple(getattr(args, "labels", None) or DEFAULT_LABELS)
-    include_sensitive = bool(getattr(args, "include_sensitive_metadata", False))
     return BarnacleIssue(
         title=_issue_title(getattr(args, "title", "") or "", command),
         command=command,
@@ -224,15 +185,13 @@ def build_barnacle_issue(args: argparse.Namespace) -> BarnacleIssue:
         labels=labels,
         reproduction_steps=getattr(args, "reproduction_steps", None) or [command],
         things_tried=getattr(args, "things_tried", None) or [],
-        metadata=_collect_metadata(project_root, agent, include_sensitive),
-        include_sensitive_metadata=include_sensitive,
+        metadata=_collect_metadata(project_root, agent),
     )
 
 
 def render_issue_body(issue: BarnacleIssue) -> str:
     """Render the barnacle issue body as structured Markdown."""
     gate_line = f"\n- Gate: {issue.gate}" if issue.gate else ""
-    source_repo = issue.project_root if issue.include_sensitive_metadata else _REDACTED
     return "\n".join(
         [
             "### Barnacle Summary",
@@ -260,7 +219,7 @@ def render_issue_body(issue: BarnacleIssue) -> str:
             "- Barnacle: true",
             f"- Blocker Type: {issue.blocker_type}",
             f"- Affected Workflow: {issue.workflow}",
-            f"- Source Repository: {source_repo}{gate_line}",
+            f"- Source Repository: {issue.project_root}{gate_line}",
             "",
             "### Environment Metadata",
             _fenced_block("json", json.dumps(issue.metadata, indent=2, sort_keys=True)),
@@ -304,6 +263,13 @@ def _issue_create_command(
     return command
 
 
+def _is_missing_barnacle_label(stderr: str) -> bool:
+    text = stderr.lower()
+    if "label" not in text or "barnacle" not in text:
+        return False
+    return any(marker in text for marker in _MISSING_LABEL_MARKERS)
+
+
 def create_barnacle_issue(
     issue: BarnacleIssue, body_file: Optional[str] = None, body: Optional[str] = None
 ) -> Tuple[subprocess.CompletedProcess[str], Path]:
@@ -319,7 +285,7 @@ def create_barnacle_issue(
     except FileNotFoundError as exc:
         raise RuntimeError("GitHub CLI `gh` is required to file barnacles") from exc
 
-    missing_label = result.returncode != 0 and "barnacle" in result.stderr.lower()
+    missing_label = result.returncode != 0 and _is_missing_barnacle_label(result.stderr)
     if not missing_label or "barnacle" not in issue.labels:
         return result, issue_body_path
 
@@ -432,7 +398,6 @@ def auto_file_barnacle(
         dry_run=False,
         body_file=None,
         json_output=False,
-        include_sensitive_metadata=False,
     )
     try:
         issue = build_barnacle_issue(args)
