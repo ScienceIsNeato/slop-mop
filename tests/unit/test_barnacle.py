@@ -5,6 +5,7 @@ import subprocess
 from unittest.mock import patch
 
 from slopmop.cli.barnacle import (
+    AUTO_FILE_DISABLED_ENVAR,
     DEFAULT_LABELS,
     DEFAULT_REPO,
     SCHEMA_VERSION,
@@ -50,6 +51,7 @@ def _issue(**kwargs) -> BarnacleIssue:
         reproduction_steps=["sm swab"],
         things_tried=["sm swab --no-cache"],
         metadata=_metadata(),
+        include_sensitive_metadata=False,
     )
     defaults.update(kwargs)
     return BarnacleIssue(**defaults)
@@ -116,9 +118,11 @@ class TestCollectMetadata:
             meta = _collect_metadata(str(tmp_path), "agent")
 
         repo = meta["repo"]
-        assert "remote" not in repo
-        assert "commit" not in repo
-        assert "cwd" not in meta
+        assert repo["root"].startswith("(redacted")
+        assert repo["remote"].startswith("(redacted")
+        assert repo["branch"].startswith("(redacted")
+        assert repo["commit"].startswith("(redacted")
+        assert meta["cwd"].startswith("(redacted")
 
     def test_include_sensitive_adds_remote_commit_cwd(self, tmp_path):
         with (
@@ -165,13 +169,24 @@ class TestBuildBarnacleIssue:
         assert issue.repo == DEFAULT_REPO
         assert issue.labels == DEFAULT_LABELS
         assert issue.reproduction_steps == ["sm swab"]
-        collect.assert_called_once_with("/repo", "test-agent", include_sensitive=False)
+        collect.assert_called_once_with("/repo", "test-agent", False)
 
-    def test_keeps_existing_barnacle_prefix(self):
+    def test_keeps_existing_barnacle_prefix_case_insensitively(self):
         with patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()):
-            issue = build_barnacle_issue(_args(title="[barnacle] already tagged"))
+            issue = build_barnacle_issue(_args(title="[BARNACLE] already tagged"))
 
-        assert issue.title == "[barnacle] already tagged"
+        assert issue.title == "[BARNACLE] already tagged"
+
+    def test_sensitive_metadata_requires_explicit_opt_in(self):
+        with patch(
+            "slopmop.cli.barnacle._collect_metadata", return_value=_metadata()
+        ) as collect:
+            issue = build_barnacle_issue(
+                _args(project_root="/repo", include_sensitive_metadata=True)
+            )
+
+        assert issue.include_sensitive_metadata is True
+        collect.assert_called_once_with("/repo", "test-agent", True)
 
 
 class TestRenderIssueBody:
@@ -186,6 +201,13 @@ class TestRenderIssueBody:
         assert "- Barnacle: true" in body
         assert "myopia:test.py" in body
         assert SCHEMA_VERSION in body
+        assert "Source Repository: (redacted" in body
+
+    def test_strips_barnacle_summary_case_insensitively(self):
+        body = render_issue_body(_issue(title="[BARNACLE] noisy prefix"))
+
+        assert "### Barnacle Summary\nnoisy prefix" in body
+        assert "[BARNACLE] noisy prefix" not in body
 
     def test_defaults_empty_lists_to_placeholders(self):
         body = render_issue_body(_issue(reproduction_steps=[], things_tried=[]))
@@ -341,7 +363,8 @@ class TestCmdBarnacleFile:
 
 
 class TestAutoFileBarnacle:
-    def test_best_effort_returns_issue_url(self, tmp_path):
+    def test_best_effort_returns_issue_url(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(AUTO_FILE_DISABLED_ENVAR, raising=False)
         result = subprocess.CompletedProcess(
             args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
         )
@@ -362,7 +385,30 @@ class TestAutoFileBarnacle:
 
         assert url == "https://example.test/1"
 
-    def test_never_raises_on_failure(self):
+    def test_returns_none_when_issue_create_prints_no_url(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(AUTO_FILE_DISABLED_ENVAR, raising=False)
+        result = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout="", stderr=""
+        )
+        with (
+            patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
+            patch(
+                "slopmop.cli.barnacle.create_barnacle_issue",
+                return_value=(result, tmp_path / "issue.md"),
+            ),
+        ):
+            url = auto_file_barnacle(
+                command="sm upgrade",
+                expected="swab passes",
+                actual="swab failed",
+                output_excerpt="failure",
+                workflow="upgrade",
+            )
+
+        assert url is None
+
+    def test_never_raises_on_failure(self, monkeypatch):
+        monkeypatch.delenv(AUTO_FILE_DISABLED_ENVAR, raising=False)
         with patch(
             "slopmop.cli.barnacle.create_barnacle_issue", side_effect=OSError("boom")
         ):
@@ -372,6 +418,16 @@ class TestAutoFileBarnacle:
                 actual="fail",
                 output_excerpt="",
             )
+
+        assert result is None
+
+    def test_auto_file_disabled_by_env(self):
+        result = auto_file_barnacle(
+            command="sm upgrade",
+            expected="ok",
+            actual="fail",
+            output_excerpt="",
+        )
 
         assert result is None
 
@@ -395,4 +451,6 @@ class TestCmdBarnacleDispatcher:
             rc = cmd_barnacle(_args(barnacle_action="describe"))
 
         assert rc == 0
-        assert "deprecated" in capsys.readouterr().out
+        captured = capsys.readouterr()
+        assert "deprecated" in captured.err
+        assert captured.out == ""

@@ -1,5 +1,35 @@
 # Project Status
 
+## 2026-05-04 Delta: PR #169 buff feedback fixes
+
+Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
+
+**Work completed:**
+- Ran `./sm buff inspect 169 --output-file .slopmop/last_buff_169.json` from
+  the PR worktree; CI triage was clean and 7 unresolved review threads
+  remained.
+- Fixed barnacle issue intake feedback:
+  - Case-insensitive `[barnacle]` prefix stripping for issue summaries.
+  - Default-redacted repo/cwd/remote/branch/commit metadata, with explicit
+    `--include-sensitive-metadata` opt-in and remote URL userinfo redaction.
+  - `sm barnacle describe` deprecation notice now goes to stderr so `--json`
+    stdout stays machine-readable.
+  - Reused the already-rendered issue body for dry-run, artifact writes, and
+    issue creation.
+  - `auto_file_barnacle` now returns only validated HTTP(S) issue URLs.
+  - Tests disable automatic upstream issue filing by default.
+  - Fixed `barnacle` verb indentation in `./sm --help`.
+
+**Validation:**
+- `./sm swab -g laziness:sloppy-formatting.py --output-file .slopmop/pr169_format.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/pr169_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Final swab after this status update, commit, resolve addressed PR
+threads with `sm buff resolve`, then verify/push/watch.
+
 ## 2026-05-03 Delta: Barnacle issue intake replacement
 
 Branch: `feat/crowdsource-barnacles`

@@ -881,8 +881,9 @@ def _add_barnacle_parser(
             dest="include_sensitive_metadata",
             action="store_true",
             help=(
-                "Include remote URL, commit SHA, and working directory in the "
-                "metadata block. Credentials are always redacted from remote URLs."
+                "Include repo path, remote URL, branch, commit SHA, and working "
+                "directory in the metadata block. Credentials are always "
+                "redacted from remote URLs."
             ),
         )
 

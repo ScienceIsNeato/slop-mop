@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import socket
 import subprocess
 import sys
@@ -25,8 +26,11 @@ SCHEMA_VERSION = "slopmop/barnacle-issue/v1"
 DEFAULT_REPO = "ScienceIsNeato/slop-mop"
 DEFAULT_LABELS = ("barnacle", "bug")
 BLOCKER_BLOCKING = "blocking"
+AUTO_FILE_DISABLED_ENVAR = "SLOPMOP_DISABLE_BARNACLE_AUTO_FILE"
 
 HELP_AGENT = "Agent identifier (default: user@hostname)"
+_BARNACLE_PREFIX_RE = re.compile(r"^\[barnacle\]\s*", re.IGNORECASE)
+_REDACTED = "(redacted; pass --include-sensitive-metadata to include)"
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,7 @@ class BarnacleIssue:
     reproduction_steps: Sequence[str]
     things_tried: Sequence[str]
     metadata: Dict[str, Any]
+    include_sensitive_metadata: bool = False
 
 
 def _default_agent() -> str:
@@ -108,11 +113,36 @@ def _redact_url(url: str) -> str:
             if parsed.port:
                 netloc = f"{netloc}:{parsed.port}"
             return urlunparse(
-                (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+                (
+                    parsed.scheme,
+                    netloc,
+                    parsed.path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment,
+                )
             )
     except Exception:
         pass
     return url
+
+
+def _repo_metadata(root: str, include_sensitive: bool) -> Dict[str, Any]:
+    if not include_sensitive:
+        return {
+            "root": _REDACTED,
+            "remote": _REDACTED,
+            "branch": _REDACTED,
+            "commit": _REDACTED,
+            "dirty": _git_dirty(root),
+        }
+    return {
+        "root": root,
+        "remote": _redact_url(_run_git(root, "config", "--get", "remote.origin.url")),
+        "branch": git_current_branch(root),
+        "commit": _run_git(root, "rev-parse", "HEAD"),
+        "dirty": _git_dirty(root),
+    }
 
 
 def _collect_metadata(
@@ -126,30 +156,19 @@ def _collect_metadata(
     and the current working directory.
     """
     root = str(Path(project_root).resolve())
-    repo: Dict[str, Any] = {
-        "root": root,
-        "branch": git_current_branch(root),
-        "dirty": _git_dirty(root),
-    }
-    if include_sensitive:
-        repo["remote"] = _redact_url(
-            _run_git(root, "config", "--get", "remote.origin.url")
-        )
-        repo["commit"] = _run_git(root, "rev-parse", "HEAD")
     metadata: Dict[str, Any] = {
         "schema": SCHEMA_VERSION,
         "filed_at": iso_now(),
         "slopmop_version": _installed_slopmop_version(),
         "python_version": platform.python_version(),
         "platform": platform.platform(),
-        "repo": repo,
+        "cwd": os.getcwd() if include_sensitive else _REDACTED,
+        "repo": _repo_metadata(root, include_sensitive),
         "agent": {
             "name": agent,
             "source": os.environ.get("SLOPMOP_AGENT_SOURCE", "unknown"),
         },
     }
-    if include_sensitive:
-        metadata["cwd"] = os.getcwd()
     return metadata
 
 
@@ -174,9 +193,13 @@ def _numbered(values: Sequence[str]) -> str:
 
 def _issue_title(raw_title: str, command: str) -> str:
     title = raw_title.strip() or f"slop-mop friction while running {command}"
-    if title.lower().startswith("[barnacle]"):
+    if _BARNACLE_PREFIX_RE.match(title):
         return title
     return f"[barnacle] {title}"
+
+
+def _issue_summary(title: str) -> str:
+    return _BARNACLE_PREFIX_RE.sub("", title).strip() or title
 
 
 def build_barnacle_issue(args: argparse.Namespace) -> BarnacleIssue:
@@ -185,7 +208,7 @@ def build_barnacle_issue(args: argparse.Namespace) -> BarnacleIssue:
     agent = getattr(args, "agent", None) or _default_agent()
     command = getattr(args, "command", "") or ""
     labels = tuple(getattr(args, "labels", None) or DEFAULT_LABELS)
-    include_sensitive = getattr(args, "include_sensitive_metadata", False)
+    include_sensitive = bool(getattr(args, "include_sensitive_metadata", False))
     return BarnacleIssue(
         title=_issue_title(getattr(args, "title", "") or "", command),
         command=command,
@@ -201,17 +224,19 @@ def build_barnacle_issue(args: argparse.Namespace) -> BarnacleIssue:
         labels=labels,
         reproduction_steps=getattr(args, "reproduction_steps", None) or [command],
         things_tried=getattr(args, "things_tried", None) or [],
-        metadata=_collect_metadata(project_root, agent, include_sensitive=include_sensitive),
+        metadata=_collect_metadata(project_root, agent, include_sensitive),
+        include_sensitive_metadata=include_sensitive,
     )
 
 
 def render_issue_body(issue: BarnacleIssue) -> str:
     """Render the barnacle issue body as structured Markdown."""
     gate_line = f"\n- Gate: {issue.gate}" if issue.gate else ""
+    source_repo = issue.project_root if issue.include_sensitive_metadata else _REDACTED
     return "\n".join(
         [
             "### Barnacle Summary",
-            issue.title.removeprefix("[barnacle] "),
+            _issue_summary(issue.title),
             "",
             "### Current Behavior",
             issue.actual or "(none provided)",
@@ -235,7 +260,7 @@ def render_issue_body(issue: BarnacleIssue) -> str:
             "- Barnacle: true",
             f"- Blocker Type: {issue.blocker_type}",
             f"- Affected Workflow: {issue.workflow}",
-            f"- Source Repository: {issue.project_root}{gate_line}",
+            f"- Source Repository: {source_repo}{gate_line}",
             "",
             "### Environment Metadata",
             _fenced_block("json", json.dumps(issue.metadata, indent=2, sort_keys=True)),
@@ -249,12 +274,14 @@ def _default_body_file(issue: BarnacleIssue) -> Path:
 
 
 def write_issue_body_file(
-    issue: BarnacleIssue, body_file: Optional[str] = None
+    issue: BarnacleIssue, body_file: Optional[str] = None, body: Optional[str] = None
 ) -> Path:
     """Write the rendered issue body to a retryable Markdown artifact."""
     path = Path(body_file) if body_file else _default_body_file(issue)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_issue_body(issue), encoding="utf-8")
+    path.write_text(
+        body if body is not None else render_issue_body(issue), encoding="utf-8"
+    )
     return path
 
 
@@ -278,10 +305,10 @@ def _issue_create_command(
 
 
 def create_barnacle_issue(
-    issue: BarnacleIssue, body_file: Optional[str] = None
+    issue: BarnacleIssue, body_file: Optional[str] = None, body: Optional[str] = None
 ) -> Tuple[subprocess.CompletedProcess[str], Path]:
     """Create the GitHub issue, retrying without the barnacle label if needed."""
-    issue_body_path = write_issue_body_file(issue, body_file)
+    issue_body_path = write_issue_body_file(issue, body_file, body)
     try:
         result = subprocess.run(
             _issue_create_command(issue, issue.labels, issue_body_path),
@@ -318,7 +345,7 @@ def cmd_barnacle_file(args: argparse.Namespace) -> int:
     body = render_issue_body(issue)
     body_file = getattr(args, "body_file", None)
     if getattr(args, "dry_run", False):
-        body_path = write_issue_body_file(issue, body_file)
+        body_path = write_issue_body_file(issue, body_file, body)
         if getattr(args, "json_output", False):
             _print_json(
                 {
@@ -339,7 +366,7 @@ def cmd_barnacle_file(args: argparse.Namespace) -> int:
         return 0
 
     try:
-        result, body_path = create_barnacle_issue(issue, body_file)
+        result, body_path = create_barnacle_issue(issue, body_file, body)
     except RuntimeError as exc:
         print(f"❌ {exc}", file=sys.stderr)
         print("Re-run with --dry-run to capture the issue body.", file=sys.stderr)
@@ -385,6 +412,8 @@ def auto_file_barnacle(
     workflow: str = "unknown",
 ) -> Optional[str]:
     """Best-effort compatibility wrapper that files a barnacle issue."""
+    if os.environ.get(AUTO_FILE_DISABLED_ENVAR):
+        return None
     args = argparse.Namespace(
         title="automated slop-mop friction report",
         command=command,
@@ -412,7 +441,10 @@ def auto_file_barnacle(
         return None
     if result.returncode != 0:
         return None
-    return result.stdout.strip() or issue.title
+    url = result.stdout.strip()
+    if url.startswith(("http://", "https://")):
+        return url
+    return None
 
 
 def cmd_barnacle(args: argparse.Namespace) -> int:
@@ -420,7 +452,10 @@ def cmd_barnacle(args: argparse.Namespace) -> int:
     action = getattr(args, "barnacle_action", None)
     if action in {"file", "describe"}:
         if action == "describe":
-            print("sm barnacle describe is deprecated; use sm barnacle file.")
+            print(
+                "sm barnacle describe is deprecated; use sm barnacle file.",
+                file=sys.stderr,
+            )
         return cmd_barnacle_file(args)
     print("Usage: sm barnacle file --command <cmd> --expected <text> --actual <text>")
     return 2

@@ -6,7 +6,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from slopmop.cli.barnacle import AUTO_FILE_DISABLED_ENVAR
 from slopmop.core.result import CheckResult, CheckStatus
+
+
+@pytest.fixture(autouse=True)
+def _disable_barnacle_auto_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent tests from creating real upstream GitHub barnacle issues."""
+
+    monkeypatch.setenv(AUTO_FILE_DISABLED_ENVAR, "1")
 
 
 class _FakeLock:
