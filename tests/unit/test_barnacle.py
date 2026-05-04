@@ -15,6 +15,7 @@ from slopmop.cli.barnacle import (
     cmd_barnacle_file,
     create_barnacle_issue,
     render_issue_body,
+    write_issue_body_file,
 )
 
 
@@ -72,6 +73,8 @@ def _args(**kwargs) -> argparse.Namespace:
         repo=DEFAULT_REPO,
         labels=list(DEFAULT_LABELS),
         dry_run=False,
+        body_file=None,
+        json_output=False,
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -106,6 +109,7 @@ class TestRenderIssueBody:
         assert "### Expected Behavior" in body
         assert "### Reproduction Steps" in body
         assert "### Environment Metadata" in body
+        assert "- Barnacle: true" in body
         assert "myopia:test.py" in body
         assert SCHEMA_VERSION in body
 
@@ -116,26 +120,42 @@ class TestRenderIssueBody:
         assert "- (none provided)" in body
 
 
+class TestBodyFile:
+    def test_writes_retryable_issue_body(self, tmp_path):
+        body_path = write_issue_body_file(
+            _issue(project_root=str(tmp_path)), str(tmp_path / "barnacle.md")
+        )
+
+        assert body_path == tmp_path / "barnacle.md"
+        assert "### Barnacle Summary" in body_path.read_text()
+
+
 class TestCreateBarnacleIssue:
-    def test_invokes_gh_issue_create_with_labels(self):
+    def test_invokes_gh_issue_create_with_body_file_and_labels(self, tmp_path):
         completed = subprocess.CompletedProcess(
             args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
         )
         with patch(
             "slopmop.cli.barnacle.subprocess.run", return_value=completed
         ) as run:
-            result = create_barnacle_issue(_issue())
+            result, body_path = create_barnacle_issue(
+                _issue(project_root=str(tmp_path)), str(tmp_path / "issue.md")
+            )
 
         assert result.returncode == 0
+        assert body_path == tmp_path / "issue.md"
+        assert body_path.exists()
         command = run.call_args.args[0]
         assert command[:3] == ["gh", "issue", "create"]
         assert "--repo" in command
         assert DEFAULT_REPO in command
+        assert "--body-file" in command
+        assert str(body_path) in command
         assert command.count("--label") == 2
         assert "barnacle" in command
         assert "bug" in command
 
-    def test_retries_without_barnacle_label_when_missing(self):
+    def test_retries_without_barnacle_label_when_missing(self, tmp_path):
         missing = subprocess.CompletedProcess(
             args=["gh"], returncode=1, stdout="", stderr="label barnacle not found"
         )
@@ -145,19 +165,21 @@ class TestCreateBarnacleIssue:
         with patch(
             "slopmop.cli.barnacle.subprocess.run", side_effect=[missing, success]
         ) as run:
-            result = create_barnacle_issue(_issue())
+            result, _body_path = create_barnacle_issue(
+                _issue(project_root=str(tmp_path))
+            )
 
         assert result.returncode == 0
         fallback_command = run.call_args_list[1].args[0]
         assert "barnacle" not in fallback_command
         assert "bug" in fallback_command
 
-    def test_missing_gh_raises_runtime_error(self):
+    def test_missing_gh_raises_runtime_error(self, tmp_path):
         with patch(
             "slopmop.cli.barnacle.subprocess.run", side_effect=FileNotFoundError
         ):
             try:
-                create_barnacle_issue(_issue())
+                create_barnacle_issue(_issue(project_root=str(tmp_path)))
             except RuntimeError as exc:
                 assert "GitHub CLI" in str(exc)
             else:
@@ -165,24 +187,40 @@ class TestCreateBarnacleIssue:
 
 
 class TestCmdBarnacleFile:
-    def test_dry_run_prints_body_without_creating_issue(self, capsys):
+    def test_dry_run_prints_body_without_creating_issue(self, capsys, tmp_path):
         with (
             patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
             patch("slopmop.cli.barnacle.create_barnacle_issue") as create,
         ):
-            rc = cmd_barnacle_file(_args(dry_run=True))
+            rc = cmd_barnacle_file(
+                _args(dry_run=True, project_root=str(tmp_path), body_file=None)
+            )
 
         assert rc == 0
-        assert "Title: [barnacle]" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "Title: [barnacle]" in out
+        assert "Body file:" in out
         create.assert_not_called()
 
-    def test_success_prints_issue_url(self, capsys):
+    def test_dry_run_json_prints_machine_readable_payload(self, capsys, tmp_path):
+        with patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()):
+            rc = cmd_barnacle_file(
+                _args(dry_run=True, json_output=True, project_root=str(tmp_path))
+            )
+
+        assert rc == 0
+        assert '"body_file"' in capsys.readouterr().out
+
+    def test_success_prints_issue_url(self, capsys, tmp_path):
         result = subprocess.CompletedProcess(
             args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
         )
         with (
             patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
-            patch("slopmop.cli.barnacle.create_barnacle_issue", return_value=result),
+            patch(
+                "slopmop.cli.barnacle.create_barnacle_issue",
+                return_value=(result, tmp_path / "issue.md"),
+            ),
         ):
             rc = cmd_barnacle_file(_args())
 
@@ -190,31 +228,55 @@ class TestCmdBarnacleFile:
         out = capsys.readouterr().out
         assert "Barnacle issue filed" in out
         assert "https://example.test/1" in out
+        assert "Body file:" in out
 
-    def test_failure_reports_retryable_dry_run(self, capsys):
+    def test_success_json_prints_url_payload(self, capsys, tmp_path):
+        result = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
+        )
+        with (
+            patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
+            patch(
+                "slopmop.cli.barnacle.create_barnacle_issue",
+                return_value=(result, tmp_path / "issue.md"),
+            ),
+        ):
+            rc = cmd_barnacle_file(_args(json_output=True))
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert '"url": "https://example.test/1"' in out
+
+    def test_failure_reports_retryable_body_file(self, capsys, tmp_path):
         result = subprocess.CompletedProcess(
             args=["gh"], returncode=1, stdout="", stderr="auth failed"
         )
         with (
             patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
-            patch("slopmop.cli.barnacle.create_barnacle_issue", return_value=result),
+            patch(
+                "slopmop.cli.barnacle.create_barnacle_issue",
+                return_value=(result, tmp_path / "issue.md"),
+            ),
         ):
             rc = cmd_barnacle_file(_args())
 
         assert rc == 1
         err = capsys.readouterr().err
         assert "Failed to file" in err
-        assert "--dry-run" in err
+        assert "Issue body preserved" in err
 
 
 class TestAutoFileBarnacle:
-    def test_best_effort_returns_issue_url(self):
+    def test_best_effort_returns_issue_url(self, tmp_path):
         result = subprocess.CompletedProcess(
             args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
         )
         with (
             patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
-            patch("slopmop.cli.barnacle.create_barnacle_issue", return_value=result),
+            patch(
+                "slopmop.cli.barnacle.create_barnacle_issue",
+                return_value=(result, tmp_path / "issue.md"),
+            ),
         ):
             url = auto_file_barnacle(
                 command="sm upgrade",

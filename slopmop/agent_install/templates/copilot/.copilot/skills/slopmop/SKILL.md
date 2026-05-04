@@ -16,6 +16,7 @@ Slop-mop (`sm`) is your procedural backbone for development in this repository. 
 - **During inherited remediation**: Run `sm refit --start`, then `sm refit --iterate` until the plan completes.
 - **Before PR**: Run `sm scour` for a comprehensive sweep.
 - **After CI/review**: Run `sm buff <PR_NUMBER>` to convert feedback into next steps.
+- **When sm itself breaks**: Run `sm barnacle file` from the affected repo to file a structured upstream issue with reproduction steps and context.
 
 ## The loop
 

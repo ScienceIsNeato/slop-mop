@@ -115,11 +115,14 @@ sm barnacle file \
   --tried "what you already tried" \
   --output "short relevant output excerpt" \
   --workflow swab \
-  --blocker-type blocking
+  --blocker-type blocking \
+  --json
 ```
 
 Use `--dry-run` if GitHub auth is unavailable and you need to capture the
-structured issue body for a human.
+structured issue body for a human. The generated body is written to
+`.slopmop/last_barnacle_issue.md` by default; pass `--body-file <path>` if you
+need a specific retry artifact location.
 
 #### After Filing
 - If the barnacle is non-blocking, continue the target-repo rail.

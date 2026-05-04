@@ -865,6 +865,17 @@ def _add_barnacle_parser(
             action="store_true",
             help="Print the issue title/body without creating a GitHub issue",
         )
+        parser.add_argument(
+            "--body-file",
+            dest="body_file",
+            help="Path for the generated Markdown body artifact",
+        )
+        parser.add_argument(
+            "--json",
+            dest="json_output",
+            action="store_true",
+            help="Emit machine-readable filing details",
+        )
 
     file_p = barnacle_sub.add_parser("file", help="File a barnacle GitHub issue")
     add_file_args(file_p)

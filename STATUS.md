@@ -17,6 +17,11 @@ Branch: `feat/crowdsource-barnacles`
 - Updated README and shared agent templates to describe barnacle issues, not a
   local cleanup queue.
 - Created the upstream GitHub `barnacle` label for issue triage.
+- Hardened filing to use `gh issue create --body-file`, preserve a retryable
+  `.slopmop/last_barnacle_issue.md` body artifact, mark bodies with
+  `Barnacle: true`, and support `--json` output for agents.
+- Added a Claude `/sm-barnacle` command template and updated installed
+  Claude/Copilot skill text so agents know when to file tool-friction reports.
 
 **Validation so far:**
 - `./sm barnacle file ... --dry-run` ✅
@@ -26,8 +31,13 @@ Branch: `feat/crowdsource-barnacles`
 - `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
 - `./sm scour --output-file .slopmop/last_scour.json` ✅
   (known non-blocking dependency-risk warning remains)
+- `./sm barnacle file ... --body-file .tmp/barnacle-check.md --json --dry-run` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/barnacle_issue_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅ after template updates
+- `./sm scour --output-file .slopmop/last_scour.json` ✅ after template updates
+  (known non-blocking dependency-risk warning remains)
 
-**Next:** Commit and push `feat/crowdsource-barnacles`.
+**Next:** Commit, push, and open PR.
 
 ## 2026-04-30 Delta: Timing history cache-poison fix
 

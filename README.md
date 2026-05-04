@@ -278,13 +278,16 @@ sm barnacle file \
   --repro-step "how to reproduce it" \
   --tried "what you already tried" \
   --workflow swab \
-  --blocker-type blocking
+  --blocker-type blocking \
+  --json
 ```
 
 Barnacles are for defects in slop-mop itself: invalid guidance, false gate
 results, broken rails, confusing output, or install/upgrade/refit friction. They
 create structured GitHub issues tagged for maintainer triage. They are not a
 local queue and not a replacement for fixing real target-repo failures.
+The generated Markdown body is also written to `.slopmop/last_barnacle_issue.md`
+so failed filings are retryable without reconstructing context.
 
 ## Contributing
 

@@ -16,7 +16,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from slopmop.utils import git_current_branch, iso_now
 
@@ -195,6 +195,7 @@ def render_issue_body(issue: BarnacleIssue) -> str:
             _fenced_block("text", issue.output_excerpt),
             "",
             "### Impact",
+            "- Barnacle: true",
             f"- Blocker Type: {issue.blocker_type}",
             f"- Affected Workflow: {issue.workflow}",
             f"- Source Repository: {issue.project_root}{gate_line}",
@@ -206,7 +207,23 @@ def render_issue_body(issue: BarnacleIssue) -> str:
     )
 
 
-def _issue_create_command(issue: BarnacleIssue, labels: Sequence[str]) -> List[str]:
+def _default_body_file(issue: BarnacleIssue) -> Path:
+    return Path(issue.project_root) / ".slopmop" / "last_barnacle_issue.md"
+
+
+def write_issue_body_file(
+    issue: BarnacleIssue, body_file: Optional[str] = None
+) -> Path:
+    """Write the rendered issue body to a retryable Markdown artifact."""
+    path = Path(body_file) if body_file else _default_body_file(issue)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_issue_body(issue), encoding="utf-8")
+    return path
+
+
+def _issue_create_command(
+    issue: BarnacleIssue, labels: Sequence[str], body_file: Path
+) -> List[str]:
     command = [
         "gh",
         "issue",
@@ -215,19 +232,22 @@ def _issue_create_command(issue: BarnacleIssue, labels: Sequence[str]) -> List[s
         issue.repo,
         "--title",
         issue.title,
-        "--body",
-        render_issue_body(issue),
+        "--body-file",
+        str(body_file),
     ]
     for label in labels:
         command.extend(["--label", label])
     return command
 
 
-def create_barnacle_issue(issue: BarnacleIssue) -> subprocess.CompletedProcess[str]:
+def create_barnacle_issue(
+    issue: BarnacleIssue, body_file: Optional[str] = None
+) -> Tuple[subprocess.CompletedProcess[str], Path]:
     """Create the GitHub issue, retrying without the barnacle label if needed."""
+    issue_body_path = write_issue_body_file(issue, body_file)
     try:
         result = subprocess.run(
-            _issue_create_command(issue, issue.labels),
+            _issue_create_command(issue, issue.labels, issue_body_path),
             capture_output=True,
             text=True,
             check=False,
@@ -237,31 +257,52 @@ def create_barnacle_issue(issue: BarnacleIssue) -> subprocess.CompletedProcess[s
 
     missing_label = result.returncode != 0 and "barnacle" in result.stderr.lower()
     if not missing_label or "barnacle" not in issue.labels:
-        return result
+        return result, issue_body_path
 
     fallback_labels = tuple(label for label in issue.labels if label != "barnacle")
-    return subprocess.run(
-        _issue_create_command(issue, fallback_labels),
-        capture_output=True,
-        text=True,
-        check=False,
+    return (
+        subprocess.run(
+            _issue_create_command(issue, fallback_labels, issue_body_path),
+            capture_output=True,
+            text=True,
+            check=False,
+        ),
+        issue_body_path,
     )
+
+
+def _print_json(payload: Dict[str, Any]) -> None:
+    print(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def cmd_barnacle_file(args: argparse.Namespace) -> int:
     """File a structured barnacle issue upstream."""
     issue = build_barnacle_issue(args)
     body = render_issue_body(issue)
+    body_file = getattr(args, "body_file", None)
     if getattr(args, "dry_run", False):
+        body_path = write_issue_body_file(issue, body_file)
+        if getattr(args, "json_output", False):
+            _print_json(
+                {
+                    "title": issue.title,
+                    "repo": issue.repo,
+                    "labels": list(issue.labels),
+                    "body_file": str(body_path),
+                    "body": body,
+                }
+            )
+            return 0
         print(f"Title: {issue.title}")
         print(f"Repo: {issue.repo}")
         print(f"Labels: {', '.join(issue.labels)}")
+        print(f"Body file: {body_path}")
         print()
         print(body)
         return 0
 
     try:
-        result = create_barnacle_issue(issue)
+        result, body_path = create_barnacle_issue(issue, body_file)
     except RuntimeError as exc:
         print(f"❌ {exc}", file=sys.stderr)
         print("Re-run with --dry-run to capture the issue body.", file=sys.stderr)
@@ -271,12 +312,26 @@ def cmd_barnacle_file(args: argparse.Namespace) -> int:
         print("❌ Failed to file barnacle issue", file=sys.stderr)
         if result.stderr.strip():
             print(result.stderr.strip(), file=sys.stderr)
-        print("Re-run with --dry-run to capture the issue body.", file=sys.stderr)
+        print(f"Issue body preserved at: {body_path}", file=sys.stderr)
         return result.returncode
 
+    url = result.stdout.strip()
+    if getattr(args, "json_output", False):
+        _print_json(
+            {
+                "title": issue.title,
+                "repo": issue.repo,
+                "labels": list(issue.labels),
+                "body_file": str(body_path),
+                "url": url,
+            }
+        )
+        return 0
+
     print("🐚 Barnacle issue filed")
-    if result.stdout.strip():
-        print(result.stdout.strip())
+    if url:
+        print(url)
+    print(f"Body file: {body_path}")
     return 0
 
 
@@ -309,10 +364,12 @@ def auto_file_barnacle(
         repo=DEFAULT_REPO,
         labels=list(DEFAULT_LABELS),
         dry_run=False,
+        body_file=None,
+        json_output=False,
     )
     try:
         issue = build_barnacle_issue(args)
-        result = create_barnacle_issue(issue)
+        result, _body_path = create_barnacle_issue(issue)
     except Exception:
         return None
     if result.returncode != 0:
