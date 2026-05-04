@@ -450,25 +450,26 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         if details:
             print(details, file=sys.stderr)
 
-        # Auto-file a barnacle so cleaning agents can pick it up.
+        # Auto-file a barnacle issue upstream for slop-mop maintainers.
         try:
             from slopmop.cli.barnacle import auto_file_barnacle  # noqa: PLC0415
 
-            bid = auto_file_barnacle(
+            issue_url = auto_file_barnacle(
                 command=f"sm upgrade  (→ {installed_version})",
                 expected="Post-upgrade validation (sm swab) passes clean",
                 actual=f"sm {VALIDATION_VERB} exited {validation.returncode}",
                 output_excerpt=details[:2000] if details else "",
                 blocker_type="blocking",
                 project_root=str(project_root),
+                workflow="upgrade",
                 reproduction_steps=[
                     f"sm upgrade --to-version {installed_version}",
                     f"sm {VALIDATION_VERB}",
                 ],
             )
-            if bid:
+            if issue_url:
                 print(
-                    f"🐚 Barnacle auto-filed: {bid}\n" f"  (sm barnacle show {bid})",
+                    "🐚 Barnacle issue auto-filed:\n" f"  {issue_url}",
                     file=sys.stderr,
                 )
         except Exception:

@@ -267,11 +267,24 @@ pretend the rail is fine. Fix the gate, tune the config, file the bug. The
 point isn't obedience - it's making the correct path the path of least
 resistance.
 
-For slop-mop tooling friction, start with:
+For slop-mop tooling friction, file a barnacle issue upstream:
 
 ```bash
-sm barnacle --help
+sm barnacle file \
+  --title "short summary of the slop-mop friction" \
+  --command "sm <verb> [flags]" \
+  --expected "what should have happened" \
+  --actual "what happened instead" \
+  --repro-step "how to reproduce it" \
+  --tried "what you already tried" \
+  --workflow swab \
+  --blocker-type blocking
 ```
+
+Barnacles are for defects in slop-mop itself: invalid guidance, false gate
+results, broken rails, confusing output, or install/upgrade/refit friction. They
+create structured GitHub issues tagged for maintainer triage. They are not a
+local queue and not a replacement for fixing real target-repo failures.
 
 ## Contributing
 

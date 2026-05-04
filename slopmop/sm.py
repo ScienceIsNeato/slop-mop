@@ -782,75 +782,99 @@ def _add_barnacle_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     """Add the barnacle subcommand parser."""
-    from slopmop.cli.barnacle import HELP_AGENT, HELP_BARNACLE_ID  # noqa: PLC0415
+    from slopmop.cli.barnacle import DEFAULT_REPO, HELP_AGENT  # noqa: PLC0415
 
     barnacle_parser = subparsers.add_parser(
         "barnacle",
-        help="Describe and resolve tool-friction reports",
+        help="File upstream tool-friction issues",
         description=(
-            "Barnacle queue for slop-mop tool-friction reports.  "
-            "Every agent is both a barnacle detector and a potential cleaner.\n\n"
-            "Queue location: ~/.slopmop/barnacles/  "
-            "(override: SLOPMOP_BARNACLE_DIR)\n\n"
-            "Lifecycle: open → resolved"
+            "File a structured GitHub issue when slop-mop itself blocks or "
+            "misguides work in a real repository. Barnacles are one-way "
+            "upstream reports, not a local queue."
         ),
     )
     barnacle_sub = barnacle_parser.add_subparsers(
         dest="barnacle_action", help="Action to perform"
     )
 
-    # ── describe ──────────────────────────────────────────────────────
+    def add_file_args(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("--title", help="Short issue title")
+        parser.add_argument(
+            "--command", required=True, help="Command that triggered the friction"
+        )
+        parser.add_argument("--gate", help="Gate name if the friction is gate-specific")
+        parser.add_argument(
+            "--expected", required=True, help="What should have happened"
+        )
+        parser.add_argument("--actual", required=True, help="What actually happened")
+        parser.add_argument(
+            "--output", dest="output_excerpt", help="Relevant terminal output excerpt"
+        )
+        parser.add_argument(
+            "--repro-step",
+            dest="reproduction_steps",
+            action="append",
+            help="Reproduction step; repeat for multiple steps",
+        )
+        parser.add_argument(
+            "--tried",
+            dest="things_tried",
+            action="append",
+            help="Thing already tried; repeat for multiple attempts",
+        )
+        parser.add_argument(
+            "--workflow",
+            choices=[
+                "swab",
+                "scour",
+                "buff",
+                "sail",
+                "refit",
+                "upgrade",
+                "install",
+                "agent-skill",
+                "unknown",
+            ],
+            default="unknown",
+            help="Affected slop-mop workflow",
+        )
+        parser.add_argument(
+            "--blocker-type",
+            dest="blocker_type",
+            choices=["blocking", "non-blocking"],
+            default="blocking",
+            help="Whether this barnacle blocks forward progress (default: blocking)",
+        )
+        parser.add_argument("--agent", help=HELP_AGENT)
+        parser.add_argument(
+            "--project-root", default=".", help="Root of the affected repository"
+        )
+        parser.add_argument(
+            "--repo",
+            default=DEFAULT_REPO,
+            help=f"GitHub repo to file against (default: {DEFAULT_REPO})",
+        )
+        parser.add_argument(
+            "--label",
+            dest="labels",
+            action="append",
+            help="Issue label; defaults to barnacle + bug when omitted",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the issue title/body without creating a GitHub issue",
+        )
+
+    file_p = barnacle_sub.add_parser("file", help="File a barnacle GitHub issue")
+    add_file_args(file_p)
+
     describe_p = barnacle_sub.add_parser(
-        "describe", help="Describe a new barnacle report"
+        "describe",
+        help="Deprecated alias for file",
+        description="Deprecated alias for file",
     )
-    describe_p.add_argument(
-        "--command", required=True, help="Command that triggered the friction"
-    )
-    describe_p.add_argument("--gate", help="Gate name if the friction is gate-specific")
-    describe_p.add_argument(
-        "--expected", required=True, help="What should have happened"
-    )
-    describe_p.add_argument("--actual", required=True, help="What actually happened")
-    describe_p.add_argument(
-        "--output", dest="output_excerpt", help="Relevant terminal output excerpt"
-    )
-    describe_p.add_argument(
-        "--blocker-type",
-        dest="blocker_type",
-        choices=["blocking", "non-blocking"],
-        default="blocking",
-        help="Whether this barnacle blocks forward progress (default: blocking)",
-    )
-    describe_p.add_argument("--agent", help=HELP_AGENT)
-    describe_p.add_argument(
-        "--project-root", default=".", help="Root of the affected repository"
-    )
-
-    # ── list ──────────────────────────────────────────────────────────
-    list_p = barnacle_sub.add_parser("list", help="List barnacles in the queue")
-    list_p.add_argument(
-        "--status",
-        choices=["open", "resolved", "all"],
-        default="open",
-        help="Filter by status (default: open)",
-    )
-
-    # ── show ──────────────────────────────────────────────────────────
-    show_p = barnacle_sub.add_parser("show", help="Show full details for one barnacle")
-    show_p.add_argument("barnacle_id", help=HELP_BARNACLE_ID)
-    show_p.add_argument(
-        "--json", dest="json_output", action="store_true", help="Output as JSON"
-    )
-
-    # ── resolve ───────────────────────────────────────────────────────
-    resolve_p = barnacle_sub.add_parser(
-        "resolve", help="Resolve a barnacle with fix details"
-    )
-    resolve_p.add_argument("barnacle_id", help=HELP_BARNACLE_ID)
-    resolve_p.add_argument("--commit", help="Fix commit SHA")
-    resolve_p.add_argument("--branch", help="Fix branch name")
-    resolve_p.add_argument("--notes", help="Any additional notes for the reporter")
-    resolve_p.add_argument("--agent", help=HELP_AGENT)
+    add_file_args(describe_p)
 
 
 def _add_audit_parser(
@@ -946,7 +970,7 @@ Verbs:
   upgrade     Upgrade slop-mop and validate the result
   buff        Post-PR CI triage and next-step guidance
   refit       Structured remediation planning and continuation
-  barnacle    File, claim, and resolve tool-friction reports
+    barnacle    File upstream tool-friction issues
   agent       Install agent integration templates
   config      View or update quality gate configuration
   help        Show detailed help for quality gates
@@ -963,6 +987,7 @@ Examples:
   sm upgrade --check                    Preview an upgrade without mutating
   sm buff                               Post-PR CI triage
   sm refit --start                      Generate a remediation plan
+    sm barnacle file --dry-run            Preview a tool-friction issue
   sm swab -g python,quality             Run specific gate groups
   sm scour --verbose                    Thorough with details
   sm config --show                      Show current configuration
@@ -995,7 +1020,6 @@ Examples:
         action="version",
         version=f"%(prog)s {__version__}",
     )
-
     return parser
 
 

@@ -1,300 +1,234 @@
-"""Tests for the barnacle queue CLI."""
+"""Tests for the barnacle GitHub issue intake CLI."""
 
 import argparse
-import json
-import re
+import subprocess
 from unittest.mock import patch
 
 from slopmop.cli.barnacle import (
-    QUEUE_DIR_ENVAR,
+    DEFAULT_LABELS,
+    DEFAULT_REPO,
     SCHEMA_VERSION,
-    STATUS_OPEN,
-    STATUS_RESOLVED,
-    _barnacle_id,
-    _find_barnacle,
-    _list_barnacles,
-    _queue_dir,
+    BarnacleIssue,
     auto_file_barnacle,
+    build_barnacle_issue,
     cmd_barnacle,
-    cmd_barnacle_describe,
-    cmd_barnacle_list,
-    cmd_barnacle_resolve,
-    cmd_barnacle_show,
+    cmd_barnacle_file,
+    create_barnacle_issue,
+    render_issue_body,
 )
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+
+def _metadata() -> dict[str, object]:
+    return {
+        "schema": SCHEMA_VERSION,
+        "repo": {
+            "root": "/repo",
+            "remote": "git@example.com:owner/repo.git",
+            "branch": "main",
+            "commit": "abc123",
+            "dirty": False,
+        },
+        "agent": {"name": "test-agent", "source": "unit-test"},
+    }
+
+
+def _issue(**kwargs) -> BarnacleIssue:
+    defaults = dict(
+        title="[barnacle] swab output was misleading",
+        command="sm swab",
+        expected="clear guidance",
+        actual="confusing guidance",
+        output_excerpt="bad output",
+        blocker_type="blocking",
+        workflow="swab",
+        project_root="/repo",
+        gate="myopia:test.py",
+        agent="test-agent",
+        repo=DEFAULT_REPO,
+        labels=DEFAULT_LABELS,
+        reproduction_steps=["sm swab"],
+        things_tried=["sm swab --no-cache"],
+        metadata=_metadata(),
+    )
+    defaults.update(kwargs)
+    return BarnacleIssue(**defaults)
 
 
 def _args(**kwargs) -> argparse.Namespace:
-    """Build a minimal Namespace; barnacle handlers only read named attrs."""
     defaults = dict(
-        barnacle_action=None,
-        barnacle_id=None,
+        barnacle_action="file",
+        title="swab output was misleading",
         command="sm swab",
-        gate=None,
-        expected="swab passes",
-        actual="swab failed",
-        output_excerpt="",
+        gate="myopia:test.py",
+        expected="clear guidance",
+        actual="confusing guidance",
+        output_excerpt="bad output",
         blocker_type="blocking",
-        agent=None,
         project_root=".",
-        auto_filed=False,
-        status="open",
-        json_output=False,
-        commit=None,
-        branch=None,
-        notes=None,
-        reproduction_steps=[],
+        reproduction_steps=["sm swab"],
+        things_tried=["sm swab --no-cache"],
+        workflow="swab",
+        agent="test-agent",
+        repo=DEFAULT_REPO,
+        labels=list(DEFAULT_LABELS),
+        dry_run=False,
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
 
 
-# ---------------------------------------------------------------------------
-# Unit: barnacle_id format
-# ---------------------------------------------------------------------------
+class TestBuildBarnacleIssue:
+    def test_prefixes_title_and_collects_metadata(self):
+        with patch(
+            "slopmop.cli.barnacle._collect_metadata", return_value=_metadata()
+        ) as collect:
+            issue = build_barnacle_issue(_args(project_root="/repo"))
+
+        assert issue.title == "[barnacle] swab output was misleading"
+        assert issue.repo == DEFAULT_REPO
+        assert issue.labels == DEFAULT_LABELS
+        assert issue.reproduction_steps == ["sm swab"]
+        collect.assert_called_once_with("/repo", "test-agent")
+
+    def test_keeps_existing_barnacle_prefix(self):
+        with patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()):
+            issue = build_barnacle_issue(_args(title="[barnacle] already tagged"))
+
+        assert issue.title == "[barnacle] already tagged"
 
 
-class TestBarnacleId:
-    def test_format(self):
-        bid = _barnacle_id()
-        assert bid.startswith("barnacle-")
-        # barnacle-YYYYMMDD-HHMMSS-<8hex>
-        assert re.match(r"^barnacle-\d{8}-\d{6}-[0-9a-f]{8}$", bid), bid
+class TestRenderIssueBody:
+    def test_renders_structured_markdown(self):
+        body = render_issue_body(_issue())
 
-    def test_unique(self):
-        ids = {_barnacle_id() for _ in range(20)}
-        assert len(ids) == 20
+        assert "### Barnacle Summary" in body
+        assert "### Current Behavior" in body
+        assert "### Expected Behavior" in body
+        assert "### Reproduction Steps" in body
+        assert "### Environment Metadata" in body
+        assert "myopia:test.py" in body
+        assert SCHEMA_VERSION in body
 
+    def test_defaults_empty_lists_to_placeholders(self):
+        body = render_issue_body(_issue(reproduction_steps=[], things_tried=[]))
 
-# ---------------------------------------------------------------------------
-# Unit: queue_dir override via env var
-# ---------------------------------------------------------------------------
-
-
-class TestQueueDir:
-    def test_default_is_home_slopmop(self, monkeypatch):
-        # The autouse isolation fixture sets SLOPMOP_BARNACLE_DIR for safety;
-        # this test verifies the genuine default, so drop the override first.
-        monkeypatch.delenv(QUEUE_DIR_ENVAR, raising=False)
-        qdir = _queue_dir()
-        assert qdir.parts[-2:] == (".slopmop", "barnacles")
-
-    def test_override_via_env(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "queue"))
-        assert _queue_dir() == tmp_path / "queue"
+        assert "1. (none provided)" in body
+        assert "- (none provided)" in body
 
 
-# ---------------------------------------------------------------------------
-# cmd_barnacle_describe
-# ---------------------------------------------------------------------------
-
-
-class TestCmdBarnacleDescribe:
-    def test_creates_json_file(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        rc = cmd_barnacle_describe(
-            _args(command="sm scour", expected="ok", actual="fail")
+class TestCreateBarnacleIssue:
+    def test_invokes_gh_issue_create_with_labels(self):
+        completed = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
         )
-        assert rc == 0
-        files = list(tmp_path.glob("barnacle-*.json"))
-        assert len(files) == 1
-        data = json.loads(files[0].read_text())
-        assert data["schema"] == SCHEMA_VERSION
-        assert data["status"] == STATUS_OPEN
-        assert data["command"] == "sm scour"
+        with patch(
+            "slopmop.cli.barnacle.subprocess.run", return_value=completed
+        ) as run:
+            result = create_barnacle_issue(_issue())
 
-    def test_output_contains_id(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(_args())
-        out = capsys.readouterr().out
-        assert "barnacle-" in out
+        assert result.returncode == 0
+        command = run.call_args.args[0]
+        assert command[:3] == ["gh", "issue", "create"]
+        assert "--repo" in command
+        assert DEFAULT_REPO in command
+        assert command.count("--label") == 2
+        assert "barnacle" in command
+        assert "bug" in command
 
-    def test_auto_filed_flag(self, tmp_path, monkeypatch):
-        """CLI-described barnacles are never auto_filed (only auto_file_barnacle() sets True)."""
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(_args(auto_filed=True))
-        data = json.loads(next(tmp_path.glob("barnacle-*.json")).read_text())
-        assert data["auto_filed"] is False
-
-
-# ---------------------------------------------------------------------------
-# cmd_barnacle_list
-# ---------------------------------------------------------------------------
-
-
-class TestCmdBarnacleList:
-    def test_empty_queue_no_dir(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "nonexistent"))
-        rc = cmd_barnacle_list(_args())
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "barnacle" in out.lower()
-
-    def test_files_show_in_list(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(_args())
-        cmd_barnacle_describe(_args(command="sm refit"))
-        rc = cmd_barnacle_list(_args(status="open"))
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "barnacle-" in out
-
-    def test_all_status_filter(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(_args())
-        rc = cmd_barnacle_list(_args(status="all"))
-        assert rc == 0
-
-
-# ---------------------------------------------------------------------------
-# _list_barnacles / _find_barnacle
-# ---------------------------------------------------------------------------
-
-
-class TestListAndFind:
-    def test_list_empty_when_dir_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "nope"))
-        assert _list_barnacles() == []
-
-    def test_list_filters_by_status(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(_args())
-        assert len(_list_barnacles("open")) == 1
-        assert len(_list_barnacles("resolved")) == 0
-
-    def test_find_by_prefix(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(_args())
-        files = list(tmp_path.glob("barnacle-*.json"))
-        bid = files[0].stem
-        # Find by first 20 characters
-        found = _find_barnacle(bid[:20])
-        assert found is not None
-        assert found["id"] == bid
-
-    def test_find_missing_returns_none(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "empty"))
-        assert _find_barnacle("barnacle-99999999") is None
-
-
-# ---------------------------------------------------------------------------
-# open → resolved lifecycle
-# ---------------------------------------------------------------------------
-
-
-class TestLifecycle:
-    def test_full_lifecycle(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-
-        # DESCRIBE
-        cmd_barnacle_describe(_args(command="sm upgrade"))
-        files = list(tmp_path.glob("barnacle-*.json"))
-        assert len(files) == 1
-        bid = files[0].stem
-
-        # RESOLVE
-        rc = cmd_barnacle_resolve(
-            _args(
-                barnacle_id=bid,
-                commit="abc1234",
-                branch="fix/test",
-                notes="fixed it",
-                agent="test-agent",
-            )
+    def test_retries_without_barnacle_label_when_missing(self):
+        missing = subprocess.CompletedProcess(
+            args=["gh"], returncode=1, stdout="", stderr="label barnacle not found"
         )
-        assert rc == 0
-        data = json.loads(files[0].read_text())
-        assert data["status"] == STATUS_RESOLVED
-        assert data["resolution"]["fix_commit"] == "abc1234"
-
-    def test_resolve_already_resolved_is_noop(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(_args())
-        bid = next(tmp_path.glob("barnacle-*.json")).stem
-        cmd_barnacle_resolve(_args(barnacle_id=bid))
-        rc = cmd_barnacle_resolve(_args(barnacle_id=bid))
-        assert rc == 0  # second resolve is a no-op, not an error
-
-
-# ---------------------------------------------------------------------------
-# cmd_barnacle_show
-# ---------------------------------------------------------------------------
-
-
-class TestCmdBarnacleShow:
-    def test_show_renders_fields(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(
-            _args(command="sm buff", expected="buff ok", actual="buff fail")
+        success = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
         )
-        bid = next(tmp_path.glob("barnacle-*.json")).stem
-        rc = cmd_barnacle_show(_args(barnacle_id=bid))
+        with patch(
+            "slopmop.cli.barnacle.subprocess.run", side_effect=[missing, success]
+        ) as run:
+            result = create_barnacle_issue(_issue())
+
+        assert result.returncode == 0
+        fallback_command = run.call_args_list[1].args[0]
+        assert "barnacle" not in fallback_command
+        assert "bug" in fallback_command
+
+    def test_missing_gh_raises_runtime_error(self):
+        with patch(
+            "slopmop.cli.barnacle.subprocess.run", side_effect=FileNotFoundError
+        ):
+            try:
+                create_barnacle_issue(_issue())
+            except RuntimeError as exc:
+                assert "GitHub CLI" in str(exc)
+            else:
+                raise AssertionError("expected RuntimeError")
+
+
+class TestCmdBarnacleFile:
+    def test_dry_run_prints_body_without_creating_issue(self, capsys):
+        with (
+            patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
+            patch("slopmop.cli.barnacle.create_barnacle_issue") as create,
+        ):
+            rc = cmd_barnacle_file(_args(dry_run=True))
+
+        assert rc == 0
+        assert "Title: [barnacle]" in capsys.readouterr().out
+        create.assert_not_called()
+
+    def test_success_prints_issue_url(self, capsys):
+        result = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
+        )
+        with (
+            patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
+            patch("slopmop.cli.barnacle.create_barnacle_issue", return_value=result),
+        ):
+            rc = cmd_barnacle_file(_args())
+
         assert rc == 0
         out = capsys.readouterr().out
-        assert "sm buff" in out
-        assert "buff ok" in out
+        assert "Barnacle issue filed" in out
+        assert "https://example.test/1" in out
 
-    def test_show_json_flag(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        cmd_barnacle_describe(_args())
-        capsys.readouterr()  # clear file command output
-        bid = next(tmp_path.glob("barnacle-*.json")).stem
-        rc = cmd_barnacle_show(_args(barnacle_id=bid, json_output=True))
-        assert rc == 0
-        out = capsys.readouterr().out
-        parsed = json.loads(out)
-        assert parsed["id"] == bid
+    def test_failure_reports_retryable_dry_run(self, capsys):
+        result = subprocess.CompletedProcess(
+            args=["gh"], returncode=1, stdout="", stderr="auth failed"
+        )
+        with (
+            patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
+            patch("slopmop.cli.barnacle.create_barnacle_issue", return_value=result),
+        ):
+            rc = cmd_barnacle_file(_args())
 
-    def test_show_missing_id_fails(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "empty"))
-        rc = cmd_barnacle_show(_args(barnacle_id="barnacle-nonexistent"))
-        assert rc != 0
-
-    def test_show_none_id_fails(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        rc = cmd_barnacle_show(_args(barnacle_id=None))
-        assert rc != 0
-
-
-# ---------------------------------------------------------------------------
-# auto_file_barnacle
-# ---------------------------------------------------------------------------
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Failed to file" in err
+        assert "--dry-run" in err
 
 
 class TestAutoFileBarnacle:
-    def test_creates_file_returns_id(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        bid = auto_file_barnacle(
-            command="sm upgrade",
-            expected="swab passes",
-            actual="swab failed",
-            output_excerpt="gate failed",
-            blocker_type="blocking",
-            project_root=str(tmp_path),
+    def test_best_effort_returns_issue_url(self):
+        result = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
         )
-        assert bid is not None
-        assert bid.startswith("barnacle-")
-        assert (tmp_path / f"{bid}.json").exists()
+        with (
+            patch("slopmop.cli.barnacle._collect_metadata", return_value=_metadata()),
+            patch("slopmop.cli.barnacle.create_barnacle_issue", return_value=result),
+        ):
+            url = auto_file_barnacle(
+                command="sm upgrade",
+                expected="swab passes",
+                actual="swab failed",
+                output_excerpt="failure",
+                workflow="upgrade",
+            )
 
-    def test_auto_filed_flag_in_data(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        bid = auto_file_barnacle(
-            command="sm upgrade",
-            expected="ok",
-            actual="fail",
-            output_excerpt="",
-        )
-        data = json.loads((tmp_path / f"{bid}.json").read_text())
-        assert data["auto_filed"] is True
+        assert url == "https://example.test/1"
 
-    def test_never_raises_on_failure(self, tmp_path, monkeypatch):
-        # Make the queue dir unwritable by monkeypatching _write_barnacle
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
+    def test_never_raises_on_failure(self):
         with patch(
-            "slopmop.cli.barnacle._write_barnacle", side_effect=OSError("no disk")
+            "slopmop.cli.barnacle.create_barnacle_issue", side_effect=OSError("boom")
         ):
             result = auto_file_barnacle(
                 command="sm upgrade",
@@ -302,12 +236,8 @@ class TestAutoFileBarnacle:
                 actual="fail",
                 output_excerpt="",
             )
+
         assert result is None
-
-
-# ---------------------------------------------------------------------------
-# cmd_barnacle dispatcher
-# ---------------------------------------------------------------------------
 
 
 class TestCmdBarnacleDispatcher:
@@ -315,12 +245,18 @@ class TestCmdBarnacleDispatcher:
         rc = cmd_barnacle(_args(barnacle_action=None))
         assert rc == 2
 
-    def test_describe_action_dispatches(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path))
-        rc = cmd_barnacle(_args(barnacle_action="describe"))
-        assert rc == 0
+    def test_file_action_dispatches(self):
+        with patch(
+            "slopmop.cli.barnacle.cmd_barnacle_file", return_value=0
+        ) as file_cmd:
+            rc = cmd_barnacle(_args(barnacle_action="file"))
 
-    def test_list_action_dispatches(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(QUEUE_DIR_ENVAR, str(tmp_path / "empty"))
-        rc = cmd_barnacle(_args(barnacle_action="list"))
         assert rc == 0
+        file_cmd.assert_called_once()
+
+    def test_describe_alias_dispatches_with_deprecation_notice(self, capsys):
+        with patch("slopmop.cli.barnacle.cmd_barnacle_file", return_value=0):
+            rc = cmd_barnacle(_args(barnacle_action="describe"))
+
+        assert rc == 0
+        assert "deprecated" in capsys.readouterr().out

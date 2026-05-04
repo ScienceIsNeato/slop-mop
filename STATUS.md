@@ -1,5 +1,34 @@
 # Project Status
 
+## 2026-05-03 Delta: Barnacle issue intake replacement
+
+Branch: `feat/crowdsource-barnacles`
+
+**Work in progress:**
+- Replaced the machine-local barnacle queue with one-way GitHub issue intake.
+- `sm barnacle file` now renders structured Markdown with command, expected vs
+  actual behavior, reproduction steps, things tried, output excerpt, impact, and
+  JSON metadata about the affected repo/commit/platform/agent.
+- Kept `sm barnacle describe` as a deprecated alias for `file` during transition.
+- Removed queue/list/show/resolve tests and the global `SLOPMOP_BARNACLE_DIR`
+  test fixture.
+- Updated upgrade failure auto-reporting to file a barnacle issue URL instead of
+  writing local JSON.
+- Updated README and shared agent templates to describe barnacle issues, not a
+  local cleanup queue.
+- Created the upstream GitHub `barnacle` label for issue triage.
+
+**Validation so far:**
+- `./sm barnacle file ... --dry-run` ✅
+- `./sm swab -g laziness:sloppy-formatting.py --auto-fix --output-file .slopmop/barnacle_format.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/barnacle_issue_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Commit and push `feat/crowdsource-barnacles`.
+
 ## 2026-04-30 Delta: Timing history cache-poison fix
 
 Branch: `docs/pypi-readme-1.0-polish`
