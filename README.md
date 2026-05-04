@@ -5,8 +5,10 @@
   <a href="https://codecov.io/gh/ScienceIsNeato/slop-mop"><img src="https://codecov.io/gh/ScienceIsNeato/slop-mop/branch/main/graph/badge.svg" alt="Coverage"/></a>
   <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/v/slopmop.svg" alt="PyPI version"/></a>
   <a href="https://pypi.org/project/slopmop/"><img src="https://img.shields.io/pypi/pyversions/slopmop.svg" alt="Python versions"/></a>
+  <a href="https://pypistats.org/packages/slopmop"><img src="https://img.shields.io/pypi/dm/slopmop.svg" alt="PyPI downloads/month"/></a>
   <a href="https://github.com/ScienceIsNeato/slop-mop/releases"><img src="https://img.shields.io/github/v/release/ScienceIsNeato/slop-mop?display_name=tag&amp;sort=semver" alt="Latest GitHub release"/></a>
   <a href="https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Slop--Mop%20Attribution%20v1.0-blue.svg" alt="License"/></a>
+  <a href="https://github.com/ScienceIsNeato/slop-mop#use-with-claude"><img src="https://img.shields.io/badge/Claude-skill%20%2B%20plugin-7a5bff?logo=anthropic&amp;logoColor=white" alt="Claude skill + plugin"/></a>
 </p>
 
 Slop-mop steers agents towards choices that maximize long-term repository maintainability
@@ -94,6 +96,31 @@ sm sail
 ```
 
 It reads the current workflow state and runs the next obvious slop-mop verb.
+
+## Use with Claude
+
+Slop-mop ships as a Claude plugin: a skill that auto-triggers on remediation
+prompts, plus four slash commands (`/sm-sail`, `/sm-swab`, `/sm-scour`,
+`/sm-buff`). Install once and `sm` is available in every repo — no per-repo
+`sm agent install` required.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/claude-skill-demo.gif" alt="Demo: sm scour flagging a bogus test, an uncovered function, and a silenced gate in one run" width="780"/>
+</p>
+
+In Claude Code or Cowork:
+
+```
+/plugin marketplace add ScienceIsNeato/slop-mop
+/plugin install slopmop
+```
+
+Then ask Claude things like *"sail this repo"*, *"swab my changes before I
+commit"*, or *"buff PR 142"*. The skill activates on remediation language and
+runs the right verb.
+
+The CLI itself is still a prerequisite — install it once with
+`pipx install slopmop[all]` and the plugin will call into it.
 
 ## The Loop
 
@@ -259,14 +286,16 @@ handles this:
 
 ```bash
 sm buff inspect <PR>      # triage CI results + fetch all unresolved threads
-sm buff resolve <PR> <ID> # post a reply and resolve the thread
+sm buff resolve <PR> <ID> --scenario fixed_in_code --message "<evidence>"
+                          # post a reply and resolve the thread
 sm buff verify <PR>       # confirm nothing is still open
 sm buff watch <PR>        # poll CI until it finishes
 ```
 
-The `myopia:ignored-feedback` gate enforces this during `sm scour` - it fails
-if unresolved review threads exist, so you can't accidentally push with open
-comments.
+The `myopia:ignored-feedback` gate checks this during `sm scour`. By default it
+warns if unresolved review threads exist; set `fail_on_unresolved: true` if you
+want `sm scour` to block on them. `sm buff` runs the same check in blocking
+mode, so the post-PR rail won't report a PR as clean while comments remain open.
 
 ### Copilot and Cursor Bugbot
 
