@@ -107,7 +107,9 @@ def _redact_url(url: str) -> str:
             netloc = parsed.hostname or ""
             if parsed.port:
                 netloc = f"{netloc}:{parsed.port}"
-            return urlunparse(parsed._replace(netloc=netloc))
+            return urlunparse(
+                (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+            )
     except Exception:
         pass
     return url

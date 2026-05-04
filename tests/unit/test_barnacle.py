@@ -124,11 +124,10 @@ class TestCollectMetadata:
         with (
             patch(
                 "slopmop.cli.barnacle._run_git",
-                side_effect=lambda _root, *args: (
-                    "https://github.com/owner/repo.git"
-                    if "remote.origin.url" in args
-                    else "abc123"
-                ),
+                side_effect=[
+                    "https://github.com/owner/repo.git",  # remote.origin.url
+                    "abc123",  # rev-parse HEAD
+                ],
             ),
             patch("slopmop.cli.barnacle._git_dirty", return_value=False),
             patch("slopmop.cli.barnacle.git_current_branch", return_value="main"),
