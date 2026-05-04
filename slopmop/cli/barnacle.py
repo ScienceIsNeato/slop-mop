@@ -17,6 +17,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import urlparse, urlunparse
 
 from slopmop.utils import git_current_branch, iso_now
 
@@ -94,27 +95,60 @@ def _git_dirty(project_root: str) -> bool:
     return bool(result.stdout.strip())
 
 
-def _collect_metadata(project_root: str, agent: str) -> Dict[str, Any]:
+def _redact_url(url: str) -> str:
+    """Strip embedded credentials from a git remote URL.
+
+    Only HTTPS/HTTP URLs can carry embedded credentials; SSH ``git@`` URLs
+    do not contain real secrets and are returned unchanged.
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme in ("http", "https") and (parsed.username or parsed.password):
+            netloc = parsed.hostname or ""
+            if parsed.port:
+                netloc = f"{netloc}:{parsed.port}"
+            return urlunparse(parsed._replace(netloc=netloc))
+    except Exception:
+        pass
+    return url
+
+
+def _collect_metadata(
+    project_root: str, agent: str, include_sensitive: bool = False
+) -> Dict[str, Any]:
+    """Collect environment metadata for a barnacle issue.
+
+    By default only non-sensitive fields are included.  Pass
+    ``include_sensitive=True`` (via ``--include-sensitive-metadata``) to also
+    include the remote URL (with credentials redacted), the HEAD commit SHA,
+    and the current working directory.
+    """
     root = str(Path(project_root).resolve())
-    return {
+    repo: Dict[str, Any] = {
+        "root": root,
+        "branch": git_current_branch(root),
+        "dirty": _git_dirty(root),
+    }
+    if include_sensitive:
+        repo["remote"] = _redact_url(
+            _run_git(root, "config", "--get", "remote.origin.url")
+        )
+        repo["commit"] = _run_git(root, "rev-parse", "HEAD")
+    metadata: Dict[str, Any] = {
         "schema": SCHEMA_VERSION,
         "filed_at": iso_now(),
         "slopmop_version": _installed_slopmop_version(),
         "python_version": platform.python_version(),
         "platform": platform.platform(),
-        "cwd": os.getcwd(),
-        "repo": {
-            "root": root,
-            "remote": _run_git(root, "config", "--get", "remote.origin.url"),
-            "branch": git_current_branch(root),
-            "commit": _run_git(root, "rev-parse", "HEAD"),
-            "dirty": _git_dirty(root),
-        },
+        "repo": repo,
         "agent": {
             "name": agent,
             "source": os.environ.get("SLOPMOP_AGENT_SOURCE", "unknown"),
         },
     }
+    if include_sensitive:
+        metadata["cwd"] = os.getcwd()
+    return metadata
 
 
 def _fenced_block(language: str, content: str) -> str:
@@ -149,6 +183,7 @@ def build_barnacle_issue(args: argparse.Namespace) -> BarnacleIssue:
     agent = getattr(args, "agent", None) or _default_agent()
     command = getattr(args, "command", "") or ""
     labels = tuple(getattr(args, "labels", None) or DEFAULT_LABELS)
+    include_sensitive = getattr(args, "include_sensitive_metadata", False)
     return BarnacleIssue(
         title=_issue_title(getattr(args, "title", "") or "", command),
         command=command,
@@ -164,7 +199,7 @@ def build_barnacle_issue(args: argparse.Namespace) -> BarnacleIssue:
         labels=labels,
         reproduction_steps=getattr(args, "reproduction_steps", None) or [command],
         things_tried=getattr(args, "things_tried", None) or [],
-        metadata=_collect_metadata(project_root, agent),
+        metadata=_collect_metadata(project_root, agent, include_sensitive=include_sensitive),
     )
 
 
@@ -366,6 +401,7 @@ def auto_file_barnacle(
         dry_run=False,
         body_file=None,
         json_output=False,
+        include_sensitive_metadata=False,
     )
     try:
         issue = build_barnacle_issue(args)

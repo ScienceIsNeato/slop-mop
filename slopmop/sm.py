@@ -876,6 +876,15 @@ def _add_barnacle_parser(
             action="store_true",
             help="Emit machine-readable filing details",
         )
+        parser.add_argument(
+            "--include-sensitive-metadata",
+            dest="include_sensitive_metadata",
+            action="store_true",
+            help=(
+                "Include remote URL, commit SHA, and working directory in the "
+                "metadata block. Credentials are always redacted from remote URLs."
+            ),
+        )
 
     file_p = barnacle_sub.add_parser("file", help="File a barnacle GitHub issue")
     add_file_args(file_p)
