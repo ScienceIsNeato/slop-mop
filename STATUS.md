@@ -44,7 +44,11 @@ Branch: `feat/crowdsource-barnacles`
 - `./sm scour --output-file .slopmop/last_scour.json` ✅ after debugger-artifacts category move
   (known non-blocking dependency-risk warning remains)
 
-**Next:** Commit, push, and open PR.
+**PR:** https://github.com/ScienceIsNeato/slop-mop/pull/169
+
+**Next:** Monitor PR #169 CI/review through `sm buff`; initial status showed
+Primary Code Scanning Gate, Unit Test Coverage, Docker Integration Tests, and
+Cursor Bugbot in progress.
 
 ## 2026-04-30 Delta: Timing history cache-poison fix
 
