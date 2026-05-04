@@ -22,6 +22,8 @@ Branch: `feat/crowdsource-barnacles`
   `Barnacle: true`, and support `--json` output for agents.
 - Added a Claude `/sm-barnacle` command template and updated installed
   Claude/Copilot skill text so agents know when to file tool-friction reports.
+- Moved `debugger-artifacts` from Deceptiveness to Laziness, including the
+  full gate name, flaw classification, config-path guidance, tests, and docs.
 
 **Validation so far:**
 - `./sm barnacle file ... --dry-run` ✅
@@ -35,6 +37,11 @@ Branch: `feat/crowdsource-barnacles`
 - `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/barnacle_issue_tests.json` ✅
 - `./sm swab --output-file .slopmop/last_swab.json` ✅ after template updates
 - `./sm scour --output-file .slopmop/last_scour.json` ✅ after template updates
+  (known non-blocking dependency-risk warning remains)
+- `./sm swab -g laziness:debugger-artifacts --no-cache --output-file .slopmop/debugger_artifacts_gate.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/untested_after_debugger_move.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅ after debugger-artifacts category move
+- `./sm scour --output-file .slopmop/last_scour.json` ✅ after debugger-artifacts category move
   (known non-blocking dependency-risk warning remains)
 
 **Next:** Commit, push, and open PR.

@@ -220,7 +220,7 @@ class TestClaudeSkill:
             for a in assets
             if "/commands/" in a.destination_relpath
         }
-        assert len(commands) == 4
+        assert len(commands) == 5
         for path, text in commands.items():
             if "swab" in path:
                 assert "sm swab" in text
@@ -230,6 +230,8 @@ class TestClaudeSkill:
                 assert "sm buff" in text
             elif "sail" in path:
                 assert "sm sail" in text
+            elif "barnacle" in path:
+                assert "sm barnacle" in text
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +264,7 @@ class TestAgentHelpers:
         assert ".claude/commands/sm-swab.md" in paths
         assert ".claude/commands/sm-scour.md" in paths
         assert ".claude/commands/sm-buff.md" in paths
+        assert ".claude/commands/sm-barnacle.md" in paths
         assert ".claude/skills/slopmop/SKILL.md" in paths
         assert "CLAUDE.md" in paths
 

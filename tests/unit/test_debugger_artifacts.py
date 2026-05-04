@@ -1,5 +1,6 @@
 """Tests for the cross-language debugger-artifacts gate."""
 
+from slopmop.checks.base import Flaw
 from slopmop.checks.quality.debugger_artifacts import DebuggerArtifactsCheck
 from slopmop.core.result import CheckStatus
 
@@ -181,4 +182,5 @@ class TestReporting:
 
     def test_full_name(self):
         check = DebuggerArtifactsCheck({})
-        assert check.full_name == "deceptiveness:debugger-artifacts"
+        assert check.full_name == "laziness:debugger-artifacts"
+        assert check.flaw == Flaw.LAZINESS
