@@ -1,5 +1,27 @@
 # Project Status
 
+## 2026-05-04 Delta: PR #169 follow-up parser fixes
+
+Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
+
+**Work completed:**
+- Added `doctor` to `sm barnacle file --workflow` choices so agents can file
+  barnacles for doctor-flow friction.
+- Fixed the top-level `./sm --help` verb list so `barnacle` is aligned with the
+  surrounding verbs in the descriptive help block.
+- Added parser regressions covering both the accepted `doctor` workflow value
+  and the help-text alignment.
+- Re-ran local validation; `coverage-gaps.py` passed as part of full `sm swab`,
+  covering the Codecov-style changed-lines concern for this follow-up.
+
+**Validation:**
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/pr169_followup_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Commit, resolve the two open PR threads, verify, and push.
+
 ## 2026-05-04 Delta: Barnacle metadata redaction removed
 
 Branch: `feat/crowdsource-barnacles`  ·  PR `#169`

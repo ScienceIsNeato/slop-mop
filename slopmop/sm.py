@@ -34,7 +34,6 @@ import json
 import logging
 import os
 import sys
-import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
@@ -830,6 +829,7 @@ def _add_barnacle_parser(
                 "buff",
                 "sail",
                 "refit",
+                "doctor",
                 "upgrade",
                 "install",
                 "agent-skill",
@@ -966,45 +966,48 @@ def _add_audit_parser(
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser for sm CLI."""
+    description = "\n".join(
+        [
+            "🪣 sm - Slop-Mop Quality Gate Framework",
+            "",
+            "A language-agnostic, bolt-on code validation tool designed to catch AI-generated",
+            "slop before it lands in your codebase. Provides fast, actionable feedback for",
+            "both human developers and AI coding assistants.",
+            "",
+            "Verbs:",
+            "  swab        Quick validation — runs on every commit",
+            "  scour       Thorough validation — PR readiness (superset of swab)",
+            "  upgrade     Upgrade slop-mop and validate the result",
+            "  buff        Post-PR CI triage and next-step guidance",
+            "  refit       Structured remediation planning and continuation",
+            "  barnacle    File upstream tool-friction issues",
+            "  agent       Install agent integration templates",
+            "  config      View or update quality gate configuration",
+            "  help        Show detailed help for quality gates",
+            "",
+            "Quick Start:",
+            "  1. Add slop-mop as a git submodule",
+            "  2. Run: ./slop-mop/scripts/setup.sh (creates venv, installs tools, adds ./sm)",
+            "  3. Run: sm init (auto-detect project, write config)",
+            "  4. Run: sm swab (run quick quality gates)",
+            "",
+            "Examples:",
+            "  sm swab                               Quick validation (every commit)",
+            "  sm scour                              Thorough validation (PR readiness)",
+            "  sm upgrade --check                    Preview an upgrade without mutating",
+            "  sm buff                               Post-PR CI triage",
+            "  sm refit --start                      Generate a remediation plan",
+            "  sm barnacle file --dry-run            Preview a tool-friction issue",
+            "  sm swab -g python,quality             Run specific gate groups",
+            "  sm scour --verbose                    Thorough with details",
+            "  sm config --show                      Show current configuration",
+            "  sm config --enable python-security    Enable a quality gate",
+            "  sm help python-lint-format            Show help for specific gate",
+        ]
+    )
     parser = argparse.ArgumentParser(
         prog="./sm",
-        description=(textwrap.dedent("""
-🪣 sm - Slop-Mop Quality Gate Framework
-
-A language-agnostic, bolt-on code validation tool designed to catch AI-generated
-slop before it lands in your codebase. Provides fast, actionable feedback for
-both human developers and AI coding assistants.
-
-Verbs:
-  swab        Quick validation — runs on every commit
-  scour       Thorough validation — PR readiness (superset of swab)
-  upgrade     Upgrade slop-mop and validate the result
-  buff        Post-PR CI triage and next-step guidance
-  refit       Structured remediation planning and continuation
-    barnacle    File upstream tool-friction issues
-  agent       Install agent integration templates
-  config      View or update quality gate configuration
-  help        Show detailed help for quality gates
-
-Quick Start:
-  1. Add slop-mop as a git submodule
-  2. Run: ./slop-mop/scripts/setup.sh (creates venv, installs tools, adds ./sm)
-  3. Run: sm init (auto-detect project, write config)
-  4. Run: sm swab (run quick quality gates)
-
-Examples:
-  sm swab                               Quick validation (every commit)
-  sm scour                              Thorough validation (PR readiness)
-  sm upgrade --check                    Preview an upgrade without mutating
-  sm buff                               Post-PR CI triage
-  sm refit --start                      Generate a remediation plan
-  sm barnacle file --dry-run            Preview a tool-friction issue
-  sm swab -g python,quality             Run specific gate groups
-  sm scour --verbose                    Thorough with details
-  sm config --show                      Show current configuration
-  sm config --enable python-security    Enable a quality gate
-  sm help python-lint-format            Show help for specific gate
-""")),
+        description=description,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
