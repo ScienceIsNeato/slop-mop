@@ -84,12 +84,6 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Tradeoffs: The strict version can be annoying when you sketch a test first and plan to fill the assertions in a minute later.
 - Override When: Fine to relax briefly in draft-only local work, not in committed code that is pretending to be review-ready.
 
-### `deceptiveness:debugger-artifacts`
-
-- Rationale: Leftover breakpoints are the kind of tiny accident that can wreck a real run in embarrassingly expensive ways.
-- Tradeoffs: The only real cost is a little friction when you are actively debugging and want quick iteration.
-- Override When: Fine in local scratch work; not fine once the change is headed toward a commit or a PR.
-
 ### `deceptiveness:gate-dodging`
 
 - Rationale: If the fix is 'turn the smoke alarm down,' the repo learns the wrong lesson and the next regression walks right in.
@@ -121,6 +115,12 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Rationale: Dead code makes the map lie. People read paths that do not matter and miss the ones that do.
 - Tradeoffs: Static dead-code tools can false-positive on dynamic hooks, plugins, and intentionally indirect entrypoints.
 - Override When: Override for known dynamic entrypoints with a concrete explanation, not because the deletion is inconvenient right now.
+
+### `laziness:debugger-artifacts`
+
+- Rationale: Leftover breakpoints are the kind of tiny accident that can wreck a real run in embarrassingly expensive ways.
+- Tradeoffs: The only real cost is a little friction when you are actively debugging and want quick iteration.
+- Override When: Fine in local scratch work; not fine once the change is headed toward a commit or a PR.
 
 ### `laziness:generated-artifacts.dart`
 

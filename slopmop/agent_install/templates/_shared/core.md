@@ -86,43 +86,49 @@ available. Otherwise, run CLI commands from the project root.
 
 ### Live Dogfood Protocol
 
-For live refit efforts in real target repositories, use barnacles to hand off
-tool friction to the slop-mop maintainer and immediately resume remediation.
+For live refit efforts in real target repositories, use barnacles to report
+slop-mop friction upstream instead of treating it as target-repo work.
 
 A **barnacle** is a defect or unexpected behaviour in slop-mop itself,
-discovered while using it in a real repository.  The barnacle queue lives at
-`~/.slopmop/barnacles/` so every agent on the machine shares the same pool.
+discovered while using it in a real repository. Barnacles are one-way GitHub
+issues in the slop-mop repo, tagged for maintainer triage. They are not a
+machine-local queue and they are not claimed or resolved from the target repo.
 
-#### State 1: Target Repository Remediation
+#### When To File
 - Work in the target repository using normal `sm` rails.
-- If friction appears (slowdown, weird behaviour, incorrect result), stop immediately.
-- File a barnacle from the affected repo:
-  ```
-  sm barnacle describe \
-    --command "sm <verb> [flags]" \
-    --expected "expected behaviour" \
-    --actual "what actually happened" \
-    --output "$(tail -20 .slopmop/last_swab.json 2>/dev/null)" \
-    --blocker-type blocking
-  ```
-- Note the barnacle ID and transition to State 2.
+- File a barnacle when slop-mop gives invalid guidance, blocks valid work,
+  produces a false positive/negative, or makes the next step unclear.
+- Do not file a barnacle for real target-repo lint, test, coverage, or review
+  failures. Fix those normally.
 
-#### State 2: Fix Slop-Mop Friction (cleaning agent)
-- Switch to a dedicated fix branch.
-- Implement the smallest targeted fix.
-- Validate with `sm swab`.
-- Commit and resolve:
-  ```
-  sm barnacle resolve <id> --commit $(git rev-parse --short HEAD) \
-    --branch $(git branch --show-current) --notes "brief description"
-  ```
-- Transition to State 3.
+#### How To File
+Run this from the affected repository:
 
-#### State 3: Test Fix Against Real Friction
-- Return to the original target-repo scenario and re-run the pinned command.
-- If the fix works: return to State 1.
-- If it fails: file a new barnacle with additional context and return to State 2.
+```bash
+sm barnacle file \
+  --title "short summary of the slop-mop friction" \
+  --command "sm <verb> [flags]" \
+  --expected "expected behaviour" \
+  --actual "what actually happened" \
+  --repro-step "first reproduction step" \
+  --repro-step "second reproduction step" \
+  --tried "what you already tried" \
+  --output "short relevant output excerpt" \
+  --workflow swab \
+  --blocker-type blocking \
+  --json
+```
+
+Use `--dry-run` if GitHub auth is unavailable and you need to capture the
+structured issue body for a human. The generated body is written to
+`.slopmop/last_barnacle_issue.md` by default; pass `--body-file <path>` if you
+need a specific retry artifact location.
+
+#### After Filing
+- If the barnacle is non-blocking, continue the target-repo rail.
+- If it blocks forward progress, stop that rail and report the issue URL.
+- Do not invent a local workaround that hides the slop-mop defect.
 
 #### Core Rule
-- Never push through friction in State 1.  File a barnacle, fix slop-mop, and
-  prove the fix in the real target workflow before resuming.
+- Never push through genuine slop-mop friction. File a barnacle issue with
+  reproduction steps and let the upstream fix improve the tool for everyone.

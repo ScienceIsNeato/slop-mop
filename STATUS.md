@@ -1,5 +1,138 @@
 # Project Status
 
+## 2026-05-04 Delta: PR #169 follow-up parser fixes
+
+Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
+
+**Work completed:**
+- Added `doctor` to `sm barnacle file --workflow` choices so agents can file
+  barnacles for doctor-flow friction.
+- Fixed the top-level `./sm --help` verb list so `barnacle` is aligned with the
+  surrounding verbs in the descriptive help block.
+- Added parser regressions covering both the accepted `doctor` workflow value
+  and the help-text alignment.
+- Re-ran local validation; `coverage-gaps.py` passed as part of full `sm swab`,
+  covering the Codecov-style changed-lines concern for this follow-up.
+
+**Validation:**
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/pr169_followup_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Commit, resolve the two open PR threads, verify, and push.
+
+## 2026-05-04 Delta: Barnacle metadata redaction removed
+
+Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
+
+**Work completed:**
+- Removed the barnacle metadata redaction/opt-in path per product direction.
+- Barnacle issue bodies now include repo root, remote URL, branch, commit, cwd,
+  dirty state, platform, and agent metadata by default.
+- Removed `--include-sensitive-metadata` from `sm barnacle file` / `describe`.
+- Updated barnacle tests to expect raw metadata, including remote URL userinfo
+  when present.
+- Re-ran the real demo barnacle after removing redaction:
+  https://github.com/ScienceIsNeato/slop-mop/issues/171
+- Tightened missing-label retry detection so `[barnacle]` title text in an
+  unrelated `gh issue create` error no longer strips the barnacle label.
+
+**Validation:**
+- `./sm swab -g laziness:sloppy-formatting.py --output-file .slopmop/remove_redaction_format.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/remove_redaction_tests.json` ✅
+- `./sm barnacle file ... --json` ✅ filed issue #171 with raw metadata
+- `./sm swab --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+- `./sm swab -g laziness:sloppy-formatting.py --output-file .slopmop/remove_redaction_retry_format.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/remove_redaction_retry_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅ after retry-detection fix
+- `./sm scour --output-file .slopmop/last_scour.json` ✅ after retry-detection fix
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Amend commit, resolve the Bugbot thread, and push.
+
+## 2026-05-04 Delta: PR #169 buff feedback fixes
+
+Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
+
+**Work completed:**
+- Ran `./sm buff inspect 169 --output-file .slopmop/last_buff_169.json` from
+  the PR worktree; CI triage was clean and 7 unresolved review threads
+  remained.
+- Fixed barnacle issue intake feedback:
+  - Case-insensitive `[barnacle]` prefix stripping for issue summaries.
+  - Initially added default-redacted repo/cwd/remote/branch/commit metadata;
+    later removed in favor of always reporting raw metadata by default.
+  - `sm barnacle describe` deprecation notice now goes to stderr so `--json`
+    stdout stays machine-readable.
+  - Reused the already-rendered issue body for dry-run, artifact writes, and
+    issue creation.
+  - `auto_file_barnacle` now returns only validated HTTP(S) issue URLs.
+  - Tests disable automatic upstream issue filing by default.
+  - Fixed `barnacle` verb indentation in `./sm --help`.
+
+**Validation:**
+- `./sm swab -g laziness:sloppy-formatting.py --output-file .slopmop/pr169_format.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/pr169_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Final swab after this status update, commit, resolve addressed PR
+threads with `sm buff resolve`, then verify/push/watch.
+
+## 2026-05-03 Delta: Barnacle issue intake replacement
+
+Branch: `feat/crowdsource-barnacles`
+
+**Work in progress:**
+- Replaced the machine-local barnacle queue with one-way GitHub issue intake.
+- `sm barnacle file` now renders structured Markdown with command, expected vs
+  actual behavior, reproduction steps, things tried, output excerpt, impact, and
+  JSON metadata about the affected repo/commit/platform/agent.
+- Kept `sm barnacle describe` as a deprecated alias for `file` during transition.
+- Removed queue/list/show/resolve tests and the global `SLOPMOP_BARNACLE_DIR`
+  test fixture.
+- Updated upgrade failure auto-reporting to file a barnacle issue URL instead of
+  writing local JSON.
+- Updated README and shared agent templates to describe barnacle issues, not a
+  local cleanup queue.
+- Created the upstream GitHub `barnacle` label for issue triage.
+- Hardened filing to use `gh issue create --body-file`, preserve a retryable
+  `.slopmop/last_barnacle_issue.md` body artifact, mark bodies with
+  `Barnacle: true`, and support `--json` output for agents.
+- Added a Claude `/sm-barnacle` command template and updated installed
+  Claude/Copilot skill text so agents know when to file tool-friction reports.
+- Moved `debugger-artifacts` from Deceptiveness to Laziness, including the
+  full gate name, flaw classification, config-path guidance, tests, and docs.
+
+**Validation so far:**
+- `./sm barnacle file ... --dry-run` ✅
+- `./sm swab -g laziness:sloppy-formatting.py --auto-fix --output-file .slopmop/barnacle_format.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/barnacle_issue_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅
+- `./sm swab --no-cache --output-file .slopmop/last_swab.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+- `./sm barnacle file ... --body-file .tmp/barnacle-check.md --json --dry-run` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/barnacle_issue_tests.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅ after template updates
+- `./sm scour --output-file .slopmop/last_scour.json` ✅ after template updates
+  (known non-blocking dependency-risk warning remains)
+- `./sm swab -g laziness:debugger-artifacts --no-cache --output-file .slopmop/debugger_artifacts_gate.json` ✅
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/untested_after_debugger_move.json` ✅
+- `./sm swab --output-file .slopmop/last_swab.json` ✅ after debugger-artifacts category move
+- `./sm scour --output-file .slopmop/last_scour.json` ✅ after debugger-artifacts category move
+  (known non-blocking dependency-risk warning remains)
+
+**PR:** https://github.com/ScienceIsNeato/slop-mop/pull/169
+
+**Next:** Monitor PR #169 CI/review through `sm buff`; initial status showed
+Primary Code Scanning Gate, Unit Test Coverage, Docker Integration Tests, and
+Cursor Bugbot in progress.
+
 ## 2026-04-30 Delta: Timing history cache-poison fix
 
 Branch: `docs/pypi-readme-1.0-polish`

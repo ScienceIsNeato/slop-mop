@@ -129,7 +129,7 @@ structural changes would undo their fixes.
 | 3 — fix later | `overconfidence:untested-code.dart` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:untested-code.js` | Foundation | 💯 Overconfidence | no |
 | 3 — fix later | `overconfidence:untested-code.py` | Foundation | 💯 Overconfidence | no |
-| 4 — fix last | `deceptiveness:debugger-artifacts` | Diagnostic | 🎭 Deceptiveness | no |
+| 4 — fix last | `laziness:debugger-artifacts` | Diagnostic | 🦥 Laziness | no |
 | 4 — fix last | `laziness:generated-artifacts.dart` | Diagnostic | 🦥 Laziness | no |
 | 4 — fix last | `laziness:sloppy-formatting.js` | Foundation | 🦥 Laziness | yes |
 | 4 — fix last | `laziness:sloppy-formatting.py` | Foundation | 🦥 Laziness | yes |

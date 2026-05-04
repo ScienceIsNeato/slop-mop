@@ -110,12 +110,12 @@ class DebuggerArtifactsCheck(BaseCheck):
 
     @property
     def category(self) -> GateCategory:
-        return GateCategory.DECEPTIVENESS
+        return GateCategory.LAZINESS
 
     @property
     def flaw(self) -> Flaw:
-        # "Look, I cleaned up before committing!" — no you didn't.
-        return Flaw.DECEPTIVENESS
+        # "I'll clean that up before committing" is exactly how this ships.
+        return Flaw.LAZINESS
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -202,7 +202,7 @@ class DebuggerArtifactsCheck(BaseCheck):
                 "Remove the debugging statements above before committing. "
                 "If a directory is a false positive (e.g. a debugger test "
                 "suite), add it to "
-                "deceptiveness.gates.debugger-artifacts.exclude_dirs in "
+                "laziness.gates.debugger-artifacts.exclude_dirs in "
                 ".sb_config.json."
             ),
         )
