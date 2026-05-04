@@ -371,3 +371,32 @@ class TestCreateParser:
         assert args.fix is True
         assert args.yes is True
         assert args.checks == ["state.lock"]
+
+    def test_barnacle_file_accepts_doctor_workflow(self):
+        parser = create_parser()
+
+        args = parser.parse_args(
+            [
+                "barnacle",
+                "file",
+                "--command",
+                "sm doctor --fix",
+                "--expected",
+                "doctor should list health checks",
+                "--actual",
+                "doctor exited before running",
+                "--workflow",
+                "doctor",
+            ]
+        )
+
+        assert args.verb == "barnacle"
+        assert args.workflow == "doctor"
+
+    def test_help_text_keeps_barnacle_aligned_with_other_verbs(self):
+        parser = create_parser()
+
+        help_text = parser.format_help()
+
+        assert "\n  buff        Post-PR CI triage and next-step guidance\n" in help_text
+        assert "\n  barnacle    File upstream tool-friction issues\n" in help_text

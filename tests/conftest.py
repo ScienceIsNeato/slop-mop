@@ -6,26 +6,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from slopmop.cli.barnacle import QUEUE_DIR_ENVAR
+from slopmop.cli.barnacle import AUTO_FILE_DISABLED_ENVAR
 from slopmop.core.result import CheckResult, CheckStatus
 
 
 @pytest.fixture(autouse=True)
-def _isolate_barnacle_queue(
-    tmp_path_factory: pytest.TempPathFactory,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Always point ``SLOPMOP_BARNACLE_DIR`` at a per-test tmp path.
+def _disable_barnacle_auto_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent tests from creating real upstream GitHub barnacle issues."""
 
-    Without this, any test that ends up calling ``auto_file_barnacle`` (e.g.
-    via ``cmd_upgrade`` covering the validation-failure path) leaks barnacles
-    into the developer's real ``~/.slopmop/barnacles/`` queue. Tests that
-    intentionally exercise the default queue location must explicitly call
-    ``monkeypatch.delenv(QUEUE_DIR_ENVAR, raising=False)``.
-    """
-
-    isolated = tmp_path_factory.mktemp("slopmop-barnacles")
-    monkeypatch.setenv(QUEUE_DIR_ENVAR, str(isolated))
+    monkeypatch.setenv(AUTO_FILE_DISABLED_ENVAR, "1")
 
 
 class _FakeLock:
