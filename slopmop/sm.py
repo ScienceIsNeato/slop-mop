@@ -998,7 +998,7 @@ Examples:
   sm upgrade --check                    Preview an upgrade without mutating
   sm buff                               Post-PR CI triage
   sm refit --start                      Generate a remediation plan
-    sm barnacle file --dry-run            Preview a tool-friction issue
+  sm barnacle file --dry-run            Preview a tool-friction issue
   sm swab -g python,quality             Run specific gate groups
   sm scour --verbose                    Thorough with details
   sm config --show                      Show current configuration
