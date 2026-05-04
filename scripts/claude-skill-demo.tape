@@ -26,7 +26,7 @@ Set PlaybackSpeed 1.0
 
 # Move into the prepared demo project off-camera
 Hide
-Type "cd /tmp/slopdemo"
+Type "cd ${SLOPDEMO_DIR:-/tmp/slopdemo}"
 Enter
 Type "clear"
 Enter
