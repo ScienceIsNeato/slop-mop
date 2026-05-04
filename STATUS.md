@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-05-04 Delta: Merge main into Claude skill plugin branch
+
+Branch: `feat/claude-skill-plugin`  ·  PR `#172`
+
+**Work completed:**
+- Merged `origin/main` into the Claude skill plugin branch to clear GitHub's
+  `CONFLICTING` merge state.
+- Resolved the lone content conflict in the Claude install template by keeping
+  the newer `main`-branch trigger wording, including the `sm barnacle file`
+  guidance.
+- Verified the merged README keeps both the branch's PR review / bot workflow
+  guidance and `main`'s newer barnacle filing instructions.
+
+**Validation:**
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/merge_conflict_untested.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Commit the merge and push the branch so PR `#172` is conflict-free on
+GitHub.
+
 ## 2026-05-04 Delta: PR #169 follow-up parser fixes
 
 Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
