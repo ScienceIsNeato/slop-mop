@@ -220,9 +220,11 @@ class TestClaudeSkill:
             for a in assets
             if "/commands/" in a.destination_relpath
         }
-        assert len(commands) == 5
+        assert len(commands) == 6
         for path, text in commands.items():
-            if "swab" in path:
+            if "refit" in path:
+                assert "sm refit" in text
+            elif "swab" in path:
                 assert "sm swab" in text
             elif "scour" in path:
                 assert "sm scour" in text
@@ -230,6 +232,7 @@ class TestClaudeSkill:
                 assert "sm buff" in text
             elif "sail" in path:
                 assert "sm sail" in text
+                assert "sm refit --start" in text
             elif "barnacle" in path:
                 assert "sm barnacle" in text
 
@@ -261,6 +264,7 @@ class TestAgentHelpers:
         """
         templates = _templates_for_target("claude")
         paths = [t.relative_path for t in templates]
+        assert ".claude/commands/sm-refit.md" in paths
         assert ".claude/commands/sm-swab.md" in paths
         assert ".claude/commands/sm-scour.md" in paths
         assert ".claude/commands/sm-buff.md" in paths
@@ -319,6 +323,9 @@ class TestCmdAgent:
         assert (tmp_path / ".claude/commands/sm-swab.md").exists()
         assert (tmp_path / ".claude/commands/sm-scour.md").exists()
         assert (tmp_path / ".claude/commands/sm-buff.md").exists()
+        assert (tmp_path / ".claude/commands/sm-sail.md").exists()
+        assert (tmp_path / ".claude/commands/sm-refit.md").exists()
+        assert (tmp_path / ".claude/commands/sm-barnacle.md").exists()
         assert (tmp_path / ".claude/skills/slopmop/SKILL.md").exists()
         assert (tmp_path / "CLAUDE.md").exists()
         assert (tmp_path / ".github/copilot-instructions.md").exists()
@@ -375,6 +382,52 @@ class TestCmdAgent:
         for label, path in targets_with_buff.items():
             text = (tmp_path / path).read_text(encoding="utf-8")
             assert "sm buff" in text, f"{label} ({path}) missing 'sm buff'"
+
+    def test_installed_templates_include_refit_for_every_target(self, tmp_path):
+        """Every agent install target exposes refit as the onboarding rail."""
+        args = _make_args(tmp_path)
+
+        result = cmd_agent(args)
+
+        assert result == 0
+
+        target_docs = {
+            "cursor": ".cursor/rules/slopmop-swab.mdc",
+            "claude": "CLAUDE.md",
+            "copilot": ".github/copilot-instructions.md",
+            "windsurf": ".windsurf/rules/slopmop.md",
+            "cline": ".clinerules/slopmop.md",
+            "roo": ".roo/rules/01-slopmop.md",
+            "aider": "CONVENTIONS.md",
+            "antigravity": ".agents/rules/slopmop.md",
+        }
+        for label, path in target_docs.items():
+            text = (tmp_path / path).read_text(encoding="utf-8")
+            assert "sm refit" in text, f"{label} ({path}) missing 'sm refit'"
+
+    def test_installed_templates_include_barnacle_for_every_target(self, tmp_path):
+        """Every agent install target directs sm friction through barnacles."""
+        args = _make_args(tmp_path)
+
+        result = cmd_agent(args)
+
+        assert result == 0
+
+        target_docs = {
+            "cursor": ".cursor/rules/slopmop-swab.mdc",
+            "claude": "CLAUDE.md",
+            "copilot": ".github/copilot-instructions.md",
+            "windsurf": ".windsurf/rules/slopmop.md",
+            "cline": ".clinerules/slopmop.md",
+            "roo": ".roo/rules/01-slopmop.md",
+            "aider": "CONVENTIONS.md",
+            "antigravity": ".agents/rules/slopmop.md",
+        }
+        for label, path in target_docs.items():
+            text = (tmp_path / path).read_text(encoding="utf-8")
+            assert (
+                "sm barnacle file" in text
+            ), f"{label} ({path}) missing 'sm barnacle file'"
 
     def test_installed_content_has_substitution_framing(self, tmp_path):
         """Installed files redirect tool impulses — the instead-of table."""

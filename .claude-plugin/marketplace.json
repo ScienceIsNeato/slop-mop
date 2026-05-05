@@ -10,8 +10,11 @@
   "plugins": [
     {
       "name": "slopmop",
-      "source": ".",
-      "description": "Protocols for highly efficient and directed remediation of known quality issues — the swab/scour/buff/sail loop as a skill plus slash commands.",
+      "source": {
+        "source": "github",
+        "repo": "ScienceIsNeato/slop-mop"
+      },
+      "description": "Protocols for highly efficient and directed remediation of known issues — refit onboarding, the swab/scour/buff/sail loop, and barnacle friction reporting as a skill and slash commands.",
       "version": "1.0.2",
       "category": "code-quality",
       "keywords": [

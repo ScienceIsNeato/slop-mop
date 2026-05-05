@@ -83,6 +83,22 @@ def _has_unpushed_commits(project_root: Path) -> bool:
     return ahead > 0
 
 
+def _onboard_status(project_root: Path) -> str:
+    """Return the onboarding status of the repo.
+
+    Returns:
+        "onboarded"  — .slopmop/ dir exists; repo is in the workflow loop.
+        "init_done"  — .sb_config.json exists but .slopmop/ does not;
+                       sm init ran but sm refit --start has not.
+        "fresh"      — neither exists; repo has never been touched by slopmop.
+    """
+    if (project_root / ".slopmop").exists():
+        return "onboarded"
+    if (project_root / ".sb_config.json").exists():
+        return "init_done"
+    return "fresh"
+
+
 def _reconcile_runtime_state(
     state: WorkflowState,
     project_root: Path,
@@ -303,6 +319,24 @@ _STATE_HANDLERS = {
 def cmd_sail(args: argparse.Namespace) -> int:
     """Auto-advance the workflow: detect state and do the next thing."""
     project_root = Path(getattr(args, "project_root", "."))
+
+    status = _onboard_status(project_root)
+    if status == "fresh":
+        _print_step(
+            "🆕",
+            "Repo not onboarded",
+            "This repo hasn't been set up with slop-mop yet.\n"
+            "   Run: sm refit --start",
+        )
+        return 1
+    if status == "init_done":
+        _print_step(
+            "🔧",
+            "Onboarding incomplete",
+            "sm init ran but refit hasn't started.\n" "   Run: sm refit --start",
+        )
+        return 1
+
     persisted_state = read_state(project_root) or WorkflowState.IDLE
     state = _reconcile_runtime_state(persisted_state, project_root)
     if state != persisted_state:

@@ -1,5 +1,35 @@
 # Project Status
 
+## 2026-05-05 Delta: Claude refit slash command
+
+Branch: `feat/claude-refit-command`
+
+**Work completed:**
+- Added `/sm-refit` to the published Claude plugin commands and the installed
+  Claude template commands.
+- Updated Claude skill/plugin descriptions so refit is advertised as the
+  onboarding rail alongside the maintenance loop.
+- Updated README and penetration-efforts docs to list `/sm-refit` with the
+  Claude command set.
+- Added install-template regressions so Claude command coverage includes refit.
+- Exposed `/sm-barnacle` in the Claude command surface as the preferred internal
+  slop-mop friction reporting path.
+- Added install-template regressions proving every agent target mentions
+  `sm refit` and `sm barnacle file`.
+- Normalized installed Claude slash commands so every verb includes the same
+  `sm` installation prerequisite hint.
+- Matched installed Claude `/sm-sail` to the published command's first-time
+  `sm refit --start` onboarding hint.
+- Applied the Black formatting change required by PR `#179`'s primary code
+  scanning gate for `slopmop/cli/sail.py`.
+
+**Validation:**
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Branch is ready for PR creation.
+
 ## 2026-05-04 Delta: Remove Claude demo scaffolding scripts
 
 Branch: `feat/claude-skill-plugin`  ·  PR `#172`
