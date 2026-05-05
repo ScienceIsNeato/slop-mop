@@ -1,5 +1,53 @@
 # Project Status
 
+## 2026-05-04 Delta: Remove Claude demo scaffolding scripts
+
+Branch: `feat/claude-skill-plugin`  ·  PR `#172`
+
+**Work completed:**
+- Removed `scripts/claude-skill-demo.tape` and
+  `scripts/setup-demo-project.sh` from the project entirely.
+- Verified no repo references to those filenames remain.
+
+**Next:** Run local validation, commit the deletions, push, and watch CI.
+
+## 2026-05-04 Delta: Penetration efforts doc consolidation
+
+Branch: `feat/claude-skill-plugin`  ·  PR `#172`
+
+**Work completed:**
+- Replaced the standalone `SUBMISSION_GUIDE.md` with
+  `DOCS/PENETRATION_EFFORTS.md`.
+- Folded the Claude plugin submission guide into the new doc as the first
+  concrete penetration vector.
+- Folded the deleted visibility/adoption tracking guidance into the new
+  measurement section, with PyPI downloads as the primary adoption proxy.
+- Added reusable sections for PyPI/direct CLI, GitHub discovery, community
+  lists/newsletters, and direct user conversations.
+- Linked the new doc from the README Claude plugin section.
+
+**Next:** Run stale-reference scan and local validation.
+
+## 2026-05-04 Delta: Merge main into Claude skill plugin branch
+
+Branch: `feat/claude-skill-plugin`  ·  PR `#172`
+
+**Work completed:**
+- Merged `origin/main` into the Claude skill plugin branch to clear GitHub's
+  `CONFLICTING` merge state.
+- Resolved the lone content conflict in the Claude install template by keeping
+  the newer `main`-branch trigger wording, including the `sm barnacle file`
+  guidance.
+- Verified the merged README keeps both the branch's PR review / bot workflow
+  guidance and `main`'s newer barnacle filing instructions.
+
+**Validation:**
+- `./sm swab -g overconfidence:untested-code.py --no-cache --output-file .slopmop/merge_conflict_untested.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Commit the merge and push the branch so PR `#172` is conflict-free on
+GitHub.
 ## 2026-05-04 Delta: Buff human-feedback guidance
 
 Branch: `fix/buff-human-feedback-guidance`

@@ -1,0 +1,37 @@
+{
+  "name": "slopmop",
+  "owner": {
+    "name": "ScienceIsNeato",
+    "url": "https://github.com/ScienceIsNeato"
+  },
+  "metadata": {
+    "description": "Slop-mop quality gates as a Claude skill — directed remediation for AI-assisted codebases."
+  },
+  "plugins": [
+    {
+      "name": "slopmop",
+      "source": ".",
+      "description": "Protocols for highly efficient and directed remediation of known quality issues — the swab/scour/buff/sail loop as a skill plus slash commands.",
+      "version": "1.0.2",
+      "category": "code-quality",
+      "keywords": [
+        "quality-gate",
+        "linting",
+        "testing",
+        "code-quality",
+        "ci-cd",
+        "ai",
+        "llm",
+        "vibe-coding",
+        "remediation",
+        "pre-pr"
+      ],
+      "homepage": "https://github.com/ScienceIsNeato/slop-mop",
+      "license": "Slop-Mop Attribution License v1.0",
+      "author": {
+        "name": "ScienceIsNeato",
+        "url": "https://github.com/ScienceIsNeato"
+      }
+    }
+  ]
+}
