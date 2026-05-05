@@ -281,6 +281,8 @@ class TestPRCommentsCheck:
         assert result.status == CheckStatus.WARNED
         assert "1 unresolved" in result.output
         assert result.status_detail == "1 unresolved"
+
+    def test_format_guidance_includes_ai_agent_instructions(self):
         """Test format_guidance includes AI agent instructions."""
         threads = [
             {
