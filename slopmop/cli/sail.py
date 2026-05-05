@@ -333,8 +333,7 @@ def cmd_sail(args: argparse.Namespace) -> int:
         _print_step(
             "🔧",
             "Onboarding incomplete",
-            "sm init ran but refit hasn't started.\n"
-            "   Run: sm refit --start",
+            "sm init ran but refit hasn't started.\n" "   Run: sm refit --start",
         )
         return 1
 

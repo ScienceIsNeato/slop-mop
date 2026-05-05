@@ -20,6 +20,8 @@ Branch: `feat/claude-refit-command`
   `sm` installation prerequisite hint.
 - Matched installed Claude `/sm-sail` to the published command's first-time
   `sm refit --start` onboarding hint.
+- Applied the Black formatting change required by PR `#179`'s primary code
+  scanning gate for `slopmop/cli/sail.py`.
 
 **Validation:**
 - `./sm swab --static` ✅
