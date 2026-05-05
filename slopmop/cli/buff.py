@@ -316,7 +316,9 @@ def _build_draft_entries(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "Investigate this thread, choose a scenario "
             "(fixed_in_code / invalid_with_explanation / "
             "no_longer_applicable / out_of_scope_ticketed / "
-            "needs_human_feedback), and provide evidence."
+            "needs_human_feedback), and provide evidence. "
+            "Use needs_human_feedback when intent is unclear enough that acting "
+            "would mean guessing; leave the thread open with --no-resolve."
             f"{signals_hint}"
         )
 

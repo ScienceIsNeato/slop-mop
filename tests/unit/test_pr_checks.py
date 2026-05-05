@@ -304,6 +304,8 @@ class TestPRCommentsCheck:
         assert "PRRT_456" in guidance
         assert "CHOOSE A SCENARIO" in guidance
         assert "fixed_in_code" in guidance
+        assert "explicitly awaiting human feedback" in guidance
+        assert "leave the thread open with --no-resolve" in guidance
 
     def test_get_unresolved_threads_parses_response(self, tmp_path):
         """Test _get_unresolved_threads correctly parses GraphQL response."""

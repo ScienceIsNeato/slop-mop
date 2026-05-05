@@ -1,5 +1,20 @@
 # Project Status
 
+## 2026-05-04 Delta: Buff human-feedback guidance
+
+Branch: `fix/buff-human-feedback-guidance`
+
+**Work completed:**
+- Created a separate branch from `origin/main` for the buff instruction tweak.
+- Updated PR feedback guidance so unresolved comments may also be explicitly
+  awaiting human feedback when reviewer/human intent is unclear.
+- Tightened `needs_human_feedback` wording so agents leave the thread open with
+  `--no-resolve` and a concrete clarification request, rather than using it to
+  defer clear fixes.
+- Added a regression assertion for the new final warning text.
+
+**Next:** Run local validation, commit, push, and report branch state.
+
 ## 2026-05-04 Delta: PR #169 follow-up parser fixes
 
 Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
