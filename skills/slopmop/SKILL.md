@@ -51,7 +51,7 @@ Then re-run the command.
 - Never bypass or silence a failing check — that's how repo rot compounds.
 - If a gate seems wrong, tune it or file a bug. Don't disable it as a workaround.
 - Report friction (invalid guidance, broken state, blocked rails) rather than work around it.
-- If you find a bug in the plugin itself (broken commands, bad guidance, etc.), file it at https://github.com/ScienceIsNeato/slop-mop/issues with label `triage:needed` — not against the host repo.
+- If you find a bug in the plugin itself (broken commands, bad guidance, etc.), use `/sm-barnacle` or `sm barnacle file` — never `gh issue create` directly. The barnacle command automatically applies the correct labels and files against the slop-mop repo.
 
 ## Reference
 
