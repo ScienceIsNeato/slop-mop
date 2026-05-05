@@ -481,6 +481,78 @@ def _get_repo_slug(project_root: str) -> str:
     return f"{owner}/{repo}"
 
 
+def _get_current_branch(project_root: Path) -> str | None:
+    """Return the current git branch name, if it can be resolved."""
+
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            stdin=subprocess.DEVNULL,
+            cwd=project_root,
+            check=False,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    branch = result.stdout.strip()
+    return branch or None
+
+
+def _get_pr_head_branch(project_root: Path, pr_number: int) -> str | None:
+    """Return the PR head branch name, if GitHub can provide it."""
+
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--json",
+                "headRefName",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            stdin=subprocess.DEVNULL,
+            cwd=project_root,
+            check=False,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    branch = str(data.get("headRefName") or "").strip()
+    return branch or None
+
+
+def _warn_if_pr_worktree_mismatch(project_root: Path, pr_number: int) -> None:
+    """Warn when buff is watching a PR from a different branch/worktree."""
+
+    current_branch = _get_current_branch(project_root)
+    pr_head_branch = _get_pr_head_branch(project_root, pr_number)
+    if not current_branch or not pr_head_branch or current_branch == pr_head_branch:
+        return
+
+    print("⚠️  PR/worktree mismatch detected")
+    print(f"   Current branch: {current_branch}")
+    print(f"   PR #{pr_number} head branch: {pr_head_branch}")
+    print(f"   Project root: {project_root}")
+    print(
+        "   If this is intentional, continue. Otherwise run buff from the "
+        "PR worktree or switch to the PR branch before watching."
+    )
+    print()
+
+
 def _post_pr_comment(
     project_root: str, owner: str, repo: str, pr_number: int, message: str
 ) -> None:
@@ -598,6 +670,7 @@ def _cmd_buff_status(
 
     print_project_header(str(project_root))
     print(f"🔀 PR: #{resolved_pr}")
+    _warn_if_pr_worktree_mismatch(project_root, resolved_pr)
     if watch:
         flags = f"polling every {interval}s"
         if fail_fast:

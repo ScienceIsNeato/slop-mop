@@ -12,8 +12,12 @@ Branch: `fix/buff-human-feedback-guidance`
   `--no-resolve` and a concrete clarification request, rather than using it to
   defer clear fixes.
 - Added a regression assertion for the new final warning text.
+- Found open barnacles #170 and #171 for the same `sm buff watch` wrong-worktree
+  footgun.
+- Added a `sm buff status/watch` warning when the current branch differs from
+  the PR head branch, making wrong-worktree watches obvious before polling.
 
-**Next:** Run local validation, commit, push, and report branch state.
+**Next:** Run local validation, commit, push, open the PR, and buff it clean.
 
 ## 2026-05-04 Delta: PR #169 follow-up parser fixes
 
