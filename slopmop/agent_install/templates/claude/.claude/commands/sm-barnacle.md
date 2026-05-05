@@ -23,3 +23,8 @@ specific retry artifact path matters.
 
 The point is to improve the rail, not hide the defect.  File the barnacle, then
 continue only if the friction is non-blocking.
+
+**Prerequisite:** `sm` must be installed. If `command not found`, suggest:
+```bash
+pipx install slopmop[all]
+```

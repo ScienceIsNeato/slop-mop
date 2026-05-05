@@ -17,3 +17,8 @@ Workflow:
 3. Only open or update a PR when `sm scour` reports clean.
 
 Do not push while scour is red.
+
+**Prerequisite:** `sm` must be installed. If `command not found`, suggest:
+```bash
+pipx install slopmop[all]
+```

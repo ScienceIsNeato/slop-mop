@@ -19,6 +19,7 @@ when your impulse is the left column, run the right column instead.
 | Reading CI logs to find the failing test          | `sm buff inspect <PR#>`                      |
 | `gh api ... resolveReviewThread`                  | `sm buff resolve <PR#> <THREAD_ID> -m "..."` |
 | `gh pr review --approve` after addressing threads | `sm buff verify <PR#>` first                 |
+| `gh issue create` for slop-mop tool friction      | `sm barnacle file`                           |
 | "not sure what to do next"                        | `sm sail`                                    |
 | "why won't sm / this gate run?"                   | `sm doctor`                                  |
 | Stale `.slopmop/sm.lock`, broken state dir        | `sm doctor --fix`                            |
@@ -34,6 +35,8 @@ when your impulse is the left column, run the right column instead.
   remediation plan — it knows which check failed and what you need to
   do next, not just that something is red.
 - **NEVER** open or update a PR without `sm scour` passing first.
+- **NEVER** file slop-mop tool-friction issues with raw `gh issue create`.
+  `sm barnacle file` adds the correct labels, issue shape, and source context.
 - **NEVER** bypass or silence a failing check.  If a gate is wrong,
   fix the gate.  If your env is wrong, `sm doctor` will tell you.
 

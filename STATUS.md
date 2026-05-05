@@ -12,6 +12,12 @@ Branch: `feat/claude-refit-command`
 - Updated README and penetration-efforts docs to list `/sm-refit` with the
   Claude command set.
 - Added install-template regressions so Claude command coverage includes refit.
+- Exposed `/sm-barnacle` in the Claude command surface as the preferred internal
+  slop-mop friction reporting path.
+- Added install-template regressions proving every agent target mentions
+  `sm refit` and `sm barnacle file`.
+- Normalized installed Claude slash commands so every verb includes the same
+  `sm` installation prerequisite hint.
 
 **Validation:**
 - `./sm swab --static` ✅

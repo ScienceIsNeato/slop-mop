@@ -11,3 +11,8 @@ auto-fixes what it can.
    dependency ordering.
 
 Rerun after every meaningful edit.  The cache makes re-runs cheap.
+
+**Prerequisite:** `sm` must be installed. If `command not found`, suggest:
+```bash
+pipx install slopmop[all]
+```

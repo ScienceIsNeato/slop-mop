@@ -8,3 +8,8 @@ Auto-advance the slop-mop workflow loop for this repository.
 4. Repeat until the PR lands.
 
 This is the "do the next thing" command. Use it when you're not sure whether to swab, scour, or buff. For surgical work on a specific gate or PR thread, use the individual verbs directly.
+
+**Prerequisite:** `sm` must be installed. If `command not found`, suggest:
+```bash
+pipx install slopmop[all]
+```

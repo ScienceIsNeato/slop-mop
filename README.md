@@ -100,9 +100,9 @@ It reads the current workflow state and runs the next obvious slop-mop verb.
 ## Use with Claude
 
 Slop-mop ships as a Claude plugin: a skill that auto-triggers on remediation
-prompts, plus five slash commands (`/sm-refit`, `/sm-sail`, `/sm-swab`,
-`/sm-scour`, `/sm-buff`). Install once and `sm` is available in every repo — no
-per-repo `sm agent install` required.
+prompts, plus six slash commands (`/sm-refit`, `/sm-sail`, `/sm-swab`,
+`/sm-scour`, `/sm-buff`, `/sm-barnacle`). Install once and `sm` is available in
+every repo — no per-repo `sm agent install` required.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/claude-skill-demo.gif" alt="Demo: sm scour flagging a bogus test, an uncovered function, and a silenced gate in one run" width="780"/>
@@ -116,11 +116,16 @@ In Claude Code or Cowork:
 ```
 
 Then ask Claude things like *"refit this repo"*, *"sail this repo"*, *"swab my
-changes before I commit"*, or *"buff PR 142"*. The skill activates on
-remediation language and runs the right verb.
+changes before I commit"*, *"buff PR 142"*, or *"file a barnacle for this sm
+friction"*. The skill activates on remediation language and runs the right verb.
 
 The CLI itself is still a prerequisite — install it once with
 `pipx install slopmop[all]` and the plugin will call into it.
+
+When `sm` itself gives invalid guidance or blocks valid work, use
+`/sm-barnacle` or `sm barnacle file`. That is the preferred internal friction
+reporting path; do not file ad hoc `gh issue create` reports for slop-mop
+tooling defects.
 
 Distribution notes, promotion TODOs, and adoption-tracking signals live in
 [DOCS/PENETRATION_EFFORTS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/PENETRATION_EFFORTS.md).

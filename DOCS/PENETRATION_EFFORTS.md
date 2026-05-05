@@ -101,7 +101,8 @@ slop-mop/
 │   ├── sm-sail.md
 │   ├── sm-swab.md
 │   ├── sm-scour.md
-│   └── sm-buff.md
+│   ├── sm-buff.md
+│   └── sm-barnacle.md
 ├── assets/
 │   └── claude-skill-demo.gif
 └── slopmop/

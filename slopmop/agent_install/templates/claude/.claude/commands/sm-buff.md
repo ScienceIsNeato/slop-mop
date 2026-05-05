@@ -16,3 +16,8 @@ remediation plan.
 Never run raw `gh pr checks [--watch]` or read CI logs by hand.  Buff
 knows which check failed *and* what to do about it.  `gh` only knows
 the colour.
+
+**Prerequisite:** `sm` must be installed. If `command not found`, suggest:
+```bash
+pipx install slopmop[all]
+```
