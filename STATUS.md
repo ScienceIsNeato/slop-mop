@@ -17,7 +17,14 @@ Branch: `fix/buff-human-feedback-guidance`
 - Added a `sm buff status/watch` warning when the current branch differs from
   the PR head branch, making wrong-worktree watches obvious before polling.
 
-**Next:** Run local validation, commit, push, open the PR, and buff it clean.
+**Validation:**
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+- PR `#173` opened: https://github.com/ScienceIsNeato/slop-mop/pull/173
+- `./sm buff watch 173` ✅ after addressing the Bugbot test-structure comment
+
+**Next:** PR `#173` is clean and ready for review/merge.
 
 ## 2026-05-04 Delta: PR #169 follow-up parser fixes
 
