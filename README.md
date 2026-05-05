@@ -122,6 +122,9 @@ runs the right verb.
 The CLI itself is still a prerequisite — install it once with
 `pipx install slopmop[all]` and the plugin will call into it.
 
+Distribution notes, promotion TODOs, and adoption-tracking signals live in
+[DOCS/PENETRATION_EFFORTS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/PENETRATION_EFFORTS.md).
+
 ## The Loop
 
 Slop-mop has five verbs you will actually use:
@@ -280,8 +283,8 @@ the gate.
 ## PR Review and Bot Integration
 
 Slop-mop closes the loop on PR feedback too, not just local code quality. Once
-a PR is open, review comments accumulate from humans, Copilot, and Cursor's
-bugbot. Left unaddressed, they block the merge and erode reviewer trust. `sm buff`
+a PR is open, review comments accumulate from humans, and bots alike. Left 
+unaddressed, they block the merge and erode reviewer trust. `sm buff`
 handles this:
 
 ```bash
@@ -297,17 +300,17 @@ warns if unresolved review threads exist; set `fail_on_unresolved: true` if you
 want `sm scour` to block on them. `sm buff` runs the same check in blocking
 mode, so the post-PR rail won't report a PR as clean while comments remain open.
 
-### Copilot and Cursor Bugbot
+### Review Bots
 
-Both Copilot code review and Cursor's bugbot catch things slop-mop deliberately
-doesn't try to own: logic errors in your specific domain, API misuse, missing
-null checks in context-dependent code. They're trained on human review patterns;
+Copilot code review, Cursor's bugbot and the like catch things slop-mop deliberately
+doesn't try to own: logic errors in your specific domain, API misuse, smelly design
+patterns and logical errors. They're trained on human review patterns;
 slop-mop is optimized for the failure modes unique to agent-generated code.
 
 Run them in parallel, not as alternatives. The combination covers more ground:
 
 - slop-mop: duplication, complexity creep, coverage gaps, unaddressed feedback
-- Copilot / bugbot: logic correctness, style conformance, domain-specific hazards
+- Copilot / bugbot / human reviewers: logic correctness, style conformance, domain-specific hazards
 
 When a bot leaves a comment, treat it like a human reviewer left it. Use
 `sm buff resolve` to reply and close the thread - the same workflow applies

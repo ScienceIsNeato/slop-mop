@@ -1,5 +1,22 @@
 # Project Status
 
+## 2026-05-04 Delta: Penetration efforts doc consolidation
+
+Branch: `feat/claude-skill-plugin`  ·  PR `#172`
+
+**Work completed:**
+- Replaced the standalone `SUBMISSION_GUIDE.md` with
+  `DOCS/PENETRATION_EFFORTS.md`.
+- Folded the Claude plugin submission guide into the new doc as the first
+  concrete penetration vector.
+- Folded the deleted visibility/adoption tracking guidance into the new
+  measurement section, with PyPI downloads as the primary adoption proxy.
+- Added reusable sections for PyPI/direct CLI, GitHub discovery, community
+  lists/newsletters, and direct user conversations.
+- Linked the new doc from the README Claude plugin section.
+
+**Next:** Run stale-reference scan and local validation.
+
 ## 2026-05-04 Delta: Merge main into Claude skill plugin branch
 
 Branch: `feat/claude-skill-plugin`  ·  PR `#172`
