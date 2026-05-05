@@ -1,5 +1,25 @@
 # Project Status
 
+## 2026-05-05 Delta: Claude refit slash command
+
+Branch: `feat/claude-refit-command`
+
+**Work completed:**
+- Added `/sm-refit` to the published Claude plugin commands and the installed
+  Claude template commands.
+- Updated Claude skill/plugin descriptions so refit is advertised as the
+  onboarding rail alongside the maintenance loop.
+- Updated README and penetration-efforts docs to list `/sm-refit` with the
+  Claude command set.
+- Added install-template regressions so Claude command coverage includes refit.
+
+**Validation:**
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** Branch is ready for PR creation.
+
 ## 2026-05-04 Delta: Remove Claude demo scaffolding scripts
 
 Branch: `feat/claude-skill-plugin`  ·  PR `#172`

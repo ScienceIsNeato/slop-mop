@@ -220,9 +220,11 @@ class TestClaudeSkill:
             for a in assets
             if "/commands/" in a.destination_relpath
         }
-        assert len(commands) == 5
+        assert len(commands) == 6
         for path, text in commands.items():
-            if "swab" in path:
+            if "refit" in path:
+                assert "sm refit" in text
+            elif "swab" in path:
                 assert "sm swab" in text
             elif "scour" in path:
                 assert "sm scour" in text
@@ -261,6 +263,7 @@ class TestAgentHelpers:
         """
         templates = _templates_for_target("claude")
         paths = [t.relative_path for t in templates]
+        assert ".claude/commands/sm-refit.md" in paths
         assert ".claude/commands/sm-swab.md" in paths
         assert ".claude/commands/sm-scour.md" in paths
         assert ".claude/commands/sm-buff.md" in paths
@@ -319,6 +322,7 @@ class TestCmdAgent:
         assert (tmp_path / ".claude/commands/sm-swab.md").exists()
         assert (tmp_path / ".claude/commands/sm-scour.md").exists()
         assert (tmp_path / ".claude/commands/sm-buff.md").exists()
+        assert (tmp_path / ".claude/commands/sm-refit.md").exists()
         assert (tmp_path / ".claude/skills/slopmop/SKILL.md").exists()
         assert (tmp_path / "CLAUDE.md").exists()
         assert (tmp_path / ".github/copilot-instructions.md").exists()

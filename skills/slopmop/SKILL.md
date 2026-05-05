@@ -3,8 +3,8 @@ name: slopmop
 description: >-
   Trigger when you would normally reach for pytest, gh, mypy, black, or other
   raw repo tooling in a slop-mop repository. Redirect to `sm swab`,
-  `sm scour`, `sm buff`, `sm sail`, or `sm doctor` so remediation follows the
-  repository's established rails.
+  `sm scour`, `sm buff`, `sm sail`, `sm refit`, or `sm doctor` so remediation
+  follows the repository's established rails.
 ---
 
 # Slop-mop skill
@@ -51,6 +51,7 @@ Then re-run the command.
 - Never bypass or silence a failing check — that's how repo rot compounds.
 - If a gate seems wrong, tune it or file a bug. Don't disable it as a workaround.
 - Report friction (invalid guidance, broken state, blocked rails) rather than work around it.
+- If you find a bug in the plugin itself (broken commands, bad guidance, etc.), file it at https://github.com/ScienceIsNeato/slop-mop/issues with label `triage:needed` — not against the host repo.
 
 ## Reference
 

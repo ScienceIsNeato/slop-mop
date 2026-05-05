@@ -5,7 +5,8 @@ description: >-
   repo with a single `sm` CLI.  Never run the underlying tools
   directly — `sm swab` for fast iteration, `sm scour` before a PR,
   `sm buff` after CI or review feedback, `sm doctor` when the
-  environment looks broken, `sm sail` when unsure what to do next.
+  environment looks broken, `sm refit` for onboarding existing repos,
+  `sm sail` when unsure what to do next.
   Use `sm barnacle file` when slop-mop itself causes tool friction
   that needs upstream maintainer triage.
 ---

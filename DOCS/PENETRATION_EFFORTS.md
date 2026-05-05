@@ -97,6 +97,7 @@ slop-mop/
 │   └── slopmop/
 │       └── SKILL.md
 ├── commands/
+│   ├── sm-refit.md
 │   ├── sm-sail.md
 │   ├── sm-swab.md
 │   ├── sm-scour.md
