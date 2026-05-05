@@ -7,8 +7,9 @@ description: >-
   `sm buff` after CI or review feedback, `sm doctor` when the
   environment looks broken, `sm refit` for onboarding existing repos,
   `sm sail` when unsure what to do next.
-  Use `sm barnacle file` when slop-mop itself causes tool friction
-  that needs upstream maintainer triage.
+  Use `sm barnacle file` (never `gh issue create`) when slop-mop
+  itself causes tool friction — the barnacle CLI auto-applies labels
+  and targets the right repo.
 ---
 
 {{CORE}}
