@@ -232,6 +232,7 @@ class TestClaudeSkill:
                 assert "sm buff" in text
             elif "sail" in path:
                 assert "sm sail" in text
+                assert "sm refit --start" in text
             elif "barnacle" in path:
                 assert "sm barnacle" in text
 

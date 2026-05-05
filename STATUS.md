@@ -18,6 +18,8 @@ Branch: `feat/claude-refit-command`
   `sm refit` and `sm barnacle file`.
 - Normalized installed Claude slash commands so every verb includes the same
   `sm` installation prerequisite hint.
+- Matched installed Claude `/sm-sail` to the published command's first-time
+  `sm refit --start` onboarding hint.
 
 **Validation:**
 - `./sm swab --static` ✅
