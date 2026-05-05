@@ -268,6 +268,42 @@ class TestBuffInspectCommand:
 
 
 class TestBuffStatusCommand:
+    def test_get_current_branch_returns_branch(self, monkeypatch):
+        monkeypatch.setattr(
+            buff_mod.subprocess,
+            "run",
+            Mock(return_value=Mock(returncode=0, stdout="feature/demo\n")),
+        )
+
+        assert buff_mod._get_current_branch(buff_mod.Path("/repo")) == "feature/demo"
+
+    def test_get_current_branch_returns_none_on_command_failure(self, monkeypatch):
+        monkeypatch.setattr(
+            buff_mod.subprocess,
+            "run",
+            Mock(return_value=Mock(returncode=1, stdout="")),
+        )
+
+        assert buff_mod._get_current_branch(buff_mod.Path("/repo")) is None
+
+    def test_get_pr_head_branch_returns_branch(self, monkeypatch):
+        monkeypatch.setattr(
+            buff_mod.subprocess,
+            "run",
+            Mock(return_value=Mock(returncode=0, stdout='{"headRefName":"feat-x"}')),
+        )
+
+        assert buff_mod._get_pr_head_branch(buff_mod.Path("/repo"), 85) == "feat-x"
+
+    def test_get_pr_head_branch_returns_none_on_invalid_json(self, monkeypatch):
+        monkeypatch.setattr(
+            buff_mod.subprocess,
+            "run",
+            Mock(return_value=Mock(returncode=0, stdout="not-json")),
+        )
+
+        assert buff_mod._get_pr_head_branch(buff_mod.Path("/repo"), 85) is None
+
     def test_cmd_buff_status_fires_buff_hook_on_clean_terminal_state(
         self, monkeypatch, capsys
     ):
@@ -451,6 +487,62 @@ class TestBuffStatusCommand:
         out = capsys.readouterr().out
         assert "CI checks are clean, but unresolved PR review threads remain." in out
         assert "PR #85 has unresolved review threads." in out
+
+    def test_cmd_buff_status_warns_on_pr_worktree_mismatch(self, monkeypatch, capsys):
+        args = argparse.Namespace(
+            pr_or_action="status",
+            action_args=["85"],
+            interval=30,
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        monkeypatch.setattr(buff_mod, "_get_current_branch", Mock(return_value="main"))
+        monkeypatch.setattr(
+            buff_mod, "_get_pr_head_branch", Mock(return_value="feature/pr-85")
+        )
+        monkeypatch.setattr(
+            buff_mod,
+            "_fetch_checks",
+            Mock(
+                return_value=(
+                    [
+                        {
+                            "name": "Primary Code Scanning Gate (blocking)",
+                            "bucket": "pass",
+                            "state": "SUCCESS",
+                            "link": "https://example.test/check",
+                        }
+                    ],
+                    "",
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
+        )
+        monkeypatch.setattr(buff_mod, "_fire_buff_hook", Mock())
+
+        assert buff_mod.cmd_buff(args) == 0
+        out = capsys.readouterr().out
+        assert "PR/worktree mismatch detected" in out
+        assert "Current branch: main" in out
+        assert "PR #85 head branch: feature/pr-85" in out
+        assert "run buff from the PR worktree" in out
 
     def test_cmd_buff_watch_waits_once_for_post_ci_feedback_settle(
         self, monkeypatch, capsys

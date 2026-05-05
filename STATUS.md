@@ -1,5 +1,31 @@
 # Project Status
 
+## 2026-05-04 Delta: Buff human-feedback guidance
+
+Branch: `fix/buff-human-feedback-guidance`
+
+**Work completed:**
+- Created a separate branch from `origin/main` for the buff instruction tweak.
+- Updated PR feedback guidance so unresolved comments may also be explicitly
+  awaiting human feedback when reviewer/human intent is unclear.
+- Tightened `needs_human_feedback` wording so agents leave the thread open with
+  `--no-resolve` and a concrete clarification request, rather than using it to
+  defer clear fixes.
+- Added a regression assertion for the new final warning text.
+- Found open barnacles #170 and #171 for the same `sm buff watch` wrong-worktree
+  footgun.
+- Added a `sm buff status/watch` warning when the current branch differs from
+  the PR head branch, making wrong-worktree watches obvious before polling.
+
+**Validation:**
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+- PR `#173` opened: https://github.com/ScienceIsNeato/slop-mop/pull/173
+- `./sm buff watch 173` ✅ after addressing the Bugbot test-structure comment
+
+**Next:** PR `#173` is clean and ready for review/merge.
+
 ## 2026-05-04 Delta: PR #169 follow-up parser fixes
 
 Branch: `feat/crowdsource-barnacles`  ·  PR `#169`
