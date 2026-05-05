@@ -693,7 +693,8 @@ class PRCommentsCheck(BaseCheck):
             " — Valid but not this PR. File issue, link it."
         )
         lines.append(
-            "# needs_human_feedback    " " — Need reviewer input. Uses --no-resolve."
+            "# needs_human_feedback    "
+            " — Intent unclear; ask for clarification. Uses --no-resolve."
         )
         lines.append("")
 
@@ -895,7 +896,12 @@ class PRCommentsCheck(BaseCheck):
             " — Valid but not this PR. File issue, link it."
         )
         lines.append(
-            "  needs_human_feedback     " " — Need reviewer input. Uses --no-resolve."
+            "  needs_human_feedback     "
+            " — Intent unclear; ask for clarification. Uses --no-resolve."
+        )
+        lines.append(
+            "    Use this when acting would mean guessing about reviewer or "
+            "human intent; do not use it to defer clear fixes."
         )
         lines.append("")
         lines.append("STEP 3: RESOLVE WITH EVIDENCE")
@@ -926,7 +932,12 @@ class PRCommentsCheck(BaseCheck):
         lines.append("")
         lines.append("━" * 80)
         lines.append(
-            "⚠️  DO NOT push until all comments are resolved or marked WONT_RESOLVE!"
+            "⚠️  DO NOT push until all comments are resolved, marked WONT_RESOLVE, "
+            "or explicitly awaiting human feedback."
+        )
+        lines.append(
+            "    Awaiting human feedback is valid when intent is unclear; leave the "
+            "thread open with --no-resolve and a concrete clarification request."
         )
         lines.append("━" * 80)
 
