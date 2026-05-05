@@ -1,5 +1,16 @@
 # Project Status
 
+## 2026-05-04 Delta: Remove Claude demo scaffolding scripts
+
+Branch: `feat/claude-skill-plugin`  ·  PR `#172`
+
+**Work completed:**
+- Removed `scripts/claude-skill-demo.tape` and
+  `scripts/setup-demo-project.sh` from the project entirely.
+- Verified no repo references to those filenames remain.
+
+**Next:** Run local validation, commit the deletions, push, and watch CI.
+
 ## 2026-05-04 Delta: Penetration efforts doc consolidation
 
 Branch: `feat/claude-skill-plugin`  ·  PR `#172`
