@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from slopmop.cli import sail as sail_mod
 from slopmop.cli.scan_triage import ARTIFACT_NAME, WORKFLOW_NAME
 from slopmop.workflow.state_machine import WorkflowState
@@ -24,6 +26,11 @@ def _base_args(tmp_path: Path) -> argparse.Namespace:
 
 class TestSailDispatch:
     """Each workflow state dispatches to the correct action."""
+
+    @pytest.fixture(autouse=True)
+    def _onboarded(self, monkeypatch):
+        """Treat every repo in this class as already onboarded."""
+        monkeypatch.setattr(sail_mod, "_onboard_status", lambda _: "onboarded")
 
     def test_idle_runs_swab(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
@@ -172,6 +179,59 @@ class TestSailDispatch:
 
         assert sail_mod.cmd_sail(args) == 0
         mock_swab.assert_called_once()
+
+
+class TestSailOnboarding:
+    """sail detects unonboarded repos and gives the right guidance."""
+
+    def test_fresh_repo_prints_guidance_and_returns_1(self, capsys, tmp_path: Path):
+        args = _base_args(tmp_path)
+        # tmp_path has no .slopmop/ and no .sb_config.json
+
+        result = sail_mod.cmd_sail(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "sm refit --start" in out
+
+    def test_init_done_but_no_refit_prints_guidance_and_returns_1(
+        self, capsys, tmp_path: Path
+    ):
+        args = _base_args(tmp_path)
+        (tmp_path / ".sb_config.json").write_text("{}")
+
+        result = sail_mod.cmd_sail(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "sm refit --start" in out
+
+    def test_onboarded_repo_proceeds_normally(self, monkeypatch, tmp_path: Path):
+        args = _base_args(tmp_path)
+        (tmp_path / ".slopmop").mkdir()
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.IDLE)
+        mock_swab = Mock(return_value=0)
+        monkeypatch.setattr("slopmop.cli.cmd_swab", mock_swab)
+
+        assert sail_mod.cmd_sail(args) == 0
+        mock_swab.assert_called_once()
+
+    def test_onboard_status_fresh(self, tmp_path: Path):
+        assert sail_mod._onboard_status(tmp_path) == "fresh"
+
+    def test_onboard_status_init_done(self, tmp_path: Path):
+        (tmp_path / ".sb_config.json").write_text("{}")
+        assert sail_mod._onboard_status(tmp_path) == "init_done"
+
+    def test_onboard_status_onboarded(self, tmp_path: Path):
+        (tmp_path / ".slopmop").mkdir()
+        assert sail_mod._onboard_status(tmp_path) == "onboarded"
+
+    def test_slopmop_dir_takes_precedence_over_config(self, tmp_path: Path):
+        """When both .slopmop/ and .sb_config.json exist, repo is onboarded."""
+        (tmp_path / ".slopmop").mkdir()
+        (tmp_path / ".sb_config.json").write_text("{}")
+        assert sail_mod._onboard_status(tmp_path) == "onboarded"
 
 
 class TestSwabArgs:
