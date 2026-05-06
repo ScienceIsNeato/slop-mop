@@ -56,6 +56,9 @@
 
 name: slop-mop primary code scanning gate
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [main]
@@ -87,7 +90,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # diff-cover and gate-dodging need history to compare
           # against the base branch.  Shallow clone (the default)
@@ -95,13 +98,13 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           cache: 'pip'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -171,12 +174,6 @@ jobs:
           # (category, ruleId, fingerprint).
           category: slopmop
 
-      - name: Upload JSON scan report
-        uses: actions/upload-artifact@v4
-        with:
-          name: slopmop-results
-          path: slopmop-results.json
-
       - name: Verify coverage report exists
         if: always()
         run: |
@@ -185,13 +182,6 @@ jobs:
           else
             echo "coverage.xml was not produced by sm scour; skipping coverage upload."
           fi
-
-      - name: Upload coverage report
-        if: always() && hashFiles('coverage.xml') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage.xml
 
       - name: Upload coverage to Codecov
         if: always() && hashFiles('coverage.xml') != ''
@@ -245,10 +235,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           cache: 'pip'
@@ -286,16 +276,6 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload coverage artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-test-coverage
-          if-no-files-found: warn
-          path: |
-            coverage.xml
-            coverage-report.txt
-
   # -------------------------------------------------------------------
   # Docker integration tests
   #
@@ -311,12 +291,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           cache: 'pip'
@@ -335,9 +315,3 @@ jobs:
           python -m pytest tests/integration/test_docker_install.py \
             -v --tb=long -m integration 2>&1 | tee docker-test-output.txt
 
-      - name: Upload test output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-integration-output
-          path: docker-test-output.txt

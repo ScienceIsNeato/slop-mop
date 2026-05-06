@@ -71,6 +71,9 @@ Branch: `feat/claude-refit-command`
 **Validation:**
 - `bash -n scripts/release.sh` ✅
 - `./sm swab --static` ✅
+- `actionlint .github/workflows/release.yml` not run locally; `actionlint` is
+  not installed
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
 - `./sm scour -g myopia:dependency-risk.py --no-cache` ✅
 - `./sm scour --output-file .slopmop/last_scour.json` ✅
   (PR feedback warning remains until addressed threads are resolved)
@@ -89,6 +92,42 @@ Branch: `fix/release-workflow-single-trigger`
 - `bash -n scripts/release.sh` ✅
 - `./sm swab --static` ✅
 - `./sm scour --output-file .slopmop/last_scour.json` ✅
+
+## 2026-05-05 Delta: Node 24 workflow action updates
+
+Branch: `fix/node24-release-actions`
+
+**Work completed:**
+- Updating GitHub-owned workflow actions away from Node 20-backed major
+  versions so Prepare Release and related CI jobs stop emitting Node 20
+  deprecation warnings.
+- Covering `checkout`, `setup-python`, `setup-node`, and artifact upload /
+  download actions across the workflow set.
+
+**Validation:**
+- `./sm swab --static` ✅
+
+## 2026-05-06 Delta: Single-click release workflow
+
+Branch: `fix/single-click-release`
+
+**Work in progress:**
+- Combining the Node 24 workflow action updates with a fully automated manual
+  Release workflow.
+- Changing the manual Release dispatch to bump `pyproject.toml`, commit the
+  bump to `main`, validate, build, publish to PyPI, and create the GitHub
+  release in one run.
+- Preserving the `scripts/release.sh` PR-based fallback through the existing
+  push-trigger publish path.
+- Addressing PR review feedback by syncing `main` before manual bump commits,
+  opting workflows into Node 24 JavaScript action execution, and making manual
+  release reruns reuse the original run's version-bump commit.
+- Removed remaining artifact upload/download actions from the workflow set so
+  Node 24 opt-in does not force unsupported artifact action runtimes.
+
+**Validation:**
+- `bash -n scripts/release.sh` ✅
+- `./sm swab --static` ✅
 
 ## 2026-05-04 Delta: Remove Claude demo scaffolding scripts
 
