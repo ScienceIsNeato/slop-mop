@@ -17,7 +17,7 @@
 # Once merged, release.yml detects the version bump on main and publishes
 # automatically.
 #
-# Can also be called from CI via the Release workflow with action=prepare.
+# Can also be called from CI via the Release workflow's manual bump input.
 
 set -euo pipefail
 

@@ -1,12 +1,11 @@
 # Prepare and publish PyPI releases.
 #
 # Workflow:
-#   1. Run "Release" manually with action=prepare to create the version-bump PR
+#   1. Run "Release" manually with a bump type to create the version-bump PR
 #   2. Review and merge that PR
-#   3. This workflow detects the pyproject.toml version bump on main, or run it
-#      manually with action=publish from main after the bump lands
+#   3. This workflow detects the pyproject.toml version bump on main
 #   4. The publish path builds the package, uploads to PyPI, and creates the
-#      tag/release
+#      tag/release automatically
 #
 # Prerequisites (one-time setup):
 #   - Create a PyPI account at https://pypi.org/account/register/
@@ -28,26 +27,14 @@ on:
       - pyproject.toml
   workflow_dispatch:
     inputs:
-      action:
-        description: "Release action to run"
-        required: true
-        default: prepare
-        type: choice
-        options:
-          - prepare
-          - publish
       bump:
-        description: "Version bump for action=prepare"
-        required: false
+        description: "Version bump type"
+        required: true
         type: choice
         options:
           - patch
           - minor
           - major
-      version:
-        description: "Optional guard for action=publish; must match pyproject.toml."
-        required: false
-        type: string
 
 # Prevent concurrent mainline releases, but never cancel an in-progress publish
 # — PyPI forbids re-uploading the same version, so a partial publish caused by
@@ -58,8 +45,8 @@ concurrency:
 
 jobs:
   prepare-release:
-    name: Prepare Release (${{ github.event.inputs.bump || 'select bump' }})
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'prepare'
+    name: Prepare Release (${{ github.event.inputs.bump }})
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -84,7 +71,7 @@ jobs:
           case "$BUMP" in
             patch|minor|major) ;;
             *)
-              echo "action=prepare requires bump to be patch, minor, or major" >&2
+              echo "Release workflow requires bump to be patch, minor, or major" >&2
               exit 1
               ;;
           esac
@@ -102,7 +89,7 @@ jobs:
 
   detect-release:
     name: Detect Release Bump
-    if: github.event_name == 'push' || github.event.inputs.action == 'publish'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.detect.outputs.should_release }}
@@ -121,57 +108,35 @@ jobs:
       - name: Detect version bump in pyproject.toml
         id: detect
         env:
-          DISPATCH_VERSION: ${{ github.event.inputs.version }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          GITHUB_REF: ${{ github.ref }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
           python <<'PY'
           import os
           import subprocess
-          import sys
           import tomllib
           from pathlib import Path
 
           current = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
-          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-          dispatch_version = os.environ.get("DISPATCH_VERSION", "").strip()
-          ref = os.environ.get("GITHUB_REF", "")
-          ref_name = os.environ.get("GITHUB_REF_NAME", "")
 
           previous = current
-          if event_name == "workflow_dispatch":
-            if ref != "refs/heads/main" or ref_name != "main":
-              print("Manual PyPI releases must be dispatched from main.", file=sys.stderr)
-              sys.exit(1)
-            if dispatch_version and dispatch_version != current:
-              print(
-                f"Requested version {dispatch_version} does not match pyproject.toml {current}.",
-                file=sys.stderr,
-              )
-              sys.exit(1)
-            previous = "manual dispatch"
-            should_release = "true"
-          else:
-            before_sha = os.environ.get("GITHUB_EVENT_BEFORE", "")
-            null_sha = "0" * 40
-            if before_sha and before_sha != null_sha:
-              try:
-                previous_text = subprocess.run(
-                  ["git", "show", f"{before_sha}:pyproject.toml"],
-                  capture_output=True,
-                  text=True,
-                  check=True,
-                ).stdout
-                previous = tomllib.loads(previous_text)["project"]["version"]
-              except (
-                subprocess.CalledProcessError,
-                tomllib.TOMLDecodeError,
-                KeyError,
-              ):
-                previous = ""
-            should_release = "true" if current != previous else "false"
+          before_sha = os.environ.get("GITHUB_EVENT_BEFORE", "")
+          null_sha = "0" * 40
+          if before_sha and before_sha != null_sha:
+            try:
+              previous_text = subprocess.run(
+                ["git", "show", f"{before_sha}:pyproject.toml"],
+                capture_output=True,
+                text=True,
+                check=True,
+              ).stdout
+              previous = tomllib.loads(previous_text)["project"]["version"]
+            except (
+              subprocess.CalledProcessError,
+              tomllib.TOMLDecodeError,
+              KeyError,
+            ):
+              previous = ""
+          should_release = "true" if current != previous else "false"
 
           tag = f"v{current}"
           previous_for_output = previous or "(missing)"

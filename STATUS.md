@@ -75,6 +75,21 @@ Branch: `feat/claude-refit-command`
 - `./sm scour --output-file .slopmop/last_scour.json` ✅
   (PR feedback warning remains until addressed threads are resolved)
 
+## 2026-05-05 Delta: Simplify release workflow trigger
+
+Branch: `fix/release-workflow-single-trigger`
+
+**Work completed:**
+- Simplified the Release workflow UI to a single required `bump` selector.
+- Removed manual `publish` dispatch and the optional version guard input.
+- Updated release docs to state the normal flow: run Release once to prepare the
+  PR, then merge that PR to publish automatically.
+
+**Validation:**
+- `bash -n scripts/release.sh` ✅
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+
 ## 2026-05-04 Delta: Remove Claude demo scaffolding scripts
 
 Branch: `feat/claude-skill-plugin`  ·  PR `#172`
