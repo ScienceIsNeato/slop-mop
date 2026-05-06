@@ -90,6 +90,12 @@ jobs:
               ;;
           esac
 
+      - name: Sync main before manual version bump
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git fetch origin main
+          git pull --ff-only origin main
+
       - name: Resolve release version
         id: resolve
         env:

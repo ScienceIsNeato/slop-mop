@@ -26,7 +26,6 @@ Branch: `feat/claude-refit-command`
 **Validation:**
 - `./sm swab --static` ✅
 - `./sm scour --output-file .slopmop/last_scour.json` ✅
-- `./sm scour --output-file .slopmop/last_scour.json` ✅
   (known non-blocking dependency-risk warning remains)
 
 **Next:** Branch is ready for PR creation.
