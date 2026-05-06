@@ -5,7 +5,22 @@ mechanics are automated; the judgment call is still human.
 
 ## Release Flow
 
-There are two supported entry points:
+The primary release path is the GitHub Actions dispatcher: Actions →
+**Release** → **Run workflow** from `main` with the desired bump type. That
+single run performs the full release:
+
+1. bump `pyproject.toml`
+2. commit the version bump to `main`
+3. run release quality gates
+4. build and smoke-test the package
+5. publish to PyPI
+6. create the GitHub release
+
+This requires the workflow token to be allowed to write the version-bump commit
+to `main`. If branch protection blocks bot pushes, allow the Actions bot to
+bypass protection for this release workflow.
+
+The local release script remains available as a PR-based fallback:
 
 ```bash
 ./scripts/release.sh patch
@@ -13,20 +28,13 @@ There are two supported entry points:
 ./scripts/release.sh major
 ```
 
-Or the equivalent manual GitHub Actions dispatcher: Actions → **Release** →
-**Run workflow** with the desired bump type.
+The fallback script creates a release branch and PR that bumps `pyproject.toml`.
+When that PR lands on `main`, the **Release** workflow still publishes because
+the `pyproject.toml` version changed on `main`.
 
-Both paths create a release branch and PR that bumps `pyproject.toml`. When that
-PR lands on `main`, the **Release** workflow automatically publishes because the
-`pyproject.toml` version changed on `main`.
+## Fallback PR Checklist
 
-There is no second manual publish step in the normal flow. The manual workflow
-run prepares the release PR; merging that PR is the approval boundary and starts
-the PyPI publish path automatically.
-
-## Pre-Merge Checklist
-
-Before merging a release-bump PR:
+Before merging a release-bump PR created by `scripts/release.sh`:
 
 - `requirements.txt` is in sync with `pyproject.toml`
 - config migrations and `DOCS/MIGRATIONS.md` are updated for any breaking
@@ -38,8 +46,7 @@ Before merging a release-bump PR:
 
 ## Build and Publish Verification
 
-`release.yml` performs these checks before PyPI publication after the release
-PR lands on `main`:
+`release.yml` performs these checks before PyPI publication:
 
 - build `sdist` and wheel
 - verify the detected release version matches `pyproject.toml`

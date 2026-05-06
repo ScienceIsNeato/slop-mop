@@ -13,11 +13,11 @@
 #   4. Updates pyproject.toml with the new version
 #   5. Commits, pushes, and opens a PR
 #
-# The PR merge is still manual — you review the changelog, then merge.
-# Once merged, release.yml detects the version bump on main and publishes
-# automatically.
+# The PR merge is still manual. This script is the PR-based fallback for cases
+# where the one-click Release workflow should not push directly to main.
+# Once merged, release.yml detects the version bump on main and publishes.
 #
-# Can also be called from CI via the Release workflow's manual bump input.
+# The primary release path is now the GitHub Actions Release workflow.
 
 set -euo pipefail
 
