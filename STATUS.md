@@ -119,6 +119,9 @@ Branch: `fix/single-click-release`
   release in one run.
 - Preserving the `scripts/release.sh` PR-based fallback through the existing
   push-trigger publish path.
+- Addressing PR review feedback by syncing `main` before manual bump commits,
+  opting workflows into Node 24 JavaScript action execution, and making manual
+  release reruns reuse the original run's version-bump commit.
 
 **Validation:**
 - `bash -n scripts/release.sh` ✅

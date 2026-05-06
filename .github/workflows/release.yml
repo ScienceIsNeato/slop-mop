@@ -39,6 +39,9 @@ on:
           - minor
           - major
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # Prevent concurrent releases, but never cancel an in-progress publish. PyPI
 # forbids re-uploading the same version, so a partial publish caused by
 # cancellation would be permanently broken.
@@ -60,7 +63,7 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       previous_version: ${{ steps.resolve.outputs.previous_version }}
       tag: ${{ steps.resolve.outputs.tag }}
-      commit_sha: ${{ steps.commit.outputs.commit_sha || github.sha }}
+      commit_sha: ${{ steps.resolve.outputs.commit_sha || steps.commit.outputs.commit_sha || github.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -102,6 +105,8 @@ jobs:
           BUMP: ${{ github.event.inputs.bump }}
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           python <<'PY'
           import os
@@ -124,32 +129,70 @@ jobs:
           current_text = pyproject.read_text()
           current = project_version(current_text)
           event_name = os.environ["GITHUB_EVENT_NAME"]
+          commit_sha = ""
 
           if event_name == "workflow_dispatch":
-              bump = os.environ["BUMP"]
-              major, minor, patch = [int(part) for part in current.split(".")]
-              if bump == "major":
-                  major += 1
-                  minor = 0
-                  patch = 0
-              elif bump == "minor":
-                  minor += 1
-                  patch = 0
+              run_id = os.environ["GITHUB_RUN_ID"]
+              if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
+                  marker = f"[release-run:{run_id}]"
+                  commit_sha = subprocess.run(
+                      [
+                          "git",
+                          "log",
+                          "origin/main",
+                          "--grep",
+                          marker,
+                          "-n",
+                          "1",
+                          "--format=%H",
+                      ],
+                      capture_output=True,
+                      text=True,
+                      check=True,
+                  ).stdout.strip()
+                  if not commit_sha:
+                      raise SystemExit(
+                          f"Could not find original release commit for run {run_id}"
+                      )
+                  current_text = subprocess.run(
+                      ["git", "show", f"{commit_sha}:pyproject.toml"],
+                      capture_output=True,
+                      text=True,
+                      check=True,
+                  ).stdout
+                  parent_text = subprocess.run(
+                      ["git", "show", f"{commit_sha}^:pyproject.toml"],
+                      capture_output=True,
+                      text=True,
+                      check=True,
+                  ).stdout
+                  version = project_version(current_text)
+                  previous = project_version(parent_text)
               else:
-                  patch += 1
+                  bump = os.environ["BUMP"]
+                  major, minor, patch = [int(part) for part in current.split(".")]
+                  if bump == "major":
+                      major += 1
+                      minor = 0
+                      patch = 0
+                  elif bump == "minor":
+                      minor += 1
+                      patch = 0
+                  else:
+                      patch += 1
 
-              version = f"{major}.{minor}.{patch}"
-              previous = current
-              updated = re.sub(
-                  r'^version\s*=\s*"[^"]+"',
-                  f'version = "{version}"',
-                  current_text,
-                  count=1,
-                  flags=re.MULTILINE,
-              )
-              if updated == current_text:
-                  raise SystemExit("Could not update version in pyproject.toml")
-              pyproject.write_text(updated)
+                  version = f"{major}.{minor}.{patch}"
+                  previous = current
+                  updated = re.sub(
+                      r'^version\s*=\s*"[^"]+"',
+                      f'version = "{version}"',
+                      current_text,
+                      count=1,
+                      flags=re.MULTILINE,
+                  )
+                  if updated == current_text:
+                      raise SystemExit("Could not update version in pyproject.toml")
+                  pyproject.write_text(updated)
               should_release = "true"
           else:
               version = current
@@ -188,6 +231,7 @@ jobs:
           write_output("version", version)
           write_output("previous_version", previous_for_output)
           write_output("tag", tag)
+          write_output("commit_sha", commit_sha)
 
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary:
@@ -204,14 +248,15 @@ jobs:
 
       - name: Commit manual version bump
         id: commit
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && steps.resolve.outputs.commit_sha == ''
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add pyproject.toml
-          git commit -m "chore: bump version to ${VERSION} for PyPI release [skip release]"
+          git commit -m "chore: bump version to ${VERSION} for PyPI release [skip release] [release-run:${GITHUB_RUN_ID}]"
           git push origin HEAD:main
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 

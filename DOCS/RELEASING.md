@@ -20,6 +20,9 @@ This requires the workflow token to be allowed to write the version-bump commit
 to `main`. If branch protection blocks bot pushes, allow the Actions bot to
 bypass protection for this release workflow.
 
+If a manual release run is rerun, the workflow reuses the version-bump commit
+created by the original run instead of applying the bump again.
+
 The local release script remains available as a PR-based fallback:
 
 ```bash
