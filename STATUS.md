@@ -26,6 +26,7 @@ Branch: `feat/claude-refit-command`
 **Validation:**
 - `./sm swab --static` ✅
 - `./sm scour --output-file .slopmop/last_scour.json` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
   (known non-blocking dependency-risk warning remains)
 
 **Next:** Branch is ready for PR creation.
@@ -89,6 +90,20 @@ Branch: `fix/release-workflow-single-trigger`
 - `bash -n scripts/release.sh` ✅
 - `./sm swab --static` ✅
 - `./sm scour --output-file .slopmop/last_scour.json` ✅
+
+## 2026-05-05 Delta: Node 24 workflow action updates
+
+Branch: `fix/node24-release-actions`
+
+**Work completed:**
+- Updating GitHub-owned workflow actions away from Node 20-backed major
+  versions so Prepare Release and related CI jobs stop emitting Node 20
+  deprecation warnings.
+- Covering `checkout`, `setup-python`, `setup-node`, and artifact upload /
+  download actions across the workflow set.
+
+**Validation:**
+- `./sm swab --static` ✅
 
 ## 2026-05-04 Delta: Remove Claude demo scaffolding scripts
 
