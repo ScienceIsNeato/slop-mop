@@ -13,12 +13,19 @@ There are two supported entry points:
 ./scripts/release.sh major
 ```
 
-Or the equivalent manual GitHub Actions dispatcher in `prepare-release.yml`.
+Or the equivalent manual GitHub Actions dispatcher: Actions → **Release** →
+**Run workflow** with `action=prepare` and the desired bump type.
 
-Both paths create a release branch and PR that bumps `pyproject.toml`. The
-actual publish happens only after that PR lands on `main`, where
-`.github/workflows/release.yml` detects the version bump and performs the
-release.
+Both paths create a release branch and PR that bumps `pyproject.toml`. When that
+PR lands on `main`, the **Release** workflow automatically publishes because the
+`pyproject.toml` version changed on `main`.
+
+The same workflow can also be run manually from GitHub: Actions → **Release** →
+**Run workflow** from `main` with `action=publish`. Treat that as the explicit
+recovery or double-check path when the automatic run did not happen or needs to
+be rerun. You may leave the version input blank to publish the current
+`pyproject.toml` version, or fill it in as a guardrail; the workflow fails if
+the input does not match `pyproject.toml`.
 
 ## Pre-Merge Checklist
 
@@ -34,7 +41,8 @@ Before merging a release-bump PR:
 
 ## Build and Publish Verification
 
-`release.yml` performs these checks before PyPI publication:
+`release.yml` performs these checks before PyPI publication, whether it is
+triggered automatically from `main` or manually from the GitHub Actions UI:
 
 - build `sdist` and wheel
 - verify the detected release version matches `pyproject.toml`

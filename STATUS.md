@@ -30,6 +30,51 @@ Branch: `feat/claude-refit-command`
 
 **Next:** Branch is ready for PR creation.
 
+## 2026-05-05 Delta: Manual PyPI release dispatch
+
+Branch: `feat/claude-refit-command`
+
+**Work completed:**
+- Updated `.github/workflows/release.yml` so **Release to PyPI** can be run
+  manually from GitHub Actions after a release bump lands on `main`.
+- Added an optional manual version input that must match `pyproject.toml` and
+  prevents manual publishes from non-`main` refs.
+- Documented the release sequence as Prepare Release → merge release PR → run
+  Release to PyPI, with the automatic main push trigger retained as fallback.
+
+**Validation:**
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (known non-blocking dependency-risk warning remains)
+
+**Next:** PR `#179` has already merged; this follow-up is pushed to
+`feat/claude-refit-command` and needs a fresh PR to land.
+
+## 2026-05-05 Delta: Unified release workflow UI
+
+Branch: `feat/claude-refit-command`
+
+**Work completed:**
+- Combined the separate Prepare Release and Release to PyPI Actions entries
+  into one manually-triggerable **Release** workflow.
+- Preserved the release PR / merge-to-main boundary while giving the UI one
+  action selector: `prepare` or `publish`.
+- Removed `.github/workflows/prepare-release.yml`; its prepare job now lives in
+  `.github/workflows/release.yml`.
+- Tightened manual publish dispatch to require the full `refs/heads/main` ref.
+
+**Implementation note:**
+- The unified workflow does not publish in the same run that creates the release
+  PR; that would bypass review and the green-`main` release boundary. Instead,
+  one Actions entry owns both manual operations.
+
+**Validation:**
+- `bash -n scripts/release.sh` ✅
+- `./sm swab --static` ✅
+- `./sm scour -g myopia:dependency-risk.py --no-cache` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+  (PR feedback warning remains until addressed threads are resolved)
+
 ## 2026-05-04 Delta: Remove Claude demo scaffolding scripts
 
 Branch: `feat/claude-skill-plugin`  ·  PR `#172`
