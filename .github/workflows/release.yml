@@ -133,6 +133,7 @@ jobs:
 
           if event_name == "workflow_dispatch":
               run_id = os.environ["GITHUB_RUN_ID"]
+              reuse_existing_commit = False
               if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
                   marker = f"[release-run:{run_id}]"
                   commit_sha = subprocess.run(
@@ -140,6 +141,7 @@ jobs:
                           "git",
                           "log",
                           "origin/main",
+                          "--fixed-strings",
                           "--grep",
                           marker,
                           "-n",
@@ -150,10 +152,7 @@ jobs:
                       text=True,
                       check=True,
                   ).stdout.strip()
-                  if not commit_sha:
-                      raise SystemExit(
-                          f"Could not find original release commit for run {run_id}"
-                      )
+              if commit_sha:
                   current_text = subprocess.run(
                       ["git", "show", f"{commit_sha}:pyproject.toml"],
                       capture_output=True,
@@ -168,7 +167,8 @@ jobs:
                   ).stdout
                   version = project_version(current_text)
                   previous = project_version(parent_text)
-              else:
+                  reuse_existing_commit = True
+              if not reuse_existing_commit:
                   bump = os.environ["BUMP"]
                   major, minor, patch = [int(part) for part in current.split(".")]
                   if bump == "major":
@@ -223,7 +223,7 @@ jobs:
               stderr=subprocess.DEVNULL,
               check=False,
           ).returncode == 0
-          if should_release == "true" and tag_exists:
+            if should_release == "true" and tag_exists and not commit_sha:
               raise SystemExit(f"Tag {tag} already exists")
 
           previous_for_output = previous or "(missing)"
@@ -355,6 +355,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v5
