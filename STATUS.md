@@ -1,5 +1,27 @@
 # Project Status
 
+## 2026-05-06 Delta: Release workflow protected-branch fix
+
+Branch: `feat/github-actions-hygiene-gate`
+
+**Work in progress:**
+- Updating `.github/workflows/release.yml` after manual release failed against
+  main branch protection.
+- Manual release dispatch now prepares a deterministic `release/vX.Y.Z` branch,
+  opens or updates a release PR, waits for PR checks, merges the PR, and leaves
+  publishing to the resulting protected `main` push workflow run.
+- Documented the required `RELEASE_PR_TOKEN` secret in `DOCS/RELEASING.md`; the
+  default `GITHUB_TOKEN` is not sufficient because it may not trigger the PR and
+  post-merge publish workflows.
+- Added `python-multipart>=0.0.27` to the security extra after `pip-audit`
+  flagged vulnerable transitive version `0.0.26` from the installed toolchain.
+
+**Validation:**
+- `./sm swab -g myopia:github-actions-hygiene --static` ✅
+- `./sm scour -g myopia:dependency-risk.py --static --no-cache` ✅
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json --static` ✅
+
 ## 2026-05-06 Delta: GitHub Actions hygiene gate design
 
 Branch: `feat/github-actions-hygiene-gate`

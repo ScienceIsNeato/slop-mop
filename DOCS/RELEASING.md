@@ -7,23 +7,30 @@ mechanics are automated; the judgment call is still human.
 
 The primary release path is the GitHub Actions dispatcher: Actions →
 **Release** → **Run workflow** from `main` with the desired bump type. That
-single run performs the full release:
+manual run prepares the release through the protected-branch PR path:
 
 1. bump `pyproject.toml`
-2. commit the version bump to `main`
-3. run release quality gates
-4. build and smoke-test the package
-5. publish to PyPI
-6. create the GitHub release
+2. create a release PR
+3. wait for the PR checks to pass
+4. merge the PR into `main`
 
-This requires the workflow token to be allowed to write the version-bump commit
-to `main`. If branch protection blocks bot pushes, allow the Actions bot to
-bypass protection for this release workflow.
+The merge to `main` starts the publish run, which then:
 
-If a manual release run is rerun, the workflow reuses the version-bump commit
-created by the original run instead of applying the bump again.
+1. runs release quality gates
+2. builds and smoke-tests the package
+3. publishes to PyPI
+4. creates the GitHub release
 
-The local release script remains available as a PR-based fallback:
+This requires a `RELEASE_PR_TOKEN` repository secret from a fine-grained PAT or
+GitHub App token that can create pull requests, read checks, merge pull
+requests, and trigger the follow-up publish workflow. Do not allow the workflow
+token to bypass branch protection for direct pushes to `main`.
+
+If a manual release run is rerun before the release PR merges, the workflow
+reuses the deterministic `release/vX.Y.Z` branch and updates the existing PR.
+
+The local release script remains available for preparing the same kind of
+release PR from a developer machine:
 
 ```bash
 ./scripts/release.sh patch
