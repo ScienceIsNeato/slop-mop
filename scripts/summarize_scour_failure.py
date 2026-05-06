@@ -164,12 +164,35 @@ def _classify_failed_gates(
         classification_line = "SWAB-overlap failures"
         print("::notice::Classification: CI failed on gates that are also in SWAB.")
 
-    if swab_failed:
-        print(f"::error::SWAB-overlap failed gates: {', '.join(swab_failed)}")
-    if scour_only_failed:
-        print(f"::error::SCOUR-only failed gates: {', '.join(scour_only_failed)}")
+    swab_labels = _gate_failure_labels(actionable, swab_failed)
+    scour_only_labels = _gate_failure_labels(actionable, scour_only_failed)
 
-    return classification_line, swab_failed, scour_only_failed
+    if swab_failed:
+        print(f"::error::SWAB-overlap failed gates: {', '.join(swab_labels)}")
+    if scour_only_failed:
+        print(f"::error::SCOUR-only failed gates: {', '.join(scour_only_labels)}")
+
+    return classification_line, swab_labels, scour_only_labels
+
+
+def _gate_failure_labels(
+    actionable: list[dict[str, Any]],
+    gate_names: list[str],
+) -> list[str]:
+    """Return gate labels with the first actionable error attached."""
+    labels: list[str] = []
+    for gate_name in gate_names:
+        matching = next(
+            (row for row in actionable if str(row.get("name", "")) == gate_name),
+            None,
+        )
+        detail = ""
+        if matching is not None:
+            error = str(matching.get("error") or "").strip()
+            status_detail = str(matching.get("status_detail") or "").strip()
+            detail = error or status_detail
+        labels.append(f"{gate_name} — {detail}" if detail else gate_name)
+    return labels
 
 
 def _print_actionable_details(actionable: list[dict[str, Any]]) -> list[str]:

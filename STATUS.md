@@ -1,5 +1,40 @@
 # Project Status
 
+## 2026-05-06 Delta: GitHub Actions hygiene gate design
+
+Branch: `feat/github-actions-hygiene-gate`
+
+**Follow-up after PR CI:**
+- Clarified the CI scour failure summary so scour-only gate labels include the
+  actionable error/status detail instead of only the gate name.
+- Added regression coverage for the scour summary display and expanded GitHub
+  Actions hygiene tests across no-op workflows, permission inheritance,
+  OIDC publish variants, actionlint output parsing, heredoc extraction, and
+  workflow file discovery.
+
+**Follow-up validation:**
+- `./sm swab -g overconfidence:untested-code.py --static` ✅
+- `./sm scour -g myopia:just-this-once.py --static --no-cache` ✅
+
+**Work completed:**
+- Added `myopia:github-actions-hygiene`, a composite GitHub Actions gate that
+  runs on `swab` and `scour`.
+- The gate scans `.github/workflows/*.yml` and `.github/workflows/*.yaml`,
+  parses workflow YAML, optionally consumes `actionlint` when installed, and
+  pre-parses embedded Python heredocs.
+- Added high-confidence hard failures for restrictive checkout permissions,
+  OIDC publish jobs missing `id-token: write`, and known deprecated GitHub-owned
+  action majors.
+- Fixed the release workflow indentation defect that the new gate caught.
+- Added unit coverage for YAML parse failures, embedded Python parse failures,
+  checkout permission policy, OIDC publish policy, deprecated actions, and the
+  no-explicit-permissions default case.
+
+**Validation:**
+- `./sm swab -g myopia:github-actions-hygiene --static` ✅
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+
 ## 2026-05-05 Delta: Claude refit slash command
 
 Branch: `feat/claude-refit-command`
