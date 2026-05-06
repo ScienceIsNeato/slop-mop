@@ -174,12 +174,6 @@ jobs:
           # (category, ruleId, fingerprint).
           category: slopmop
 
-      - name: Upload JSON scan report
-        uses: actions/upload-artifact@v5
-        with:
-          name: slopmop-results
-          path: slopmop-results.json
-
       - name: Verify coverage report exists
         if: always()
         run: |
@@ -188,13 +182,6 @@ jobs:
           else
             echo "coverage.xml was not produced by sm scour; skipping coverage upload."
           fi
-
-      - name: Upload coverage report
-        if: always() && hashFiles('coverage.xml') != ''
-        uses: actions/upload-artifact@v5
-        with:
-          name: coverage-report
-          path: coverage.xml
 
       - name: Upload coverage to Codecov
         if: always() && hashFiles('coverage.xml') != ''
@@ -289,16 +276,6 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload coverage artifacts
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: unit-test-coverage
-          if-no-files-found: warn
-          path: |
-            coverage.xml
-            coverage-report.txt
-
   # -------------------------------------------------------------------
   # Docker integration tests
   #
@@ -338,9 +315,3 @@ jobs:
           python -m pytest tests/integration/test_docker_install.py \
             -v --tb=long -m integration 2>&1 | tee docker-test-output.txt
 
-      - name: Upload test output
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: docker-integration-output
-          path: docker-test-output.txt

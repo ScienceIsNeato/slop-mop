@@ -122,6 +122,8 @@ Branch: `fix/single-click-release`
 - Addressing PR review feedback by syncing `main` before manual bump commits,
   opting workflows into Node 24 JavaScript action execution, and making manual
   release reruns reuse the original run's version-bump commit.
+- Removed remaining artifact upload/download actions from the workflow set so
+  Node 24 opt-in does not force unsupported artifact action runtimes.
 
 **Validation:**
 - `bash -n scripts/release.sh` ✅

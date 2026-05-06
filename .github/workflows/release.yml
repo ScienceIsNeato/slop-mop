@@ -346,12 +346,6 @@ jobs:
           sm init >/dev/null
           sm swab --help >/dev/null
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v5
-        with:
-          name: dist
-          path: dist/
-
   publish-pypi:
     name: Publish to PyPI
     needs:
@@ -363,11 +357,18 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v5
+      - uses: actions/checkout@v5
         with:
-          name: dist
-          path: dist/
+          ref: ${{ needs.release-context.outputs.commit_sha }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Build package for PyPI publish
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -388,11 +389,14 @@ jobs:
         with:
           ref: ${{ needs.release-context.outputs.commit_sha }}
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v5
+      - uses: actions/setup-python@v6
         with:
-          name: dist
-          path: dist/
+          python-version: "3.13"
+
+      - name: Build package for GitHub Release assets
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
 
       - name: Create GitHub Release
         env:
