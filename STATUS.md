@@ -16,6 +16,9 @@ Branch: `feat/github-actions-hygiene-gate`
 - Addressed PR #186 review feedback by checking duplicate tags before release
   PR creation, reusing only open release PRs, pushing release branches with
   `RELEASE_PR_TOKEN`, and narrowing the default `GITHUB_TOKEN` permissions.
+- Preserved the release run marker in the squash merge commit and restored
+  marker lookup so rerunning a completed manual release does not create a second
+  version bump.
 - Added `python-multipart>=0.0.27` to the security extra after `pip-audit`
   flagged vulnerable transitive version `0.0.26` from the installed toolchain.
 
