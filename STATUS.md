@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-05-06 Delta: GitHub Actions hygiene gate design
+
+Branch: `feat/github-actions-hygiene-gate`
+
+**Work completed:**
+- Added `myopia:github-actions-hygiene`, a composite GitHub Actions gate that
+  runs on `swab` and `scour`.
+- The gate scans `.github/workflows/*.yml` and `.github/workflows/*.yaml`,
+  parses workflow YAML, optionally consumes `actionlint` when installed, and
+  pre-parses embedded Python heredocs.
+- Added high-confidence hard failures for restrictive checkout permissions,
+  OIDC publish jobs missing `id-token: write`, and known deprecated GitHub-owned
+  action majors.
+- Fixed the release workflow indentation defect that the new gate caught.
+- Added unit coverage for YAML parse failures, embedded Python parse failures,
+  checkout permission policy, OIDC publish policy, deprecated actions, and the
+  no-explicit-permissions default case.
+
+**Validation:**
+- `./sm swab -g myopia:github-actions-hygiene --static` ✅
+- `./sm swab --static` ✅
+- `./sm scour --output-file .slopmop/last_scour.json` ✅
+
 ## 2026-05-05 Delta: Claude refit slash command
 
 Branch: `feat/claude-refit-command`

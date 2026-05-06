@@ -223,7 +223,7 @@ jobs:
               stderr=subprocess.DEVNULL,
               check=False,
           ).returncode == 0
-            if should_release == "true" and tag_exists and not commit_sha:
+          if should_release == "true" and tag_exists and not commit_sha:
               raise SystemExit(f"Tag {tag} already exists")
 
           previous_for_output = previous or "(missing)"

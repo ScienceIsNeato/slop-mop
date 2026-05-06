@@ -98,9 +98,11 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
         StringDuplicationCheck,
     )
     from slopmop.checks.security import SecurityCheck, SecurityLocalCheck
+    from slopmop.checks.workflow import GitHubActionsHygieneCheck
 
     registry.register(SecurityCheck)
     registry.register(SecurityLocalCheck)
+    registry.register(GitHubActionsHygieneCheck)
     registry.register(AmbiguityMinesCheck)
     registry.register(BogusTestsCheck)
     registry.register(ComplexityCheck)

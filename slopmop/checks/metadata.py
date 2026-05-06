@@ -438,6 +438,29 @@ def _myopia_scope_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning]
     )
 
 
+def _github_actions_hygiene_reasoning_entry() -> tuple[type[BaseCheck], Reasoning]:
+    from slopmop.checks.workflow import GitHubActionsHygieneCheck
+
+    return (
+        GitHubActionsHygieneCheck,
+        _reasoning(
+            rationale=(
+                "GitHub workflows are executable infrastructure; YAML can look fine "
+                "while embedded scripts, action runtimes, or token permissions fail "
+                "only after CI has already started."
+            ),
+            tradeoffs=(
+                "Workflow policy checks can be noisy if they guess from weak signals, "
+                "so this gate only hard-fails high-confidence patterns."
+            ),
+            override_when=(
+                "Suppress only for workflow directories whose execution context is "
+                "intentionally managed outside GitHub Actions defaults."
+            ),
+        ),
+    )
+
+
 @lru_cache(maxsize=1)
 def _myopia_risk_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning], ...]:
     from slopmop.checks.general.interactive_assumptions import (
@@ -447,6 +470,7 @@ def _myopia_risk_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning],
     from slopmop.checks.security import SecurityCheck
 
     return (
+        _github_actions_hygiene_reasoning_entry(),
         (
             InteractiveAssumptionsCheck,
             _reasoning(

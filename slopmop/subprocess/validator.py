@@ -95,6 +95,7 @@ class CommandValidator:
             "pyright",
             "ruff",
             "find-duplicate-strings",
+            "actionlint",
             # JavaScript/Node ecosystem
             "node",
             "npm",

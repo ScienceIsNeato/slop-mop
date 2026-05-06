@@ -10,6 +10,7 @@
 # Core runtime
 tomli>=1.0.0; python_version < '3.11'
 packaging>=21.0
+PyYAML>=6.0
 
 # Static analysis
 vulture>=2.14
@@ -25,6 +26,7 @@ ruff>=0.1.0
 # Type checking
 mypy>=1.17.0
 pyright>=1.1.0
+types-PyYAML>=6.0.12
 
 # Security scanning
 bandit>=1.7.0
