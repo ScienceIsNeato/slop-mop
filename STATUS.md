@@ -4,6 +4,18 @@
 
 Branch: `feat/github-actions-hygiene-gate`
 
+**Follow-up after PR CI:**
+- Clarified the CI scour failure summary so scour-only gate labels include the
+  actionable error/status detail instead of only the gate name.
+- Added regression coverage for the scour summary display and expanded GitHub
+  Actions hygiene tests across no-op workflows, permission inheritance,
+  OIDC publish variants, actionlint output parsing, heredoc extraction, and
+  workflow file discovery.
+
+**Follow-up validation:**
+- `./sm swab -g overconfidence:untested-code.py --static` ✅
+- `./sm scour -g myopia:just-this-once.py --static --no-cache` ✅
+
 **Work completed:**
 - Added `myopia:github-actions-hygiene`, a composite GitHub Actions gate that
   runs on `swab` and `scour`.
