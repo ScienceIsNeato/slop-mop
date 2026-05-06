@@ -58,10 +58,7 @@ jobs:
       !contains(github.event.head_commit.message, '[skip release]')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-      actions: read
-      checks: read
+      contents: read
     outputs:
       should_release: ${{ steps.resolve.outputs.should_release }}
       version: ${{ steps.resolve.outputs.version }}
@@ -194,7 +191,8 @@ jobs:
               stderr=subprocess.DEVNULL,
               check=False,
           ).returncode == 0
-          if should_release == "true" and tag_exists and not commit_sha:
+          should_check_tag = should_release == "true" or event_name == "workflow_dispatch"
+          if should_check_tag and tag_exists:
               raise SystemExit(f"Tag {tag} already exists")
 
           previous_for_output = previous or "(missing)"
@@ -243,6 +241,7 @@ jobs:
           git checkout -B "$RELEASE_BRANCH"
           git add pyproject.toml
           git commit -m "chore: bump version to ${VERSION} for PyPI release [release-run:${GITHUB_RUN_ID}]"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force-with-lease origin "$RELEASE_BRANCH"
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -250,7 +249,12 @@ jobs:
           PR_BODY=$(printf '%s\n\n%s' \
             "Release ${PREVIOUS_VERSION} -> ${VERSION}." \
             "This PR was created by the Release workflow. After checks pass, the workflow merges it into main; the protected main-branch push then runs the publish path.")
-          PR_URL="$(gh pr view "$RELEASE_BRANCH" --json url --jq .url 2>/dev/null || true)"
+          PR_URL="$(gh pr list \
+            --head "$RELEASE_BRANCH" \
+            --base main \
+            --state open \
+            --json url \
+            --jq '.[0].url // ""')"
           if [ -z "$PR_URL" ]; then
             PR_URL="$(gh pr create \
               --title "$PR_TITLE" \

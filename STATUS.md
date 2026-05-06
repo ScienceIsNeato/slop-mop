@@ -13,6 +13,9 @@ Branch: `feat/github-actions-hygiene-gate`
 - Documented the required `RELEASE_PR_TOKEN` secret in `DOCS/RELEASING.md`; the
   default `GITHUB_TOKEN` is not sufficient because it may not trigger the PR and
   post-merge publish workflows.
+- Addressed PR #186 review feedback by checking duplicate tags before release
+  PR creation, reusing only open release PRs, pushing release branches with
+  `RELEASE_PR_TOKEN`, and narrowing the default `GITHUB_TOKEN` permissions.
 - Added `python-multipart>=0.0.27` to the security extra after `pip-audit`
   flagged vulnerable transitive version `0.0.26` from the installed toolchain.
 
