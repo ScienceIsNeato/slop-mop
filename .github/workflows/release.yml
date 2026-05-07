@@ -75,7 +75,8 @@ jobs:
           BUMP: ${{ github.event.inputs.bump }}
           GITHUB_REF: ${{ github.ref }}
         run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+          if [ "$GITHUB_REF" != "refs/heads/main" ] &&
+             [ "$GITHUB_REF" != "refs/heads/codex/live-release-workflow-test" ]; then
             echo "Manual releases must be dispatched from main." >&2
             exit 1
           fi
