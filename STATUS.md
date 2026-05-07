@@ -4,7 +4,7 @@
 
 Branch: `fix/manual-only-release-workflow`
 
-**Work in progress:**
+**Work completed:**
 - Updating `.github/workflows/release.yml` after manual release failed against
   main branch protection and after the merge-triggered run incorrectly succeeded
   as a no-op when no release bump was detected.
@@ -38,6 +38,10 @@ Branch: `fix/manual-only-release-workflow`
 - `./sm scour -g myopia:dependency-risk.py --static --no-cache` ✅
 - `./sm swab --static` ✅
 - `./sm scour --output-file .slopmop/last_scour.json --static` ✅
+- Live release workflow run `25477547825` ✅
+- PyPI JSON shows `slopmop` `1.1.0` uploaded at `2026-05-07T05:24:42.782089Z` ✅
+- Clean install from `https://pypi.org/simple` with `slopmop==1.1.0` and
+  `sm --version` ✅
 
 ## 2026-05-06 Delta: GitHub Actions hygiene gate design
 
