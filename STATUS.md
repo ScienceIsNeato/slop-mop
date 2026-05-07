@@ -2,20 +2,31 @@
 
 ## 2026-05-06 Delta: Release workflow protected-branch fix
 
-Branch: `feat/github-actions-hygiene-gate`
+Branch: `fix/manual-only-release-workflow`
 
 **Work in progress:**
 - Updating `.github/workflows/release.yml` after manual release failed against
-  main branch protection.
-- Manual release dispatch now prepares a deterministic `release/vX.Y.Z` branch,
-  opens or updates a release PR, waits for PR checks, merges the PR, and leaves
-  publishing to the resulting protected `main` push workflow run.
-- Documented the required `RELEASE_PR_TOKEN` secret in `DOCS/RELEASING.md`; the
-  default `GITHUB_TOKEN` is not sufficient because it may not trigger the PR and
-  post-merge publish workflows.
+  main branch protection and after the merge-triggered run incorrectly succeeded
+  as a no-op when no release bump was detected.
+- Manual release dispatch is now the only release trigger. It prepares a
+  deterministic `release/vX.Y.Z` branch, opens or updates a release PR, validates
+  and builds the release branch, merges the PR, then publishes the merged
+  `origin/main` commit in the same workflow run.
+- Removed automatic publish-on-merge behavior; ordinary PR merges must never
+  release just because `pyproject.toml` changed.
+- The resolver now hard-fails if it cannot identify a real version bump instead
+  of reporting a successful skip.
+- Removed the `RELEASE_PR_TOKEN` dependency after live dispatch proved the secret
+  is not configured; the workflow now uses scoped `GITHUB_TOKEN` permissions and
+  its own pre-merge quality/build jobs instead of waiting for PR-triggered checks.
 - Addressed PR #186 review feedback by checking duplicate tags before release
-  PR creation, reusing only open release PRs, pushing release branches with
-  `RELEASE_PR_TOKEN`, and narrowing the default `GITHUB_TOKEN` permissions.
+  PR creation, reusing only open release PRs, and narrowing the default
+  `GITHUB_TOKEN` permissions.
+- Prevented `actions/checkout` from persisting credentials into local git config,
+  so branch pushes use the explicit token configured by the release step.
+- Kept `[skip release]` on the automated release PR squash merge body so older
+  push-trigger workflow definitions on `main` do not run in parallel during the
+  transition to manual-only release dispatch.
 - Preserved the release run marker in the squash merge commit and restored
   marker lookup so rerunning a completed manual release does not create a second
   version bump.
