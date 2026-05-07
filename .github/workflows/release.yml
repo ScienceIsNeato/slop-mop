@@ -2,11 +2,12 @@
 #
 # Workflow:
 #   1. Run "Release" manually from main with a bump type
-#   2. The workflow bumps pyproject.toml, commits the bump to main, validates,
-#      builds, publishes to PyPI, and creates the GitHub release
+#   2. The workflow opens a version-bump PR, waits for green checks, and merges it
+#   3. The merge to main triggers the publish path, which validates, builds,
+#      publishes to PyPI, and creates the GitHub release
 #
-# The push trigger remains for release PR/script fallback. Manual release commits
-# include [skip release] so the commit they push does not start a duplicate run.
+# The push trigger is the only path that publishes. Manual dispatch prepares and
+# merges the release PR, then the protected main branch release run takes over.
 #
 # Prerequisites (one-time setup):
 #   - Create a PyPI account at https://pypi.org/account/register/
@@ -16,8 +17,8 @@
 #       Repository: slop-mop
 #       Workflow:   release.yml
 #       Environment: pypi
-#   - Allow this workflow's token to write to main, or allow the Actions bot to
-#     bypass branch protection for the version-bump commit
+#   - Add a RELEASE_PR_TOKEN secret from a fine-grained PAT or GitHub App token
+#     that can create PRs, read checks, merge PRs, and trigger follow-up workflows
 #   - (Optional) Do the same on https://test.pypi.org for staging
 
 name: Release
@@ -57,13 +58,15 @@ jobs:
       !contains(github.event.head_commit.message, '[skip release]')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     outputs:
       should_release: ${{ steps.resolve.outputs.should_release }}
       version: ${{ steps.resolve.outputs.version }}
       previous_version: ${{ steps.resolve.outputs.previous_version }}
       tag: ${{ steps.resolve.outputs.tag }}
-      commit_sha: ${{ steps.resolve.outputs.commit_sha || steps.commit.outputs.commit_sha || github.sha }}
+      release_branch: ${{ steps.resolve.outputs.release_branch }}
+      release_pr_url: ${{ steps.release_pr.outputs.pr_url }}
+      commit_sha: ${{ steps.resolve.outputs.commit_sha || steps.release_pr.outputs.commit_sha || github.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -130,70 +133,69 @@ jobs:
           current = project_version(current_text)
           event_name = os.environ["GITHUB_EVENT_NAME"]
           commit_sha = ""
+          release_branch = ""
 
           if event_name == "workflow_dispatch":
-              run_id = os.environ["GITHUB_RUN_ID"]
-              reuse_existing_commit = False
-              if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
-                  marker = f"[release-run:{run_id}]"
-                  commit_sha = subprocess.run(
-                      [
-                          "git",
-                          "log",
-                          "origin/main",
-                          "--fixed-strings",
-                          "--grep",
-                          marker,
-                          "-n",
-                          "1",
-                          "--format=%H",
-                      ],
-                      capture_output=True,
-                      text=True,
-                      check=True,
-                  ).stdout.strip()
+              marker = f"[release-run:{os.environ['GITHUB_RUN_ID']}]"
+              commit_sha = subprocess.run(
+                [
+                  "git",
+                  "log",
+                  "origin/main",
+                  "--fixed-strings",
+                  "--grep",
+                  marker,
+                  "-n",
+                  "1",
+                  "--format=%H",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+              ).stdout.strip()
               if commit_sha:
-                  current_text = subprocess.run(
-                      ["git", "show", f"{commit_sha}:pyproject.toml"],
-                      capture_output=True,
-                      text=True,
-                      check=True,
-                  ).stdout
-                  parent_text = subprocess.run(
-                      ["git", "show", f"{commit_sha}^:pyproject.toml"],
-                      capture_output=True,
-                      text=True,
-                      check=True,
-                  ).stdout
-                  version = project_version(current_text)
-                  previous = project_version(parent_text)
-                  reuse_existing_commit = True
-              if not reuse_existing_commit:
-                  bump = os.environ["BUMP"]
-                  major, minor, patch = [int(part) for part in current.split(".")]
-                  if bump == "major":
-                      major += 1
-                      minor = 0
-                      patch = 0
-                  elif bump == "minor":
-                      minor += 1
-                      patch = 0
-                  else:
-                      patch += 1
+                current_text = subprocess.run(
+                  ["git", "show", f"{commit_sha}:pyproject.toml"],
+                  capture_output=True,
+                  text=True,
+                  check=True,
+                ).stdout
+                parent_text = subprocess.run(
+                  ["git", "show", f"{commit_sha}^:pyproject.toml"],
+                  capture_output=True,
+                  text=True,
+                  check=True,
+                ).stdout
+                version = project_version(current_text)
+                previous = project_version(parent_text)
+                release_branch = f"release/v{version}"
+              else:
+                bump = os.environ["BUMP"]
+                major, minor, patch = [int(part) for part in current.split(".")]
+                if bump == "major":
+                  major += 1
+                  minor = 0
+                  patch = 0
+                elif bump == "minor":
+                  minor += 1
+                  patch = 0
+                else:
+                  patch += 1
 
-                  version = f"{major}.{minor}.{patch}"
-                  previous = current
-                  updated = re.sub(
-                      r'^version\s*=\s*"[^"]+"',
-                      f'version = "{version}"',
-                      current_text,
-                      count=1,
-                      flags=re.MULTILINE,
-                  )
-                  if updated == current_text:
-                      raise SystemExit("Could not update version in pyproject.toml")
-                  pyproject.write_text(updated)
-              should_release = "true"
+                version = f"{major}.{minor}.{patch}"
+                previous = current
+                release_branch = f"release/v{version}"
+                updated = re.sub(
+                  r'^version\s*=\s*"[^"]+"',
+                  f'version = "{version}"',
+                  current_text,
+                  count=1,
+                  flags=re.MULTILINE,
+                )
+                if updated == current_text:
+                  raise SystemExit("Could not update version in pyproject.toml")
+                pyproject.write_text(updated)
+              should_release = "false"
           else:
               version = current
               previous = current
@@ -223,7 +225,8 @@ jobs:
               stderr=subprocess.DEVNULL,
               check=False,
           ).returncode == 0
-          if should_release == "true" and tag_exists and not commit_sha:
+          should_check_tag = should_release == "true" or event_name == "workflow_dispatch"
+          if should_check_tag and tag_exists:
               raise SystemExit(f"Tag {tag} already exists")
 
           previous_for_output = previous or "(missing)"
@@ -232,11 +235,16 @@ jobs:
           write_output("previous_version", previous_for_output)
           write_output("tag", tag)
           write_output("commit_sha", commit_sha)
+          write_output("release_branch", release_branch)
 
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary:
               with open(summary, "a", encoding="utf-8") as fh:
-                  if should_release == "true":
+                  if event_name == "workflow_dispatch":
+                      fh.write(
+                          f"Release PR selected: {previous_for_output} -> {version} ({tag})\n"
+                      )
+                  elif should_release == "true":
                       fh.write(
                           f"Release selected: {previous_for_output} -> {version} ({tag})\n"
                       )
@@ -246,19 +254,75 @@ jobs:
                       )
           PY
 
-      - name: Commit manual version bump
-        id: commit
+      - name: Create release PR and merge after green checks
+        id: release_pr
         if: github.event_name == 'workflow_dispatch' && steps.resolve.outputs.commit_sha == ''
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
+          PREVIOUS_VERSION: ${{ steps.resolve.outputs.previous_version }}
+          RELEASE_BRANCH: ${{ steps.resolve.outputs.release_branch }}
+          RELEASE_PR_TOKEN_CONFIGURED: ${{ secrets.RELEASE_PR_TOKEN != '' }}
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
+          if [ "$RELEASE_PR_TOKEN_CONFIGURED" != "true" ]; then
+            echo "::error::Manual releases require a RELEASE_PR_TOKEN secret so the release PR can trigger checks and the merge can trigger the publish workflow."
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$RELEASE_BRANCH"
           git add pyproject.toml
-          git commit -m "chore: bump version to ${VERSION} for PyPI release [skip release] [release-run:${GITHUB_RUN_ID}]"
-          git push origin HEAD:main
+          git commit -m "chore: bump version to ${VERSION} for PyPI release [release-run:${GITHUB_RUN_ID}]"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force-with-lease origin "$RELEASE_BRANCH"
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+          PR_TITLE="chore: bump version to ${VERSION} for PyPI release"
+          PR_BODY=$(printf '%s\n\n%s' \
+            "Release ${PREVIOUS_VERSION} -> ${VERSION}." \
+            "This PR was created by the Release workflow. After checks pass, the workflow merges it into main; the protected main-branch push then runs the publish path.")
+          PR_URL="$(gh pr list \
+            --head "$RELEASE_BRANCH" \
+            --base main \
+            --state open \
+            --json url \
+            --jq '.[0].url // ""')"
+          if [ -z "$PR_URL" ]; then
+            PR_URL="$(gh pr create \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY" \
+              --base main \
+              --head "$RELEASE_BRANCH")"
+          fi
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+          echo "Waiting for release PR checks to pass: $PR_URL"
+          for attempt in $(seq 1 20); do
+            CHECK_COUNT="$(gh pr checks "$PR_URL" --json name --jq 'length' 2>/dev/null || true)"
+            if [ -n "$CHECK_COUNT" ] && [ "$CHECK_COUNT" != "0" ]; then
+              break
+            fi
+            if [ "$attempt" = "20" ]; then
+              echo "::error::No PR checks were reported. Confirm RELEASE_PR_TOKEN can trigger pull_request workflows."
+              exit 1
+            fi
+            sleep 15
+          done
+          gh pr checks "$PR_URL" --watch --fail-fast
+          gh pr merge "$PR_URL" \
+            --squash \
+            --delete-branch \
+            --subject "$PR_TITLE" \
+            --body "Release ${PREVIOUS_VERSION} -> ${VERSION}. [release-run:${GITHUB_RUN_ID}]"
+
+          if [ -n "$GITHUB_STEP_SUMMARY" ]; then
+            {
+              echo "Release PR merged: $PR_URL"
+              echo "Publish will continue from the resulting main-branch workflow run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   quality-gate:
     name: Quality Gate
