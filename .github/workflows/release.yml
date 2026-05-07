@@ -3,11 +3,11 @@
 # Workflow:
 #   1. Run "Release" manually from main with a bump type
 #   2. The workflow opens a version-bump PR, waits for green checks, and merges it
-#   3. The merge to main triggers the publish path, which validates, builds,
-#      publishes to PyPI, and creates the GitHub release
+#   3. The same workflow run validates the merged commit, builds, publishes to
+#      PyPI, and creates the GitHub release
 #
-# The push trigger is the only path that publishes. Manual dispatch prepares and
-# merges the release PR, then the protected main branch release run takes over.
+# Manual dispatch is the only release trigger. Merging arbitrary PRs must not
+# publish, even when they touch pyproject.toml.
 #
 # Prerequisites (one-time setup):
 #   - Create a PyPI account at https://pypi.org/account/register/
@@ -24,11 +24,6 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - pyproject.toml
   workflow_dispatch:
     inputs:
       bump:
@@ -53,9 +48,6 @@ concurrency:
 jobs:
   release-context:
     name: Prepare Release Context
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      !contains(github.event.head_commit.message, '[skip release]')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -78,7 +70,6 @@ jobs:
           python-version: "3.13"
 
       - name: Validate manual release dispatch
-        if: github.event_name == 'workflow_dispatch'
         env:
           BUMP: ${{ github.event.inputs.bump }}
           GITHUB_REF: ${{ github.ref }}
@@ -97,7 +88,6 @@ jobs:
           esac
 
       - name: Sync main before manual version bump
-        if: github.event_name == 'workflow_dispatch'
         run: |
           git fetch origin main
           git pull --ff-only origin main
@@ -106,9 +96,6 @@ jobs:
         id: resolve
         env:
           BUMP: ${{ github.event.inputs.bump }}
-          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           python <<'PY'
@@ -131,14 +118,12 @@ jobs:
           pyproject = Path("pyproject.toml")
           current_text = pyproject.read_text()
           current = project_version(current_text)
-          event_name = os.environ["GITHUB_EVENT_NAME"]
           commit_sha = ""
           release_branch = ""
 
-          if event_name == "workflow_dispatch":
-              marker = f"[release-run:{os.environ['GITHUB_RUN_ID']}]"
-              commit_sha = subprocess.run(
-                [
+          marker = f"[release-run:{os.environ['GITHUB_RUN_ID']}]"
+          commit_sha = subprocess.run(
+              [
                   "git",
                   "log",
                   "origin/main",
@@ -148,75 +133,57 @@ jobs:
                   "-n",
                   "1",
                   "--format=%H",
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-              ).stdout.strip()
-              if commit_sha:
-                current_text = subprocess.run(
+              ],
+              capture_output=True,
+              text=True,
+              check=True,
+          ).stdout.strip()
+          if commit_sha:
+              current_text = subprocess.run(
                   ["git", "show", f"{commit_sha}:pyproject.toml"],
                   capture_output=True,
                   text=True,
                   check=True,
-                ).stdout
-                parent_text = subprocess.run(
+              ).stdout
+              parent_text = subprocess.run(
                   ["git", "show", f"{commit_sha}^:pyproject.toml"],
                   capture_output=True,
                   text=True,
                   check=True,
-                ).stdout
-                version = project_version(current_text)
-                previous = project_version(parent_text)
-                release_branch = f"release/v{version}"
-              else:
-                bump = os.environ["BUMP"]
-                major, minor, patch = [int(part) for part in current.split(".")]
-                if bump == "major":
+              ).stdout
+              version = project_version(current_text)
+              previous = project_version(parent_text)
+              release_branch = f"release/v{version}"
+          else:
+              bump = os.environ["BUMP"]
+              major, minor, patch = [int(part) for part in current.split(".")]
+              if bump == "major":
                   major += 1
                   minor = 0
                   patch = 0
-                elif bump == "minor":
+              elif bump == "minor":
                   minor += 1
                   patch = 0
-                else:
+              else:
                   patch += 1
 
-                version = f"{major}.{minor}.{patch}"
-                previous = current
-                release_branch = f"release/v{version}"
-                updated = re.sub(
+              version = f"{major}.{minor}.{patch}"
+              previous = current
+              release_branch = f"release/v{version}"
+              updated = re.sub(
                   r'^version\s*=\s*"[^"]+"',
                   f'version = "{version}"',
                   current_text,
                   count=1,
                   flags=re.MULTILINE,
-                )
-                if updated == current_text:
+              )
+              if updated == current_text:
                   raise SystemExit("Could not update version in pyproject.toml")
-                pyproject.write_text(updated)
-              should_release = "false"
-          else:
-              version = current
-              previous = current
-              before_sha = os.environ.get("GITHUB_EVENT_BEFORE", "")
-              null_sha = "0" * 40
-              if before_sha and before_sha != null_sha:
-                  try:
-                      previous_text = subprocess.run(
-                          ["git", "show", f"{before_sha}:pyproject.toml"],
-                          capture_output=True,
-                          text=True,
-                          check=True,
-                      ).stdout
-                      previous = project_version(previous_text)
-                  except (
-                      subprocess.CalledProcessError,
-                      tomllib.TOMLDecodeError,
-                      KeyError,
-                  ):
-                      previous = ""
-              should_release = "true" if version != previous else "false"
+              pyproject.write_text(updated)
+
+          if version == previous:
+              raise SystemExit("Release workflow requires a version bump")
+          should_release = "true"
 
           tag = f"v{version}"
           tag_exists = subprocess.run(
@@ -225,8 +192,7 @@ jobs:
               stderr=subprocess.DEVNULL,
               check=False,
           ).returncode == 0
-          should_check_tag = should_release == "true" or event_name == "workflow_dispatch"
-          if should_check_tag and tag_exists:
+          if tag_exists:
               raise SystemExit(f"Tag {tag} already exists")
 
           previous_for_output = previous or "(missing)"
@@ -240,23 +206,14 @@ jobs:
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary:
               with open(summary, "a", encoding="utf-8") as fh:
-                  if event_name == "workflow_dispatch":
-                      fh.write(
-                          f"Release PR selected: {previous_for_output} -> {version} ({tag})\n"
-                      )
-                  elif should_release == "true":
-                      fh.write(
-                          f"Release selected: {previous_for_output} -> {version} ({tag})\n"
-                      )
-                  else:
-                      fh.write(
-                          f"No release version bump detected in pyproject.toml ({version}).\n"
-                      )
+                  fh.write(
+                      f"Release selected: {previous_for_output} -> {version} ({tag})\n"
+                  )
           PY
 
       - name: Create release PR and merge after green checks
         id: release_pr
-        if: github.event_name == 'workflow_dispatch' && steps.resolve.outputs.commit_sha == ''
+        if: steps.resolve.outputs.commit_sha == ''
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
           PREVIOUS_VERSION: ${{ steps.resolve.outputs.previous_version }}
@@ -275,9 +232,9 @@ jobs:
           git checkout -B "$RELEASE_BRANCH"
           git add pyproject.toml
           git commit -m "chore: bump version to ${VERSION} for PyPI release [release-run:${GITHUB_RUN_ID}]"
+          trap 'git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"' EXIT
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force-with-lease origin "$RELEASE_BRANCH"
-          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
           PR_TITLE="chore: bump version to ${VERSION} for PyPI release"
           PR_BODY=$(printf '%s\n\n%s' \
@@ -316,11 +273,13 @@ jobs:
             --delete-branch \
             --subject "$PR_TITLE" \
             --body "Release ${PREVIOUS_VERSION} -> ${VERSION}. [release-run:${GITHUB_RUN_ID}]"
+          git fetch origin main
+          echo "commit_sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
 
           if [ -n "$GITHUB_STEP_SUMMARY" ]; then
             {
               echo "Release PR merged: $PR_URL"
-              echo "Publish will continue from the resulting main-branch workflow run."
+              echo "Publishing will continue in this workflow run against origin/main."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 

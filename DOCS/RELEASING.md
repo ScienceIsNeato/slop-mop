@@ -13,13 +13,14 @@ manual run prepares the release through the protected-branch PR path:
 2. create a release PR
 3. wait for the PR checks to pass
 4. merge the PR into `main`
+5. run release quality gates against the merged commit
+6. build and smoke-test the package
+7. publish to PyPI
+8. create the GitHub release
 
-The merge to `main` starts the publish run, which then:
-
-1. runs release quality gates
-2. builds and smoke-tests the package
-3. publishes to PyPI
-4. creates the GitHub release
+Merging ordinary PRs never publishes a release. The workflow is intentionally
+manual-only, so a `pyproject.toml` version change on `main` is inert unless it
+was created by the active **Release** workflow run.
 
 This requires a `RELEASE_PR_TOKEN` repository secret from a fine-grained PAT or
 GitHub App token that can create pull requests, read checks, merge pull
@@ -28,9 +29,11 @@ token to bypass branch protection for direct pushes to `main`.
 
 If a manual release run is rerun before the release PR merges, the workflow
 reuses the deterministic `release/vX.Y.Z` branch and updates the existing PR.
+If it is rerun after the PR merges, it reuses the merge commit marked by the
+original run instead of applying a second bump.
 
-The local release script remains available for preparing the same kind of
-release PR from a developer machine:
+The local release script remains available for legacy/emergency version-bump PR
+preparation from a developer machine, but it is not the normal publish path:
 
 ```bash
 ./scripts/release.sh patch
@@ -39,8 +42,9 @@ release PR from a developer machine:
 ```
 
 The fallback script creates a release branch and PR that bumps `pyproject.toml`.
-When that PR lands on `main`, the **Release** workflow still publishes because
-the `pyproject.toml` version changed on `main`.
+Merge alone will not publish, and the **Release** workflow computes its own bump
+when manually dispatched. Prefer the workflow dispatcher for normal releases so
+the bump, PR, merge, build, publish, and GitHub Release stay in one audited run.
 
 ## Fallback PR Checklist
 

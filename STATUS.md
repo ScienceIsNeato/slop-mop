@@ -2,14 +2,20 @@
 
 ## 2026-05-06 Delta: Release workflow protected-branch fix
 
-Branch: `feat/github-actions-hygiene-gate`
+Branch: `fix/manual-only-release-workflow`
 
 **Work in progress:**
 - Updating `.github/workflows/release.yml` after manual release failed against
-  main branch protection.
-- Manual release dispatch now prepares a deterministic `release/vX.Y.Z` branch,
-  opens or updates a release PR, waits for PR checks, merges the PR, and leaves
-  publishing to the resulting protected `main` push workflow run.
+  main branch protection and after the merge-triggered run incorrectly succeeded
+  as a no-op when no release bump was detected.
+- Manual release dispatch is now the only release trigger. It prepares a
+  deterministic `release/vX.Y.Z` branch, opens or updates a release PR, waits for
+  PR checks, merges the PR, then continues quality/build/publish/release jobs in
+  the same workflow run against the merged `origin/main` commit.
+- Removed automatic publish-on-merge behavior; ordinary PR merges must never
+  release just because `pyproject.toml` changed.
+- The resolver now hard-fails if it cannot identify a real version bump instead
+  of reporting a successful skip.
 - Documented the required `RELEASE_PR_TOKEN` secret in `DOCS/RELEASING.md`; the
   default `GITHUB_TOKEN` is not sufficient because it may not trigger the PR and
   post-merge publish workflows.
