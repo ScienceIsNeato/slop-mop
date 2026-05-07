@@ -2,9 +2,9 @@
 #
 # Workflow:
 #   1. Run "Release" manually from main with a bump type
-#   2. The workflow opens a version-bump PR, waits for green checks, and merges it
-#   3. The same workflow run validates the merged commit, builds, publishes to
-#      PyPI, and creates the GitHub release
+#   2. The workflow opens a version-bump PR
+#   3. The workflow validates and builds the release branch, merges the PR,
+#      publishes the merged commit to PyPI, and creates the GitHub release
 #
 # Manual dispatch is the only release trigger. Merging arbitrary PRs must not
 # publish, even when they touch pyproject.toml.
@@ -17,8 +17,6 @@
 #       Repository: slop-mop
 #       Workflow:   release.yml
 #       Environment: pypi
-#   - Add a RELEASE_PR_TOKEN secret from a fine-grained PAT or GitHub App token
-#     that can create PRs, read checks, merge PRs, and trigger follow-up workflows
 #   - (Optional) Do the same on https://test.pypi.org for staging
 
 name: Release
@@ -50,7 +48,8 @@ jobs:
     name: Prepare Release Context
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
     outputs:
       should_release: ${{ steps.resolve.outputs.should_release }}
       version: ${{ steps.resolve.outputs.version }}
@@ -58,12 +57,14 @@ jobs:
       tag: ${{ steps.resolve.outputs.tag }}
       release_branch: ${{ steps.resolve.outputs.release_branch }}
       release_pr_url: ${{ steps.release_pr.outputs.pr_url }}
-      commit_sha: ${{ steps.resolve.outputs.commit_sha || steps.release_pr.outputs.commit_sha || github.sha }}
+      commit_sha: ${{ steps.resolve.outputs.commit_sha }}
+      release_sha: ${{ steps.resolve.outputs.commit_sha || steps.release_pr.outputs.release_sha || github.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ github.token }}
+          persist-credentials: false
 
       - uses: actions/setup-python@v6
         with:
@@ -211,22 +212,16 @@ jobs:
                   )
           PY
 
-      - name: Create release PR and merge after green checks
+      - name: Create or update release PR
         id: release_pr
         if: steps.resolve.outputs.commit_sha == ''
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
           PREVIOUS_VERSION: ${{ steps.resolve.outputs.previous_version }}
           RELEASE_BRANCH: ${{ steps.resolve.outputs.release_branch }}
-          RELEASE_PR_TOKEN_CONFIGURED: ${{ secrets.RELEASE_PR_TOKEN != '' }}
-          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
-          if [ "$RELEASE_PR_TOKEN_CONFIGURED" != "true" ]; then
-            echo "::error::Manual releases require a RELEASE_PR_TOKEN secret so the release PR can trigger checks and the merge can trigger the publish workflow."
-            exit 1
-          fi
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -B "$RELEASE_BRANCH"
@@ -235,11 +230,12 @@ jobs:
           trap 'git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"' EXIT
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force-with-lease origin "$RELEASE_BRANCH"
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
           PR_TITLE="chore: bump version to ${VERSION} for PyPI release"
           PR_BODY=$(printf '%s\n\n%s' \
             "Release ${PREVIOUS_VERSION} -> ${VERSION}." \
-            "This PR was created by the Release workflow. After checks pass, the workflow merges it into main; the protected main-branch push then runs the publish path.")
+            "This PR was created by the Release workflow. The same run validates and builds this branch before merging and publishing the merged commit.")
           PR_URL="$(gh pr list \
             --head "$RELEASE_BRANCH" \
             --base main \
@@ -255,31 +251,10 @@ jobs:
           fi
           echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
 
-          echo "Waiting for release PR checks to pass: $PR_URL"
-          for attempt in $(seq 1 20); do
-            CHECK_COUNT="$(gh pr checks "$PR_URL" --json name --jq 'length' 2>/dev/null || true)"
-            if [ -n "$CHECK_COUNT" ] && [ "$CHECK_COUNT" != "0" ]; then
-              break
-            fi
-            if [ "$attempt" = "20" ]; then
-              echo "::error::No PR checks were reported. Confirm RELEASE_PR_TOKEN can trigger pull_request workflows."
-              exit 1
-            fi
-            sleep 15
-          done
-          gh pr checks "$PR_URL" --watch --fail-fast
-          gh pr merge "$PR_URL" \
-            --squash \
-            --delete-branch \
-            --subject "$PR_TITLE" \
-            --body "Release ${PREVIOUS_VERSION} -> ${VERSION}. [release-run:${GITHUB_RUN_ID}]"
-          git fetch origin main
-          echo "commit_sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
-
           if [ -n "$GITHUB_STEP_SUMMARY" ]; then
             {
-              echo "Release PR merged: $PR_URL"
-              echo "Publishing will continue in this workflow run against origin/main."
+              echo "Release PR ready: $PR_URL"
+              echo "The workflow will validate and build the release branch before merging."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -292,7 +267,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ needs.release-context.outputs.commit_sha }}
+          ref: ${{ needs.release-context.outputs.release_sha }}
 
       - uses: actions/setup-python@v6
         with:
@@ -329,7 +304,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.release-context.outputs.commit_sha }}
+          ref: ${{ needs.release-context.outputs.release_sha }}
 
       - uses: actions/setup-python@v6
         with:
@@ -369,10 +344,66 @@ jobs:
           sm init >/dev/null
           sm swab --help >/dev/null
 
+  merge-release-pr:
+    name: Merge Release PR
+    needs:
+      - release-context
+      - quality-gate
+      - build
+    if: needs.release-context.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      commit_sha: ${{ steps.resolve.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge or reuse release PR
+        id: resolve
+        env:
+          EXISTING_COMMIT_SHA: ${{ needs.release-context.outputs.commit_sha }}
+          PR_URL: ${{ needs.release-context.outputs.release_pr_url }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+          PREVIOUS_VERSION: ${{ needs.release-context.outputs.previous_version }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          if [ -n "$EXISTING_COMMIT_SHA" ]; then
+            echo "commit_sha=$EXISTING_COMMIT_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "$PR_URL" ]; then
+            echo "::error::Release PR URL is missing."
+            exit 1
+          fi
+
+          PR_TITLE="chore: bump version to ${VERSION} for PyPI release"
+          gh pr merge "$PR_URL" \
+            --squash \
+            --delete-branch \
+            --subject "$PR_TITLE" \
+            --body "Release ${PREVIOUS_VERSION} -> ${VERSION}. [release-run:${GITHUB_RUN_ID}]"
+          git fetch origin main
+          echo "commit_sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$GITHUB_STEP_SUMMARY" ]; then
+            {
+              echo "Release PR merged: $PR_URL"
+              echo "Publishing will continue against the merged origin/main commit."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   publish-pypi:
     name: Publish to PyPI
     needs:
       - release-context
+      - merge-release-pr
       - build
     if: needs.release-context.outputs.should_release == 'true'
     runs-on: ubuntu-latest
@@ -383,7 +414,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.release-context.outputs.commit_sha }}
+          ref: ${{ needs.merge-release-pr.outputs.commit_sha }}
 
       - uses: actions/setup-python@v6
         with:
@@ -403,6 +434,7 @@ jobs:
     name: GitHub Release
     needs:
       - release-context
+      - merge-release-pr
       - publish-pypi
     if: needs.release-context.outputs.should_release == 'true'
     runs-on: ubuntu-latest
@@ -411,7 +443,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.release-context.outputs.commit_sha }}
+          ref: ${{ needs.merge-release-pr.outputs.commit_sha }}
 
       - uses: actions/setup-python@v6
         with:
@@ -426,7 +458,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-context.outputs.tag }}
-          TARGET: ${{ needs.release-context.outputs.commit_sha }}
+          TARGET: ${{ needs.merge-release-pr.outputs.commit_sha }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "GitHub Release $TAG already exists"
