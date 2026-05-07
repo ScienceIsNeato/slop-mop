@@ -24,6 +24,9 @@ Branch: `fix/manual-only-release-workflow`
   `GITHUB_TOKEN` permissions.
 - Prevented `actions/checkout` from persisting credentials into local git config,
   so branch pushes use the explicit token configured by the release step.
+- Kept `[skip release]` on the automated release PR squash merge body so older
+  push-trigger workflow definitions on `main` do not run in parallel during the
+  transition to manual-only release dispatch.
 - Preserved the release run marker in the squash merge commit and restored
   marker lookup so rerunning a completed manual release does not create a second
   version bump.

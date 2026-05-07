@@ -388,7 +388,7 @@ jobs:
             --squash \
             --delete-branch \
             --subject "$PR_TITLE" \
-            --body "Release ${PREVIOUS_VERSION} -> ${VERSION}. [release-run:${GITHUB_RUN_ID}]"
+            --body "Release ${PREVIOUS_VERSION} -> ${VERSION}. [skip release] [release-run:${GITHUB_RUN_ID}]"
           git fetch origin main
           echo "commit_sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
 
