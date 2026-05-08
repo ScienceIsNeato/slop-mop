@@ -4,6 +4,7 @@
     "name": "ScienceIsNeato",
     "url": "https://github.com/ScienceIsNeato"
   },
+  "description": "Slop-mop quality gates as a Claude skill — directed remediation for AI-assisted codebases.",
   "metadata": {
     "description": "Slop-mop quality gates as a Claude skill — directed remediation for AI-assisted codebases."
   },
@@ -15,7 +16,6 @@
         "repo": "ScienceIsNeato/slop-mop"
       },
       "description": "Protocols for highly efficient and directed remediation of known issues — refit onboarding, the swab/scour/buff/sail loop, and barnacle friction reporting as a skill and slash commands.",
-      "version": "1.0.2",
       "category": "code-quality",
       "keywords": [
         "quality-gate",
