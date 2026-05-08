@@ -317,7 +317,10 @@ class TestFireBuffHook:
         from slopmop.cli.buff import _fire_buff_hook
 
         with (
-            patch("slopmop.cli.buff._project_root_from_cwd", return_value=tmp_path),
+            patch(
+                "slopmop.cli.buff_common.project_root_from_cwd",
+                return_value=tmp_path,
+            ),
             patch("slopmop.workflow.hooks.on_buff_complete") as mock_hook,
         ):
             _fire_buff_hook(has_issues=True)
@@ -328,7 +331,10 @@ class TestFireBuffHook:
         from slopmop.cli.buff import _fire_buff_hook
 
         with (
-            patch("slopmop.cli.buff._project_root_from_cwd", return_value=tmp_path),
+            patch(
+                "slopmop.cli.buff_common.project_root_from_cwd",
+                return_value=tmp_path,
+            ),
             patch("slopmop.workflow.hooks.on_buff_complete") as mock_hook,
         ):
             _fire_buff_hook(has_issues=False)
@@ -339,7 +345,10 @@ class TestFireBuffHook:
         from slopmop.cli.buff import _fire_buff_hook
 
         with (
-            patch("slopmop.cli.buff._project_root_from_cwd", return_value=tmp_path),
+            patch(
+                "slopmop.cli.buff_common.project_root_from_cwd",
+                return_value=tmp_path,
+            ),
             patch(
                 "slopmop.workflow.hooks.on_buff_complete",
                 side_effect=RuntimeError("boom"),

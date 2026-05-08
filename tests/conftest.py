@@ -2,10 +2,11 @@
 
 from pathlib import Path
 from typing import Generator
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
+from slopmop.cli import buff as buff_mod
 from slopmop.cli.barnacle import AUTO_FILE_DISABLED_ENVAR
 from slopmop.core.result import CheckResult, CheckStatus
 
@@ -106,6 +107,19 @@ def make_feedback_result(status: CheckStatus, **kwargs) -> CheckResult:
         fix_suggestion=kwargs.get("fix_suggestion"),
         status_detail=kwargs.get("status_detail"),
     )
+
+
+def patch_buff_pr_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+    pr_number: int,
+    source: str = "explicit",
+) -> Mock:
+    """Patch buff PR resolution for inspect command unit tests."""
+
+    resolver = Mock(return_value=(pr_number, source))
+    monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+    monkeypatch.setattr(buff_mod, "resolve_pr_number_with_source", resolver)
+    return resolver
 
 
 def make_mock_status_registry(all_gates=None, swab_gates=None, scour_gates=None):
