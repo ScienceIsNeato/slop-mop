@@ -10,14 +10,26 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Optional, cast
 
-from slopmop.checks.pr.comments import PRCommentsCheck
+from slopmop.cli.buff_common import fire_buff_hook as _fire_buff_hook
+from slopmop.cli.buff_common import get_current_branch as _get_current_branch
+from slopmop.cli.buff_common import get_repo_owner_name as _get_repo_owner_name
+from slopmop.cli.buff_common import get_repo_slug as _get_repo_slug
+from slopmop.cli.buff_common import project_root_from_cwd as _project_root_from_cwd
+from slopmop.cli.buff_common import run_pr_feedback_gate as _run_pr_feedback_gate
+from slopmop.cli.buff_narration import (
+    format_feedback_state,
+    pr_resolution_reason,
+    print_ci_state_summary,
+    print_inspect_state_summary,
+    print_pr_selection_trace,
+)
+from slopmop.cli.buff_scan import print_scan_unavailable, run_inspect_scan
 from slopmop.cli.ci import (
     _categorize_checks,
     _fetch_checks,
@@ -27,10 +39,11 @@ from slopmop.cli.ci import (
     _print_success_status,
 )
 from slopmop.cli.scan_triage import (
+    PRResolutionSource,
     TriageError,
     print_triage,
     resolve_pr_number,
-    run_triage,
+    resolve_pr_number_with_source,
     write_json_out,
 )
 from slopmop.core.result import CheckResult, CheckStatus
@@ -80,6 +93,24 @@ def _render_status_feedback_blocker(
     if feedback_result.error:
         print(f"ERROR: {feedback_result.error}")
     return 1
+
+
+def _resolve_buff_pr_number(
+    args: argparse.Namespace,
+    pr_number: int | None,
+    project_root: str,
+) -> tuple[int, PRResolutionSource, str]:
+    """Resolve and validate the PR before buff inspect reads scan results."""
+
+    repo = _buff_repo_slug(args, project_root)
+    number, source = resolve_pr_number_with_source(repo, pr_number, assume_latest=True)
+    return number, source, repo
+
+
+def _buff_repo_slug(args: argparse.Namespace, project_root: str) -> str:
+    """Resolve the repository slug used by buff."""
+
+    return getattr(args, "repo", None) or _get_repo_slug(project_root)
 
 
 def _parse_optional_int(value: str | None, label: str) -> int | None:
@@ -465,43 +496,6 @@ def _push_current_branch(project_root: str) -> int:
     return result.returncode
 
 
-def _get_repo_owner_name(project_root: str) -> tuple[str, str]:
-    """Return owner/name for the current repository."""
-
-    check = PRCommentsCheck({})
-    return check._get_repo_info(project_root)
-
-
-def _get_repo_slug(project_root: str) -> str:
-    """Return owner/repo slug for the current repository."""
-
-    owner, repo = _get_repo_owner_name(project_root)
-    if not owner or not repo:
-        raise TriageError("Could not determine repository owner/name")
-    return f"{owner}/{repo}"
-
-
-def _get_current_branch(project_root: Path) -> str | None:
-    """Return the current git branch name, if it can be resolved."""
-
-    try:
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            stdin=subprocess.DEVNULL,
-            cwd=project_root,
-            check=False,
-        )
-    except (FileNotFoundError, OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    branch = result.stdout.strip()
-    return branch or None
-
-
 def _get_pr_head_branch(project_root: Path, pr_number: int) -> str | None:
     """Return the PR head branch name, if GitHub can provide it."""
 
@@ -658,7 +652,11 @@ def _cmd_buff_status(
 
     project_root = Path(_project_root_from_cwd())
     try:
-        resolved_pr = resolve_pr_number(_get_repo_slug(str(project_root)), pr_number)
+        repo = _get_repo_slug(str(project_root))
+        resolved_pr, pr_resolution_source = resolve_pr_number_with_source(
+            repo,
+            pr_number,
+        )
     except TriageError as exc:
         print(f"ERROR: {exc}")
         return 1
@@ -678,6 +676,15 @@ def _cmd_buff_status(
         print(f"👀 Watch mode: {flags}")
     print("=" * 60)
     print()
+    print_pr_selection_trace(
+        repo=repo,
+        current_branch=_get_current_branch(project_root),
+        json_output=False,
+        requested_pr_number=pr_number,
+        resolved_pr_number=resolved_pr,
+        source=pr_resolution_source,
+        assume_latest=False,
+    )
 
     settled_post_ci_feedback = False
     poll_count = 0
@@ -703,6 +710,8 @@ def _cmd_buff_status(
             return 2 if "not found" in error.lower() else 1
 
         if not checks:
+            print("Overall PR state: waiting for CI - no checks registered yet")
+            print()
             if watch and poll_count <= _MAX_EMPTY_POLLS:
                 print(
                     "⏳ No CI checks registered yet — waiting for GitHub to pick up workflows..."
@@ -720,6 +729,12 @@ def _cmd_buff_status(
                     no_checks=True,
                 )
 
+            print(format_feedback_state(feedback_result))
+            print(
+                "Final PR state: incomplete - no CI checks registered, "
+                "but PR feedback is resolved"
+            )
+            print()
             print("ℹ️  No CI checks found for this PR")
             print("   (CI workflow may not be set up yet)")
             _fire_buff_hook(has_issues=False)
@@ -727,6 +742,7 @@ def _cmd_buff_status(
 
         completed, in_progress, failed = _categorize_checks(checks)
         total = len(checks)
+        print_ci_state_summary(checks)
 
         if failed:
             _print_failed_status(completed, in_progress, failed)
@@ -776,6 +792,9 @@ def _cmd_buff_status(
                 no_checks=False,
             )
 
+        print(format_feedback_state(feedback_result))
+        print("Final PR state: clean - CI checks passed and PR feedback is resolved")
+        print()
         _print_success_status(completed, total)
         _fire_buff_hook(has_issues=False)
         if watch:
@@ -838,44 +857,6 @@ def _cmd_buff_resolve(
     action = "commented and resolved" if resolve_thread else "commented"
     print(f"Buff resolve complete: {action} {thread_id} on PR #{resolved_pr_number}.")
     return 0
-
-
-def _project_root_from_cwd() -> str:
-    """Resolve the git project root for the current working directory."""
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return os.getcwd()
-
-    root = (result.stdout or "").strip()
-    if result.returncode != 0 or not root:
-        return os.getcwd()
-    return str(Path(root))
-
-
-def _run_pr_feedback_gate(pr_number: int | None, project_root: str) -> CheckResult:
-    """Run ignored-feedback gate in blocking mode for buff semantics."""
-
-    check = PRCommentsCheck({"fail_on_unresolved": True})
-    original_pr_env = os.environ.get("GITHUB_PR_NUMBER")
-
-    try:
-        if pr_number is not None:
-            os.environ["GITHUB_PR_NUMBER"] = str(pr_number)
-        return check.run(project_root)
-    finally:
-        if pr_number is not None:
-            if original_pr_env is None:
-                os.environ.pop("GITHUB_PR_NUMBER", None)
-            else:
-                os.environ["GITHUB_PR_NUMBER"] = original_pr_env
 
 
 def _cmd_buff_iterate(pr_number: int | None) -> int:
@@ -1038,22 +1019,129 @@ def _cmd_buff_finalize(pr_number: int | None, push_changes: bool) -> int:
     return 0
 
 
+def _annotate_inspect_payload(
+    payload: dict[str, Any],
+    *,
+    repo: str,
+    pr_number: int | None,
+    resolved_pr_number: int,
+    pr_resolution_source: PRResolutionSource,
+    feedback_result: CheckResult,
+) -> None:
+    """Attach buff-specific resolution and feedback context to scan payload."""
+
+    payload["pr_resolution"] = {
+        "source": pr_resolution_source,
+        "pr_number": resolved_pr_number,
+        "requested_pr_number": pr_number,
+        "repo": repo,
+        "reason": pr_resolution_reason(
+            resolved_pr_number,
+            pr_resolution_source,
+            pr_number,
+            assume_latest=True,
+        ),
+    }
+    payload["pr_feedback"] = {
+        "gate": "myopia:ignored-feedback",
+        "status": feedback_result.status.value,
+        "status_detail": feedback_result.status_detail,
+        "error": feedback_result.error,
+        "fix_suggestion": feedback_result.fix_suggestion,
+    }
+
+
+def _print_inspect_output(
+    payload: dict[str, Any],
+    *,
+    scan_exit: int,
+    feedback_result: CheckResult,
+    json_output: bool,
+) -> bool:
+    """Print scan output and state summary, returning whether scan was unavailable."""
+
+    scan_unavailable = bool(payload.get("scan_unavailable"))
+    if json_output:
+        print(json.dumps(payload, indent=2))
+    elif scan_unavailable:
+        print_scan_unavailable(payload)
+    else:
+        print_triage(payload, show_low_coverage=False)
+    print_inspect_state_summary(
+        scan_exit=scan_exit,
+        payload=payload,
+        feedback_result=feedback_result,
+        json_output=json_output,
+    )
+    return scan_unavailable
+
+
+def _render_inspect_failure(
+    *,
+    scan_exit: int,
+    scan_unavailable: bool,
+    feedback_result: CheckResult,
+    json_output: bool,
+) -> None:
+    """Render human inspect failure details."""
+
+    if json_output:
+        return
+    if scan_exit != 0:
+        if scan_unavailable:
+            if feedback_result.status in {CheckStatus.FAILED, CheckStatus.ERROR}:
+                print("\nBuff inspect incomplete: CI scan artifact is still missing.")
+            else:
+                print(
+                    "\nBuff inspect incomplete: PR feedback is resolved, "
+                    "but the CI scan artifact is still missing."
+                )
+        else:
+            print("\nBuff inspect found unresolved CI scan signals.")
+    if feedback_result.status == CheckStatus.FAILED:
+        print("Buff inspect found unresolved PR review threads.")
+        print("Next step: run 'sm buff iterate' to take the highest-priority batch.")
+        if feedback_result.output:
+            print(feedback_result.output)
+    elif feedback_result.status == CheckStatus.ERROR:
+        print("Buff inspect failed: could not verify unresolved PR feedback.")
+        if feedback_result.error:
+            print(f"ERROR: {feedback_result.error}")
+
+
 def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
     """Run the post-PR inspection rail."""
 
     if not getattr(args, "json_output", False):
         print("== Buff inspect: checking CI code-scanning results ==")
 
+    project_root = _project_root_from_cwd()
     try:
-        scan_exit, payload = run_triage(
-            repo=args.repo,
-            run_id=args.run_id,
-            pr_number=pr_number,
-            workflow=args.workflow,
-            artifact=args.artifact,
-            show_low_coverage=False,
-            json_out=None,
-            print_output=False,
+        resolved_pr_number, pr_resolution_source, repo = _resolve_buff_pr_number(
+            args,
+            pr_number,
+            project_root,
+        )
+    except TriageError as exc:
+        print(f"ERROR: {exc}")
+        return 1
+
+    json_output = bool(getattr(args, "json_output", False))
+    print_pr_selection_trace(
+        repo=repo,
+        current_branch=_get_current_branch(Path(project_root)),
+        json_output=json_output,
+        requested_pr_number=pr_number,
+        resolved_pr_number=resolved_pr_number,
+        source=pr_resolution_source,
+        assume_latest=True,
+    )
+
+    try:
+        scan_exit, payload = run_inspect_scan(
+            args,
+            resolved_pr_number,
+            resolved_repo=repo,
         )
     except TriageError as exc:
         print(f"ERROR: {exc}")
@@ -1063,25 +1151,27 @@ def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
         print("ERROR: CI triage produced no payload.")
         return 1
 
-    resolved_pr_number = payload.get("pr_number", pr_number)
     feedback_result = _run_pr_feedback_gate(
         resolved_pr_number,
-        _project_root_from_cwd(),
+        project_root,
     )
-    payload["pr_feedback"] = {
-        "gate": "myopia:ignored-feedback",
-        "status": feedback_result.status.value,
-        "status_detail": feedback_result.status_detail,
-        "error": feedback_result.error,
-        "fix_suggestion": feedback_result.fix_suggestion,
-    }
+    _annotate_inspect_payload(
+        payload,
+        repo=repo,
+        pr_number=pr_number,
+        resolved_pr_number=resolved_pr_number,
+        pr_resolution_source=pr_resolution_source,
+        feedback_result=feedback_result,
+    )
 
     write_json_out(getattr(args, "output_file", None), payload)
 
-    if getattr(args, "json_output", False):
-        print(json.dumps(payload, indent=2))
-    else:
-        print_triage(payload, show_low_coverage=False)
+    scan_unavailable = _print_inspect_output(
+        payload=payload,
+        scan_exit=scan_exit,
+        feedback_result=feedback_result,
+        json_output=json_output,
+    )
 
     feedback_blocking = feedback_result.status in {
         CheckStatus.FAILED,
@@ -1089,23 +1179,15 @@ def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
     }
 
     if scan_exit != 0 or feedback_blocking:
-        if not getattr(args, "json_output", False):
-            if scan_exit != 0:
-                print("\nBuff inspect found unresolved CI scan signals.")
-            if feedback_result.status == CheckStatus.FAILED:
-                print("Buff inspect found unresolved PR review threads.")
-                print(
-                    "Next step: run 'sm buff iterate' to take the highest-priority batch."
-                )
-                if feedback_result.output:
-                    print(feedback_result.output)
-            elif feedback_result.status == CheckStatus.ERROR:
-                print("Buff inspect failed: could not verify unresolved PR feedback.")
-                if feedback_result.error:
-                    print(f"ERROR: {feedback_result.error}")
+        _render_inspect_failure(
+            scan_exit=scan_exit,
+            scan_unavailable=scan_unavailable,
+            feedback_result=feedback_result,
+            json_output=json_output,
+        )
         return 1
 
-    if not getattr(args, "json_output", False):
+    if not json_output:
         print("\nBuff inspect clean: CI scan signals and PR feedback are resolved.")
         print("Next step: run 'sm buff finalize --push' when you want to publish.")
     return 0
@@ -1168,12 +1250,3 @@ def cmd_buff(args: argparse.Namespace) -> int:
     exit_code = _cmd_buff_inspect(args, normalized.pr_number)
     _fire_buff_hook(has_issues=exit_code != 0)
     return exit_code
-
-
-def _fire_buff_hook(has_issues: bool) -> None:
-    try:
-        from slopmop.workflow.hooks import on_buff_complete
-
-        on_buff_complete(_project_root_from_cwd(), has_issues=has_issues)
-    except Exception:
-        pass

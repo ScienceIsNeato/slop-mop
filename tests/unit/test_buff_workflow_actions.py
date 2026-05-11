@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from slopmop.cli import buff as buff_mod
+from slopmop.cli import buff_common as common_mod
 from slopmop.cli import scan_triage as triage
 from slopmop.core.result import CheckStatus
 from tests.conftest import make_feedback_result
@@ -405,7 +406,7 @@ class TestBuffVerifyAndResolve:
 class TestBuffProjectRootHelpers:
     def test_project_root_from_cwd_uses_git_toplevel(self, monkeypatch):
         monkeypatch.setattr(
-            buff_mod.subprocess,
+            common_mod.subprocess,
             "run",
             Mock(return_value=SimpleNamespace(returncode=0, stdout="/repo\n")),
         )
@@ -414,11 +415,11 @@ class TestBuffProjectRootHelpers:
 
     def test_project_root_from_cwd_falls_back_to_cwd(self, monkeypatch):
         monkeypatch.setattr(
-            buff_mod.subprocess,
+            common_mod.subprocess,
             "run",
             Mock(return_value=SimpleNamespace(returncode=1, stdout="")),
         )
-        monkeypatch.setattr(buff_mod.os, "getcwd", Mock(return_value="/cwd"))
+        monkeypatch.setattr(common_mod.os, "getcwd", Mock(return_value="/cwd"))
 
         assert buff_mod._project_root_from_cwd() == "/cwd"
 

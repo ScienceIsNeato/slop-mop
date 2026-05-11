@@ -142,7 +142,16 @@ class TestScanTriageInternals:
 
     def test_latest_completed_run_id(self, monkeypatch):
         responses = [
-            json.dumps({"headRefName": "feat-x", "headRefOid": "abc1234def5678"}),
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
             json.dumps(
                 [
                     {
@@ -166,7 +175,16 @@ class TestScanTriageInternals:
 
     def test_workflow_run_state_tracks_current_head_runs(self, monkeypatch):
         responses = [
-            json.dumps({"headRefName": "feat-x", "headRefOid": "abc1234def5678"}),
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
             json.dumps(
                 [
                     {
@@ -199,7 +217,16 @@ class TestScanTriageInternals:
 
     def test_latest_completed_run_id_error(self, monkeypatch):
         responses = [
-            json.dumps({"headRefName": "feat-x", "headRefOid": "abc1234def5678"}),
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
             json.dumps([]),
         ]
 
@@ -209,7 +236,16 @@ class TestScanTriageInternals:
 
     def test_latest_completed_run_id_rejects_stale_branch_run(self, monkeypatch):
         responses = [
-            json.dumps({"headRefName": "feat-x", "headRefOid": "abc1234def5678"}),
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
             json.dumps(
                 [
                     {
@@ -233,11 +269,77 @@ class TestScanTriageInternals:
         monkeypatch.setattr(
             triage,
             "_run_gh",
-            Mock(return_value=json.dumps({"number": 85, "state": "CLOSED"})),
+            Mock(
+                return_value=json.dumps(
+                    {
+                        "number": 85,
+                        "state": "CLOSED",
+                        "closedAt": "2026-05-08T07:00:00Z",
+                        "mergedAt": None,
+                    }
+                )
+            ),
         )
 
-        with pytest.raises(triage.TriageError, match="is not open"):
+        with pytest.raises(triage.TriageError, match="has already been closed"):
             triage.validate_open_pr("o/r", 85)
+
+    def test_validate_open_pr_rejects_merged_pr(self, monkeypatch):
+        monkeypatch.setattr(
+            triage,
+            "_run_gh",
+            Mock(
+                return_value=json.dumps(
+                    {
+                        "number": 86,
+                        "state": "MERGED",
+                        "closedAt": "2026-05-08T07:00:00Z",
+                        "mergedAt": "2026-05-08T07:00:00Z",
+                    }
+                )
+            ),
+        )
+
+        with pytest.raises(triage.TriageError, match="has already been merged"):
+            triage.validate_open_pr("o/r", 86)
+
+    def test_latest_open_pr_number_selects_most_recent_update(self, monkeypatch):
+        monkeypatch.setattr(
+            triage,
+            "_run_gh",
+            Mock(
+                return_value=json.dumps(
+                    [
+                        {"number": 80, "updatedAt": "2026-05-08T06:00:00Z"},
+                        {"number": 82, "updatedAt": "2026-05-08T07:00:00Z"},
+                    ]
+                )
+            ),
+        )
+
+        assert triage.latest_open_pr_number("o/r") == 82
+
+    def test_open_pr_metadata_rejects_invalid_shape(self, monkeypatch):
+        monkeypatch.setattr(triage, "_run_gh", Mock(return_value="[]"))
+
+        with pytest.raises(triage.TriageError, match="does not exist"):
+            triage.validate_open_pr("o/r", 84)
+
+    def test_latest_open_pr_number_rejects_invalid_shape(self, monkeypatch):
+        monkeypatch.setattr(triage, "_run_gh", Mock(return_value="{}"))
+
+        with pytest.raises(triage.TriageError, match="Unexpected response shape"):
+            triage.latest_open_pr_number("o/r")
+
+    def test_latest_open_pr_number_rejects_no_valid_rows(self, monkeypatch):
+        monkeypatch.setattr(
+            triage,
+            "_run_gh",
+            Mock(return_value=json.dumps([{}, {"number": "84"}])),
+        )
+
+        with pytest.raises(triage.TriageError, match="No open PRs found"):
+            triage.latest_open_pr_number("o/r")
 
     def test_resolve_pr_number_prefers_open_branch_pr(self, monkeypatch):
         monkeypatch.setattr(triage, "current_pr_number", Mock(return_value=84))
@@ -285,6 +387,215 @@ class TestScanTriageInternals:
             triage.TriageError, match="Selected working PR #92 is stale"
         ):
             triage.resolve_pr_number("o/r", None)
+
+    def test_resolve_pr_number_with_source_can_assume_latest_open_pr(self, monkeypatch):
+        monkeypatch.setattr(
+            triage,
+            "current_pr_number",
+            Mock(side_effect=triage.TriageError("no open PR for branch")),
+        )
+        monkeypatch.setattr(triage, "_resolve_project_root", Mock(return_value="/repo"))
+        monkeypatch.setattr(triage, "get_current_pr_number", Mock(return_value=None))
+        monkeypatch.setattr(triage, "latest_open_pr_number", Mock(return_value=89))
+        monkeypatch.setattr(triage, "validate_open_pr", Mock(return_value=89))
+
+        number, source = triage.resolve_pr_number_with_source(
+            "o/r", None, assume_latest=True
+        )
+
+        assert number == 89
+        assert source == "latest_open"
+
+    def test_resolve_pr_number_with_source_explicit_validates(self, monkeypatch):
+        monkeypatch.setattr(triage, "validate_open_pr", Mock(return_value=88))
+
+        number, source = triage.resolve_pr_number_with_source("o/r", 88)
+
+        assert number == 88
+        assert source == "explicit"
+
+    def test_resolve_pr_number_reports_no_open_prs_to_assume(self, monkeypatch):
+        monkeypatch.setattr(
+            triage,
+            "current_pr_number",
+            Mock(side_effect=triage.TriageError("no branch PR")),
+        )
+        monkeypatch.setattr(triage, "_resolve_project_root", Mock(return_value="/repo"))
+        monkeypatch.setattr(triage, "get_current_pr_number", Mock(return_value=None))
+        monkeypatch.setattr(
+            triage,
+            "latest_open_pr_number",
+            Mock(side_effect=triage.TriageError("no open PRs")),
+        )
+
+        with pytest.raises(triage.TriageError, match="no open PRs exist to assume"):
+            triage.resolve_pr_number_with_source("o/r", None, assume_latest=True)
+
+    def test_resolve_pr_number_does_not_silently_assume_latest_open_pr(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            triage,
+            "current_pr_number",
+            Mock(side_effect=triage.TriageError("no open PR for branch")),
+        )
+        monkeypatch.setattr(triage, "_resolve_project_root", Mock(return_value="/repo"))
+        monkeypatch.setattr(triage, "get_current_pr_number", Mock(return_value=None))
+        latest = Mock(return_value=89)
+        monkeypatch.setattr(triage, "latest_open_pr_number", latest)
+
+        with pytest.raises(triage.TriageError, match="no working PR is selected"):
+            triage.resolve_pr_number("o/r", None)
+        latest.assert_not_called()
+
+    def test_validate_run_for_pr_head_rejects_sha_mismatch(self, monkeypatch):
+        responses = [
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
+            json.dumps(
+                {
+                    "databaseId": 200,
+                    "headSha": "old1111deadbeef",
+                    "name": triage.WORKFLOW_NAME,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "createdAt": "2026-05-08T07:00:00Z",
+                }
+            ),
+        ]
+        monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
+
+        with pytest.raises(triage.TriageError, match="does not match PR #84 head"):
+            triage.validate_run_for_pr_head("o/r", 200, 84, triage.WORKFLOW_NAME)
+
+    def test_validate_run_for_pr_head_rejects_missing_head_sha(self, monkeypatch):
+        monkeypatch.setattr(
+            triage,
+            "_run_gh",
+            Mock(
+                return_value=json.dumps(
+                    {
+                        "number": 84,
+                        "state": "OPEN",
+                        "headRefName": "feat-x",
+                        "headRefOid": "",
+                        "closedAt": None,
+                        "mergedAt": None,
+                    }
+                )
+            ),
+        )
+
+        with pytest.raises(triage.TriageError, match="head commit"):
+            triage.validate_run_for_pr_head("o/r", 200, 84, triage.WORKFLOW_NAME)
+
+    def test_validate_run_for_pr_head_rejects_invalid_run_shape(self, monkeypatch):
+        responses = [
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
+            "[]",
+        ]
+        monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
+
+        with pytest.raises(triage.TriageError, match="workflow run 200"):
+            triage.validate_run_for_pr_head("o/r", 200, 84, triage.WORKFLOW_NAME)
+
+    def test_validate_run_for_pr_head_rejects_wrong_workflow(self, monkeypatch):
+        responses = [
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
+            json.dumps(
+                {
+                    "databaseId": 200,
+                    "headSha": "abc1234def5678",
+                    "name": "other workflow",
+                    "status": "completed",
+                }
+            ),
+        ]
+        monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
+
+        with pytest.raises(triage.TriageError, match="not 'slop-mop"):
+            triage.validate_run_for_pr_head("o/r", 200, 84, triage.WORKFLOW_NAME)
+
+    def test_validate_run_for_pr_head_rejects_pending_run(self, monkeypatch):
+        responses = [
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
+            json.dumps(
+                {
+                    "databaseId": 200,
+                    "headSha": "abc1234def5678",
+                    "name": triage.WORKFLOW_NAME,
+                    "status": "in_progress",
+                }
+            ),
+        ]
+        monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
+
+        with pytest.raises(triage.TriageError, match="still in_progress"):
+            triage.validate_run_for_pr_head("o/r", 200, 84, triage.WORKFLOW_NAME)
+
+    def test_validate_run_for_pr_head_uses_explicit_id_when_database_id_missing(
+        self, monkeypatch
+    ):
+        responses = [
+            json.dumps(
+                {
+                    "number": 84,
+                    "state": "OPEN",
+                    "headRefName": "feat-x",
+                    "headRefOid": "abc1234def5678",
+                    "closedAt": None,
+                    "mergedAt": None,
+                }
+            ),
+            json.dumps(
+                {
+                    "headSha": "abc1234def5678",
+                    "name": triage.WORKFLOW_NAME,
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ),
+        ]
+        monkeypatch.setattr(triage, "_run_gh", lambda _cmd: responses.pop(0))
+
+        state = triage.validate_run_for_pr_head("o/r", 200, 84, triage.WORKFLOW_NAME)
+
+        assert state["latest_run_id"] == 200
 
     def test_load_json_and_coverage_value(self, tmp_path):
         path = tmp_path / "ok.json"
@@ -460,6 +771,51 @@ class TestScanTriageInternals:
         )
         assert code == 0
         assert payload is not None
+
+    def test_run_triage_explicit_run_reuses_run_validation_pr_check(self, monkeypatch):
+        monkeypatch.setattr(triage, "default_repo", Mock(return_value="o/r"))
+        open_pr_validator = Mock(side_effect=AssertionError("redundant PR check"))
+        monkeypatch.setattr(triage, "validate_open_pr", open_pr_validator)
+        run_validator = Mock(
+            return_value={
+                "head_sha": "abc1234def5678",
+                "latest_run_id": 201,
+                "pending_newer_run": False,
+            }
+        )
+        monkeypatch.setattr(triage, "validate_run_for_pr_head", run_validator)
+        monkeypatch.setattr(
+            triage, "download_results_json", Mock(return_value=Path("x.json"))
+        )
+        monkeypatch.setattr(
+            triage, "_load_json", Mock(return_value={"summary": {}, "results": []})
+        )
+
+        def fake_build(doc, run_id, json_path, show_low_coverage, pr_number, ci_state):
+            assert run_id == 201
+            assert pr_number == 84
+            assert ci_state is not None
+            assert ci_state["head_sha"] == "abc1234def5678"
+            return ({"summary": {}, "actionable": [], "next_steps": []}, 0)
+
+        monkeypatch.setattr(triage, "build_triage_payload", fake_build)
+        monkeypatch.setattr(triage, "write_json_out", Mock())
+
+        code, payload = triage.run_triage(
+            repo=None,
+            run_id=201,
+            pr_number=84,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            show_low_coverage=False,
+            json_out=None,
+            print_output=False,
+        )
+
+        assert code == 0
+        assert payload is not None
+        open_pr_validator.assert_not_called()
+        run_validator.assert_called_once_with("o/r", 201, 84, triage.WORKFLOW_NAME)
 
     def test_run_triage_rejects_pending_current_head_run(self, monkeypatch):
         monkeypatch.setattr(triage, "default_repo", Mock(return_value="o/r"))

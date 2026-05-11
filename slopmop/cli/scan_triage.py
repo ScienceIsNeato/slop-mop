@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, TypedDict, cast
+from typing import Any, Dict, List, Literal, TypedDict, cast
 
 from slopmop.core.config import get_current_pr_number
 from slopmop.reporting.rail import (
@@ -50,6 +50,9 @@ class _WorkflowRunState(TypedDict, total=False):
     latest: _RunEntry
     latest_completed: _RunEntry
     latest_for_head: _RunEntry
+
+
+PRResolutionSource = Literal["explicit", "branch", "configured", "latest_open"]
 
 
 def _run_gh(args: list[str]) -> str:
@@ -125,8 +128,8 @@ def current_pr_number(repo: str) -> int:
     return number
 
 
-def validate_open_pr(repo: str, pr_number: int) -> int:
-    """Validate that a PR exists and is open."""
+def _open_pr_metadata(repo: str, pr_number: int) -> Dict[str, Any]:
+    """Return PR metadata after validating the PR exists and is open."""
 
     out = _run_gh(
         [
@@ -136,30 +139,86 @@ def validate_open_pr(repo: str, pr_number: int) -> int:
             "--repo",
             repo,
             "--json",
-            "number,state",
+            "number,state,headRefName,headRefOid,closedAt,mergedAt",
         ]
     )
     data = json.loads(out)
-    number = data.get("number")
-    state = str(data.get("state") or "").upper()
+    if not isinstance(data, dict):
+        raise TriageError(f"PR #{pr_number} does not exist in {repo}.")
+    pr_data = cast(Dict[str, Any], data)
+    number = pr_data.get("number")
+    state = str(pr_data.get("state") or "").upper()
     if not isinstance(number, int):
         raise TriageError(f"PR #{pr_number} does not exist in {repo}.")
+    if state == "MERGED" or pr_data.get("mergedAt"):
+        raise TriageError(
+            f"PR #{pr_number} has already been merged. Pass an open PR number."
+        )
+    if state == "CLOSED" or pr_data.get("closedAt"):
+        raise TriageError(
+            f"PR #{pr_number} has already been closed. Pass an open PR number."
+        )
     if state != "OPEN":
         raise TriageError(
             f"PR #{pr_number} is not open (state={state.lower() or 'unknown'})."
         )
-    return number
+    return pr_data
 
 
-def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
-    """Resolve the working PR number from explicit arg or repo config."""
+def validate_open_pr(repo: str, pr_number: int) -> int:
+    """Validate that a PR exists and is open."""
+
+    return int(_open_pr_metadata(repo, pr_number)["number"])
+
+
+def latest_open_pr_number(repo: str) -> int:
+    """Return the most recently updated open PR for a repository."""
+
+    out = _run_gh(
+        [
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--json",
+            "number,updatedAt",
+            "--limit",
+            "100",
+        ]
+    )
+    rows_raw = json.loads(out)
+    if not isinstance(rows_raw, list):
+        raise TriageError("Unexpected response shape while listing open PRs.")
+    row_list: List[Any] = cast(List[Any], rows_raw)
+
+    rows: list[Dict[str, Any]] = []
+    for row_raw in row_list:
+        if not isinstance(row_raw, dict):
+            continue
+        row = cast(Dict[str, Any], row_raw)
+        if isinstance(row.get("number"), int):
+            rows.append(row)
+
+    if not rows:
+        raise TriageError("No open PRs found in this repository.")
+
+    rows.sort(key=lambda row: str(row.get("updatedAt") or ""), reverse=True)
+    return int(rows[0]["number"])
+
+
+def resolve_pr_number_with_source(
+    repo: str, explicit_pr_number: int | None, *, assume_latest: bool = False
+) -> tuple[int, PRResolutionSource]:
+    """Resolve the working PR number and report where it came from."""
 
     if explicit_pr_number is not None:
-        return validate_open_pr(repo, explicit_pr_number)
+        return validate_open_pr(repo, explicit_pr_number), "explicit"
 
     branch_error: TriageError | None = None
     try:
-        return current_pr_number(repo)
+        return current_pr_number(repo), "branch"
     except TriageError as exc:
         branch_error = exc
 
@@ -167,7 +226,7 @@ def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
     configured_pr = get_current_pr_number(project_root)
     if configured_pr is not None:
         try:
-            return validate_open_pr(repo, configured_pr)
+            return validate_open_pr(repo, configured_pr), "configured"
         except TriageError as exc:
             raise TriageError(
                 f"Selected working PR #{configured_pr} is stale: {exc} "
@@ -175,11 +234,94 @@ def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
                 "or clear the stale selection with 'sm config --clear-current-pr'."
             ) from exc
 
+    if assume_latest:
+        try:
+            return latest_open_pr_number(repo), "latest_open"
+        except TriageError as exc:
+            raise TriageError(
+                "No open PR found for the current branch, no working PR is selected, "
+                "and no open PRs exist to assume. Open a PR first, set one with "
+                "'sm config --current-pr-number <n>', or pass an explicit PR number."
+            ) from (branch_error or exc)
+
     raise TriageError(
         "No open PR found for the current branch and no working PR is selected. "
         "Open a PR first, set one with 'sm config --current-pr-number <n>', or "
         "pass an explicit PR number."
     ) from branch_error
+
+
+def resolve_pr_number(repo: str, explicit_pr_number: int | None) -> int:
+    """Resolve the working PR number from explicit arg or repo config."""
+
+    number, _source = resolve_pr_number_with_source(repo, explicit_pr_number)
+    return number
+
+
+def validate_run_for_pr_head(
+    repo: str,
+    run_id: int,
+    pr_number: int,
+    workflow: str,
+) -> dict[str, Any]:
+    """Validate an explicit run belongs to the selected PR head and workflow."""
+
+    pr_data = _open_pr_metadata(repo, pr_number)
+    head_sha = str(pr_data.get("headRefOid") or "").strip()
+    if not head_sha:
+        raise TriageError(f"Could not resolve head commit for PR #{pr_number}.")
+
+    out = _run_gh(
+        [
+            "run",
+            "view",
+            str(run_id),
+            "--repo",
+            repo,
+            "--json",
+            "databaseId,headSha,name,status,conclusion,createdAt",
+        ]
+    )
+    run_raw = json.loads(out)
+    if not isinstance(run_raw, dict):
+        raise TriageError(f"Could not resolve workflow run {run_id}.")
+    run = cast(Dict[str, Any], run_raw)
+
+    run_name = str(run.get("name") or "")
+    if workflow not in run_name:
+        raise TriageError(
+            f"Run {run_id} is '{run_name or 'unknown'}', not '{workflow}'."
+        )
+
+    run_sha = str(run.get("headSha") or "").strip()
+    if run_sha != head_sha:
+        raise TriageError(
+            f"Run {run_id} does not match PR #{pr_number} head "
+            f"{_short_sha(head_sha)} (run head {_short_sha(run_sha)})."
+        )
+
+    run_status = str(run.get("status") or "unknown")
+    if run_status != "completed":
+        raise TriageError(
+            f"Run {run_id} for PR #{pr_number} is still {run_status}. "
+            "Wait for it to finish, then re-run buff."
+        )
+
+    latest_run_id = run.get("databaseId")
+    if not isinstance(latest_run_id, int):
+        latest_run_id = run_id
+
+    return {
+        "head_sha": head_sha,
+        "latest_run_id": latest_run_id,
+        "latest_status": run_status,
+        "latest_conclusion": run.get("conclusion"),
+        "latest_created_at": run.get("createdAt"),
+        "triaged_run_id": run_id,
+        "triaged_is_latest": True,
+        "pending_newer_run": False,
+        "note": "Using explicitly supplied workflow run.",
+    }
 
 
 def latest_completed_run_id(repo: str, pr_number: int, workflow: str) -> int:
@@ -189,18 +331,7 @@ def latest_completed_run_id(repo: str, pr_number: int, workflow: str) -> int:
 
 
 def _workflow_run_state(repo: str, pr_number: int, workflow: str) -> _WorkflowRunState:
-    pr_out = _run_gh(
-        [
-            "pr",
-            "view",
-            str(pr_number),
-            "--repo",
-            repo,
-            "--json",
-            "headRefName,headRefOid",
-        ]
-    )
-    pr_data = json.loads(pr_out)
+    pr_data = _open_pr_metadata(repo, pr_number)
     branch = str(pr_data.get("headRefName") or "").strip()
     head_sha = str(pr_data.get("headRefOid") or "").strip()
     if not branch:
@@ -563,6 +694,13 @@ def run_triage(
         resolved_run_id, ci_state = _resolve_fresh_run(
             state,
             resolved_pr,
+            workflow,
+        )
+    elif resolved_pr_number is not None:
+        ci_state = validate_run_for_pr_head(
+            resolved_repo,
+            resolved_run_id,
+            resolved_pr_number,
             workflow,
         )
 
