@@ -472,6 +472,37 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print()
 
 
+def _strip_unknown_gates(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove gate keys from existing config that are not in the current registry.
+
+    Stale gate names survive version upgrades because _deep_merge is overlay-wins.
+    Filtering them out before the merge lets the fresh template win for removed gates.
+    """
+    from slopmop.checks import ensure_checks_registered
+    from slopmop.core.registry import get_registry
+
+    ensure_checks_registered()
+    known_names = set(get_registry().list_checks())
+
+    result: Dict[str, Any] = {}
+    for section_key, section_val in config.items():
+        if not isinstance(section_val, dict) or "gates" not in section_val:
+            result[section_key] = section_val
+            continue
+        section_dict = cast(Dict[str, Any], section_val)
+        gates = cast(Dict[str, Any], section_dict.get("gates", {}))
+        if not isinstance(gates, dict):
+            result[section_key] = section_val
+            continue
+        filtered_gates: Dict[str, Any] = {
+            str(gate_name): gate_cfg
+            for gate_name, gate_cfg in gates.items()
+            if f"{section_key}:{gate_name}" in known_names
+        }
+        result[section_key] = {**section_dict, "gates": filtered_gates}
+    return result
+
+
 def _write_config(
     config_file: Path,
     project_root: Path,
@@ -534,7 +565,8 @@ def _write_config(
             backup_path = backup_config(config_file)
             if backup_path:
                 print(f"📦 Backed up existing config to: {backup_path}")
-            base_config = _deep_merge(base_config, existing)
+            existing_filtered = _strip_unknown_gates(existing)
+            base_config = _deep_merge(base_config, existing_filtered)
         except json.JSONDecodeError:
             pass
 
