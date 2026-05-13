@@ -477,6 +477,11 @@ def _strip_unknown_gates(config: Dict[str, Any]) -> Dict[str, Any]:
 
     Stale gate names survive version upgrades because _deep_merge is overlay-wins.
     Filtering them out before the merge lets the fresh template win for removed gates.
+
+    Three locations are cleaned:
+    - Nested  {category: {gates: {gate_name: ...}}}  sections
+    - Flat top-level  "category:gate"  keys
+    - Entries in the  disabled_gates  list
     """
     from slopmop.checks import ensure_checks_registered
     from slopmop.core.registry import get_registry
@@ -486,20 +491,33 @@ def _strip_unknown_gates(config: Dict[str, Any]) -> Dict[str, Any]:
 
     result: Dict[str, Any] = {}
     for section_key, section_val in config.items():
-        if not isinstance(section_val, dict) or "gates" not in section_val:
-            result[section_key] = section_val
+        # Flat top-level "category:gate" keys — drop if not in registry
+        if ":" in section_key and section_key not in known_names:
             continue
-        section_dict = cast(Dict[str, Any], section_val)
-        gates = cast(Dict[str, Any], section_dict.get("gates", {}))
-        if not isinstance(gates, dict):
-            result[section_key] = section_val
+
+        # disabled_gates list — drop entries not in registry
+        if section_key == "disabled_gates" and isinstance(section_val, list):
+            result[section_key] = [
+                entry
+                for entry in cast(list[Any], section_val)
+                if not isinstance(entry, str) or entry in known_names
+            ]
             continue
-        filtered_gates: Dict[str, Any] = {
-            str(gate_name): gate_cfg
-            for gate_name, gate_cfg in gates.items()
-            if f"{section_key}:{gate_name}" in known_names
-        }
-        result[section_key] = {**section_dict, "gates": filtered_gates}
+
+        # Nested category section with gates dict
+        if isinstance(section_val, dict) and "gates" in section_val:
+            section_dict = cast(Dict[str, Any], section_val)
+            gates = cast(Dict[str, Any], section_dict.get("gates", {}))
+            if isinstance(gates, dict):
+                filtered_gates: Dict[str, Any] = {
+                    str(gate_name): gate_cfg
+                    for gate_name, gate_cfg in gates.items()
+                    if f"{section_key}:{gate_name}" in known_names
+                }
+                result[section_key] = {**section_dict, "gates": filtered_gates}
+                continue
+
+        result[section_key] = section_val
     return result
 
 

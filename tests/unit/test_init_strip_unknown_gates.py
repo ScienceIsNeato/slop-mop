@@ -100,3 +100,43 @@ class TestStripUnknownGates:
         assert result["laziness"]["description"] == "laziness checks"
         assert "js-lint.js" in result["laziness"]["gates"]
         assert "js-lint" not in result["laziness"]["gates"]
+
+    def test_flat_top_level_known_gate_key_is_kept(self):
+        p1, p2 = self._patch_registry(["overconfidence:untested-code.py"])
+        with p1, p2:
+            config = {"overconfidence:untested-code.py": {"threshold": 80}}
+            result = _strip_unknown_gates(config)
+        assert "overconfidence:untested-code.py" in result
+
+    def test_flat_top_level_stale_gate_key_is_dropped(self):
+        p1, p2 = self._patch_registry([])
+        with p1, p2:
+            config = {"overconfidence:py-tests": {"threshold": 80}}
+            result = _strip_unknown_gates(config)
+        assert "overconfidence:py-tests" not in result
+
+    def test_disabled_gates_known_entries_are_kept(self):
+        p1, p2 = self._patch_registry(["laziness:complexity-creep.py"])
+        with p1, p2:
+            config = {"disabled_gates": ["laziness:complexity-creep.py"]}
+            result = _strip_unknown_gates(config)
+        assert result["disabled_gates"] == ["laziness:complexity-creep.py"]
+
+    def test_disabled_gates_stale_entries_are_removed(self):
+        p1, p2 = self._patch_registry(["laziness:complexity-creep.py"])
+        with p1, p2:
+            config = {
+                "disabled_gates": [
+                    "laziness:complexity-creep.py",
+                    "laziness:js-lint",
+                ]
+            }
+            result = _strip_unknown_gates(config)
+        assert result["disabled_gates"] == ["laziness:complexity-creep.py"]
+
+    def test_disabled_gates_non_string_entries_are_preserved(self):
+        p1, p2 = self._patch_registry([])
+        with p1, p2:
+            config = {"disabled_gates": [{"name": "odd-entry"}]}
+            result = _strip_unknown_gates(config)
+        assert result["disabled_gates"] == [{"name": "odd-entry"}]
