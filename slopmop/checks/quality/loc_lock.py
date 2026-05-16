@@ -10,6 +10,7 @@ This is a cross-cutting quality check that applies to all source files.
 import ast
 import io
 import logging
+import os
 import re
 import time
 import tokenize
@@ -255,29 +256,23 @@ SOURCE_EXTENSIONS = {
     ".bash",
 }
 
-# Directories to always exclude
+# Directories to always exclude. Dot-directories are pruned automatically
+# via should_prune_dir(); this list covers non-dot dirs plus a few AI-assistant
+# and framework dirs that need explicit naming.
 EXCLUDED_DIRS = {
     "node_modules",
-    ".git",
     "venv",
-    ".venv",
     "__pycache__",
-    ".pytest_cache",
     "dist",
     "build",
-    ".tox",
     "htmlcov",
     "cursor-rules",
-    ".mypy_cache",
     "logs",
     # AI-assistant working directories — local tooling, not project
     # source.  These showed up when users ran swab with an active
     # Claude Code session: .claude/hooks/ contains long orchestration
     # scripts that tripped the function-length limit despite being
     # entirely outside the project's quality surface.
-    ".claude",
-    ".cursor",
-    ".aider",
     # Framework-generated migration histories are intentionally verbose and
     # repetitive; file/function size limits are not useful there.
     "migrations",
@@ -452,36 +447,45 @@ class LocLockCheck(BaseCheck):
             if not scan_path.exists():
                 continue
 
-            for file_path in scan_path.rglob("*"):
-                if not file_path.is_file():
-                    continue
-                if file_path.suffix not in extensions:
-                    continue
-                rel_path_obj = file_path.relative_to(root)
-                if self._should_skip_path(rel_path_obj, excluded_dirs):
-                    continue
+            for root_dir, dirs, files in os.walk(scan_path):
+                rel_root = Path(root_dir).relative_to(root)
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not (
+                        d.startswith(".")
+                        or self._should_skip_path(rel_root / d, excluded_dirs)
+                    )
+                ]
+                for fname in files:
+                    file_path = Path(root_dir) / fname
+                    if file_path.suffix not in extensions:
+                        continue
+                    rel_path_obj = rel_root / fname
+                    if self._should_skip_path(rel_path_obj, excluded_dirs):
+                        continue
 
-                rel_path = str(rel_path_obj)
+                    rel_path = str(rel_path_obj)
 
-                try:
-                    content = file_path.read_text(encoding="utf-8", errors="ignore")
+                    try:
+                        content = file_path.read_text(encoding="utf-8", errors="ignore")
 
-                    line_count = _count_code_lines(content, file_path.suffix)
+                        line_count = _count_code_lines(content, file_path.suffix)
 
-                    if line_count > max_file_lines:
-                        target = self._pick_move_target(content, file_path.suffix)
-                        file_violations.append((rel_path, line_count, target))
+                        if line_count > max_file_lines:
+                            target = self._pick_move_target(content, file_path.suffix)
+                            file_violations.append((rel_path, line_count, target))
 
-                    funcs = self._find_functions(content, file_path.suffix)
-                    for func_name, start_line, func_lines in funcs:
-                        if func_lines > max_func_lines:
-                            func_violations.append(
-                                (rel_path, func_name, start_line, func_lines)
-                            )
+                        funcs = self._find_functions(content, file_path.suffix)
+                        for func_name, start_line, func_lines in funcs:
+                            if func_lines > max_func_lines:
+                                func_violations.append(
+                                    (rel_path, func_name, start_line, func_lines)
+                                )
 
-                except (OSError, UnicodeDecodeError) as e:
-                    logger.debug(f"Could not read {rel_path}: {e}")
-                    continue
+                    except (OSError, UnicodeDecodeError) as e:
+                        logger.debug(f"Could not read {rel_path}: {e}")
+                        continue
 
         return file_violations, func_violations
 

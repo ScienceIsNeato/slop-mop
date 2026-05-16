@@ -14,6 +14,7 @@ import time
 from typing import List, Optional
 
 from slopmop.checks.base import (
+    SCOPE_EXCLUDED_DIRS,
     BaseCheck,
     CheckRole,
     ConfigField,
@@ -115,7 +116,11 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
         from pathlib import Path
 
         root = Path(project_root)
-        return any(root.rglob("*.py"))
+        for _, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if d not in SCOPE_EXCLUDED_DIRS]
+            if any(f.endswith(".py") for f in files):
+                return True
+        return False
 
     def _get_target_dirs(self, project_root: str) -> List[str]:
         """Get directories to check from config, with sensible fallbacks."""
@@ -153,6 +158,8 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
             "-s",
             "-a",
             "--md",
+            "--ignore",
+            ",".join(sorted(SCOPE_EXCLUDED_DIRS)),
         ] + dirs
         result = self._run_command(cmd, cwd=project_root, timeout=120)
         duration = time.time() - start_time

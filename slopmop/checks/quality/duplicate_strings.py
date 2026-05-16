@@ -21,6 +21,7 @@ from slopmop.checks.base import (
     ScopeInfo,
     ToolContext,
     count_source_scope,
+    should_prune_dir,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -486,21 +487,18 @@ class StringDuplicationCheck(BaseCheck):
         if strip_fn is None:
             return None
 
-        # Find all matching .py files
+        # Find all matching .py files using dir-pruning walk
         py_files: list[str] = []
-        for pattern in include_patterns:
-            if not pattern.endswith(".py"):
-                continue
-            matched = globmod.glob(os.path.join(project_root, pattern), recursive=True)
-            for f in matched:
-                rel = os.path.relpath(f, project_root)
-                skip = False
-                for ign in ignore_patterns:
-                    if fnmatch.fnmatch(rel, ign):
-                        skip = True
-                        break
-                if not skip:
-                    py_files.append(f)
+        for root_dir, dirs, files in os.walk(project_root):
+            dirs[:] = [d for d in dirs if not should_prune_dir(d)]
+            rel_root = os.path.relpath(root_dir, project_root)
+            for f in files:
+                if not f.endswith(".py"):
+                    continue
+                rel = os.path.join(rel_root, f) if rel_root != "." else f
+                if any(fnmatch.fnmatch(rel, ign) for ign in ignore_patterns):
+                    continue
+                py_files.append(os.path.join(root_dir, f))
 
         if not py_files:
             return None
