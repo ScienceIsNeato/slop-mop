@@ -22,6 +22,7 @@ from slopmop.checks.base import (
     GateCategory,
     RemediationChurn,
     ToolContext,
+    should_prune_dir,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
@@ -117,7 +118,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
 
         root = Path(project_root)
         for _, dirs, files in os.walk(root):
-            dirs[:] = [d for d in dirs if d not in SCOPE_EXCLUDED_DIRS]
+            dirs[:] = [d for d in dirs if not should_prune_dir(d)]
             if any(f.endswith(".py") for f in files):
                 return True
         return False
