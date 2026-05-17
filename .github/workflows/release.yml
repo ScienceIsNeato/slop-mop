@@ -182,6 +182,17 @@ jobs:
                   raise SystemExit("Could not update version in pyproject.toml")
               pyproject.write_text(updated)
 
+              plugin_json = Path(".cursor-plugin/plugin.json")
+              if plugin_json.exists():
+                  plugin_text = plugin_json.read_text()
+                  plugin_updated = re.sub(
+                      r'"version"\s*:\s*"[^"]+"',
+                      f'"version": "{version}"',
+                      plugin_text,
+                      count=1,
+                  )
+                  plugin_json.write_text(plugin_updated)
+
           if version == previous:
               raise SystemExit("Release workflow requires a version bump")
           should_release = "true"
