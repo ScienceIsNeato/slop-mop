@@ -23,6 +23,7 @@ Design decisions:
 import hashlib
 import json
 import logging
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,25 +38,17 @@ CACHE_DIR = ".slopmop"
 CACHE_FILE = "cache.json"
 
 # Directories to skip when computing the source fingerprint.
-# Same as SCOPE_EXCLUDED_DIRS in checks/base.py — no point hashing
-# node_modules, .git, or build artifacts.
+# Dot-directories are excluded automatically via d.startswith(".") in the
+# walk filter; this set covers non-dot noise dirs.
 _EXCLUDED_DIRS = {
     "node_modules",
-    ".git",
-    "venv",
-    ".venv",
+    "venv",  # non-hidden venv installs
     "__pycache__",
-    ".pytest_cache",
     "dist",
     "build",
-    ".tox",
     "htmlcov",
     "cursor-rules",
-    ".mypy_cache",
     "logs",
-    ".slopmop",
-    ".egg-info",
-    "slopmop.egg-info",
 }
 
 # Source extensions to include in the fingerprint.
@@ -128,22 +121,21 @@ def hash_file_scope(
         if not scan_path.exists():
             continue
 
-        for file_path in scan_path.rglob("*"):
-            if not file_path.is_file():
-                continue
-
-            try:
-                rel = file_path.relative_to(root)
-            except ValueError:
-                continue
-
-            if is_path_excluded(rel, excluded) or ".egg-info" in rel.as_posix():
-                continue
-
-            if file_path.suffix not in extensions:
-                continue
-
-            paths.append((str(rel), file_path))
+        for root_dir, dirs_list, files in os.walk(scan_path):
+            rel_root = Path(root_dir).relative_to(root)
+            dirs_list[:] = [
+                d
+                for d in dirs_list
+                if not (d.startswith(".") or d in excluded or ".egg-info" in d)
+            ]
+            for fname in files:
+                file_path = Path(root_dir) / fname
+                if file_path.suffix not in extensions:
+                    continue
+                rel = rel_root / fname
+                if is_path_excluded(rel, excluded) or ".egg-info" in rel.as_posix():
+                    continue
+                paths.append((str(rel), file_path))
 
     paths.sort(key=lambda e: e[0])
     for rel_path, file_path in paths:
@@ -187,24 +179,25 @@ def compute_fingerprint(project_root: str) -> str:
     # won't invalidate the cache — only genuine content changes do.
     # Streaming avoids holding all file contents in memory at once.
     paths: list[tuple[str, Path]] = []
-    for file_path in root.rglob("*"):
-        if not file_path.is_file():
-            continue
-
-        # Skip excluded directories
-        try:
-            rel = file_path.relative_to(root)
-        except ValueError:
-            continue
-
-        parts = rel.parts
-        if any(p in _EXCLUDED_DIRS or ".egg-info" in p for p in parts):
-            continue
-
-        if file_path.suffix not in _SOURCE_EXTENSIONS:
-            continue
-
-        paths.append((str(rel), file_path))
+    for root_dir, dirs_list, files in os.walk(root):
+        rel_root = Path(root_dir).relative_to(root)
+        dirs_list[:] = [
+            d
+            for d in dirs_list
+            if not (
+                (d.startswith(".") and d != ".github")
+                or d in _EXCLUDED_DIRS
+                or ".egg-info" in d
+            )
+        ]
+        for fname in files:
+            file_path = Path(root_dir) / fname
+            if file_path.suffix not in _SOURCE_EXTENSIONS:
+                continue
+            rel = rel_root / fname
+            if any(p in _EXCLUDED_DIRS or ".egg-info" in p for p in rel.parts):
+                continue
+            paths.append((str(rel), file_path))
 
     # Sort for deterministic ordering
     paths.sort(key=lambda e: e[0])

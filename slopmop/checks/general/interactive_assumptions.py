@@ -38,6 +38,7 @@ from slopmop.checks.base import (
     GateLevel,
     RemediationChurn,
     ToolContext,
+    should_prune_dir,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 from slopmop.utils import is_path_excluded
@@ -245,7 +246,9 @@ class InteractiveAssumptionsCheck(BaseCheck):
                 rel = path.relative_to(root)
             except ValueError:
                 continue
-            if not (set(rel.parts) & _DEFAULT_EXCLUDED):
+            if not (set(rel.parts) & _DEFAULT_EXCLUDED) and not any(
+                should_prune_dir(p) for p in rel.parts[:-1]
+            ):
                 return True
         return False
 
@@ -271,6 +274,8 @@ class InteractiveAssumptionsCheck(BaseCheck):
             except ValueError:
                 continue
             if is_path_excluded(rel, excluded):
+                continue
+            if any(should_prune_dir(p) for p in rel.parts[:-1]):
                 continue
 
             files_scanned += 1

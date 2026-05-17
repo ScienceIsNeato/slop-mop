@@ -11,19 +11,21 @@ manual run prepares the release through the protected-branch PR path:
 
 1. bump `pyproject.toml`
 2. create a release PR
-3. run release quality gates against the release branch
-4. build and smoke-test the package
-5. merge the PR into `main`
-6. publish the merged commit to PyPI
-7. create the GitHub release
+3. wait for the PR checks to pass
+4. merge the PR into `main`
+5. run release quality gates against the merged commit
+6. build and smoke-test the package
+7. publish to PyPI
+8. create the GitHub release
 
 Merging ordinary PRs never publishes a release. The workflow is intentionally
 manual-only, so a `pyproject.toml` version change on `main` is inert unless it
 was created by the active **Release** workflow run.
 
-The release job uses the default `GITHUB_TOKEN` with scoped write permissions
-only for the release branch and PR. Branch protection still rejects direct pushes
-to `main`, so the version bump reaches `main` only through the release PR.
+This requires a `RELEASE_PR_TOKEN` repository secret from a fine-grained PAT or
+GitHub App token that can create pull requests, read checks, merge pull
+requests, and trigger the follow-up publish workflow. Do not allow the workflow
+token to bypass branch protection for direct pushes to `main`.
 
 If a manual release run is rerun before the release PR merges, the workflow
 reuses the deterministic `release/vX.Y.Z` branch and updates the existing PR.

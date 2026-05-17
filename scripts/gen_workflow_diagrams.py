@@ -166,7 +166,9 @@ def gen_transition_table() -> str:
         from_label = t.from_state.value.replace("_", "\\_")
         to_label = t.to_state.value.replace("_", "\\_")
         event_label = t.event.value.replace("_", "\\_")
-        rows.append(f"| `{from_label}` | `{event_label}` | `{to_label}` | {t.next_action} |")
+        rows.append(
+            f"| `{from_label}` | `{event_label}` | `{to_label}` | {t.next_action} |"
+        )
     return "\n".join(rows)
 
 

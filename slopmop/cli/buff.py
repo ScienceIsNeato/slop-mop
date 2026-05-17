@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 from slopmop.cli.buff_common import fire_buff_hook as _fire_buff_hook
+from slopmop.cli.buff_common import get_branch_pr_number as _get_branch_pr_number
 from slopmop.cli.buff_common import get_current_branch as _get_current_branch
 from slopmop.cli.buff_common import get_repo_owner_name as _get_repo_owner_name
 from slopmop.cli.buff_common import get_repo_slug as _get_repo_slug
@@ -528,22 +529,25 @@ def _get_pr_head_branch(project_root: Path, pr_number: int) -> str | None:
     return branch or None
 
 
-def _warn_if_pr_worktree_mismatch(project_root: Path, pr_number: int) -> None:
-    """Warn when buff is watching a PR from a different branch/worktree."""
+def _warn_if_pr_worktree_mismatch(
+    project_root: Path, pr_number: int, repo: str
+) -> None:
+    """Warn when buff is operating on a PR that belongs to a different branch."""
 
     current_branch = _get_current_branch(project_root)
     pr_head_branch = _get_pr_head_branch(project_root, pr_number)
     if not current_branch or not pr_head_branch or current_branch == pr_head_branch:
         return
 
-    print("⚠️  PR/worktree mismatch detected")
-    print(f"   Current branch: {current_branch}")
-    print(f"   PR #{pr_number} head branch: {pr_head_branch}")
-    print(f"   Project root: {project_root}")
-    print(
-        "   If this is intentional, continue. Otherwise run buff from the "
-        "PR worktree or switch to the PR branch before watching."
-    )
+    print("Notice: buff is operating on a PR from a different branch.")
+    print(f"   Current branch:              {current_branch}")
+    print(f"   PR #{pr_number} belongs to branch: {pr_head_branch}")
+    branch_pr = _get_branch_pr_number(repo)
+    if branch_pr is not None:
+        print(f"   Your branch has open PR:     #{branch_pr}")
+        print(f"   Suggested command:           sm buff {branch_pr}")
+    else:
+        print("   Switch to the PR branch or pass the correct PR number explicitly.")
     print()
 
 
@@ -668,7 +672,7 @@ def _cmd_buff_status(
 
     print_project_header(str(project_root))
     print(f"🔀 PR: #{resolved_pr}")
-    _warn_if_pr_worktree_mismatch(project_root, resolved_pr)
+    _warn_if_pr_worktree_mismatch(project_root, resolved_pr, repo)
     if watch:
         flags = f"polling every {interval}s"
         if fail_fast:
@@ -1136,6 +1140,8 @@ def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
         source=pr_resolution_source,
         assume_latest=True,
     )
+    if not json_output:
+        _warn_if_pr_worktree_mismatch(Path(project_root), resolved_pr_number, repo)
 
     try:
         scan_exit, payload = run_inspect_scan(

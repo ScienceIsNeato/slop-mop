@@ -28,6 +28,7 @@ from slopmop.checks.base import (
     ScopeInfo,
     ToolContext,
     count_source_scope,
+    should_prune_dir,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -152,27 +153,21 @@ class RepeatedCodeCheck(BaseCheck):
         )
 
     def is_applicable(self, project_root: str) -> bool:
-        # Applicable to any project with code
-        for ext in [".py", ".js", ".ts", ".jsx", ".tsx"]:
-            for root, _, files in os.walk(project_root):
-                if any(f.endswith(ext) for f in files):
-                    return True
+        exts = {".py", ".js", ".ts", ".jsx", ".tsx"}
+        for _, dirs, files in os.walk(project_root):
+            dirs[:] = [d for d in dirs if not should_prune_dir(d)]
+            if any(os.path.splitext(f)[1] in exts for f in files):
+                return True
         return False
 
     def skip_reason(self, project_root: str) -> str:
         """Return skip reason when no source code is detected."""
-        # Check for source files first
-        has_code = False
-        for ext in [".py", ".js", ".ts", ".jsx", ".tsx"]:
-            for root, _, files in os.walk(project_root):
-                if any(f.endswith(ext) for f in files):
-                    has_code = True
-                    break
-            if has_code:
-                break
-        if not has_code:
-            return "No Python or JavaScript/TypeScript source files found"
-        return "Duplication check not applicable"
+        exts = {".py", ".js", ".ts", ".jsx", ".tsx"}
+        for _, dirs, files in os.walk(project_root):
+            dirs[:] = [d for d in dirs if not should_prune_dir(d)]
+            if any(os.path.splitext(f)[1] in exts for f in files):
+                return "Duplication check not applicable"
+        return "No Python or JavaScript/TypeScript source files found"
 
     # Default directories/files to ignore (build artifacts, caches, vendored)
     _DEFAULT_IGNORES = [
@@ -196,6 +191,8 @@ class RepeatedCodeCheck(BaseCheck):
         "alembic",  # Alembic revisions are intentionally repetitive
         "**/migrations/**",
         "**/alembic/**",
+        ".*",  # all dot-directories
+        "**/.*/**",  # dot-directories at any depth
     ]
 
     def _check_jscpd_availability(self, project_root: str) -> Optional[str]:

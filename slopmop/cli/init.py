@@ -472,6 +472,64 @@ def _print_next_steps(config: Dict[str, Any]) -> None:
     print()
 
 
+def _strip_unknown_gates(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove gate keys from existing config that are not in the current registry.
+
+    Stale gate names survive version upgrades because _deep_merge is overlay-wins.
+    Filtering them out before the merge lets the fresh template win for removed gates.
+
+    Three locations are cleaned:
+    - Nested  {category: {gates: {gate_name: ...}}}  sections
+    - Flat top-level  "category:gate"  keys
+    - Entries in the  disabled_gates  list
+    """
+    from slopmop.checks import ensure_checks_registered
+    from slopmop.core.registry import get_registry
+
+    ensure_checks_registered()
+    known_names = set(get_registry().list_checks())
+
+    # Also preserve custom gate names defined in this config so user-disabled
+    # custom gates aren't silently re-enabled.
+    custom_gates_raw = config.get("custom_gates", [])
+    if isinstance(custom_gates_raw, list):
+        for gate_def_raw in cast(list[Any], custom_gates_raw):
+            gate_def = cast(Dict[str, Any], gate_def_raw)
+            if isinstance(gate_def_raw, dict) and isinstance(gate_def.get("name"), str):
+                known_names.add(str(gate_def["name"]))
+
+    result: Dict[str, Any] = {}
+    for section_key, section_val in config.items():
+        # Flat top-level "category:gate" keys — drop if not in registry
+        if ":" in section_key and section_key not in known_names:
+            continue
+
+        # disabled_gates list — drop entries not in registry
+        if section_key == "disabled_gates" and isinstance(section_val, list):
+            result[section_key] = [
+                entry
+                for entry in cast(list[Any], section_val)
+                if not isinstance(entry, str) or entry in known_names
+            ]
+            continue
+
+        # Nested category section with gates dict
+        if isinstance(section_val, dict) and "gates" in section_val:
+            section_dict = cast(Dict[str, Any], section_val)
+            gates = cast(Dict[str, Any], section_dict.get("gates", {}))
+            if isinstance(gates, dict):
+                filtered_gates: Dict[str, Any] = {
+                    str(gate_name): gate_cfg
+                    for gate_name, gate_cfg in gates.items()
+                    if f"{section_key}:{gate_name}" in known_names
+                }
+                result[section_key] = {**section_dict, "gates": filtered_gates}
+                continue
+
+        result[section_key] = section_val
+    return result
+
+
 def _write_config(
     config_file: Path,
     project_root: Path,
@@ -534,7 +592,8 @@ def _write_config(
             backup_path = backup_config(config_file)
             if backup_path:
                 print(f"📦 Backed up existing config to: {backup_path}")
-            base_config = _deep_merge(base_config, existing)
+            existing_filtered = _strip_unknown_gates(existing)
+            base_config = _deep_merge(base_config, existing_filtered)
         except json.JSONDecodeError:
             pass
 

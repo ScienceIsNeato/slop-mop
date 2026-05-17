@@ -1,32 +1,36 @@
 # Project Status
 
+## 2026-05-11 Delta: Build with Claude slopmop submission
+
+- Added discovery topics to `ScienceIsNeato/slop-mop` for Claude plugin indexing.
+- Opened Build with Claude PR #146 from `ScienceIsNeato:add-slopmop-plugin`.
+- Addressed all 8 Copilot review threads by adding command frontmatter and
+  namespaced `/slopmop:sm-*` command references.
+- Validation in the Build with Claude checkout: `npm test` passed with 292 files
+  checked, 0 errors, and 0 warnings.
+
 ## 2026-05-06 Delta: Release workflow protected-branch fix
 
 Branch: `fix/manual-only-release-workflow`
 
-**Work completed:**
+**Work in progress:**
 - Updating `.github/workflows/release.yml` after manual release failed against
   main branch protection and after the merge-triggered run incorrectly succeeded
   as a no-op when no release bump was detected.
 - Manual release dispatch is now the only release trigger. It prepares a
-  deterministic `release/vX.Y.Z` branch, opens or updates a release PR, validates
-  and builds the release branch, merges the PR, then publishes the merged
-  `origin/main` commit in the same workflow run.
+  deterministic `release/vX.Y.Z` branch, opens or updates a release PR, waits for
+  PR checks, merges the PR, then continues quality/build/publish/release jobs in
+  the same workflow run against the merged `origin/main` commit.
 - Removed automatic publish-on-merge behavior; ordinary PR merges must never
   release just because `pyproject.toml` changed.
 - The resolver now hard-fails if it cannot identify a real version bump instead
   of reporting a successful skip.
-- Removed the `RELEASE_PR_TOKEN` dependency after live dispatch proved the secret
-  is not configured; the workflow now uses scoped `GITHUB_TOKEN` permissions and
-  its own pre-merge quality/build jobs instead of waiting for PR-triggered checks.
+- Documented the required `RELEASE_PR_TOKEN` secret in `DOCS/RELEASING.md`; the
+  default `GITHUB_TOKEN` is not sufficient because it may not trigger the PR and
+  post-merge publish workflows.
 - Addressed PR #186 review feedback by checking duplicate tags before release
-  PR creation, reusing only open release PRs, and narrowing the default
-  `GITHUB_TOKEN` permissions.
-- Prevented `actions/checkout` from persisting credentials into local git config,
-  so branch pushes use the explicit token configured by the release step.
-- Kept `[skip release]` on the automated release PR squash merge body so older
-  push-trigger workflow definitions on `main` do not run in parallel during the
-  transition to manual-only release dispatch.
+  PR creation, reusing only open release PRs, pushing release branches with
+  `RELEASE_PR_TOKEN`, and narrowing the default `GITHUB_TOKEN` permissions.
 - Preserved the release run marker in the squash merge commit and restored
   marker lookup so rerunning a completed manual release does not create a second
   version bump.
@@ -38,10 +42,6 @@ Branch: `fix/manual-only-release-workflow`
 - `./sm scour -g myopia:dependency-risk.py --static --no-cache` ✅
 - `./sm swab --static` ✅
 - `./sm scour --output-file .slopmop/last_scour.json --static` ✅
-- Live release workflow run `25477547825` ✅
-- PyPI JSON shows `slopmop` `1.1.0` uploaded at `2026-05-07T05:24:42.782089Z` ✅
-- Clean install from `https://pypi.org/simple` with `slopmop==1.1.0` and
-  `sm --version` ✅
 
 ## 2026-05-06 Delta: GitHub Actions hygiene gate design
 

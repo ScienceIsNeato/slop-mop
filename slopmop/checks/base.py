@@ -261,25 +261,29 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
     return shutil.which(name)
 
 
-# Standard directories to exclude from scope counting
+# Non-dot directories to exclude from scope counting (dot-prefixed directories
+# are always excluded automatically via should_prune_dir()).
 SCOPE_EXCLUDED_DIRS = {
     "node_modules",
-    ".git",
-    "venv",
-    ".venv",
+    "venv",  # non-hidden venv installs
     "__pycache__",
-    ".pytest_cache",
     "dist",
     "build",
-    ".tox",
     "htmlcov",
     "cursor-rules",
-    ".mypy_cache",
     "logs",
-    ".slopmop",
-    ".egg-info",
-    ".specstory",  # IDE conversation-history artefacts
 }
+
+
+def should_prune_dir(name: str) -> bool:
+    """Return True if a directory should be excluded from file scanning.
+
+    Excludes all dot-directories (hidden dirs, e.g. .git, .venv, .tmp) plus
+    known non-dot noise directories (node_modules, venv, build artifacts).
+    Pass the *name* component of the directory, not a full path.
+    """
+    return name.startswith(".") or name in SCOPE_EXCLUDED_DIRS
+
 
 # Source-code file extensions used for project-size metrics (e.g. sm status).
 # Deliberately excludes docs, data, and binary files so the scope displayed
@@ -353,6 +357,8 @@ def count_source_scope(
             # Skip excluded directories
             rel_path = file_path.relative_to(root)
             if is_path_excluded(rel_path, excluded):
+                continue
+            if any(should_prune_dir(p) for p in rel_path.parts[:-1]):
                 continue
 
             # Skip .egg-info directories (not exact match, contains pattern)

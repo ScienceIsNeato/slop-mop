@@ -16,6 +16,7 @@ example from issue #53 — shipped built-in because every test repo in the
 beta exercise would benefit regardless of stack.
 """
 
+import os
 import re
 import time
 from pathlib import Path
@@ -66,7 +67,8 @@ _PATTERNS: List[Tuple[Tuple[str, ...], re.Pattern[str], str]] = [
 _ALL_EXTS = frozenset(ext for exts, _, _ in _PATTERNS for ext in exts)
 
 # Paths that legitimately contain debugger references (tests, examples,
-# docs, third-party vendored code).
+# docs, third-party vendored code). Dot-directories are pruned automatically
+# via should_prune_dir(); this list covers non-dot dirs.
 _DEFAULT_EXCLUDE = SCOPE_EXCLUDED_DIRS | {
     "test",
     "tests",
@@ -140,11 +142,12 @@ class DebuggerArtifactsCheck(BaseCheck):
 
     def is_applicable(self, project_root: str) -> bool:
         root = Path(project_root)
-        for path in root.rglob("*"):
-            if path.is_file() and path.suffix in _ALL_EXTS:
-                # Don't count excluded dirs towards "has source"
-                if not (set(path.relative_to(root).parts) & _DEFAULT_EXCLUDE):
-                    return True
+        for _, dirs, files in os.walk(root):
+            dirs[:] = [
+                d for d in dirs if not (d.startswith(".") or d in _DEFAULT_EXCLUDE)
+            ]
+            if any(Path(f).suffix in _ALL_EXTS for f in files):
+                return True
         return False
 
     def skip_reason(self, project_root: str) -> str:
@@ -162,21 +165,26 @@ class DebuggerArtifactsCheck(BaseCheck):
         findings: List[Finding] = []
         files_scanned = 0
 
-        for path in root.rglob("*"):
-            if not path.is_file() or path.suffix not in _ALL_EXTS:
-                continue
-            try:
-                rel = path.relative_to(root)
-            except ValueError:
-                continue
-            if is_path_excluded(rel, excluded):
-                continue
+        for root_dir, dirs, files in os.walk(root):
+            rel_root = Path(root_dir).relative_to(root)
+            dirs[:] = [
+                d
+                for d in dirs
+                if not (d.startswith(".") or is_path_excluded(rel_root / d, excluded))
+            ]
+            for fname in files:
+                fpath = Path(root_dir) / fname
+                if fpath.suffix not in _ALL_EXTS:
+                    continue
+                rel = rel_root / fname
+                if is_path_excluded(rel, excluded):
+                    continue
 
-            files_scanned += 1
-            if files_scanned > max_files:
-                return self._max_files_warning(max_files, start)
+                files_scanned += 1
+                if files_scanned > max_files:
+                    return self._max_files_warning(max_files, start)
 
-            self._scan_file(path, rel, hits, findings)
+                self._scan_file(fpath, rel, hits, findings)
 
         elapsed = time.perf_counter() - start
 

@@ -77,15 +77,17 @@ _BANDIT_FIX_STRATEGIES: dict[str, str] = {
 }
 
 EXCLUDED_DIRS = [
+    "node_modules",
     "venv",
     ".venv",
-    "node_modules",
     "cursor-rules",
     "archives",
     "logs",
     "tests",  # Test files often have intentional security "violations"
     "*/.venv",  # Nested venvs
     "*/venv",  # Nested venvs
+    ".*",  # all dot-directories
+    "*/.*",  # dot-directories at any depth
 ]
 
 
