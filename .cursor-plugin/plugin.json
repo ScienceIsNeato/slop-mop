@@ -1,0 +1,32 @@
+{
+  "name": "slopmop",
+  "displayName": "slop-mop",
+  "version": "1.1.0",
+  "description": "Quality gates for AI-assisted codebases — catch the slop LLMs leave behind. Wraps pytest, black, mypy, gh, and every other tool behind a single `sm` CLI with caching, ordering, and directed remediation built in.",
+  "author": {
+    "name": "ScienceIsNeato",
+    "url": "https://github.com/ScienceIsNeato"
+  },
+  "homepage": "https://github.com/ScienceIsNeato/slop-mop",
+  "repository": "https://github.com/ScienceIsNeato/slop-mop",
+  "license": "Slop-Mop Attribution License v1.0",
+  "keywords": [
+    "quality-gate",
+    "linting",
+    "testing",
+    "code-quality",
+    "ci-cd",
+    "ai",
+    "llm",
+    "vibe-coding",
+    "remediation",
+    "pre-pr"
+  ],
+  "skills": [
+    { "file": "skills/sm-swab.md" },
+    { "file": "skills/sm-scour.md" },
+    { "file": "skills/sm-buff.md" },
+    { "file": "skills/sm-sail.md" },
+    { "file": "skills/sm-refit.md" }
+  ]
+}
