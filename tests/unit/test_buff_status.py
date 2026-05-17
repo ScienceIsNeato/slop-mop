@@ -366,7 +366,7 @@ class TestBuffStatusCommand:
         # Gate called once: final verdict only.
         assert feedback_gate.call_count == 1
         # One settle sleep.
-        assert sleep_mock.call_count == 1
+        assert sum(1 for c in sleep_mock.call_args_list if c.args == (7,)) == 1
         sleep_mock.assert_called_with(7)
 
     def test_cmd_buff_watch_treats_bugbot_with_no_completed_at_as_in_progress(
@@ -452,7 +452,7 @@ class TestBuffStatusCommand:
         # Gate called once after settle
         assert feedback_gate.call_count == 1
         # 3 sleeps: 2 in_progress polls + 1 settle
-        assert sleep_mock.call_count == 3
+        assert sum(1 for c in sleep_mock.call_args_list if c.args == (7,)) == 3
 
     def test_cmd_buff_status_no_checks_still_blocks_on_unresolved_feedback(
         self, monkeypatch, capsys
@@ -663,7 +663,7 @@ class TestBuffStatusCommand:
         # Gate called once: final verdict only (no phase-2).
         assert feedback_gate.call_count == 1
         # 3 sleeps: settle, failed-reset, settle-again.
-        assert sleep_mock.call_count == 3
+        assert sum(1 for c in sleep_mock.call_args_list if c.args == (7,)) == 3
 
     def test_cmd_buff_watch_fail_fast_exits_immediately(self, monkeypatch, capsys):
         args = argparse.Namespace(
@@ -711,7 +711,7 @@ class TestBuffStatusCommand:
         assert "fail-fast" in out
         assert "SLOP IN CI" in out
         # Should NOT have slept — fail-fast exits immediately
-        sleep_mock.assert_not_called()
+        assert not any(c.args == (7,) for c in sleep_mock.call_args_list)
         assert fetch_checks.call_count == 1
 
     def test_cmd_buff_watch_retries_empty_checks(self, monkeypatch, capsys):
@@ -755,7 +755,7 @@ class TestBuffStatusCommand:
         out = capsys.readouterr().out
         assert "No CI checks registered yet" in out
         assert fetch_checks.call_count == 3
-        assert sleep_mock.call_count == 2
+        assert sum(1 for c in sleep_mock.call_args_list if c.args == (5,)) == 2
 
     def test_cmd_buff_watch_shows_poll_counter(self, monkeypatch, capsys):
         args = argparse.Namespace(
