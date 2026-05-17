@@ -489,6 +489,15 @@ def _strip_unknown_gates(config: Dict[str, Any]) -> Dict[str, Any]:
     ensure_checks_registered()
     known_names = set(get_registry().list_checks())
 
+    # Also preserve custom gate names defined in this config so user-disabled
+    # custom gates aren't silently re-enabled.
+    custom_gates_raw = config.get("custom_gates", [])
+    if isinstance(custom_gates_raw, list):
+        for gate_def_raw in cast(list[Any], custom_gates_raw):
+            gate_def = cast(Dict[str, Any], gate_def_raw)
+            if isinstance(gate_def_raw, dict) and isinstance(gate_def.get("name"), str):
+                known_names.add(str(gate_def["name"]))
+
     result: Dict[str, Any] = {}
     for section_key, section_val in config.items():
         # Flat top-level "category:gate" keys — drop if not in registry

@@ -140,3 +140,13 @@ class TestStripUnknownGates:
             config = {"disabled_gates": [{"name": "odd-entry"}]}
             result = _strip_unknown_gates(config)
         assert result["disabled_gates"] == [{"name": "odd-entry"}]
+
+    def test_disabled_gates_custom_gate_names_are_preserved(self):
+        p1, p2 = self._patch_registry([])
+        with p1, p2:
+            config = {
+                "custom_gates": [{"name": "myteam:lint-check", "command": "echo ok"}],
+                "disabled_gates": ["myteam:lint-check"],
+            }
+            result = _strip_unknown_gates(config)
+        assert result["disabled_gates"] == ["myteam:lint-check"]

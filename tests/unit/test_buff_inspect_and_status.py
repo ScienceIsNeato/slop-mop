@@ -329,3 +329,47 @@ class TestBuffInspectCommand:
         assert "feature/old-work" in out
         assert "#102" in out
         assert "sm buff 102" in out
+
+    def test_cmd_buff_inspect_mismatch_no_branch_pr(self, monkeypatch, capsys):
+        args = argparse.Namespace(
+            pr_or_action="inspect",
+            action_args=["85"],
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario=None,
+            message=None,
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod,
+            "run_inspect_scan",
+            Mock(return_value=(0, {"summary": {}, "actionable": [], "next_steps": []})),
+        )
+        monkeypatch.setattr(buff_mod, "write_json_out", Mock())
+        monkeypatch.setattr(buff_mod, "print_triage", Mock())
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        patch_buff_pr_resolution(monkeypatch, 85)
+        monkeypatch.setattr(
+            buff_mod, "_get_current_branch", Mock(return_value="feat/perf-testing")
+        )
+        monkeypatch.setattr(
+            buff_mod, "_get_pr_head_branch", Mock(return_value="feature/old-work")
+        )
+        monkeypatch.setattr(buff_mod, "_get_branch_pr_number", Mock(return_value=None))
+        monkeypatch.setattr(
+            buff_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
+        )
+
+        assert buff_mod.cmd_buff(args) == 0
+        out = capsys.readouterr().out
+        assert "Notice: buff is operating on a PR from a different branch." in out
+        assert "Switch to the PR branch" in out
