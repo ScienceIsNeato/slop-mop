@@ -487,18 +487,22 @@ class StringDuplicationCheck(BaseCheck):
         if strip_fn is None:
             return None
 
-        # Find all matching .py files using dir-pruning walk
-        py_files: list[str] = []
-        for root_dir, dirs, files in os.walk(project_root):
-            dirs[:] = [d for d in dirs if not should_prune_dir(d)]
-            rel_root = os.path.relpath(root_dir, project_root)
-            for f in files:
-                if not f.endswith(".py"):
+        # Find all matching .py files using include_patterns (dot-dir pruned)
+        py_files_set: set[str] = set()
+        for pattern in include_patterns:
+            if not (pattern.endswith(".py") or pattern.endswith(".py}")):
+                continue
+            for f in globmod.glob(
+                os.path.join(project_root, pattern), recursive=True
+            ):
+                rel = os.path.relpath(f, project_root)
+                rel_parts = Path(rel).parts
+                if any(should_prune_dir(part) for part in rel_parts[:-1]):
                     continue
-                rel = os.path.join(rel_root, f) if rel_root != "." else f
                 if any(fnmatch.fnmatch(rel, ign) for ign in ignore_patterns):
                     continue
-                py_files.append(os.path.join(root_dir, f))
+                py_files_set.add(f)
+        py_files = list(py_files_set)
 
         if not py_files:
             return None
