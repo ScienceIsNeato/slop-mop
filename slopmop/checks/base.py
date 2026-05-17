@@ -358,6 +358,8 @@ def count_source_scope(
             rel_path = file_path.relative_to(root)
             if is_path_excluded(rel_path, excluded):
                 continue
+            if any(should_prune_dir(p) for p in rel_path.parts[:-1]):
+                continue
 
             # Skip .egg-info directories (not exact match, contains pattern)
             rel_str = str(rel_path)
