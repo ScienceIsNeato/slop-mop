@@ -257,8 +257,7 @@ SOURCE_EXTENSIONS = {
 }
 
 # Directories to always exclude. Dot-directories are pruned automatically
-# via should_prune_dir(); this list covers non-dot dirs plus a few AI-assistant
-# and framework dirs that need explicit naming.
+# via should_prune_dir(); this list covers non-dot dirs that need explicit naming.
 EXCLUDED_DIRS = {
     "node_modules",
     "venv",
@@ -268,11 +267,6 @@ EXCLUDED_DIRS = {
     "htmlcov",
     "cursor-rules",
     "logs",
-    # AI-assistant working directories — local tooling, not project
-    # source.  These showed up when users ran swab with an active
-    # Claude Code session: .claude/hooks/ contains long orchestration
-    # scripts that tripped the function-length limit despite being
-    # entirely outside the project's quality surface.
     # Framework-generated migration histories are intentionally verbose and
     # repetitive; file/function size limits are not useful there.
     "migrations",
