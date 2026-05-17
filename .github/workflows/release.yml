@@ -64,6 +64,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ github.token }}
+          persist-credentials: false
 
       - uses: actions/setup-python@v6
         with:
