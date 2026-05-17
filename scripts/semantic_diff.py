@@ -41,6 +41,7 @@ IGNORED_SUBSTITUTIONS: list[tuple[str, str, bool]] = [
 
 # ── Diff parsing ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class Hunk:
     header: str
@@ -66,9 +67,20 @@ def parse_diff(raw: str) -> list[FileDiff]:
             current_file = FileDiff()
             files.append(current_file)
             current_file.headers.append(line)
-        elif line.startswith(("--- ", "+++ ", "index ", "new file", "deleted file",
-                               "old mode", "new mode", "rename ", "similarity ",
-                               "Binary ")):
+        elif line.startswith(
+            (
+                "--- ",
+                "+++ ",
+                "index ",
+                "new file",
+                "deleted file",
+                "old mode",
+                "new mode",
+                "rename ",
+                "similarity ",
+                "Binary ",
+            )
+        ):
             if current_file:
                 if current_hunk:
                     current_file.hunks.append(current_hunk)
@@ -102,12 +114,8 @@ def normalise(text: str) -> str:
 
 def hunk_is_noise(hunk: Hunk) -> bool:
     """Return True if every change in this hunk is explained by IGNORED_SUBSTITUTIONS."""
-    removed = "".join(
-        line[1:] for line in hunk.lines if line.startswith("-")
-    )
-    added = "".join(
-        line[1:] for line in hunk.lines if line.startswith("+")
-    )
+    removed = "".join(line[1:] for line in hunk.lines if line.startswith("-"))
+    added = "".join(line[1:] for line in hunk.lines if line.startswith("+"))
     if not removed and not added:
         return True  # context-only, trivially noise-free
     return normalise(removed) == normalise(added)
@@ -144,92 +152,95 @@ def filter_diff(files: list[FileDiff]) -> str:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-def main() -> None:
+
+def _run_diff2html(cleaned: str, output_path: str | None) -> None:
+    which = subprocess.run(["which", "diff2html"], capture_output=True)
+    if which.returncode != 0:
+        print(
+            "diff2html not found. Install with: npm install -g diff2html-cli",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    d2h_cmd = ["diff2html", "-i", "stdin", "-o", "stdout", "-s", "side", "-f", "html"]
+    d2h = subprocess.run(d2h_cmd, input=cleaned, capture_output=True, text=True)
+
+    if output_path:
+        with open(output_path, "w") as f:
+            f.write(d2h.stdout)
+        subprocess.run(["open", output_path])
+        print(f"Wrote {len(d2h.stdout):,} bytes to {output_path}", file=sys.stderr)
+    else:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".html", delete=False, mode="w", prefix="semantic-diff-"
+        ) as tmp:
+            tmpname = tmp.name
+        with open(tmpname, "w") as f:
+            f.write(d2h.stdout)
+        subprocess.run(["open", tmpname])
+        print(f"Opened {tmpname} ({len(d2h.stdout):,} bytes)", file=sys.stderr)
+
+
+def _read_raw_diff(args: argparse.Namespace) -> str:
+    if args.stdin:
+        return sys.stdin.read()
+    git_args = [a for a in args.git_args if a != "--"]
+    cmd = ["git", "diff", "-w", "--ignore-blank-lines"] + git_args
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode not in (0, 1):
+        print(f"git diff failed: {result.stderr}", file=sys.stderr)
+        sys.exit(result.returncode)
+    return result.stdout
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Filter formatting noise from git diffs and render with diff2html.",
         epilog="Anything after -- is passed directly to git diff.",
     )
     parser.add_argument(
-        "--stdin", action="store_true",
+        "--stdin",
+        action="store_true",
         help="Read diff from stdin instead of running git diff.",
     )
     parser.add_argument(
-        "--open", action="store_true",
+        "--open",
+        action="store_true",
         help="Pipe output through diff2html and open in browser.",
     )
     parser.add_argument(
-        "--output", "-o", default=None,
+        "--output",
+        "-o",
+        default=None,
         help="Write cleaned diff (or HTML with --open) to this file.",
     )
     parser.add_argument(
-        "git_args", nargs=argparse.REMAINDER,
+        "git_args",
+        nargs=argparse.REMAINDER,
         help="Arguments passed to git diff (after --).",
     )
+    return parser
 
-    args = parser.parse_args()
 
-    # Strip leading "--" separator if present
-    git_args = [a for a in args.git_args if a != "--"]
-
-    # Read raw diff
-    if args.stdin:
-        raw = sys.stdin.read()
-    else:
-        cmd = ["git", "diff", "-w", "--ignore-blank-lines"] + git_args
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode not in (0, 1):  # 1 = diffs found, that's fine
-            print(f"git diff failed: {result.stderr}", file=sys.stderr)
-            sys.exit(result.returncode)
-        raw = result.stdout
+def main() -> None:
+    args = _build_parser().parse_args()
+    raw = _read_raw_diff(args)
 
     if not raw.strip():
         print("No diff output — nothing to filter.", file=sys.stderr)
         sys.exit(0)
 
-    files = parse_diff(raw)
-    cleaned = filter_diff(files)
+    cleaned = filter_diff(parse_diff(raw))
 
     if args.open:
-        # Check diff2html is available
-        which = subprocess.run(["which", "diff2html"], capture_output=True)
-        if which.returncode != 0:
-            print(
-                "diff2html not found. Install with: npm install -g diff2html-cli",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-        if args.output:
-            d2h = subprocess.run(
-                ["diff2html", "-i", "stdin", "-o", "stdout", "-s", "side", "-f", "html"],
-                input=cleaned, capture_output=True, text=True,
-            )
-            with open(args.output, "w") as f:
-                f.write(d2h.stdout)
-            subprocess.run(["open", args.output])
-            print(f"Wrote {len(d2h.stdout):,} bytes to {args.output}", file=sys.stderr)
-        else:
-            import tempfile
-            with tempfile.NamedTemporaryFile(
-                suffix=".html", delete=False, mode="w", prefix="semantic-diff-"
-            ) as tmp:
-                tmpname = tmp.name
-            d2h = subprocess.run(
-                ["diff2html", "-i", "stdin", "-o", "stdout", "-s", "side", "-f", "html"],
-                input=cleaned, capture_output=True, text=True,
-            )
-            with open(tmpname, "w") as f:
-                f.write(d2h.stdout)
-            subprocess.run(["open", tmpname])
-            print(
-                f"Opened {tmpname} ({len(d2h.stdout):,} bytes)", file=sys.stderr,
-            )
+        _run_diff2html(cleaned, args.output)
+    elif args.output:
+        with open(args.output, "w") as f:
+            f.write(cleaned)
     else:
-        if args.output:
-            with open(args.output, "w") as f:
-                f.write(cleaned)
-        else:
-            sys.stdout.write(cleaned)
+        sys.stdout.write(cleaned)
 
 
 if __name__ == "__main__":

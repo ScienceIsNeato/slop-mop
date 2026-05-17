@@ -40,8 +40,7 @@ def _swab_gate_names() -> set[str]:
         return set(get_registry().get_gate_names_for_level(GateLevel.SWAB))
     except Exception as exc:
         print(
-            "::warning::Could not compute swab gate set for classification: "
-            f"{exc}"
+            "::warning::Could not compute swab gate set for classification: " f"{exc}"
         )
         return set()
 
@@ -115,16 +114,17 @@ def _read_actionable_results(json_path: str) -> list[dict[str, Any]]:
         return []
 
     raw_results = json_doc.get("results") or []
-    actionable = [
-        r for r in filter_actionable_rows(raw_results) if isinstance(r, dict)
-    ]
+    actionable = [r for r in filter_actionable_rows(raw_results) if isinstance(r, dict)]
     if not actionable:
         print("::warning::No actionable results found in JSON report")
         return []
 
     status_order = {"error": 0, "failed": 1, "warned": 2}
     actionable.sort(
-        key=lambda r: (status_order.get(str(r.get("status")), 9), str(r.get("name", "")))
+        key=lambda r: (
+            status_order.get(str(r.get("status")), 9),
+            str(r.get("name", "")),
+        )
     )
     return actionable
 
