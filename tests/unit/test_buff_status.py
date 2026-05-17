@@ -274,6 +274,7 @@ class TestBuffStatusCommand:
         monkeypatch.setattr(
             buff_mod, "_get_pr_head_branch", Mock(return_value="feature/pr-85")
         )
+        monkeypatch.setattr(buff_mod, "_get_branch_pr_number", Mock(return_value=102))
         monkeypatch.setattr(
             buff_mod,
             "_fetch_checks",
@@ -300,10 +301,12 @@ class TestBuffStatusCommand:
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
-        assert "PR/worktree mismatch detected" in out
-        assert "Current branch: main" in out
-        assert "PR #85 head branch: feature/pr-85" in out
-        assert "run buff from the PR worktree" in out
+        assert "Notice: buff is operating on a PR from a different branch." in out
+        assert "Current branch:" in out
+        assert "main" in out
+        assert "feature/pr-85" in out
+        assert "#102" in out
+        assert "sm buff 102" in out
 
     def test_cmd_buff_watch_waits_once_for_post_ci_feedback_settle(
         self, monkeypatch, capsys

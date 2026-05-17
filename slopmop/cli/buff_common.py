@@ -69,6 +69,17 @@ def get_current_branch(project_root: Path) -> str | None:
     return branch or None
 
 
+def get_branch_pr_number(repo: str) -> int | None:
+    """Return the open PR number for the current branch, or None."""
+
+    try:
+        from slopmop.cli.scan_triage import current_pr_number
+
+        return current_pr_number(repo)
+    except Exception:
+        return None
+
+
 def run_pr_feedback_gate(pr_number: int | None, project_root: str) -> CheckResult:
     """Run ignored-feedback gate in blocking mode for buff semantics."""
 
