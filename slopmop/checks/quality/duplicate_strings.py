@@ -492,9 +492,7 @@ class StringDuplicationCheck(BaseCheck):
         for pattern in include_patterns:
             if not (pattern.endswith(".py") or pattern.endswith(".py}")):
                 continue
-            for f in globmod.glob(
-                os.path.join(project_root, pattern), recursive=True
-            ):
+            for f in globmod.glob(os.path.join(project_root, pattern), recursive=True):
                 rel = os.path.relpath(f, project_root)
                 rel_parts = Path(rel).parts
                 if any(should_prune_dir(part) for part in rel_parts[:-1]):
