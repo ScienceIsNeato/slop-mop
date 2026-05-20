@@ -106,6 +106,14 @@ def _parse_hook_info(hook_content: str) -> Optional[dict[str, Any]]:
     return {"verb": "unknown", "managed": True}
 
 
+def _rc_has_marker(path: Path) -> bool:
+    """Read rc file safely and check for the deep hook marker."""
+    try:
+        return DEEP_HOOK_MARKER in path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
 def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     """Show status of installed hooks."""
     print()
@@ -120,37 +128,37 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     if not hooks_dir.exists():
         print("ℹ️  No hooks directory found")
         print("   Install a hook: sm commit-hooks install <verb>")
-        return 0
-
-    hook_types = ["pre-commit", "pre-push", "commit-msg"]
-    found_sb_hooks: list[tuple[str, dict[str, Any]]] = []
-    found_other_hooks: list[str] = []
-
-    for hook_type in hook_types:
-        hook_file = hooks_dir / hook_type
-        if hook_file.exists():
-            content = hook_file.read_text()
-            info = _parse_hook_info(content)
-            if info:
-                found_sb_hooks.append((hook_type, info))
-            else:
-                found_other_hooks.append(hook_type)
-
-    if found_sb_hooks:
-        print("🪣 Slop-Mop-managed hooks:")
-        for hook_type, info in found_sb_hooks:
-            print(f"   ✅ {hook_type}: {info['verb']}")
         print()
+    else:
+        hook_types = ["pre-commit", "pre-push", "commit-msg"]
+        found_sb_hooks: list[tuple[str, dict[str, Any]]] = []
+        found_other_hooks: list[str] = []
 
-    if found_other_hooks:
-        print("📋 Other hooks (not managed by sm):")
-        for hook_type in found_other_hooks:
-            print(f"   • {hook_type}")
-        print()
+        for hook_type in hook_types:
+            hook_file = hooks_dir / hook_type
+            if hook_file.exists():
+                content = hook_file.read_text()
+                info = _parse_hook_info(content)
+                if info:
+                    found_sb_hooks.append((hook_type, info))
+                else:
+                    found_other_hooks.append(hook_type)
 
-    if not found_sb_hooks and not found_other_hooks:
-        print("ℹ️  No commit hooks installed")
-        print()
+        if found_sb_hooks:
+            print("🪣 Slop-Mop-managed hooks:")
+            for hook_type, info in found_sb_hooks:
+                print(f"   ✅ {hook_type}: {info['verb']}")
+            print()
+
+        if found_other_hooks:
+            print("📋 Other hooks (not managed by sm):")
+            for hook_type in found_other_hooks:
+                print(f"   • {hook_type}")
+            print()
+
+        if not found_sb_hooks and not found_other_hooks:
+            print("ℹ️  No commit hooks installed")
+            print()
 
     print("Commands:")
     print("   sm commit-hooks install           # Install pre-commit hook (swab)")
@@ -165,8 +173,17 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     else:
         print(f"   ✗  Not installed (run: sm commit-hooks install --deep)")
     home = Path.home()
-    rc_candidates = [home / ".zshrc", home / ".zprofile", home / ".bashrc", home / ".bash_profile"]
-    wired = [str(p) for p in rc_candidates if p.exists() and DEEP_HOOK_MARKER in p.read_text()]
+    rc_candidates = [
+        home / ".zshrc",
+        home / ".zprofile",
+        home / ".bashrc",
+        home / ".bash_profile",
+    ]
+    wired = [
+        str(p)
+        for p in rc_candidates
+        if p.exists() and _rc_has_marker(p)
+    ]
     if wired:
         print(f"   ✅ Shell alias active in: {', '.join(wired)}")
     else:
@@ -310,18 +327,37 @@ def _deep_hooks_install(confirm: str = "") -> int:
     )
 
     if _WRAPPER_DEST.exists():
-        existing_digest = hashlib.sha256(_WRAPPER_DEST.read_bytes()).hexdigest()
+        try:
+            existing_digest = hashlib.sha256(_WRAPPER_DEST.read_bytes()).hexdigest()
+        except OSError as exc:
+            print(f"⚠️  Could not read {_WRAPPER_DEST}: {exc}")
+            return 1
         new_digest = hashlib.sha256(wrapper_bytes).hexdigest()
         if existing_digest == new_digest:
             print(f"ℹ️  git_wrapper.sh already up to date at {_WRAPPER_DEST}")
         else:
-            _WRAPPER_DEST.write_bytes(wrapper_bytes)
-            _WRAPPER_DEST.chmod(_WRAPPER_DEST.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            try:
+                _WRAPPER_DEST.write_bytes(wrapper_bytes)
+            except OSError as exc:
+                print(f"⚠️  Could not write {_WRAPPER_DEST}: {exc}")
+                return 1
             print(f"✅ Updated git_wrapper.sh at {_WRAPPER_DEST}")
     else:
-        _WRAPPER_DEST.write_bytes(wrapper_bytes)
-        _WRAPPER_DEST.chmod(_WRAPPER_DEST.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        try:
+            _WRAPPER_DEST.write_bytes(wrapper_bytes)
+        except OSError as exc:
+            print(f"⚠️  Could not write {_WRAPPER_DEST}: {exc}")
+            return 1
         print(f"✅ Installed git_wrapper.sh to {_WRAPPER_DEST}")
+
+    # Always ensure executable bit is set, even if content was already current.
+    try:
+        _WRAPPER_DEST.chmod(
+            _WRAPPER_DEST.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+        )
+    except OSError as exc:
+        print(f"⚠️  Could not set executable bit on {_WRAPPER_DEST}: {exc}")
+        return 1
 
     alias_block = (
         f"\n{DEEP_HOOK_MARKER}\n"
@@ -355,6 +391,14 @@ def _deep_hooks_uninstall() -> int:
         content = rc_file.read_text()
         if DEEP_HOOK_MARKER not in content:
             continue
+        start_idx = content.find(DEEP_HOOK_MARKER)
+        end_idx = content.find(DEEP_HOOK_END_MARKER, start_idx)
+        if end_idx == -1:
+            print(
+                f"⚠️  {rc_file}: start marker found but end marker missing — "
+                "skipping to avoid data loss"
+            )
+            continue
         lines = content.splitlines(keepends=True)
         new_lines: list[str] = []
         in_block = False
@@ -380,7 +424,12 @@ def cmd_commit_hooks(args: argparse.Namespace) -> int:
     if not args.hooks_action:
         args.hooks_action = "status"
 
+    is_deep = getattr(args, "deep", False)
     hooks_dir = _get_git_hooks_dir(project_root)
+
+    # Deep uninstall is machine-level; allow it even outside a git repo.
+    if not hooks_dir and is_deep and args.hooks_action == "uninstall":
+        return _deep_hooks_uninstall()
 
     if not hooks_dir:
         print(f"❌ Not a git repository: {project_root}")
@@ -391,11 +440,12 @@ def cmd_commit_hooks(args: argparse.Namespace) -> int:
         return _hooks_status(project_root, hooks_dir)
     elif args.hooks_action == "install":
         result = _hooks_install(project_root, hooks_dir, args.hook_verb)
-        if result == 0 and getattr(args, "deep", False):
-            result = _deep_hooks_install(confirm=getattr(args, "confirm", ""))
+        if is_deep:
+            deep_result = _deep_hooks_install(confirm=getattr(args, "confirm", ""))
+            result = max(result, deep_result)
         return result
     elif args.hooks_action == "uninstall":
-        if getattr(args, "deep", False):
+        if is_deep:
             _deep_hooks_uninstall()
         return _hooks_uninstall(project_root, hooks_dir)
     else:

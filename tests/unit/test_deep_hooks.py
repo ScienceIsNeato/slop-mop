@@ -215,3 +215,114 @@ class TestDeepHooks:
         assert result == 0
         assert (tmp_path / ".git" / "hooks" / "pre-commit").exists()
         assert fake_wrapper.exists()
+
+    def test_uninstall_missing_end_marker_leaves_file_unchanged(self, tmp_path, capsys):
+        """Uninstall with a missing end marker leaves the rc file unchanged."""
+        fake_home = self._fake_home(tmp_path)
+        fake_rc = fake_home / ".zshrc"
+        original_content = (
+            "# before\n"
+            f"{DEEP_HOOK_MARKER}\n"
+            'alias git="$HOME/.slopmop/bin/git_wrapper.sh"\n'
+            "# after\n"
+        )
+        fake_rc.write_text(original_content)
+        fake_wrapper = fake_home / ".slopmop" / "bin" / "git_wrapper.sh"
+
+        with (
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.hooks._deep_rc_candidates", return_value=[fake_rc]),
+        ):
+            result = _deep_hooks_uninstall()
+
+        assert result == 0
+        assert fake_rc.read_text() == original_content
+        assert "skipping" in capsys.readouterr().out.lower()
+
+    def test_install_already_up_to_date_still_sets_exec_bit(self, tmp_path, capsys):
+        """Install with matching content still ensures the wrapper is executable."""
+        import importlib.resources
+
+        fake_home = self._fake_home(tmp_path)
+        fake_slopmop = fake_home / ".slopmop"
+        fake_wrapper = fake_slopmop / "bin" / "git_wrapper.sh"
+        fake_wrapper.parent.mkdir(parents=True)
+        real_bytes = (
+            importlib.resources.files("slopmop.data")
+            .joinpath("git_wrapper.sh")
+            .read_bytes()
+        )
+        fake_wrapper.write_bytes(real_bytes)
+        fake_wrapper.chmod(0o644)  # intentionally no +x
+
+        fake_rc = fake_home / ".zshrc"
+        fake_rc.write_text(
+            f"# before\n{DEEP_HOOK_MARKER}\nalias git=...\n# END SLOP-MOP DEEP\n"
+        )
+
+        with (
+            patch("slopmop.cli.hooks._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.hooks._get_deep_rc_files", return_value=[fake_rc]),
+        ):
+            result = _deep_hooks_install(confirm=DEEP_HOOKS_CONFIRM_PHRASE)
+
+        assert result == 0
+        assert fake_wrapper.stat().st_mode & stat.S_IXUSR
+
+    def test_cmd_commit_hooks_deep_uninstall_outside_git_repo(self, tmp_path, capsys):
+        """cmd_commit_hooks uninstall --deep works even outside a git repo."""
+        fake_wrapper = tmp_path / ".slopmop" / "bin" / "git_wrapper.sh"
+        fake_wrapper.parent.mkdir(parents=True)
+        fake_wrapper.write_bytes(b"#!/bin/bash\n")
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="uninstall",
+            hook_verb="swab",
+            deep=True,
+            confirm="",
+        )
+
+        with (
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.hooks._deep_rc_candidates", return_value=[]),
+        ):
+            result = cmd_commit_hooks(args)
+
+        assert result == 0
+        assert not fake_wrapper.exists()
+
+    def test_cmd_commit_hooks_deep_install_proceeds_despite_foreign_hook(
+        self, tmp_path, capsys
+    ):
+        """cmd_commit_hooks install --deep runs deep install even if hook install fails."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        hooks_dir = git_dir / "hooks"
+        hooks_dir.mkdir()
+        foreign_hook = hooks_dir / "pre-commit"
+        foreign_hook.write_text("#!/bin/sh\n# third-party hook\n")
+
+        fake_slopmop = tmp_path / ".slopmop_home" / ".slopmop"
+        fake_wrapper = fake_slopmop / "bin" / "git_wrapper.sh"
+        fake_rc = tmp_path / ".zshrc"
+        fake_rc.write_text("")
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="install",
+            hook_verb="swab",
+            deep=True,
+            confirm=DEEP_HOOKS_CONFIRM_PHRASE,
+        )
+
+        with (
+            patch("slopmop.cli.hooks._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.hooks._get_deep_rc_files", return_value=[fake_rc]),
+        ):
+            result = cmd_commit_hooks(args)
+
+        assert result == 1  # hook install failed due to foreign hook
+        assert fake_wrapper.exists()  # but deep install still ran

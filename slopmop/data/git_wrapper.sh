@@ -63,8 +63,17 @@ show_bypass_blocked() {
 
 # Main wrapper logic
 main() {
-    local git_command="$1"
-    shift
+    # Locate the subcommand: first argument that does not start with '-'.
+    # git allows global options before the subcommand, e.g.:
+    #   git --no-pager commit -n
+    #   git -c key=val commit --no-verify
+    local git_command=""
+    for arg in "$@"; do
+        case "$arg" in
+            -*) ;;
+            *) git_command="$arg"; break ;;
+        esac
+    done
 
     # Check for environment variable bypasses (SKIP=, PRE_COMMIT_*, etc.)
     if [ ! -z "${SKIP:-}" ]; then
@@ -114,10 +123,11 @@ main() {
                 show_bypass_blocked "$arg"
                 exit 1
                 ;;
-            -n)
-                # Only block -n if it's for a command that uses it as --no-verify
-                # git commit -n = --no-verify, but -n in other contexts may be valid
-                if [[ "$git_command" == "commit" || "$git_command" == "merge" || "$git_command" == "cherry-pick" ]]; then
+            -*)
+                # Detect -n standalone or in a short-option cluster (e.g. -nm, -fn).
+                # Regex ^-[^-]*n matches any single-dash flag containing 'n'.
+                # Only block for commands where -n means --no-verify.
+                if [[ "$arg" =~ ^-[^-]*n ]] && [[ "$git_command" == "commit" || "$git_command" == "merge" || "$git_command" == "cherry-pick" ]]; then
                     show_bypass_blocked "$arg"
                     exit 1
                 fi
@@ -125,8 +135,8 @@ main() {
         esac
     done
 
-    # Execute the actual git command with all original arguments
-    command git "$git_command" "$@"
+    # Execute the actual git command, passing all arguments through unchanged.
+    command git "$@"
 }
 
 # Run the wrapper
