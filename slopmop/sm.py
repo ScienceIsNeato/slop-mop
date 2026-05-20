@@ -622,6 +622,23 @@ def _add_hooks_parser(
         default=".",
         help=PROJECT_ROOT_HELP,
     )
+    hooks_install.add_argument(
+        "--deep",
+        action="store_true",
+        default=False,
+        help=(
+            "Also install system-level git wrapper to ~/.slopmop/bin/ "
+            "and wire a shell alias so agents can't bypass quality gates "
+            "with --no-verify"
+        ),
+    )
+    hooks_install.add_argument(
+        "--confirm",
+        type=str,
+        default="",
+        metavar="PHRASE",
+        help="Confirmation phrase required for --deep (see output when omitted)",
+    )
 
     # commit-hooks uninstall
     hooks_uninstall = hooks_subparsers.add_parser(
@@ -633,6 +650,12 @@ def _add_hooks_parser(
         type=str,
         default=".",
         help=PROJECT_ROOT_HELP,
+    )
+    hooks_uninstall.add_argument(
+        "--deep",
+        action="store_true",
+        default=False,
+        help="Also remove the system-level git wrapper from ~/.slopmop/bin/ and shell rc files",
     )
 
 
