@@ -68,8 +68,16 @@ main() {
     #   git --no-pager commit -n
     #   git -c key=val commit --no-verify
     local git_command=""
+    local skip_next=false
     for arg in "$@"; do
+        if $skip_next; then
+            skip_next=false
+            continue
+        fi
         case "$arg" in
+            -c|-C|-x)
+                skip_next=true
+                ;;
             -*) ;;
             *) git_command="$arg"; break ;;
         esac
@@ -111,9 +119,19 @@ main() {
             continue
         fi
 
-        # Mark next argument as message content
+        # Mark next argument as message content, or skip combined -m<msg> / --message=<msg>
         if [[ "$arg" == "-m" || "$arg" == "--message" ]]; then
             in_message=true
+            continue
+        fi
+
+        # Skip combined short-option: -m<message> (no space)
+        if [[ "$arg" =~ ^-m[^=] ]]; then
+            continue
+        fi
+
+        # Skip long-option: --message=<message>
+        if [[ "$arg" =~ ^--message= ]]; then
             continue
         fi
 
@@ -126,8 +144,9 @@ main() {
             -*)
                 # Detect -n standalone or in a short-option cluster (e.g. -nm, -fn).
                 # Regex ^-[^-]*n matches any single-dash flag containing 'n'.
-                # Only block for commands where -n means --no-verify.
-                if [[ "$arg" =~ ^-[^-]*n ]] && [[ "$git_command" == "commit" || "$git_command" == "merge" || "$git_command" == "cherry-pick" ]]; then
+                # Only block for 'commit' where -n means --no-verify.
+                # For 'merge' and 'cherry-pick', -n means --no-commit, not --no-verify.
+                if [[ "$arg" =~ ^-[^-]*n ]] && [[ "$git_command" == "commit" ]]; then
                     show_bypass_blocked "$arg"
                     exit 1
                 fi

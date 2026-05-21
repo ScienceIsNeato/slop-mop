@@ -179,11 +179,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
         home / ".bashrc",
         home / ".bash_profile",
     ]
-    wired = [
-        str(p)
-        for p in rc_candidates
-        if p.exists() and _rc_has_marker(p)
-    ]
+    wired = [str(p) for p in rc_candidates if p.exists() and _rc_has_marker(p)]
     if wired:
         print(f"   ✅ Shell alias active in: {', '.join(wired)}")
     else:
@@ -379,12 +375,7 @@ def _deep_hooks_install(confirm: str = "") -> int:
 
 def _deep_hooks_uninstall() -> int:
     """Remove git_wrapper.sh from ~/.slopmop/bin/ and strip alias from rc files."""
-    if _WRAPPER_DEST.exists():
-        _WRAPPER_DEST.unlink()
-        print(f"✅ Removed {_WRAPPER_DEST}")
-    else:
-        print(f"ℹ️  git_wrapper.sh not found at {_WRAPPER_DEST}")
-
+    # Clean RC files first, so any failures don't leave a dangling alias pointing to deleted wrapper
     for rc_file in _deep_rc_candidates():
         if not rc_file.exists():
             continue
@@ -413,6 +404,13 @@ def _deep_hooks_uninstall() -> int:
                 new_lines.append(line)
         rc_file.write_text("".join(new_lines))
         print(f"✅ Removed git alias from {rc_file}")
+
+    # Remove wrapper last, after RC files are clean
+    if _WRAPPER_DEST.exists():
+        _WRAPPER_DEST.unlink()
+        print(f"✅ Removed {_WRAPPER_DEST}")
+    else:
+        print(f"ℹ️  git_wrapper.sh not found at {_WRAPPER_DEST}")
 
     return 0
 
