@@ -220,8 +220,11 @@ class TestStripMarkerBlock:
         assert _LEGACY_MARKER not in result
         assert "alias git" not in result
 
-
-# ── _mutinize_install ─────────────────────────────────────────────────────────
+    def test_orphaned_start_marker_returns_original(self) -> None:
+        """Content after an orphaned start marker is NOT silently dropped."""
+        content = "# before\n" + MUTINIZE_MARKER + "\nsome content\n"
+        result = _strip_marker_block(content, MUTINIZE_MARKER, MUTINIZE_END_MARKER)
+        assert result == content
 
 
 class TestMutinizeInstall:

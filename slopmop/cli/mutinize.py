@@ -111,17 +111,9 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
         for entry in entries:
             if entry.subcommands in seen_patterns:
                 continue
-            siblings = [
-                e
-                for e in entries
-                if e.suggestion == entry.suggestion
-                and e.subcommands not in seen_patterns
-            ]
-            pattern_alts = "|".join(f'"{" ".join(s.subcommands)}"' for s in siblings)
-            for s in siblings:
-                seen_patterns.add(s.subcommands)
-
-            lines.append(f"        {pattern_alts})")
+            seen_patterns.add(entry.subcommands)
+            pattern = f'"{" ".join(entry.subcommands)}"'
+            lines.append(f"        {pattern})")
             lines.append(_msg_printf(entry, indent=12))
             if entry.redirect and entry.sm_command:
                 lines.append(f"            {entry.sm_command}")
@@ -150,23 +142,11 @@ def _gen_npx_block(lines: list[str]) -> None:
     if not npx_entries:
         return
     lines += ["npx() {", '    case "${1:-}" in']
-    seen_tools: set[str] = set()
     for entry in npx_entries:
         tool = entry.subcommands[0] if entry.subcommands else ""
-        if tool in seen_tools:
+        if not tool:
             continue
-        siblings = [
-            e
-            for e in npx_entries
-            if e.sm_command == entry.sm_command
-            and e.subcommands
-            and e.subcommands[0] not in seen_tools
-        ]
-        tool_pattern = "|".join(s.subcommands[0] for s in siblings if s.subcommands)
-        for s in siblings:
-            if s.subcommands:
-                seen_tools.add(s.subcommands[0])
-        lines.append(f"        {tool_pattern})")
+        lines.append(f"        {tool})")
         lines.append(_msg_printf(entry, indent=12))
         lines.append(f"            {entry.sm_command}")
         lines.append("            ;;")
@@ -265,19 +245,28 @@ def _rc_has_legacy(path: Path) -> bool:
 
 
 def _strip_marker_block(content: str, start: str, end: str) -> str:
-    """Remove a ``start`` … ``end`` marker block from ``content``."""
+    """Remove a ``start`` … ``end`` marker block from ``content``.
+
+    If the start marker is present but the end marker is absent (corrupted rc),
+    the original content is returned unchanged rather than silently dropping
+    everything after the start.
+    """
     lines = content.splitlines(keepends=True)
     result: list[str] = []
     in_block = False
+    found_end = False
     for line in lines:
         if start in line:
             in_block = True
             continue
         if end in line:
             in_block = False
+            found_end = True
             continue
         if not in_block:
             result.append(line)
+    if in_block and not found_end:
+        return content
     return "".join(result)
 
 
