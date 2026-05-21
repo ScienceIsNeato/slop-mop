@@ -172,14 +172,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
         print(f"   ✅ git_wrapper.sh installed at {_WRAPPER_DEST}")
     else:
         print(f"   ✗  Not installed (run: sm commit-hooks install --deep)")
-    home = Path.home()
-    rc_candidates = [
-        home / ".zshrc",
-        home / ".zprofile",
-        home / ".bashrc",
-        home / ".bash_profile",
-    ]
-    wired = [str(p) for p in rc_candidates if p.exists() and _rc_has_marker(p)]
+    wired = [str(p) for p in _deep_rc_candidates() if _rc_has_marker(p)]
     if wired:
         print(f"   ✅ Shell alias active in: {', '.join(wired)}")
     else:
@@ -362,7 +355,7 @@ def _deep_hooks_install(confirm: str = "") -> int:
     )
 
     for rc_file in _get_deep_rc_files():
-        if rc_file.exists() and DEEP_HOOK_MARKER in rc_file.read_text():
+        if _rc_has_marker(rc_file):
             print(f"ℹ️  Shell alias already present in {rc_file}")
             continue
         with rc_file.open("a") as f:
@@ -379,7 +372,11 @@ def _deep_hooks_uninstall() -> int:
     for rc_file in _deep_rc_candidates():
         if not rc_file.exists():
             continue
-        content = rc_file.read_text()
+        try:
+            content = rc_file.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print(f"⚠️  {rc_file}: could not read — {exc}")
+            continue
         if DEEP_HOOK_MARKER not in content:
             continue
         start_idx = content.find(DEEP_HOOK_MARKER)
@@ -443,9 +440,11 @@ def cmd_commit_hooks(args: argparse.Namespace) -> int:
             result = max(result, deep_result)
         return result
     elif args.hooks_action == "uninstall":
+        result = _hooks_uninstall(project_root, hooks_dir)
         if is_deep:
-            _deep_hooks_uninstall()
-        return _hooks_uninstall(project_root, hooks_dir)
+            deep_result = _deep_hooks_uninstall()
+            result = max(result, deep_result)
+        return result
     else:
         print(f"❌ Unknown action: {args.hooks_action}")
         return 1
