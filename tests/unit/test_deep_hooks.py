@@ -2,14 +2,21 @@
 
 import argparse
 import importlib.resources
+import os
 import stat
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from slopmop.cli.hooks import (
     DEEP_HOOK_MARKER,
     DEEP_HOOKS_CONFIRM_PHRASE,
+    SB_HOOK_MARKER,
     _deep_hooks_install,
     _deep_hooks_uninstall,
+    _deep_rc_candidates,
+    _get_deep_rc_files,
+    _hooks_status,
+    _rc_has_marker,
     cmd_commit_hooks,
 )
 
@@ -326,3 +333,295 @@ class TestDeepHooks:
 
         assert result == 1  # hook install failed due to foreign hook
         assert fake_wrapper.exists()  # but deep install still ran
+
+
+class TestRcHasMarker:
+    """Tests for the _rc_has_marker helper."""
+
+    def test_returns_false_on_oserror(self, tmp_path: Path) -> None:
+        """An unreadable file returns False instead of raising."""
+        rc = tmp_path / "rc"
+        rc.write_text("# content")
+        rc.chmod(0o000)
+        try:
+            result = _rc_has_marker(rc)
+        finally:
+            rc.chmod(0o644)
+        assert result is False
+
+
+class TestHooksStatus:
+    """Tests for _hooks_status display paths."""
+
+    def _make_repo(self, tmp_path: Path) -> tuple[Path, Path]:
+        project_root = tmp_path / "repo"
+        project_root.mkdir()
+        hooks_dir = project_root / ".git" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        return project_root, hooks_dir
+
+    def test_status_shows_sm_managed_hook(self, tmp_path: Path, capsys: object) -> None:
+        """Status lists sm-managed hooks when the marker is present."""
+        project_root, hooks_dir = self._make_repo(tmp_path)
+        (hooks_dir / "pre-commit").write_text(f"#!/bin/sh\n{SB_HOOK_MARKER}\n")
+
+        fake_wrapper = tmp_path / "nonexistent"
+        with patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper):
+            _hooks_status(project_root, hooks_dir)
+
+        out = capsys.readouterr().out  # type: ignore[union-attr]
+        assert "Slop-Mop-managed hooks" in out
+        assert "pre-commit" in out
+
+    def test_status_shows_foreign_hook(self, tmp_path: Path, capsys: object) -> None:
+        """Status lists unmanaged hooks under 'Other hooks'."""
+        project_root, hooks_dir = self._make_repo(tmp_path)
+        (hooks_dir / "pre-push").write_text("#!/bin/sh\n# third-party hook\n")
+
+        fake_wrapper = tmp_path / "nonexistent"
+        with patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper):
+            _hooks_status(project_root, hooks_dir)
+
+        out = capsys.readouterr().out  # type: ignore[union-attr]
+        assert "Other hooks" in out
+        assert "pre-push" in out
+
+    def test_status_no_hooks_installed(self, tmp_path: Path, capsys: object) -> None:
+        """Status reports no hooks when hooks_dir is empty."""
+        project_root, hooks_dir = self._make_repo(tmp_path)
+
+        fake_wrapper = tmp_path / "nonexistent"
+        with patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper):
+            _hooks_status(project_root, hooks_dir)
+
+        out = capsys.readouterr().out  # type: ignore[union-attr]
+        assert "No commit hooks installed" in out
+
+    def test_status_shows_wrapper_installed(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
+        """Status reports wrapper path when it exists."""
+        project_root, hooks_dir = self._make_repo(tmp_path)
+        fake_wrapper = tmp_path / "git_wrapper.sh"
+        fake_wrapper.write_bytes(b"#!/bin/bash\n")
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+
+        with (
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch.object(Path, "home", return_value=fake_home),
+        ):
+            _hooks_status(project_root, hooks_dir)
+
+        out = capsys.readouterr().out  # type: ignore[union-attr]
+        assert "git_wrapper.sh installed at" in out
+
+    def test_status_shows_alias_active(self, tmp_path: Path, capsys: object) -> None:
+        """Status reports alias active when rc file contains the marker."""
+        project_root, hooks_dir = self._make_repo(tmp_path)
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        fake_rc = fake_home / ".zshrc"
+        fake_rc.write_text(f"{DEEP_HOOK_MARKER}\n")
+        fake_wrapper = tmp_path / "nonexistent"
+
+        with (
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch.object(Path, "home", return_value=fake_home),
+        ):
+            _hooks_status(project_root, hooks_dir)
+
+        out = capsys.readouterr().out  # type: ignore[union-attr]
+        assert "Shell alias active in" in out
+
+
+class TestGetDeepRcFiles:
+    """Tests for _get_deep_rc_files shell detection."""
+
+    def test_bash_shell_returns_bash_files(self, tmp_path: Path) -> None:
+        """bash shell yields .bashrc and .bash_profile."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        with (
+            patch.dict(os.environ, {"SHELL": "/bin/bash"}),
+            patch.object(Path, "home", return_value=fake_home),
+        ):
+            result = _get_deep_rc_files()
+        names = [p.name for p in result]
+        assert any("bash" in n for n in names)
+
+    def test_other_shell_returns_zsh_and_bash(self, tmp_path: Path) -> None:
+        """Unknown shell yields both .zshrc and .bashrc candidates."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        with (
+            patch.dict(os.environ, {"SHELL": "/usr/bin/fish"}),
+            patch.object(Path, "home", return_value=fake_home),
+        ):
+            result = _get_deep_rc_files()
+        names = [p.name for p in result]
+        assert ".zshrc" in names or ".bashrc" in names
+
+    def test_returns_first_candidate_when_none_exist(self, tmp_path: Path) -> None:
+        """Falls back to first candidate when no rc files exist on disk."""
+        fake_home = tmp_path / "empty_home"
+        fake_home.mkdir()
+        with (
+            patch.dict(os.environ, {"SHELL": "/bin/zsh"}),
+            patch.object(Path, "home", return_value=fake_home),
+        ):
+            result = _get_deep_rc_files()
+        assert len(result) == 1
+        assert result[0].name == ".zshrc"
+
+    def test_deep_rc_candidates_returns_four_paths(self) -> None:
+        """_deep_rc_candidates returns exactly four standard rc paths."""
+        result = _deep_rc_candidates()
+        names = [p.name for p in result]
+        assert ".zshrc" in names
+        assert ".bashrc" in names
+        assert len(result) == 4
+
+
+class TestDeepHooksInstallErrors:
+    """Tests for OSError paths in _deep_hooks_install."""
+
+    def _mock_wrapper(self, **attrs: object) -> MagicMock:
+        mock = MagicMock(spec=Path)
+        for k, v in attrs.items():
+            setattr(mock, k, v)
+        return mock
+
+    def test_oserror_reading_existing_wrapper(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
+        """Returns 1 when existing wrapper cannot be read."""
+        fake_slopmop = tmp_path / ".slopmop"
+        mock_wrapper = self._mock_wrapper()
+        mock_wrapper.exists.return_value = True
+        mock_wrapper.read_bytes.side_effect = OSError("permission denied")
+
+        with (
+            patch("slopmop.cli.hooks._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.hooks._WRAPPER_DEST", mock_wrapper),
+        ):
+            result = _deep_hooks_install(confirm=DEEP_HOOKS_CONFIRM_PHRASE)
+
+        assert result == 1
+        assert "Could not read" in capsys.readouterr().out  # type: ignore[union-attr]
+
+    def test_oserror_writing_updated_wrapper(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
+        """Returns 1 when writing an updated wrapper fails."""
+        fake_slopmop = tmp_path / ".slopmop"
+        mock_wrapper = self._mock_wrapper()
+        mock_wrapper.exists.return_value = True
+        mock_wrapper.read_bytes.return_value = b"# old stale content"
+        mock_wrapper.write_bytes.side_effect = OSError("read-only filesystem")
+
+        with (
+            patch("slopmop.cli.hooks._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.hooks._WRAPPER_DEST", mock_wrapper),
+        ):
+            result = _deep_hooks_install(confirm=DEEP_HOOKS_CONFIRM_PHRASE)
+
+        assert result == 1
+        assert "Could not write" in capsys.readouterr().out  # type: ignore[union-attr]
+
+    def test_oserror_writing_new_wrapper(self, tmp_path: Path, capsys: object) -> None:
+        """Returns 1 when writing a brand-new wrapper fails."""
+        fake_slopmop = tmp_path / ".slopmop"
+        mock_wrapper = self._mock_wrapper()
+        mock_wrapper.exists.return_value = False
+        mock_wrapper.write_bytes.side_effect = OSError("no space left")
+
+        with (
+            patch("slopmop.cli.hooks._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.hooks._WRAPPER_DEST", mock_wrapper),
+        ):
+            result = _deep_hooks_install(confirm=DEEP_HOOKS_CONFIRM_PHRASE)
+
+        assert result == 1
+        assert "Could not write" in capsys.readouterr().out  # type: ignore[union-attr]
+
+    def test_oserror_setting_chmod(self, tmp_path: Path, capsys: object) -> None:
+        """Returns 1 when chmod on wrapper fails."""
+        fake_slopmop = tmp_path / ".slopmop"
+        mock_wrapper = self._mock_wrapper()
+        mock_wrapper.exists.return_value = False
+        mock_wrapper.write_bytes.return_value = None
+        mock_wrapper.stat.return_value.st_mode = 0o644
+        mock_wrapper.chmod.side_effect = OSError("read-only filesystem")
+
+        with (
+            patch("slopmop.cli.hooks._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.hooks._WRAPPER_DEST", mock_wrapper),
+        ):
+            result = _deep_hooks_install(confirm=DEEP_HOOKS_CONFIRM_PHRASE)
+
+        assert result == 1
+        assert "Could not set executable bit" in capsys.readouterr().out  # type: ignore[union-attr]
+
+
+class TestDeepHooksUninstallRcHandling:
+    """Tests for RC file skip paths in _deep_hooks_uninstall."""
+
+    def test_nonexistent_rc_file_is_skipped(self, tmp_path: Path) -> None:
+        """Uninstall skips rc files that do not exist."""
+        nonexistent_rc = tmp_path / "nonexistent" / ".zshrc"
+        fake_wrapper = tmp_path / "nonexistent_wrapper"
+
+        with (
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch(
+                "slopmop.cli.hooks._deep_rc_candidates", return_value=[nonexistent_rc]
+            ),
+        ):
+            result = _deep_hooks_uninstall()
+
+        assert result == 0
+
+    def test_rc_without_marker_is_skipped(self, tmp_path: Path) -> None:
+        """Uninstall leaves rc files that do not contain the deep hook marker."""
+        rc = tmp_path / ".zshrc"
+        original = "# my rc file\n"
+        rc.write_text(original)
+        fake_wrapper = tmp_path / "nonexistent_wrapper"
+
+        with (
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.hooks._deep_rc_candidates", return_value=[rc]),
+        ):
+            result = _deep_hooks_uninstall()
+
+        assert result == 0
+        assert rc.read_text() == original
+
+
+class TestCmdCommitHooksDeepUninstall:
+    """Tests for cmd_commit_hooks deep uninstall inside a git repo."""
+
+    def test_deep_uninstall_in_git_repo(self, tmp_path: Path, capsys: object) -> None:
+        """deep uninstall inside a git repo calls _deep_hooks_uninstall then hook uninstall."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        hooks_dir = git_dir / "hooks"
+        hooks_dir.mkdir()
+
+        fake_wrapper = tmp_path / "nonexistent_wrapper"
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="uninstall",
+            hook_verb="swab",
+            deep=True,
+            confirm="",
+        )
+
+        with (
+            patch("slopmop.cli.hooks._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.hooks._deep_rc_candidates", return_value=[]),
+        ):
+            result = cmd_commit_hooks(args)
+
+        assert result == 0
