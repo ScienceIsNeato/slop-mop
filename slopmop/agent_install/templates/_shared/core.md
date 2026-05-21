@@ -23,6 +23,7 @@ when your impulse is the left column, run the right column instead.
 | "not sure what to do next"                        | `sm sail`                                    |
 | "why won't sm / this gate run?"                   | `sm doctor`                                  |
 | Stale `.slopmop/sm.lock`, broken state dir        | `sm doctor --fix`                            |
+| Intercepts not firing for raw tools               | `sm mutinize install`                        |
 
 ### Hard rules
 
@@ -39,6 +40,9 @@ when your impulse is the left column, run the right column instead.
   `sm barnacle file` adds the correct labels, issue shape, and source context.
 - **NEVER** bypass or silence a failing check.  If a gate is wrong,
   fix the gate.  If your env is wrong, `sm doctor` will tell you.
+- **On a mutinized machine** these rules are enforced at the shell level:
+  `sm mutinize install` installs function intercepts that redirect instinct
+  commands automatically and block bypass attempts.
 
 ### The loop
 

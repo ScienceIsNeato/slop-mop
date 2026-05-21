@@ -622,23 +622,6 @@ def _add_hooks_parser(
         default=".",
         help=PROJECT_ROOT_HELP,
     )
-    hooks_install.add_argument(
-        "--deep",
-        action="store_true",
-        default=False,
-        help=(
-            "Also install system-level git wrapper to ~/.slopmop/bin/ "
-            "and wire a shell alias so agents can't bypass quality gates "
-            "with --no-verify"
-        ),
-    )
-    hooks_install.add_argument(
-        "--confirm",
-        type=str,
-        default="",
-        metavar="PHRASE",
-        help="Confirmation phrase required for --deep (see output when omitted)",
-    )
 
     # commit-hooks uninstall
     hooks_uninstall = hooks_subparsers.add_parser(
@@ -651,12 +634,6 @@ def _add_hooks_parser(
         default=".",
         help=PROJECT_ROOT_HELP,
     )
-    hooks_uninstall.add_argument(
-        "--deep",
-        action="store_true",
-        default=False,
-        help="Also remove the system-level git wrapper from ~/.slopmop/bin/ and shell rc files",
-    )
 
 
 def _add_agent_parser(
@@ -664,6 +641,57 @@ def _add_agent_parser(
 ) -> None:
     """Add the agent subcommand parser."""
     AgentParserBuilder(subparsers).build()
+
+
+def _add_mutinize_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the mutinize subcommand parser."""
+    mutinize_parser = subparsers.add_parser(
+        "mutinize",
+        help="Install shell intercepts that redirect instinct commands to sm",
+        description=(
+            "Free agents from forbidden instincts. Installs shell function "
+            "intercepts (pytest, gh run, mypy, etc.) that redirect to sm "
+            "equivalents with a logged message. Also installs the git_wrapper "
+            "to block --no-verify bypass attempts."
+        ),
+    )
+    mutinize_subparsers = mutinize_parser.add_subparsers(
+        dest="mutinize_action",
+        help="Mutinize action",
+    )
+
+    # mutinize install
+    install_p = mutinize_subparsers.add_parser(
+        "install",
+        help="Install aliases.sh + git_wrapper.sh system-wide",
+    )
+    install_p.add_argument(
+        "--confirm",
+        type=str,
+        default="",
+        metavar="PHRASE",
+        help="Required confirmation phrase (see output when omitted)",
+    )
+
+    # mutinize uninstall
+    mutinize_subparsers.add_parser(
+        "uninstall",
+        help="Remove all mutinize artifacts and rc file entries",
+    )
+
+    # mutinize status
+    mutinize_subparsers.add_parser(
+        "status",
+        help="Show what is currently installed",
+    )
+
+    # mutinize list
+    mutinize_subparsers.add_parser(
+        "list",
+        help="Print the full command intercept mapping table",
+    )
 
 
 def _add_doctor_parser(
@@ -1050,6 +1078,7 @@ def create_parser() -> argparse.ArgumentParser:
     _add_init_parser(subparsers)
     _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
+    _add_mutinize_parser(subparsers)
     _add_audit_parser(subparsers)
 
     parser.add_argument(
@@ -1073,6 +1102,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_doctor,
         cmd_help,
         cmd_init,
+        cmd_mutinize,
         cmd_refit,
         cmd_sail,
         cmd_scour,
@@ -1109,6 +1139,7 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_agent=cmd_agent,
             cmd_audit=cmd_audit,
             cmd_commit_hooks=cmd_commit_hooks,
+            cmd_mutinize=cmd_mutinize,
         )
     except MissingDependencyError as exc:
         print(f"❌ {exc}", file=sys.stderr)
@@ -1150,6 +1181,8 @@ def _dispatch(
         return handlers["cmd_agent"](parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return handlers["cmd_commit_hooks"](parsed_args)
+    elif parsed_args.verb == "mutinize":
+        return handlers["cmd_mutinize"](parsed_args)
     elif parsed_args.verb == "audit":
         return handlers["cmd_audit"](parsed_args)
     else:

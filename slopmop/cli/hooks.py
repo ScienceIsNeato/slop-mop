@@ -1,9 +1,6 @@
 """Git commit hooks management for slop-mop CLI."""
 
 import argparse
-import hashlib
-import importlib.resources
-import os
 import re
 import stat
 from pathlib import Path
@@ -12,17 +9,6 @@ from typing import Any, Optional
 # Hook markers
 SB_HOOK_MARKER = "# MANAGED BY SLOP-MOP"
 SB_HOOK_END_MARKER = "# END SLOP-MOP HOOK"
-
-# Deep hook markers (written into shell rc files)
-DEEP_HOOK_MARKER = "# MANAGED BY SLOP-MOP DEEP"
-DEEP_HOOK_END_MARKER = "# END SLOP-MOP DEEP"
-
-# Exact phrase the user must supply to opt in to system-wide alias installation.
-# Kept here (not in sm.py) so tests can import it without touching the parser.
-DEEP_HOOKS_CONFIRM_PHRASE = "I understand this aliases git system-wide on this machine"
-
-_SLOPMOP_HOME = Path.home() / ".slopmop"
-_WRAPPER_DEST = _SLOPMOP_HOME / "bin" / "git_wrapper.sh"
 
 
 def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
@@ -106,14 +92,6 @@ def _parse_hook_info(hook_content: str) -> Optional[dict[str, Any]]:
     return {"verb": "unknown", "managed": True}
 
 
-def _rc_has_marker(path: Path) -> bool:
-    """Read rc file safely and check for the deep hook marker."""
-    try:
-        return DEEP_HOOK_MARKER in path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-
-
 def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     """Show status of installed hooks."""
     print()
@@ -162,21 +140,10 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
 
     print("Commands:")
     print("   sm commit-hooks install           # Install pre-commit hook (swab)")
-    print("   sm commit-hooks install --deep    # Also install system git wrapper")
     print("   sm commit-hooks uninstall          # Remove sm hooks")
-    print()
-
-    # Deep hook status
-    print("🔒 Deep Hooks (system-level git wrapper):")
-    if _WRAPPER_DEST.exists():
-        print(f"   ✅ git_wrapper.sh installed at {_WRAPPER_DEST}")
-    else:
-        print(f"   ✗  Not installed (run: sm commit-hooks install --deep)")
-    wired = [str(p) for p in _deep_rc_candidates() if _rc_has_marker(p)]
-    if wired:
-        print(f"   ✅ Shell alias active in: {', '.join(wired)}")
-    else:
-        print("   ✗  No shell alias found in rc files")
+    print(
+        "   sm mutinize install               # System-wide command intercepts + git wrapper"
+    )
     print()
     return 0
 
@@ -223,7 +190,7 @@ def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
     return 0
 
 
-def _hooks_uninstall(project_root: Path, hooks_dir: Path) -> int:
+def _hooks_uninstall(_project_root: Path, hooks_dir: Path) -> int:
     """Remove all sm-managed hooks."""
     if not hooks_dir.exists():
         print("ℹ️  No hooks directory found")
@@ -251,167 +218,6 @@ def _hooks_uninstall(project_root: Path, hooks_dir: Path) -> int:
     return 0
 
 
-def _deep_rc_candidates() -> list[Path]:
-    """All shell rc files that might contain the deep hook alias block."""
-    home = Path.home()
-    return [
-        home / ".zshrc",
-        home / ".zprofile",
-        home / ".bashrc",
-        home / ".bash_profile",
-    ]
-
-
-def _get_deep_rc_files() -> list[Path]:
-    """Return shell rc files to update, based on the current shell."""
-    shell = os.environ.get("SHELL", "")
-    home = Path.home()
-    if "zsh" in shell:
-        candidates = [home / ".zshrc"]
-    elif "bash" in shell:
-        candidates = [home / ".bashrc", home / ".bash_profile"]
-    else:
-        candidates = [home / ".zshrc", home / ".bashrc"]
-    # Always return at least the first candidate even if it doesn't exist yet
-    return [p for p in candidates if p.exists()] or candidates[:1]
-
-
-def _deep_hooks_install(confirm: str = "") -> int:
-    """Install git_wrapper.sh to ~/.slopmop/bin/ and wire a shell alias.
-
-    Requires the caller to pass the exact confirmation phrase — this operation
-    modifies the user's shell rc file and affects every git invocation in their
-    terminal, not just this repo.
-    """
-    if confirm != DEEP_HOOKS_CONFIRM_PHRASE:
-        print()
-        print("⚠️  Deep hooks require explicit confirmation")
-        print("=" * 60)
-        print()
-        print("This will write a shell alias to your rc file:")
-        print()
-        print('   alias git="$HOME/.slopmop/bin/git_wrapper.sh"')
-        print()
-        print("What that means for you:")
-        print("  • Every git command in your terminal routes through the wrapper")
-        print("  • git commit --no-verify (and variants) will be blocked in ALL repos")
-        print("  • AI agents and terminal tools are affected — that is the point")
-        print("  • GUI clients (Tower, Fork, Sourcetree) use their own git binary")
-        print("    and are NOT affected by a shell alias")
-        print("  • Other users on this machine are NOT affected")
-        print("  • The alias persists after slopmop is uninstalled until you run:")
-        print("    sm commit-hooks uninstall --deep")
-        print()
-        print("To proceed, add this flag exactly:")
-        print(f'   --confirm "{DEEP_HOOKS_CONFIRM_PHRASE}"')
-        print()
-        return 1
-    bin_dir = _SLOPMOP_HOME / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-
-    wrapper_bytes = (
-        importlib.resources.files("slopmop.data")
-        .joinpath("git_wrapper.sh")
-        .read_bytes()
-    )
-
-    if _WRAPPER_DEST.exists():
-        try:
-            existing_digest = hashlib.sha256(_WRAPPER_DEST.read_bytes()).hexdigest()
-        except OSError as exc:
-            print(f"⚠️  Could not read {_WRAPPER_DEST}: {exc}")
-            return 1
-        new_digest = hashlib.sha256(wrapper_bytes).hexdigest()
-        if existing_digest == new_digest:
-            print(f"ℹ️  git_wrapper.sh already up to date at {_WRAPPER_DEST}")
-        else:
-            try:
-                _WRAPPER_DEST.write_bytes(wrapper_bytes)
-            except OSError as exc:
-                print(f"⚠️  Could not write {_WRAPPER_DEST}: {exc}")
-                return 1
-            print(f"✅ Updated git_wrapper.sh at {_WRAPPER_DEST}")
-    else:
-        try:
-            _WRAPPER_DEST.write_bytes(wrapper_bytes)
-        except OSError as exc:
-            print(f"⚠️  Could not write {_WRAPPER_DEST}: {exc}")
-            return 1
-        print(f"✅ Installed git_wrapper.sh to {_WRAPPER_DEST}")
-
-    # Always ensure executable bit is set, even if content was already current.
-    try:
-        _WRAPPER_DEST.chmod(
-            _WRAPPER_DEST.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-        )
-    except OSError as exc:
-        print(f"⚠️  Could not set executable bit on {_WRAPPER_DEST}: {exc}")
-        return 1
-
-    alias_block = (
-        f"\n{DEEP_HOOK_MARKER}\n"
-        'alias git="$HOME/.slopmop/bin/git_wrapper.sh"\n'
-        f"{DEEP_HOOK_END_MARKER}\n"
-    )
-
-    for rc_file in _get_deep_rc_files():
-        if _rc_has_marker(rc_file):
-            print(f"ℹ️  Shell alias already present in {rc_file}")
-            continue
-        with rc_file.open("a") as f:
-            f.write(alias_block)
-        print(f"✅ Added git alias to {rc_file}")
-        print(f"   Run: source {rc_file}")
-
-    return 0
-
-
-def _deep_hooks_uninstall() -> int:
-    """Remove git_wrapper.sh from ~/.slopmop/bin/ and strip alias from rc files."""
-    # Clean RC files first, so any failures don't leave a dangling alias pointing to deleted wrapper
-    for rc_file in _deep_rc_candidates():
-        if not rc_file.exists():
-            continue
-        try:
-            content = rc_file.read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:
-            print(f"⚠️  {rc_file}: could not read — {exc}")
-            continue
-        if DEEP_HOOK_MARKER not in content:
-            continue
-        start_idx = content.find(DEEP_HOOK_MARKER)
-        end_idx = content.find(DEEP_HOOK_END_MARKER, start_idx)
-        if end_idx == -1:
-            print(
-                f"⚠️  {rc_file}: start marker found but end marker missing — "
-                "skipping to avoid data loss"
-            )
-            continue
-        lines = content.splitlines(keepends=True)
-        new_lines: list[str] = []
-        in_block = False
-        for line in lines:
-            if DEEP_HOOK_MARKER in line:
-                in_block = True
-                continue
-            if DEEP_HOOK_END_MARKER in line:
-                in_block = False
-                continue
-            if not in_block:
-                new_lines.append(line)
-        rc_file.write_text("".join(new_lines))
-        print(f"✅ Removed git alias from {rc_file}")
-
-    # Remove wrapper last, after RC files are clean
-    if _WRAPPER_DEST.exists():
-        _WRAPPER_DEST.unlink()
-        print(f"✅ Removed {_WRAPPER_DEST}")
-    else:
-        print(f"ℹ️  git_wrapper.sh not found at {_WRAPPER_DEST}")
-
-    return 0
-
-
 def cmd_commit_hooks(args: argparse.Namespace) -> int:
     """Handle the commit-hooks command."""
     project_root = Path(args.project_root).resolve()
@@ -419,12 +225,7 @@ def cmd_commit_hooks(args: argparse.Namespace) -> int:
     if not args.hooks_action:
         args.hooks_action = "status"
 
-    is_deep = getattr(args, "deep", False)
     hooks_dir = _get_git_hooks_dir(project_root)
-
-    # Deep uninstall is machine-level; allow it even outside a git repo.
-    if not hooks_dir and is_deep and args.hooks_action == "uninstall":
-        return _deep_hooks_uninstall()
 
     if not hooks_dir:
         print(f"❌ Not a git repository: {project_root}")
@@ -434,17 +235,9 @@ def cmd_commit_hooks(args: argparse.Namespace) -> int:
     if args.hooks_action == "status":
         return _hooks_status(project_root, hooks_dir)
     elif args.hooks_action == "install":
-        result = _hooks_install(project_root, hooks_dir, args.hook_verb)
-        if is_deep:
-            deep_result = _deep_hooks_install(confirm=getattr(args, "confirm", ""))
-            result = max(result, deep_result)
-        return result
+        return _hooks_install(project_root, hooks_dir, args.hook_verb)
     elif args.hooks_action == "uninstall":
-        result = _hooks_uninstall(project_root, hooks_dir)
-        if is_deep:
-            deep_result = _deep_hooks_uninstall()
-            result = max(result, deep_result)
-        return result
+        return _hooks_uninstall(project_root, hooks_dir)
     else:
         print(f"❌ Unknown action: {args.hooks_action}")
         return 1
