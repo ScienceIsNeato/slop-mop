@@ -6,8 +6,6 @@
 # Example: ./git_wrapper.sh status
 # Example: ./git_wrapper.sh commit -m "message"
 
-MEMORIAL_FILE="MEMORIAL.md"
-
 # Function to show full bypass blocked message
 show_bypass_blocked() {
     local flag="$1"
@@ -61,29 +59,15 @@ show_bypass_blocked() {
     echo ""
 }
 
-# Main wrapper logic
-main() {
-    # Locate the subcommand: first argument that does not start with '-'.
-    # git allows global options before the subcommand, e.g.:
-    #   git --no-pager commit -n
-    #   git -c key=val commit --no-verify
-    local git_command=""
-    local skip_next=false
-    for arg in "$@"; do
-        if $skip_next; then
-            skip_next=false
-            continue
-        fi
-        case "$arg" in
-            -c|-C|-x)
-                skip_next=true
-                ;;
-            -*) ;;
-            *) git_command="$arg"; break ;;
-        esac
-    done
+# Checks for environment-variable bypass attempts (SKIP=, PRE_COMMIT_ALLOW_NO_CONFIG).
+# Only meaningful when the subcommand triggers hooks; safe to pass for read-only
+# commands like 'git status' or 'git log'.
+check_hook_env_bypasses() {
+    local git_command="$1"
+    # Commands that invoke pre-commit / commit-msg hooks.
+    local hook_commands="commit merge rebase cherry-pick revert am"
+    [[ " $hook_commands " == *" $git_command "* ]] || return 0
 
-    # Check for environment variable bypasses (SKIP=, PRE_COMMIT_*, etc.)
     if [ ! -z "${SKIP:-}" ]; then
         echo ""
         echo "🛑 STOP - Environment variable bypass detected: SKIP=$SKIP"
@@ -108,6 +92,32 @@ main() {
         echo ""
         exit 1
     fi
+}
+
+# Main wrapper logic
+main() {
+    # Locate the subcommand: first argument that does not start with '-'.
+    # git allows global options before the subcommand, e.g.:
+    #   git --no-pager commit -n
+    #   git -c key=val commit --no-verify
+    local git_command=""
+    local skip_next=false
+    for arg in "$@"; do
+        if $skip_next; then
+            skip_next=false
+            continue
+        fi
+        case "$arg" in
+            -c|-C|-x)
+                skip_next=true
+                ;;
+            -*) ;;
+            *) git_command="$arg"; break ;;
+        esac
+    done
+
+    # Check for environment variable bypasses — scoped to hook-triggering commands.
+    check_hook_env_bypasses "$git_command"
 
     # Check for forbidden bypass flags - iterate through actual arguments
     # This avoids false positives from text within -m "message" content
