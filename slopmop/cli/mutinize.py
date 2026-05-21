@@ -17,6 +17,8 @@ import hashlib
 import importlib.resources
 import os
 import stat
+import subprocess
+import tempfile
 from pathlib import Path
 
 from slopmop.data.command_mapping import COMMAND_MAPPING, CommandMap
@@ -75,6 +77,9 @@ def _gen_function_blocks(lines: list[str]) -> None:
         plain = [e for e in entries if not e.flag_trigger]
 
         lines.append(f"{cmd}() {{")
+        lines.append(
+            f'    command -v sm &>/dev/null || {{ command {cmd} "$@"; return; }}'
+        )
         if flagged:
             for i, entry in enumerate(flagged):
                 kw = "if" if i == 0 else "elif"
@@ -105,6 +110,7 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
     for wrapper, entries in sub_groups.items():
         lines += [
             f"{wrapper}() {{",
+            f'    command -v sm &>/dev/null || {{ command {wrapper} "$@"; return; }}',
             '    local _sub="${1:-}" _sub2="${2:-}"',
             '    case "$_sub $_sub2" in',
         ]
@@ -142,7 +148,11 @@ def _gen_npx_block(lines: list[str]) -> None:
     npx_entries = [e for e in COMMAND_MAPPING if e.intercept_type == "npx"]
     if not npx_entries:
         return
-    lines += ["npx() {", '    case "${1:-}" in']
+    lines += [
+        "npx() {",
+        '    command -v sm &>/dev/null || { command npx "$@"; return; }',
+        '    case "${1:-}" in',
+    ]
     for entry in npx_entries:
         tool = entry.subcommands[0] if entry.subcommands else ""
         if not tool:
@@ -200,6 +210,29 @@ def _write_if_changed(path: Path, content: bytes) -> tuple[bool, str]:
     except OSError as exc:
         return False, f"⚠️  Could not write {path}: {exc}"
     return True, f"✅ Written: {path}"
+
+
+def _validate_bash_syntax(content: bytes) -> tuple[bool, str]:
+    """Run bash -n on content to catch syntax errors before writing.
+
+    Returns (ok, error_message). Skips check if bash is unavailable.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".sh", delete=False) as f:
+        f.write(content)
+        tmp = Path(f.name)
+    try:
+        result = subprocess.run(
+            ["bash", "-n", str(tmp)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return False, result.stderr.strip()
+        return True, ""
+    except FileNotFoundError:
+        return True, ""
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 # ── RC file helpers ───────────────────────────────────────────────────────────
@@ -285,9 +318,11 @@ def _show_confirm_warning() -> None:
     print('  alias git="$HOME/.slopmop/bin/git_wrapper.sh"')
     print()
     print("What that means for you:")
-    print("  • Commands like pytest, mypy, gh run are intercepted system-wide")
+    print("  • Commands are intercepted in ALL repositories on this machine,")
+    print("    not just slop-mop repos — your other projects are affected")
     print("  • Each intercepted command logs a message and runs sm instead")
     print("  • To bypass any intercept: use 'command <tool> <args>'")
+    print("  • If slopmop is later uninstalled, intercepts fall through gracefully")
     print("  • git commit --no-verify is blocked in ALL repos (git wrapper)")
     print("  • Other users on this machine are NOT affected")
     print("  • The aliases persist after slopmop is uninstalled until you run:")
@@ -310,6 +345,10 @@ def _mutinize_install(confirm: str = "") -> int:
 
     # 1. Generate and write aliases.sh
     aliases_content = _generate_aliases_sh(__version__)
+    ok, err = _validate_bash_syntax(aliases_content)
+    if not ok:
+        print(f"⚠️  Generated aliases.sh failed bash syntax check — aborting: {err}")
+        return 1
     written, msg = _write_if_changed(_ALIASES_DEST, aliases_content)
     print(msg)
     if "⚠️" in msg:
@@ -346,7 +385,8 @@ def _mutinize_install(confirm: str = "") -> int:
 
     # 3. Wire rc files
     rc_block = (
-        f"\n{MUTINIZE_MARKER}\n"
+        f"{MUTINIZE_MARKER}\n"
+        "\n"
         'alias git="$HOME/.slopmop/bin/git_wrapper.sh"\n'
         'source "$HOME/.slopmop/aliases.sh"\n'
         f"{MUTINIZE_END_MARKER}\n"

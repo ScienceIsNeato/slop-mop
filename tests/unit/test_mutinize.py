@@ -2,7 +2,10 @@
 
 import argparse
 import importlib.resources
+import os
+import shlex
 import stat
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,6 +20,7 @@ from slopmop.cli.mutinize import (
     _mutinize_status,
     _mutinize_uninstall,
     _strip_marker_block,
+    _validate_bash_syntax,
     _write_if_changed,
     cmd_mutinize,
 )
@@ -414,6 +418,23 @@ class TestMutinizeUninstall:
         out = capsys.readouterr().out  # type: ignore[union-attr]  # type: ignore[union-attr]
         assert "not found" in out
 
+    def test_uninstall_leaves_rc_byte_identical(self, tmp_path: Path) -> None:
+        """Install then uninstall leaves the rc file byte-for-byte identical to the original."""
+        fake_slopmop, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
+        original = fake_rc.read_bytes()
+
+        with (
+            patch("slopmop.cli.mutinize._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.mutinize._get_rc_files", return_value=[fake_rc]),
+            patch("slopmop.cli.mutinize._rc_candidates", return_value=[fake_rc]),
+        ):
+            _mutinize_install(confirm=MUTINIZE_CONFIRM_PHRASE)
+            _mutinize_uninstall()
+
+        assert fake_rc.read_bytes() == original
+
 
 # ── _mutinize_status ──────────────────────────────────────────────────────────
 
@@ -543,3 +564,94 @@ class TestCmdMutinize:
         ):
             result = cmd_mutinize(args)
         assert result == 0
+
+
+# ── Integration: real bash subprocess ─────────────────────────────────────────
+
+
+class TestIntegrationAliasesSh:
+    """Source the generated aliases.sh in a real bash subprocess and verify intercept behaviour."""
+
+    @staticmethod
+    def _make_aliases(tmp_path: Path) -> Path:
+        from slopmop import __version__
+
+        p = tmp_path / "aliases.sh"
+        p.write_bytes(_generate_aliases_sh(__version__))
+        return p
+
+    @staticmethod
+    def _make_fake_bin(tmp_path: Path, tools: tuple[str, ...]) -> Path:
+        d = tmp_path / "fakebin"
+        d.mkdir(exist_ok=True)
+        for name in tools:
+            exe = d / name
+            exe.write_text(f"#!/bin/bash\necho 'fake-{name}:' \"$@\"\n")
+            exe.chmod(0o755)
+        return d
+
+    @staticmethod
+    def _bash(
+        aliases: Path, path_prefix: Path, cmd: str
+    ) -> subprocess.CompletedProcess[str]:
+        env = {**os.environ, "PATH": f"{path_prefix}:{os.environ['PATH']}"}
+        return subprocess.run(
+            ["bash", "-c", f"source {shlex.quote(str(aliases))} && {cmd}"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_generated_script_passes_bash_syntax_check(self, tmp_path: Path) -> None:
+        aliases = self._make_aliases(tmp_path)
+        result = subprocess.run(["bash", "-n", str(aliases)], capture_output=True)
+        assert result.returncode == 0, result.stderr.decode()
+
+    def test_validate_bash_syntax_helper_passes(self, tmp_path: Path) -> None:
+        aliases = self._make_aliases(tmp_path)
+        ok, err = _validate_bash_syntax(aliases.read_bytes())
+        assert ok, f"bash syntax check failed: {err}"
+
+    def test_pytest_intercept_fires(self, tmp_path: Path) -> None:
+        aliases = self._make_aliases(tmp_path)
+        fake_bin = self._make_fake_bin(tmp_path, ("sm", "pytest"))
+        result = self._bash(aliases, fake_bin, "pytest")
+        assert "[slop-mop]" in result.stderr
+        assert "sm swab" in result.stderr
+
+    def test_command_pytest_bypasses_intercept(self, tmp_path: Path) -> None:
+        aliases = self._make_aliases(tmp_path)
+        fake_bin = self._make_fake_bin(tmp_path, ("sm", "pytest"))
+        result = self._bash(aliases, fake_bin, "command pytest --version")
+        assert "[slop-mop]" not in result.stderr
+        assert "fake-pytest" in result.stdout
+
+    def test_gh_run_list_blocked(self, tmp_path: Path) -> None:
+        aliases = self._make_aliases(tmp_path)
+        fake_bin = self._make_fake_bin(tmp_path, ("sm", "gh"))
+        result = self._bash(aliases, fake_bin, "gh run list")
+        assert "[slop-mop]" in result.stderr
+        assert result.returncode == 1
+
+    def test_gh_unknown_subcommand_passes_through(self, tmp_path: Path) -> None:
+        aliases = self._make_aliases(tmp_path)
+        fake_bin = self._make_fake_bin(tmp_path, ("sm", "gh"))
+        result = self._bash(aliases, fake_bin, "gh repo clone owner/repo")
+        assert "[slop-mop]" not in result.stderr
+        assert "fake-gh" in result.stdout
+
+    def test_sm_not_found_falls_through_to_real_command(self, tmp_path: Path) -> None:
+        """When sm is absent from PATH, intercepts fall through to the real command."""
+        import shutil
+
+        aliases = self._make_aliases(tmp_path)
+        no_sm_bin = self._make_fake_bin(tmp_path, ("pytest",))
+        bash = shutil.which("bash") or "/bin/bash"
+        result = subprocess.run(
+            [bash, "-c", f"source {shlex.quote(str(aliases))} && pytest --version"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PATH": str(no_sm_bin)},
+        )
+        assert "[slop-mop]" not in result.stderr
+        assert "fake-pytest" in result.stdout
