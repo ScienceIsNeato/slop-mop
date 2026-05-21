@@ -64,6 +64,8 @@ show_bypass_blocked() {
 # commands like 'git status' or 'git log'.
 check_hook_env_bypasses() {
     local git_command="$1"
+    # No subcommand extracted (e.g. `git --version`, bare `git`) → not hook-triggering.
+    [[ -z "$git_command" ]] && return 0
     # Commands that invoke pre-commit / commit-msg hooks.
     local hook_commands="commit merge rebase cherry-pick revert am"
     [[ " $hook_commands " == *" $git_command "* ]] || return 0

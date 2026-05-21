@@ -44,7 +44,7 @@ _WRAPPER_DEST = _SLOPMOP_HOME / "bin" / "git_wrapper.sh"
 
 def _escape(s: str) -> str:
     """Escape single quotes and backslashes for embedding in a printf string."""
-    return s.replace("\\", "\\\\").replace("'", "\\'")
+    return s.replace("\\", "\\\\").replace("'", "'\\''")
 
 
 def _msg_printf(entry: CommandMap, indent: int) -> str:
@@ -90,7 +90,7 @@ def _gen_function_blocks(lines: list[str]) -> None:
             for entry in plain:
                 lines.append(_msg_printf(entry, indent=4))
                 lines.append(f"    {entry.sm_command}")
-        lines += ["}", f"export -f {cmd}", ""]
+        lines += ["}", '[[ -n "${BASH_VERSION:-}" ]] && export -f ' + cmd, ""]
 
 
 def _gen_subcommand_blocks(lines: list[str]) -> None:
@@ -139,7 +139,7 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
             "            ;;",
             "    esac",
             "}",
-            f"export -f {wrapper}",
+            f'[[ -n "${{BASH_VERSION:-}}" ]] && export -f {wrapper}',
             "",
         ]
 
@@ -177,7 +177,7 @@ def _gen_npx_block(lines: list[str]) -> None:
         "            ;;",
         "    esac",
         "}",
-        "export -f npx",
+        '[[ -n "${BASH_VERSION:-}" ]] && export -f npx',
         "",
     ]
 

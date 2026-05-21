@@ -106,3 +106,28 @@ class TestGitWrapperEndOfOptions:
     def test_normal_commit_allowed(self) -> None:
         result = _run_wrapper("commit", "-m", "normal message")
         assert result.returncode == 0
+
+    def test_no_subcommand_allowed(self) -> None:
+        """Bare `git` or `git --version` must not be blocked by env-var checks."""
+        import os
+
+        env_with_skip = {**os.environ, "SKIP": "some-hook"}
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as fake_bin:
+            import stat as _stat
+
+            fake_git = os.path.join(fake_bin, "git")
+            with open(fake_git, "w") as f:
+                f.write("#!/bin/sh\nexit 0\n")
+            os.chmod(fake_git, _stat.S_IRWXU)
+            env_with_skip["PATH"] = f"{fake_bin}:{os.environ['PATH']}"
+            import subprocess
+
+            result = subprocess.run(
+                ["bash", _WRAPPER_PATH, "--version"],
+                capture_output=True,
+                text=True,
+                env=env_with_skip,
+            )
+        assert result.returncode == 0

@@ -111,6 +111,7 @@ class TestGenerateAliasesSh:
         content = _generate_aliases_sh("1.0.0").decode()
         assert "pytest()" in content
         assert "export -f pytest" in content
+        assert "BASH_VERSION" in content
 
     def test_pytest_cov_variant_routed_to_scour(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
