@@ -4,6 +4,7 @@ import argparse
 import importlib.resources
 import os
 import stat
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -625,3 +626,48 @@ class TestCmdCommitHooksDeepUninstall:
             result = cmd_commit_hooks(args)
 
         assert result == 0
+
+
+_WRAPPER_PATH = str(
+    importlib.resources.files("slopmop.data").joinpath("git_wrapper.sh")
+)
+
+
+def _run_wrapper(*args: str) -> "subprocess.CompletedProcess[str]":
+    """Run git_wrapper.sh with a fake git that always succeeds."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as fake_bin:
+        fake_git = os.path.join(fake_bin, "git")
+        with open(fake_git, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(fake_git, 0o755)
+        env = {**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"}
+        return subprocess.run(
+            ["bash", _WRAPPER_PATH, *args],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+
+class TestGitWrapperEndOfOptions:
+    """Shell-level tests for the -- end-of-options separator in git_wrapper.sh."""
+
+    def test_no_verify_flag_blocked(self) -> None:
+        result = _run_wrapper("commit", "-m", "msg", "--no-verify")
+        assert result.returncode == 1
+        assert "bypass" in result.stdout.lower() or "STOP" in result.stdout
+
+    def test_no_verify_after_double_dash_allowed(self) -> None:
+        """Pathspec literally named '--no-verify' must not be blocked."""
+        result = _run_wrapper("commit", "-m", "msg", "--", "--no-verify")
+        assert result.returncode == 0
+
+    def test_double_dash_passes_through(self) -> None:
+        result = _run_wrapper("commit", "-m", "msg", "--")
+        assert result.returncode == 0
+
+    def test_normal_commit_allowed(self) -> None:
+        result = _run_wrapper("commit", "-m", "normal message")
+        assert result.returncode == 0

@@ -122,7 +122,18 @@ main() {
     # Check for forbidden bypass flags - iterate through actual arguments
     # This avoids false positives from text within -m "message" content
     local in_message=false
+    local end_of_options=false
     for arg in "$@"; do
+        # After '--', remaining arguments are pathspecs, not flags.
+        if $end_of_options; then
+            continue
+        fi
+
+        if [[ "$arg" == "--" ]]; then
+            end_of_options=true
+            continue
+        fi
+
         # Skip content of -m messages (the argument following -m)
         if $in_message; then
             in_message=false
