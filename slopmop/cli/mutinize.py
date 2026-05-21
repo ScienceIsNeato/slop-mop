@@ -81,10 +81,11 @@ def _gen_function_blocks(lines: list[str]) -> None:
                 lines.append(f'    {kw} [[ " $* " == *"{entry.flag_trigger}"* ]]; then')
                 lines.append(_msg_printf(entry, indent=8))
                 lines.append(f"        {entry.sm_command}")
-            lines.append("    else")
-            for entry in plain:
-                lines.append(_msg_printf(entry, indent=8))
-                lines.append(f"        {entry.sm_command}")
+            if plain:
+                lines.append("    else")
+                for entry in plain:
+                    lines.append(_msg_printf(entry, indent=8))
+                    lines.append(f"        {entry.sm_command}")
             lines.append("    fi")
         else:
             for entry in plain:
@@ -369,6 +370,8 @@ def _mutinize_install(confirm: str = "") -> int:
 
 def _mutinize_uninstall() -> int:
     """Remove aliases.sh, git_wrapper.sh, and all marker blocks from rc files."""
+    errors = 0
+
     # Strip marker blocks from rc files first (both new and legacy markers)
     for rc_file in _rc_candidates():
         if not rc_file.exists():
@@ -377,6 +380,7 @@ def _mutinize_uninstall() -> int:
             content = rc_file.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             print(f"⚠️  {rc_file}: could not read — {exc}")
+            errors += 1
             continue
         original = content
         if MUTINIZE_MARKER in content:
@@ -389,22 +393,31 @@ def _mutinize_uninstall() -> int:
                 print(f"✅ Removed mutinize block from {rc_file}")
             except OSError as exc:
                 print(f"⚠️  {rc_file}: could not write — {exc}")
+                errors += 1
 
     # Remove aliases.sh
     if _ALIASES_DEST.exists():
-        _ALIASES_DEST.unlink()
-        print(f"✅ Removed {_ALIASES_DEST}")
+        try:
+            _ALIASES_DEST.unlink()
+            print(f"✅ Removed {_ALIASES_DEST}")
+        except OSError as exc:
+            print(f"⚠️  Could not remove {_ALIASES_DEST}: {exc}")
+            errors += 1
     else:
         print(f"ℹ️  {_ALIASES_DEST} not found (nothing to remove)")
 
     # Remove git_wrapper.sh last
     if _WRAPPER_DEST.exists():
-        _WRAPPER_DEST.unlink()
-        print(f"✅ Removed {_WRAPPER_DEST}")
+        try:
+            _WRAPPER_DEST.unlink()
+            print(f"✅ Removed {_WRAPPER_DEST}")
+        except OSError as exc:
+            print(f"⚠️  Could not remove {_WRAPPER_DEST}: {exc}")
+            errors += 1
     else:
         print(f"ℹ️  {_WRAPPER_DEST} not found (nothing to remove)")
 
-    return 0
+    return 1 if errors else 0
 
 
 def _mutinize_status() -> int:
