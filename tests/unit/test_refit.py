@@ -821,17 +821,12 @@ class TestRunFormattingQuarantineCommit:
         self, monkeypatch, capsys, tmp_path: Path
     ) -> None:
         """Returns True without committing when formatters produce no changes."""
+        from slopmop.cli import _refit_formatting as fmt_mod
+
+        mock_check = Mock()
+        mock_check.display_name = "Python Format"
         monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
-            lambda self, root: False,
+            fmt_mod, "_collect_applicable_formatters", lambda root: [mock_check]
         )
         monkeypatch.setattr(refit_mod, "_worktree_status", Mock(return_value=[]))
 
@@ -853,17 +848,12 @@ class TestRunFormattingQuarantineCommit:
         self, monkeypatch, capsys, tmp_path: Path
     ) -> None:
         """Stages and commits all changes when formatters dirty the worktree."""
+        from slopmop.cli import _refit_formatting as fmt_mod
+
+        mock_check = Mock()
+        mock_check.display_name = "Python Format"
         monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
-            lambda self, root: False,
+            fmt_mod, "_collect_applicable_formatters", lambda root: [mock_check]
         )
         # First call: pre-formatter snapshot (worktree clean).
         # Second call: post-formatter status (formatter dirtied foo.py).
@@ -895,17 +885,12 @@ class TestRunFormattingQuarantineCommit:
         self, monkeypatch, capsys, tmp_path: Path
     ) -> None:
         """Returns False and emits protocol when `git add` fails."""
+        from slopmop.cli import _refit_formatting as fmt_mod
+
+        mock_check = Mock()
+        mock_check.display_name = "Python Format"
         monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
-            lambda self, root: False,
+            fmt_mod, "_collect_applicable_formatters", lambda root: [mock_check]
         )
         monkeypatch.setattr(
             refit_mod,
@@ -931,17 +916,12 @@ class TestRunFormattingQuarantineCommit:
         self, monkeypatch, capsys, tmp_path: Path
     ) -> None:
         """Returns False and emits protocol when `git commit` fails."""
+        from slopmop.cli import _refit_formatting as fmt_mod
+
+        mock_check = Mock()
+        mock_check.display_name = "Python Format"
         monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
-            lambda self, root: False,
+            fmt_mod, "_collect_applicable_formatters", lambda root: [mock_check]
         )
         monkeypatch.setattr(
             refit_mod,
@@ -1035,19 +1015,13 @@ class TestDrainFormattingBeforeCommit:
         capsys: pytest.CaptureFixture,
     ) -> None:
         """Stages and commits files touched only by formatter, not by gate fix."""
+        from slopmop.cli import _refit_formatting as fmt_mod
         from slopmop.cli._refit_formatting import drain_formatting_before_commit
 
+        mock_check = Mock()
+        mock_check.display_name = "Python Format"
         monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
-            lambda self, root: False,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
-            lambda self, root: None,
+            fmt_mod, "_collect_applicable_formatters", lambda root: [mock_check]
         )
         # Formatter dirtied utils.py in addition to the already-tracked app.py
         monkeypatch.setattr(
@@ -1125,19 +1099,13 @@ class TestDrainFormattingBeforeCommit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Returns True and resets staging area when git commit fails."""
+        from slopmop.cli import _refit_formatting as fmt_mod
         from slopmop.cli._refit_formatting import drain_formatting_before_commit
 
+        mock_check = Mock()
+        mock_check.display_name = "Python Format"
         monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.is_applicable",
-            lambda self, root: True,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.javascript.lint_format.JavaScriptLintFormatCheck.is_applicable",
-            lambda self, root: False,
-        )
-        monkeypatch.setattr(
-            "slopmop.checks.python.lint_format.PythonLintFormatCheck.auto_fix",
-            lambda self, root: None,
+            fmt_mod, "_collect_applicable_formatters", lambda root: [mock_check]
         )
         monkeypatch.setattr(
             refit_mod,
