@@ -112,26 +112,34 @@ jobs:
 
       - name: Install slopmop
         # ────────────────────────────────────────────────────────────
-        # COPYING THIS TO YOUR REPO?  Change this line to:
+        # COPYING THIS TO YOUR REPO?  Replace this step with:
         #
-        #     pip install slopmop
+        #     - name: Install slopmop
+        #       run: |
+        #         python -m venv .venv
+        #         source .venv/bin/activate
+        #         pip install slopmop
+        #         pip install -e .[dev]   # your project's dev deps
         #
-        # and also install whatever your project needs for gates to
-        # run (pytest for untested-code, mypy for missing-annotations):
+        # Then prefix every subsequent ``sm`` call with:
+        #         source .venv/bin/activate
         #
-        #     pip install -e .[dev]
-        #
-        # This workflow runs on slop-mop's own CI, which means the
-        # slopmop it tests must be the slopmop in THIS commit — not
-        # whatever stale version PyPI has.  `pip install .` installs
-        # from the checkout.  On your repo you want PyPI's latest.
+        # Why a venv, not bare ``pip install slopmop``?  On
+        # ubuntu-latest runners, pip --user installs land in
+        # ~/.local/bin which is NOT on PATH by default, so ``sm``
+        # silently disappears.  A project-local venv also lets
+        # PROJECT-context gates (untested-code, coverage-gaps) find
+        # pytest via has_project_venv() rather than warning and
+        # skipping.
         #
         # [all] brings every tool extra (lint, typing, analysis,
         # security, testing) so ALL gates have their dependencies.
         #
-        # We install into a project-local venv so that PROJECT-context
-        # gates (untested-code, coverage-gaps) can find pytest via
-        # has_project_venv() instead of warning and skipping.
+        # This workflow runs on slop-mop's own CI, which means the
+        # slopmop it tests must be the slopmop in THIS commit — not
+        # whatever stale version PyPI has.  ``pip install -e .``
+        # installs from the checkout.  On your repo you want PyPI's
+        # latest.
         # ────────────────────────────────────────────────────────────
         run: |
           python -m venv .venv
