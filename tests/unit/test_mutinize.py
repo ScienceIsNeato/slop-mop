@@ -73,21 +73,6 @@ class TestCommandMapping:
             if not entry.redirect and not entry.sm_command:
                 assert entry.suggestion, f"block-only entry missing suggestion: {entry}"
 
-    def test_flag_trigger_entries_paired_with_plain(self) -> None:
-        """For every flagged variant there must be a plain (catch-all) entry for the same command."""
-        flagged_cmds = {
-            e.forbidden.split()[0]
-            for e in COMMAND_MAPPING
-            if e.intercept_type == "function" and e.flag_trigger
-        }
-        plain_cmds = {
-            e.forbidden.split()[0]
-            for e in COMMAND_MAPPING
-            if e.intercept_type == "function" and not e.flag_trigger
-        }
-        for cmd in flagged_cmds:
-            assert cmd in plain_cmds, f"no plain catch-all for flagged command: {cmd}"
-
 
 # ── alias generation ──────────────────────────────────────────────────────────
 
@@ -117,10 +102,11 @@ class TestGenerateAliasesSh:
         assert "export -f pytest" in content
         assert "BASH_VERSION" in content
 
-    def test_pytest_cov_variant_routed_to_scour(self) -> None:
+    def test_pytest_blocked_with_barnacle_message(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
-        assert "--cov" in content
-        assert "sm scour" in content
+        assert "pytest()" in content
+        assert "sm barnacle" in content
+        assert "return 1" in content
 
     def test_gh_wrapper_present(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
@@ -503,24 +489,19 @@ class TestMutinizeStatus:
 class TestMutinizeList:
     """Tests for _mutinize_list output."""
 
-    def test_prints_all_categories(self, capsys: object) -> None:
+    def test_prints_summary(self, capsys: object) -> None:
         result = _mutinize_list()
         assert result == 0
         out = capsys.readouterr().out  # type: ignore[union-attr]
-        categories = {e.category for e in COMMAND_MAPPING}
-        for cat in categories:
-            assert cat in out
+        assert "intercept" in out
 
-    def test_prints_bypass_hint(self, capsys: object) -> None:
-        _mutinize_list()
-        out = capsys.readouterr().out  # type: ignore[union-attr]
-        assert "command" in out  # "command <tool> <args>"
-
-    def test_all_forbidden_commands_listed(self, capsys: object) -> None:
+    def test_no_forbidden_commands_in_output(self, capsys: object) -> None:
         _mutinize_list()
         out = capsys.readouterr().out  # type: ignore[union-attr]
         for entry in COMMAND_MAPPING:
-            assert entry.forbidden in out, f"missing {entry.forbidden} in list output"
+            assert (
+                entry.forbidden not in out
+            ), f"{entry.forbidden} leaked into list output"
 
 
 # ── cmd_mutinize dispatcher ───────────────────────────────────────────────────
@@ -617,14 +598,8 @@ class TestIntegrationAliasesSh:
         fake_bin = self._make_fake_bin(tmp_path, ("sm", "pytest"))
         result = self._bash(aliases, fake_bin, "pytest")
         assert "[slop-mop]" in result.stderr
-        assert "sm swab" in result.stderr
-
-    def test_command_pytest_bypasses_intercept(self, tmp_path: Path) -> None:
-        aliases = self._make_aliases(tmp_path)
-        fake_bin = self._make_fake_bin(tmp_path, ("sm", "pytest"))
-        result = self._bash(aliases, fake_bin, "command pytest --version")
-        assert "[slop-mop]" not in result.stderr
-        assert "fake-pytest" in result.stdout
+        assert "barnacle" in result.stderr
+        assert result.returncode == 1
 
     def test_gh_run_list_blocked(self, tmp_path: Path) -> None:
         aliases = self._make_aliases(tmp_path)

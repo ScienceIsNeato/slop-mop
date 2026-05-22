@@ -49,53 +49,33 @@ def _escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace("'", "'\\''")
 
 
-def _msg_printf(entry: CommandMap, indent: int) -> str:
+def _msg_printf(forbidden: str, indent: int) -> str:
     """Return a printf line that shows the intercept message."""
     spaces = " " * indent
-    sm = entry.sm_command or "see suggestion below"
     return (
         f"{spaces}printf "
-        f"'\\033[1m[slop-mop]\\033[0m "
-        f"\\033[33m{_escape(entry.forbidden)}\\033[0m"
-        f" \\xe2\\x86\\x92 "
-        f"\\033[32m{_escape(sm)}\\033[0m"
-        f"  ({_escape(entry.category)}: {_escape(entry.reason)})\\n' >&2"
+        f"'\\033[1m[slop-mop]\\033[0m \\033[31m\\xe2\\x9b\\x94 {_escape(forbidden)} blocked\\033[0m\\n"
+        f"  Stop. File a barnacle: sm barnacle\\n"
+        f"  Tell the human what you were doing and wait.\\n' >&2"
     )
 
 
 def _gen_function_blocks(lines: list[str]) -> None:
     """Append bash function wrappers for 'function' intercept type entries."""
-    fn_groups: dict[str, list[CommandMap]] = {}
+    seen_cmds: set[str] = set()
     for entry in COMMAND_MAPPING:
         if entry.intercept_type != "function":
             continue
         cmd = entry.forbidden.split()[0]
-        fn_groups.setdefault(cmd, []).append(entry)
-
-    for cmd, entries in fn_groups.items():
-        flagged = [e for e in entries if e.flag_trigger]
-        plain = [e for e in entries if not e.flag_trigger]
-
+        if cmd in seen_cmds:
+            continue
+        seen_cmds.add(cmd)
         lines.append(f"{cmd}() {{")
         lines.append(
             f'    command -v sm &>/dev/null || {{ command {cmd} "$@"; return; }}'
         )
-        if flagged:
-            for i, entry in enumerate(flagged):
-                kw = "if" if i == 0 else "elif"
-                lines.append(f'    {kw} [[ " $* " == *"{entry.flag_trigger}"* ]]; then')
-                lines.append(_msg_printf(entry, indent=8))
-                lines.append(f"        {entry.sm_command}")
-            if plain:
-                lines.append("    else")
-                for entry in plain:
-                    lines.append(_msg_printf(entry, indent=8))
-                    lines.append(f"        {entry.sm_command}")
-            lines.append("    fi")
-        else:
-            for entry in plain:
-                lines.append(_msg_printf(entry, indent=4))
-                lines.append(f"    {entry.sm_command}")
+        lines.append(_msg_printf(cmd, indent=4))
+        lines.append("    return 1")
         lines += ["}", '[[ -n "${BASH_VERSION:-}" ]] && export -f ' + cmd, ""]
 
 
@@ -121,15 +101,10 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
             seen_patterns.add(entry.subcommands)
             pattern = f'"{" ".join(entry.subcommands)}"'
             lines.append(f"        {pattern})")
-            lines.append(_msg_printf(entry, indent=12))
-            if entry.redirect and entry.sm_command:
-                lines.append(f"            {entry.sm_command}")
-            else:
-                if entry.suggestion:
-                    lines.append(
-                        f"            printf '  Use: {_escape(entry.suggestion)}\\n' >&2"
-                    )
-                lines.append("            return 1")
+            lines.append(
+                _msg_printf(f"{wrapper} {' '.join(entry.subcommands)}", indent=12)
+            )
+            lines.append("            return 1")
             lines.append("            ;;")
 
         lines += [
@@ -158,8 +133,8 @@ def _gen_npx_block(lines: list[str]) -> None:
         if not tool:
             continue
         lines.append(f"        {tool})")
-        lines.append(_msg_printf(entry, indent=12))
-        lines.append(f"            {entry.sm_command}")
+        lines.append(_msg_printf(f"npx {tool}", indent=12))
+        lines.append("            return 1")
         lines.append("            ;;")
 
     lines += [
@@ -514,35 +489,36 @@ def _mutinize_status() -> int:
     print("Commands:")
     print("  sm mutinize install    # install (requires --confirm)")
     print("  sm mutinize uninstall  # remove all artifacts")
-    print("  sm mutinize list       # show the full mapping table")
+    print("  sm mutinize list       # show active intercept counts")
     print()
     return 0
 
 
 def _mutinize_list() -> int:
-    """Print the command mapping table."""
-    # Group by category for display
-    categories: dict[str, list[CommandMap]] = {}
-    for entry in COMMAND_MAPPING:
-        categories.setdefault(entry.category, []).append(entry)
+    """Print a summary of active intercept counts."""
+    fn_cmds = {
+        e.forbidden.split()[0]
+        for e in COMMAND_MAPPING
+        if e.intercept_type == "function"
+    }
+    sub_wrappers = {
+        e.wrapper_command for e in COMMAND_MAPPING if e.intercept_type == "subcommand"
+    }
+    npx_count = sum(1 for e in COMMAND_MAPPING if e.intercept_type == "npx")
 
     print()
-    print("⚓ sm mutinize — command intercept mapping")
-    print("=" * 72)
-    print(f"  {'Forbidden command':<30}  {'sm replacement':<35}  Redirect")
-    print("  " + "-" * 68)
-    for category, entries in categories.items():
-        print(f"\n  [{category}]")
-        for entry in entries:
-            sm = (
-                entry.sm_command
-                if entry.sm_command
-                else f"→ {entry.suggestion or '(block)'}"
-            )
-            redirect = "✓" if entry.redirect and entry.sm_command else "✗ (block)"
-            print(f"  {entry.forbidden:<30}  {sm:<35}  {redirect}")
+    print("⚓ sm mutinize — active intercepts")
+    print("=" * 40)
     print()
-    print("  To remove all intercepts: sm mutinize uninstall")
+    print(f"  {len(fn_cmds)} command intercept(s)")
+    print(f"  {len(sub_wrappers)} subcommand wrapper(s)")
+    print(f"  {npx_count} npx intercept(s)")
+    print()
+    print("Commands:")
+    print("  sm mutinize install    # install (requires --confirm)")
+    print("  sm mutinize uninstall  # remove all artifacts")
+    print("  sm mutinize status     # check installation")
+    print()
     print("  Emergency removal without sm:")
     print("    sed -i.bak '/# BEGIN sm-mutinize/,/# END sm-mutinize/d' ~/.zshrc")
     print("    rm -f ~/.slopmop/aliases.sh ~/.slopmop/bin/git_wrapper.sh")
