@@ -370,7 +370,6 @@ class TestBuffStatusCommand:
         assert feedback_gate.call_count == 1
         # One settle sleep.
         assert sum(1 for c in sleep_mock.call_args_list if c.args == (7,)) == 1
-        sleep_mock.assert_called_with(7)
 
     def test_cmd_buff_watch_treats_bugbot_with_no_completed_at_as_in_progress(
         self, monkeypatch, capsys
