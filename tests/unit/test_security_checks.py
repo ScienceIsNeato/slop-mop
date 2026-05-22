@@ -303,6 +303,7 @@ class TestRunSemgrep:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_semgrep(str(tmp_path))
@@ -316,6 +317,7 @@ class TestRunSemgrep:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps(
             {
                 "results": [
@@ -342,6 +344,7 @@ class TestRunSemgrep:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps(
             {
                 "results": [
@@ -368,6 +371,7 @@ class TestRunSemgrep:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps({"results": []})
 
         with patch.object(check, "_run_command", return_value=mock_result):
@@ -380,6 +384,7 @@ class TestRunSemgrep:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False
         mock_result.stdout = "not valid json"
         mock_result.returncode = 1
         mock_result.stderr = "Some error"
@@ -505,6 +510,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps(
             {"dependencies": [{"name": "requests", "version": "2.31.0", "vulns": []}]}
         )
@@ -522,6 +528,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps(
             {
                 "dependencies": [
@@ -552,6 +559,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps(
             {
                 "dependencies": [
@@ -583,6 +591,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps({"dependencies": []})
 
         with patch.object(check, "_run_command", return_value=mock_result):
@@ -596,6 +605,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False
         mock_result.stdout = "Error running pip-audit"
         mock_result.output = "Error running pip-audit"
 
@@ -610,12 +620,27 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
         mock_result.stdout = "not valid json"
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_pip_audit(str(tmp_path))
 
         assert result.passed is True
+
+    def test_pip_audit_timed_out_warns_and_passes(self, tmp_path):
+        """Timeout fetching vulnerability data should warn but not fail the gate."""
+        (tmp_path / "requirements.txt").write_text("requests>=2.31.0\n")
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.timed_out = True
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_pip_audit(str(tmp_path))
+
+        assert result.passed is True
+        assert result.warned is True
+        assert "timed out" in result.findings
 
     def test_pip_audit_uses_project_python(self, tmp_path):
         """pip-audit must use project Python, not sys.executable.
@@ -637,6 +662,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps({"dependencies": []})
 
         with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
@@ -683,6 +709,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps({"dependencies": []})
 
         with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
@@ -702,6 +729,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
         mock_result.stdout = json.dumps({"dependencies": []})
 
         with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
@@ -752,6 +780,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
         mock_result.stdout = '{"dependencies": []}'
         with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
             check._run_pip_audit(str(project))
@@ -777,6 +806,7 @@ class TestRunPipAudit:
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
+        mock_result.timed_out = False
         mock_result.stdout = '{"dependencies": []}'
         with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
             check._run_pip_audit(str(project))
