@@ -15,6 +15,7 @@ from slopmop.checks.base import (
 from slopmop.checks.mixins import (
     JavaScriptCheckMixin,
     PythonCheckMixin,
+    _git_tracked_python_files_exist,
     has_python_source_files,
 )
 from slopmop.core.result import CheckResult, CheckStatus
@@ -448,6 +449,43 @@ class TestPythonCheckMixin:
         nested.mkdir(parents=True)
         (nested / "tool.py").touch()
         assert has_python_source_files(tmp_path, exclude_dirs=set()) is True
+
+    def test_has_python_source_files_uses_git_ls_files(self, tmp_path, monkeypatch):
+        """Uses git ls-files so gitignored .py files are not counted."""
+        from slopmop.checks import mixins as mixins_mod
+
+        (tmp_path / "cursor-rules").mkdir()
+        (tmp_path / "cursor-rules" / "script.py").write_text("# gitignored\n")
+
+        monkeypatch.setattr(
+            mixins_mod,
+            "_git_tracked_python_files_exist",
+            lambda _root: False,
+        )
+        assert has_python_source_files(tmp_path) is False
+
+    def test_has_python_source_files_git_detects_tracked_py(self, tmp_path, monkeypatch):
+        """Returns True when git ls-files reports tracked .py files."""
+        from slopmop.checks import mixins as mixins_mod
+
+        monkeypatch.setattr(
+            mixins_mod,
+            "_git_tracked_python_files_exist",
+            lambda _root: True,
+        )
+        assert has_python_source_files(tmp_path) is True
+
+    def test_has_python_source_files_falls_back_when_git_unavailable(self, tmp_path, monkeypatch):
+        """Falls back to os.walk when git is unavailable."""
+        from slopmop.checks import mixins as mixins_mod
+
+        (tmp_path / "app.py").write_text("x = 1\n")
+        monkeypatch.setattr(
+            mixins_mod,
+            "_git_tracked_python_files_exist",
+            lambda _root: None,
+        )
+        assert has_python_source_files(tmp_path) is True
 
     def test_has_setup_py_true(self, tmp_path):
         """Test has_setup_py returns True when setup.py exists."""

@@ -93,18 +93,42 @@ def has_project_venv(project_root: str | Path) -> bool:
     return False
 
 
+def _git_tracked_python_files_exist(project_root: Path) -> bool | None:
+    """Return True/False via git ls-files, or None if git is unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--", "*.py"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return bool(result.stdout.strip())
+
+
 def has_python_source_files(
     project_root: str | Path,
     *,
     exclude_dirs: set[str] | None = None,
     max_depth: int | None = None,
 ) -> bool:
-    """Return True when the repo contains at least one Python source file.
+    """Return True when the repo contains at least one tracked Python source file.
 
-    Uses ``os.walk`` so callers can prune known junk directories and stop at the
-    first match instead of paying for a full recursive glob.
+    Uses ``git ls-files`` so gitignored directories (e.g. external sub-repos)
+    are not counted as project Python.  Falls back to ``os.walk`` when git is
+    unavailable.
     """
     root = Path(project_root)
+
+    git_result = _git_tracked_python_files_exist(root)
+    if git_result is not None:
+        return git_result
+
     excluded = exclude_dirs if exclude_dirs is not None else _PYTHON_SOURCE_EXCLUDE_DIRS
 
     for dirpath, dirnames, filenames in os.walk(root):
