@@ -49,6 +49,13 @@ class TestRailHelpers:
         assert normalized == {"status": "FAILED", "gate": "g1", "detail": "e1"}
         assert rail.format_actionable_line(normalized) == "- FAILED: g1 :: e1"
 
+        row_with_output = {"status": "failed", "name": "g5", "error": "e5", "output": "line1\nline2"}
+        norm_with_output = rail.normalize_actionable_row(row_with_output)
+        assert norm_with_output["output"] == "line1\nline2"
+
+        row_no_output = {"status": "failed", "name": "g6", "error": "e6"}
+        assert "output" not in rail.normalize_actionable_row(row_no_output)
+
     def test_sort_rows_by_remediation_order_preserves_unknown_order(self):
         rows = [
             {"status": "failed", "name": "unknown-b"},
@@ -660,7 +667,30 @@ class TestScanTriageInternals:
         out = capsys.readouterr().out
         assert "Fix First: myopia:just-this-once.py" in out
 
-    def test_build_payload_sorts_actionable_rows_by_remediation_order(self):
+    def test_print_triage_surfaces_gate_output(self, capsys):
+        payload = {
+            "run_id": 1,
+            "artifact_json": "x.json",
+            "summary": {"failed": 1, "errors": 0, "warned": 0, "all_passed": False},
+            "actionable": [
+                {
+                    "status": "FAILED",
+                    "gate": "myopia:lint",
+                    "detail": "3 violations",
+                    "output": "src/foo.py:10: E501 line too long\nsrc/foo.py:20: W291 trailing whitespace",
+                }
+            ],
+            "hard_failures": [],
+            "lowest_coverage": [],
+            "next_steps": [],
+        }
+        triage.print_triage(payload, show_low_coverage=False)
+        out = capsys.readouterr().out
+        assert "myopia:lint" in out
+        assert "src/foo.py:10: E501 line too long" in out
+        assert "src/foo.py:20: W291 trailing whitespace" in out
+
+
         doc = {
             "summary": {"failed": 2, "errors": 0, "warned": 0, "all_passed": False},
             "results": [
@@ -691,6 +721,27 @@ class TestScanTriageInternals:
             "laziness:sloppy-formatting.py",
         ]
         assert payload["first_to_fix"]["gate"] == "laziness:repeated-code"
+
+    def test_build_payload_preserves_gate_output(self):
+        doc = {
+            "summary": {"failed": 1, "errors": 0, "warned": 0, "all_passed": False},
+            "results": [
+                {
+                    "status": "failed",
+                    "name": "laziness:sloppy-formatting.py",
+                    "error": "2 violations",
+                    "output": "foo.py:1: E501 line too long\nfoo.py:2: W291 trailing whitespace",
+                }
+            ],
+        }
+        payload, _ = triage.build_triage_payload(
+            doc=doc,
+            run_id=999,
+            json_path=Path(".slopmop/last_ci_scan_results.json"),
+            show_low_coverage=False,
+            pr_number=84,
+        )
+        assert payload["actionable"][0]["output"] == "foo.py:1: E501 line too long\nfoo.py:2: W291 trailing whitespace"
 
     def test_write_json_out(self, tmp_path):
         target = tmp_path / "triage.json"

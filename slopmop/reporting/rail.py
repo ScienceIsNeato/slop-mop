@@ -44,16 +44,20 @@ def filter_hard_failures(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
-def normalize_actionable_row(row: Dict[str, Any]) -> Dict[str, str]:
+def normalize_actionable_row(row: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a raw gate result row into the shared rail schema."""
-    return {
+    normalized: Dict[str, Any] = {
         "status": str(row.get("status", "unknown")).upper(),
         "gate": str(row.get("name", "unknown")),
         "detail": actionable_detail(row),
     }
+    output = row.get("output")
+    if output:
+        normalized["output"] = str(output)
+    return normalized
 
 
-def format_actionable_line(row: Dict[str, str]) -> str:
+def format_actionable_line(row: Dict[str, Any]) -> str:
     """Format a normalized actionable row as a single guidance line."""
     return f"- {row['status']}: {row['gate']} :: {row['detail']}"
 

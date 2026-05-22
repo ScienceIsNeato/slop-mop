@@ -651,7 +651,11 @@ def print_triage(payload: dict[str, Any], show_low_coverage: bool) -> None:
 
     print("\nActionable Gates:")
     for row in actionable:
-        print(format_actionable_line(cast(Dict[str, str], row)))
+        print(format_actionable_line(cast(Dict[str, Any], row)))
+        gate_output = str(row.get("output") or "")
+        if gate_output.strip():
+            for line in gate_output.splitlines():
+                print(f"  {line}")
 
     next_steps = cast(List[str], payload.get("next_steps") or [])
     if next_steps:
