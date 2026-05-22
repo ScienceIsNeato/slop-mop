@@ -452,11 +452,13 @@ def _run_validation_locked(
         phase = read_phase(project_root)
         if phase == RepoPhase.REMEDIATION:
             auto_fix = False
+            in_ci = bool(os.environ.get("CI"))
             if (
                 not args.quiet
                 and not json_mode
                 and not porcelain_mode
                 and not sarif_to_stdout
+                and not in_ci
             ):
                 print(
                     "ℹ  Remediation mode: auto-fix disabled "
