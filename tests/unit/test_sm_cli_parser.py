@@ -283,6 +283,12 @@ class TestCreateParser:
         assert args.verb == "gang"
         assert args.gang_action == "discharge"
 
+    @pytest.mark.parametrize("legacy_action", ["install", "uninstall"])
+    def test_gang_legacy_verbs_rejected(self, legacy_action):
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["gang", legacy_action])
+
     def test_agent_install_parses(self):
         parser = create_parser()
         args = parser.parse_args(
