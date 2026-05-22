@@ -332,6 +332,7 @@ def _laziness_polish_reasoning_entries() -> (
     tuple[tuple[type[BaseCheck], Reasoning], ...]
 ):
     from slopmop.checks.dart import DartFormatCheck
+    from slopmop.checks.javascript.dead_code import JavaScriptDeadCodeCheck
     from slopmop.checks.javascript.eslint_quick import FrontendCheck
     from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
     from slopmop.checks.python.lint_format import PythonLintFormatCheck
@@ -340,6 +341,24 @@ def _laziness_polish_reasoning_entries() -> (
         (DartFormatCheck, _formatting_reasoning()),
         (JavaScriptLintFormatCheck, _formatting_reasoning()),
         (PythonLintFormatCheck, _formatting_reasoning()),
+        (
+            JavaScriptDeadCodeCheck,
+            _reasoning(
+                rationale=(
+                    "Dead JS/TS exports and files make the module graph a lie — readers "
+                    "study paths that nobody calls and miss the ones that matter."
+                ),
+                tradeoffs=(
+                    "Knip can false-positive on dynamic entrypoints, plugin APIs, and "
+                    "exports consumed by bundlers through non-import paths."
+                ),
+                override_when=(
+                    "Override for known dynamic entrypoints with a concrete explanation "
+                    "in the knip config or a per-export ignore comment, not because "
+                    "deletion feels inconvenient right now."
+                ),
+            ),
+        ),
         (
             FrontendCheck,
             _reasoning(

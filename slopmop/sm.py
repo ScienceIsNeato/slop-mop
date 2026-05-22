@@ -643,6 +643,58 @@ def _add_agent_parser(
     AgentParserBuilder(subparsers).build()
 
 
+def _add_gang_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the gang subcommand parser."""
+    gang_parser = subparsers.add_parser(
+        "gang",
+        help="Press-gang shell commands into seamanship — install system-wide intercepts",
+        description=(
+            "Press-gang forbidden instinct commands into sm equivalents. Installs "
+            "shell function intercepts (pytest, gh run, mypy, etc.) that seize "
+            "each command at the shell level and conscript it into the correct sm "
+            "rail, with a logged message. No command volunteers. Also installs "
+            "git_wrapper to block --no-verify bypass attempts."
+        ),
+    )
+    gang_subparsers = gang_parser.add_subparsers(
+        dest="gang_action",
+        help="Gang action",
+    )
+
+    # gang install
+    install_p = gang_subparsers.add_parser(
+        "install",
+        help="Install aliases.sh + git_wrapper.sh system-wide",
+    )
+    install_p.add_argument(
+        "--confirm",
+        type=str,
+        default="",
+        metavar="PHRASE",
+        help="Required confirmation phrase (see output when omitted)",
+    )
+
+    # gang uninstall
+    gang_subparsers.add_parser(
+        "uninstall",
+        help="Remove all gang artifacts and rc file entries",
+    )
+
+    # gang status
+    gang_subparsers.add_parser(
+        "status",
+        help="Show what is currently installed",
+    )
+
+    # gang list
+    gang_subparsers.add_parser(
+        "list",
+        help="Print the full command intercept mapping table",
+    )
+
+
 def _add_doctor_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -1027,6 +1079,7 @@ def create_parser() -> argparse.ArgumentParser:
     _add_init_parser(subparsers)
     _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
+    _add_gang_parser(subparsers)
     _add_audit_parser(subparsers)
 
     parser.add_argument(
@@ -1048,6 +1101,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_commit_hooks,
         cmd_config,
         cmd_doctor,
+        cmd_gang,
         cmd_help,
         cmd_init,
         cmd_refit,
@@ -1086,6 +1140,7 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_agent=cmd_agent,
             cmd_audit=cmd_audit,
             cmd_commit_hooks=cmd_commit_hooks,
+            cmd_gang=cmd_gang,
         )
     except MissingDependencyError as exc:
         print(f"❌ {exc}", file=sys.stderr)
@@ -1127,6 +1182,8 @@ def _dispatch(
         return handlers["cmd_agent"](parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return handlers["cmd_commit_hooks"](parsed_args)
+    elif parsed_args.verb == "gang":
+        return handlers["cmd_gang"](parsed_args)
     elif parsed_args.verb == "audit":
         return handlers["cmd_audit"](parsed_args)
     else:

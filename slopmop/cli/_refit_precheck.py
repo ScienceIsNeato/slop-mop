@@ -17,7 +17,7 @@ from slopmop.doctor.gate_preflight import (
 )
 
 _PRECHECK_SCHEMA = "refit-precheck/v1"
-_NESTED_VALIDATE_OWNER = "refit_precheck"
+_NESTED_VALIDATE_OWNER = "refit"
 
 
 def _precheck_timestamp() -> str:

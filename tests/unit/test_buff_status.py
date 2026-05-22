@@ -826,3 +826,61 @@ class TestBuffStatusCommand:
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
         assert "Total watch time:" in out
+
+
+class TestBuffWatchErrorHandling:
+    """sm buff watch must never exit silently — all failures must print a message."""
+
+    def _watch_args(self, tmp_path):
+        return argparse.Namespace(
+            pr_or_action="watch",
+            action_args=["5"],
+            interval=30,
+            fail_fast=False,
+        )
+
+    def test_buff_watch_prints_error_when_gh_not_found(
+        self, monkeypatch, capsys, tmp_path
+    ):
+        """FileNotFoundError from gh CLI is surfaced as a readable error, not traceback."""
+        from slopmop.cli.scan_triage import TriageError
+
+        monkeypatch.setattr(
+            buff_mod,
+            "_get_repo_slug",
+            Mock(
+                side_effect=TriageError(
+                    "gh CLI not found. Install it from https://cli.github.com/"
+                )
+            ),
+        )
+
+        result = buff_mod.cmd_buff(self._watch_args(tmp_path))
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "ERROR" in captured.out
+        assert "gh" in captured.out.lower()
+
+    def test_buff_watch_prints_error_on_json_decode_error(
+        self, monkeypatch, capsys, tmp_path
+    ):
+        """json.JSONDecodeError from unexpected gh output is caught and printed."""
+        import json
+
+        monkeypatch.setattr(
+            buff_mod,
+            "_get_repo_slug",
+            Mock(return_value="owner/repo"),
+        )
+        monkeypatch.setattr(
+            buff_mod,
+            "resolve_pr_number_with_source",
+            Mock(side_effect=json.JSONDecodeError("Expecting value", "", 0)),
+        )
+
+        result = buff_mod.cmd_buff(self._watch_args(tmp_path))
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "ERROR" in captured.out

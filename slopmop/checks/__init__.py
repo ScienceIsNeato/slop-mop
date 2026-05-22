@@ -44,6 +44,7 @@ def _register_javascript_checks(registry: CheckRegistry) -> None:
     """Register all JavaScript-related checks."""
     from slopmop.checks.javascript.bogus_tests import JavaScriptBogusTestsCheck
     from slopmop.checks.javascript.coverage import JavaScriptCoverageCheck
+    from slopmop.checks.javascript.dead_code import JavaScriptDeadCodeCheck
     from slopmop.checks.javascript.eslint_expect import JavaScriptExpectCheck
     from slopmop.checks.javascript.eslint_quick import FrontendCheck
     from slopmop.checks.javascript.lint_format import JavaScriptLintFormatCheck
@@ -51,6 +52,7 @@ def _register_javascript_checks(registry: CheckRegistry) -> None:
     from slopmop.checks.javascript.types import JavaScriptTypesCheck
 
     registry.register(JavaScriptLintFormatCheck)
+    registry.register(JavaScriptDeadCodeCheck)
     registry.register(JavaScriptTestsCheck)
     registry.register(JavaScriptCoverageCheck)
     registry.register(FrontendCheck)

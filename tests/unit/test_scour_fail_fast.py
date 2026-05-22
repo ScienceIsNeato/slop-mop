@@ -178,3 +178,86 @@ class TestScourDisablesFailFast:
 
         _, kwargs = mock_executor_cls.call_args
         assert kwargs["process_results_in_remediation_order"] is False
+
+
+class TestRemediationBannerCISuppression:
+    """Remediation-mode banner must not appear in CI environments."""
+
+    def _make_args(self, tmp_path):
+        return argparse.Namespace(
+            project_root=str(tmp_path),
+            quiet=False,
+            verbose=False,
+            no_fail_fast=False,
+            no_auto_fix=False,
+            static=True,
+            clear_history=False,
+            swabbing_timeout=None,
+            json_output=False,
+        )
+
+    @patch("slopmop.cli.validate.ConsoleAdapter")
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.cli.validate.read_phase")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_remediation_banner_suppressed_when_ci_env_set(
+        self,
+        _mock_config,
+        mock_read_phase,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
+        monkeypatch,
+        capsys,
+    ):
+        """Banner is hidden in CI environments (CI=true) even when phase is REMEDIATION."""
+        from slopmop.cli.validate import _run_validation
+        from slopmop.workflow.state_machine import RepoPhase
+
+        monkeypatch.setenv("CI", "true")
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+        mock_read_phase.return_value = RepoPhase.REMEDIATION
+
+        _run_validation(self._make_args(tmp_path), ["gate1"], "scour")
+
+        captured = capsys.readouterr()
+        assert "Remediation mode" not in captured.out
+
+    @patch("slopmop.cli.validate.ConsoleAdapter")
+    @patch("slopmop.cli.validate.ConsoleReporter")
+    @patch("slopmop.cli.validate.CheckExecutor")
+    @patch("slopmop.cli.validate.get_registry")
+    @patch("slopmop.cli.validate.read_phase")
+    @patch("slopmop.sm.load_config", return_value={})
+    def test_remediation_banner_shown_outside_ci(
+        self,
+        _mock_config,
+        mock_read_phase,
+        mock_reg,
+        mock_executor_cls,
+        _mock_reporter,
+        _mock_adapter,
+        tmp_path,
+        monkeypatch,
+        capsys,
+    ):
+        """Banner is shown for interactive dev use when CI env is not set."""
+        from slopmop.cli.validate import _run_validation
+        from slopmop.workflow.state_machine import RepoPhase
+
+        monkeypatch.delenv("CI", raising=False)
+        mock_executor = MagicMock()
+        mock_executor.run_checks.return_value = MagicMock(all_passed=True)
+        mock_executor_cls.return_value = mock_executor
+        mock_read_phase.return_value = RepoPhase.REMEDIATION
+
+        _run_validation(self._make_args(tmp_path), ["gate1"], "scour")
+
+        captured = capsys.readouterr()
+        assert "Remediation mode" in captured.out

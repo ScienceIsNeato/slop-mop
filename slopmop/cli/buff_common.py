@@ -107,3 +107,18 @@ def fire_buff_hook(has_issues: bool) -> None:
         on_buff_complete(project_root_from_cwd(), has_issues=has_issues)
     except Exception:
         pass
+
+
+def suggest_stale_pr_fix(repo: str, pr_number: int | None, watch: bool) -> None:
+    """Print current-branch PR suggestion when an explicit PR is stale."""
+    if pr_number is None:
+        return
+    try:
+        branch_pr = get_branch_pr_number(repo)
+    except Exception:
+        return
+    if branch_pr is None:
+        return
+    verb = "watch" if watch else "status"
+    print(f"   Your branch has open PR: #{branch_pr}")
+    print(f"   Suggested command: sm buff {verb} {branch_pr}")

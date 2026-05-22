@@ -106,41 +106,44 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     if not hooks_dir.exists():
         print("ℹ️  No hooks directory found")
         print("   Install a hook: sm commit-hooks install <verb>")
-        return 0
-
-    hook_types = ["pre-commit", "pre-push", "commit-msg"]
-    found_sb_hooks: list[tuple[str, dict[str, Any]]] = []
-    found_other_hooks: list[str] = []
-
-    for hook_type in hook_types:
-        hook_file = hooks_dir / hook_type
-        if hook_file.exists():
-            content = hook_file.read_text()
-            info = _parse_hook_info(content)
-            if info:
-                found_sb_hooks.append((hook_type, info))
-            else:
-                found_other_hooks.append(hook_type)
-
-    if found_sb_hooks:
-        print("🪣 Slop-Mop-managed hooks:")
-        for hook_type, info in found_sb_hooks:
-            print(f"   ✅ {hook_type}: {info['verb']}")
         print()
+    else:
+        hook_types = ["pre-commit", "pre-push", "commit-msg"]
+        found_sb_hooks: list[tuple[str, dict[str, Any]]] = []
+        found_other_hooks: list[str] = []
 
-    if found_other_hooks:
-        print("📋 Other hooks (not managed by sm):")
-        for hook_type in found_other_hooks:
-            print(f"   • {hook_type}")
-        print()
+        for hook_type in hook_types:
+            hook_file = hooks_dir / hook_type
+            if hook_file.exists():
+                content = hook_file.read_text()
+                info = _parse_hook_info(content)
+                if info:
+                    found_sb_hooks.append((hook_type, info))
+                else:
+                    found_other_hooks.append(hook_type)
 
-    if not found_sb_hooks and not found_other_hooks:
-        print("ℹ️  No commit hooks installed")
-        print()
+        if found_sb_hooks:
+            print("🪣 Slop-Mop-managed hooks:")
+            for hook_type, info in found_sb_hooks:
+                print(f"   ✅ {hook_type}: {info['verb']}")
+            print()
+
+        if found_other_hooks:
+            print("📋 Other hooks (not managed by sm):")
+            for hook_type in found_other_hooks:
+                print(f"   • {hook_type}")
+            print()
+
+        if not found_sb_hooks and not found_other_hooks:
+            print("ℹ️  No commit hooks installed")
+            print()
 
     print("Commands:")
     print("   sm commit-hooks install           # Install pre-commit hook (swab)")
     print("   sm commit-hooks uninstall          # Remove sm hooks")
+    print(
+        "   sm gang install               # System-wide command intercepts + git wrapper"
+    )
     print()
     return 0
 
@@ -187,7 +190,7 @@ def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
     return 0
 
 
-def _hooks_uninstall(project_root: Path, hooks_dir: Path) -> int:
+def _hooks_uninstall(_project_root: Path, hooks_dir: Path) -> int:
     """Remove all sm-managed hooks."""
     if not hooks_dir.exists():
         print("ℹ️  No hooks directory found")
