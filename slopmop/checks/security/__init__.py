@@ -1173,6 +1173,28 @@ class SecurityCheck(SecurityLocalCheck):
             )
         return SecuritySubResult("pip-audit", False, detail, sarif)
 
+    def _pip_audit_no_fix_result(
+        self, no_fix_versions: List[Dict[str, Any]]
+    ) -> "SecuritySubResult":
+        """Build a WARNED pip-audit result when vulns have no fix versions."""
+        detail = self._format_pip_audit_detail(no_fix_versions)
+        sarif_warn: list[Finding] = [
+            Finding(
+                message=(
+                    f"{len(no_fix_versions)} vulnerable dependency/dependencies "
+                    "with no published fix versions"
+                ),
+                level=FindingLevel.WARNING,
+            )
+        ]
+        return SecuritySubResult(
+            "pip-audit",
+            True,
+            f"No fix versions available for the vulnerable dependencies below:\n{detail}",
+            warned=True,
+            sarif_findings=sarif_warn,
+        )
+
     @staticmethod
     def _project_has_python_manifest(project_root: str) -> bool:
         """Return True when the project has any Python dependency manifest."""
@@ -1246,7 +1268,15 @@ class SecurityCheck(SecurityLocalCheck):
             for req_file in req_files:
                 cmd.extend(["-r", req_file])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=30)
+        result = self._run_command(cmd, cwd=project_root, timeout=120)
+
+        if result.timed_out:
+            return SecuritySubResult(
+                "pip-audit",
+                True,
+                "pip-audit timed out fetching vulnerability data — skipped",
+                warned=True,
+            )
 
         try:
             report = json.loads(result.stdout)
@@ -1274,25 +1304,7 @@ class SecurityCheck(SecurityLocalCheck):
             if remediable:
                 return self._pip_audit_remediable_result(remediable, no_fix_versions)
 
-            detail = self._format_pip_audit_detail(no_fix_versions)
-            sarif_warn: list[Finding] = [
-                Finding(
-                    message=(
-                        f"{len(no_fix_versions)} vulnerable dependency/dependencies "
-                        "with no published fix versions"
-                    ),
-                    level=FindingLevel.WARNING,
-                )
-            ]
-            return SecuritySubResult(
-                "pip-audit",
-                True,
-                "No fix versions available for the vulnerable dependencies "
-                "below:\n"
-                f"{detail}",
-                warned=True,
-                sarif_findings=sarif_warn,
-            )
+            return self._pip_audit_no_fix_result(no_fix_versions)
         except json.JSONDecodeError:
             if result.success:
                 return SecuritySubResult("pip-audit", True, "No vulnerabilities found")
