@@ -151,7 +151,7 @@ class TestGenerateAliasesSh:
 
     def test_bypass_hint_in_header(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
-        assert "command <tool>" in content or "command " in content
+        assert "BEGIN sm-mutinize" in content or "rm -f" in content
 
 
 # ── _write_if_changed ─────────────────────────────────────────────────────────
