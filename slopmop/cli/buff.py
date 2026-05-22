@@ -21,6 +21,7 @@ from slopmop.cli.buff_common import get_branch_pr_number as _get_branch_pr_numbe
 from slopmop.cli.buff_common import get_current_branch as _get_current_branch
 from slopmop.cli.buff_common import get_repo_owner_name as _get_repo_owner_name
 from slopmop.cli.buff_common import get_repo_slug as _get_repo_slug
+from slopmop.cli.buff_common import suggest_stale_pr_fix as _suggest_stale_pr_fix
 from slopmop.cli.buff_common import project_root_from_cwd as _project_root_from_cwd
 from slopmop.cli.buff_common import run_pr_feedback_gate as _run_pr_feedback_gate
 from slopmop.cli.buff_narration import (
@@ -655,14 +656,14 @@ def _cmd_buff_status(
     """Check PR CI status through the buff rail."""
 
     project_root = Path(_project_root_from_cwd())
+    repo: str | None = None
     try:
         repo = _get_repo_slug(str(project_root))
-        resolved_pr, pr_resolution_source = resolve_pr_number_with_source(
-            repo,
-            pr_number,
-        )
+        resolved_pr, pr_resolution_source = resolve_pr_number_with_source(repo, pr_number)
     except TriageError as exc:
         print(f"ERROR: {exc}")
+        if repo is not None:
+            _suggest_stale_pr_fix(repo, pr_number, watch)
         return 1
 
     print()
