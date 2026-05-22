@@ -502,6 +502,13 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
                 or any(token == "sha" or token.endswith("_sha") for token in tokens)
             ):
                 return True
+            _PUBLIC_ID_TOKENS = {
+                "account_id", "accountid", "zone_id", "zoneid",
+                "project_id", "projectid", "org_id", "orgid",
+                "tenant_id", "tenantid", "workspace_id", "workspaceid",
+            }
+            if any(tok in _PUBLIC_ID_TOKENS for tok in tokens):
+                return True
         if basename == ".metadata" and detector_type in {
             _HEX_HIGH_ENTROPY_STRING,
             "Base64 High Entropy String",

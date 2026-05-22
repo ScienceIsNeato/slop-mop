@@ -585,3 +585,33 @@ class TestRunDetectSecrets:
             passed_path
         ).exists(), "Temp plugin-config baseline must be deleted after the scan"
         assert json.loads(baseline.read_text()) == baseline_content
+
+    def test_detect_secrets_suppresses_cloudflare_account_id(self, tmp_path):
+        """Cloudflare accountId (32-char hex) in workflow files should not be flagged."""
+        workflow_dir = tmp_path / ".github" / "workflows"
+        workflow_dir.mkdir(parents=True)
+        workflow = workflow_dir / "deploy-pages.yml"
+        workflow.write_text(
+            "jobs:\n  deploy:\n    steps:\n"
+            "      - name: Deploy\n        with:\n"
+            "          accountId: 4c2341810414766ae8cbf672785e82c5\n"  # pragma: allowlist secret
+        )
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps(
+            {
+                "results": {
+                    ".github/workflows/deploy-pages.yml": [
+                        {
+                            "type": "Hex High Entropy String",
+                            "line_number": 6,
+                        }  # pragma: allowlist secret
+                    ]
+                }
+            }
+        )
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True
