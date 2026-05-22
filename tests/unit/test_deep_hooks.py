@@ -1,6 +1,6 @@
 """Tests for git hooks CLI — repo-level hooks and git_wrapper.sh shell behaviour.
 
-Deep hooks (system-level install/uninstall) have moved to sm gang.
+Deep hooks (system-level press/discharge) have moved to sm gang.
 See tests/unit/test_gang.py for those tests.
 """
 
@@ -60,7 +60,7 @@ class TestHooksStatus:
         _hooks_status(project_root, hooks_dir)
 
         out = capsys.readouterr().out  # type: ignore[union-attr]
-        assert "gang" in out
+        assert "sm gang press" in out
 
 
 _WRAPPER_PATH = str(

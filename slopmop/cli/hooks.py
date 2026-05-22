@@ -142,7 +142,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     print("   sm commit-hooks install           # Install pre-commit hook (swab)")
     print("   sm commit-hooks uninstall          # Remove sm hooks")
     print(
-        "   sm gang install               # System-wide command intercepts + git wrapper"
+        "   sm gang press                 # System-wide command intercepts + git wrapper"
     )
     print()
     return 0
