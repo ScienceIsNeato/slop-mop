@@ -30,13 +30,15 @@ from slopmop.data.command_mapping import COMMAND_MAPPING, CommandMap
 GANG_MARKER = "# BEGIN sm-gang"
 GANG_END_MARKER = "# END sm-gang"
 
+# Migration: old marker written by sm mutinize (before rename to sm gang)
+_MUTINIZE_MARKER = "# BEGIN sm-mutinize"
+_MUTINIZE_END_MARKER = "# END sm-mutinize"
+
 # Backward-compat: old "deep hooks" marker written by commit-hooks --deep
 _LEGACY_MARKER = "# MANAGED BY SLOP-MOP DEEP"
 _LEGACY_END_MARKER = "# END SLOP-MOP DEEP"
 
-GANG_CONFIRM_PHRASE = (
-    "I understand this aliases commands system-wide on this machine"
-)
+GANG_CONFIRM_PHRASE = "I understand this aliases commands system-wide on this machine"
 
 _SLOPMOP_HOME = Path.home() / ".slopmop"
 _ALIASES_DEST = _SLOPMOP_HOME / "aliases.sh"
@@ -158,7 +160,9 @@ def _generate_aliases_sh(version: str) -> bytes:
         f'# Regenerate: sm gang install --confirm "{GANG_CONFIRM_PHRASE}"',
         "#",
         "# To remove ALL intercepts without relying on 'sm gang uninstall':",
-        "#   sed -i.bak '/# BEGIN sm-gang/,/# END sm-gang/d' ~/.zshrc",
+        "#   for f in ~/.zshrc ~/.zprofile ~/.bashrc ~/.bash_profile; do",
+        "#     sed -i.bak '/# BEGIN sm-gang/,/# END sm-gang/d' \"$f\" 2>/dev/null || true",
+        "#   done",
         "#   rm -f ~/.slopmop/aliases.sh ~/.slopmop/bin/git_wrapper.sh",
         "",
     ]
@@ -306,7 +310,11 @@ def _show_confirm_warning() -> None:
     print("  • Other users on this machine are NOT affected")
     print("  • To remove: sm gang uninstall")
     print("  • Emergency removal without sm:")
-    print("      sed -i.bak '/# BEGIN sm-gang/,/# END sm-gang/d' ~/.zshrc")
+    print("      for f in ~/.zshrc ~/.zprofile ~/.bashrc ~/.bash_profile; do")
+    print(
+        "        sed -i.bak '/# BEGIN sm-gang/,/# END sm-gang/d' \"$f\" 2>/dev/null || true"
+    )
+    print("      done")
     print("      rm -f ~/.slopmop/aliases.sh ~/.slopmop/bin/git_wrapper.sh")
     print()
     print("To proceed, add this flag exactly:")
@@ -340,6 +348,7 @@ def _gang_install(confirm: str = "") -> int:
             _ALIASES_DEST.chmod(mode | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
         except OSError as exc:
             print(f"⚠️  Could not set permissions on {_ALIASES_DEST}: {exc}")
+            errors += 1
 
     # 2. Install git_wrapper.sh
     try:
@@ -365,7 +374,7 @@ def _gang_install(confirm: str = "") -> int:
             errors += 1
 
     # 3. Wire rc files
-    rc_block = (
+    _rc_block_body = (
         f"{GANG_MARKER}\n"
         "\n"
         'alias git="$HOME/.slopmop/bin/git_wrapper.sh"\n'
@@ -376,6 +385,30 @@ def _gang_install(confirm: str = "") -> int:
         if _rc_has_gang(rc_file):
             print(f"ℹ️  Shell source already present in {rc_file}")
             continue
+        # Migrate: strip old sm-mutinize block before writing new sm-gang block
+        if rc_file.exists() and _MUTINIZE_MARKER in rc_file.read_text(
+            encoding="utf-8", errors="replace"
+        ):
+            try:
+                content = rc_file.read_text(encoding="utf-8", errors="replace")
+                content = _strip_marker_block(
+                    content, _MUTINIZE_MARKER, _MUTINIZE_END_MARKER
+                )
+                rc_file.write_text(content, encoding="utf-8")
+                print(f"ℹ️  Migrated old sm-mutinize block in {rc_file}")
+            except OSError as exc:
+                print(f"⚠️  Could not migrate old block in {rc_file}: {exc}")
+                errors += 1
+                continue
+        # Prepend \n only if the file doesn't already end with one, so the
+        # GANG_MARKER is never concatenated onto the preceding line (which
+        # would cause _strip_marker_block to silently eat that line on uninstall).
+        try:
+            existing_text = rc_file.read_text(encoding="utf-8", errors="replace") if rc_file.exists() else ""
+        except OSError:
+            existing_text = ""
+        separator = "\n" if existing_text and not existing_text.endswith("\n") else ""
+        rc_block = separator + _rc_block_body
         try:
             with rc_file.open("a") as f:
                 f.write(rc_block)
@@ -406,6 +439,10 @@ def _gang_uninstall() -> int:
         original = content
         if GANG_MARKER in content:
             content = _strip_marker_block(content, GANG_MARKER, GANG_END_MARKER)
+        if _MUTINIZE_MARKER in content:
+            content = _strip_marker_block(
+                content, _MUTINIZE_MARKER, _MUTINIZE_END_MARKER
+            )
         if _LEGACY_MARKER in content:
             content = _strip_marker_block(content, _LEGACY_MARKER, _LEGACY_END_MARKER)
         if content != original:
@@ -522,7 +559,11 @@ def _gang_list() -> int:
     print("  sm gang status     # check installation")
     print()
     print("  Emergency removal without sm:")
-    print("    sed -i.bak '/# BEGIN sm-gang/,/# END sm-gang/d' ~/.zshrc")
+    print("    for f in ~/.zshrc ~/.zprofile ~/.bashrc ~/.bash_profile; do")
+    print(
+        "      sed -i.bak '/# BEGIN sm-gang/,/# END sm-gang/d' \"$f\" 2>/dev/null || true"
+    )
+    print("    done")
     print("    rm -f ~/.slopmop/aliases.sh ~/.slopmop/bin/git_wrapper.sh")
     print()
     return 0
