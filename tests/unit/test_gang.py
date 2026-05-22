@@ -1,4 +1,4 @@
-"""Tests for sm mutinize — command intercept alias install/uninstall/status/list."""
+"""Tests for sm gang — command intercept alias install/uninstall/status/list."""
 
 import argparse
 import importlib.resources
@@ -9,20 +9,20 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-from slopmop.cli.mutinize import (
+from slopmop.cli.gang import (
     _LEGACY_MARKER,
-    MUTINIZE_CONFIRM_PHRASE,
-    MUTINIZE_END_MARKER,
-    MUTINIZE_MARKER,
+    GANG_CONFIRM_PHRASE,
+    GANG_END_MARKER,
+    GANG_MARKER,
     _generate_aliases_sh,
-    _mutinize_install,
-    _mutinize_list,
-    _mutinize_status,
-    _mutinize_uninstall,
+    _gang_install,
+    _gang_list,
+    _gang_status,
+    _gang_uninstall,
     _strip_marker_block,
     _validate_bash_syntax,
     _write_if_changed,
-    cmd_mutinize,
+    cmd_gang,
 )
 from slopmop.data.command_mapping import COMMAND_MAPPING
 
@@ -94,7 +94,7 @@ class TestGenerateAliasesSh:
 
     def test_confirm_phrase_in_header(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
-        assert MUTINIZE_CONFIRM_PHRASE in content
+        assert GANG_CONFIRM_PHRASE in content
 
     def test_pytest_function_present(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
@@ -137,7 +137,7 @@ class TestGenerateAliasesSh:
 
     def test_bypass_hint_in_header(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
-        assert "BEGIN sm-mutinize" in content or "rm -f" in content
+        assert "BEGIN sm-gang" in content or "rm -f" in content
 
 
 # ── _write_if_changed ─────────────────────────────────────────────────────────
@@ -183,21 +183,21 @@ class TestStripMarkerBlock:
     def test_removes_block_preserves_surrounding(self) -> None:
         content = (
             "# before\n"
-            f"{MUTINIZE_MARKER}\n"
+            f"{GANG_MARKER}\n"
             "some content\n"
-            f"{MUTINIZE_END_MARKER}\n"
+            f"{GANG_END_MARKER}\n"
             "# after\n"
         )
-        result = _strip_marker_block(content, MUTINIZE_MARKER, MUTINIZE_END_MARKER)
-        assert MUTINIZE_MARKER not in result
-        assert MUTINIZE_END_MARKER not in result
+        result = _strip_marker_block(content, GANG_MARKER, GANG_END_MARKER)
+        assert GANG_MARKER not in result
+        assert GANG_END_MARKER not in result
         assert "some content" not in result
         assert "# before" in result
         assert "# after" in result
 
     def test_no_op_when_marker_absent(self) -> None:
         content = "# just a normal rc file\n"
-        result = _strip_marker_block(content, MUTINIZE_MARKER, MUTINIZE_END_MARKER)
+        result = _strip_marker_block(content, GANG_MARKER, GANG_END_MARKER)
         assert result == content
 
     def test_strips_legacy_marker(self) -> None:
@@ -212,23 +212,23 @@ class TestStripMarkerBlock:
 
     def test_orphaned_start_marker_returns_original(self) -> None:
         """Content after an orphaned start marker is NOT silently dropped."""
-        content = "# before\n" + MUTINIZE_MARKER + "\nsome content\n"
-        result = _strip_marker_block(content, MUTINIZE_MARKER, MUTINIZE_END_MARKER)
+        content = "# before\n" + GANG_MARKER + "\nsome content\n"
+        result = _strip_marker_block(content, GANG_MARKER, GANG_END_MARKER)
         assert result == content
 
 
-class TestMutinizeInstall:
-    """Tests for _mutinize_install."""
+class TestGangInstall:
+    """Tests for _gang_install."""
 
     def test_no_confirm_returns_1(self, capsys: object) -> None:
-        result = _mutinize_install(confirm="")
+        result = _gang_install(confirm="")
         assert result == 1
         out = capsys.readouterr().out  # type: ignore[union-attr]  # type: ignore[union-attr]
         assert "confirmation" in out.lower()  # type: ignore[union-attr]
-        assert MUTINIZE_CONFIRM_PHRASE in out
+        assert GANG_CONFIRM_PHRASE in out
 
     def test_wrong_confirm_blocked(self) -> None:
-        result = _mutinize_install(confirm="sure whatever")
+        result = _gang_install(confirm="sure whatever")
         assert result == 1
 
     def test_correct_confirm_writes_files(self, tmp_path: Path) -> None:
@@ -236,19 +236,19 @@ class TestMutinizeInstall:
         fake_slopmop, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
 
         with (
-            patch("slopmop.cli.mutinize._SLOPMOP_HOME", fake_slopmop),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._get_rc_files", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
         ):
-            result = _mutinize_install(confirm=MUTINIZE_CONFIRM_PHRASE)
+            result = _gang_install(confirm=GANG_CONFIRM_PHRASE)
 
         assert result == 0
         assert fake_aliases.exists()
         assert fake_wrapper.exists()
         rc_text = fake_rc.read_text()
-        assert MUTINIZE_MARKER in rc_text
-        assert MUTINIZE_END_MARKER in rc_text
+        assert GANG_MARKER in rc_text
+        assert GANG_END_MARKER in rc_text
         assert 'source "$HOME/.slopmop/aliases.sh"' in rc_text
         assert 'alias git="$HOME/.slopmop/bin/git_wrapper.sh"' in rc_text
         assert "# existing rc content" in rc_text  # original preserved
@@ -258,12 +258,12 @@ class TestMutinizeInstall:
         fake_slopmop, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
 
         with (
-            patch("slopmop.cli.mutinize._SLOPMOP_HOME", fake_slopmop),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._get_rc_files", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
         ):
-            _mutinize_install(confirm=MUTINIZE_CONFIRM_PHRASE)
+            _gang_install(confirm=GANG_CONFIRM_PHRASE)
 
         assert fake_wrapper.stat().st_mode & stat.S_IXUSR
 
@@ -286,15 +286,15 @@ class TestMutinizeInstall:
         fake_wrapper.write_bytes(real_wrapper_bytes)
         fake_wrapper.chmod(0o755)
         # RC file already has the marker
-        fake_rc.write_text(f"# before\n{MUTINIZE_MARKER}\n...\n{MUTINIZE_END_MARKER}\n")
+        fake_rc.write_text(f"# before\n{GANG_MARKER}\n...\n{GANG_END_MARKER}\n")
 
         with (
-            patch("slopmop.cli.mutinize._SLOPMOP_HOME", fake_slopmop),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._get_rc_files", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
         ):
-            result = _mutinize_install(confirm=MUTINIZE_CONFIRM_PHRASE)
+            result = _gang_install(confirm=GANG_CONFIRM_PHRASE)
 
         assert result == 0
         out = capsys.readouterr().out  # type: ignore[union-attr]  # type: ignore[union-attr]
@@ -302,27 +302,27 @@ class TestMutinizeInstall:
         assert "already present" in out
 
     def test_rc_not_duplicated_on_repeat(self, tmp_path: Path) -> None:
-        """The mutinize rc block is only appended once even after repeated installs."""
+        """The gang rc block is only appended once even after repeated installs."""
         fake_slopmop, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
 
         with (
-            patch("slopmop.cli.mutinize._SLOPMOP_HOME", fake_slopmop),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._get_rc_files", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
         ):
-            _mutinize_install(confirm=MUTINIZE_CONFIRM_PHRASE)
-            _mutinize_install(confirm=MUTINIZE_CONFIRM_PHRASE)
+            _gang_install(confirm=GANG_CONFIRM_PHRASE)
+            _gang_install(confirm=GANG_CONFIRM_PHRASE)
 
         rc_text = fake_rc.read_text()
-        assert rc_text.count(MUTINIZE_MARKER) == 1
+        assert rc_text.count(GANG_MARKER) == 1
 
 
-# ── _mutinize_uninstall ───────────────────────────────────────────────────────
+# ── _gang_uninstall ───────────────────────────────────────────────────────────
 
 
-class TestMutinizeUninstall:
-    """Tests for _mutinize_uninstall."""
+class TestGangUninstall:
+    """Tests for _gang_uninstall."""
 
     def test_removes_aliases_and_wrapper(self, tmp_path: Path) -> None:
         _, fake_wrapper, fake_aliases, _ = _make_fake_env(tmp_path)
@@ -332,37 +332,37 @@ class TestMutinizeUninstall:
         fake_aliases.write_bytes(b"# aliases\n")
 
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[]),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[]),
         ):
-            result = _mutinize_uninstall()
+            result = _gang_uninstall()
 
         assert result == 0
         assert not fake_aliases.exists()
         assert not fake_wrapper.exists()
 
-    def test_strips_mutinize_block_from_rc(self, tmp_path: Path) -> None:
-        """Uninstall removes the MUTINIZE_MARKER block from rc files."""
+    def test_strips_gang_block_from_rc(self, tmp_path: Path) -> None:
+        """Uninstall removes the GANG_MARKER block from rc files."""
         _, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
         fake_rc.write_text(
             "# before\n"
-            f"{MUTINIZE_MARKER}\n"
+            f"{GANG_MARKER}\n"
             'source "$HOME/.slopmop/aliases.sh"\n'
-            f"{MUTINIZE_END_MARKER}\n"
+            f"{GANG_END_MARKER}\n"
             "# after\n"
         )
 
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[fake_rc]),
         ):
-            result = _mutinize_uninstall()
+            result = _gang_uninstall()
 
         assert result == 0
         rc_text = fake_rc.read_text()
-        assert MUTINIZE_MARKER not in rc_text
+        assert GANG_MARKER not in rc_text
         assert "# before" in rc_text
         assert "# after" in rc_text
 
@@ -376,11 +376,11 @@ class TestMutinizeUninstall:
         )
 
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[fake_rc]),
         ):
-            result = _mutinize_uninstall()
+            result = _gang_uninstall()
 
         assert result == 0
         rc_text = fake_rc.read_text()
@@ -394,11 +394,11 @@ class TestMutinizeUninstall:
         fake_wrapper = tmp_path / "nonexistent_wrapper.sh"
 
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[]),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[]),
         ):
-            result = _mutinize_uninstall()
+            result = _gang_uninstall()
 
         assert result == 0
         out = capsys.readouterr().out  # type: ignore[union-attr]  # type: ignore[union-attr]
@@ -410,23 +410,23 @@ class TestMutinizeUninstall:
         original = fake_rc.read_bytes()
 
         with (
-            patch("slopmop.cli.mutinize._SLOPMOP_HOME", fake_slopmop),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._get_rc_files", return_value=[fake_rc]),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._SLOPMOP_HOME", fake_slopmop),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[fake_rc]),
         ):
-            _mutinize_install(confirm=MUTINIZE_CONFIRM_PHRASE)
-            _mutinize_uninstall()
+            _gang_install(confirm=GANG_CONFIRM_PHRASE)
+            _gang_uninstall()
 
         assert fake_rc.read_bytes() == original
 
 
-# ── _mutinize_status ──────────────────────────────────────────────────────────
+# ── _gang_status ──────────────────────────────────────────────────────────────
 
 
-class TestMutinizeStatus:
-    """Tests for _mutinize_status output."""
+class TestGangStatus:
+    """Tests for _gang_status output."""
 
     def test_shows_installed_when_files_present(
         self, tmp_path: Path, capsys: object
@@ -437,11 +437,11 @@ class TestMutinizeStatus:
         fake_wrapper.write_bytes(b"#!/bin/bash\n")
 
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[]),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[]),
         ):
-            result = _mutinize_status()
+            result = _gang_status()
 
         assert result == 0
         out = capsys.readouterr().out  # type: ignore[union-attr]  # type: ignore[union-attr]
@@ -455,11 +455,11 @@ class TestMutinizeStatus:
         fake_wrapper = tmp_path / "missing_wrapper.sh"
 
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[]),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[]),
         ):
-            result = _mutinize_status()
+            result = _gang_status()
 
         assert result == 0
         out = capsys.readouterr().out  # type: ignore[union-attr]
@@ -473,30 +473,30 @@ class TestMutinizeStatus:
         fake_wrapper = tmp_path / "missing_wrapper.sh"
 
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", fake_aliases),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", fake_wrapper),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[fake_rc]),
+            patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
+            patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[fake_rc]),
         ):
-            _mutinize_status()
+            _gang_status()
 
         out = capsys.readouterr().out  # type: ignore[union-attr]
         assert "Legacy" in out or "legacy" in out
 
 
-# ── _mutinize_list ────────────────────────────────────────────────────────────
+# ── _gang_list ────────────────────────────────────────────────────────────────
 
 
-class TestMutinizeList:
-    """Tests for _mutinize_list output."""
+class TestGangList:
+    """Tests for _gang_list output."""
 
     def test_prints_summary(self, capsys: object) -> None:
-        result = _mutinize_list()
+        result = _gang_list()
         assert result == 0
         out = capsys.readouterr().out  # type: ignore[union-attr]
         assert "intercept" in out
 
     def test_no_forbidden_commands_in_output(self, capsys: object) -> None:
-        _mutinize_list()
+        _gang_list()
         out = capsys.readouterr().out  # type: ignore[union-attr]
         for entry in COMMAND_MAPPING:
             assert (
@@ -504,46 +504,46 @@ class TestMutinizeList:
             ), f"{entry.forbidden} leaked into list output"
 
 
-# ── cmd_mutinize dispatcher ───────────────────────────────────────────────────
+# ── cmd_gang dispatcher ───────────────────────────────────────────────────────
 
 
-class TestCmdMutinize:
-    """Tests for the cmd_mutinize dispatcher."""
+class TestCmdGang:
+    """Tests for the cmd_gang dispatcher."""
 
     def test_dispatch_status(self) -> None:
-        args = argparse.Namespace(mutinize_action="status")
+        args = argparse.Namespace(gang_action="status")
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", Path("/nonexistent/aliases")),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", Path("/nonexistent/wrapper")),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[]),
+            patch("slopmop.cli.gang._ALIASES_DEST", Path("/nonexistent/aliases")),
+            patch("slopmop.cli.gang._WRAPPER_DEST", Path("/nonexistent/wrapper")),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[]),
         ):
-            result = cmd_mutinize(args)
+            result = cmd_gang(args)
         assert result == 0
 
     def test_dispatch_list(self) -> None:
-        args = argparse.Namespace(mutinize_action="list")
-        result = cmd_mutinize(args)
+        args = argparse.Namespace(gang_action="list")
+        result = cmd_gang(args)
         assert result == 0
 
     def test_dispatch_install_no_confirm(self) -> None:
-        args = argparse.Namespace(mutinize_action="install", confirm="")
-        result = cmd_mutinize(args)
+        args = argparse.Namespace(gang_action="install", confirm="")
+        result = cmd_gang(args)
         assert result == 1
 
     def test_dispatch_unknown_action(self) -> None:
-        args = argparse.Namespace(mutinize_action="explode")
-        result = cmd_mutinize(args)
+        args = argparse.Namespace(gang_action="explode")
+        result = cmd_gang(args)
         assert result == 1
 
     def test_default_action_is_status(self) -> None:
-        """Missing mutinize_action defaults to status."""
-        args = argparse.Namespace(mutinize_action=None)
+        """Missing gang_action defaults to status."""
+        args = argparse.Namespace(gang_action=None)
         with (
-            patch("slopmop.cli.mutinize._ALIASES_DEST", Path("/nonexistent/aliases")),
-            patch("slopmop.cli.mutinize._WRAPPER_DEST", Path("/nonexistent/wrapper")),
-            patch("slopmop.cli.mutinize._rc_candidates", return_value=[]),
+            patch("slopmop.cli.gang._ALIASES_DEST", Path("/nonexistent/aliases")),
+            patch("slopmop.cli.gang._WRAPPER_DEST", Path("/nonexistent/wrapper")),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[]),
         ):
-            result = cmd_mutinize(args)
+            result = cmd_gang(args)
         assert result == 0
 
 

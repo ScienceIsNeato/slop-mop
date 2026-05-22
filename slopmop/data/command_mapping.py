@@ -1,9 +1,9 @@
 """Command mapping: forbidden instinct commands → sm equivalents.
 
-Single source of truth for ``sm mutinize``.  This table drives:
+Single source of truth for ``sm gang``.  This table drives:
 
   - Shell function generation in ``~/.slopmop/aliases.sh``
-  - The ``sm mutinize list`` display table
+  - The ``sm gang list`` display table
   - Agent context in ``_shared/core.md`` (kept in sync manually)
 
 ``intercept_type`` values:
@@ -39,7 +39,7 @@ class CommandMap:
     """One-line explanation shown in the intercept message."""
 
     category: str
-    """Display category for ``sm mutinize list``."""
+    """Display category for ``sm gang list``."""
 
     intercept_type: str
     """``'function'`` | ``'subcommand'`` | ``'npx'``."""

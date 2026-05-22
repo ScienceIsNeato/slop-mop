@@ -1,7 +1,7 @@
 """Tests for git hooks CLI — repo-level hooks and git_wrapper.sh shell behaviour.
 
-Deep hooks (system-level install/uninstall) have moved to sm mutinize.
-See tests/unit/test_mutinize.py for those tests.
+Deep hooks (system-level install/uninstall) have moved to sm gang.
+See tests/unit/test_gang.py for those tests.
 """
 
 import importlib.resources
@@ -53,14 +53,14 @@ class TestHooksStatus:
         out = capsys.readouterr().out  # type: ignore[union-attr]
         assert "No commit hooks installed" in out
 
-    def test_status_mentions_mutinize(self, tmp_path: Path, capsys: object) -> None:
-        """Status output points to sm mutinize for system-wide intercepts."""
+    def test_status_mentions_gang(self, tmp_path: Path, capsys: object) -> None:
+        """Status output points to sm gang for system-wide intercepts."""
         project_root, hooks_dir = self._make_repo(tmp_path)
 
         _hooks_status(project_root, hooks_dir)
 
         out = capsys.readouterr().out  # type: ignore[union-attr]
-        assert "mutinize" in out
+        assert "gang" in out
 
 
 _WRAPPER_PATH = str(

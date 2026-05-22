@@ -643,27 +643,28 @@ def _add_agent_parser(
     AgentParserBuilder(subparsers).build()
 
 
-def _add_mutinize_parser(
+def _add_gang_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    """Add the mutinize subcommand parser."""
-    mutinize_parser = subparsers.add_parser(
-        "mutinize",
-        help="Install shell intercepts that redirect instinct commands to sm",
+    """Add the gang subcommand parser."""
+    gang_parser = subparsers.add_parser(
+        "gang",
+        help="Press-gang shell commands into seamanship — install system-wide intercepts",
         description=(
-            "Free agents from forbidden instincts. Installs shell function "
-            "intercepts (pytest, gh run, mypy, etc.) that redirect to sm "
-            "equivalents with a logged message. Also installs the git_wrapper "
-            "to block --no-verify bypass attempts."
+            "Press-gang forbidden instinct commands into sm equivalents. Installs "
+            "shell function intercepts (pytest, gh run, mypy, etc.) that seize "
+            "each command at the shell level and conscript it into the correct sm "
+            "rail, with a logged message. No command volunteers. Also installs "
+            "git_wrapper to block --no-verify bypass attempts."
         ),
     )
-    mutinize_subparsers = mutinize_parser.add_subparsers(
-        dest="mutinize_action",
-        help="Mutinize action",
+    gang_subparsers = gang_parser.add_subparsers(
+        dest="gang_action",
+        help="Gang action",
     )
 
-    # mutinize install
-    install_p = mutinize_subparsers.add_parser(
+    # gang install
+    install_p = gang_subparsers.add_parser(
         "install",
         help="Install aliases.sh + git_wrapper.sh system-wide",
     )
@@ -675,20 +676,20 @@ def _add_mutinize_parser(
         help="Required confirmation phrase (see output when omitted)",
     )
 
-    # mutinize uninstall
-    mutinize_subparsers.add_parser(
+    # gang uninstall
+    gang_subparsers.add_parser(
         "uninstall",
-        help="Remove all mutinize artifacts and rc file entries",
+        help="Remove all gang artifacts and rc file entries",
     )
 
-    # mutinize status
-    mutinize_subparsers.add_parser(
+    # gang status
+    gang_subparsers.add_parser(
         "status",
         help="Show what is currently installed",
     )
 
-    # mutinize list
-    mutinize_subparsers.add_parser(
+    # gang list
+    gang_subparsers.add_parser(
         "list",
         help="Print the full command intercept mapping table",
     )
@@ -1078,7 +1079,7 @@ def create_parser() -> argparse.ArgumentParser:
     _add_init_parser(subparsers)
     _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
-    _add_mutinize_parser(subparsers)
+    _add_gang_parser(subparsers)
     _add_audit_parser(subparsers)
 
     parser.add_argument(
@@ -1102,7 +1103,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_doctor,
         cmd_help,
         cmd_init,
-        cmd_mutinize,
+        cmd_gang,
         cmd_refit,
         cmd_sail,
         cmd_scour,
@@ -1139,7 +1140,7 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_agent=cmd_agent,
             cmd_audit=cmd_audit,
             cmd_commit_hooks=cmd_commit_hooks,
-            cmd_mutinize=cmd_mutinize,
+            cmd_gang=cmd_gang,
         )
     except MissingDependencyError as exc:
         print(f"❌ {exc}", file=sys.stderr)
@@ -1181,8 +1182,8 @@ def _dispatch(
         return handlers["cmd_agent"](parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return handlers["cmd_commit_hooks"](parsed_args)
-    elif parsed_args.verb == "mutinize":
-        return handlers["cmd_mutinize"](parsed_args)
+    elif parsed_args.verb == "gang":
+        return handlers["cmd_gang"](parsed_args)
     elif parsed_args.verb == "audit":
         return handlers["cmd_audit"](parsed_args)
     else:
