@@ -322,6 +322,53 @@ def _show_confirm_warning() -> None:
     print()
 
 
+def _wire_rc_files(rc_block_body: str) -> int:
+    """Append the gang marker block to each detected rc file; return error count."""
+    errors = 0
+    for rc_file in _get_rc_files():
+        if _rc_has_gang(rc_file):
+            print(f"ℹ️  Shell source already present in {rc_file}")
+            continue
+        # Migrate: strip old sm-mutinize block before writing new sm-gang block
+        if rc_file.exists() and _MUTINIZE_MARKER in rc_file.read_text(
+            encoding="utf-8", errors="replace"
+        ):
+            try:
+                content = rc_file.read_text(encoding="utf-8", errors="replace")
+                content = _strip_marker_block(
+                    content, _MUTINIZE_MARKER, _MUTINIZE_END_MARKER
+                )
+                rc_file.write_text(content, encoding="utf-8")
+                print(f"ℹ️  Migrated old sm-mutinize block in {rc_file}")
+            except OSError as exc:
+                print(f"⚠️  Could not migrate old block in {rc_file}: {exc}")
+                errors += 1
+                continue
+        # Prepend \n only if the file doesn't already end with one, so the
+        # GANG_MARKER is never concatenated onto the preceding line (which
+        # would cause _strip_marker_block to silently eat that line on uninstall).
+        try:
+            existing_text = (
+                rc_file.read_text(encoding="utf-8", errors="replace")
+                if rc_file.exists()
+                else ""
+            )
+        except OSError:
+            existing_text = ""
+        separator = "\n" if existing_text and not existing_text.endswith("\n") else ""
+        rc_block = separator + rc_block_body
+        try:
+            with rc_file.open("a") as f:
+                f.write(rc_block)
+        except OSError as exc:
+            print(f"⚠️  Could not write to {rc_file}: {exc}")
+            errors += 1
+            continue
+        print(f"✅ Added aliases to {rc_file}")
+        print(f"   Run: source {rc_file}")
+    return errors
+
+
 def _gang_install(confirm: str = "") -> int:
     """Install aliases.sh + git_wrapper.sh and wire them in shell rc files."""
     if confirm != GANG_CONFIRM_PHRASE:
@@ -329,6 +376,14 @@ def _gang_install(confirm: str = "") -> int:
         return 1
 
     from slopmop import __version__
+
+    shell = os.environ.get("SHELL", "")
+    if "fish" in shell:
+        print(
+            "⚠️  Fish shell detected. sm gang installs bash/zsh intercepts only — "
+            "fish sessions will not be press-ganged. "
+            "Run 'sm gang install' from bash or zsh to wire those shells."
+        )
 
     errors = 0
 
@@ -374,50 +429,14 @@ def _gang_install(confirm: str = "") -> int:
             errors += 1
 
     # 3. Wire rc files
-    _rc_block_body = (
+    rc_block_body = (
         f"{GANG_MARKER}\n"
         "\n"
         'alias git="$HOME/.slopmop/bin/git_wrapper.sh"\n'
         'source "$HOME/.slopmop/aliases.sh"\n'
         f"{GANG_END_MARKER}\n"
     )
-    for rc_file in _get_rc_files():
-        if _rc_has_gang(rc_file):
-            print(f"ℹ️  Shell source already present in {rc_file}")
-            continue
-        # Migrate: strip old sm-mutinize block before writing new sm-gang block
-        if rc_file.exists() and _MUTINIZE_MARKER in rc_file.read_text(
-            encoding="utf-8", errors="replace"
-        ):
-            try:
-                content = rc_file.read_text(encoding="utf-8", errors="replace")
-                content = _strip_marker_block(
-                    content, _MUTINIZE_MARKER, _MUTINIZE_END_MARKER
-                )
-                rc_file.write_text(content, encoding="utf-8")
-                print(f"ℹ️  Migrated old sm-mutinize block in {rc_file}")
-            except OSError as exc:
-                print(f"⚠️  Could not migrate old block in {rc_file}: {exc}")
-                errors += 1
-                continue
-        # Prepend \n only if the file doesn't already end with one, so the
-        # GANG_MARKER is never concatenated onto the preceding line (which
-        # would cause _strip_marker_block to silently eat that line on uninstall).
-        try:
-            existing_text = rc_file.read_text(encoding="utf-8", errors="replace") if rc_file.exists() else ""
-        except OSError:
-            existing_text = ""
-        separator = "\n" if existing_text and not existing_text.endswith("\n") else ""
-        rc_block = separator + _rc_block_body
-        try:
-            with rc_file.open("a") as f:
-                f.write(rc_block)
-        except OSError as exc:
-            print(f"⚠️  Could not write to {rc_file}: {exc}")
-            errors += 1
-            continue
-        print(f"✅ Added aliases to {rc_file}")
-        print(f"   Run: source {rc_file}")
+    errors += _wire_rc_files(rc_block_body)
 
     return 1 if errors else 0
 

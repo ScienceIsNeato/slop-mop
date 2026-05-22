@@ -17,10 +17,10 @@ if TYPE_CHECKING:
     from slopmop.cli.config import cmd_config
     from slopmop.cli.detection import detect_project_type
     from slopmop.cli.doctor import cmd_doctor
+    from slopmop.cli.gang import cmd_gang
     from slopmop.cli.help import cmd_help
     from slopmop.cli.hooks import cmd_commit_hooks
     from slopmop.cli.init import cmd_init
-    from slopmop.cli.gang import cmd_gang
     from slopmop.cli.refit import cmd_refit
     from slopmop.cli.sail import cmd_sail
     from slopmop.cli.scan_triage import run_triage
