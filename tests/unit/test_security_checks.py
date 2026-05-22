@@ -623,6 +623,11 @@ class TestRunPipAudit:
         mock_result.timed_out = False
         mock_result.stdout = "not valid json"
 
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_pip_audit(str(tmp_path))
+
+        assert result.passed is True
+
     def test_pip_audit_timed_out_warns_and_passes(self, tmp_path):
         """Timeout fetching vulnerability data should warn but not fail the gate."""
         (tmp_path / "requirements.txt").write_text("requests>=2.31.0\n")
@@ -636,11 +641,6 @@ class TestRunPipAudit:
         assert result.passed is True
         assert result.warned is True
         assert "timed out" in result.findings
-
-        with patch.object(check, "_run_command", return_value=mock_result):
-            result = check._run_pip_audit(str(tmp_path))
-
-        assert result.passed is True
 
     def test_pip_audit_uses_project_python(self, tmp_path):
         """pip-audit must use project Python, not sys.executable.

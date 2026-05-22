@@ -1276,6 +1276,12 @@ class SecurityCheck(SecurityLocalCheck):
                 True,
                 "pip-audit timed out fetching vulnerability data — skipped",
                 warned=True,
+                sarif_findings=[
+                    Finding(
+                        message="pip-audit timed out; vulnerability scan skipped",
+                        level=FindingLevel.WARNING,
+                    )
+                ],
             )
 
         try:
