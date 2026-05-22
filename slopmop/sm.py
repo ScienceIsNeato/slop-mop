@@ -649,13 +649,15 @@ def _add_gang_parser(
     """Add the gang subcommand parser."""
     gang_parser = subparsers.add_parser(
         "gang",
-        help="Press-gang shell commands into seamanship — press system-wide intercepts",
+        help="Press-gang shell commands into service — install system-wide intercepts",
         description=(
-            "Press-gang forbidden instinct commands into sm equivalents. Presses "
-            "shell function intercepts (pytest, gh run, mypy, etc.) that seize "
-            "each command at the shell level and conscript it into the correct sm "
-            "rail, with a logged message. No command volunteers. Also presses "
-            "git_wrapper to block --no-verify bypass attempts."
+            "Press-gang: a Royal Navy practice of seizing men into service against "
+            "their will. Here, forbidden instinct commands (pytest, gh run, mypy, "
+            "etc.) are pressed — seized at the shell level and conscripted into the "
+            "correct sm rail. No command volunteers. Also installs git_wrapper to "
+            "block --no-verify bypass attempts.\n\n"
+            "'press' installs intercepts; 'discharge' (naval: dismissal from service) "
+            "removes them."
         ),
     )
     gang_subparsers = gang_parser.add_subparsers(
@@ -666,7 +668,7 @@ def _add_gang_parser(
     # gang press
     press_p = gang_subparsers.add_parser(
         "press",
-        help="Press aliases.sh + git_wrapper.sh system-wide",
+        help="Install (press) aliases.sh + git_wrapper.sh system-wide",
     )
     press_p.add_argument(
         "--confirm",
@@ -679,7 +681,7 @@ def _add_gang_parser(
     # gang discharge
     gang_subparsers.add_parser(
         "discharge",
-        help="Remove all gang artifacts and rc file entries",
+        help="Discharge all pressed commands — remove gang artifacts from rc files",
     )
 
     # gang status

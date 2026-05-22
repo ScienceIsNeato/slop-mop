@@ -41,9 +41,9 @@ when your impulse is the left column, run the right column instead.
 - **NEVER** bypass or silence a failing check.  If a gate is wrong,
   fix the gate.  If your env is wrong, `sm doctor` will tell you.
 - **On a press-ganged machine** these rules are enforced at the shell level:
-  `sm gang press` press-gangs commands — presses function intercepts that seize
-  forbidden instinct commands and conscript them into sm equivalents automatically,
-  blocking bypass attempts.
+  `sm gang press` installs system-wide command intercepts that conscript forbidden
+  tools into sm equivalents automatically, blocking bypass attempts.
+  (`press` = Royal Navy term for forcible conscription; `sm gang discharge` removes them.)
 
 ### The loop
 

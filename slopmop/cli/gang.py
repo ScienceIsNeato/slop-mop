@@ -6,8 +6,13 @@ on each intercept.  No command volunteers; each is pressed into service at
 the shell level, machine-wide — like a press-gang seizing sailors and
 forcing them aboard.
 
+Historical note: a press gang was a squad authorized by the Royal Navy to
+forcibly conscript ("press") men into naval service against their will.
+``sm gang press`` does the same to raw tool commands; ``sm gang discharge``
+releases them — the naval term for dismissal from service.
+
 Also absorbs the former ``sm commit-hooks install --deep`` functionality:
-presses ``git_wrapper.sh`` to ``~/.slopmop/bin/`` and wires the shell alias.
+installs ``git_wrapper.sh`` to ``~/.slopmop/bin/`` and wires the shell alias.
 
 All writes are SHA256-guarded: files are only touched when content changes.
 """
@@ -380,7 +385,7 @@ def _gang_press(confirm: str = "") -> int:
     shell = os.environ.get("SHELL", "")
     if "fish" in shell:
         print(
-            "⚠️  Fish shell detected. sm gang presses bash/zsh intercepts only — "
+            "⚠️  Fish shell detected. sm gang installs bash/zsh intercepts only — "
             "fish sessions will not be press-ganged. "
             "Run 'sm gang press' from bash or zsh to wire those shells."
         )
@@ -545,7 +550,7 @@ def _gang_status() -> int:
     )
     print()
     print("Commands:")
-    print("  sm gang press      # press intercepts (requires --confirm)")
+    print("  sm gang press      # install intercepts (requires --confirm)")
     print("  sm gang discharge  # remove all artifacts")
     print("  sm gang list       # show active intercept counts")
     print()
@@ -573,7 +578,7 @@ def _gang_list() -> int:
     print(f"  {npx_count} npx intercept(s)")
     print()
     print("Commands:")
-    print("  sm gang press      # press intercepts (requires --confirm)")
+    print("  sm gang press      # install intercepts (requires --confirm)")
     print("  sm gang discharge  # remove all artifacts")
     print("  sm gang status     # check installation")
     print()
