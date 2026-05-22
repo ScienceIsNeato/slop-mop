@@ -57,7 +57,13 @@ PRResolutionSource = Literal["explicit", "branch", "configured", "latest_open"]
 
 def _run_gh(args: list[str]) -> str:
     cmd = ["gh", *args]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        raise TriageError(
+            "gh CLI not found. Install it from https://cli.github.com/ "
+            "and run 'gh auth login' to authenticate."
+        )
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
         raise TriageError(f"gh command failed: {' '.join(cmd)}\n{stderr}")
