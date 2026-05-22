@@ -49,7 +49,12 @@ class TestRailHelpers:
         assert normalized == {"status": "FAILED", "gate": "g1", "detail": "e1"}
         assert rail.format_actionable_line(normalized) == "- FAILED: g1 :: e1"
 
-        row_with_output = {"status": "failed", "name": "g5", "error": "e5", "output": "line1\nline2"}
+        row_with_output = {
+            "status": "failed",
+            "name": "g5",
+            "error": "e5",
+            "output": "line1\nline2",
+        }
         norm_with_output = rail.normalize_actionable_row(row_with_output)
         assert norm_with_output["output"] == "line1\nline2"
 
@@ -690,7 +695,6 @@ class TestScanTriageInternals:
         assert "src/foo.py:10: E501 line too long" in out
         assert "src/foo.py:20: W291 trailing whitespace" in out
 
-
         doc = {
             "summary": {"failed": 2, "errors": 0, "warned": 0, "all_passed": False},
             "results": [
@@ -741,7 +745,10 @@ class TestScanTriageInternals:
             show_low_coverage=False,
             pr_number=84,
         )
-        assert payload["actionable"][0]["output"] == "foo.py:1: E501 line too long\nfoo.py:2: W291 trailing whitespace"
+        assert (
+            payload["actionable"][0]["output"]
+            == "foo.py:1: E501 line too long\nfoo.py:2: W291 trailing whitespace"
+        )
 
     def test_write_json_out(self, tmp_path):
         target = tmp_path / "triage.json"

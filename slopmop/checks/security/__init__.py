@@ -503,9 +503,18 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             ):
                 return True
             _PUBLIC_ID_TOKENS = {
-                "account_id", "accountid", "zone_id", "zoneid",
-                "project_id", "projectid", "org_id", "orgid",
-                "tenant_id", "tenantid", "workspace_id", "workspaceid",
+                "account_id",
+                "accountid",
+                "zone_id",
+                "zoneid",
+                "project_id",
+                "projectid",
+                "org_id",
+                "orgid",
+                "tenant_id",
+                "tenantid",
+                "workspace_id",
+                "workspaceid",
             }
             if any(tok in _PUBLIC_ID_TOKENS for tok in tokens):
                 return True
@@ -1174,6 +1183,27 @@ class SecurityCheck(SecurityLocalCheck):
             or bool(SecurityCheck._find_requirements_files(project_root))
         )
 
+    def _pip_audit_resolve_req_files(
+        self, project_root: str
+    ) -> "tuple[list[str], SecuritySubResult | None]":
+        """Return (req_files, None) when files exist; ([], skip_result) otherwise."""
+        req_files = self._find_requirements_files(project_root)
+        if req_files:
+            return req_files, None
+        if self._project_has_python_manifest(project_root):
+            return [], SecuritySubResult(
+                "pip-audit",
+                True,
+                "No requirements.txt found; activate a virtual environment "
+                "for pip-audit to scan pyproject.toml/setup.py projects — "
+                "pip-audit skipped",
+            )
+        return [], SecuritySubResult(
+            "pip-audit",
+            True,
+            "No Python dependency manifest found — pip-audit skipped",
+        )
+
     def _run_pip_audit(self, project_root: str) -> SecuritySubResult:
         """Run pip-audit dependency vulnerability scan.
 
@@ -1205,13 +1235,9 @@ class SecurityCheck(SecurityLocalCheck):
             cmd.extend(["--ignore-vuln", vuln_id])
 
         if not has_own_env:
-            req_files = self._find_requirements_files(project_root)
-            if not req_files:
-                return SecuritySubResult(
-                    "pip-audit",
-                    True,
-                    "No Python dependency manifest found — pip-audit skipped",
-                )
+            req_files, skip = self._pip_audit_resolve_req_files(project_root)
+            if skip is not None:
+                return skip
             for req_file in req_files:
                 cmd.extend(["-r", req_file])
 

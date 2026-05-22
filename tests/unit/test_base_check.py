@@ -15,7 +15,6 @@ from slopmop.checks.base import (
 from slopmop.checks.mixins import (
     JavaScriptCheckMixin,
     PythonCheckMixin,
-    _git_tracked_python_files_exist,
     has_python_source_files,
 )
 from slopmop.core.result import CheckResult, CheckStatus
@@ -464,7 +463,9 @@ class TestPythonCheckMixin:
         )
         assert has_python_source_files(tmp_path) is False
 
-    def test_has_python_source_files_git_detects_tracked_py(self, tmp_path, monkeypatch):
+    def test_has_python_source_files_git_detects_tracked_py(
+        self, tmp_path, monkeypatch
+    ):
         """Returns True when git ls-files reports tracked .py files."""
         from slopmop.checks import mixins as mixins_mod
 
@@ -475,7 +476,9 @@ class TestPythonCheckMixin:
         )
         assert has_python_source_files(tmp_path) is True
 
-    def test_has_python_source_files_falls_back_when_git_unavailable(self, tmp_path, monkeypatch):
+    def test_has_python_source_files_falls_back_when_git_unavailable(
+        self, tmp_path, monkeypatch
+    ):
         """Falls back to os.walk when git is unavailable."""
         from slopmop.checks import mixins as mixins_mod
 

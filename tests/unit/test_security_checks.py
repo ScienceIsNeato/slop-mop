@@ -1,8 +1,6 @@
 """Tests for security checks (bandit, semgrep, detect-secrets)."""
 
 import json
-from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 from slopmop.checks.security import (
@@ -662,8 +660,24 @@ class TestRunPipAudit:
         assert result.passed is True
         assert "skipped" in result.findings
 
-    def test_pip_audit_uses_requirements_flag_when_no_venv(self, tmp_path):
+    def test_pip_audit_skipped_with_accurate_message_when_pyproject_but_no_req(
+        self, tmp_path, monkeypatch
+    ):
+        """Accurate skip message when pyproject.toml exists but no requirements.txt."""
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        (tmp_path / "pyproject.toml").write_text("[build-system]\n")
+        check = SecurityCheck({})
+        with patch.object(check, "_run_command") as mock_cmd:
+            result = check._run_pip_audit(str(tmp_path))
+
+        mock_cmd.assert_not_called()
+        assert result.passed is True
+        assert "virtual environment" in result.findings
+        assert "pyproject.toml" in result.findings
+
+    def test_pip_audit_uses_requirements_flag_when_no_venv(self, tmp_path, monkeypatch):
         """When no project venv but requirements.txt exists, -r flag is used."""
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
         req = tmp_path / "requirements.txt"
         req.write_text("requests>=2.31.0\n")
         check = SecurityCheck({})
@@ -678,8 +692,9 @@ class TestRunPipAudit:
         assert "-r" in cmd_used
         assert str(req) in cmd_used
 
-    def test_pip_audit_uses_requirements_dir(self, tmp_path):
+    def test_pip_audit_uses_requirements_dir(self, tmp_path, monkeypatch):
         """Requirements files inside a requirements/ subdirectory are picked up."""
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
         req_dir = tmp_path / "requirements"
         req_dir.mkdir()
         base = req_dir / "base.txt"
