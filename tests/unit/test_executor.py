@@ -125,6 +125,24 @@ class TestCheckExecutor:
         assert check_class1.run_count == 1
         assert check_class2.run_count == 1
 
+    def test_concurrent_futures_wait_not_keys(self, tmp_path):
+        """Regression: executor must call concurrent.futures.wait(futures.keys(), ...)
+        not concurrent.futures.keys() (which raises AttributeError on the module).
+
+        Original bug: 'done, _ = concurrent.futures.keys()' caused an AttributeError
+        that crashed the executor loop when running multiple concurrent checks.
+        """
+        registry = CheckRegistry()
+        for i in range(4):
+            registry.register(make_mock_check_class(f"gate{i}", duration=0.01))
+        names = [f"overconfidence:gate{i}" for i in range(4)]
+
+        executor = CheckExecutor(registry=registry, fail_fast=False)
+        summary = executor.run_checks(str(tmp_path), names)
+
+        assert summary.total_checks == 4
+        assert summary.passed == 4
+
     def test_fail_fast_stops_on_failure(self, tmp_path):
         """Test fail-fast mode stops after first failure."""
         registry = CheckRegistry()
