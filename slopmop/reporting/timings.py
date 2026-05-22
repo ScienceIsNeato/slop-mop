@@ -57,6 +57,12 @@ MAX_AGE_DAYS = 30
 # concluding they were drawn from fundamentally different processes.
 _CACHE_POISON_RATIO = 10.0  # new_duration / max(history) must meet this threshold
 
+# Number of most-recent samples used to compute median / Q1 / Q3 / IQR.
+# Keeping this smaller than MAX_SAMPLES lets the expected-duration estimate
+# adapt quickly to a growing codebase without discarding the full history
+# (which is still used for sparklines and cache-poison detection).
+MEDIAN_WINDOW = 15
+
 TIMINGS_DIR = ".slopmop"
 TIMINGS_FILE = "timings.json"
 
@@ -261,21 +267,27 @@ def _compute_stats(
         TimingStats with median, q1, q3, iqr, historical_max, etc.
     """
     n = len(samples)
-    sorted_s = sorted(samples)
+    hist_max = max(samples)
+
+    # Use only the most-recent MEDIAN_WINDOW samples for percentile stats so
+    # that expected-duration estimates adapt when the codebase grows, without
+    # waiting for all 50 stored samples to "age out" of the bimodal history.
+    window = samples[-MEDIAN_WINDOW:] if n > MEDIAN_WINDOW else samples
+    wn = len(window)
+    sorted_s = sorted(window)
     med = statistics.median(sorted_s)
 
-    if n < 2:
+    if wn < 2:
         q1_val = med
         q3_val = med
     else:
-        mid = n // 2
+        mid = wn // 2
         lower = sorted_s[:mid]
-        upper = sorted_s[mid:] if n % 2 == 0 else sorted_s[mid + 1 :]
+        upper = sorted_s[mid:] if wn % 2 == 0 else sorted_s[mid + 1 :]
         q1_val = statistics.median(lower) if lower else med
         q3_val = statistics.median(upper) if upper else med
 
     iqr_val = q3_val - q1_val
-    hist_max = max(samples)
 
     return TimingStats(
         median=round(med, 3),

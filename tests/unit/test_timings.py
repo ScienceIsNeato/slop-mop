@@ -8,6 +8,7 @@ from slopmop.reporting.timings import (
     MAX_AGE_DAYS,
     MAX_ENTRIES,
     MAX_SAMPLES,
+    MEDIAN_WINDOW,
     TIMINGS_DIR,
     TIMINGS_FILE,
     TimingStats,
@@ -100,6 +101,26 @@ class TestTimingStats:
         stats = _compute_stats([1.1111, 2.2222, 3.3333])
         assert isinstance(stats.samples, tuple)
         assert stats.samples == (1.111, 2.222, 3.333)
+
+    def test_compute_stats_windowed_median(self) -> None:
+        """Median is computed from the most-recent MEDIAN_WINDOW samples only.
+
+        Regression guard for barnacle #196: old fast samples from a smaller
+        codebase should not pull the expected-duration estimate down when
+        recent runs are consistently slower.
+        """
+        fast = [0.5] * 20  # old fast samples (small codebase era)
+        slow = [30.0] * (MEDIAN_WINDOW + 5)  # recent slow samples (grown codebase)
+        all_samples = fast + slow
+        stats = _compute_stats(all_samples)
+        # median should reflect recent slow samples, not be pulled down by old fast ones
+        assert stats.median == 30.0
+        # historical_max must still reflect the full history (for cache-poison detection)
+        assert stats.historical_max == 30.0
+        # sample_count reflects total stored samples
+        assert stats.sample_count == len(all_samples)
+        # samples tuple includes full history for sparkline rendering
+        assert len(stats.samples) == len(all_samples)
 
     def test_sparkline_returns_empty_for_single_sample(self) -> None:
         """sparkline needs at least 2 samples."""
