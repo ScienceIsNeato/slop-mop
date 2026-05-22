@@ -1163,22 +1163,37 @@ class SecurityCheck(SecurityLocalCheck):
         pip-audit is fast (~1s), offline-capable, and uses the OSV database.
         Replaces safety which hangs on `safety scan` with no API key.
 
-        Unlike bandit and detect-secrets (which scan source *files*),
-        pip-audit audits the *installed packages* of whichever Python
-        runs it.  We therefore use the project's Python so that the
-        project's dependencies are inspected, not slop-mop's own.
+        When a project venv exists, pip-audit scans the installed environment.
+        When no project venv is found, pip-audit is invoked with -r <file> for
+        each requirements file found in the project.  This avoids auditing
+        slop-mop's own pipx environment instead of the project's dependencies.
+        If neither a venv nor any requirements files exist (e.g. a JS repo),
+        the sub-check is skipped with a passing result.
         """
-        cmd = [
-            self.get_project_python(project_root),
-            "-m",
-            "pip_audit",
-            "--format",
-            "json",
-        ]
+        from slopmop.checks.mixins import (
+            PYTHON_SOURCE_PROJECT_VENV,
+            PYTHON_SOURCE_VIRTUAL_ENV,
+            resolve_project_python,
+        )
 
+        python, source = resolve_project_python(project_root)
+        has_own_env = source in {PYTHON_SOURCE_PROJECT_VENV, PYTHON_SOURCE_VIRTUAL_ENV}
+
+        cmd = [python, "-m", "pip_audit", "--format", "json"]
         ignore_ids = self.config.get("pip_audit_ignore_vulns", [])
         for vuln_id in ignore_ids:
             cmd.extend(["--ignore-vuln", vuln_id])
+
+        if not has_own_env:
+            req_files = self._find_requirements_files(project_root)
+            if not req_files:
+                return SecuritySubResult(
+                    "pip-audit",
+                    True,
+                    "No Python dependency manifest found — pip-audit skipped",
+                )
+            for req_file in req_files:
+                cmd.extend(["-r", req_file])
 
         result = self._run_command(cmd, cwd=project_root, timeout=30)
 
@@ -1235,3 +1250,20 @@ class SecurityCheck(SecurityLocalCheck):
                 False,
                 result.output[-300:] if result.output else "pip-audit scan failed",
             )
+
+    @staticmethod
+    def _find_requirements_files(project_root: str) -> List[str]:
+        """Return paths of requirements files in *project_root*, if any.
+
+        Checks requirements.txt at root and any *.txt inside a requirements/
+        subdirectory — the two most common patterns in Python projects.
+        """
+        root = Path(project_root)
+        found: List[str] = []
+        top_level = root / "requirements.txt"
+        if top_level.exists():
+            found.append(str(top_level))
+        req_dir = root / "requirements"
+        if req_dir.is_dir():
+            found.extend(str(p) for p in sorted(req_dir.glob("*.txt")))
+        return found

@@ -1087,6 +1087,7 @@ class TestRunPipAudit:
 
     def test_pip_audit_no_vulnerabilities(self, tmp_path):
         """Test _run_pip_audit with no vulnerable dependencies."""
+        (tmp_path / "requirements.txt").write_text("requests>=2.31.0\n")
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
@@ -1103,6 +1104,7 @@ class TestRunPipAudit:
 
     def test_pip_audit_with_vulnerabilities(self, tmp_path):
         """Test _run_pip_audit with vulnerabilities found."""
+        (tmp_path / "requirements.txt").write_text("requests>=2.25.0\n")
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = False
@@ -1132,6 +1134,7 @@ class TestRunPipAudit:
 
     def test_pip_audit_with_no_fix_versions_warns(self, tmp_path):
         """No-fix advisories should warn without blocking the gate."""
+        (tmp_path / "requirements.txt").write_text("pygments>=2.19.2\n")
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = False
@@ -1162,6 +1165,7 @@ class TestRunPipAudit:
 
     def test_pip_audit_empty_dependencies(self, tmp_path):
         """Test _run_pip_audit with no dependencies listed."""
+        (tmp_path / "requirements.txt").write_text("")
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
@@ -1174,6 +1178,7 @@ class TestRunPipAudit:
 
     def test_pip_audit_json_error(self, tmp_path):
         """Test _run_pip_audit handles JSON parse errors."""
+        (tmp_path / "requirements.txt").write_text("requests>=2.31.0\n")
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = False
@@ -1187,6 +1192,7 @@ class TestRunPipAudit:
 
     def test_pip_audit_json_error_success(self, tmp_path):
         """Test _run_pip_audit JSON error on successful return."""
+        (tmp_path / "requirements.txt").write_text("requests>=2.31.0\n")
         check = SecurityCheck({})
         mock_result = MagicMock()
         mock_result.success = True
@@ -1227,3 +1233,79 @@ class TestRunPipAudit:
         assert cmd_used[0] == str(
             fake_python
         ), f"Expected project Python {fake_python}, got {cmd_used[0]}"
+        # With a project venv, environment-scan mode: no -r flag
+        assert "-r" not in cmd_used
+
+    def test_pip_audit_skipped_when_no_manifest(self, tmp_path):
+        """When no project venv and no requirements files, pip-audit is skipped."""
+        check = SecurityCheck({})
+        with patch.object(check, "_run_command") as mock_cmd:
+            result = check._run_pip_audit(str(tmp_path))
+
+        mock_cmd.assert_not_called()
+        assert result.passed is True
+        assert "skipped" in result.findings
+
+    def test_pip_audit_uses_requirements_flag_when_no_venv(self, tmp_path):
+        """When no project venv but requirements.txt exists, -r flag is used."""
+        req = tmp_path / "requirements.txt"
+        req.write_text("requests>=2.31.0\n")
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = json.dumps({"dependencies": []})
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
+            check._run_pip_audit(str(tmp_path))
+
+        cmd_used = mock_cmd.call_args[0][0]
+        assert "-r" in cmd_used
+        assert str(req) in cmd_used
+
+    def test_pip_audit_uses_requirements_dir(self, tmp_path):
+        """Requirements files inside a requirements/ subdirectory are picked up."""
+        req_dir = tmp_path / "requirements"
+        req_dir.mkdir()
+        base = req_dir / "base.txt"
+        base.write_text("requests>=2.31.0\n")
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = json.dumps({"dependencies": []})
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
+            check._run_pip_audit(str(tmp_path))
+
+        cmd_used = mock_cmd.call_args[0][0]
+        assert str(base) in cmd_used
+
+
+class TestFindRequirementsFiles:
+    """Tests for SecurityCheck._find_requirements_files."""
+
+    def test_finds_root_requirements_txt(self, tmp_path):
+        req = tmp_path / "requirements.txt"
+        req.write_text("")
+        assert SecurityCheck._find_requirements_files(str(tmp_path)) == [str(req)]
+
+    def test_finds_requirements_subdir(self, tmp_path):
+        req_dir = tmp_path / "requirements"
+        req_dir.mkdir()
+        base = req_dir / "base.txt"
+        dev = req_dir / "dev.txt"
+        base.write_text("")
+        dev.write_text("")
+        found = SecurityCheck._find_requirements_files(str(tmp_path))
+        assert str(base) in found
+        assert str(dev) in found
+
+    def test_returns_empty_when_no_manifests(self, tmp_path):
+        assert SecurityCheck._find_requirements_files(str(tmp_path)) == []
+
+    def test_root_and_subdir_both_returned(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text("")
+        req_dir = tmp_path / "requirements"
+        req_dir.mkdir()
+        (req_dir / "dev.txt").write_text("")
+        found = SecurityCheck._find_requirements_files(str(tmp_path))
+        assert len(found) == 2
