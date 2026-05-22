@@ -1224,8 +1224,13 @@ class SecurityCheck(SecurityLocalCheck):
         )
 
         python, source = resolve_project_python(project_root)
+        venv_path = os.environ.get("VIRTUAL_ENV", "")
+        venv_is_project_local = bool(venv_path) and Path(venv_path).is_relative_to(
+            Path(project_root)
+        )
         has_own_env = source == PYTHON_SOURCE_PROJECT_VENV or (
             source == PYTHON_SOURCE_VIRTUAL_ENV
+            and venv_is_project_local
             and self._project_has_python_manifest(project_root)
         )
 

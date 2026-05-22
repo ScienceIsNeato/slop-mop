@@ -522,9 +522,23 @@ class TestPythonCheckMixin:
         (tmp_path / "setup.py").touch()
         assert self.mixin.is_python_project(str(tmp_path)) is True
 
-    def test_is_python_project_with_pyproject(self, tmp_path):
-        """Test is_python_project returns True with pyproject.toml."""
+    def test_is_python_project_with_pyproject_alone_is_not_python(self, tmp_path):
+        """pyproject.toml alone is not sufficient — TS/JS projects use it for tool config."""
         (tmp_path / "pyproject.toml").touch()
+        assert self.mixin.is_python_project(str(tmp_path)) is False
+
+    def test_is_python_project_pyproject_plus_py_files(self, tmp_path, monkeypatch):
+        """pyproject.toml plus tracked Python source IS a Python project."""
+        (tmp_path / "pyproject.toml").touch()
+        py_file = tmp_path / "main.py"
+        py_file.touch()
+        from slopmop.checks import mixins as mixins_mod
+
+        monkeypatch.setattr(
+            mixins_mod,
+            "_git_tracked_python_files_exist",
+            lambda root: True,
+        )
         assert self.mixin.is_python_project(str(tmp_path)) is True
 
     def test_is_python_project_false_with_requirements_only(self, tmp_path):

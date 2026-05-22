@@ -733,11 +733,11 @@ class TestRunPipAudit:
         assert result.passed is True
         assert "skipped" in result.findings
 
-    def test_pip_audit_uses_virtual_env_when_project_has_manifest(
+    def test_pip_audit_uses_req_files_when_virtual_env_not_project_local(
         self, tmp_path, monkeypatch
     ):
-        """VIRTUAL_ENV is used for scanning when the project has a requirements.txt."""
-        fake_venv = tmp_path / "project_env"
+        """VIRTUAL_ENV outside the project root is not the project's env; use -r."""
+        fake_venv = tmp_path / "pipx_env"
         fake_venv_bin = fake_venv / "bin"
         fake_venv_bin.mkdir(parents=True)
         fake_python = fake_venv_bin / "python"
@@ -754,9 +754,33 @@ class TestRunPipAudit:
         mock_result.success = True
         mock_result.stdout = '{"dependencies": []}'
         with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
-            result = check._run_pip_audit(str(project))
+            check._run_pip_audit(str(project))
 
-        assert mock_cmd.called
+        cmd_used = mock_cmd.call_args[0][0]
+        assert "-r" in cmd_used
+
+    def test_pip_audit_uses_virtual_env_when_venv_is_project_local(
+        self, tmp_path, monkeypatch
+    ):
+        """VIRTUAL_ENV inside the project root is the project's env; scan it directly."""
+        project = tmp_path / "py_project"
+        project.mkdir()
+        (project / "requirements.txt").write_text("requests>=2.31.0\n")
+
+        project_venv = project / "custom_venv"
+        venv_bin = project_venv / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "python").write_text("#!/bin/sh")
+        (venv_bin / "python").chmod(0o755)
+
+        monkeypatch.setenv("VIRTUAL_ENV", str(project_venv))
+        check = SecurityCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = '{"dependencies": []}'
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_cmd:
+            check._run_pip_audit(str(project))
+
         cmd_used = mock_cmd.call_args[0][0]
         assert "-r" not in cmd_used
 

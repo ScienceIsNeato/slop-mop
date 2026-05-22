@@ -149,13 +149,13 @@ def looks_like_python_project(project_root: str | Path) -> bool:
     """Return True for repos with strong Python evidence.
 
     ``requirements.txt`` alone is too weak: JS/TS repos often carry one for
-    incidental tooling. Runtime Python gates should matter when we see Python
-    source, or one of the strong Python manifests.
+    incidental tooling. ``pyproject.toml`` alone is also too weak: many
+    non-Python repos use it for tool configuration (black, mypy, etc.).
+    Runtime Python gates should fire when we see tracked Python source, or one
+    of the unambiguously Python manifests (setup.py, Pipfile).
     """
     root = Path(project_root)
-    if any(
-        (root / marker).exists() for marker in ("setup.py", "pyproject.toml", "Pipfile")
-    ):
+    if any((root / marker).exists() for marker in ("setup.py", "Pipfile")):
         return True
     return has_python_source_files(root)
 
