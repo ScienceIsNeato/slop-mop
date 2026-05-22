@@ -1157,6 +1157,16 @@ class SecurityCheck(SecurityLocalCheck):
             )
         return SecuritySubResult("pip-audit", False, detail, sarif)
 
+    @staticmethod
+    def _project_has_python_manifest(project_root: str) -> bool:
+        """Return True when the project has any Python dependency manifest."""
+        root = Path(project_root)
+        return (
+            (root / "pyproject.toml").exists()
+            or (root / "setup.py").exists()
+            or bool(SecurityCheck._find_requirements_files(project_root))
+        )
+
     def _run_pip_audit(self, project_root: str) -> SecuritySubResult:
         """Run pip-audit dependency vulnerability scan.
 
@@ -1177,7 +1187,10 @@ class SecurityCheck(SecurityLocalCheck):
         )
 
         python, source = resolve_project_python(project_root)
-        has_own_env = source in {PYTHON_SOURCE_PROJECT_VENV, PYTHON_SOURCE_VIRTUAL_ENV}
+        has_own_env = source == PYTHON_SOURCE_PROJECT_VENV or (
+            source == PYTHON_SOURCE_VIRTUAL_ENV
+            and self._project_has_python_manifest(project_root)
+        )
 
         cmd = [python, "-m", "pip_audit", "--format", "json"]
         ignore_ids = self.config.get("pip_audit_ignore_vulns", [])
