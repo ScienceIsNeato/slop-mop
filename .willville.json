@@ -29,5 +29,17 @@
     "milestone": "v1.1 release",
     "eta_days": 2,
     "priority": 1
+  },
+  "agent": {
+    "status": "Initial Willville packet check-in",
+    "direction": "Establish committed per-repo status source",
+    "difficulties": "None",
+    "needs_human": "None",
+    "last_update": "2026-05-22T14:00:00Z",
+    "actions": [
+      { "name": "Created .willville.json", "status": "done" },
+      { "name": "Opened initial check-in branch", "status": "done" },
+      { "name": "Push branch for review", "status": "planned" }
+    ]
   }
 }
