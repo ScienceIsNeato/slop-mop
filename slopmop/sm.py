@@ -649,12 +649,12 @@ def _add_gang_parser(
     """Add the gang subcommand parser."""
     gang_parser = subparsers.add_parser(
         "gang",
-        help="Press-gang shell commands into seamanship — install system-wide intercepts",
+        help="Press-gang shell commands into seamanship — press system-wide intercepts",
         description=(
-            "Press-gang forbidden instinct commands into sm equivalents. Installs "
+            "Press-gang forbidden instinct commands into sm equivalents. Presses "
             "shell function intercepts (pytest, gh run, mypy, etc.) that seize "
             "each command at the shell level and conscript it into the correct sm "
-            "rail, with a logged message. No command volunteers. Also installs "
+            "rail, with a logged message. No command volunteers. Also presses "
             "git_wrapper to block --no-verify bypass attempts."
         ),
     )
@@ -663,12 +663,12 @@ def _add_gang_parser(
         help="Gang action",
     )
 
-    # gang install
-    install_p = gang_subparsers.add_parser(
-        "install",
-        help="Install aliases.sh + git_wrapper.sh system-wide",
+    # gang press
+    press_p = gang_subparsers.add_parser(
+        "press",
+        help="Press aliases.sh + git_wrapper.sh system-wide",
     )
-    install_p.add_argument(
+    press_p.add_argument(
         "--confirm",
         type=str,
         default="",
@@ -676,9 +676,9 @@ def _add_gang_parser(
         help="Required confirmation phrase (see output when omitted)",
     )
 
-    # gang uninstall
+    # gang discharge
     gang_subparsers.add_parser(
-        "uninstall",
+        "discharge",
         help="Remove all gang artifacts and rc file entries",
     )
 

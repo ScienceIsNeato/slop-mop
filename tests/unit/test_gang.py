@@ -1,4 +1,4 @@
-"""Tests for sm gang — command intercept alias install/uninstall/status/list."""
+"""Tests for sm gang — command intercept alias press/discharge/status/list."""
 
 import argparse
 import importlib.resources
@@ -14,10 +14,10 @@ from slopmop.cli.gang import (
     GANG_CONFIRM_PHRASE,
     GANG_END_MARKER,
     GANG_MARKER,
-    _gang_install,
+    _gang_discharge,
     _gang_list,
+    _gang_press,
     _gang_status,
-    _gang_uninstall,
     _generate_aliases_sh,
     _strip_marker_block,
     _validate_bash_syntax,
@@ -217,18 +217,18 @@ class TestStripMarkerBlock:
         assert result == content
 
 
-class TestGangInstall:
-    """Tests for _gang_install."""
+class TestGangPress:
+    """Tests for _gang_press."""
 
     def test_no_confirm_returns_1(self, capsys: object) -> None:
-        result = _gang_install(confirm="")
+        result = _gang_press(confirm="")
         assert result == 1
         out = capsys.readouterr().out  # type: ignore[union-attr]  # type: ignore[union-attr]
         assert "confirmation" in out.lower()  # type: ignore[union-attr]
         assert GANG_CONFIRM_PHRASE in out
 
     def test_wrong_confirm_blocked(self) -> None:
-        result = _gang_install(confirm="sure whatever")
+        result = _gang_press(confirm="sure whatever")
         assert result == 1
 
     def test_correct_confirm_writes_files(self, tmp_path: Path) -> None:
@@ -241,7 +241,7 @@ class TestGangInstall:
             patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
             patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
         ):
-            result = _gang_install(confirm=GANG_CONFIRM_PHRASE)
+            result = _gang_press(confirm=GANG_CONFIRM_PHRASE)
 
         assert result == 0
         assert fake_aliases.exists()
@@ -254,7 +254,7 @@ class TestGangInstall:
         assert "# existing rc content" in rc_text  # original preserved
 
     def test_git_wrapper_is_executable(self, tmp_path: Path) -> None:
-        """Installed git_wrapper.sh has execute bits set."""
+        """Pressed git_wrapper.sh has execute bits set."""
         fake_slopmop, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
 
         with (
@@ -263,14 +263,14 @@ class TestGangInstall:
             patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
             patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
         ):
-            _gang_install(confirm=GANG_CONFIRM_PHRASE)
+            _gang_press(confirm=GANG_CONFIRM_PHRASE)
 
         assert fake_wrapper.stat().st_mode & stat.S_IXUSR
 
     def test_idempotent_aliases_no_rewrites(
         self, tmp_path: Path, capsys: object
     ) -> None:
-        """Second install with identical content skips writes and rc insertion."""
+        """Second press with identical content skips writes and rc insertion."""
         from slopmop import __version__
 
         fake_slopmop, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
@@ -294,7 +294,7 @@ class TestGangInstall:
             patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
             patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
         ):
-            result = _gang_install(confirm=GANG_CONFIRM_PHRASE)
+            result = _gang_press(confirm=GANG_CONFIRM_PHRASE)
 
         assert result == 0
         out = capsys.readouterr().out  # type: ignore[union-attr]  # type: ignore[union-attr]
@@ -302,7 +302,7 @@ class TestGangInstall:
         assert "already present" in out
 
     def test_rc_not_duplicated_on_repeat(self, tmp_path: Path) -> None:
-        """The gang rc block is only appended once even after repeated installs."""
+        """The gang rc block is only appended once even after repeated presses."""
         fake_slopmop, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
 
         with (
@@ -311,18 +311,18 @@ class TestGangInstall:
             patch("slopmop.cli.gang._ALIASES_DEST", fake_aliases),
             patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
         ):
-            _gang_install(confirm=GANG_CONFIRM_PHRASE)
-            _gang_install(confirm=GANG_CONFIRM_PHRASE)
+            _gang_press(confirm=GANG_CONFIRM_PHRASE)
+            _gang_press(confirm=GANG_CONFIRM_PHRASE)
 
         rc_text = fake_rc.read_text()
         assert rc_text.count(GANG_MARKER) == 1
 
 
-# ── _gang_uninstall ───────────────────────────────────────────────────────────
+# ── _gang_discharge ───────────────────────────────────────────────────────────
 
 
-class TestGangUninstall:
-    """Tests for _gang_uninstall."""
+class TestGangDischarge:
+    """Tests for _gang_discharge."""
 
     def test_removes_aliases_and_wrapper(self, tmp_path: Path) -> None:
         _, fake_wrapper, fake_aliases, _ = _make_fake_env(tmp_path)
@@ -336,14 +336,14 @@ class TestGangUninstall:
             patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
             patch("slopmop.cli.gang._rc_candidates", return_value=[]),
         ):
-            result = _gang_uninstall()
+            result = _gang_discharge()
 
         assert result == 0
         assert not fake_aliases.exists()
         assert not fake_wrapper.exists()
 
     def test_strips_gang_block_from_rc(self, tmp_path: Path) -> None:
-        """Uninstall removes the GANG_MARKER block from rc files."""
+        """Discharge removes the GANG_MARKER block from rc files."""
         _, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
         fake_rc.write_text(
             "# before\n"
@@ -358,7 +358,7 @@ class TestGangUninstall:
             patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
             patch("slopmop.cli.gang._rc_candidates", return_value=[fake_rc]),
         ):
-            result = _gang_uninstall()
+            result = _gang_discharge()
 
         assert result == 0
         rc_text = fake_rc.read_text()
@@ -367,7 +367,7 @@ class TestGangUninstall:
         assert "# after" in rc_text
 
     def test_strips_legacy_deep_hook_block(self, tmp_path: Path) -> None:
-        """Uninstall also strips the old deep-hooks marker block for migration."""
+        """Discharge also strips the old deep-hooks marker block for migration."""
         _, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
         fake_rc.write_text(
             f"{_LEGACY_MARKER}\n"
@@ -380,7 +380,7 @@ class TestGangUninstall:
             patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
             patch("slopmop.cli.gang._rc_candidates", return_value=[fake_rc]),
         ):
-            result = _gang_uninstall()
+            result = _gang_discharge()
 
         assert result == 0
         rc_text = fake_rc.read_text()
@@ -398,14 +398,14 @@ class TestGangUninstall:
             patch("slopmop.cli.gang._WRAPPER_DEST", fake_wrapper),
             patch("slopmop.cli.gang._rc_candidates", return_value=[]),
         ):
-            result = _gang_uninstall()
+            result = _gang_discharge()
 
         assert result == 0
         out = capsys.readouterr().out  # type: ignore[union-attr]  # type: ignore[union-attr]
         assert "not found" in out
 
-    def test_uninstall_leaves_rc_byte_identical(self, tmp_path: Path) -> None:
-        """Install then uninstall leaves the rc file byte-for-byte identical to the original."""
+    def test_discharge_leaves_rc_byte_identical(self, tmp_path: Path) -> None:
+        """Press then discharge leaves the rc file byte-for-byte identical to the original."""
         fake_slopmop, fake_wrapper, fake_aliases, fake_rc = _make_fake_env(tmp_path)
         original = fake_rc.read_bytes()
 
@@ -416,8 +416,8 @@ class TestGangUninstall:
             patch("slopmop.cli.gang._get_rc_files", return_value=[fake_rc]),
             patch("slopmop.cli.gang._rc_candidates", return_value=[fake_rc]),
         ):
-            _gang_install(confirm=GANG_CONFIRM_PHRASE)
-            _gang_uninstall()
+            _gang_press(confirm=GANG_CONFIRM_PHRASE)
+            _gang_discharge()
 
         assert fake_rc.read_bytes() == original
 
@@ -525,10 +525,20 @@ class TestCmdGang:
         result = cmd_gang(args)
         assert result == 0
 
-    def test_dispatch_install_no_confirm(self) -> None:
-        args = argparse.Namespace(gang_action="install", confirm="")
+    def test_dispatch_press_no_confirm(self) -> None:
+        args = argparse.Namespace(gang_action="press", confirm="")
         result = cmd_gang(args)
         assert result == 1
+
+    def test_dispatch_discharge(self) -> None:
+        args = argparse.Namespace(gang_action="discharge")
+        with (
+            patch("slopmop.cli.gang._ALIASES_DEST", Path("/nonexistent/aliases")),
+            patch("slopmop.cli.gang._WRAPPER_DEST", Path("/nonexistent/wrapper")),
+            patch("slopmop.cli.gang._rc_candidates", return_value=[]),
+        ):
+            result = cmd_gang(args)
+        assert result == 0
 
     def test_dispatch_unknown_action(self) -> None:
         args = argparse.Namespace(gang_action="explode")
