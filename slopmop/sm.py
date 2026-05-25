@@ -477,6 +477,7 @@ def _add_config_parser(
                 elif flag == "unset":
                     print(f"        sm config --unset <gate> <field>")
                 import sys
+
                 sys.exit(2)
         # Fall back to default error handling
         original_error(message)
@@ -1107,6 +1108,7 @@ def create_parser() -> argparse.ArgumentParser:
                 elif flag == "unset":
                     print(f"        sm config --unset <gate> <field>")
                 import sys
+
                 sys.exit(2)
         # Fall back to default error handling
         original_error(message)

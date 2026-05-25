@@ -376,8 +376,12 @@ def _enable_gate(
         reason = check.skip_reason(str(project_root))
         # Allow enabling if it's just a runtime context issue
         if "PR context" not in reason and "not on a PR" not in reason.lower():
-            print(f"❌ Cannot enable {gate_name}: not applicable for this repo ({reason})")
-            print("💡 If you've added a new language, re-run: sm init --non-interactive")
+            print(
+                f"❌ Cannot enable {gate_name}: not applicable for this repo ({reason})"
+            )
+            print(
+                "💡 If you've added a new language, re-run: sm init --non-interactive"
+            )
             return 1
 
     if not _is_gate_enabled(config, gate_name):
