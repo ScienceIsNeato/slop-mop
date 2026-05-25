@@ -24,6 +24,18 @@
     ],
     "updated": "2026-05-25"
   },
+  "agent": {
+    "status": "PR #221 buff complete — last review thread fixed and resolved",
+    "direction": "Unblock merge; fix was case-sensitive lowercase bug in gate check",
+    "difficulties": "None",
+    "needs_human": "None",
+    "last_update": "2026-05-25T09:15:00Z",
+    "actions": [
+      { "name": "Fixed case-sensitive PR context check (config.py:380)", "status": "done" },
+      { "name": "Resolved Bugbot thread PRRT_kwDORBxXu86EgBGI", "status": "done" },
+      { "name": "Merge PR #221", "status": "planned" }
+    ]
+  },
   "queue": {
     "active": true,
     "milestone": "v1.1 release",
