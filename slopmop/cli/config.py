@@ -113,6 +113,38 @@ def _gate_field_definition(
     return None
 
 
+def _format_available_fields(check: Any) -> str:
+    """Format available fields for a check into a readable string."""
+    from slopmop.checks.base import STANDARD_CONFIG_FIELDS
+
+    schema = check.get_full_config_schema()
+    standard_names = {f.name for f in STANDARD_CONFIG_FIELDS}
+
+    gate_fields = [f for f in schema if f.name not in standard_names]
+    standard_fields = [f for f in schema if f.name in standard_names]
+
+    lines: list[str] = []
+    if gate_fields:
+        lines.append("Gate-specific fields:")
+        for f in gate_fields:
+            field_type = getattr(f, "field_type", "string")
+            default = getattr(f, "default", None)
+            if default is not None:
+                lines.append(f"  • {f.name} ({field_type}, default: {default!r})")
+            else:
+                lines.append(f"  • {f.name} ({field_type})")
+
+    if standard_fields:
+        if gate_fields:
+            lines.append("")  # Blank line separator
+        lines.append("Standard fields (all gates have these):")
+        for f in standard_fields:
+            field_type = getattr(f, "field_type", "string")
+            lines.append(f"  • {f.name} ({field_type})")
+
+    return "\n".join(lines)
+
+
 def _parse_field_value(field: Any, raw_value: str) -> Any:
     """Parse a CLI string into the field's configured type."""
     field_type = getattr(field, "field_type", "string")
@@ -157,7 +189,14 @@ def _set_gate_field(
 
     field = _gate_field_definition(config, gate_name, field_name)
     if field is None:
-        print(f"❌ Unknown config field for {gate_name}: {field_name}")
+        registry = get_registry()
+        check = registry.get_check(gate_name, config)
+        if check is None:
+            print(_UNKNOWN_GATE_MSG.format(gate_name=gate_name))
+            return 1
+        print(f"❌ Unknown config field for {gate_name}: {field_name}\n")
+        print(_format_available_fields(check))
+        print(f"\n💡 Try: sm config --set {gate_name} <field> <value>")
         return 1
 
     try:
@@ -192,7 +231,14 @@ def _unset_gate_field(
 
     field = _gate_field_definition(config, gate_name, field_name)
     if field is None:
-        print(f"❌ Unknown config field for {gate_name}: {field_name}")
+        registry = get_registry()
+        check = registry.get_check(gate_name, config)
+        if check is None:
+            print(_UNKNOWN_GATE_MSG.format(gate_name=gate_name))
+            return 1
+        print(f"❌ Unknown config field for {gate_name}: {field_name}\n")
+        print(_format_available_fields(check))
+        print(f"\n💡 Try: sm config --unset {gate_name} <field>")
         return 1
 
     gate_cfg = _gate_cfg_dict(config, gate_name)
@@ -324,11 +370,21 @@ def _enable_gate(
     if check is None:
         print(_UNKNOWN_GATE_MSG.format(gate_name=gate_name))
         return 1
+
+    # Only block enabling if the gate is fundamentally not applicable to this project
+    # (e.g., a Python gate when there's no Python code). But allow enabling gates
+    # that depend on runtime context (e.g., PR context) - they'll just skip if needed.
     if not check.is_applicable(str(project_root)):
         reason = check.skip_reason(str(project_root))
-        print(f"❌ Cannot enable {gate_name}: not applicable for this repo ({reason})")
-        print("💡 If you've added a new language, re-run: sm init --non-interactive")
-        return 1
+        # Allow enabling if it's just a runtime context issue
+        if "PR context" not in reason and "not on a pr" not in reason.lower():
+            print(
+                f"❌ Cannot enable {gate_name}: not applicable for this repo ({reason})"
+            )
+            print(
+                "💡 If you've added a new language, re-run: sm init --non-interactive"
+            )
+            return 1
 
     if not _is_gate_enabled(config, gate_name):
         _set_gate_enabled(config, gate_name, True)
@@ -593,9 +649,32 @@ def _show_usage_hints(project_root: Path, config: dict[str, Any]) -> int:
     print()
     print("Examples:")
     if checks:
-        example = checks[0]
-        print(f"  sm config --disable {example}")
-        print(f"  sm config --enable  {example}")
+        # Show first enabled and first disabled gate
+        enabled = [g for g in checks if _is_gate_enabled(config, g)]
+        disabled = [g for g in checks if not _is_gate_enabled(config, g)]
+
+        if enabled:
+            example = enabled[0]
+            print(f"  sm config --disable {example}")
+            check = registry.get_check(example, config)
+            if check is not None:
+                from slopmop.checks.base import STANDARD_CONFIG_FIELDS
+
+                standard_names = {f.name for f in STANDARD_CONFIG_FIELDS}
+                schema = check.get_full_config_schema()
+                gate_fields = [f for f in schema if f.name not in standard_names]
+                if gate_fields:
+                    f = gate_fields[0]
+                    if hasattr(f, "default"):
+                        val = f.default if f.default is not None else "value"
+                    else:
+                        val = "value"
+                    print(f"  sm config --set {example} {f.name} {val}")
+
+        if disabled:
+            example = disabled[0]
+            print(f"  sm config --enable {example}")
+
     print()
     print("Run 'sm config --show' to see all gates.")
     print()

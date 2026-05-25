@@ -385,3 +385,27 @@ class TestPythonLintFormatCheck:
         assert "--skip=migrations" in command
         assert "--skip=alembic" in command
         assert "--skip=ephemeral" in command
+
+    def test_check_flake8_unparseable_output_produces_finding(self, tmp_path):
+        """When flake8 output cannot be parsed with expected format, a Finding is returned."""
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="unparseable flake8 output: {corrupted format",
+            stderr="",
+            duration=1.0,
+        )
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result, findings = check._check_flake8(str(tmp_path))
+
+        # Must have at least one Finding (not an empty list)
+        assert findings, "Expected findings for unparseable flake8 output"
+        assert any(
+            "could not be parsed" in f.message for f in findings
+        ), "Expected 'could not be parsed' in finding message"
+        # Raw output should be included
+        assert any(
+            "corrupted" in f.message for f in findings
+        ), "Expected raw output snippet in finding"

@@ -12,17 +12,31 @@
   },
   "status": {
     "state": "shipping",
-    "summary": "Tyrion-in-a-box quality gates for AI-generated code; 1.0 is out, 1.1 wraps up the verb-driven workflow and the buff/scour split.",
+    "summary": "Tyrion-in-a-box quality gates for AI-generated code; 1.0 is out, 1.1 wraps up the verb-driven workflow and the buff/scour split. Completed config help/error improvements, gate enablement fixes, Windows build fix, PR #221 ready for merge (all review feedback resolved, coverage gates passing).",
     "blockers": [
-      "Pin GitHub Actions in barnacle templates to commit SHAs before tagging v1.1.",
-      "Settle on the final myopia:ignored-feedback report format for AI agents."
+      "Pre-existing starlette security vulnerability (PYSEC-2026-161) in myopia:dependency-risk.py — needs resolution before v1.1.0 release.",
+      "Pin GitHub Actions in barnacle templates to commit SHAs before tagging v1.1."
     ],
     "next": [
+      "Merge PR #221 once security issue is addressed or scoped out.",
       "Cut v1.1.0 once the buff helper has docs and one more dogfooded PR.",
-      "Publish the `sm sail` walkthrough to the docs site.",
-      "Push the heraldic splash + Tyrion essay link into the README hero."
+      "Publish the `sm sail` walkthrough to the docs site."
     ],
-    "updated": "2026-05-19"
+    "updated": "2026-05-25"
+  },
+  "agent": {
+    "status": "PR #221: coverage test added for not-on-a-PR path, awaiting CI",
+    "direction": "Fix + test the case-sensitive gate check; unblock codecov/patch",
+    "difficulties": "None",
+    "needs_human": "None",
+    "last_update": "2026-05-25T09:28:00Z",
+    "actions": [
+      { "name": "Fixed case-sensitive PR context check (config.py:380)", "status": "done" },
+      { "name": "Resolved Bugbot thread PRRT_kwDORBxXu86EgBGI", "status": "done" },
+      { "name": "Added coverage test for not-on-a-PR branch path", "status": "done" },
+      { "name": "Wait for CI to confirm codecov/patch green", "status": "in_progress" },
+      { "name": "Merge PR #221", "status": "planned" }
+    ]
   },
   "queue": {
     "active": true,

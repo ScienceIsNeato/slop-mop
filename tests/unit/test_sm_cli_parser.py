@@ -419,3 +419,62 @@ class TestCreateParser:
 
         assert "\n  buff        Post-PR CI triage and next-step guidance\n" in help_text
         assert "\n  barnacle    File upstream tool-friction issues\n" in help_text
+
+    def test_config_enable_without_flag_suggests_correct_syntax(self, capsys):
+        """Parser suggests --enable when user types 'config enable' without --."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "enable", "some:gate"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "enable" in captured.out.lower()
+        assert "--enable" in captured.out or "Did you forget" in captured.out
+
+    def test_config_disable_without_flag_suggests_correct_syntax(self, capsys):
+        """Parser suggests --disable when user types 'config disable' without --."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "disable", "some:gate"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "disable" in captured.out.lower()
+
+    def test_config_set_without_flag_suggests_correct_syntax(self, capsys):
+        """Parser suggests --set when user types 'config set' without --."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "set", "some:gate", "field", "value"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "set" in captured.out.lower()
+        assert "--set" in captured.out or "Did you forget" in captured.out
+
+    def test_config_unset_without_flag_suggests_correct_syntax(self, capsys):
+        """Parser suggests --unset when user types 'config unset' without --."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "unset", "some:gate", "field"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "unset" in captured.out.lower()
+        assert "--unset" in captured.out or "Did you forget" in captured.out
+
+    def test_config_unrecognized_argument_no_suggestion(self, capsys):
+        """Parser falls back to default error for unrecognized args without config hints."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "--invalid-flag"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        # Should show error but not suggest config syntax (no config flags in message)
+        assert "invalid" in captured.err.lower()

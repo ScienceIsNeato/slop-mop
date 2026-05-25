@@ -83,6 +83,12 @@ class TestPidLooksLikeSm:
             mock_run.return_value.stdout = "node server.js\n"
             assert _pid_looks_like_sm(12345) is False
 
+    def test_windows_platform_returns_true_without_ps_check(self) -> None:
+        """On Windows, return True without checking (ps doesn't exist)."""
+        with patch("sys.platform", "win32"):
+            # Should return True immediately without calling subprocess
+            assert _pid_looks_like_sm(12345) is True
+
 
 # ── _read_lock_meta / _write_lock_meta ───────────────────────────────────
 

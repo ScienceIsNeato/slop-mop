@@ -449,6 +449,25 @@ def _add_upgrade_parser(
     )
 
 
+def _try_suggest_config_command(message: str, flag_set: set[str]) -> bool:
+    """Suggest correct config syntax if error message contains a config flag.
+
+    Returns True if a suggestion was printed and error should exit, False otherwise.
+    """
+    words = message.lower().split()
+    for flag in flag_set:
+        if flag in words:
+            print(f"\n❌ {message}")
+            print(f"\n💡 Hint: Did you forget the '--' prefix?")
+            print(f"   Try: sm config --{flag}")
+            if flag == "set":
+                print(f"        sm config --set <gate> <field> <value>")
+            elif flag == "unset":
+                print(f"        sm config --unset <gate> <field>")
+            return True
+    return False
+
+
 def _add_config_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -458,6 +477,20 @@ def _add_config_parser(
         help="View or update configuration",
         description="View or update quality gate configuration.",
     )
+
+    # Store original error method
+    original_error = config_parser.error
+
+    # Custom error handler to catch common mistakes
+    def config_error(message: str) -> None:
+        """Custom error handler with helpful suggestions."""
+        common_flags = {"enable", "disable", "set", "unset", "show", "json"}
+        if _try_suggest_config_command(message, common_flags):
+            sys.exit(2)
+        original_error(message)
+
+    config_parser.error = config_error  # type: ignore[method-assign]
+
     config_parser.add_argument(
         "--show",
         action="store_true",
@@ -506,7 +539,7 @@ def _add_config_parser(
         dest="set_field",
         nargs=3,
         metavar=("GATE", "FIELD", "VALUE"),
-        help="Set a gate-specific config field to a new value.",
+        help="Set gate config field: --set <gate> <field> <value> where gate is category:name (e.g., myopia:ignore-feedback)",
     )
     config_parser.add_argument(
         "--unset",
@@ -1064,6 +1097,18 @@ def create_parser() -> argparse.ArgumentParser:
         description=description,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+    # Custom error handler to catch common config mistakes
+    original_error = parser.error
+
+    def main_error(message: str) -> None:
+        """Custom error handler to catch common config command mistakes."""
+        config_flags = {"enable", "disable", "set", "unset"}
+        if _try_suggest_config_command(message, config_flags):
+            sys.exit(2)
+        original_error(message)
+
+    parser.error = main_error  # type: ignore[method-assign]
 
     subparsers = parser.add_subparsers(dest="verb", help="Command to run")
 

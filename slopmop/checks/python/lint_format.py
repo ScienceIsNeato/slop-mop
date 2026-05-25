@@ -242,14 +242,19 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         if issues:
             msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
+            # Prefer flake8_findings if available; if none, use generic message
+            final_findings = (
+                flake8_findings
+                if flake8_findings
+                else [Finding(message=msg, level=FindingLevel.ERROR)]
+            )
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output="\n".join(output_parts),
                 error=msg,
                 fix_suggestion="Run: black . && isort . to auto-fix formatting",
-                findings=flake8_findings
-                or [Finding(message=msg, level=FindingLevel.ERROR)],
+                findings=final_findings,
             )
 
         return self._create_result(
@@ -409,6 +414,19 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                             rule_id=code,
                         )
                     )
+
+            # If no findings were created (output format unexpected), include raw output
+            if not findings:
+                findings.append(
+                    Finding(
+                        message=(
+                            "Flake8 output could not be parsed with expected format. "
+                            "Raw output:\n" + result.output[:500]
+                        ),
+                        level=FindingLevel.ERROR,
+                    )
+                )
+
             return (
                 f"{len(lines)} critical error(s):\n" + "\n".join(lines[:5]),
                 findings,

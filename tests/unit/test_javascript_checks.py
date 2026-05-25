@@ -572,6 +572,37 @@ class TestJavaScriptLintFormatCheck:
 
         assert result.status == CheckStatus.FAILED
 
+    def test_run_eslint_unparseable_json_produces_finding(self, tmp_path):
+        """When ESLint JSON output cannot be parsed, a Finding is returned with raw output."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptLintFormatCheck({})
+
+        eslint_result = MagicMock()
+        eslint_result.success = False
+        eslint_result.stdout = "not valid json at all: {corrupted"
+        eslint_result.output = "not valid json at all: {corrupted"
+
+        prettier_result = MagicMock()
+        prettier_result.success = True
+        prettier_result.output = ""
+
+        with patch.object(
+            check, "_run_command", side_effect=[eslint_result, prettier_result]
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        # Must have at least one Finding (not an empty list)
+        assert result.findings, "Expected findings for unparseable ESLint JSON"
+        assert any(
+            "could not be parsed" in f.message for f in result.findings
+        ), "Expected 'could not be parsed' in finding message"
+        # Raw output should be included
+        assert any(
+            "corrupted" in f.message for f in result.findings
+        ), "Expected raw output snippet in finding"
+
     # ------------------------------------------------------------------
     # Deno project tests
     # ------------------------------------------------------------------

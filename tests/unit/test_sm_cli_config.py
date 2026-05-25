@@ -213,6 +213,84 @@ class TestCmdConfig:
         assert "Cannot enable myopia:vulnerability-blindness.py" in captured.out
         assert "re-run: sm init --non-interactive" in captured.out
 
+    def test_enable_gate_allows_pr_context_gates(self, tmp_path):
+        """--enable allows gates inapplicable only due to PR context."""
+        import subprocess
+
+        # Initialize as git repo to get past the "not a git repo" check
+        subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
+
+        # Start with gate disabled
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "myopia": {"gates": {"ignored-feedback": {"enabled": False}}},
+                }
+            )
+        )
+
+        # myopia:ignored-feedback is a PR-context gate that will be inapplicable
+        # without PR context, but we should still be able to enable it
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable="myopia:ignored-feedback",
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_timeout=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert config["myopia"]["gates"]["ignored-feedback"]["enabled"] is True
+
+    def test_enable_gate_allows_not_on_pr_branch_gates(self, tmp_path):
+        """--enable allows gates whose skip reason contains 'not on a PR' but not 'PR context'."""
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "myopia": {"gates": {"ignored-feedback": {"enabled": False}}},
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable="myopia:ignored-feedback",
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_timeout=None,
+        )
+
+        with (
+            patch(
+                "slopmop.checks.pr.comments.PRCommentsCheck.is_applicable",
+                return_value=False,
+            ),
+            patch(
+                "slopmop.checks.pr.comments.PRCommentsCheck.skip_reason",
+                return_value="Not on a PR branch (not on a PR)",
+            ),
+        ):
+            result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert config["myopia"]["gates"]["ignored-feedback"]["enabled"] is True
+
     def test_enable_gate_updates_nested_enabled_flag(self, tmp_path):
         """--enable also updates canonical nested gate enabled flag."""
         (tmp_path / "main.py").write_text("print('hello')\n")
@@ -657,3 +735,67 @@ class TestCmdConfig:
 
         assert result == 0
         assert not (tmp_path / ".slopmop" / "current_pr.json").exists()
+
+    def test_set_gate_field_unknown_field(self, tmp_path, capsys):
+        """--set with unknown field shows available fields."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_timeout=None,
+            swab_off=None,
+            swab_on=None,
+            set_field=[
+                "overconfidence:coverage-gaps.js",
+                "unknown_field",
+                "value",
+            ],
+            unset_field=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Unknown config field" in captured.out
+        assert "gate-specific fields" in captured.out.lower()
+
+    def test_unset_gate_field_unknown_field(self, tmp_path, capsys):
+        """--unset with unknown field shows available fields."""
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_timeout=None,
+            swab_off=None,
+            swab_on=None,
+            set_field=None,
+            unset_field=[
+                "myopia:string-duplication.py",
+                "unknown_field",
+            ],
+        )
+
+        result = cmd_config(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Unknown config field" in captured.out
+        assert "gate-specific fields" in captured.out.lower()
