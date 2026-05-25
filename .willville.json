@@ -25,14 +25,16 @@
     "updated": "2026-05-25"
   },
   "agent": {
-    "status": "PR #221 buff complete — last review thread fixed and resolved",
-    "direction": "Unblock merge; fix was case-sensitive lowercase bug in gate check",
+    "status": "PR #221: coverage test added for not-on-a-PR path, awaiting CI",
+    "direction": "Fix + test the case-sensitive gate check; unblock codecov/patch",
     "difficulties": "None",
     "needs_human": "None",
-    "last_update": "2026-05-25T09:15:00Z",
+    "last_update": "2026-05-25T09:28:00Z",
     "actions": [
       { "name": "Fixed case-sensitive PR context check (config.py:380)", "status": "done" },
       { "name": "Resolved Bugbot thread PRRT_kwDORBxXu86EgBGI", "status": "done" },
+      { "name": "Added coverage test for not-on-a-PR branch path", "status": "done" },
+      { "name": "Wait for CI to confirm codecov/patch green", "status": "in_progress" },
       { "name": "Merge PR #221", "status": "planned" }
     ]
   },
