@@ -251,6 +251,46 @@ class TestCmdConfig:
         config = json.loads((tmp_path / ".sb_config.json").read_text())
         assert config["myopia"]["gates"]["ignored-feedback"]["enabled"] is True
 
+    def test_enable_gate_allows_not_on_pr_branch_gates(self, tmp_path):
+        """--enable allows gates whose skip reason contains 'not on a PR' but not 'PR context'."""
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "myopia": {"gates": {"ignored-feedback": {"enabled": False}}},
+                }
+            )
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable="myopia:ignored-feedback",
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_timeout=None,
+        )
+
+        with (
+            patch(
+                "slopmop.checks.pr.comments.PRCommentsCheck.is_applicable",
+                return_value=False,
+            ),
+            patch(
+                "slopmop.checks.pr.comments.PRCommentsCheck.skip_reason",
+                return_value="Not on a PR branch (not on a PR)",
+            ),
+        ):
+            result = cmd_config(args)
+
+        assert result == 0
+        config = json.loads((tmp_path / ".sb_config.json").read_text())
+        assert config["myopia"]["gates"]["ignored-feedback"]["enabled"] is True
+
     def test_enable_gate_updates_nested_enabled_flag(self, tmp_path):
         """--enable also updates canonical nested gate enabled flag."""
         (tmp_path / "main.py").write_text("print('hello')\n")
