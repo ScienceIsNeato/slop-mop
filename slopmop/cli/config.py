@@ -368,11 +368,17 @@ def _enable_gate(
     if check is None:
         print(_UNKNOWN_GATE_MSG.format(gate_name=gate_name))
         return 1
+
+    # Only block enabling if the gate is fundamentally not applicable to this project
+    # (e.g., a Python gate when there's no Python code). But allow enabling gates
+    # that depend on runtime context (e.g., PR context) - they'll just skip if needed.
     if not check.is_applicable(str(project_root)):
         reason = check.skip_reason(str(project_root))
-        print(f"❌ Cannot enable {gate_name}: not applicable for this repo ({reason})")
-        print("💡 If you've added a new language, re-run: sm init --non-interactive")
-        return 1
+        # Allow enabling if it's just a runtime context issue
+        if "PR context" not in reason and "not on a PR" not in reason.lower():
+            print(f"❌ Cannot enable {gate_name}: not applicable for this repo ({reason})")
+            print("💡 If you've added a new language, re-run: sm init --non-interactive")
+            return 1
 
     if not _is_gate_enabled(config, gate_name):
         _set_gate_enabled(config, gate_name, True)
