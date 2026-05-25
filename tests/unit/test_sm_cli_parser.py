@@ -442,3 +442,27 @@ class TestCreateParser:
         assert exc_info.value.code == 2
         captured = capsys.readouterr()
         assert "disable" in captured.out.lower()
+
+    def test_config_set_without_flag_suggests_correct_syntax(self, capsys):
+        """Parser suggests --set when user types 'config set' without --."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "set", "some:gate", "field", "value"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "set" in captured.out.lower()
+        assert "--set" in captured.out or "Did you forget" in captured.out
+
+    def test_config_unset_without_flag_suggests_correct_syntax(self, capsys):
+        """Parser suggests --unset when user types 'config unset' without --."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "unset", "some:gate", "field"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "unset" in captured.out.lower()
+        assert "--unset" in captured.out or "Did you forget" in captured.out
