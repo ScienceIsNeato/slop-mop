@@ -240,6 +240,29 @@ class TestJavaScriptDeadCodeCheckRun:
         assert cfg["ignore"] == ["scripts/**"]
         assert "extends" not in cfg
 
+    def test_temp_config_merges_knip_jsonc_with_comments(self, tmp_path):
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "knip.jsonc").write_text(
+            '{\n  // entry points\n  "entry": ["src/main.ts"]\n}'
+        )
+        check = JavaScriptDeadCodeCheck({"ignore_patterns": [".detoxrc.js"]})
+        captured_configs = []
+
+        def fake_run(cmd, **_kwargs):
+            cfg_path = tmp_path / "_sm_knip.json"
+            if cfg_path.exists():
+                captured_configs.append(json.loads(cfg_path.read_text()))
+            return self._make_result(success=True)
+
+        with patch.object(check, "_run_command", side_effect=fake_run):
+            check.run(str(tmp_path))
+
+        assert captured_configs
+        cfg = captured_configs[0]
+        assert cfg.get("entry") == ["src/main.ts"]
+        assert ".detoxrc.js" in cfg["ignore"]
+
     def test_temp_config_no_merge_when_no_knip_config(self, tmp_path):
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "node_modules").mkdir()

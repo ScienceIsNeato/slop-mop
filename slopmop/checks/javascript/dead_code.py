@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional, cast
 
@@ -223,8 +224,8 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
     def _load_repo_knip_config(self, project_root: str) -> Dict[str, Any]:
         """Return parsed contents of the repo's knip config, or {} if none found.
 
-        Only JSON-parseable files (knip.json, knip.jsonc, .knip.json,
-        .knip.jsonc) are attempted. TS/JS configs are skipped.
+        Handles knip.json and knip.jsonc (stripping // line comments so typical
+        JSONC files parse correctly). TS/JS configs are skipped.
         """
         for filename in ["knip.json", "knip.jsonc", ".knip.json", ".knip.jsonc"]:
             cfg_path = os.path.join(project_root, filename)
@@ -232,7 +233,10 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
                 continue
             try:
                 with open(cfg_path) as f:
-                    parsed: Any = json.load(f)
+                    text = f.read()
+                # Strip // line comments (JSONC) before parsing
+                stripped = re.sub(r"//[^\n]*", "", text)
+                parsed: Any = json.loads(stripped)
                 if isinstance(parsed, dict):
                     return cast(Dict[str, Any], parsed)
             except (json.JSONDecodeError, OSError):
