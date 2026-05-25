@@ -76,6 +76,13 @@ def _pid_looks_like_sm(pid: int) -> bool:
     Guards against PID reuse where a dead lock-holder PID gets reassigned
     to an unrelated process.
     """
+    import sys
+
+    # On Windows, ps doesn't exist reliably (would need Git Bash, WSL, etc).
+    # Fail closed: we can't verify process identity, so don't evict the lock.
+    if sys.platform == "win32":
+        return True
+
     try:
         result = subprocess.run(
             ["ps", "-p", str(pid), "-o", "command="],
