@@ -393,7 +393,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
         scripts = pkg.get("scripts", {})
         targets: List[str] = []
-        for _name, cmd in scripts.items():
+        for cmd in scripts.values():
             if not isinstance(cmd, str):
                 continue
             # Match patterns like "deno lint supabase/functions/"
@@ -687,14 +687,19 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
 
         if issues:
             msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
+            # Prefer eslint_findings if available; if none, use generic message
+            final_findings = (
+                eslint_findings
+                if eslint_findings
+                else [Finding(message=msg, level=FindingLevel.ERROR)]
+            )
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output="\n".join(output_parts),
                 error=msg,
                 fix_suggestion=self._node_fix_suggestion(project_root),
-                findings=eslint_findings
-                or [Finding(message=msg, level=FindingLevel.ERROR)],
+                findings=final_findings,
             )
 
         return self._create_result(
@@ -748,7 +753,17 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                             )
                         )
             except (json.JSONDecodeError, TypeError):
-                pass
+                # JSON parsing failed; include raw output for debugging
+                findings.append(
+                    Finding(
+                        message=(
+                            "ESLint output could not be parsed as JSON. "
+                            "Raw output:\n"
+                            + result.stdout[:500]
+                        ),
+                        level=FindingLevel.ERROR,
+                    )
+                )
             count = (
                 len(findings) if findings else len(result.output.strip().split("\n"))
             )
