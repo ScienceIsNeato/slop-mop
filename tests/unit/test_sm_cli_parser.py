@@ -419,3 +419,26 @@ class TestCreateParser:
 
         assert "\n  buff        Post-PR CI triage and next-step guidance\n" in help_text
         assert "\n  barnacle    File upstream tool-friction issues\n" in help_text
+
+    def test_config_enable_without_flag_suggests_correct_syntax(self, capsys):
+        """Parser suggests --enable when user types 'config enable' without --."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "enable", "some:gate"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "enable" in captured.out.lower()
+        assert "--enable" in captured.out or "Did you forget" in captured.out
+
+    def test_config_disable_without_flag_suggests_correct_syntax(self, capsys):
+        """Parser suggests --disable when user types 'config disable' without --."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "disable", "some:gate"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "disable" in captured.out.lower()
