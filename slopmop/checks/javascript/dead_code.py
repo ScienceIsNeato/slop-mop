@@ -1,6 +1,7 @@
 """JavaScript/TypeScript dead code detection using knip."""
 
 import json
+import os
 import time
 from typing import Any, Dict, List, Optional, cast
 
@@ -79,6 +80,28 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
                 ),
                 required=False,
             ),
+            ConfigField(
+                name="ignore_patterns",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Glob patterns for files knip should ignore "
+                    "(e.g., ['.detoxrc.js', '.maestro/**', 'scripts/internal/**']). "
+                    "Only used when knip_config is not set."
+                ),
+                required=False,
+            ),
+            ConfigField(
+                name="ignore_dependencies",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Dependency names knip should treat as used "
+                    "(e.g., ['@jest/globals', 'geojson']). "
+                    "Only used when knip_config is not set."
+                ),
+                required=False,
+            ),
         ]
 
     def is_applicable(self, project_root: str) -> bool:
@@ -104,10 +127,29 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
 
         cmd = ["npx", "--yes", "knip", "--reporter", "json"]
         knip_config = self.config.get("knip_config", "")
+        tmp_config_path: Optional[str] = None
+
         if knip_config:
             cmd.extend(["--config", knip_config])
+        else:
+            ignore_patterns: List[str] = self.config.get("ignore_patterns", [])
+            ignore_deps: List[str] = self.config.get("ignore_dependencies", [])
+            if ignore_patterns or ignore_deps:
+                tmp_cfg: Dict[str, Any] = {}
+                if ignore_patterns:
+                    tmp_cfg["ignore"] = ignore_patterns
+                if ignore_deps:
+                    tmp_cfg["ignoreDependencies"] = ignore_deps
+                tmp_config_path = os.path.join(project_root, "_sm_knip.json")
+                with open(tmp_config_path, "w") as f:
+                    json.dump(tmp_cfg, f)
+                cmd.extend(["--config", "_sm_knip.json"])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
+        try:
+            result = self._run_command(cmd, cwd=project_root, timeout=120)
+        finally:
+            if tmp_config_path and os.path.exists(tmp_config_path):
+                os.unlink(tmp_config_path)
         duration = time.time() - start_time
 
         if result.timed_out:
@@ -147,13 +189,22 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
             error=msg,
             fix_suggestion=(
                 "Remove unused exports/files or add consumers. "
+                "For tooling entry points (jest configs, .detoxrc.js, scripts/), "
+                "add them to ignore_patterns via: "
+                "sm config laziness:dead-code.js set ignore_patterns "
+                "['<glob>,...']. "
+                "For deps used via config (not imports), use ignore_dependencies. "
                 "Re-check: sm swab -g laziness:dead-code.js --verbose"
             ),
             findings=findings,
         )
 
     def _parse_knip_output(self, stdout: str) -> List[Finding]:
-        """Parse knip --reporter json output into Finding objects."""
+        """Parse knip --reporter json output into Finding objects.
+
+        Handles both legacy bare-array format (knip <5) and the
+        {"issues": [...]} envelope format used by knip 5+/6+.
+        """
         if not stdout.strip():
             return []
 
@@ -161,6 +212,10 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
             raw: Any = json.loads(stdout)
         except (json.JSONDecodeError, ValueError):
             return []
+
+        # knip 5+/6+ wraps the array: {"issues": [...]}
+        if isinstance(raw, dict):
+            raw = cast(Dict[str, Any], raw).get("issues") or []
 
         if not isinstance(raw, list):
             return []
@@ -173,7 +228,6 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
             file_entry = cast(Dict[str, Any], raw_entry)
             filepath: str = file_entry.get("file") or ""
 
-            # Unused files — the file itself is dead code
             if file_entry.get("files") is True:
                 findings.append(
                     Finding(
@@ -184,71 +238,77 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
                 )
                 continue
 
-            # Symbol-level issues: exports, types, enumMembers, classMembers,
-            # duplicates, unresolved
-            for issue_type in (
-                "exports",
-                "types",
-                "unresolved",
-                "duplicates",
-            ):
-                raw_symbols: Any = file_entry.get(issue_type)
-                if not raw_symbols:
+            findings.extend(self._parse_symbol_findings(file_entry, filepath))
+            findings.extend(self._parse_member_findings(file_entry, filepath))
+
+        return findings
+
+    def _parse_symbol_findings(
+        self, file_entry: Dict[str, Any], filepath: str
+    ) -> List[Finding]:
+        """Parse flat symbol-level knip issues (exports, types, duplicates, unresolved)."""
+        findings: List[Finding] = []
+        for issue_type in ("exports", "types", "unresolved", "duplicates"):
+            raw_symbols: Any = file_entry.get(issue_type)
+            if not raw_symbols:
+                continue
+            symbols: List[Any]
+            if issue_type == "duplicates":
+                flat: List[Any] = []
+                for group in raw_symbols:
+                    if isinstance(group, list):
+                        flat.extend(cast(List[Any], group))
+                    else:
+                        flat.append(group)
+                symbols = flat
+            else:
+                symbols = raw_symbols
+            for raw_sym in symbols:
+                if not isinstance(raw_sym, dict):
                     continue
-                symbols: List[Any]
-                # duplicates is a list-of-lists; flatten one level
-                if issue_type == "duplicates":
-                    flat: List[Any] = []
-                    for group in raw_symbols:
-                        if isinstance(group, list):
-                            flat.extend(cast(List[Any], group))
-                        else:
-                            flat.append(group)
-                    symbols = flat
-                else:
-                    symbols = raw_symbols
-                for raw_sym in symbols:
-                    if not isinstance(raw_sym, dict):
+                sym = cast(Dict[str, Any], raw_sym)
+                name: str = sym.get("name") or ""
+                line: Optional[int] = sym.get("line")
+                col: Optional[int] = sym.get("col")
+                findings.append(
+                    Finding(
+                        message=f"Unused {issue_type.rstrip('s')}: {name}",
+                        level=FindingLevel.WARNING,
+                        file=filepath,
+                        line=line,
+                        column=col,
+                    )
+                )
+        return findings
+
+    def _parse_member_findings(
+        self, file_entry: Dict[str, Any], filepath: str
+    ) -> List[Finding]:
+        """Parse nested member knip issues (enumMembers, classMembers)."""
+        findings: List[Finding] = []
+        for issue_type in ("enumMembers", "classMembers"):
+            raw_members_map: Any = file_entry.get(issue_type)
+            if not isinstance(raw_members_map, dict):
+                continue
+            members_map = cast(Dict[str, Any], raw_members_map)
+            for parent_name, raw_members in members_map.items():
+                if not isinstance(raw_members, list):
+                    continue
+                raw_member: Any
+                for raw_member in cast(List[Any], raw_members):
+                    if not isinstance(raw_member, dict):
                         continue
-                    sym = cast(Dict[str, Any], raw_sym)
+                    sym = cast(Dict[str, Any], raw_member)
                     name: str = sym.get("name") or ""
                     line: Optional[int] = sym.get("line")
                     col: Optional[int] = sym.get("col")
                     findings.append(
                         Finding(
-                            message=f"Unused {issue_type.rstrip('s')}: {name}",
+                            message=f"Unused {issue_type[:-1]}: {parent_name}.{name}",
                             level=FindingLevel.WARNING,
                             file=filepath,
                             line=line,
                             column=col,
                         )
                     )
-
-            # enumMembers and classMembers are dicts keyed by member name
-            for issue_type in ("enumMembers", "classMembers"):
-                raw_members_map: Any = file_entry.get(issue_type)
-                if not isinstance(raw_members_map, dict):
-                    continue
-                members_map = cast(Dict[str, Any], raw_members_map)
-                for parent_name, raw_members in members_map.items():
-                    if not isinstance(raw_members, list):
-                        continue
-                    raw_member: Any
-                    for raw_member in cast(List[Any], raw_members):
-                        if not isinstance(raw_member, dict):
-                            continue
-                        sym = cast(Dict[str, Any], raw_member)
-                        name = sym.get("name") or ""
-                        line = sym.get("line")
-                        col = sym.get("col")
-                        findings.append(
-                            Finding(
-                                message=f"Unused {issue_type[:-1]}: {parent_name}.{name}",
-                                level=FindingLevel.WARNING,
-                                file=filepath,
-                                line=line,
-                                column=col,
-                            )
-                        )
-
         return findings
