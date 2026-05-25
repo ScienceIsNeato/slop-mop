@@ -135,21 +135,9 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
             ignore_patterns: List[str] = self.config.get("ignore_patterns", [])
             ignore_deps: List[str] = self.config.get("ignore_dependencies", [])
             if ignore_patterns or ignore_deps:
-                tmp_cfg: Dict[str, Any] = {}
-                # Extend any existing repo knip config so entry points and
-                # plugins are preserved; without this, knip skips auto-discovery.
-                _KNIP_CFG_FILES = ["knip.json", "knip.ts", ".knip.json", ".knip.ts"]
-                for _f in _KNIP_CFG_FILES:
-                    if os.path.exists(os.path.join(project_root, _f)):
-                        tmp_cfg["extends"] = f"./{_f}"
-                        break
-                if ignore_patterns:
-                    tmp_cfg["ignore"] = ignore_patterns
-                if ignore_deps:
-                    tmp_cfg["ignoreDependencies"] = ignore_deps
-                tmp_config_path = os.path.join(project_root, "_sm_knip.json")
-                with open(tmp_config_path, "w") as f:
-                    json.dump(tmp_cfg, f)
+                tmp_config_path = self._write_temp_knip_config(
+                    project_root, ignore_patterns, ignore_deps
+                )
                 cmd.extend(["--config", "_sm_knip.json"])
 
         try:
@@ -205,6 +193,36 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
             ),
             findings=findings,
         )
+
+    def _write_temp_knip_config(
+        self,
+        project_root: str,
+        ignore_patterns: List[str],
+        ignore_deps: List[str],
+    ) -> str:
+        """Write _sm_knip.json and return its path.
+
+        Extends any existing repo knip config so entry points and plugins are
+        preserved; without extends, knip skips auto-discovery entirely.
+        """
+        cfg: Dict[str, Any] = {}
+        for filename in [
+            "knip.json", "knip.jsonc",
+            ".knip.json", ".knip.jsonc",
+            "knip.ts", "knip.js",
+            "knip.config.ts", "knip.config.js",
+        ]:
+            if os.path.exists(os.path.join(project_root, filename)):
+                cfg["extends"] = f"./{filename}"
+                break
+        if ignore_patterns:
+            cfg["ignore"] = ignore_patterns
+        if ignore_deps:
+            cfg["ignoreDependencies"] = ignore_deps
+        path = os.path.join(project_root, "_sm_knip.json")
+        with open(path, "w") as f:
+            json.dump(cfg, f)
+        return path
 
     def _parse_knip_output(self, stdout: str) -> List[Finding]:
         """Parse knip --reporter json output into Finding objects.
