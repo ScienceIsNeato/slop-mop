@@ -136,6 +136,13 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
             ignore_deps: List[str] = self.config.get("ignore_dependencies", [])
             if ignore_patterns or ignore_deps:
                 tmp_cfg: Dict[str, Any] = {}
+                # Extend any existing repo knip config so entry points and
+                # plugins are preserved; without this, knip skips auto-discovery.
+                _KNIP_CFG_FILES = ["knip.json", "knip.ts", ".knip.json", ".knip.ts"]
+                for _f in _KNIP_CFG_FILES:
+                    if os.path.exists(os.path.join(project_root, _f)):
+                        tmp_cfg["extends"] = f"./{_f}"
+                        break
                 if ignore_patterns:
                     tmp_cfg["ignore"] = ignore_patterns
                 if ignore_deps:

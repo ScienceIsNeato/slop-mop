@@ -193,6 +193,44 @@ class TestJavaScriptDeadCodeCheckRun:
         assert captured_configs
         assert captured_configs[0]["ignoreDependencies"] == ["@jest/globals", "geojson"]
 
+    def test_temp_config_extends_existing_knip_json(self, tmp_path):
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "knip.json").write_text('{"entry": ["index.ts"]}')
+        check = JavaScriptDeadCodeCheck({"ignore_patterns": [".detoxrc.js"]})
+        captured_configs = []
+
+        def fake_run(cmd, **_kwargs):
+            cfg_path = tmp_path / "_sm_knip.json"
+            if cfg_path.exists():
+                captured_configs.append(json.loads(cfg_path.read_text()))
+            return self._make_result(success=True)
+
+        with patch.object(check, "_run_command", side_effect=fake_run):
+            check.run(str(tmp_path))
+
+        assert captured_configs
+        assert captured_configs[0].get("extends") == "./knip.json"
+        assert captured_configs[0]["ignore"] == [".detoxrc.js"]
+
+    def test_temp_config_no_extends_when_no_knip_config(self, tmp_path):
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptDeadCodeCheck({"ignore_patterns": [".detoxrc.js"]})
+        captured_configs = []
+
+        def fake_run(cmd, **_kwargs):
+            cfg_path = tmp_path / "_sm_knip.json"
+            if cfg_path.exists():
+                captured_configs.append(json.loads(cfg_path.read_text()))
+            return self._make_result(success=True)
+
+        with patch.object(check, "_run_command", side_effect=fake_run):
+            check.run(str(tmp_path))
+
+        assert captured_configs
+        assert "extends" not in captured_configs[0]
+
     def test_knip_config_takes_precedence_over_ignore_fields(self, tmp_path):
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "node_modules").mkdir()
