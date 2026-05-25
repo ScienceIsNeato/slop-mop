@@ -466,3 +466,15 @@ class TestCreateParser:
         captured = capsys.readouterr()
         assert "unset" in captured.out.lower()
         assert "--unset" in captured.out or "Did you forget" in captured.out
+
+    def test_config_unrecognized_argument_no_suggestion(self, capsys):
+        """Parser falls back to default error for unrecognized args without config hints."""
+        parser = create_parser()
+
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["config", "--invalid-flag"])
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        # Should show error but not suggest config syntax (no config flags in message)
+        assert "invalid" in captured.err.lower()
