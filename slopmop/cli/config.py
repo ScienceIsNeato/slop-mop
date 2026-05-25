@@ -377,7 +377,7 @@ def _enable_gate(
     if not check.is_applicable(str(project_root)):
         reason = check.skip_reason(str(project_root))
         # Allow enabling if it's just a runtime context issue
-        if "PR context" not in reason and "not on a PR" not in reason.lower():
+        if "PR context" not in reason and "not on a pr" not in reason.lower():
             print(
                 f"❌ Cannot enable {gate_name}: not applicable for this repo ({reason})"
             )
