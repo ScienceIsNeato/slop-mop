@@ -421,8 +421,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     Finding(
                         message=(
                             "Flake8 output could not be parsed with expected format. "
-                            "Raw output:\n"
-                            + result.output[:500]
+                            "Raw output:\n" + result.output[:500]
                         ),
                         level=FindingLevel.ERROR,
                     )

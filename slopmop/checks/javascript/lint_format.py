@@ -758,8 +758,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                     Finding(
                         message=(
                             "ESLint output could not be parsed as JSON. "
-                            "Raw output:\n"
-                            + result.stdout[:500]
+                            "Raw output:\n" + result.stdout[:500]
                         ),
                         level=FindingLevel.ERROR,
                     )
