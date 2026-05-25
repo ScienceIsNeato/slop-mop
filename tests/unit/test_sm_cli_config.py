@@ -222,10 +222,12 @@ class TestCmdConfig:
 
         # Start with gate disabled
         (tmp_path / ".sb_config.json").write_text(
-            json.dumps({
-                "version": "1.0",
-                "myopia": {"gates": {"ignored-feedback": {"enabled": False}}}
-            })
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "myopia": {"gates": {"ignored-feedback": {"enabled": False}}},
+                }
+            )
         )
 
         # myopia:ignored-feedback is a PR-context gate that will be inapplicable
