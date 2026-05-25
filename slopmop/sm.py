@@ -458,6 +458,31 @@ def _add_config_parser(
         help="View or update configuration",
         description="View or update quality gate configuration.",
     )
+
+    # Store original error method
+    original_error = config_parser.error
+
+    # Custom error handler to catch common mistakes
+    def config_error(message: str) -> None:
+        """Custom error handler with helpful suggestions."""
+        common_flags = {"enable", "disable", "set", "unset", "show", "json"}
+        words = message.lower().split()
+        for flag in common_flags:
+            if flag in words:
+                print(f"\n❌ {message}")
+                print(f"\n💡 Hint: Did you forget the '--' prefix?")
+                print(f"   Try: sm config --{flag}")
+                if flag == "set":
+                    print(f"        sm config --set <gate> <field> <value>")
+                elif flag == "unset":
+                    print(f"        sm config --unset <gate> <field>")
+                import sys
+                sys.exit(2)
+        # Fall back to default error handling
+        original_error(message)
+
+    config_parser.error = config_error  # type: ignore[method-assign]
+
     config_parser.add_argument(
         "--show",
         action="store_true",
@@ -1064,6 +1089,29 @@ def create_parser() -> argparse.ArgumentParser:
         description=description,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+    # Custom error handler to catch common config mistakes
+    original_error = parser.error
+
+    def main_error(message: str) -> None:
+        """Custom error handler to catch common config command mistakes."""
+        config_flags = {"enable", "disable", "set", "unset"}
+        words = message.lower().split()
+        for flag in config_flags:
+            if flag in words:
+                print(f"\n❌ {message}")
+                print(f"\n💡 Hint: Did you forget the '--' prefix?")
+                print(f"   Try: sm config --{flag}")
+                if flag == "set":
+                    print(f"        sm config --set <gate> <field> <value>")
+                elif flag == "unset":
+                    print(f"        sm config --unset <gate> <field>")
+                import sys
+                sys.exit(2)
+        # Fall back to default error handling
+        original_error(message)
+
+    parser.error = main_error  # type: ignore[method-assign]
 
     subparsers = parser.add_subparsers(dest="verb", help="Command to run")
 
