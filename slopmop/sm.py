@@ -506,7 +506,7 @@ def _add_config_parser(
         dest="set_field",
         nargs=3,
         metavar=("GATE", "FIELD", "VALUE"),
-        help="Set a gate-specific config field to a new value.",
+        help="Set gate config field: --set <gate> <field> <value> where gate is category:name (e.g., myopia:ignore-feedback)",
     )
     config_parser.add_argument(
         "--unset",
