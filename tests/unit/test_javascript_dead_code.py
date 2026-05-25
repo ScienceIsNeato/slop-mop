@@ -193,10 +193,10 @@ class TestJavaScriptDeadCodeCheckRun:
         assert captured_configs
         assert captured_configs[0]["ignoreDependencies"] == ["@jest/globals", "geojson"]
 
-    def test_temp_config_extends_existing_knip_json(self, tmp_path):
+    def test_temp_config_merges_existing_knip_json(self, tmp_path):
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "node_modules").mkdir()
-        (tmp_path / "knip.json").write_text('{"entry": ["index.ts"]}')
+        (tmp_path / "knip.json").write_text('{"entry": ["index.ts"], "ignore": ["existing/**"]}')
         check = JavaScriptDeadCodeCheck({"ignore_patterns": [".detoxrc.js"]})
         captured_configs = []
 
@@ -210,13 +210,16 @@ class TestJavaScriptDeadCodeCheckRun:
             check.run(str(tmp_path))
 
         assert captured_configs
-        assert captured_configs[0].get("extends") == "./knip.json"
-        assert captured_configs[0]["ignore"] == [".detoxrc.js"]
+        cfg = captured_configs[0]
+        assert cfg.get("entry") == ["index.ts"]
+        assert "existing/**" in cfg["ignore"]
+        assert ".detoxrc.js" in cfg["ignore"]
+        assert "extends" not in cfg
 
-    def test_temp_config_extends_knip_jsonc(self, tmp_path):
+    def test_temp_config_merges_knip_jsonc(self, tmp_path):
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "node_modules").mkdir()
-        (tmp_path / "knip.jsonc").write_text("{}")
+        (tmp_path / "knip.jsonc").write_text('{"entry": ["src/index.ts"]}')
         check = JavaScriptDeadCodeCheck({"ignore_patterns": ["scripts/**"]})
         captured_configs = []
 
@@ -230,9 +233,12 @@ class TestJavaScriptDeadCodeCheckRun:
             check.run(str(tmp_path))
 
         assert captured_configs
-        assert captured_configs[0].get("extends") == "./knip.jsonc"
+        cfg = captured_configs[0]
+        assert cfg.get("entry") == ["src/index.ts"]
+        assert cfg["ignore"] == ["scripts/**"]
+        assert "extends" not in cfg
 
-    def test_temp_config_no_extends_when_no_knip_config(self, tmp_path):
+    def test_temp_config_no_merge_when_no_knip_config(self, tmp_path):
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "node_modules").mkdir()
         check = JavaScriptDeadCodeCheck({"ignore_patterns": [".detoxrc.js"]})
@@ -248,7 +254,9 @@ class TestJavaScriptDeadCodeCheckRun:
             check.run(str(tmp_path))
 
         assert captured_configs
-        assert "extends" not in captured_configs[0]
+        cfg = captured_configs[0]
+        assert cfg == {"ignore": [".detoxrc.js"]}
+        assert "extends" not in cfg
 
     def test_knip_config_takes_precedence_over_ignore_fields(self, tmp_path):
         (tmp_path / "package.json").write_text("{}")

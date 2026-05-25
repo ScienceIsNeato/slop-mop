@@ -202,27 +202,42 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
     ) -> str:
         """Write _sm_knip.json and return its path.
 
-        Extends any existing repo knip config so entry points and plugins are
-        preserved; without extends, knip skips auto-discovery entirely.
+        Merges ignore fields into any existing parseable JSON knip config so
+        entry points and plugins are preserved. TS/JS configs are skipped
+        (not safely parseable); in that case the user should use knip_config.
         """
-        cfg: Dict[str, Any] = {}
-        for filename in [
-            "knip.json", "knip.jsonc",
-            ".knip.json", ".knip.jsonc",
-            "knip.ts", "knip.js",
-            "knip.config.ts", "knip.config.js",
-        ]:
-            if os.path.exists(os.path.join(project_root, filename)):
-                cfg["extends"] = f"./{filename}"
-                break
+        cfg = self._load_repo_knip_config(project_root)
         if ignore_patterns:
-            cfg["ignore"] = ignore_patterns
+            existing = cfg.get("ignore", [])
+            cfg["ignore"] = existing + [p for p in ignore_patterns if p not in existing]
         if ignore_deps:
-            cfg["ignoreDependencies"] = ignore_deps
+            existing_deps = cfg.get("ignoreDependencies", [])
+            cfg["ignoreDependencies"] = existing_deps + [
+                d for d in ignore_deps if d not in existing_deps
+            ]
         path = os.path.join(project_root, "_sm_knip.json")
         with open(path, "w") as f:
             json.dump(cfg, f)
         return path
+
+    def _load_repo_knip_config(self, project_root: str) -> Dict[str, Any]:
+        """Return parsed contents of the repo's knip config, or {} if none found.
+
+        Only JSON-parseable files (knip.json, knip.jsonc, .knip.json,
+        .knip.jsonc) are attempted. TS/JS configs are skipped.
+        """
+        for filename in ["knip.json", "knip.jsonc", ".knip.json", ".knip.jsonc"]:
+            cfg_path = os.path.join(project_root, filename)
+            if not os.path.exists(cfg_path):
+                continue
+            try:
+                with open(cfg_path) as f:
+                    parsed: Any = json.load(f)
+                if isinstance(parsed, dict):
+                    return cast(Dict[str, Any], parsed)
+            except (json.JSONDecodeError, OSError):
+                pass
+        return {}
 
     def _parse_knip_output(self, stdout: str) -> List[Finding]:
         """Parse knip --reporter json output into Finding objects.
