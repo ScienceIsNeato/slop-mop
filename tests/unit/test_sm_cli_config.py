@@ -657,3 +657,67 @@ class TestCmdConfig:
 
         assert result == 0
         assert not (tmp_path / ".slopmop" / "current_pr.json").exists()
+
+    def test_set_gate_field_unknown_field(self, tmp_path, capsys):
+        """--set with unknown field shows available fields."""
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_timeout=None,
+            swab_off=None,
+            swab_on=None,
+            set_field=[
+                "overconfidence:coverage-gaps.js",
+                "unknown_field",
+                "value",
+            ],
+            unset_field=None,
+        )
+
+        result = cmd_config(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Unknown config field" in captured.out
+        assert "gate-specific fields" in captured.out.lower()
+
+    def test_unset_gate_field_unknown_field(self, tmp_path, capsys):
+        """--unset with unknown field shows available fields."""
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"version": "1.0"}))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable=None,
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_timeout=None,
+            swab_off=None,
+            swab_on=None,
+            set_field=None,
+            unset_field=[
+                "myopia:string-duplication.py",
+                "unknown_field",
+            ],
+        )
+
+        result = cmd_config(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Unknown config field" in captured.out
+        assert "gate-specific fields" in captured.out.lower()
