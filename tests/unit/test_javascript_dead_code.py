@@ -196,7 +196,9 @@ class TestJavaScriptDeadCodeCheckRun:
     def test_temp_config_merges_existing_knip_json(self, tmp_path):
         (tmp_path / "package.json").write_text("{}")
         (tmp_path / "node_modules").mkdir()
-        (tmp_path / "knip.json").write_text('{"entry": ["index.ts"], "ignore": ["existing/**"]}')
+        (tmp_path / "knip.json").write_text(
+            '{"entry": ["index.ts"], "ignore": ["existing/**"]}'
+        )
         check = JavaScriptDeadCodeCheck({"ignore_patterns": [".detoxrc.js"]})
         captured_configs = []
 
