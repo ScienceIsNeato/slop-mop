@@ -449,6 +449,26 @@ def _add_upgrade_parser(
     )
 
 
+def _try_suggest_config_command(message: str, flag_set: set[str]) -> bool:
+    """Suggest correct config syntax if error message contains a config flag.
+
+    Returns True if a suggestion was printed, False to fall back to default error.
+    """
+    words = message.lower().split()
+    for flag in flag_set:
+        if flag in words:
+            print(f"\n❌ {message}")
+            print(f"\n💡 Hint: Did you forget the '--' prefix?")
+            print(f"   Try: sm config --{flag}")
+            if flag == "set":
+                print(f"        sm config --set <gate> <field> <value>")
+            elif flag == "unset":
+                print(f"        sm config --unset <gate> <field>")
+            import sys
+            sys.exit(2)
+    return False
+
+
 def _add_config_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -466,20 +486,7 @@ def _add_config_parser(
     def config_error(message: str) -> None:
         """Custom error handler with helpful suggestions."""
         common_flags = {"enable", "disable", "set", "unset", "show", "json"}
-        words = message.lower().split()
-        for flag in common_flags:
-            if flag in words:
-                print(f"\n❌ {message}")
-                print(f"\n💡 Hint: Did you forget the '--' prefix?")
-                print(f"   Try: sm config --{flag}")
-                if flag == "set":
-                    print(f"        sm config --set <gate> <field> <value>")
-                elif flag == "unset":
-                    print(f"        sm config --unset <gate> <field>")
-                import sys
-
-                sys.exit(2)
-        # Fall back to default error handling
+        _try_suggest_config_command(message, common_flags)
         original_error(message)
 
     config_parser.error = config_error  # type: ignore[method-assign]
@@ -1097,20 +1104,7 @@ def create_parser() -> argparse.ArgumentParser:
     def main_error(message: str) -> None:
         """Custom error handler to catch common config command mistakes."""
         config_flags = {"enable", "disable", "set", "unset"}
-        words = message.lower().split()
-        for flag in config_flags:
-            if flag in words:
-                print(f"\n❌ {message}")
-                print(f"\n💡 Hint: Did you forget the '--' prefix?")
-                print(f"   Try: sm config --{flag}")
-                if flag == "set":
-                    print(f"        sm config --set <gate> <field> <value>")
-                elif flag == "unset":
-                    print(f"        sm config --unset <gate> <field>")
-                import sys
-
-                sys.exit(2)
-        # Fall back to default error handling
+        _try_suggest_config_command(message, config_flags)
         original_error(message)
 
     parser.error = main_error  # type: ignore[method-assign]
