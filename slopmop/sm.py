@@ -452,7 +452,7 @@ def _add_upgrade_parser(
 def _try_suggest_config_command(message: str, flag_set: set[str]) -> bool:
     """Suggest correct config syntax if error message contains a config flag.
 
-    Returns True if a suggestion was printed, False to fall back to default error.
+    Returns True if a suggestion was printed and error should exit, False otherwise.
     """
     words = message.lower().split()
     for flag in flag_set:
@@ -464,8 +464,7 @@ def _try_suggest_config_command(message: str, flag_set: set[str]) -> bool:
                 print(f"        sm config --set <gate> <field> <value>")
             elif flag == "unset":
                 print(f"        sm config --unset <gate> <field>")
-            import sys
-            sys.exit(2)
+            return True
     return False
 
 
@@ -486,7 +485,8 @@ def _add_config_parser(
     def config_error(message: str) -> None:
         """Custom error handler with helpful suggestions."""
         common_flags = {"enable", "disable", "set", "unset", "show", "json"}
-        _try_suggest_config_command(message, common_flags)
+        if _try_suggest_config_command(message, common_flags):
+            sys.exit(2)
         original_error(message)
 
     config_parser.error = config_error  # type: ignore[method-assign]
@@ -1104,7 +1104,8 @@ def create_parser() -> argparse.ArgumentParser:
     def main_error(message: str) -> None:
         """Custom error handler to catch common config command mistakes."""
         config_flags = {"enable", "disable", "set", "unset"}
-        _try_suggest_config_command(message, config_flags)
+        if _try_suggest_config_command(message, config_flags):
+            sys.exit(2)
         original_error(message)
 
     parser.error = main_error  # type: ignore[method-assign]
