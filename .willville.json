@@ -12,7 +12,7 @@
   },
   "status": {
     "state": "shipping",
-    "summary": "Tyrion-in-a-box quality gates for AI-generated code; 1.0 is out, 1.1 wraps up the verb-driven workflow and the buff/scour split.",
+    "summary": "Tyrion-in-a-box quality gates for AI-generated code; 1.0 is out, 1.1 wraps up the verb-driven workflow and the buff/scour split. Fixed Windows build timeout in lock PID check.",
     "blockers": [
       "Pin GitHub Actions in barnacle templates to commit SHAs before tagging v1.1.",
       "Settle on the final myopia:ignored-feedback report format for AI agents."
@@ -22,7 +22,7 @@
       "Publish the `sm sail` walkthrough to the docs site.",
       "Push the heraldic splash + Tyrion essay link into the README hero."
     ],
-    "updated": "2026-05-19"
+    "updated": "2026-05-25"
   },
   "queue": {
     "active": true,
