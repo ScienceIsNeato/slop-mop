@@ -135,7 +135,9 @@ def _format_available_fields(check: Any) -> str:
                 lines.append(f"  • {f.name} ({field_type})")
 
     if standard_fields:
-        lines.append("\nStandard fields (all gates have these):")
+        if gate_fields:
+            lines.append("")  # Blank line separator
+        lines.append("Standard fields (all gates have these):")
         for f in standard_fields:
             field_type = getattr(f, "field_type", "string")
             lines.append(f"  • {f.name} ({field_type})")
@@ -656,19 +658,11 @@ def _show_usage_hints(project_root: Path, config: dict[str, Any]) -> int:
             print(f"  sm config --disable {example}")
             check = registry.get_check(example, config)
             if check is not None:
+                from slopmop.checks.base import STANDARD_CONFIG_FIELDS
+
+                standard_names = {f.name for f in STANDARD_CONFIG_FIELDS}
                 schema = check.get_full_config_schema()
-                gate_fields = [
-                    f
-                    for f in schema
-                    if f.name
-                    not in {
-                        "enabled",
-                        "auto_fix",
-                        "run_on",
-                        "extra_exclude_paths",
-                        "include_paths",
-                    }
-                ]
+                gate_fields = [f for f in schema if f.name not in standard_names]
                 if gate_fields:
                     f = gate_fields[0]
                     if hasattr(f, "default"):
