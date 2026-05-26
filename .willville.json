@@ -25,35 +25,20 @@
     "updated": "2026-05-25"
   },
   "agent": {
-    "status": "PR #221: coverage test added for not-on-a-PR path, awaiting CI",
-    "direction": "Fix + test the case-sensitive gate check; unblock codecov/patch",
-    "difficulties": "None",
-    "needs_human": "None",
-    "last_update": "2026-05-25T09:28:00Z",
+    "status": "PR #223: CI fix pushed — black 88-char wrap in test file",
+    "direction": "Two fixes: PYSEC-2026-161 starlette pin and dead-code.js knip 6 JSON format compat + ignore_patterns/ignore_dependencies. CI was failing due to a long line in test_javascript_dead_code.py; now fixed.",
+    "last_update": "2026-05-25T00:00:00Z",
     "actions": [
-      { "name": "Fixed case-sensitive PR context check (config.py:380)", "status": "done" },
-      { "name": "Resolved Bugbot thread PRRT_kwDORBxXu86EgBGI", "status": "done" },
-      { "name": "Added coverage test for not-on-a-PR branch path", "status": "done" },
-      { "name": "Wait for CI to confirm codecov/patch green", "status": "in_progress" },
-      { "name": "Merge PR #221", "status": "planned" }
+      { "name": "Pin starlette>=1.0.1 to resolve PYSEC-2026-161", "status": "done" },
+      { "name": "Fix dead-code.js knip 6 JSON envelope + add ignore_patterns/ignore_dependencies", "status": "done" },
+      { "name": "Fix CI black formatting failure (long line in test file)", "status": "done" },
+      { "name": "Wait for CI to pass and merge PR #223", "status": "in_progress" }
     ]
   },
   "queue": {
     "active": true,
     "milestone": "v1.1 release",
-    "eta_days": 2,
+    "eta_days": 1,
     "priority": 1
-  },
-  "agent": {
-    "status": "Initial Willville packet check-in",
-    "direction": "Establish committed per-repo status source",
-    "difficulties": "None",
-    "needs_human": "None",
-    "last_update": "2026-05-22T08:00:00Z",
-    "actions": [
-      { "name": "Created .willville.json", "status": "done" },
-      { "name": "Opened initial check-in branch", "status": "done" },
-      { "name": "Push branch for review", "status": "planned" }
-    ]
   }
 }
