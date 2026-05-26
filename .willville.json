@@ -23,16 +23,9 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "PR #223 merged — starlette fix + knip 6 compat shipped to main",
-    "direction": "PYSEC-2026-161 starlette blocker is cleared. dead-code.js now handles knip 6 JSON envelope, ignore_patterns/ignore_dependencies, and JSONC comment stripping.",
-    "last_update": "2026-05-26T02:51:00Z",
-    "actions": [
-      { "name": "Pin starlette>=1.0.1 to resolve PYSEC-2026-161", "status": "done" },
-      { "name": "Fix dead-code.js knip 6 JSON envelope + ignore_patterns/ignore_dependencies", "status": "done" },
-      { "name": "Fix JSONC comment stripping in _load_repo_knip_config", "status": "done" },
-      { "name": "Merge PR #223", "status": "done" },
-      { "name": "Cut v1.1.0 release", "status": "planned" }
-    ]
+    "status": "PR #224 — --no-tty flag + Windows KBI fix, waiting on CI",
+    "direction": "Two small quality-of-life fixes: agents can share output with humans, Windows tests no longer flake on teardown",
+    "last_update": "2026-05-26T05:45:00Z"
   },
   "queue": {
     "active": true,
