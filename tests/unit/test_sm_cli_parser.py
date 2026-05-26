@@ -1,9 +1,13 @@
 """Parser-specific CLI tests split out from test_sm_cli.py."""
 
+import os
+import sys
+from unittest.mock import patch
+
 import pytest
 
 import slopmop.cli.parser_builders as parser_builders
-from slopmop.sm import create_parser
+from slopmop.sm import create_parser, main
 
 
 class TestCreateParser:
@@ -478,3 +482,56 @@ class TestCreateParser:
         captured = capsys.readouterr()
         # Should show error but not suggest config syntax (no config flags in message)
         assert "invalid" in captured.err.lower()
+
+
+class TestNoTtyFlag:
+    def test_no_tty_default_is_false(self):
+        parser = create_parser()
+        args = parser.parse_args(["swab"])
+        assert args.no_tty is False
+
+    def test_no_tty_flag_sets_true(self):
+        parser = create_parser()
+        args = parser.parse_args(["--no-tty", "swab"])
+        assert args.no_tty is True
+
+    def test_no_tty_before_subcommand(self):
+        parser = create_parser()
+        args = parser.parse_args(["--no-tty", "scour"])
+        assert args.no_tty is True
+        assert args.verb == "scour"
+
+    def test_no_tty_sets_no_color_env(self):
+        original = os.environ.pop("NO_COLOR", None)
+        try:
+            with patch("slopmop.sm._dispatch", return_value=0):
+                main(["--no-tty", "swab"])
+            assert os.environ.get("NO_COLOR") == "1"
+        finally:
+            if original is None:
+                os.environ.pop("NO_COLOR", None)
+            else:
+                os.environ["NO_COLOR"] = original
+
+    def test_no_tty_stdout_isatty_returns_false(self):
+        real_stdout = sys.stdout
+        try:
+            with patch("slopmop.sm._dispatch", return_value=0):
+                main(["--no-tty", "swab"])
+            assert sys.stdout.isatty() is False
+        finally:
+            sys.stdout = real_stdout
+
+    def test_no_tty_stdout_still_writable(self):
+        import io
+
+        real_stdout = sys.stdout
+        buf = io.StringIO()
+        sys.stdout = buf
+        try:
+            with patch("slopmop.sm._dispatch", return_value=0):
+                main(["--no-tty", "swab"])
+            # stdout should still be writable after --no-tty wrapping
+            sys.stdout.write("hello")
+        finally:
+            sys.stdout = real_stdout

@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -56,6 +57,18 @@ def _lock_path(project_root: Path) -> Path:
 
 def _pid_alive(pid: int) -> bool:
     """Return True if *pid* refers to a running process."""
+    if sys.platform == "win32":
+        # os.kill(pid, 0) on Windows sends CTRL_C_EVENT (signal 0 = CTRL_C_EVENT,
+        # not "probe existence" as on POSIX), which raises KeyboardInterrupt.
+        # Use OpenProcess to safely check whether the PID exists.
+        import ctypes
+
+        SYNCHRONIZE = 0x00100000
+        handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if not handle:
+            return False
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return True
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -76,8 +89,6 @@ def _pid_looks_like_sm(pid: int) -> bool:
     Guards against PID reuse where a dead lock-holder PID gets reassigned
     to an unrelated process.
     """
-    import sys
-
     # On Windows, ps doesn't exist reliably (would need Git Bash, WSL, etc).
     # Fail closed: we can't verify process identity, so don't evict the lock.
     if sys.platform == "win32":

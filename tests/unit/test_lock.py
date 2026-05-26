@@ -4,7 +4,7 @@ import json
 import os
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -60,6 +60,42 @@ class TestPidAlive:
     def test_permission_error_treated_as_alive(self) -> None:
         with patch("os.kill", side_effect=PermissionError):
             assert _pid_alive(1) is True
+
+    def test_windows_dead_pid_uses_openprocess(self) -> None:
+        mock_kernel32 = MagicMock()
+        mock_kernel32.OpenProcess.return_value = 0  # NULL → PID not found
+        with (
+            patch("slopmop.core.lock.sys") as mock_sys,
+            patch("ctypes.windll", create=True) as mock_windll,
+        ):
+            mock_sys.platform = "win32"
+            mock_windll.kernel32 = mock_kernel32
+            assert _pid_alive(99999999) is False
+
+    def test_windows_alive_pid_uses_openprocess(self) -> None:
+        mock_kernel32 = MagicMock()
+        mock_kernel32.OpenProcess.return_value = 42  # non-NULL → process exists
+        with (
+            patch("slopmop.core.lock.sys") as mock_sys,
+            patch("ctypes.windll", create=True) as mock_windll,
+        ):
+            mock_sys.platform = "win32"
+            mock_windll.kernel32 = mock_kernel32
+            assert _pid_alive(os.getpid()) is True
+            mock_kernel32.CloseHandle.assert_called_once_with(42)
+
+    def test_windows_path_does_not_call_os_kill(self) -> None:
+        mock_kernel32 = MagicMock()
+        mock_kernel32.OpenProcess.return_value = 1
+        with (
+            patch("slopmop.core.lock.sys") as mock_sys,
+            patch("ctypes.windll", create=True) as mock_windll,
+            patch("os.kill") as mock_kill,
+        ):
+            mock_sys.platform = "win32"
+            mock_windll.kernel32 = mock_kernel32
+            _pid_alive(os.getpid())
+            mock_kill.assert_not_called()
 
 
 class TestPidLooksLikeSm:

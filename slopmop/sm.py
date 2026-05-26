@@ -1130,6 +1130,11 @@ def create_parser() -> argparse.ArgumentParser:
     _add_audit_parser(subparsers)
 
     parser.add_argument(
+        "--no-tty",
+        action="store_true",
+        help="Force non-TTY output (disables colors/spinners — shows what agents see).",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
@@ -1161,6 +1166,18 @@ def main(args: Optional[List[str]] = None) -> int:
 
     parser = create_parser()
     parsed_args = parser.parse_args(args)
+
+    if getattr(parsed_args, "no_tty", False):
+        os.environ["NO_COLOR"] = "1"
+
+        class _NT:
+            def isatty(self) -> bool:
+                return False
+
+            def __getattr__(self, n: str, _o: Any = sys.stdout) -> Any:
+                return getattr(_o, n)
+
+        sys.stdout = _NT()  # type: ignore[assignment]
 
     # Setup logging
     if hasattr(parsed_args, "verbose") and parsed_args.verbose:
