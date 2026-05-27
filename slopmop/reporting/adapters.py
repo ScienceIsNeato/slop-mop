@@ -176,6 +176,9 @@ class PorcelainAdapter:
         if report.verify_command and len(report.actionable) > 1:
             lines.append(f"first: {report.verify_command}")
 
+        if report.next_step and not report.actionable:
+            lines.append(f"next: {report.next_step}")
+
         cache = report.cache_metadata()
         if cache:
             lines.append(
@@ -289,6 +292,9 @@ class ConsoleAdapter:
         print("═" * 60)
         if r.warned:
             self._render_warnings()
+        if r.next_step:
+            print(f"   ▸ next: {r.next_step}")
+            print()
 
     def _render_failure(self) -> None:
         r = self.report

@@ -36,6 +36,7 @@ from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
 
 if TYPE_CHECKING:
     from slopmop.core.registry import CheckRegistry
+    from slopmop.workflow.state_machine import SailMode, WorkflowState
 
 
 def _format_age(iso_timestamp: str) -> Optional[str]:
@@ -130,6 +131,46 @@ def _sort_results_for_remediation_display(
 JSON_SCHEMA_VERSION = "slopmop/v2"
 
 
+def _compute_next_step(
+    level: Optional[str],
+    workflow_state: Optional["WorkflowState"],
+    sail_mode: Optional["SailMode"],
+) -> Optional[str]:
+    """Return the agent's next instruction after a successful run.
+
+    Returns None when context isn't available (e.g. no project_root, or
+    called from a context that doesn't track workflow state).
+    """
+    from slopmop.workflow.state_machine import SailMode, WorkflowState
+
+    sailing = sail_mode == SailMode.SAILING
+
+    if level == "swab" or workflow_state in (
+        WorkflowState.IDLE,
+        WorkflowState.SWAB_FAILING,
+        WorkflowState.SCOUR_FAILING,
+        WorkflowState.BUFF_FAILING,
+        None,
+    ):
+        if sailing:
+            return (
+                "Swab clean. Run: git add -A && git commit -m 'wip: ...' "
+                "then sm sail"
+            )
+        return (
+            "Swab clean. Commit your changes, share results with the human, "
+            "and await the next instruction. Run sm sail when ready to ship."
+        )
+
+    if level == "scour" or workflow_state == WorkflowState.SCOUR_CLEAN:
+        return (
+            "Scour clean. Run: git push -u origin HEAD (or git push if "
+            "upstream exists), then sm sail"
+        )
+
+    return None
+
+
 def _structured_console_lines(
     result: CheckResult,
     *,
@@ -195,6 +236,9 @@ class RunReport:
     verify_command: Optional[str] = None
     first_to_fix: Optional[str] = None
     baseline_filter: Optional[Dict[str, object]] = None
+    # next_step is emitted on success to tell the agent what to do now.
+    # Computed from the current workflow state + sail mode when available.
+    next_step: Optional[str] = None
 
     @classmethod
     def from_summary(
@@ -206,6 +250,8 @@ class RunReport:
         registry: Optional["CheckRegistry"] = None,
         sort_actionable_by_remediation_order: bool = False,
         verbose: bool = False,
+        workflow_state: Optional["WorkflowState"] = None,
+        sail_mode: Optional["SailMode"] = None,
     ) -> "RunReport":
         """Build a RunReport from a raw ExecutionSummary.
 
@@ -248,6 +294,12 @@ class RunReport:
             verb = level or "swab"
             verify = f"sm {verb} -g {first_blocking.name}"
 
+        next_step = (
+            _compute_next_step(level, workflow_state, sail_mode)
+            if summary.all_passed
+            else None
+        )
+
         return cls(
             summary=summary,
             level=level,
@@ -261,6 +313,7 @@ class RunReport:
             not_applicable=status_buckets[CheckStatus.NOT_APPLICABLE],
             verify_command=verify,
             first_to_fix=first_blocking.name if first_blocking is not None else None,
+            next_step=next_step,
         )
 
     def per_gate_verify_command(self, gate_name: str) -> str:

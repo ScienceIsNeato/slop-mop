@@ -1,19 +1,24 @@
-"""Sail command — auto-advance the workflow loop.
+"""Sail command — drive the workflow toward a green, buffed PR.
 
-``sm sail`` reads the current workflow state and executes the next
-obvious step.  The caller does not need to know whether to swab,
-scour, or buff — ``sail`` figures it out.
+``sm sail`` reads the current workflow state and mode, executes the next
+obvious step (or emits the exact command to run), then exits.  The caller
+invokes ``sm sail`` again after completing any emitted instruction.
 
 Design principles:
 
-*   **Single-step**: execute one action, report the result, stop.
-    The caller can invoke ``sm sail`` again to keep going.
-*   **No auto-commit**: committing requires a human-authored message,
-    so S3 (SWAB_CLEAN) instructs the user to commit instead of
-    automating it.
+*   **Single-step, agent loops**: one action or instruction per call.
+    Agents follow the emitted gradient and call ``sm sail`` again.
+*   **Instruct, don't act**: sail tells the agent exactly what to run —
+    including git/gh command lines — rather than running them itself.
+    Committing and pushing are agent responsibilities.
+*   **Two modes**: ITERATING (default, surface results to human) vs
+    SAILING (human approved, drive all the way to PR_READY).  Invoking
+    ``sm sail`` activates SAILING mode.
+*   **HOLD pattern**: when a human decision is needed, sail emits a
+    structured ``⚓ HOLD`` block so agents never have to guess.
 *   **Delegates**: dispatches directly to ``cmd_swab``, ``cmd_scour``,
     or ``cmd_buff``.  State transitions are handled by the existing
-    workflow hooks — ``sail`` does not duplicate state management.
+    workflow hooks — sail does not duplicate state management.
 """
 
 from __future__ import annotations
@@ -23,10 +28,17 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from slopmop.workflow.state_machine import WorkflowState
-from slopmop.workflow.state_store import read_state, write_state
+from slopmop.workflow.state_machine import SailMode, WorkflowState
+from slopmop.workflow.state_store import (
+    read_sail_mode,
+    read_state,
+    write_sail_mode,
+    write_state,
+)
 
 # ── Helpers ──────────────────────────────────────────────────────
+
+_THEN_SAIL = "   Then: sm sail"
 
 
 def _has_uncommitted_changes(project_root: Path) -> bool:
@@ -176,14 +188,25 @@ def _sail_swab_failing(args: argparse.Namespace, project_root: Path) -> int:
 
 
 def _sail_swab_clean(args: argparse.Namespace, project_root: Path) -> int:
-    """S3 — SWAB_CLEAN: commit if dirty, run scour if clean."""
+    """S3 — SWAB_CLEAN: instruct to commit (mode-aware), then run scour."""
     if _has_uncommitted_changes(project_root):
-        _print_step(
-            "📝",
-            "Commit your changes",
-            "Swab is clean but you have uncommitted work.\n"
-            "   Run: git add -A && git commit -m '<message>'",
-        )
+        sail_mode = read_sail_mode(project_root)
+        if sail_mode == SailMode.SAILING:
+            _print_step(
+                "📝",
+                "Commit your changes",
+                "Swab is clean — stage and commit, then continue sailing.\n"
+                "   Run: git add -A && git commit -m 'wip: ...'\n" + _THEN_SAIL,
+            )
+        else:
+            _print_step(
+                "📝",
+                "Commit and share results",
+                "Swab is clean — commit your changes, share the results\n"
+                "   with the human, and await the next instruction.\n"
+                "   Run: git add -A && git commit -m '...'\n"
+                "   When ready to ship: sm sail",
+            )
         return 0
 
     # Working tree is clean — advance to scour
@@ -223,15 +246,14 @@ def _sail_scour_failing(args: argparse.Namespace, project_root: Path) -> int:
 
 
 def _sail_scour_clean(args: argparse.Namespace, project_root: Path) -> int:
-    """S5 — SCOUR_CLEAN: push and/or open PR."""
+    """S5 — SCOUR_CLEAN: instruct to push and open/update PR."""
     pr = _get_pr_number(project_root)
     if pr is not None:
         _print_step(
             "📤",
-            "Push to PR",
-            f"Scour is clean. PR #{pr} detected.\n"
-            f"   Run: git push\n"
-            f"   Then: sm sail   (to buff the PR)",
+            "Push to existing PR",
+            f"Scour is clean. PR #{pr} is open — push your commits.\n"
+            f"   Run: git push\n" + _THEN_SAIL,
         )
     else:
         _print_step(
@@ -239,8 +261,7 @@ def _sail_scour_clean(args: argparse.Namespace, project_root: Path) -> int:
             "Push and open PR",
             "Scour is clean — time to publish.\n"
             "   Run: git push -u origin HEAD\n"
-            "   Then: gh pr create\n"
-            "   Then: sm sail",
+            "        gh pr create --fill\n" + _THEN_SAIL,
         )
     return 0
 
@@ -288,13 +309,13 @@ def _sail_buff_failing(args: argparse.Namespace, project_root: Path) -> int:
 
 
 def _sail_pr_ready(args: argparse.Namespace, project_root: Path) -> int:
-    """S8 — PR_READY: finalize and land."""
-    _print_step(
-        "🏁",
-        "PR ready to land",
-        "All CI green, no unresolved threads.\n"
-        "   Run: sm buff finalize --push\n"
-        "   Or merge from the GitHub UI.",
+    """S8 — PR_READY: surface to human for review, reset to iterating."""
+    write_sail_mode(project_root, SailMode.ITERATING)
+    print(
+        "\n⛵ sail → 🏁 PR ready for human review\n"
+        "   All CI green, no unresolved threads.\n"
+        "   Share the PR with the human and await their decision.\n"
+        "   (Sail mode reset to iterating for the next feature.)\n"
     )
     return 0
 
@@ -317,7 +338,7 @@ _STATE_HANDLERS = {
 
 
 def cmd_sail(args: argparse.Namespace) -> int:
-    """Auto-advance the workflow: detect state and do the next thing."""
+    """Drive the workflow toward a green PR — one step at a time."""
     project_root = Path(getattr(args, "project_root", "."))
 
     status = _onboard_status(project_root)
@@ -336,6 +357,9 @@ def cmd_sail(args: argparse.Namespace) -> int:
             "sm init ran but refit hasn't started.\n" "   Run: sm refit --start",
         )
         return 1
+
+    # Activating sail sets SAILING mode — persists across calls until PR_READY.
+    write_sail_mode(project_root, SailMode.SAILING)
 
     persisted_state = read_state(project_root) or WorkflowState.IDLE
     state = _reconcile_runtime_state(persisted_state, project_root)

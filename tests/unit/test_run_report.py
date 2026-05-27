@@ -676,7 +676,7 @@ class TestConsoleAdapter:
 
 
 class TestPorcelainAdapter:
-    def test_success_is_single_summary_line(self) -> None:
+    def test_success_includes_summary_line_and_next_step(self) -> None:
         summary = _summary(
             [
                 _result("a", CheckStatus.PASSED),
@@ -689,7 +689,9 @@ class TestPorcelainAdapter:
         )
         report = RunReport.from_summary(summary, level="swab")
 
-        assert PorcelainAdapter.render(report) == "sm swab: 0 fail · 1 pass · 1 n/a"
+        rendered = PorcelainAdapter.render(report)
+        assert rendered.startswith("sm swab: 0 fail · 1 pass · 1 n/a")
+        assert "next:" in rendered
 
     def test_failure_lists_actionable_detail_and_next_command(self) -> None:
         summary = _summary(

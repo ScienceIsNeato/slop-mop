@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
-from slopmop.workflow.state_machine import RepoPhase, WorkflowState
+from slopmop.workflow.state_machine import RepoPhase, SailMode, WorkflowState
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ _STATE_DIR = ".slopmop"
 _STATE_KEY = "state"
 _PHASE_KEY = "phase"
 _BASELINE_KEY = "baseline_achieved"
+_SAIL_MODE_KEY = "sail_mode"
 
 
 def _state_path(project_root: str | Path) -> Path:
@@ -61,6 +62,24 @@ def read_baseline_achieved(project_root: str | Path) -> bool:
     """Return True when a clean scour baseline has been recorded."""
     data = _read_raw(project_root)
     return bool(data.get(_BASELINE_KEY, False))
+
+
+def read_sail_mode(project_root: str | Path) -> SailMode:
+    """Return the current sail mode, defaulting to ITERATING."""
+    data = _read_raw(project_root)
+    raw = data.get(_SAIL_MODE_KEY)
+    if isinstance(raw, str):
+        try:
+            return SailMode(raw)
+        except ValueError:
+            pass
+    return SailMode.ITERATING
+
+
+def write_sail_mode(project_root: str | Path, mode: SailMode) -> None:
+    """Persist *mode* without touching other fields."""
+    _update(project_root, {_SAIL_MODE_KEY: mode.value})
+    logger.debug("Sail mode → %s", mode.value)
 
 
 def write_state(project_root: str | Path, state: WorkflowState) -> None:

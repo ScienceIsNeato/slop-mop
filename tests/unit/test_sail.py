@@ -11,7 +11,7 @@ import pytest
 
 from slopmop.cli import sail as sail_mod
 from slopmop.cli.scan_triage import ARTIFACT_NAME, WORKFLOW_NAME
-from slopmop.workflow.state_machine import WorkflowState
+from slopmop.workflow.state_machine import SailMode, WorkflowState
 
 
 def _base_args(tmp_path: Path) -> argparse.Namespace:
@@ -162,14 +162,15 @@ class TestSailDispatch:
         assert call_args.workflow == WORKFLOW_NAME
         assert call_args.artifact == ARTIFACT_NAME
 
-    def test_pr_ready_reports_ready_to_land(self, monkeypatch, capsys, tmp_path: Path):
+    def test_pr_ready_reports_ready_for_human_review(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
         args = _base_args(tmp_path)
         monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.PR_READY)
 
         assert sail_mod.cmd_sail(args) == 0
         out = capsys.readouterr().out
-        assert "ready to land" in out
-        assert "finalize" in out
+        assert "human review" in out
 
     def test_none_state_defaults_to_idle(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
@@ -374,3 +375,89 @@ class TestSailStateReconciliation:
         )
 
         assert state == WorkflowState.SCOUR_CLEAN
+
+
+class TestSailMode:
+    """Sailing mode is activated on entry and drives mode-aware output."""
+
+    @pytest.fixture(autouse=True)
+    def _onboarded(self, monkeypatch):
+        monkeypatch.setattr(sail_mod, "_onboard_status", lambda _: "onboarded")
+
+    def test_cmd_sail_activates_sailing_mode(self, monkeypatch, tmp_path: Path):
+        args = _base_args(tmp_path)
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.IDLE)
+        monkeypatch.setattr("slopmop.cli.cmd_swab", Mock(return_value=0))
+        write_sail_mode = Mock()
+        monkeypatch.setattr(sail_mod, "write_sail_mode", write_sail_mode)
+
+        sail_mod.cmd_sail(args)
+
+        write_sail_mode.assert_any_call(tmp_path, SailMode.SAILING)
+
+    def test_swab_clean_uncommitted_sailing_gives_exact_commit_command(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        args = _base_args(tmp_path)
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.SWAB_CLEAN)
+        monkeypatch.setattr(sail_mod, "_has_uncommitted_changes", lambda _: True)
+        monkeypatch.setattr(sail_mod, "read_sail_mode", lambda _: SailMode.SAILING)
+        monkeypatch.setattr(sail_mod, "write_sail_mode", Mock())
+
+        assert sail_mod.cmd_sail(args) == 0
+        out = capsys.readouterr().out
+        assert "git add -A" in out
+        assert "git commit" in out
+        assert "sm sail" in out
+
+    def test_swab_clean_uncommitted_iterating_gives_share_guidance(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        args = _base_args(tmp_path)
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.SWAB_CLEAN)
+        monkeypatch.setattr(sail_mod, "_has_uncommitted_changes", lambda _: True)
+        monkeypatch.setattr(sail_mod, "read_sail_mode", lambda _: SailMode.ITERATING)
+        monkeypatch.setattr(sail_mod, "write_sail_mode", Mock())
+
+        assert sail_mod.cmd_sail(args) == 0
+        out = capsys.readouterr().out
+        assert "human" in out
+        assert "sm sail" in out
+
+    def test_scour_clean_no_pr_gives_exact_push_and_create_commands(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        args = _base_args(tmp_path)
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.SCOUR_CLEAN)
+        monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: None)
+        monkeypatch.setattr(sail_mod, "write_sail_mode", Mock())
+
+        assert sail_mod.cmd_sail(args) == 0
+        out = capsys.readouterr().out
+        assert "git push -u origin HEAD" in out
+        assert "gh pr create --fill" in out
+        assert "sm sail" in out
+
+    def test_scour_clean_with_pr_gives_exact_push_command(
+        self, monkeypatch, capsys, tmp_path: Path
+    ):
+        args = _base_args(tmp_path)
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.SCOUR_CLEAN)
+        monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: 77)
+        monkeypatch.setattr(sail_mod, "_has_unpushed_commits", lambda _: True)
+        monkeypatch.setattr(sail_mod, "write_sail_mode", Mock())
+
+        assert sail_mod.cmd_sail(args) == 0
+        out = capsys.readouterr().out
+        assert "git push" in out
+        assert "sm sail" in out
+
+    def test_pr_ready_resets_mode_to_iterating(self, monkeypatch, tmp_path: Path):
+        args = _base_args(tmp_path)
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.PR_READY)
+        write_sail_mode = Mock()
+        monkeypatch.setattr(sail_mod, "write_sail_mode", write_sail_mode)
+
+        sail_mod.cmd_sail(args)
+
+        write_sail_mode.assert_any_call(tmp_path, SailMode.ITERATING)

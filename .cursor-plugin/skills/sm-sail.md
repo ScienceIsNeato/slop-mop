@@ -1,16 +1,16 @@
 ---
 name: sm-sail
 description: >-
-  Auto-advance the slop-mop workflow. Use when unsure what to run next,
-  or to let slop-mop drive the iteration loop automatically. Triggers
-  when the user says "sail", "what should I run?", "advance the workflow",
-  "next step", or "keep going" in a project using slop-mop.
+  Drive the slop-mop workflow toward a green, buffed PR. Use when the human
+  says "sail", "ship it", "take it home", or approves the work and wants it
+  shipped. Also use when unsure what to run next in a slop-mop project.
 ---
 
-# sm sail — workflow auto-advance
+# sm sail — workflow autopilot
 
-`sm sail` reads the current workflow state and dispatches the right verb
-automatically. Use it when you don't know whether to swab, scour, or buff.
+`sm sail` reads the current workflow state and mode, runs the next step or
+emits the exact command to run, then exits. Call it again after following
+its instruction.
 
 ## Prerequisite
 
@@ -20,31 +20,33 @@ automatically. Use it when you don't know whether to swab, scour, or buff.
 pipx install slopmop[all]
 ```
 
-## When to use sail vs individual verbs
+## Two modes
 
-| Use `sm sail` when…                         | Use the verb directly when…              |
-|---------------------------------------------|------------------------------------------|
-| You want forward motion with no decisions   | You need a specific gate (`-g flag`)     |
-| Continuing an established remediation loop  | You know exactly what phase you're in    |
-| Letting an autonomous agent drive           | Surgical work on one check or thread     |
+| Mode | When | Behavior |
+|------|------|----------|
+| **Iterating** (default) | Building the feature | Runs swab, surfaces results, says "share with human, await instruction" |
+| **Sailing** | Human approved — "ship it" | Activated by running `sm sail`. Drives to PR_READY, emitting exact git/gh commands at each step |
 
-## The loop sail automates
+## What sail tells you to do (sailing mode)
 
 ```
-edit → sm swab → fix → repeat            (until swab is clean)
-       sm scour → fix → repeat           (until scour is clean)
-       git push
-       sm buff watch <PR#>               (blocks until CI settles)
-       sm buff <PR#> → fix → repeat      (until CI + threads clean)
+sm sail → runs swab
+  swab clean + uncommitted → "git add -A && git commit -m '...' then sm sail"
+  swab clean + committed   → runs scour
+  scour clean + no PR      → "git push -u origin HEAD && gh pr create --fill then sm sail"
+  scour clean + PR + push  → "git push then sm sail"
+  scour clean + PR + clean → runs buff inspect
+  buff issues              → fix gate, then sm sail again
+  buff all-green           → ⛵ PR ready for human review
 ```
 
-Run `sm sail` at any point — it reads `.slopmop/` state and picks up
-where you left off.
+## Only stops for
+
+- **Gate failure** — fix what it names, then `sm sail` again
+- **`⚓ HOLD`** — human decision needed; address it, then `sm sail` again
+- **PR ready** — surface to human for merge
 
 ## Hard rules
 
 - **NEVER** bypass a failing gate — sail will not let you skip forward.
-- If sail dispatches a verb and it fails, fix what it names, then run
-  `sm sail` again.
-- If the environment looks broken, `sm doctor` (or `sm doctor --fix`)
-  before re-running sail.
+- If the environment looks broken: `sm doctor` before re-running sail.
