@@ -30,7 +30,6 @@ from typing import Optional
 
 from slopmop.workflow.state_machine import SailMode, WorkflowState
 from slopmop.workflow.state_store import (
-    read_sail_mode,
     read_state,
     write_sail_mode,
     write_state,
@@ -188,25 +187,14 @@ def _sail_swab_failing(args: argparse.Namespace, project_root: Path) -> int:
 
 
 def _sail_swab_clean(args: argparse.Namespace, project_root: Path) -> int:
-    """S3 — SWAB_CLEAN: instruct to commit (mode-aware), then run scour."""
+    """S3 — SWAB_CLEAN: instruct to commit, then run scour."""
     if _has_uncommitted_changes(project_root):
-        sail_mode = read_sail_mode(project_root)
-        if sail_mode == SailMode.SAILING:
-            _print_step(
-                "📝",
-                "Commit your changes",
-                "Swab is clean — stage and commit, then continue sailing.\n"
-                "   Run: git add -A && git commit -m 'wip: ...'\n" + _THEN_SAIL,
-            )
-        else:
-            _print_step(
-                "📝",
-                "Commit and share results",
-                "Swab is clean — commit your changes, share the results\n"
-                "   with the human, and await the next instruction.\n"
-                "   Run: git add -A && git commit -m '...'\n"
-                "   When ready to ship: sm sail",
-            )
+        _print_step(
+            "📝",
+            "Commit your changes",
+            "Swab is clean — stage and commit, then continue sailing.\n"
+            "   Run: git add -A && git commit -m 'wip: ...'\n" + _THEN_SAIL,
+        )
         return 0
 
     # Working tree is clean — advance to scour

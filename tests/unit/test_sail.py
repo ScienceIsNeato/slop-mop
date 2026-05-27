@@ -395,33 +395,18 @@ class TestSailMode:
 
         write_sail_mode.assert_any_call(tmp_path, SailMode.SAILING)
 
-    def test_swab_clean_uncommitted_sailing_gives_exact_commit_command(
+    def test_swab_clean_uncommitted_gives_exact_commit_command(
         self, monkeypatch, capsys, tmp_path: Path
     ):
         args = _base_args(tmp_path)
         monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.SWAB_CLEAN)
         monkeypatch.setattr(sail_mod, "_has_uncommitted_changes", lambda _: True)
-        monkeypatch.setattr(sail_mod, "read_sail_mode", lambda _: SailMode.SAILING)
         monkeypatch.setattr(sail_mod, "write_sail_mode", Mock())
 
         assert sail_mod.cmd_sail(args) == 0
         out = capsys.readouterr().out
         assert "git add -A" in out
         assert "git commit" in out
-        assert "sm sail" in out
-
-    def test_swab_clean_uncommitted_iterating_gives_share_guidance(
-        self, monkeypatch, capsys, tmp_path: Path
-    ):
-        args = _base_args(tmp_path)
-        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.SWAB_CLEAN)
-        monkeypatch.setattr(sail_mod, "_has_uncommitted_changes", lambda _: True)
-        monkeypatch.setattr(sail_mod, "read_sail_mode", lambda _: SailMode.ITERATING)
-        monkeypatch.setattr(sail_mod, "write_sail_mode", Mock())
-
-        assert sail_mod.cmd_sail(args) == 0
-        out = capsys.readouterr().out
-        assert "human" in out
         assert "sm sail" in out
 
     def test_scour_clean_no_pr_gives_exact_push_and_create_commands(

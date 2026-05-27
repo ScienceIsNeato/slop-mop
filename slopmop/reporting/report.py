@@ -36,7 +36,7 @@ from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
 
 if TYPE_CHECKING:
     from slopmop.core.registry import CheckRegistry
-    from slopmop.workflow.state_machine import SailMode, WorkflowState
+    from slopmop.workflow.state_machine import SailMode
 
 
 def _format_age(iso_timestamp: str) -> Optional[str]:
@@ -133,25 +133,19 @@ JSON_SCHEMA_VERSION = "slopmop/v2"
 
 def _compute_next_step(
     level: Optional[str],
-    workflow_state: Optional["WorkflowState"],
     sail_mode: Optional["SailMode"],
 ) -> Optional[str]:
     """Return the agent's next instruction after a successful run.
 
-    Returns None when context isn't available (e.g. no project_root, or
-    called from a context that doesn't track workflow state).
+    ``level`` (the tool that just passed) is the primary signal.
+    ``workflow_state`` and ``sail_mode`` are supplementary context.
+    Returns None for unrecognised levels or when level is not provided.
     """
-    from slopmop.workflow.state_machine import SailMode, WorkflowState
+    from slopmop.workflow.state_machine import SailMode
 
     sailing = sail_mode == SailMode.SAILING
 
-    if level == "swab" or workflow_state in (
-        WorkflowState.IDLE,
-        WorkflowState.SWAB_FAILING,
-        WorkflowState.SCOUR_FAILING,
-        WorkflowState.BUFF_FAILING,
-        None,
-    ):
+    if level == "swab":
         if sailing:
             return (
                 "Swab clean. Run: git add -A && git commit -m 'wip: ...' "
@@ -162,7 +156,7 @@ def _compute_next_step(
             "and await the next instruction. Run sm sail when ready to ship."
         )
 
-    if level == "scour" or workflow_state == WorkflowState.SCOUR_CLEAN:
+    if level == "scour":
         return (
             "Scour clean. Run: git push -u origin HEAD (or git push if "
             "upstream exists), then sm sail"
@@ -250,7 +244,6 @@ class RunReport:
         registry: Optional["CheckRegistry"] = None,
         sort_actionable_by_remediation_order: bool = False,
         verbose: bool = False,
-        workflow_state: Optional["WorkflowState"] = None,
         sail_mode: Optional["SailMode"] = None,
     ) -> "RunReport":
         """Build a RunReport from a raw ExecutionSummary.
@@ -295,7 +288,7 @@ class RunReport:
             verify = f"sm {verb} -g {first_blocking.name}"
 
         next_step = (
-            _compute_next_step(level, workflow_state, sail_mode)
+            _compute_next_step(level, sail_mode)
             if summary.all_passed
             else None
         )

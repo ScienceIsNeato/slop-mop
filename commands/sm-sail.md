@@ -3,19 +3,19 @@
 Drive the workflow toward a green, buffed PR — one step at a time.
 
 1. Run `sm sail`.
-2. It reads the current workflow state and mode, runs the next obvious step
-   or emits the exact command to run, then exits.
+2. It reads the current workflow state, runs the next obvious step or emits
+   the exact command to run, then exits.
 3. Follow the instruction, then run `sm sail` again.
 4. Repeat until the PR is ready for human review.
 
-**Two modes:**
+**What sail does:** `sm sail` activates SAILING mode on entry and drives the
+workflow to PR_READY. At each step it emits the exact command to run
+(`git add -A && git commit -m '...'`, `git push`, `gh pr create --fill`)
+then tells you to call `sm sail` again.
 
-- **Iterating** (default): sail runs swab, surfaces results, and tells you to
-  share them with the human and await the next instruction.
-- **Sailing**: activated by invoking `sm sail` — the human has approved the
-  work and wants it shipped. Sail drives all the way to PR_READY, emitting
-  exact git/gh commands at each mechanical step (`git commit`, `git push`,
-  `gh pr create --fill`) and telling you to call `sm sail` again.
+**What `sm swab` does:** When run directly (not via sail), `sm swab` surfaces
+results and tells you to commit, share them with the human, and await the next
+instruction — the iterating-mode guidance lives there.
 
 **Only stops for:**
 - A failing swab/scour/buff gate — fix the reported issues, then `sm sail` again

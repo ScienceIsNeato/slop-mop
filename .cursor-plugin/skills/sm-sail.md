@@ -8,9 +8,9 @@ description: >-
 
 # sm sail — workflow autopilot
 
-`sm sail` reads the current workflow state and mode, runs the next step or
-emits the exact command to run, then exits. Call it again after following
-its instruction.
+`sm sail` activates SAILING mode on entry, reads the current workflow state,
+runs the next step or emits the exact command to run, then exits. Call it again
+after following its instruction.
 
 ## Prerequisite
 
@@ -20,25 +20,24 @@ its instruction.
 pipx install slopmop[all]
 ```
 
-## Two modes
-
-| Mode | When | Behavior |
-|------|------|----------|
-| **Iterating** (default) | Building the feature | Runs swab, surfaces results, says "share with human, await instruction" |
-| **Sailing** | Human approved — "ship it" | Activated by running `sm sail`. Drives to PR_READY, emitting exact git/gh commands at each step |
-
-## What sail tells you to do (sailing mode)
+## What sail tells you to do
 
 ```
 sm sail → runs swab
   swab clean + uncommitted → "git add -A && git commit -m '...' then sm sail"
   swab clean + committed   → runs scour
   scour clean + no PR      → "git push -u origin HEAD && gh pr create --fill then sm sail"
-  scour clean + PR + push  → "git push then sm sail"
-  scour clean + PR + clean → runs buff inspect
+  scour clean + PR exists  → "git push then sm sail"
+  PR open                  → runs buff inspect
   buff issues              → fix gate, then sm sail again
   buff all-green           → ⛵ PR ready for human review
 ```
+
+## Note on iterating-mode guidance
+
+When `sm swab` passes outside of sail (iterating mode), the output includes
+"share results with the human, await the next instruction." That guidance comes
+from `sm swab` directly — `sm sail` is always in SAILING mode.
 
 ## Only stops for
 
