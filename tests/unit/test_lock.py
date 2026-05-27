@@ -64,6 +64,7 @@ class TestPidAlive:
     def test_windows_dead_pid_uses_openprocess(self) -> None:
         mock_kernel32 = MagicMock()
         mock_kernel32.OpenProcess.return_value = 0  # NULL → PID not found
+        mock_kernel32.GetLastError.return_value = 0  # not access denied
         with (
             patch("slopmop.core.lock.sys") as mock_sys,
             patch("ctypes.windll", create=True) as mock_windll,
@@ -71,6 +72,18 @@ class TestPidAlive:
             mock_sys.platform = "win32"
             mock_windll.kernel32 = mock_kernel32
             assert _pid_alive(99999999) is False
+
+    def test_windows_access_denied_treated_as_alive(self) -> None:
+        mock_kernel32 = MagicMock()
+        mock_kernel32.OpenProcess.return_value = 0  # NULL → can't open
+        mock_kernel32.GetLastError.return_value = 5  # ERROR_ACCESS_DENIED
+        with (
+            patch("slopmop.core.lock.sys") as mock_sys,
+            patch("ctypes.windll", create=True) as mock_windll,
+        ):
+            mock_sys.platform = "win32"
+            mock_windll.kernel32 = mock_kernel32
+            assert _pid_alive(1) is True
 
     def test_windows_alive_pid_uses_openprocess(self) -> None:
         mock_kernel32 = MagicMock()

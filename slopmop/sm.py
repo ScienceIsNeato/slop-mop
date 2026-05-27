@@ -46,6 +46,7 @@ from slopmop import __version__
 from slopmop.cli.config import _deep_merge
 from slopmop.cli.parser_builders import (
     AgentParserBuilder,
+    BarnacleParserBuilder,
     BuffParserBuilder,
     RefitParserBuilder,
 )
@@ -864,117 +865,6 @@ def _add_status_parser(
     )
 
 
-def _add_barnacle_parser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-) -> None:
-    """Add the barnacle subcommand parser."""
-    from slopmop.cli.barnacle import DEFAULT_REPO, HELP_AGENT  # noqa: PLC0415
-
-    barnacle_parser = subparsers.add_parser(
-        "barnacle",
-        help="File upstream tool-friction issues",
-        description=(
-            "File a structured GitHub issue when slop-mop itself blocks or "
-            "misguides work in a real repository. Barnacles are one-way "
-            "upstream reports, not a local queue."
-        ),
-    )
-    barnacle_sub = barnacle_parser.add_subparsers(
-        dest="barnacle_action", help="Action to perform"
-    )
-
-    def add_file_args(parser: argparse.ArgumentParser) -> None:
-        parser.add_argument("--title", help="Short issue title")
-        parser.add_argument(
-            "--command", required=True, help="Command that triggered the friction"
-        )
-        parser.add_argument("--gate", help="Gate name if the friction is gate-specific")
-        parser.add_argument(
-            "--expected", required=True, help="What should have happened"
-        )
-        parser.add_argument("--actual", required=True, help="What actually happened")
-        parser.add_argument(
-            "--output", dest="output_excerpt", help="Relevant terminal output excerpt"
-        )
-        parser.add_argument(
-            "--repro-step",
-            dest="reproduction_steps",
-            action="append",
-            help="Reproduction step; repeat for multiple steps",
-        )
-        parser.add_argument(
-            "--tried",
-            dest="things_tried",
-            action="append",
-            help="Thing already tried; repeat for multiple attempts",
-        )
-        parser.add_argument(
-            "--workflow",
-            choices=[
-                "swab",
-                "scour",
-                "buff",
-                "sail",
-                "refit",
-                "doctor",
-                "upgrade",
-                "install",
-                "agent-skill",
-                "unknown",
-            ],
-            default="unknown",
-            help="Affected slop-mop workflow",
-        )
-        parser.add_argument(
-            "--blocker-type",
-            dest="blocker_type",
-            choices=["blocking", "non-blocking"],
-            default="blocking",
-            help="Whether this barnacle blocks forward progress (default: blocking)",
-        )
-        parser.add_argument("--agent", help=HELP_AGENT)
-        parser.add_argument(
-            "--project-root", default=".", help="Root of the affected repository"
-        )
-        parser.add_argument(
-            "--repo",
-            default=DEFAULT_REPO,
-            help=f"GitHub repo to file against (default: {DEFAULT_REPO})",
-        )
-        parser.add_argument(
-            "--label",
-            dest="labels",
-            action="append",
-            help="Issue label; defaults to barnacle + bug when omitted",
-        )
-        parser.add_argument(
-            "--dry-run",
-            action="store_true",
-            help="Print the issue title/body without creating a GitHub issue",
-        )
-        parser.add_argument(
-            "--body-file",
-            dest="body_file",
-            help="Path for the generated Markdown body artifact",
-        )
-        parser.add_argument(
-            "--json",
-            dest="json_output",
-            action="store_true",
-            help="Emit machine-readable filing details",
-        )
-
-    file_p = barnacle_sub.add_parser("file", help="File a barnacle GitHub issue")
-    add_file_args(file_p)
-
-    describe_p = barnacle_sub.add_parser(
-        "describe",
-        help="Deprecated alias for file",
-        description="Deprecated alias for file",
-    )
-    add_file_args(describe_p)
-
-
 def _add_audit_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -1118,7 +1008,7 @@ def create_parser() -> argparse.ArgumentParser:
     _add_buff_parser(subparsers)
     _add_sail_parser(subparsers)
     _add_refit_parser(subparsers)
-    _add_barnacle_parser(subparsers)
+    BarnacleParserBuilder(subparsers).build()
     _add_status_parser(subparsers)
     _add_doctor_parser(subparsers)
     _add_config_parser(subparsers)
@@ -1164,10 +1054,17 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_upgrade,
     )
 
-    parser = create_parser()
-    parsed_args = parser.parse_args(args)
+    # Strip --no-tty from wherever it appears (before or after the subcommand)
+    # so argparse doesn't reject it as an unrecognised subcommand argument.
+    raw = list(args) if args is not None else sys.argv[1:]
+    no_tty = "--no-tty" in raw
+    if no_tty:
+        raw = [a for a in raw if a != "--no-tty"]
 
-    if getattr(parsed_args, "no_tty", False):
+    parser = create_parser()
+    parsed_args = parser.parse_args(raw)
+
+    if no_tty or getattr(parsed_args, "no_tty", False):
         os.environ["NO_COLOR"] = "1"
 
         class _NT:

@@ -143,7 +143,12 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
             else:
                 # No gate-level ignores: explicitly use knip.json from project
                 # so knip doesn't auto-discover (which could find wrong config or use cache)
-                for config_name in ["knip.json", "knip.jsonc", ".knip.json", ".knip.jsonc"]:
+                for config_name in [
+                    "knip.json",
+                    "knip.jsonc",
+                    ".knip.json",
+                    ".knip.jsonc",
+                ]:
                     config_path = os.path.join(project_root, config_name)
                     if os.path.exists(config_path):
                         cmd.extend(["--config", config_name])

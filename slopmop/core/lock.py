@@ -64,11 +64,16 @@ def _pid_alive(pid: int) -> bool:
         import ctypes
 
         SYNCHRONIZE = 0x00100000
+        ERROR_ACCESS_DENIED = 5
         handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
-        if not handle:
-            return False
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return True
+        if handle:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        # OpenProcess failed. Access denied means the process exists but we
+        # lack permissions (different user, elevated, or protected process).
+        if ctypes.windll.kernel32.GetLastError() == ERROR_ACCESS_DENIED:
+            return True
+        return False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
