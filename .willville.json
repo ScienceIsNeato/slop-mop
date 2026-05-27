@@ -12,28 +12,20 @@
   },
   "status": {
     "state": "shipping",
-    "summary": "Tyrion-in-a-box quality gates for AI-generated code; 1.0 is out, 1.1 wraps up the verb-driven workflow and the buff/scour split. Completed config help/error improvements, gate enablement fixes, Windows build fix, PR #221 ready for merge (all review feedback resolved, coverage gates passing).",
+    "summary": "PR #223 merged: starlette PYSEC-2026-161 pin + dead-code.js knip 6 compat + ignore_patterns/ignore_dependencies config fields. Starlette blocker cleared; next is cutting v1.1.0.",
     "blockers": [
-      "Pre-existing starlette security vulnerability (PYSEC-2026-161) in myopia:dependency-risk.py — needs resolution before v1.1.0 release.",
       "Pin GitHub Actions in barnacle templates to commit SHAs before tagging v1.1."
     ],
     "next": [
-      "Merge PR #221 once security issue is addressed or scoped out.",
       "Cut v1.1.0 once the buff helper has docs and one more dogfooded PR.",
       "Publish the `sm sail` walkthrough to the docs site."
     ],
-    "updated": "2026-05-25"
+    "updated": "2026-05-26"
   },
   "agent": {
-    "status": "PR #223: CI fix pushed — black 88-char wrap in test file",
-    "direction": "Two fixes: PYSEC-2026-161 starlette pin and dead-code.js knip 6 JSON format compat + ignore_patterns/ignore_dependencies. CI was failing due to a long line in test_javascript_dead_code.py; now fixed.",
-    "last_update": "2026-05-25T00:00:00Z",
-    "actions": [
-      { "name": "Pin starlette>=1.0.1 to resolve PYSEC-2026-161", "status": "done" },
-      { "name": "Fix dead-code.js knip 6 JSON envelope + add ignore_patterns/ignore_dependencies", "status": "done" },
-      { "name": "Fix CI black formatting failure (long line in test file)", "status": "done" },
-      { "name": "Wait for CI to pass and merge PR #223", "status": "in_progress" }
-    ]
+    "status": "PR #224 — --no-tty flag + Windows KBI fix, waiting on CI",
+    "direction": "Two small quality-of-life fixes: agents can share output with humans, Windows tests no longer flake on teardown",
+    "last_update": "2026-05-26T05:45:00Z"
   },
   "queue": {
     "active": true,

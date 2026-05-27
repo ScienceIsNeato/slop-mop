@@ -228,6 +228,127 @@ class AgentParserBuilder:
         return "\n".join(lines)
 
 
+class BarnacleParserBuilder:
+    """Build the barnacle issue-filing parser."""
+
+    def __init__(
+        self,
+        subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    ) -> None:
+        self.subparsers = subparsers
+
+    @staticmethod
+    def _add_file_args(parser: argparse.ArgumentParser) -> None:
+        from slopmop.cli.barnacle import DEFAULT_REPO, HELP_AGENT  # noqa: PLC0415
+
+        parser.add_argument("--title", help="Short issue title")
+        parser.add_argument(
+            "--command", required=True, help="Command that triggered the friction"
+        )
+        parser.add_argument("--gate", help="Gate name if the friction is gate-specific")
+        parser.add_argument(
+            "--expected", required=True, help="What should have happened"
+        )
+        parser.add_argument("--actual", required=True, help="What actually happened")
+        parser.add_argument(
+            "--output",
+            dest="output_excerpt",
+            help="Relevant terminal output excerpt",
+        )
+        parser.add_argument(
+            "--repro-step",
+            dest="reproduction_steps",
+            action="append",
+            help="Reproduction step; repeat for multiple steps",
+        )
+        parser.add_argument(
+            "--tried",
+            dest="things_tried",
+            action="append",
+            help="Thing already tried; repeat for multiple attempts",
+        )
+        parser.add_argument(
+            "--workflow",
+            choices=[
+                "swab",
+                "scour",
+                "buff",
+                "sail",
+                "refit",
+                "doctor",
+                "upgrade",
+                "install",
+                "agent-skill",
+                "unknown",
+            ],
+            default="unknown",
+            help="Affected slop-mop workflow",
+        )
+        parser.add_argument(
+            "--blocker-type",
+            dest="blocker_type",
+            choices=["blocking", "non-blocking"],
+            default="blocking",
+            help="Whether this barnacle blocks forward progress (default: blocking)",
+        )
+        parser.add_argument("--agent", help=HELP_AGENT)
+        parser.add_argument(
+            "--project-root", default=".", help="Root of the affected repository"
+        )
+        parser.add_argument(
+            "--repo",
+            default=DEFAULT_REPO,
+            help=f"GitHub repo to file against (default: {DEFAULT_REPO})",
+        )
+        parser.add_argument(
+            "--label",
+            dest="labels",
+            action="append",
+            help="Issue label; defaults to barnacle + bug when omitted",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the issue title/body without creating a GitHub issue",
+        )
+        parser.add_argument(
+            "--body-file",
+            dest="body_file",
+            help="Path for the generated Markdown body artifact",
+        )
+        parser.add_argument(
+            "--json",
+            dest="json_output",
+            action="store_true",
+            help="Emit machine-readable filing details",
+        )
+
+    def build(self) -> None:
+        """Register the barnacle parser."""
+        barnacle_parser = self.subparsers.add_parser(
+            "barnacle",
+            help="File upstream tool-friction issues",
+            description=(
+                "File a structured GitHub issue when slop-mop itself blocks or "
+                "misguides work in a real repository. Barnacles are one-way "
+                "upstream reports, not a local queue."
+            ),
+        )
+        barnacle_sub = barnacle_parser.add_subparsers(
+            dest="barnacle_action", help="Action to perform"
+        )
+
+        file_p = barnacle_sub.add_parser("file", help="File a barnacle GitHub issue")
+        self._add_file_args(file_p)
+
+        describe_p = barnacle_sub.add_parser(
+            "describe",
+            help="Deprecated alias for file",
+            description="Deprecated alias for file",
+        )
+        self._add_file_args(describe_p)
+
+
 class RefitParserBuilder:
     """Build the remediation refit parser."""
 
