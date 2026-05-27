@@ -245,15 +245,11 @@ class BarnacleParserBuilder:
         parser.add_argument(
             "--command", required=True, help="Command that triggered the friction"
         )
-        parser.add_argument(
-            "--gate", help="Gate name if the friction is gate-specific"
-        )
+        parser.add_argument("--gate", help="Gate name if the friction is gate-specific")
         parser.add_argument(
             "--expected", required=True, help="What should have happened"
         )
-        parser.add_argument(
-            "--actual", required=True, help="What actually happened"
-        )
+        parser.add_argument("--actual", required=True, help="What actually happened")
         parser.add_argument(
             "--output",
             dest="output_excerpt",
