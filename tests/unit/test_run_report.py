@@ -826,8 +826,16 @@ class TestPorcelainAdapter:
         out = PorcelainAdapter.render(report)
         assert "timed check(s) skipped" in out
 
-
-# ─── role badge helper ───────────────────────────────────────────────────
+    def test_next_step_emitted_when_warnings_present(self) -> None:
+        summary = _summary(
+            [
+                _result("p", CheckStatus.PASSED),
+                _result("w", CheckStatus.WARNED),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "next:" in out
 
 
 class TestRoleBadge:

@@ -176,7 +176,7 @@ class PorcelainAdapter:
         if report.verify_command and len(report.actionable) > 1:
             lines.append(f"first: {report.verify_command}")
 
-        if report.next_step and not report.actionable:
+        if report.next_step and not report.failed and not report.errored:
             lines.append(f"next: {report.next_step}")
 
         cache = report.cache_metadata()
