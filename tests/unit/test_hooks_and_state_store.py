@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from slopmop.workflow.state_machine import RepoPhase, WorkflowState
+from slopmop.workflow.state_machine import RepoPhase, SailMode, WorkflowState
 
 # ---------------------------------------------------------------------------
 # state_store tests — fill coverage gaps on edge cases
@@ -106,6 +106,27 @@ class TestStateStoreEdgeCases:
         state_dir.mkdir()
         (state_dir / "workflow_state.json").write_text('"just a string"')
         assert _read_raw(tmp_path) == {}
+
+    def test_read_sail_mode_returns_mode_for_valid_string(self, tmp_path):
+        from slopmop.workflow.state_store import read_sail_mode, write_sail_mode
+
+        write_sail_mode(tmp_path, SailMode.SAILING)
+        assert read_sail_mode(tmp_path) == SailMode.SAILING
+
+    def test_read_sail_mode_returns_tacking_for_invalid_string(self, tmp_path):
+        from slopmop.workflow.state_store import read_sail_mode
+
+        state_dir = tmp_path / ".slopmop"
+        state_dir.mkdir()
+        (state_dir / "workflow_state.json").write_text(
+            json.dumps({"sail_mode": "bogus_mode"})
+        )
+        assert read_sail_mode(tmp_path) == SailMode.TACKING
+
+    def test_read_sail_mode_defaults_to_tacking_when_missing(self, tmp_path):
+        from slopmop.workflow.state_store import read_sail_mode
+
+        assert read_sail_mode(tmp_path) == SailMode.TACKING
 
     def test_update_creates_dir_if_missing(self, tmp_path):
         from slopmop.workflow.state_store import write_state

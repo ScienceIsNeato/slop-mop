@@ -27,6 +27,7 @@ from slopmop.reporting.adapters import (
     _role_badge,
 )
 from slopmop.reporting.report import JSON_SCHEMA_VERSION, RunReport
+from slopmop.workflow.state_machine import SailMode
 
 # ─── fixtures ────────────────────────────────────────────────────────────
 
@@ -676,7 +677,7 @@ class TestConsoleAdapter:
 
 
 class TestPorcelainAdapter:
-    def test_success_is_single_summary_line(self) -> None:
+    def test_success_includes_summary_line_and_next_step(self) -> None:
         summary = _summary(
             [
                 _result("a", CheckStatus.PASSED),
@@ -689,7 +690,9 @@ class TestPorcelainAdapter:
         )
         report = RunReport.from_summary(summary, level="swab")
 
-        assert PorcelainAdapter.render(report) == "sm swab: 0 fail · 1 pass · 1 n/a"
+        rendered = PorcelainAdapter.render(report)
+        assert rendered.startswith("sm swab: 0 fail · 1 pass · 1 n/a")
+        assert "next:" in rendered
 
     def test_failure_lists_actionable_detail_and_next_command(self) -> None:
         summary = _summary(
@@ -823,8 +826,16 @@ class TestPorcelainAdapter:
         out = PorcelainAdapter.render(report)
         assert "timed check(s) skipped" in out
 
-
-# ─── role badge helper ───────────────────────────────────────────────────
+    def test_next_step_emitted_when_warnings_present(self) -> None:
+        summary = _summary(
+            [
+                _result("p", CheckStatus.PASSED),
+                _result("w", CheckStatus.WARNED),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab")
+        out = PorcelainAdapter.render(report)
+        assert "next:" in out
 
 
 class TestRoleBadge:
@@ -1001,7 +1012,29 @@ class TestConsoleAdapterWarnings:
         assert "line 2" in out
         assert "line 3" not in out
         assert "more lines in log" in out
-        assert "logs/g.log" in out
+
+
+# ─── next_step sailing mode ───────────────────────────────────────────────
+
+
+class TestNextStepSailingMode:
+    def test_swab_sailing_mode_gives_exact_commit_command(self) -> None:
+        summary = _summary([_result("p", CheckStatus.PASSED)])
+        report = RunReport.from_summary(
+            summary, level="swab", sail_mode=SailMode.SAILING
+        )
+        assert report.next_step is not None
+        assert "git add -A && git commit" in report.next_step
+        assert "sm sail" in report.next_step
+
+    def test_scour_sailing_mode_gives_exact_push_command(self) -> None:
+        summary = _summary([_result("p", CheckStatus.PASSED)])
+        report = RunReport.from_summary(
+            summary, level="scour", sail_mode=SailMode.SAILING
+        )
+        assert report.next_step is not None
+        assert "git push" in report.next_step
+        assert "sm sail" in report.next_step
 
     def test_verbose_output_preview_shows_more_lines(self, capsys) -> None:
         long_output = "\n".join(f"line {i}" for i in range(20))

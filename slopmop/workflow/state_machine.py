@@ -51,6 +51,26 @@ class RepoPhase(str, Enum):
 
 
 # ---------------------------------------------------------------------------
+# Sail mode — sub-mode within MAINTENANCE
+# ---------------------------------------------------------------------------
+
+
+class SailMode(str, Enum):
+    """Whether the agent is tacking or driving toward a green PR.
+
+    TACKING — default; agent is building the feature.  After swab clean,
+        surface results to the human and await the next instruction.
+
+    SAILING — human has approved the work and wants it shipped.  After each
+        step, sail emits the exact next command and tells the agent to call
+        ``sm sail`` again.  Resets to TACKING when PR_READY is reached.
+    """
+
+    TACKING = "tacking"
+    SAILING = "sailing"
+
+
+# ---------------------------------------------------------------------------
 # States
 # ---------------------------------------------------------------------------
 
