@@ -56,17 +56,17 @@ class RepoPhase(str, Enum):
 
 
 class SailMode(str, Enum):
-    """Whether the agent is iterating or driving toward a green PR.
+    """Whether the agent is tacking or driving toward a green PR.
 
-    ITERATING — default; agent is building the feature.  After swab clean,
+    TACKING — default; agent is building the feature.  After swab clean,
         surface results to the human and await the next instruction.
 
     SAILING — human has approved the work and wants it shipped.  After each
         step, sail emits the exact next command and tells the agent to call
-        ``sm sail`` again.  Resets to ITERATING when PR_READY is reached.
+        ``sm sail`` again.  Resets to TACKING when PR_READY is reached.
     """
 
-    ITERATING = "iterating"
+    TACKING = "tacking"
     SAILING = "sailing"
 
 

@@ -15,7 +15,7 @@ then tells you to call `sm sail` again.
 
 **What `sm swab` does:** When run directly (not via sail), `sm swab` surfaces
 results and tells you to commit, share them with the human, and await the next
-instruction — the iterating-mode guidance lives there.
+instruction — the tacking-mode guidance lives there.
 
 **Only stops for:**
 - A failing swab/scour/buff gate — fix the reported issues, then `sm sail` again

@@ -33,9 +33,9 @@ sm sail → runs swab
   buff all-green           → ⛵ PR ready for human review
 ```
 
-## Note on iterating-mode guidance
+## Note on tacking-mode guidance
 
-When `sm swab` passes outside of sail (iterating mode), the output includes
+When `sm swab` passes outside of sail (tacking mode), the output includes
 "share results with the human, await the next instruction." That guidance comes
 from `sm swab` directly — `sm sail` is always in SAILING mode.
 

@@ -11,7 +11,7 @@ Design principles:
 *   **Instruct, don't act**: sail tells the agent exactly what to run —
     including git/gh command lines — rather than running them itself.
     Committing and pushing are agent responsibilities.
-*   **Two modes**: ITERATING (default, surface results to human) vs
+*   **Two modes**: TACKING (default, surface results to human) vs
     SAILING (human approved, drive all the way to PR_READY).  Invoking
     ``sm sail`` activates SAILING mode.
 *   **HOLD pattern**: when a human decision is needed, sail emits a
@@ -297,13 +297,13 @@ def _sail_buff_failing(args: argparse.Namespace, project_root: Path) -> int:
 
 
 def _sail_pr_ready(args: argparse.Namespace, project_root: Path) -> int:
-    """S8 — PR_READY: surface to human for review, reset to iterating."""
-    write_sail_mode(project_root, SailMode.ITERATING)
+    """S8 — PR_READY: surface to human for review, reset to tacking."""
+    write_sail_mode(project_root, SailMode.TACKING)
     print(
         "\n⛵ sail → 🏁 PR ready for human review\n"
         "   All CI green, no unresolved threads.\n"
         "   Share the PR with the human and await their decision.\n"
-        "   (Sail mode reset to iterating for the next feature.)\n"
+        "   (Sail mode reset to tacking for the next feature.)\n"
     )
     return 0
 

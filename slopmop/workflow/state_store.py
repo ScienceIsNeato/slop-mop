@@ -65,7 +65,7 @@ def read_baseline_achieved(project_root: str | Path) -> bool:
 
 
 def read_sail_mode(project_root: str | Path) -> SailMode:
-    """Return the current sail mode, defaulting to ITERATING."""
+    """Return the current sail mode, defaulting to TACKING."""
     data = _read_raw(project_root)
     raw = data.get(_SAIL_MODE_KEY)
     if isinstance(raw, str):
@@ -73,7 +73,7 @@ def read_sail_mode(project_root: str | Path) -> SailMode:
             return SailMode(raw)
         except ValueError:
             pass
-    return SailMode.ITERATING
+    return SailMode.TACKING
 
 
 def write_sail_mode(project_root: str | Path, mode: SailMode) -> None:

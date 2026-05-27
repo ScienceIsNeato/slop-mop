@@ -113,7 +113,7 @@ class TestStateStoreEdgeCases:
         write_sail_mode(tmp_path, SailMode.SAILING)
         assert read_sail_mode(tmp_path) == SailMode.SAILING
 
-    def test_read_sail_mode_returns_iterating_for_invalid_string(self, tmp_path):
+    def test_read_sail_mode_returns_tacking_for_invalid_string(self, tmp_path):
         from slopmop.workflow.state_store import read_sail_mode
 
         state_dir = tmp_path / ".slopmop"
@@ -121,12 +121,12 @@ class TestStateStoreEdgeCases:
         (state_dir / "workflow_state.json").write_text(
             json.dumps({"sail_mode": "bogus_mode"})
         )
-        assert read_sail_mode(tmp_path) == SailMode.ITERATING
+        assert read_sail_mode(tmp_path) == SailMode.TACKING
 
-    def test_read_sail_mode_defaults_to_iterating_when_missing(self, tmp_path):
+    def test_read_sail_mode_defaults_to_tacking_when_missing(self, tmp_path):
         from slopmop.workflow.state_store import read_sail_mode
 
-        assert read_sail_mode(tmp_path) == SailMode.ITERATING
+        assert read_sail_mode(tmp_path) == SailMode.TACKING
 
     def test_update_creates_dir_if_missing(self, tmp_path):
         from slopmop.workflow.state_store import write_state

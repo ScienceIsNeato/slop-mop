@@ -437,7 +437,7 @@ class TestSailMode:
         assert "git push" in out
         assert "sm sail" in out
 
-    def test_pr_ready_resets_mode_to_iterating(self, monkeypatch, tmp_path: Path):
+    def test_pr_ready_resets_mode_to_tacking(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
         monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.PR_READY)
         write_sail_mode = Mock()
@@ -445,4 +445,4 @@ class TestSailMode:
 
         sail_mod.cmd_sail(args)
 
-        write_sail_mode.assert_any_call(tmp_path, SailMode.ITERATING)
+        write_sail_mode.assert_any_call(tmp_path, SailMode.TACKING)

@@ -138,7 +138,7 @@ def _compute_next_step(
     """Return the agent's next instruction after a successful run.
 
     ``level`` (the tool that just passed) is the primary signal; ``sail_mode``
-    selects between exact-command (SAILING) and share-with-human (ITERATING)
+    selects between exact-command (SAILING) and share-with-human (TACKING)
     guidance. Returns None for unrecognised levels or when level is not provided.
     """
     from slopmop.workflow.state_machine import SailMode
