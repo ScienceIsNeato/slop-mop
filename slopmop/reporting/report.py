@@ -137,9 +137,9 @@ def _compute_next_step(
 ) -> Optional[str]:
     """Return the agent's next instruction after a successful run.
 
-    ``level`` (the tool that just passed) is the primary signal.
-    ``workflow_state`` and ``sail_mode`` are supplementary context.
-    Returns None for unrecognised levels or when level is not provided.
+    ``level`` (the tool that just passed) is the primary signal; ``sail_mode``
+    selects between exact-command (SAILING) and share-with-human (ITERATING)
+    guidance. Returns None for unrecognised levels or when level is not provided.
     """
     from slopmop.workflow.state_machine import SailMode
 
@@ -157,9 +157,14 @@ def _compute_next_step(
         )
 
     if level == "scour":
+        if sailing:
+            return (
+                "Scour clean. Run: git push -u origin HEAD (or git push if "
+                "upstream exists), then sm sail"
+            )
         return (
-            "Scour clean. Run: git push -u origin HEAD (or git push if "
-            "upstream exists), then sm sail"
+            "Scour clean. Share results with the human and await the next "
+            "instruction. Run sm sail when ready to push."
         )
 
     return None
@@ -287,11 +292,7 @@ class RunReport:
             verb = level or "swab"
             verify = f"sm {verb} -g {first_blocking.name}"
 
-        next_step = (
-            _compute_next_step(level, sail_mode)
-            if summary.all_passed
-            else None
-        )
+        next_step = _compute_next_step(level, sail_mode) if summary.all_passed else None
 
         return cls(
             summary=summary,
