@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ import pytest
 _RELEASE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "release.sh"
 _HAS_BASH = shutil.which("bash") is not None
 _HAS_GIT = shutil.which("git") is not None
+_IS_UNIX = sys.platform in ("linux", "darwin")
 
 
 def _run_release_command(
@@ -130,8 +132,8 @@ def _write_fake_gh(fake_bin: Path) -> None:
 
 
 @pytest.mark.skipif(
-    not (_HAS_BASH and _HAS_GIT),
-    reason="bash and git are required for release.sh regression coverage",
+    not (_HAS_BASH and _HAS_GIT and _IS_UNIX),
+    reason="bash and git are required for release.sh regression coverage (unix only)",
 )
 def test_release_script_reuses_existing_remote_branch_on_rerun(tmp_path: Path) -> None:
     work = _init_release_repo(tmp_path)
@@ -174,8 +176,8 @@ def test_release_script_reuses_existing_remote_branch_on_rerun(tmp_path: Path) -
 
 
 @pytest.mark.skipif(
-    not (_HAS_BASH and _HAS_GIT),
-    reason="bash and git are required for release.sh regression coverage",
+    not (_HAS_BASH and _HAS_GIT and _IS_UNIX),
+    reason="bash and git are required for release.sh regression coverage (unix only)",
 )
 def test_release_script_reuses_existing_open_pr_without_creating_another(
     tmp_path: Path,
