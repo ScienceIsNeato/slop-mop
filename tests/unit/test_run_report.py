@@ -1013,6 +1013,22 @@ class TestConsoleAdapterWarnings:
         assert "line 3" not in out
         assert "more lines in log" in out
 
+    def test_verbose_output_preview_shows_more_lines(self, capsys) -> None:
+        long_output = "\n".join(f"line {i}" for i in range(20))
+        summary = _summary(
+            [
+                _result("g", CheckStatus.FAILED, error="big", output=long_output),
+            ]
+        )
+        report = RunReport.from_summary(summary, level="swab", verbose=True)
+        report.log_files = {"g": "logs/g.log"}
+        ConsoleAdapter(report).render()
+        out = capsys.readouterr().out
+        assert "line 0" in out
+        assert "line 9" in out
+        assert "line 10" not in out
+        assert "more lines in log" in out
+
 
 # ─── next_step sailing mode ───────────────────────────────────────────────
 
@@ -1035,19 +1051,3 @@ class TestNextStepSailingMode:
         assert report.next_step is not None
         assert "git push" in report.next_step
         assert "sm sail" in report.next_step
-
-    def test_verbose_output_preview_shows_more_lines(self, capsys) -> None:
-        long_output = "\n".join(f"line {i}" for i in range(20))
-        summary = _summary(
-            [
-                _result("g", CheckStatus.FAILED, error="big", output=long_output),
-            ]
-        )
-        report = RunReport.from_summary(summary, level="swab", verbose=True)
-        report.log_files = {"g": "logs/g.log"}
-        ConsoleAdapter(report).render()
-        out = capsys.readouterr().out
-        assert "line 0" in out
-        assert "line 9" in out
-        assert "line 10" not in out
-        assert "more lines in log" in out

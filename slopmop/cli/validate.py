@@ -33,7 +33,7 @@ from slopmop.reporting.report import RunReport
 from slopmop.reporting.timings import clear_timings, load_timing_averages
 from slopmop.subprocess.runner import get_runner
 from slopmop.workflow.state_machine import RepoPhase
-from slopmop.workflow.state_store import read_phase, read_sail_mode
+from slopmop.workflow.state_store import read_phase
 
 
 def _default_json_artifact_path(project_root: Path, artifact_name: str) -> str:
@@ -516,6 +516,8 @@ def _run_validation_locked(
             effective_summary = filtered.filtered_summary
             baseline_metadata = filtered.metadata
 
+        # sail_mode is only set in args by cmd_sail; direct swab/scour use default TACKING
+        sail_mode = getattr(args, "_sail_mode", None)
         report = RunReport.from_summary(
             effective_summary,
             level=level_name,
@@ -523,7 +525,7 @@ def _run_validation_locked(
             registry=registry,
             sort_actionable_by_remediation_order=True,
             verbose=args.verbose,
-            sail_mode=read_sail_mode(project_root),
+            sail_mode=sail_mode,
         )
         report.baseline_filter = baseline_metadata
 

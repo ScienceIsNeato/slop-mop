@@ -164,6 +164,7 @@ def _swab_args(args: argparse.Namespace) -> argparse.Namespace:
     swab.swabbing_timeout = getattr(args, "swabbing_timeout", None)
     swab.clear_history = getattr(args, "clear_history", False)
     swab.ignore_baseline_failures = getattr(args, "ignore_baseline_failures", False)
+    swab._sail_mode = SailMode.SAILING
     return swab
 
 
@@ -216,6 +217,7 @@ def _sail_swab_clean(args: argparse.Namespace, project_root: Path) -> int:
     scour_args.verbose = getattr(args, "verbose", False)
     scour_args.quiet = getattr(args, "quiet", False)
     scour_args.static = getattr(args, "static", False)
+    scour_args._sail_mode = SailMode.SAILING
     scour_args.porcelain = getattr(args, "porcelain", False)
     scour_args.swabbing_timeout = getattr(args, "swabbing_timeout", 0)
     return cmd_scour(scour_args)

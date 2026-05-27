@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -13,7 +12,7 @@ import pytest
 _RELEASE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "release.sh"
 _HAS_BASH = shutil.which("bash") is not None
 _HAS_GIT = shutil.which("git") is not None
-_IS_UNIX = sys.platform in ("linux", "darwin")
+_IS_UNIX = os.name != "nt"
 
 
 def _run_release_command(
