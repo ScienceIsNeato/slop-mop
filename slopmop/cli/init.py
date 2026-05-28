@@ -7,9 +7,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, cast
+from typing import Any, Dict, List, cast
 
 from slopmop import __version__
+from slopmop.checks.base import SCOPE_EXCLUDED_DIRS
 from slopmop.cli.config import _as_dict, _deep_merge
 from slopmop.cli.detection import detect_project_type
 
@@ -397,6 +398,26 @@ def _is_unset_config_value(value: Any) -> bool:
     return value is None or value == "" or value == []
 
 
+def _detect_exclude_paths(project_root: Path) -> List[str]:
+    """Detect project-specific directories that should be excluded from all gates."""
+    exclude: List[str] = []
+
+    candidates = [
+        ("Pods", [project_root / "Podfile", project_root / "Pods"]),
+        ("vendor", [project_root / "go.mod", project_root / "vendor"]),
+        ("target", [project_root / "Cargo.toml", project_root / "target"]),
+        ("local", [project_root / "local"]),
+    ]
+
+    for dir_name, signals in candidates:
+        if dir_name in SCOPE_EXCLUDED_DIRS:
+            continue
+        if any(p.exists() for p in signals):
+            exclude.append(dir_name)
+
+    return exclude
+
+
 def _field_default(check: Any, key: str) -> Any:
     """Return the declared default for a gate config field, if any."""
     for field in check.get_full_config_schema():
@@ -682,10 +703,12 @@ def cmd_init(args: argparse.Namespace) -> int:
         write_template_config,
     )
 
-    template_path = write_template_config(project_root)
+    detected_excludes = _detect_exclude_paths(project_root)
+
+    template_path = write_template_config(project_root, exclude_paths=detected_excludes)
     print(f"📄 Template saved to: {template_path}")
 
-    base_config = generate_template_config()
+    base_config = generate_template_config(exclude_paths=detected_excludes)
     _disable_non_applicable(base_config, detected)
     _apply_user_config(base_config, config)
     _disable_checks_with_missing_tools(base_config, detected)
