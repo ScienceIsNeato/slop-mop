@@ -337,7 +337,9 @@ def _sail_buff_failing(args: argparse.Namespace, project_root: Path) -> int:
 def _sail_pr_ready(args: argparse.Namespace, project_root: Path) -> int:
     """S8 — PR_READY: re-verify CI still green, then surface to human."""
     _print_step(
-        "⏳", "Re-verifying CI", "Confirming PR is still green before surfacing to human..."
+        "⏳",
+        "Re-verifying CI",
+        "Confirming PR is still green before surfacing to human...",
     )
     from slopmop.cli import cmd_buff
 
