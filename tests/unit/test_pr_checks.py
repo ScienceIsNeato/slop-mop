@@ -5,7 +5,9 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from slopmop.checks.pr.comments import PRCommentsCheck
+import pytest
+
+from slopmop.checks.pr.comments import PRCommentsCheck, _PendingReviewsError
 from slopmop.core.result import CheckStatus
 
 
@@ -758,7 +760,7 @@ class TestPRCommentsCheck:
         assert result is None
 
     def test_get_unresolved_threads_with_pending_reviews(self, tmp_path, monkeypatch):
-        """_get_unresolved_threads should return pending marker when reviews in progress."""
+        """_get_unresolved_threads should raise _PendingReviewsError when reviews in progress."""
         check = PRCommentsCheck({})
 
         check_run_response = {
@@ -797,11 +799,10 @@ class TestPRCommentsCheck:
             mock_run.return_value = MagicMock(
                 returncode=0, stdout=json.dumps(check_run_response)
             )
-            result = check._get_unresolved_threads(str(tmp_path), 123, "owner", "repo")
+            with pytest.raises(_PendingReviewsError) as exc_info:
+                check._get_unresolved_threads(str(tmp_path), 123, "owner", "repo")
 
-        assert len(result) == 1
-        assert result[0].get("_pending_reviews") is True
-        assert "_message" in result[0]
+        assert "Cursor Bugbot" in str(exc_info.value)
 
     def test_protocol_loop_directory_retries_after_race(self, tmp_path, monkeypatch):
         """Loop directory allocation should retry if another process creates it first."""

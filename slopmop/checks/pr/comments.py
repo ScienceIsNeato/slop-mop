@@ -26,6 +26,10 @@ from slopmop.constants import NOT_A_GIT_REPO, action_buff_inspect_pr
 from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 
+class _PendingReviewsError(Exception):
+    """Raised when CI checks are still pending/queued for the PR HEAD commit."""
+
+
 class PRCommentsCheck(BaseCheck):
     """PR comment resolution enforcement.
 
@@ -372,10 +376,10 @@ class PRCommentsCheck(BaseCheck):
             )
 
             if result.returncode == 0:
-                data = json.loads(result.stdout)
-                commits = (
-                    data.get("data", {})
-                    .get("repository", {})
+                parsed: Dict[str, Any] = json.loads(result.stdout)
+                data_root: Dict[str, Any] = parsed.get("data") or {}
+                commits: List[Dict[str, Any]] = (
+                    data_root.get("repository", {})
                     .get("pullRequest", {})
                     .get("commits", {})
                     .get("nodes", [])
@@ -384,13 +388,17 @@ class PRCommentsCheck(BaseCheck):
                 # Check for in-progress reviews by iterating through check suites
                 pending_checks: List[str] = []
                 for commit_node in commits:
-                    commit = commit_node.get("commit", {})
-                    check_suites = commit.get("checkSuites", {}).get("nodes", [])
+                    commit: Dict[str, Any] = commit_node.get("commit", {})
+                    check_suites: List[Dict[str, Any]] = commit.get(
+                        "checkSuites", {}
+                    ).get("nodes", [])
                     for suite in check_suites:
-                        check_runs = suite.get("checkRuns", {}).get("nodes", [])
+                        check_runs: List[Dict[str, Any]] = suite.get(
+                            "checkRuns", {}
+                        ).get("nodes", [])
                         for run in check_runs:
-                            name = run.get("name", "")
-                            status = run.get("status", "")
+                            name: str = run.get("name", "")
+                            status: str = run.get("status", "")
                             if status in ("IN_PROGRESS", "QUEUED"):
                                 pending_checks.append(name)
 
@@ -412,8 +420,7 @@ class PRCommentsCheck(BaseCheck):
         # Check for pending reviews first (e.g., Cursor Bugbot in progress)
         pending_msg = self._detect_pending_reviews(project_root, pr_number, owner, repo)
         if pending_msg:
-            # Return a special marker that will trigger a gate failure with guidance
-            return [{"_pending_reviews": True, "_message": pending_msg}]
+            raise _PendingReviewsError(pending_msg)
 
         graphql_query = """
         query($owner: String!, $name: String!, $number: Int!) {
@@ -1062,17 +1069,16 @@ class PRCommentsCheck(BaseCheck):
             )
 
         # Fetch unresolved threads
-        threads = self._get_unresolved_threads(project_root, pr_number, owner, repo)
-        duration = time.time() - start_time
-
-        # Check for pending reviews marker
-        if threads and len(threads) == 1 and threads[0].get("_pending_reviews"):
-            pending_msg = threads[0].get("_message", "Reviews still in progress")
+        try:
+            threads = self._get_unresolved_threads(project_root, pr_number, owner, repo)
+        except _PendingReviewsError as exc:
+            duration = time.time() - start_time
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
-                error=pending_msg,
+                error=str(exc),
             )
+        duration = time.time() - start_time
 
         if not threads:
             return self._create_result(

@@ -110,6 +110,7 @@ class TestSailDispatch:
         monkeypatch.setattr(sail_mod, "_has_unpushed_commits", lambda _: False)
         write_state = Mock()
         monkeypatch.setattr(sail_mod, "write_state", write_state)
+        monkeypatch.setattr("slopmop.cli.cmd_scour", Mock(return_value=0))
         mock_buff = Mock(return_value=0)
         monkeypatch.setattr("slopmop.cli.cmd_buff", mock_buff)
 
@@ -135,6 +136,7 @@ class TestSailDispatch:
         args = _base_args(tmp_path)
         monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.PR_OPEN)
         monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: 42)
+        monkeypatch.setattr("slopmop.cli.cmd_scour", Mock(return_value=0))
         mock_buff = Mock(return_value=0)
         monkeypatch.setattr("slopmop.cli.cmd_buff", mock_buff)
 
