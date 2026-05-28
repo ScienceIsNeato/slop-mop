@@ -258,6 +258,43 @@ def _sail_scour_clean(args: argparse.Namespace, project_root: Path) -> int:
 
 def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
     """S6 — PR_OPEN: buff inspect to triage CI + review threads."""
+    # Sanity check: run ignored_feedback gate explicitly before advancing
+    # This ensures we catch any pending reviews (e.g., Bugbot in progress)
+    _print_step(
+        "💬", "Sanity check", "Running ignored-feedback gate as final validation..."
+    )
+    from slopmop.cli import cmd_scour
+
+    # Run just the ignored-feedback gate to catch pending reviews
+    check_args = argparse.Namespace(
+        quality_gates=["myopia:ignored-feedback"],
+        no_auto_fix=True,
+        no_fail_fast=False,
+        no_cache=False,
+        sarif=False,
+        json_output=False,
+        json_file=None,
+        output_file=None,
+        verbose=getattr(args, "verbose", False),
+        quiet=False,
+        static=False,
+        porcelain=False,
+        swabbing_timeout=0,
+        ignore_baseline_failures=False,
+        project_root=str(project_root),
+        _sail_mode=SailMode.SAILING,
+    )
+    result = cmd_scour(check_args)
+    if result != 0:
+        # Gate failed — pending reviews or unresolved threads detected
+        _print_step(
+            "⚓",
+            "HOLD",
+            "Ignored-feedback gate detected pending reviews.\n"
+            "   Address the feedback, then: sm sail",
+        )
+        return 1
+
     _print_step(
         "✨", "Running buff inspect", "PR is open — triaging CI and review threads."
     )
