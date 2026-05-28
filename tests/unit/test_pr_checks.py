@@ -653,13 +653,27 @@ class TestPRCommentsCheck:
             "data": {
                 "repository": {
                     "pullRequest": {
-                        "checkRuns": {
+                        "commits": {
                             "nodes": [
                                 {
-                                    "name": "Cursor Bugbot",
-                                    "status": "COMPLETED",
-                                    "conclusion": "SUCCESS",
-                                },
+                                    "commit": {
+                                        "checkSuites": {
+                                            "nodes": [
+                                                {
+                                                    "checkRuns": {
+                                                        "nodes": [
+                                                            {
+                                                                "name": "Cursor Bugbot",
+                                                                "status": "COMPLETED",
+                                                                "conclusion": "SUCCESS",
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
                             ]
                         }
                     }
@@ -683,13 +697,27 @@ class TestPRCommentsCheck:
             "data": {
                 "repository": {
                     "pullRequest": {
-                        "checkRuns": {
+                        "commits": {
                             "nodes": [
                                 {
-                                    "name": "Cursor Bugbot",
-                                    "status": "IN_PROGRESS",
-                                    "conclusion": None,
-                                },
+                                    "commit": {
+                                        "checkSuites": {
+                                            "nodes": [
+                                                {
+                                                    "checkRuns": {
+                                                        "nodes": [
+                                                            {
+                                                                "name": "Cursor Bugbot",
+                                                                "status": "IN_PROGRESS",
+                                                                "conclusion": None,
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
                             ]
                         }
                     }
@@ -737,13 +765,27 @@ class TestPRCommentsCheck:
             "data": {
                 "repository": {
                     "pullRequest": {
-                        "checkRuns": {
+                        "commits": {
                             "nodes": [
                                 {
-                                    "name": "Cursor Bugbot",
-                                    "status": "IN_PROGRESS",
-                                    "conclusion": None,
-                                },
+                                    "commit": {
+                                        "checkSuites": {
+                                            "nodes": [
+                                                {
+                                                    "checkRuns": {
+                                                        "nodes": [
+                                                            {
+                                                                "name": "Cursor Bugbot",
+                                                                "status": "IN_PROGRESS",
+                                                                "conclusion": None,
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
                             ]
                         }
                     }
@@ -761,6 +803,7 @@ class TestPRCommentsCheck:
         assert result[0].get("_pending_reviews") is True
         assert "_message" in result[0]
 
+    def test_protocol_loop_directory_retries_after_race(self, tmp_path, monkeypatch):
         """Loop directory allocation should retry if another process creates it first."""
         check = PRCommentsCheck({})
         original_mkdir = Path.mkdir

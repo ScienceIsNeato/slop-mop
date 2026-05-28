@@ -58,14 +58,19 @@ def _escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace("'", "'\\''")
 
 
-def _msg_printf(forbidden: str, indent: int) -> str:
+def _msg_printf(forbidden: str, indent: int, suggestion: str = "") -> str:
     """Return a printf line that shows the intercept message."""
     spaces = " " * indent
+    msg = (
+        f"\\033[1m[slop-mop]\\033[0m \\033[31m\\xe2\\x9b\\x94 {_escape(forbidden)} blocked\\033[0m\\n"
+        f"  Stop. File a barnacle: sm barnacle\\n"
+        f"  Tell the human what you were doing and wait."
+    )
+    if suggestion:
+        msg += f"\\n  {suggestion}"
     return (
         f"{spaces}printf "
-        f"'\\033[1m[slop-mop]\\033[0m \\033[31m\\xe2\\x9b\\x94 {_escape(forbidden)} blocked\\033[0m\\n"
-        f"  Stop. File a barnacle: sm barnacle\\n"
-        f"  Tell the human what you were doing and wait.\\n' >&2"
+        f"'{msg}\\n' >&2"
     )
 
 
@@ -111,7 +116,11 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
             pattern = f'"{" ".join(entry.subcommands)}"'
             lines.append(f"        {pattern})")
             lines.append(
-                _msg_printf(f"{wrapper} {' '.join(entry.subcommands)}", indent=12)
+                _msg_printf(
+                    f"{wrapper} {' '.join(entry.subcommands)}",
+                    indent=12,
+                    suggestion=entry.suggestion
+                )
             )
             lines.append("            return 1")
             lines.append("            ;;")
@@ -142,7 +151,13 @@ def _gen_npx_block(lines: list[str]) -> None:
         if not tool:
             continue
         lines.append(f"        {tool})")
-        lines.append(_msg_printf(f"npx {tool}", indent=12))
+        lines.append(
+            _msg_printf(
+                f"npx {tool}",
+                indent=12,
+                suggestion=entry.suggestion
+            )
+        )
         lines.append("            return 1")
         lines.append("            ;;")
 

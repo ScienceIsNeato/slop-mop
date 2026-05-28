@@ -328,11 +328,21 @@ class PRCommentsCheck(BaseCheck):
         query($owner: String!, $name: String!, $number: Int!) {
           repository(owner: $owner, name: $name) {
             pullRequest(number: $number) {
-              checkRuns(first: 10) {
+              commits(last: 1) {
                 nodes {
-                  name
-                  status
-                  conclusion
+                  commit {
+                    checkSuites(first: 10) {
+                      nodes {
+                        checkRuns(first: 10) {
+                          nodes {
+                            name
+                            status
+                            conclusion
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -363,21 +373,26 @@ class PRCommentsCheck(BaseCheck):
 
             if result.returncode == 0:
                 data = json.loads(result.stdout)
-                check_runs = (
+                commits = (
                     data.get("data", {})
                     .get("repository", {})
                     .get("pullRequest", {})
-                    .get("checkRuns", {})
+                    .get("commits", {})
                     .get("nodes", [])
                 )
 
-                # Check for in-progress reviews
+                # Check for in-progress reviews by iterating through check suites
                 pending_checks: List[str] = []
-                for run in check_runs:
-                    name = run.get("name", "")
-                    status = run.get("status", "")
-                    if status == "IN_PROGRESS":
-                        pending_checks.append(name)
+                for commit_node in commits:
+                    commit = commit_node.get("commit", {})
+                    check_suites = commit.get("checkSuites", {}).get("nodes", [])
+                    for suite in check_suites:
+                        check_runs = suite.get("checkRuns", {}).get("nodes", [])
+                        for run in check_runs:
+                            name = run.get("name", "")
+                            status = run.get("status", "")
+                            if status == "IN_PROGRESS":
+                                pending_checks.append(name)
 
                 if pending_checks:
                     checks_str = ", ".join(f"'{c}'" for c in pending_checks)
