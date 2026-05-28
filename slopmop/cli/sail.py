@@ -258,20 +258,56 @@ def _sail_scour_clean(args: argparse.Namespace, project_root: Path) -> int:
 
 def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
     """S6 — PR_OPEN: buff inspect to triage CI + review threads."""
+    # Sanity check: run ignored_feedback gate explicitly before advancing
+    # This ensures we catch any pending reviews (e.g., Bugbot in progress)
     _print_step(
-        "✨", "Running buff inspect", "PR is open — triaging CI and review threads."
+        "💬", "Sanity check", "Running ignored-feedback gate as final validation..."
+    )
+    from slopmop.cli import cmd_scour
+
+    # Run just the ignored-feedback gate to catch pending reviews
+    check_args = argparse.Namespace(
+        quality_gates=["myopia:ignored-feedback"],
+        no_auto_fix=True,
+        no_fail_fast=False,
+        no_cache=False,
+        sarif=False,
+        json_output=False,
+        json_file=None,
+        output_file=None,
+        verbose=getattr(args, "verbose", False),
+        quiet=False,
+        static=False,
+        porcelain=False,
+        swabbing_timeout=0,
+        ignore_baseline_failures=False,
+        project_root=str(project_root),
+        _sail_mode=SailMode.SAILING,
+    )
+    result = cmd_scour(check_args)
+    if result != 0:
+        # Gate failed — pending reviews or unresolved threads detected
+        _print_step(
+            "⚓",
+            "HOLD",
+            "Ignored-feedback gate detected pending reviews.\n"
+            "   Address the feedback, then: sm sail",
+        )
+        return 1
+
+    _print_step(
+        "⏳",
+        "Running buff watch",
+        "PR is open — waiting for CI to settle, then checking threads.",
     )
     from slopmop.cli import cmd_buff
-    from slopmop.cli.scan_triage import ARTIFACT_NAME, WORKFLOW_NAME
 
     pr = _get_pr_number(project_root)
     buff_args = argparse.Namespace(
-        pr_or_action=str(pr) if pr else None,
-        json_output=getattr(args, "json_output", False),
-        repo=None,
-        run_id=None,
-        workflow=WORKFLOW_NAME,
-        artifact=ARTIFACT_NAME,
+        pr_or_action="watch",
+        action_args=[str(pr)] if pr else [],
+        interval=30,
+        fail_fast=False,
     )
     return cmd_buff(buff_args)
 
@@ -299,7 +335,25 @@ def _sail_buff_failing(args: argparse.Namespace, project_root: Path) -> int:
 
 
 def _sail_pr_ready(args: argparse.Namespace, project_root: Path) -> int:
-    """S8 — PR_READY: surface to human for review, reset to tacking."""
+    """S8 — PR_READY: re-verify CI still green, then surface to human."""
+    _print_step(
+        "⏳",
+        "Re-verifying CI",
+        "Confirming PR is still green before surfacing to human...",
+    )
+    from slopmop.cli import cmd_buff
+
+    pr = _get_pr_number(project_root)
+    buff_args = argparse.Namespace(
+        pr_or_action="watch",
+        action_args=[str(pr)] if pr else [],
+        interval=30,
+        fail_fast=False,
+    )
+    result = cmd_buff(buff_args)
+    if result != 0:
+        return result
+
     write_sail_mode(project_root, SailMode.TACKING)
     print(
         "\n⛵ sail → 🏁 PR ready for human review\n"

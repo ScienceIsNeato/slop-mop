@@ -1,10 +1,13 @@
 """Tests for PR comments check."""
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from slopmop.checks.pr.comments import PRCommentsCheck
+import pytest
+
+from slopmop.checks.pr.comments import PRCommentsCheck, _PendingReviewsError
 from slopmop.core.result import CheckStatus
 
 
@@ -643,6 +646,163 @@ class TestPRCommentsCheck:
 
         assert first.name == "loop-001"
         assert second.name == "loop-002"
+
+    def test_detect_pending_reviews_no_in_progress(self, tmp_path):
+        """_detect_pending_reviews should return None when no checks in progress."""
+        check = PRCommentsCheck({})
+
+        check_run_response = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "commits": {
+                            "nodes": [
+                                {
+                                    "commit": {
+                                        "checkSuites": {
+                                            "nodes": [
+                                                {
+                                                    "checkRuns": {
+                                                        "nodes": [
+                                                            {
+                                                                "name": "Cursor Bugbot",
+                                                                "status": "COMPLETED",
+                                                                "conclusion": "SUCCESS",
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps(check_run_response)
+            )
+            result = check._detect_pending_reviews(str(tmp_path), 123, "owner", "repo")
+
+        assert result is None
+
+    def test_detect_pending_reviews_with_in_progress(self, tmp_path):
+        """_detect_pending_reviews should return message when checks in progress."""
+        check = PRCommentsCheck({})
+
+        check_run_response = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "commits": {
+                            "nodes": [
+                                {
+                                    "commit": {
+                                        "checkSuites": {
+                                            "nodes": [
+                                                {
+                                                    "checkRuns": {
+                                                        "nodes": [
+                                                            {
+                                                                "name": "Cursor Bugbot",
+                                                                "status": "IN_PROGRESS",
+                                                                "conclusion": None,
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps(check_run_response)
+            )
+            result = check._detect_pending_reviews(str(tmp_path), 123, "owner", "repo")
+
+        assert result is not None
+        assert "Pending reviews detected" in result
+        assert "Cursor Bugbot" in result
+
+    def test_detect_pending_reviews_handles_exceptions(self, tmp_path):
+        """_detect_pending_reviews should return None on subprocess errors."""
+        check = PRCommentsCheck({})
+
+        # Test TimeoutExpired
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired("gh", 30)
+            result = check._detect_pending_reviews(str(tmp_path), 123, "owner", "repo")
+        assert result is None
+
+        # Test json.JSONDecodeError
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="invalid json")
+            result = check._detect_pending_reviews(str(tmp_path), 123, "owner", "repo")
+        assert result is None
+
+        # Test FileNotFoundError
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError("gh not found")
+            result = check._detect_pending_reviews(str(tmp_path), 123, "owner", "repo")
+        assert result is None
+
+    def test_get_unresolved_threads_with_pending_reviews(self, tmp_path, monkeypatch):
+        """_get_unresolved_threads should raise _PendingReviewsError when reviews in progress."""
+        check = PRCommentsCheck({})
+
+        check_run_response = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "commits": {
+                            "nodes": [
+                                {
+                                    "commit": {
+                                        "checkSuites": {
+                                            "nodes": [
+                                                {
+                                                    "checkRuns": {
+                                                        "nodes": [
+                                                            {
+                                                                "name": "Cursor Bugbot",
+                                                                "status": "IN_PROGRESS",
+                                                                "conclusion": None,
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps(check_run_response)
+            )
+            with pytest.raises(_PendingReviewsError) as exc_info:
+                check._get_unresolved_threads(str(tmp_path), 123, "owner", "repo")
+
+        assert "Cursor Bugbot" in str(exc_info.value)
 
     def test_protocol_loop_directory_retries_after_race(self, tmp_path, monkeypatch):
         """Loop directory allocation should retry if another process creates it first."""

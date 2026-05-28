@@ -58,15 +58,33 @@ def _escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace("'", "'\\''")
 
 
-def _msg_printf(forbidden: str, indent: int) -> str:
+def _msg_printf(forbidden: str, indent: int, suggestion: str = "") -> str:
     """Return a printf line that shows the intercept message."""
     spaces = " " * indent
-    return (
-        f"{spaces}printf "
-        f"'\\033[1m[slop-mop]\\033[0m \\033[31m\\xe2\\x9b\\x94 {_escape(forbidden)} blocked\\033[0m\\n"
+    msg = (
+        f"\\033[1m[slop-mop]\\033[0m \\033[31m\\xe2\\x9b\\x94 {_escape(forbidden)} blocked\\033[0m\\n"
         f"  Stop. File a barnacle: sm barnacle\\n"
-        f"  Tell the human what you were doing and wait.\\n' >&2"
+        f"  Tell the human what you were doing and wait."
     )
+    if suggestion:
+        msg += f"\\n  {_escape(suggestion)}"
+    return f"{spaces}printf " f"'{msg}\\n' >&2"
+
+
+def _gen_slopmop_guard(lines: list[str]) -> None:
+    """Append a helper that returns true only when inside a slop-mop repo."""
+    lines += [
+        "_sm_in_slopmop_repo() {",
+        '    local _d="$PWD"',
+        '    while [[ "$_d" != "/" ]]; do',
+        '        [[ -d "$_d/.slopmop" ]] && return 0',
+        '        _d="$(dirname "$_d")"',
+        "    done",
+        "    return 1",
+        "}",
+        '[[ -n "${BASH_VERSION:-}" ]] && export -f _sm_in_slopmop_repo',
+        "",
+    ]
 
 
 def _gen_function_blocks(lines: list[str]) -> None:
@@ -83,6 +101,7 @@ def _gen_function_blocks(lines: list[str]) -> None:
         lines.append(
             f'    command -v sm &>/dev/null || {{ command {cmd} "$@"; return; }}'
         )
+        lines.append(f'    _sm_in_slopmop_repo || {{ command {cmd} "$@"; return; }}')
         lines.append(_msg_printf(cmd, indent=4))
         lines.append("    return 1")
         lines += ["}", '[[ -n "${BASH_VERSION:-}" ]] && export -f ' + cmd, ""]
@@ -100,6 +119,7 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
         lines += [
             f"{wrapper}() {{",
             f'    command -v sm &>/dev/null || {{ command {wrapper} "$@"; return; }}',
+            f'    _sm_in_slopmop_repo || {{ command {wrapper} "$@"; return; }}',
             '    local _sub="${1:-}" _sub2="${2:-}"',
             '    case "$_sub $_sub2" in',
         ]
@@ -111,7 +131,11 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
             pattern = f'"{" ".join(entry.subcommands)}"'
             lines.append(f"        {pattern})")
             lines.append(
-                _msg_printf(f"{wrapper} {' '.join(entry.subcommands)}", indent=12)
+                _msg_printf(
+                    f"{wrapper} {' '.join(entry.subcommands)}",
+                    indent=12,
+                    suggestion=entry.suggestion,
+                )
             )
             lines.append("            return 1")
             lines.append("            ;;")
@@ -135,6 +159,7 @@ def _gen_npx_block(lines: list[str]) -> None:
     lines += [
         "npx() {",
         '    command -v sm &>/dev/null || { command npx "$@"; return; }',
+        '    _sm_in_slopmop_repo || { command npx "$@"; return; }',
         '    case "${1:-}" in',
     ]
     for entry in npx_entries:
@@ -142,7 +167,7 @@ def _gen_npx_block(lines: list[str]) -> None:
         if not tool:
             continue
         lines.append(f"        {tool})")
-        lines.append(_msg_printf(f"npx {tool}", indent=12))
+        lines.append(_msg_printf(f"npx {tool}", indent=12, suggestion=entry.suggestion))
         lines.append("            return 1")
         lines.append("            ;;")
 
@@ -172,6 +197,7 @@ def _generate_aliases_sh(version: str) -> bytes:
         "",
     ]
 
+    _gen_slopmop_guard(lines)
     _gen_function_blocks(lines)
     _gen_subcommand_blocks(lines)
     _gen_npx_block(lines)

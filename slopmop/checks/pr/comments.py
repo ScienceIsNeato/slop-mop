@@ -26,6 +26,10 @@ from slopmop.constants import NOT_A_GIT_REPO, action_buff_inspect_pr
 from slopmop.core.result import CheckResult, CheckStatus, Finding
 
 
+class _PendingReviewsError(Exception):
+    """Raised when CI checks are still pending/queued for the PR HEAD commit."""
+
+
 class PRCommentsCheck(BaseCheck):
     """PR comment resolution enforcement.
 
@@ -317,10 +321,116 @@ class PRCommentsCheck(BaseCheck):
             pass
         return "", ""
 
+    def _detect_pending_reviews(
+        self, project_root: str, pr_number: int, owner: str, repo: str
+    ) -> Optional[str]:
+        """Check if any reviews are pending or in progress (e.g., Cursor Bugbot).
+
+        Returns a message if pending reviews are detected, None otherwise.
+        """
+        check_run_query = """
+        query($owner: String!, $name: String!, $number: Int!) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              commits(last: 1) {
+                nodes {
+                  commit {
+                    checkSuites(first: 10) {
+                      nodes {
+                        checkRuns(first: 10) {
+                          nodes {
+                            name
+                            status
+                            conclusion
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "api",
+                    "graphql",
+                    "-F",
+                    f"owner={owner}",
+                    "-F",
+                    f"name={repo}",
+                    "-F",
+                    f"number={pr_number}",
+                    "-f",
+                    f"query={check_run_query}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=project_root,
+            )
+
+            if result.returncode == 0:
+                parsed: Dict[str, Any] = json.loads(result.stdout)
+                data_root: Dict[str, Any] = parsed.get("data") or {}
+                commits: List[Dict[str, Any]] = (
+                    data_root.get("repository", {})
+                    .get("pullRequest", {})
+                    .get("commits", {})
+                    .get("nodes", [])
+                )
+
+                # Only care about review bots — not general CI jobs.
+                # General CI jobs (unit tests, docker, etc.) are expected to
+                # be running alongside this check; flagging them would cause
+                # the gate to fail inside CI itself.
+                _REVIEW_BOT_NAMES = {"cursor bugbot"}
+
+                # Check for in-progress review bots by iterating through check suites
+                pending_checks: List[str] = []
+                for commit_node in commits:
+                    commit: Dict[str, Any] = commit_node.get("commit", {})
+                    check_suites: List[Dict[str, Any]] = commit.get(
+                        "checkSuites", {}
+                    ).get("nodes", [])
+                    for suite in check_suites:
+                        check_runs: List[Dict[str, Any]] = suite.get(
+                            "checkRuns", {}
+                        ).get("nodes", [])
+                        for run in check_runs:
+                            name: str = run.get("name", "")
+                            status: str = run.get("status", "")
+                            if (
+                                name.strip().lower() in _REVIEW_BOT_NAMES
+                                and status != "COMPLETED"
+                            ):
+                                pending_checks.append(name)
+
+                if pending_checks:
+                    checks_str = ", ".join(f"'{c}'" for c in pending_checks)
+                    return (
+                        f"Pending reviews detected: {checks_str} are still in progress. "
+                        "Assuming more feedback incoming. Rerun after all reviews complete."
+                    )
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+            pass
+
+        return None
+
     def _get_unresolved_threads(
         self, project_root: str, pr_number: int, owner: str, repo: str
     ) -> List[Dict[str, Any]]:
         """Fetch unresolved comment threads from GitHub."""
+        # Check for pending reviews first (e.g., Cursor Bugbot in progress)
+        pending_msg = self._detect_pending_reviews(project_root, pr_number, owner, repo)
+        if pending_msg:
+            raise _PendingReviewsError(pending_msg)
+
         graphql_query = """
         query($owner: String!, $name: String!, $number: Int!) {
           repository(owner: $owner, name: $name) {
@@ -968,7 +1078,15 @@ class PRCommentsCheck(BaseCheck):
             )
 
         # Fetch unresolved threads
-        threads = self._get_unresolved_threads(project_root, pr_number, owner, repo)
+        try:
+            threads = self._get_unresolved_threads(project_root, pr_number, owner, repo)
+        except _PendingReviewsError as exc:
+            duration = time.time() - start_time
+            return self._create_result(
+                status=CheckStatus.FAILED,
+                duration=duration,
+                error=str(exc),
+            )
         duration = time.time() - start_time
 
         if not threads:

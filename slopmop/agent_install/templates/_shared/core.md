@@ -19,7 +19,9 @@ when your impulse is the left column, run the right column instead.
 | Reading CI logs to find the failing test          | `sm buff inspect <PR#>`                      |
 | `gh api ... resolveReviewThread`                  | `sm buff resolve <PR#> <THREAD_ID> -m "..."` |
 | `gh pr review --approve` after addressing threads | `sm buff verify <PR#>` first                 |
+| `gh pr merge`                                     | **Wait for human decision.** Sail stops at PR_READY. Share the PR with human, await their merge call. |
 | `gh issue create` for slop-mop tool friction      | `sm barnacle file`                           |
+| No `.sb_config.json` in repo (first setup)        | `sm init --non-interactive`                  |
 | "not sure what to do next"                        | `sm sail`                                    |
 | "why won't sm / this gate run?"                   | `sm doctor`                                  |
 | Stale `.slopmop/sm.lock`, broken state dir        | `sm doctor --fix`                            |
@@ -36,6 +38,8 @@ when your impulse is the left column, run the right column instead.
   remediation plan — it knows which check failed and what you need to
   do next, not just that something is red.
 - **NEVER** open or update a PR without `sm scour` passing first.
+- **NEVER** merge a PR autonomously.  `sm sail` reaches PR_READY and stops.
+  The human makes the final merge decision.  This is a safety wall.
 - **NEVER** file slop-mop tool-friction issues with raw `gh issue create`.
   `sm barnacle file` adds the correct labels, issue shape, and source context.
 - **NEVER** bypass or silence a failing check.  If a gate is wrong,
@@ -44,6 +48,21 @@ when your impulse is the left column, run the right column instead.
   `sm gang press` installs system-wide command intercepts that conscript forbidden
   tools into sm equivalents automatically, blocking bypass attempts.
   (`press` = Royal Navy term for forcible conscription; `sm gang discharge` removes them.)
+
+### Excluding paths from all gates
+
+Built-in global excludes (always active, no config needed):
+`node_modules`, `venv`, `__pycache__`, `dist`, `build`, `htmlcov`, `cursor-rules`, `logs`,
+and all dot-prefixed directories (`.git`, `.venv`, `.next`, `.gradle`, etc.)
+
+For project-specific directories not in that list, add them **once** at the top level of `.sb_config.json`:
+
+```json
+"exclude_paths": ["Pods", "vendor", "target", "local"]
+```
+
+This applies to every gate. Do **not** reach for per-gate `extra_exclude_paths` unless you
+need a gate-specific exception. `sm init` auto-populates common ones for detected project types.
 
 ### The loop
 

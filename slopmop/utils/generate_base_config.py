@@ -101,6 +101,7 @@ def generate_language_config(
 def generate_base_config(
     registry: Optional[CheckRegistry] = None,
     all_enabled: bool = False,
+    exclude_paths: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Generate complete base configuration from registry introspection.
 
@@ -109,6 +110,7 @@ def generate_base_config(
         all_enabled: If True, all categories and gates are enabled by default.
                      Used by generate_template_config() to produce an
                      everything-enabled starting point for init.
+        exclude_paths: Optional list of paths to exclude from all gates.
 
     Returns:
         Complete configuration dictionary
@@ -122,6 +124,7 @@ def generate_base_config(
         "version": "1.0",
         "slopmop_version": __version__,
         "swabbing_timeout": 20,
+        "exclude_paths": exclude_paths or [],
     }
 
     # Group checks by category
@@ -208,6 +211,7 @@ def backup_config(config_path: Path) -> Optional[Path]:
 
 def generate_template_config(
     registry: Optional[CheckRegistry] = None,
+    exclude_paths: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Generate template configuration with ALL gates enabled.
 
@@ -225,28 +229,31 @@ def generate_template_config(
 
     Args:
         registry: Optional registry to use (defaults to global registry)
+        exclude_paths: Optional list of paths to exclude from all gates.
 
     Returns:
         Complete configuration dictionary with all gates enabled
     """
-    return generate_base_config(registry, all_enabled=True)
+    return generate_base_config(registry, all_enabled=True, exclude_paths=exclude_paths)
 
 
 def write_template_config(
     project_root: Path,
     registry: Optional[CheckRegistry] = None,
+    exclude_paths: Optional[List[str]] = None,
 ) -> Path:
     """Write the template configuration file.
 
     Args:
         project_root: Project root directory
         registry: Optional registry to use
+        exclude_paths: Optional list of paths to exclude from all gates.
 
     Returns:
         Path to the written template file
     """
     template_path = project_root / ".sb_config.json.template"
-    config = generate_template_config(registry)
+    config = generate_template_config(registry, exclude_paths=exclude_paths)
 
     with open(template_path, "w") as f:
         json.dump(config, f, indent=2)

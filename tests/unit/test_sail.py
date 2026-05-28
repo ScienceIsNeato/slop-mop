@@ -110,6 +110,7 @@ class TestSailDispatch:
         monkeypatch.setattr(sail_mod, "_has_unpushed_commits", lambda _: False)
         write_state = Mock()
         monkeypatch.setattr(sail_mod, "write_state", write_state)
+        monkeypatch.setattr("slopmop.cli.cmd_scour", Mock(return_value=0))
         mock_buff = Mock(return_value=0)
         monkeypatch.setattr("slopmop.cli.cmd_buff", mock_buff)
 
@@ -117,9 +118,8 @@ class TestSailDispatch:
         write_state.assert_called_once_with(tmp_path, WorkflowState.PR_OPEN)
         mock_buff.assert_called_once()
         call_args = mock_buff.call_args[0][0]
-        assert call_args.pr_or_action == "42"
-        assert call_args.workflow == WORKFLOW_NAME
-        assert call_args.artifact == ARTIFACT_NAME
+        assert call_args.pr_or_action == "watch"
+        assert call_args.action_args == ["42"]
 
     def test_scour_clean_without_pr_suggests_create(
         self, monkeypatch, capsys, tmp_path: Path
@@ -136,16 +136,16 @@ class TestSailDispatch:
         args = _base_args(tmp_path)
         monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.PR_OPEN)
         monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: 42)
+        monkeypatch.setattr("slopmop.cli.cmd_scour", Mock(return_value=0))
         mock_buff = Mock(return_value=0)
         monkeypatch.setattr("slopmop.cli.cmd_buff", mock_buff)
 
         assert sail_mod.cmd_sail(args) == 0
         mock_buff.assert_called_once()
-        # Verify it passed the PR number
+        # Verify it called buff in watch mode with the PR number
         call_args = mock_buff.call_args[0][0]
-        assert call_args.pr_or_action == "42"
-        assert call_args.workflow == WORKFLOW_NAME
-        assert call_args.artifact == ARTIFACT_NAME
+        assert call_args.pr_or_action == "watch"
+        assert call_args.action_args == ["42"]
 
     def test_buff_failing_runs_buff(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
@@ -167,10 +167,17 @@ class TestSailDispatch:
     ):
         args = _base_args(tmp_path)
         monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.PR_READY)
+        monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: 42)
+        mock_buff = Mock(return_value=0)
+        monkeypatch.setattr("slopmop.cli.cmd_buff", mock_buff)
+        monkeypatch.setattr(sail_mod, "write_sail_mode", Mock())
 
         assert sail_mod.cmd_sail(args) == 0
         out = capsys.readouterr().out
         assert "human review" in out
+        mock_buff.assert_called_once()
+        call_args = mock_buff.call_args[0][0]
+        assert call_args.pr_or_action == "watch"
 
     def test_none_state_defaults_to_idle(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
@@ -440,6 +447,8 @@ class TestSailMode:
     def test_pr_ready_resets_mode_to_tacking(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)
         monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.PR_READY)
+        monkeypatch.setattr(sail_mod, "_get_pr_number", lambda _: 42)
+        monkeypatch.setattr("slopmop.cli.cmd_buff", Mock(return_value=0))
         write_sail_mode = Mock()
         monkeypatch.setattr(sail_mod, "write_sail_mode", write_sail_mode)
 

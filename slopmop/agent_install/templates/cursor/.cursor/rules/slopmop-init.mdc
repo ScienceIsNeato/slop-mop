@@ -1,0 +1,6 @@
+---
+description: Slop-mop initial project setup — bootstrap a repo that has sm installed but no .sb_config.json
+alwaysApply: true
+---
+
+{{CORE}}
