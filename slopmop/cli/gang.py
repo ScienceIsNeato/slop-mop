@@ -67,7 +67,7 @@ def _msg_printf(forbidden: str, indent: int, suggestion: str = "") -> str:
         f"  Tell the human what you were doing and wait."
     )
     if suggestion:
-        msg += f"\\n  {suggestion}"
+        msg += f"\\n  {_escape(suggestion)}"
     return f"{spaces}printf " f"'{msg}\\n' >&2"
 
 
