@@ -296,19 +296,16 @@ def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
         return 1
 
     _print_step(
-        "✨", "Running buff inspect", "PR is open — triaging CI and review threads."
+        "⏳", "Running buff watch", "PR is open — waiting for CI to settle, then checking threads."
     )
     from slopmop.cli import cmd_buff
-    from slopmop.cli.scan_triage import ARTIFACT_NAME, WORKFLOW_NAME
 
     pr = _get_pr_number(project_root)
     buff_args = argparse.Namespace(
-        pr_or_action=str(pr) if pr else None,
-        json_output=getattr(args, "json_output", False),
-        repo=None,
-        run_id=None,
-        workflow=WORKFLOW_NAME,
-        artifact=ARTIFACT_NAME,
+        pr_or_action="watch",
+        action_args=[str(pr)] if pr else [],
+        interval=30,
+        fail_fast=False,
     )
     return cmd_buff(buff_args)
 

@@ -117,9 +117,8 @@ class TestSailDispatch:
         write_state.assert_called_once_with(tmp_path, WorkflowState.PR_OPEN)
         mock_buff.assert_called_once()
         call_args = mock_buff.call_args[0][0]
-        assert call_args.pr_or_action == "42"
-        assert call_args.workflow == WORKFLOW_NAME
-        assert call_args.artifact == ARTIFACT_NAME
+        assert call_args.pr_or_action == "watch"
+        assert call_args.action_args == ["42"]
 
     def test_scour_clean_without_pr_suggests_create(
         self, monkeypatch, capsys, tmp_path: Path
@@ -141,11 +140,10 @@ class TestSailDispatch:
 
         assert sail_mod.cmd_sail(args) == 0
         mock_buff.assert_called_once()
-        # Verify it passed the PR number
+        # Verify it called buff in watch mode with the PR number
         call_args = mock_buff.call_args[0][0]
-        assert call_args.pr_or_action == "42"
-        assert call_args.workflow == WORKFLOW_NAME
-        assert call_args.artifact == ARTIFACT_NAME
+        assert call_args.pr_or_action == "watch"
+        assert call_args.action_args == ["42"]
 
     def test_buff_failing_runs_buff(self, monkeypatch, tmp_path: Path):
         args = _base_args(tmp_path)

@@ -391,7 +391,7 @@ class PRCommentsCheck(BaseCheck):
                         for run in check_runs:
                             name = run.get("name", "")
                             status = run.get("status", "")
-                            if status == "IN_PROGRESS":
+                            if status in ("IN_PROGRESS", "QUEUED"):
                                 pending_checks.append(name)
 
                 if pending_checks:
