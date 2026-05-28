@@ -134,6 +134,17 @@ COMMAND_MAPPING: list[CommandMap] = [
         redirect=False,
         suggestion="sm buff resolve <PR#> <THREAD_ID> --scenario <type>",
     ),
+    CommandMap(
+        forbidden="gh pr merge",
+        sm_command="",
+        reason="sail mode stops at PR_READY; human decision to merge is required",
+        category="PR triage",
+        intercept_type="subcommand",
+        wrapper_command="gh",
+        subcommands=("pr", "merge"),
+        redirect=False,
+        suggestion="⛵ SAILING_NEEDS_HUMAN — PR is ready. Share with human for merge decision.",
+    ),
     # ── Python formatting / linting ───────────────────────────────────────────
     CommandMap(
         forbidden="black",
