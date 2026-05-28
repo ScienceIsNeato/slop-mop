@@ -317,10 +317,85 @@ class PRCommentsCheck(BaseCheck):
             pass
         return "", ""
 
+    def _wait_for_bugbot_completion(
+        self, project_root: str, pr_number: int, owner: str, repo: str, max_wait: int = 300
+    ) -> None:
+        """Wait for Cursor Bugbot to finish posting review comments.
+
+        On the web (CI), Bugbot may still be in progress when scour runs.
+        This method polls for active Bugbot check runs and waits for completion.
+        """
+        check_run_query = """
+        query($owner: String!, $name: String!, $number: Int!) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              checkRuns(first: 10) {
+                nodes {
+                  name
+                  status
+                  conclusion
+                }
+              }
+            }
+          }
+        }
+        """
+
+        start_time = time.time()
+        while time.time() - start_time < max_wait:
+            try:
+                result = subprocess.run(
+                    [
+                        "gh",
+                        "api",
+                        "graphql",
+                        "-F",
+                        f"owner={owner}",
+                        "-F",
+                        f"name={repo}",
+                        "-F",
+                        f"number={pr_number}",
+                        "-f",
+                        f"query={check_run_query}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    cwd=project_root,
+                )
+
+                if result.returncode == 0:
+                    data = json.loads(result.stdout)
+                    check_runs = (
+                        data.get("data", {})
+                        .get("repository", {})
+                        .get("pullRequest", {})
+                        .get("checkRuns", {})
+                        .get("nodes", [])
+                    )
+
+                    # Check if Cursor Bugbot is still in progress
+                    bugbot_in_progress = False
+                    for run in check_runs:
+                        if "Cursor Bugbot" in run.get("name", "") and run.get("status") == "IN_PROGRESS":
+                            bugbot_in_progress = True
+                            break
+
+                    if not bugbot_in_progress:
+                        return  # Bugbot is done
+
+                # Bugbot still in progress, wait a bit before checking again
+                time.sleep(5)
+            except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+                return  # If we can't check, proceed anyway
+
     def _get_unresolved_threads(
         self, project_root: str, pr_number: int, owner: str, repo: str
     ) -> List[Dict[str, Any]]:
         """Fetch unresolved comment threads from GitHub."""
+        # Wait for Bugbot to finish posting before checking for threads
+        self._wait_for_bugbot_completion(project_root, pr_number, owner, repo)
+
         graphql_query = """
         query($owner: String!, $name: String!, $number: Int!) {
           repository(owner: $owner, name: $name) {
