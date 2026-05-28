@@ -296,7 +296,9 @@ def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
         return 1
 
     _print_step(
-        "⏳", "Running buff watch", "PR is open — waiting for CI to settle, then checking threads."
+        "⏳",
+        "Running buff watch",
+        "PR is open — waiting for CI to settle, then checking threads.",
     )
     from slopmop.cli import cmd_buff
 
@@ -333,7 +335,23 @@ def _sail_buff_failing(args: argparse.Namespace, project_root: Path) -> int:
 
 
 def _sail_pr_ready(args: argparse.Namespace, project_root: Path) -> int:
-    """S8 — PR_READY: surface to human for review, reset to tacking."""
+    """S8 — PR_READY: re-verify CI still green, then surface to human."""
+    _print_step(
+        "⏳", "Re-verifying CI", "Confirming PR is still green before surfacing to human..."
+    )
+    from slopmop.cli import cmd_buff
+
+    pr = _get_pr_number(project_root)
+    buff_args = argparse.Namespace(
+        pr_or_action="watch",
+        action_args=[str(pr)] if pr else [],
+        interval=30,
+        fail_fast=False,
+    )
+    result = cmd_buff(buff_args)
+    if result != 0:
+        return result
+
     write_sail_mode(project_root, SailMode.TACKING)
     print(
         "\n⛵ sail → 🏁 PR ready for human review\n"
