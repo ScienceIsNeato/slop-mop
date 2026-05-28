@@ -4,6 +4,8 @@ description: >-
   Trigger when you would normally reach for pytest, gh, mypy, black, or other
   raw repo tooling. Redirect to `sm swab`, `sm scour`, `sm buff`, `sm sail`,
   `sm refit`, or `sm doctor` so remediation follows the established rails.
+  Also trigger when you find a repo with sm installed but no .sb_config.json
+  — use `sm init --non-interactive` before entering the loop.
   Also trigger when filing issues about slop-mop friction — use
   `sm barnacle file` / `/sm-barnacle`, never `gh issue create`.
 ---
@@ -16,6 +18,9 @@ Slop-mop (`sm`) has two primary modes: **refit** (one-time onboarding) and **mai
 
 ## When to use
 
+- **Initial setup (step -1)**: Run `sm init --non-interactive` when the repo has
+  `sm` installed but no `.sb_config.json`. This generates a config tuned to the
+  detected stack. Run it before refit or the maintenance loop.
 - **Default action**: Run `sm sail` when you're not sure what's next — it reads workflow state and does the right thing.
 - **Refit (step 0)**: Run `sm refit --start` to generate a remediation plan, then `sm refit --iterate` until complete, then `sm refit --finish` to enter maintenance.
 - **During implementation**: Run `sm swab` after every meaningful code change. Keep running until clean.

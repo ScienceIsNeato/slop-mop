@@ -1,0 +1,6 @@
+---
+description: Report slop-mop tool friction — when sm itself blocks valid work, file a barnacle instead of routing around it
+alwaysApply: true
+---
+
+{{CORE}}
