@@ -385,7 +385,13 @@ class PRCommentsCheck(BaseCheck):
                     .get("nodes", [])
                 )
 
-                # Check for in-progress reviews by iterating through check suites
+                # Only care about review bots — not general CI jobs.
+                # General CI jobs (unit tests, docker, etc.) are expected to
+                # be running alongside this check; flagging them would cause
+                # the gate to fail inside CI itself.
+                _REVIEW_BOT_NAMES = {"cursor bugbot"}
+
+                # Check for in-progress review bots by iterating through check suites
                 pending_checks: List[str] = []
                 for commit_node in commits:
                     commit: Dict[str, Any] = commit_node.get("commit", {})
@@ -399,7 +405,10 @@ class PRCommentsCheck(BaseCheck):
                         for run in check_runs:
                             name: str = run.get("name", "")
                             status: str = run.get("status", "")
-                            if status in ("IN_PROGRESS", "QUEUED"):
+                            if (
+                                name.strip().lower() in _REVIEW_BOT_NAMES
+                                and status != "COMPLETED"
+                            ):
                                 pending_checks.append(name)
 
                 if pending_checks:
