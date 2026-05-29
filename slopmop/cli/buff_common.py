@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -78,6 +79,58 @@ def get_branch_pr_number(repo: str) -> int | None:
         return current_pr_number(repo)
     except Exception:
         return None
+
+
+def get_pr_head_branch(project_root: Path, pr_number: int) -> str | None:
+    """Return the PR head branch name, if GitHub can provide it."""
+
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--json",
+                "headRefName",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            stdin=subprocess.DEVNULL,
+            cwd=project_root,
+            check=False,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    branch = str(data.get("headRefName") or "").strip()
+    return branch or None
+
+
+def warn_if_pr_worktree_mismatch(project_root: Path, pr_number: int, repo: str) -> None:
+    """Warn when buff is operating on a PR that belongs to a different branch."""
+
+    current_branch = get_current_branch(project_root)
+    pr_head_branch = get_pr_head_branch(project_root, pr_number)
+    if not current_branch or not pr_head_branch or current_branch == pr_head_branch:
+        return
+
+    print("Notice: buff is operating on a PR from a different branch.")
+    print(f"   Current branch:              {current_branch}")
+    print(f"   PR #{pr_number} belongs to branch: {pr_head_branch}")
+    branch_pr = get_branch_pr_number(repo)
+    if branch_pr is not None:
+        print(f"   Your branch has open PR:     #{branch_pr}")
+        print(f"   Suggested command:           sm buff {branch_pr}")
+    else:
+        print("   Switch to the PR branch or pass the correct PR number explicitly.")
+    print()
 
 
 def run_pr_feedback_gate(pr_number: int | None, project_root: str) -> CheckResult:

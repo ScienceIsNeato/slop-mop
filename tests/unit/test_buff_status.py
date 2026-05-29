@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 from slopmop.cli import buff as buff_mod
 from slopmop.cli import buff_common as common_mod
+from slopmop.cli import buff_status as status_mod
 from slopmop.cli import scan_triage as triage
 from slopmop.core.result import CheckStatus
 from tests.conftest import make_feedback_result
@@ -16,7 +17,7 @@ def patch_status_pr_resolution(monkeypatch, pr_number=85, source="explicit"):
     """Patch buff PR resolution for status/watch command tests."""
 
     resolver = Mock(return_value=(pr_number, source))
-    monkeypatch.setattr(buff_mod, "resolve_pr_number_with_source", resolver)
+    monkeypatch.setattr(status_mod, "resolve_pr_number_with_source", resolver)
     return resolver
 
 
@@ -28,7 +29,7 @@ class TestBuffStatusCommand:
             Mock(return_value=Mock(returncode=0, stdout="feature/demo\n")),
         )
 
-        assert buff_mod._get_current_branch(buff_mod.Path("/repo")) == "feature/demo"
+        assert common_mod.get_current_branch(buff_mod.Path("/repo")) == "feature/demo"
 
     def test_get_current_branch_returns_none_on_command_failure(self, monkeypatch):
         monkeypatch.setattr(
@@ -37,25 +38,25 @@ class TestBuffStatusCommand:
             Mock(return_value=Mock(returncode=1, stdout="")),
         )
 
-        assert buff_mod._get_current_branch(buff_mod.Path("/repo")) is None
+        assert common_mod.get_current_branch(buff_mod.Path("/repo")) is None
 
     def test_get_pr_head_branch_returns_branch(self, monkeypatch):
         monkeypatch.setattr(
-            buff_mod.subprocess,
+            common_mod.subprocess,
             "run",
             Mock(return_value=Mock(returncode=0, stdout='{"headRefName":"feat-x"}')),
         )
 
-        assert buff_mod._get_pr_head_branch(buff_mod.Path("/repo"), 85) == "feat-x"
+        assert common_mod.get_pr_head_branch(buff_mod.Path("/repo"), 85) == "feat-x"
 
     def test_get_pr_head_branch_returns_none_on_invalid_json(self, monkeypatch):
         monkeypatch.setattr(
-            buff_mod.subprocess,
+            common_mod.subprocess,
             "run",
             Mock(return_value=Mock(returncode=0, stdout="not-json")),
         )
 
-        assert buff_mod._get_pr_head_branch(buff_mod.Path("/repo"), 85) is None
+        assert common_mod.get_pr_head_branch(buff_mod.Path("/repo"), 85) is None
 
     def test_cmd_buff_status_fires_buff_hook_on_clean_terminal_state(
         self, monkeypatch, capsys
@@ -76,12 +77,12 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_fetch_checks",
             Mock(
                 return_value=(
@@ -98,12 +99,12 @@ class TestBuffStatusCommand:
             ),
         )
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_run_pr_feedback_gate",
             Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
         fire_hook = Mock()
-        monkeypatch.setattr(buff_mod, "_fire_buff_hook", fire_hook)
+        monkeypatch.setattr(status_mod, "_fire_buff_hook", fire_hook)
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -136,12 +137,12 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_fetch_checks",
             Mock(
                 return_value=(
@@ -158,7 +159,7 @@ class TestBuffStatusCommand:
             ),
         )
         fire_hook = Mock()
-        monkeypatch.setattr(buff_mod, "_fire_buff_hook", fire_hook)
+        monkeypatch.setattr(status_mod, "_fire_buff_hook", fire_hook)
 
         assert buff_mod.cmd_buff(args) == 1
         out = capsys.readouterr().out
@@ -183,13 +184,13 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "resolve_pr_number_with_source",
-            Mock(side_effect=buff_mod.TriageError("Selected working PR #92 is stale")),
+            Mock(side_effect=triage.TriageError("Selected working PR #92 is stale")),
         )
 
         assert buff_mod.cmd_buff(args) == 1
@@ -212,12 +213,12 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_fetch_checks",
             Mock(
                 return_value=(
@@ -234,7 +235,7 @@ class TestBuffStatusCommand:
             ),
         )
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_run_pr_feedback_gate",
             Mock(
                 return_value=make_feedback_result(
@@ -266,17 +267,17 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
-        monkeypatch.setattr(buff_mod, "_get_current_branch", Mock(return_value="main"))
+        monkeypatch.setattr(common_mod, "get_current_branch", Mock(return_value="main"))
         monkeypatch.setattr(
-            buff_mod, "_get_pr_head_branch", Mock(return_value="feature/pr-85")
+            common_mod, "get_pr_head_branch", Mock(return_value="feature/pr-85")
         )
-        monkeypatch.setattr(buff_mod, "_get_branch_pr_number", Mock(return_value=102))
+        monkeypatch.setattr(common_mod, "get_branch_pr_number", Mock(return_value=102))
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_fetch_checks",
             Mock(
                 return_value=(
@@ -293,11 +294,11 @@ class TestBuffStatusCommand:
             ),
         )
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_run_pr_feedback_gate",
             Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
-        monkeypatch.setattr(buff_mod, "_fire_buff_hook", Mock())
+        monkeypatch.setattr(status_mod, "_fire_buff_hook", Mock())
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -332,9 +333,9 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         checks = [
             {
@@ -354,11 +355,11 @@ class TestBuffStatusCommand:
         ]
         # Two fetches: settle wait, final check.
         fetch_checks = Mock(side_effect=[(checks, ""), (checks, "")])
-        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        monkeypatch.setattr(status_mod, "_fetch_checks", fetch_checks)
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
-        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        monkeypatch.setattr(status_mod, "_run_pr_feedback_gate", feedback_gate)
         sleep_mock = Mock()
-        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+        monkeypatch.setattr(status_mod.time, "sleep", sleep_mock)
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -396,9 +397,9 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         # First two polls: Bugbot has no completedAt — still in_progress
         in_flight_checks = [
@@ -440,11 +441,11 @@ class TestBuffStatusCommand:
                 (done_checks, ""),  # poll 4: final gate check
             ]
         )
-        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        monkeypatch.setattr(status_mod, "_fetch_checks", fetch_checks)
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
-        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        monkeypatch.setattr(status_mod, "_run_pr_feedback_gate", feedback_gate)
         sleep_mock = Mock()
-        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+        monkeypatch.setattr(status_mod.time, "sleep", sleep_mock)
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -475,13 +476,13 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
-        monkeypatch.setattr(buff_mod, "_fetch_checks", Mock(return_value=([], "")))
+        monkeypatch.setattr(status_mod, "_fetch_checks", Mock(return_value=([], "")))
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_run_pr_feedback_gate",
             Mock(
                 return_value=make_feedback_result(
@@ -515,18 +516,18 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
-        monkeypatch.setattr(buff_mod, "_fetch_checks", Mock(return_value=([], "")))
+        monkeypatch.setattr(status_mod, "_fetch_checks", Mock(return_value=([], "")))
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_run_pr_feedback_gate",
             Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
         fire_hook = Mock()
-        monkeypatch.setattr(buff_mod, "_fire_buff_hook", fire_hook)
+        monkeypatch.setattr(status_mod, "_fire_buff_hook", fire_hook)
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -552,12 +553,12 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_fetch_checks",
             Mock(
                 return_value=(
@@ -574,7 +575,7 @@ class TestBuffStatusCommand:
             ),
         )
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_run_pr_feedback_gate",
             Mock(return_value=make_feedback_result(CheckStatus.SKIPPED)),
         )
@@ -603,9 +604,9 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         passing_checks = [
             {
@@ -650,11 +651,11 @@ class TestBuffStatusCommand:
                 (passing_checks, ""),
             ]
         )
-        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        monkeypatch.setattr(status_mod, "_fetch_checks", fetch_checks)
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
-        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        monkeypatch.setattr(status_mod, "_run_pr_feedback_gate", feedback_gate)
         sleep_mock = Mock()
-        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+        monkeypatch.setattr(status_mod.time, "sleep", sleep_mock)
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -685,9 +686,9 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         checks = [
             {
@@ -704,9 +705,9 @@ class TestBuffStatusCommand:
             },
         ]
         fetch_checks = Mock(return_value=(checks, ""))
-        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        monkeypatch.setattr(status_mod, "_fetch_checks", fetch_checks)
         sleep_mock = Mock()
-        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+        monkeypatch.setattr(status_mod.time, "sleep", sleep_mock)
 
         assert buff_mod.cmd_buff(args) == 1
         out = capsys.readouterr().out
@@ -733,9 +734,9 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         passing_checks = [
             {
@@ -747,11 +748,11 @@ class TestBuffStatusCommand:
         ]
         # First 2 polls return empty, third returns checks
         fetch_checks = Mock(side_effect=[([], ""), ([], ""), (passing_checks, "")])
-        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        monkeypatch.setattr(status_mod, "_fetch_checks", fetch_checks)
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
-        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        monkeypatch.setattr(status_mod, "_run_pr_feedback_gate", feedback_gate)
         sleep_mock = Mock()
-        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+        monkeypatch.setattr(status_mod.time, "sleep", sleep_mock)
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -776,20 +777,20 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         pending = [
             {"name": "build", "bucket": "pending", "state": "PENDING", "link": ""}
         ]
         passing = [{"name": "build", "bucket": "pass", "state": "SUCCESS", "link": ""}]
         fetch_checks = Mock(side_effect=[(pending, ""), (passing, "")])
-        monkeypatch.setattr(buff_mod, "_fetch_checks", fetch_checks)
+        monkeypatch.setattr(status_mod, "_fetch_checks", fetch_checks)
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
-        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        monkeypatch.setattr(status_mod, "_run_pr_feedback_gate", feedback_gate)
         sleep_mock = Mock()
-        monkeypatch.setattr(buff_mod.time, "sleep", sleep_mock)
+        monkeypatch.setattr(status_mod.time, "sleep", sleep_mock)
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -813,14 +814,16 @@ class TestBuffStatusCommand:
         )
 
         monkeypatch.setattr(
-            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
         )
-        monkeypatch.setattr(buff_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
         patch_status_pr_resolution(monkeypatch, 85)
         checks = [{"name": "lint", "bucket": "pass", "state": "SUCCESS", "link": ""}]
-        monkeypatch.setattr(buff_mod, "_fetch_checks", Mock(return_value=(checks, "")))
+        monkeypatch.setattr(
+            status_mod, "_fetch_checks", Mock(return_value=(checks, ""))
+        )
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
-        monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
+        monkeypatch.setattr(status_mod, "_run_pr_feedback_gate", feedback_gate)
 
         assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
@@ -845,7 +848,7 @@ class TestBuffWatchErrorHandling:
         from slopmop.cli.scan_triage import TriageError
 
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_get_repo_slug",
             Mock(
                 side_effect=TriageError(
@@ -868,12 +871,12 @@ class TestBuffWatchErrorHandling:
         import json
 
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "_get_repo_slug",
             Mock(return_value="owner/repo"),
         )
         monkeypatch.setattr(
-            buff_mod,
+            status_mod,
             "resolve_pr_number_with_source",
             Mock(side_effect=json.JSONDecodeError("Expecting value", "", 0)),
         )

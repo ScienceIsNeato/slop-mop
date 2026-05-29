@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 from slopmop.cli import buff as buff_mod
 from slopmop.cli import buff_common as common_mod
+from slopmop.cli import buff_rounds as rounds_mod
 from slopmop.cli import scan_triage as triage
 from slopmop.core.result import CheckStatus
 from tests.conftest import make_feedback_result
@@ -357,6 +358,9 @@ class TestBuffVerifyAndResolve:
         resolve_thread = Mock()
         monkeypatch.setattr(buff_mod, "_post_pr_comment", post_comment)
         monkeypatch.setattr(buff_mod, "_resolve_review_thread", resolve_thread)
+        # Threads still open after this resolve — no round completed.
+        note = Mock(return_value="")
+        monkeypatch.setattr(buff_mod, "_note_for_completed_round", note)
 
         assert buff_mod.cmd_buff(args) == 0
         post_comment.assert_called_once_with(
@@ -367,10 +371,82 @@ class TestBuffVerifyAndResolve:
             "[fixed_in_code] Fixed in commit abc123.",
         )
         resolve_thread.assert_called_once_with("/repo", "PRRT_abc")
+        note.assert_called_once_with("/repo", "owner", "repo", 85)
         assert (
             "Buff resolve complete: commented and resolved PRRT_abc on PR #85."
             in capsys.readouterr().out
         )
+
+    def test_cmd_buff_resolve_bumps_round_when_last_thread_clears(
+        self, monkeypatch, capsys
+    ):
+        args = argparse.Namespace(
+            pr_or_action="resolve",
+            action_args=["85", "PRRT_abc"],
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario="fixed_in_code",
+            message="Fixed in commit abc123.",
+            no_resolve=False,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(
+            buff_mod,
+            "_get_repo_owner_name",
+            Mock(return_value=("owner", "repo")),
+        )
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        monkeypatch.setattr(buff_mod, "_post_pr_comment", Mock())
+        monkeypatch.setattr(buff_mod, "_resolve_review_thread", Mock())
+        # No threads remain — this resolve closes the round.
+        note = Mock(return_value=" Round 3 weathered (buff-rounds/3).")
+        monkeypatch.setattr(buff_mod, "_note_for_completed_round", note)
+
+        assert buff_mod.cmd_buff(args) == 0
+        note.assert_called_once_with("/repo", "owner", "repo", 85)
+        out = capsys.readouterr().out
+        assert "Round 3 weathered (buff-rounds/3)." in out
+
+    def test_cmd_buff_resolve_skips_round_bump_when_not_resolving(
+        self, monkeypatch, capsys
+    ):
+        args = argparse.Namespace(
+            pr_or_action="resolve",
+            action_args=["85", "PRRT_abc"],
+            json_output=False,
+            repo=None,
+            run_id=None,
+            workflow=triage.WORKFLOW_NAME,
+            artifact=triage.ARTIFACT_NAME,
+            output_file=None,
+            scenario="needs_human_feedback",
+            message="Needs your call.",
+            no_resolve=True,
+        )
+
+        monkeypatch.setattr(
+            buff_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(
+            buff_mod,
+            "_get_repo_owner_name",
+            Mock(return_value=("owner", "repo")),
+        )
+        monkeypatch.setattr(buff_mod, "resolve_pr_number", Mock(return_value=85))
+        monkeypatch.setattr(buff_mod, "_post_pr_comment", Mock())
+        note = Mock(return_value=" Round 1 weathered (buff-rounds/1).")
+        monkeypatch.setattr(buff_mod, "_note_for_completed_round", note)
+
+        assert buff_mod.cmd_buff(args) == 0
+        note.assert_not_called()
+        assert "Buff resolve complete: commented PRRT_abc" in capsys.readouterr().out
 
     def test_cmd_buff_verify_requires_selected_or_explicit_pr(
         self, monkeypatch, capsys
@@ -444,3 +520,144 @@ class TestBuffGhHelpers:
         assert runner.call_count == 1
         assert runner.call_args.kwargs["stdin"] is buff_mod.subprocess.DEVNULL
         assert runner.call_args.kwargs["timeout"] == 30
+
+
+class TestBuffRoundsLabel:
+    def test_count_unresolved_threads_counts_open_only(self, monkeypatch):
+        payload = json.dumps(
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "reviewThreads": {
+                                "nodes": [
+                                    {"isResolved": True},
+                                    {"isResolved": False},
+                                    {"isResolved": False},
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        monkeypatch.setattr(
+            rounds_mod.subprocess,
+            "run",
+            Mock(return_value=SimpleNamespace(returncode=0, stdout=payload, stderr="")),
+        )
+
+        assert rounds_mod.count_unresolved_threads("/repo", "o", "r", 85) == 2
+
+    def test_count_unresolved_threads_returns_none_on_error(self, monkeypatch):
+        monkeypatch.setattr(
+            rounds_mod.subprocess,
+            "run",
+            Mock(return_value=SimpleNamespace(returncode=1, stdout="", stderr="boom")),
+        )
+
+        assert rounds_mod.count_unresolved_threads("/repo", "o", "r", 85) is None
+
+    def test_read_buff_rounds_label_parses_highest(self, monkeypatch):
+        payload = json.dumps(
+            {
+                "labels": [
+                    {"name": "bug"},
+                    {"name": "buff-rounds/2"},
+                    {"name": "buff-rounds/5"},
+                ]
+            }
+        )
+        monkeypatch.setattr(
+            rounds_mod.subprocess,
+            "run",
+            Mock(return_value=SimpleNamespace(returncode=0, stdout=payload, stderr="")),
+        )
+
+        current, existing = rounds_mod.read_buff_rounds_label("/repo", "o", "r", 85)
+        assert current == 5
+        assert sorted(existing) == ["buff-rounds/2", "buff-rounds/5"]
+
+    def test_read_buff_rounds_label_defaults_to_zero(self, monkeypatch):
+        payload = json.dumps({"labels": [{"name": "bug"}]})
+        monkeypatch.setattr(
+            rounds_mod.subprocess,
+            "run",
+            Mock(return_value=SimpleNamespace(returncode=0, stdout=payload, stderr="")),
+        )
+
+        assert rounds_mod.read_buff_rounds_label("/repo", "o", "r", 85) == (0, [])
+
+    def test_bump_buff_rounds_label_increments_and_clears_stale(self, monkeypatch):
+        monkeypatch.setattr(
+            rounds_mod,
+            "read_buff_rounds_label",
+            Mock(return_value=(2, ["buff-rounds/2"])),
+        )
+        runner = Mock(return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+        monkeypatch.setattr(rounds_mod.subprocess, "run", runner)
+
+        assert rounds_mod.bump_buff_rounds_label("/repo", "o", "r", 85) == 3
+
+        # Two calls: create label, then edit PR.
+        assert runner.call_count == 2
+        edit_args = runner.call_args_list[1].args[0]
+        assert "--add-label" in edit_args
+        assert "buff-rounds/3" in edit_args
+        assert "--remove-label" in edit_args
+        assert "buff-rounds/2" in edit_args
+
+    def test_bump_buff_rounds_label_returns_none_on_edit_failure(self, monkeypatch):
+        monkeypatch.setattr(
+            rounds_mod, "read_buff_rounds_label", Mock(return_value=(0, []))
+        )
+
+        def fake_run(cmd, *args, **kwargs):
+            # Label create succeeds; pr edit fails.
+            failed = "edit" in cmd
+            return SimpleNamespace(
+                returncode=1 if failed else 0, stdout="", stderr="nope"
+            )
+
+        monkeypatch.setattr(rounds_mod.subprocess, "run", fake_run)
+
+        assert rounds_mod.bump_buff_rounds_label("/repo", "o", "r", 85) is None
+
+    def test_note_for_completed_round_stamps_when_round_clears(self, monkeypatch):
+        monkeypatch.setattr(
+            rounds_mod, "count_unresolved_threads", Mock(return_value=0)
+        )
+        monkeypatch.setattr(rounds_mod, "bump_buff_rounds_label", Mock(return_value=4))
+
+        note = rounds_mod.note_for_completed_round("/repo", "o", "r", 85)
+        assert note == " Round 4 weathered (buff-rounds/4)."
+
+    def test_note_for_completed_round_empty_when_threads_remain(self, monkeypatch):
+        monkeypatch.setattr(
+            rounds_mod, "count_unresolved_threads", Mock(return_value=2)
+        )
+        bump = Mock()
+        monkeypatch.setattr(rounds_mod, "bump_buff_rounds_label", bump)
+
+        assert rounds_mod.note_for_completed_round("/repo", "o", "r", 85) == ""
+        bump.assert_not_called()
+
+    def test_note_for_completed_round_empty_on_uncertain_count(self, monkeypatch):
+        monkeypatch.setattr(
+            rounds_mod, "count_unresolved_threads", Mock(return_value=None)
+        )
+        bump = Mock()
+        monkeypatch.setattr(rounds_mod, "bump_buff_rounds_label", bump)
+
+        assert rounds_mod.note_for_completed_round("/repo", "o", "r", 85) == ""
+        bump.assert_not_called()
+
+    def test_note_for_completed_round_empty_when_bump_fails(self, monkeypatch):
+        monkeypatch.setattr(
+            rounds_mod, "count_unresolved_threads", Mock(return_value=0)
+        )
+        monkeypatch.setattr(
+            rounds_mod, "bump_buff_rounds_label", Mock(return_value=None)
+        )
+
+        assert rounds_mod.note_for_completed_round("/repo", "o", "r", 85) == ""

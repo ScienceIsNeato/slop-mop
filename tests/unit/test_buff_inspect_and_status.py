@@ -6,6 +6,7 @@ import argparse
 from unittest.mock import Mock
 
 from slopmop.cli import buff as buff_mod
+from slopmop.cli import buff_common as common_mod
 from slopmop.cli import scan_triage as triage
 from slopmop.core.result import CheckStatus
 from tests.conftest import make_feedback_result, patch_buff_pr_resolution
@@ -310,12 +311,12 @@ class TestBuffInspectCommand:
         )
         patch_buff_pr_resolution(monkeypatch, 85)
         monkeypatch.setattr(
-            buff_mod, "_get_current_branch", Mock(return_value="feat/perf-testing")
+            common_mod, "get_current_branch", Mock(return_value="feat/perf-testing")
         )
         monkeypatch.setattr(
-            buff_mod, "_get_pr_head_branch", Mock(return_value="feature/old-work")
+            common_mod, "get_pr_head_branch", Mock(return_value="feature/old-work")
         )
-        monkeypatch.setattr(buff_mod, "_get_branch_pr_number", Mock(return_value=102))
+        monkeypatch.setattr(common_mod, "get_branch_pr_number", Mock(return_value=102))
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
@@ -357,12 +358,12 @@ class TestBuffInspectCommand:
         )
         patch_buff_pr_resolution(monkeypatch, 85)
         monkeypatch.setattr(
-            buff_mod, "_get_current_branch", Mock(return_value="feat/perf-testing")
+            common_mod, "get_current_branch", Mock(return_value="feat/perf-testing")
         )
         monkeypatch.setattr(
-            buff_mod, "_get_pr_head_branch", Mock(return_value="feature/old-work")
+            common_mod, "get_pr_head_branch", Mock(return_value="feature/old-work")
         )
-        monkeypatch.setattr(buff_mod, "_get_branch_pr_number", Mock(return_value=None))
+        monkeypatch.setattr(common_mod, "get_branch_pr_number", Mock(return_value=None))
         monkeypatch.setattr(
             buff_mod,
             "_run_pr_feedback_gate",
