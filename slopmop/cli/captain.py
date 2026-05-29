@@ -114,7 +114,8 @@ def _print_standing_order() -> None:
                 "    sm sail",
                 "",
             ]
-        )
+        ),
+        file=sys.stderr,
     )
 
 
@@ -265,7 +266,9 @@ def _collect_captain_orders(
         current = prompt
         while True:
             try:
-                line = resolved_input(current)
+                # Prompt is UI: emit to stderr so --json stdout stays clean.
+                print(current, end="", file=sys.stderr, flush=True)
+                line = resolved_input("")
             except EOFError:
                 line = ""
                 # EOF ends collection; fall through to evaluate what we have.

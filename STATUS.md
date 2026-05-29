@@ -2,7 +2,7 @@
 
 ## 2026-05-29 Delta: wake-angry-drunk-captain escalation verb
 
-Branch: `feat/captain-verb` (pushed; no PR opened)
+Branch: `feat/captain-verb` (pushed; PR #234 open)
 
 **Work completed:**
 - Added a first-class `wake-angry-drunk-captain` verb — the agent's

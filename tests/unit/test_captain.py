@@ -72,10 +72,11 @@ def test_bare_invocation_refuses_and_reads_standing_order(capsys):
     code = cmd_captain(args)
     captured = capsys.readouterr()
     assert code == EXIT_REFUSED
-    assert "THE CAPTAIN IS ASLEEP" in captured.out
-    assert "do not wake" in captured.out.lower()
-    # No artifact written when refused.
+    assert "THE CAPTAIN IS ASLEEP" in captured.err
+    assert "do not wake" in captured.err.lower()
+    # No artifact written when refused; stdout stays clean for --json callers.
     assert "CAPTAIN ON DECK" not in captured.out
+    assert captured.out == ""
 
 
 def test_partial_justification_names_missing_fields(capsys):
@@ -83,9 +84,13 @@ def test_partial_justification_names_missing_fields(capsys):
     code = cmd_captain(args)
     captured = capsys.readouterr()
     assert code == EXIT_REFUSED
-    assert "--why-stuck" in captured.err
-    assert "--decision" in captured.err
-    assert "--objective" not in captured.err
+    # The nudge names exactly the fields left blank, not the ones provided.
+    nudge = captured.err.split("left these blank:", 1)[1]
+    assert "--why-stuck" in nudge
+    assert "--decision" in nudge
+    assert "--objective" not in nudge
+    # All refusal UI stays on stderr; stdout is clean for --json callers.
+    assert captured.out == ""
 
 
 def test_valid_summons_requires_orders_and_halts(tmp_path, capsys):
