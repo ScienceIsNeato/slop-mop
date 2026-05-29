@@ -202,11 +202,23 @@ def _present_case(summons: CaptainSummons) -> None:
     """Lay the agent's case in front of the captain (stderr, always shown)."""
     lines = [
         "",
-        "🥃 CAPTAIN ON DECK — the loop is exhausted",
+        "🥃 CAPTAIN ON DECK",
         "",
-        "The crew woke you on purpose. Here is their case.",
+        "*A deckhand shakes the captain awake, hat in hand.*",
+        '"Aye, terribly sorry to wake ya, captain — but none of the officers',
+        '   know what to do about the following:"',
         "",
-        "Objective",
+        "THE QUESTION",
+        f"   {summons.decision}",
+    ]
+    if summons.options:
+        lines += ["", "Options on the table"]
+        lines += [f"   - {option}" for option in summons.options]
+    lines += [
+        "",
+        "— the crew's account of how it came to this —",
+        "",
+        "What we were trying to do",
         f"   {summons.objective}",
         "",
         "Verbs tried (and how they died)",
@@ -218,13 +230,7 @@ def _present_case(summons: CaptainSummons) -> None:
         "Why the loop can't continue",
         f"   {summons.why_stuck}",
         "",
-        "The decision only you can make",
-        f"   {summons.decision}",
     ]
-    if summons.options:
-        lines += ["", "Options on the table"]
-        lines += [f"   - {option}" for option in summons.options]
-    lines += [""]
     print("\n".join(lines), file=sys.stderr)
 
 
@@ -245,9 +251,13 @@ def _collect_captain_orders(
     if not resolved_isatty():
         return None
 
-    prompt = "Speak your orders, captain. Empty line ends.\n> "
+    prompt = (
+        '"What\'s your call, captain?"\n'
+        "(type your orders — blank line when you're done)\n> "
+    )
     silent_retry = (
-        "Nothing? Then it was no emergency. Speak, or send the crew back.\n> "
+        "\"...Still nothing, captain? The crew's waiting on your word.\n"
+        ' Give the order, or we send them back to the loop empty-handed."\n> '
     )
 
     for _ in range(_MAX_PROMPT_ATTEMPTS):
@@ -309,6 +319,7 @@ def cmd_captain(
                     "",
                     "🥃 NO CAPTAIN AT THE WHEEL",
                     "",
+                    "You hollered into an empty cabin — nobody's here to answer.",
                     "This verb only resolves when a human types orders at the",
                     "prompt. Run it where the captain can answer — an interactive",
                     "terminal, with him at the keyboard. Nothing was decided.",
@@ -337,7 +348,8 @@ def cmd_captain(
         "",
         f"Logged to: {body_path}",
         "",
-        "Carry out the orders above. The captain returns to his bunk.",
+        '"You have your orders. Carry them out. And do NOT wake me again"',
+        "   *...he mutters, stumbling back to his bunk.*",
         "",
     ]
     print("\n".join(ack))
