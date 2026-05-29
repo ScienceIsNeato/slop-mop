@@ -407,6 +407,65 @@ def _add_sail_parser(
     )
 
 
+def _add_captain_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the wake-angry-drunk-captain subcommand parser.
+
+    The agent's last-resort escalation. Deliberately verbose to type and
+    deliberately demanding to satisfy — waking the captain is supposed to
+    feel expensive.
+    """
+    captain_parser = subparsers.add_parser(
+        "wake-angry-drunk-captain",
+        help="Escalate to the human — only when no sm verb can progress",
+        description=(
+            "Wake the human when the loop is exhausted: barnacles filed, gates "
+            "green or genuinely unfixable, and the only move left is a human "
+            'judgment call. The standing order is "do not wake the captain '
+            "unless there's an emergency.\" Invoking this without structured "
+            "justification gets the standing order read back to you."
+        ),
+    )
+    captain_parser.add_argument(
+        "--objective",
+        help="What you were trying to get done.",
+    )
+    captain_parser.add_argument(
+        "--verbs-tried",
+        dest="verbs_tried",
+        action="append",
+        help="A verb/step you ran and how it died; repeat for each attempt.",
+    )
+    captain_parser.add_argument(
+        "--why-stuck",
+        dest="why_stuck",
+        help="Why no remaining sm verb moves you forward.",
+    )
+    captain_parser.add_argument(
+        "--decision",
+        help="The one call only the captain can make.",
+    )
+    captain_parser.add_argument(
+        "--option",
+        dest="options",
+        action="append",
+        help="A choice you've laid out for the captain; repeat for each.",
+    )
+    captain_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+    captain_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit machine-readable summons details.",
+    )
+
+
 def _add_refit_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -958,6 +1017,7 @@ def create_parser() -> argparse.ArgumentParser:
             "  buff        Post-PR CI triage and next-step guidance",
             "  refit       Structured remediation planning and continuation",
             "  barnacle    File upstream tool-friction issues",
+            "  wake-angry-drunk-captain  Escalate to the human (last resort)",
             "  agent       Install agent integration templates",
             "  config      View or update quality gate configuration",
             "  help        Show detailed help for quality gates",
@@ -1007,6 +1067,7 @@ def create_parser() -> argparse.ArgumentParser:
     _add_upgrade_parser(subparsers)
     _add_buff_parser(subparsers)
     _add_sail_parser(subparsers)
+    _add_captain_parser(subparsers)
     _add_refit_parser(subparsers)
     BarnacleParserBuilder(subparsers).build()
     _add_status_parser(subparsers)
@@ -1040,6 +1101,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_audit,
         cmd_barnacle,
         cmd_buff,
+        cmd_captain,
         cmd_commit_hooks,
         cmd_config,
         cmd_doctor,
@@ -1091,6 +1153,7 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_upgrade=cmd_upgrade,
             cmd_buff=cmd_buff,
             cmd_barnacle=cmd_barnacle,
+            cmd_captain=cmd_captain,
             cmd_sail=cmd_sail,
             cmd_refit=cmd_refit,
             cmd_status=cmd_status,
@@ -1125,6 +1188,8 @@ def _dispatch(
         return handlers["cmd_buff"](parsed_args)
     elif parsed_args.verb == "barnacle":
         return handlers["cmd_barnacle"](parsed_args)
+    elif parsed_args.verb == "wake-angry-drunk-captain":
+        return handlers["cmd_captain"](parsed_args)
     elif parsed_args.verb == "sail":
         return handlers["cmd_sail"](parsed_args)
     elif parsed_args.verb == "refit":

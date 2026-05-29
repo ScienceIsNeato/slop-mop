@@ -178,3 +178,23 @@ def git_current_branch(path: Optional[str] = None) -> str:
 def dedupe_str_list(values: list[str]) -> list[str]:
     """Deduplicate strings while preserving input order."""
     return list(dict.fromkeys(values))
+
+
+def _clean_markdown_lines(values: Iterable[str]) -> list[str]:
+    return [value.strip() for value in values if value and value.strip()]
+
+
+def markdown_numbered(values: Iterable[str], empty: str) -> str:
+    """Render values as a numbered Markdown list, or ``empty`` when none."""
+    cleaned = _clean_markdown_lines(values)
+    if not cleaned:
+        return empty
+    return "\n".join(f"{idx}. {value}" for idx, value in enumerate(cleaned, 1))
+
+
+def markdown_bullets(values: Iterable[str], empty: str) -> str:
+    """Render values as a bulleted Markdown list, or ``empty`` when none."""
+    cleaned = _clean_markdown_lines(values)
+    if not cleaned:
+        return empty
+    return "\n".join(f"- {value}" for value in cleaned)
