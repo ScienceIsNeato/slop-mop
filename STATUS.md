@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-05-29 Delta: wake-angry-drunk-captain escalation verb
+
+Branch: `feat/captain-verb` (pushed; no PR opened)
+
+**Work completed:**
+- Added a first-class `wake-angry-drunk-captain` verb — the agent's
+  last-resort escalation to a human when the maintenance loop is exhausted.
+- The verb refuses with the standing order unless full justification is
+  supplied (objective, verbs-tried, why-stuck, decision).
+- It blocks on an interactive stdin prompt: a human must physically type
+  orders. Refuses with NO CAPTAIN when no human is at the wheel.
+- Summons + orders recorded to `.slopmop/last_captain_summons.md`; `--json`
+  supported. Surfaced in `skills/slopmop/SKILL.md` and a command doc.
+- Extracted shared `markdown_numbered`/`markdown_bullets` into
+  `slopmop.utils`; refactored barnacle to use them (cleared ambiguity-mines
+  duplication flagged by slop-mop's own gate).
+
+**Validation:**
+- `sm swab` clean (16 passed, 1 pre-existing non-blocking config-debt warning).
+- `tests/unit/test_captain.py`: 9 tests passing; barnacle tests unaffected.
+
 ## 2026-05-11 Delta: Build with Claude slopmop submission
 
 - Added discovery topics to `ScienceIsNeato/slop-mop` for Claude plugin indexing.
