@@ -23,9 +23,9 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Dialed back the press-gang CI policy so list/view can be used for failure digging while watch mode stays on the buff rail",
-    "direction": "Keep the CI triage guidance split: buff for watch/status, raw gh run list/view for forensics when needed",
-    "last_update": "2026-05-30T13:45:00Z"
+    "status": "Built a new last-resort verb that lets an agent wake a human when it has truly run out of moves - it stops and makes the person type an order before anything continues",
+    "direction": "Opened PR #234 for review; addressing reviewer feedback",
+    "last_update": "2026-05-29T21:10:00Z"
   },
   "queue": {
     "active": true,
