@@ -1,5 +1,25 @@
 # Project Status
 
+## 2026-05-30 Delta: dial back gang CI overreach
+
+Branch: `feat/captain-verb` (PR #234 open)
+
+**Work completed:**
+- Dialed back `sm gang` CI command interception policy: removed hard blocks on
+  raw `gh run list/view/watch` so agents can do deep run/log investigation when
+  `sm buff` output is not sufficient.
+- Reworked intercept messaging from generic "file a barnacle and wait" to
+  explanatory guidance: each block now prints `Why:` + `Use:` + `sm gang list`
+  map hint.
+- Updated agent guidance templates (`_shared/core.md`, cursor skill `sm-buff`)
+  to make `sm buff` the preferred first pass while explicitly allowing raw
+  `gh run`/log forensics when needed.
+- Updated gang unit tests for the new policy and message format.
+
+**Validation:**
+- `python -m pytest tests/unit/test_gang.py -q` ✅ (51 passed)
+- `./sm swab --no-tty --output-file .slopmop/last_swab.json` ✅
+
 ## 2026-05-29 Delta: wake-angry-drunk-captain escalation verb
 
 Branch: `feat/captain-verb` (pushed; PR #234 open)

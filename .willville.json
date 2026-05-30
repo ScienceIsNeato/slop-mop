@@ -23,9 +23,9 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Built a new last-resort verb that lets an agent wake a human when it has truly run out of moves - it stops and makes the person type an order before anything continues",
-    "direction": "Opened PR #234 for review; addressing reviewer feedback",
-    "last_update": "2026-05-29T21:10:00Z"
+    "status": "Dialed back the press-gang CI policy so investigation commands aren't hard-stopped and block messages explain why plus what to run instead",
+    "direction": "Ship this wording + behavior pass, then keep tuning guidance so sm is first-pass triage without hiding needed failure forensics",
+    "last_update": "2026-05-30T13:25:00Z"
   },
   "queue": {
     "active": true,

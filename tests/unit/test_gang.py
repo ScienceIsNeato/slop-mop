@@ -102,10 +102,12 @@ class TestGenerateAliasesSh:
         assert "export -f pytest" in content
         assert "BASH_VERSION" in content
 
-    def test_pytest_blocked_with_barnacle_message(self) -> None:
+    def test_pytest_blocked_with_explanatory_message(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
         assert "pytest()" in content
-        assert "sm barnacle" in content
+        assert "Why:" in content
+        assert "Use:" in content
+        assert "sm gang list" in content
         assert "return 1" in content
 
     def test_gh_wrapper_present(self) -> None:
@@ -113,9 +115,9 @@ class TestGenerateAliasesSh:
         assert "gh()" in content
         assert "export -f gh" in content
 
-    def test_gh_run_case_arm_present(self) -> None:
+    def test_gh_pr_checks_case_arm_present(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
-        assert "run list" in content or "run" in content
+        assert "pr checks" in content
         assert "return 1" in content
 
     def test_npx_wrapper_present(self) -> None:
@@ -608,15 +610,16 @@ class TestIntegrationAliasesSh:
         fake_bin = self._make_fake_bin(tmp_path, ("sm", "pytest"))
         result = self._bash(aliases, fake_bin, "pytest")
         assert "[slop-mop]" in result.stderr
-        assert "barnacle" in result.stderr
+        assert "Why:" in result.stderr
+        assert "Use:" in result.stderr
         assert result.returncode == 1
 
-    def test_gh_run_list_blocked(self, tmp_path: Path) -> None:
+    def test_gh_run_list_passes_through(self, tmp_path: Path) -> None:
         aliases = self._make_aliases(tmp_path)
         fake_bin = self._make_fake_bin(tmp_path, ("sm", "gh"))
         result = self._bash(aliases, fake_bin, "gh run list")
-        assert "[slop-mop]" in result.stderr
-        assert result.returncode == 1
+        assert "[slop-mop]" not in result.stderr
+        assert "fake-gh" in result.stdout
 
     def test_gh_unknown_subcommand_passes_through(self, tmp_path: Path) -> None:
         aliases = self._make_aliases(tmp_path)

@@ -19,8 +19,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 _CAT_TEST_COV = "test / coverage"
-_REASON_BUFF_RUN = "sm buff watch <PR> is the structured CI triage rail — not gh run"
-_SUGG_BUFF_RUN = "sm buff watch <PR#>  or  sm buff status to find your PR"
 _REASON_FMT = "sm swab runs formatting gates in the correct pipeline context"
 _SM_FMT = "sm swab -g laziness:sloppy-formatting.py"
 
@@ -76,40 +74,6 @@ COMMAND_MAPPING: list[CommandMap] = [
         reason="sm swab runs all gates with correct state tracking and caching",
         category=_CAT_TEST_COV,
         intercept_type="function",
-    ),
-    # ── CI monitoring: gh run ────────────────────────────────────────────────
-    CommandMap(
-        forbidden="gh run list",
-        sm_command="",
-        reason=_REASON_BUFF_RUN,
-        category="CI monitoring",
-        intercept_type="subcommand",
-        wrapper_command="gh",
-        subcommands=("run", "list"),
-        redirect=False,
-        suggestion=_SUGG_BUFF_RUN,
-    ),
-    CommandMap(
-        forbidden="gh run watch",
-        sm_command="",
-        reason=_REASON_BUFF_RUN,
-        category="CI monitoring",
-        intercept_type="subcommand",
-        wrapper_command="gh",
-        subcommands=("run", "watch"),
-        redirect=False,
-        suggestion=_SUGG_BUFF_RUN,
-    ),
-    CommandMap(
-        forbidden="gh run view",
-        sm_command="",
-        reason=_REASON_BUFF_RUN,
-        category="CI monitoring",
-        intercept_type="subcommand",
-        wrapper_command="gh",
-        subcommands=("run", "view"),
-        redirect=False,
-        suggestion=_SUGG_BUFF_RUN,
     ),
     # ── PR triage: gh pr / gh api ────────────────────────────────────────────
     CommandMap(
