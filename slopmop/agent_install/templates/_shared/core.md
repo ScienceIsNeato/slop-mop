@@ -16,7 +16,7 @@ when your impulse is the left column, run the right column instead.
 | `gh pr checks <PR#>`                              | `sm buff status <PR#>`                       |
 | `gh pr checks <PR#> --watch`, `gh run watch`      | `sm buff watch <PR#>`                        |
 | `gh pr view <PR#> --comments`                     | `sm buff <PR#>`                              |
-| Reading CI logs to find the failing test          | `sm buff inspect <PR#>`                      |
+| Reading CI logs to find the failing test          | Start with `sm buff inspect <PR#>`, then use raw `gh run list/view` or CI logs for details not surfaced yet |
 | `gh api ... resolveReviewThread`                  | `sm buff resolve <PR#> <THREAD_ID> -m "..."` |
 | `gh pr review --approve` after addressing threads | `sm buff verify <PR#>` first                 |
 | `gh pr merge`                                     | **Wait for human decision.** Sail stops at PR_READY. Share the PR with human, await their merge call. |
@@ -33,10 +33,11 @@ when your impulse is the left column, run the right column instead.
   `sm swab` runs them in dependency order, caches clean results across
   commits, and auto-fixes what it can.  A bare `pytest` wastes a full
   run on things swab would have skipped from cache.
-- **NEVER** run `gh pr checks`, `gh run view`, or read CI logs
-  directly.  `sm buff` fetches the same data and converts it into a
-  remediation plan — it knows which check failed and what you need to
-  do next, not just that something is red.
+- Start with `sm buff` for CI triage. If you still need raw run-level
+  detail (forensics, missing error context, log spelunking), use
+  `gh run list/view` directly, then return to the `sm buff` workflow to
+  keep the remediation loop consistent. Keep `gh run watch` on the buff
+  rail.
 - **NEVER** open or update a PR without `sm scour` passing first.
 - **NEVER** merge a PR autonomously.  `sm sail` reaches PR_READY and stops.
   The human makes the final merge decision.  This is a safety wall.

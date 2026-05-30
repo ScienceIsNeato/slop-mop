@@ -58,16 +58,20 @@ def _escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace("'", "'\\''")
 
 
-def _msg_printf(forbidden: str, indent: int, suggestion: str = "") -> str:
+def _msg_printf(
+    forbidden: str,
+    indent: int,
+    reason: str = "",
+    suggestion: str = "",
+) -> str:
     """Return a printf line that shows the intercept message."""
     spaces = " " * indent
-    msg = (
-        f"\\033[1m[slop-mop]\\033[0m \\033[31m\\xe2\\x9b\\x94 {_escape(forbidden)} blocked\\033[0m\\n"
-        f"  Stop. File a barnacle: sm barnacle\\n"
-        f"  Tell the human what you were doing and wait."
-    )
+    msg = f"\\033[1m[slop-mop]\\033[0m \\033[31m\\xe2\\x9b\\x94 {_escape(forbidden)} blocked\\033[0m"
+    if reason:
+        msg += f"\\n  Why: {_escape(reason)}"
     if suggestion:
-        msg += f"\\n  {_escape(suggestion)}"
+        msg += f"\\n  Use: {_escape(suggestion)}"
+    msg += "\\n  See command map: sm gang list"
     return f"{spaces}printf " f"'{msg}\\n' >&2"
 
 
@@ -97,12 +101,27 @@ def _gen_function_blocks(lines: list[str]) -> None:
         if cmd in seen_cmds:
             continue
         seen_cmds.add(cmd)
+        fn_entries = [
+            e
+            for e in COMMAND_MAPPING
+            if e.intercept_type == "function" and e.forbidden.split()[0] == cmd
+        ]
+        # Prefer the baseline mapping (no flag trigger) for human-facing guidance.
+        base_entry = next((e for e in fn_entries if not e.flag_trigger), fn_entries[0])
+        suggestion = base_entry.suggestion or base_entry.sm_command
         lines.append(f"{cmd}() {{")
         lines.append(
             f'    command -v sm &>/dev/null || {{ command {cmd} "$@"; return; }}'
         )
         lines.append(f'    _sm_in_slopmop_repo || {{ command {cmd} "$@"; return; }}')
-        lines.append(_msg_printf(cmd, indent=4))
+        lines.append(
+            _msg_printf(
+                cmd,
+                indent=4,
+                reason=base_entry.reason,
+                suggestion=suggestion,
+            )
+        )
         lines.append("    return 1")
         lines += ["}", '[[ -n "${BASH_VERSION:-}" ]] && export -f ' + cmd, ""]
 
@@ -134,7 +153,8 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
                 _msg_printf(
                     f"{wrapper} {' '.join(entry.subcommands)}",
                     indent=12,
-                    suggestion=entry.suggestion,
+                    reason=entry.reason,
+                    suggestion=entry.suggestion or entry.sm_command,
                 )
             )
             lines.append("            return 1")
@@ -167,7 +187,14 @@ def _gen_npx_block(lines: list[str]) -> None:
         if not tool:
             continue
         lines.append(f"        {tool})")
-        lines.append(_msg_printf(f"npx {tool}", indent=12, suggestion=entry.suggestion))
+        lines.append(
+            _msg_printf(
+                f"npx {tool}",
+                indent=12,
+                reason=entry.reason,
+                suggestion=entry.suggestion or entry.sm_command,
+            )
+        )
         lines.append("            return 1")
         lines.append("            ;;")
 

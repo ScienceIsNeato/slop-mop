@@ -11,16 +11,14 @@
   <a href="https://github.com/ScienceIsNeato/slop-mop#use-with-claude"><img src="https://img.shields.io/badge/Claude-skill%20%2B%20plugin-7a5bff?logo=anthropic&amp;logoColor=white" alt="Claude skill + plugin"/></a>
 </p>
 
-Slop-mop steers agents towards choices that maximize long-term repository maintainability
-and stability by making the easy choices the right choices. 
+Slop-mop reshapes the agent’s terrain so the most maintainable move feels like the easiest one downhill.
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop heraldic" width="300" align="right"/>
 
-It does not try to turn agents into what they aren't. Rather, slop-mop takes LLMs' strengths
-and points those assets at their own weaknesses. It does so via greased rails: a path of
-least resistance toward more maintainable choices. The hard work is already done in the 
-gate creation and orchestration - the agent just has to run the check and do exactly what sm
-tells it to.
+It does not try to turn agents into what they aren't. Slop-mop reshapes the workflow
+landscape around them: refit carves the initial terrain, swab/scour/buff keep the
+gradient pointed at maintainable code, and wake-angry-drunk-captain blocks fake
+progress when only a human decision can break the tie.
 
 Don't make sloppy choices. Keep moving forward and address debt relentlessly.
 Resist the urge to side-step the check. Just fix what it flags and keep moving: that is the whole idea.
