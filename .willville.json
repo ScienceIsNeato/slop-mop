@@ -23,9 +23,9 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Dialed back the press-gang CI policy so investigation commands aren't hard-stopped and block messages explain why plus what to run instead",
-    "direction": "PR #234 is merged; follow-up dial-back commit is pushed on feat/captain-verb and waiting for a new PR decision",
-    "last_update": "2026-05-30T13:34:00Z"
+    "status": "Dialed back the press-gang CI policy so list/view can be used for failure digging while watch mode stays on the buff rail",
+    "direction": "Keep the CI triage guidance split: buff for watch/status, raw gh run list/view for forensics when needed",
+    "last_update": "2026-05-30T13:45:00Z"
   },
   "queue": {
     "active": true,

@@ -27,9 +27,9 @@ pipx install slopmop[all]
 | Your impulse                                     | Run instead                                          |
 |--------------------------------------------------|------------------------------------------------------|
 | `gh pr checks <PR#>`                             | `sm buff status <PR#>`                               |
-| `gh pr checks <PR#> --watch`                     | `sm buff watch <PR#>`                                |
+| `gh pr checks <PR#> --watch`, `gh run watch`     | `sm buff watch <PR#>`                                |
 | `gh pr view <PR#> --comments`                    | `sm buff <PR#>`                                      |
-| Reading CI logs to find the failing test         | `sm buff inspect <PR#>` first, then raw logs for missing detail |
+| Reading CI logs to find the failing test         | `sm buff inspect <PR#>` first, then raw `gh run list/view` or logs for missing detail |
 | `gh api ... resolveReviewThread`                 | `sm buff resolve <PR#> <THREAD_ID> --scenario <s> -m "..."` |
 | `gh pr review --approve` after addressing threads | `sm buff verify <PR#>` first                        |
 
@@ -68,8 +68,9 @@ sm buff verify <PR#>              # confirm all threads resolved
 ## Hard rules
 
 - Start with `sm buff`. If it does not expose enough detail for a
-  failure investigation, use raw `gh run list/view/watch` or CI logs,
-  then return to `sm buff` for structured resolution.
+  failure investigation, use raw `gh run list/view` or CI logs, then
+  return to `sm buff` for structured resolution. Keep `gh run watch`
+  on the buff rail.
 - **NEVER** mark a failing check resolved without actually fixing it.
 - Do not push fixes until all threads are resolved, marked
   `WONT_RESOLVE`, or explicitly awaiting human feedback.

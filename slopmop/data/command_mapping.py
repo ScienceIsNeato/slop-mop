@@ -99,6 +99,17 @@ COMMAND_MAPPING: list[CommandMap] = [
         suggestion="sm buff resolve <PR#> <THREAD_ID> --scenario <type>",
     ),
     CommandMap(
+        forbidden="gh run watch",
+        sm_command="",
+        reason="sm buff watch <PR> is the structured CI triage rail",
+        category="CI monitoring",
+        intercept_type="subcommand",
+        wrapper_command="gh",
+        subcommands=("run", "watch"),
+        redirect=False,
+        suggestion="sm buff watch <PR#>  (use gh run list/view only for investigation)",
+    ),
+    CommandMap(
         forbidden="gh pr merge",
         sm_command="",
         reason="sail mode stops at PR_READY; human decision to merge is required",

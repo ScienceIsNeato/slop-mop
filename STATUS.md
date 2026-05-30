@@ -5,15 +5,16 @@
 Branch: `feat/captain-verb` (PR #234 merged; follow-up branch pushed, no new PR yet)
 
 **Work completed:**
-- Dialed back `sm gang` CI command interception policy: removed hard blocks on
-  raw `gh run list/view/watch` so agents can do deep run/log investigation when
-  `sm buff` output is not sufficient.
+- Dialed back `sm gang` CI command interception policy, then restored the
+  `gh run watch` block so watch-mode stays on the `sm buff watch` rail while
+  raw `gh run list/view` remains available for investigation.
 - Reworked intercept messaging from generic "file a barnacle and wait" to
   explanatory guidance: each block now prints `Why:` + `Use:` + `sm gang list`
   map hint.
 - Updated agent guidance templates (`_shared/core.md`, cursor skill `sm-buff`)
   to make `sm buff` the preferred first pass while explicitly allowing raw
-  `gh run`/log forensics when needed.
+  `gh run list/view` forensics when needed and keeping `gh run watch` on the
+  buff rail.
 - Updated gang unit tests for the new policy and message format.
 
 **Validation:**

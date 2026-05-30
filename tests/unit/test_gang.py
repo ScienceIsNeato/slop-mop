@@ -621,6 +621,15 @@ class TestIntegrationAliasesSh:
         assert "[slop-mop]" not in result.stderr
         assert "fake-gh" in result.stdout
 
+    def test_gh_run_watch_blocks_with_buff_hint(self, tmp_path: Path) -> None:
+        aliases = self._make_aliases(tmp_path)
+        fake_bin = self._make_fake_bin(tmp_path, ("sm", "gh"))
+        result = self._bash(aliases, fake_bin, "gh run watch")
+        assert "[slop-mop]" in result.stderr
+        assert "sm buff watch" in result.stderr
+        assert "gh run list/view" in result.stderr
+        assert result.returncode == 1
+
     def test_gh_unknown_subcommand_passes_through(self, tmp_path: Path) -> None:
         aliases = self._make_aliases(tmp_path)
         fake_bin = self._make_fake_bin(tmp_path, ("sm", "gh"))
