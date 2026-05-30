@@ -19,7 +19,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from slopmop.utils import git_current_branch, iso_now
+from slopmop.utils import (
+    git_current_branch,
+    iso_now,
+    markdown_bullets,
+    markdown_numbered,
+)
 
 SCHEMA_VERSION = "slopmop/barnacle-issue/v1"
 DEFAULT_REPO = "ScienceIsNeato/slop-mop"
@@ -139,20 +144,6 @@ def _fenced_block(language: str, content: str) -> str:
     return f"```{language}\n{body}\n```"
 
 
-def _bullets(values: Sequence[str]) -> str:
-    cleaned = [value.strip() for value in values if value and value.strip()]
-    if not cleaned:
-        return "- (none provided)"
-    return "\n".join(f"- {value}" for value in cleaned)
-
-
-def _numbered(values: Sequence[str]) -> str:
-    cleaned = [value.strip() for value in values if value and value.strip()]
-    if not cleaned:
-        return "1. (none provided)"
-    return "\n".join(f"{idx}. {value}" for idx, value in enumerate(cleaned, 1))
-
-
 def _issue_title(raw_title: str, command: str) -> str:
     title = raw_title.strip() or f"slop-mop friction while running {command}"
     if _BARNACLE_PREFIX_RE.match(title):
@@ -207,10 +198,10 @@ def render_issue_body(issue: BarnacleIssue) -> str:
             _fenced_block("bash", issue.command),
             "",
             "### Reproduction Steps",
-            _numbered(issue.reproduction_steps),
+            markdown_numbered(issue.reproduction_steps, "1. (none provided)"),
             "",
             "### Things Tried",
-            _bullets(issue.things_tried),
+            markdown_bullets(issue.things_tried, "- (none provided)"),
             "",
             "### Output Excerpt",
             _fenced_block("text", issue.output_excerpt),

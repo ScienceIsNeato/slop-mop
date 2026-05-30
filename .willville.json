@@ -23,9 +23,9 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Implementing sailing mode safety features: gh pr merge prohibition, pending review detection",
-    "direction": "Finalize PR #229 (autonomous merge prohibition) after human review; verify full workflow ready for sailing agents",
-    "last_update": "2026-05-28T03:35:00Z"
+    "status": "Built a new last-resort verb that lets an agent wake a human when it has truly run out of moves - it stops and makes the person type an order before anything continues",
+    "direction": "Opened PR #234 for review; addressing reviewer feedback",
+    "last_update": "2026-05-29T21:10:00Z"
   },
   "queue": {
     "active": true,

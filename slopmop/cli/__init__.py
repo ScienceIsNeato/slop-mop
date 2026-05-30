@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from slopmop.cli.audit import cmd_audit
     from slopmop.cli.barnacle import cmd_barnacle
     from slopmop.cli.buff import cmd_buff
+    from slopmop.cli.captain import cmd_captain
     from slopmop.cli.config import cmd_config
     from slopmop.cli.detection import detect_project_type
     from slopmop.cli.doctor import cmd_doctor
@@ -33,6 +34,7 @@ _EXPORT_MAP = {
     "cmd_audit": ("slopmop.cli.audit", "cmd_audit"),
     "cmd_barnacle": ("slopmop.cli.barnacle", "cmd_barnacle"),
     "cmd_buff": ("slopmop.cli.buff", "cmd_buff"),
+    "cmd_captain": ("slopmop.cli.captain", "cmd_captain"),
     "cmd_commit_hooks": ("slopmop.cli.hooks", "cmd_commit_hooks"),
     "cmd_config": ("slopmop.cli.config", "cmd_config"),
     "cmd_doctor": ("slopmop.cli.doctor", "cmd_doctor"),
@@ -67,6 +69,7 @@ __all__ = [
     "cmd_agent",
     "cmd_audit",
     "cmd_barnacle",
+    "cmd_captain",
     "cmd_commit_hooks",
     "cmd_config",
     "cmd_doctor",
