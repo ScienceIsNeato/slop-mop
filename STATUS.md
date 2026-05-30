@@ -2,7 +2,7 @@
 
 ## 2026-05-30 Delta: dial back gang CI overreach
 
-Branch: `feat/captain-verb` (PR #234 open)
+Branch: `feat/captain-verb` (PR #234 merged; follow-up branch pushed, no new PR yet)
 
 **Work completed:**
 - Dialed back `sm gang` CI command interception policy: removed hard blocks on

@@ -24,8 +24,8 @@
   },
   "agent": {
     "status": "Dialed back the press-gang CI policy so investigation commands aren't hard-stopped and block messages explain why plus what to run instead",
-    "direction": "Ship this wording + behavior pass, then keep tuning guidance so sm is first-pass triage without hiding needed failure forensics",
-    "last_update": "2026-05-30T13:25:00Z"
+    "direction": "PR #234 is merged; follow-up dial-back commit is pushed on feat/captain-verb and waiting for a new PR decision",
+    "last_update": "2026-05-30T13:34:00Z"
   },
   "queue": {
     "active": true,
