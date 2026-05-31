@@ -969,24 +969,26 @@ def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
         feedback_result=feedback_result,
     )
 
-    write_json_out(getattr(args, "output_file", None), payload)
-
     feedback_blocking = feedback_result.status in {
         CheckStatus.FAILED,
         CheckStatus.ERROR,
     }
     exit_code = 1 if (scan_exit != 0 or feedback_blocking) else 0
 
+    # The triage payload is the buff data slot verbatim — it keeps its own
+    # ci-triage sub-schema stamp and instruction list. The envelope adds the
+    # invariant frame and carries the pass/fail verdict. Both stdout and the
+    # --output file get the same envelope, so a pipeline capturing the file
+    # sees the documented contract rather than the bare inner payload.
+    envelope = build_envelope(
+        command="buff",
+        status=Status.OK if exit_code == 0 else Status.FAIL,
+        exit_code=exit_code,
+        data=payload,
+    )
+    write_json_out(getattr(args, "output_file", None), envelope)
+
     if json_output:
-        # The triage payload is the buff data slot verbatim — it keeps its
-        # own ci-triage sub-schema stamp and instruction list. The envelope
-        # adds the invariant frame and carries the pass/fail verdict.
-        envelope = build_envelope(
-            command="buff",
-            status=Status.OK if exit_code == 0 else Status.FAIL,
-            exit_code=exit_code,
-            data=payload,
-        )
         print(json.dumps(envelope, indent=2))
         return exit_code
 

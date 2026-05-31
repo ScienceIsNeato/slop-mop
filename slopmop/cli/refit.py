@@ -324,14 +324,17 @@ def _emit_protocol(
 ) -> None:
     protocol.setdefault("protocol_file", str(_protocol_path(project_root)))
     _save_protocol(project_root, protocol)
-    write_json_out(getattr(args, "output_file", None), protocol)
+    # The persisted protocol file keeps refit's bare internal state, but the
+    # user-facing --output mirror gets the same v3 envelope as stdout so a
+    # pipeline capturing the file sees the documented contract.
+    envelope = build_envelope(
+        command="refit",
+        status=Status.INFO,
+        exit_code=exit_code,
+        data=protocol,
+    )
+    write_json_out(getattr(args, "output_file", None), envelope)
     if getattr(args, "json_output", False):
-        envelope = build_envelope(
-            command="refit",
-            status=Status.INFO,
-            exit_code=exit_code,
-            data=protocol,
-        )
         print(json.dumps(envelope, indent=2))
         return
     for line in human_lines:
@@ -497,7 +500,11 @@ def _commit_message_for_check(name: str, check: BaseCheck) -> str:
 def _failed_results_from_scour_artifact(
     artifact: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    raw_results = artifact.get("results")
+    # The scour artifact is a v3 response envelope; the validation payload
+    # (summary, results) lives under ``data``.
+    data_raw = artifact.get("data")
+    data = cast(Dict[str, Any], data_raw) if isinstance(data_raw, dict) else {}
+    raw_results = data.get("results")
     if not isinstance(raw_results, list):
         return []
     result_items = cast(List[object], raw_results)

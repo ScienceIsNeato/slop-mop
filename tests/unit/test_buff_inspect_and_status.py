@@ -123,6 +123,11 @@ class TestBuffInspectCommand:
         assert envelope["exit_code"] == 0
         assert envelope["data"]["schema"] == "slopmop/ci-triage/v1"
 
+        # The --output file must carry the same v3 envelope as stdout, not the
+        # bare inner payload — a pipeline capturing the file sees the contract.
+        file_doc = json.loads((tmp_path / "buff.json").read_text(encoding="utf-8"))
+        assert file_doc == envelope
+
     def test_cmd_buff_uses_pre_resolved_pr_number(self, monkeypatch):
         args = argparse.Namespace(
             json_output=False,

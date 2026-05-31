@@ -391,7 +391,10 @@ class TestCmdRefitContinue:
         mirrored = json.loads(output_file.read_text(encoding="utf-8"))
         assert protocol["event"] == "blocked_on_failure"
         assert protocol["protocol_file"] == str(protocol_path)
-        assert mirrored == protocol
+        # Persisted protocol stays bare; the --output mirror is enveloped.
+        assert mirrored["schema"] == "slopmop/v3"
+        assert mirrored["command"] == "refit"
+        assert mirrored["data"] == protocol
 
     def test_continue_advances_without_commit_when_gate_already_passes(
         self, monkeypatch, capsys, tmp_path: Path

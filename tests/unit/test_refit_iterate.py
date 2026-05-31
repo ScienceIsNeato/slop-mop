@@ -31,24 +31,31 @@ class TestSummariseFailureArtifact:
         with 162 findings sitting in the JSON. Agent had to parse JSON
         manually to learn anything about what failed.
         """
+        # The artifact is a v3 envelope; results live under ``data``.
         artifact = {
-            "results": [
-                {
-                    "findings": [
-                        {
-                            "file": "tests/test_cli.py",
-                            "line": 42,
-                            "message": "Duplicate of tests/test_cli.py:10 (8 lines)",
-                        },
-                        {
-                            "file": "tests/test_cli.py",
-                            "line": 99,
-                            "message": "Duplicate of tests/other.py:5 (6 lines)",
-                        },
-                    ],
-                    "fix_suggestion": "Add tests/ to exclude_dirs.",
-                }
-            ]
+            "schema": "slopmop/v3",
+            "command": "scour",
+            "status": "fail",
+            "exit_code": 1,
+            "data": {
+                "results": [
+                    {
+                        "findings": [
+                            {
+                                "file": "tests/test_cli.py",
+                                "line": 42,
+                                "message": "Duplicate of tests/test_cli.py:10 (8 lines)",
+                            },
+                            {
+                                "file": "tests/test_cli.py",
+                                "line": 99,
+                                "message": "Duplicate of tests/other.py:5 (6 lines)",
+                            },
+                        ],
+                        "fix_suggestion": "Add tests/ to exclude_dirs.",
+                    }
+                ]
+            },
         }
         p = tmp_path / "scour.json"
         p.write_text(json.dumps(artifact))
@@ -65,7 +72,7 @@ class TestSummariseFailureArtifact:
             {"file": f"f{i}.py", "line": i, "message": f"clone {i}"} for i in range(20)
         ]
         p = tmp_path / "scour.json"
-        p.write_text(json.dumps({"results": [{"findings": findings}]}))
+        p.write_text(json.dumps({"data": {"results": [{"findings": findings}]}}))
 
         lines = _summarise_failure_artifact(p)
         joined = "\n".join(lines)

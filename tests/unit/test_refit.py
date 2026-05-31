@@ -54,21 +54,29 @@ class TestBuildPlan:
     ):
         scour_path = tmp_path / ".slopmop" / "refit" / "initial_scour.json"
         scour_path.parent.mkdir(parents=True)
+        # The scour artifact is a v3 response envelope; results live under
+        # ``data``. _build_plan must unwrap the envelope to find failures.
         scour_path.write_text(
             json.dumps(
                 {
-                    "results": [
-                        {
-                            "name": "overconfidence:coverage-gaps.py",
-                            "status": "failed",
-                            "output": "coverage missing",
-                        },
-                        {
-                            "name": "laziness:repeated-code",
-                            "status": "failed",
-                            "output": "duplicate code",
-                        },
-                    ]
+                    "schema": "slopmop/v3",
+                    "command": "scour",
+                    "status": "fail",
+                    "exit_code": 1,
+                    "data": {
+                        "results": [
+                            {
+                                "name": "overconfidence:coverage-gaps.py",
+                                "status": "failed",
+                                "output": "coverage missing",
+                            },
+                            {
+                                "name": "laziness:repeated-code",
+                                "status": "failed",
+                                "output": "duplicate code",
+                            },
+                        ]
+                    },
                 }
             ),
             encoding="utf-8",
@@ -431,7 +439,11 @@ class TestCmdRefitGeneratePlan:
         mirrored = json.loads(output_file.read_text(encoding="utf-8"))
         assert protocol["event"] == "plan_generated"
         assert protocol["protocol_file"] == str(protocol_path)
-        assert mirrored == protocol
+        # The persisted protocol file keeps refit's bare internal state; the
+        # user-facing --output mirror wraps it in the v3 envelope under data.
+        assert mirrored["schema"] == "slopmop/v3"
+        assert mirrored["command"] == "refit"
+        assert mirrored["data"] == protocol
 
     def test_generate_plan_blocks_on_pending_fidelity_review(
         self, monkeypatch, capsys, tmp_path: Path
