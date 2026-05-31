@@ -113,7 +113,9 @@ def _read_actionable_results(json_path: str) -> list[dict[str, Any]]:
         print("::notice::See Code scanning results / slopmop for detailed findings.")
         return []
 
-    raw_results = json_doc.get("results") or []
+    data_raw = json_doc.get("data")
+    data = data_raw if isinstance(data_raw, dict) else {}
+    raw_results = data.get("results") or []
     actionable = [r for r in filter_actionable_rows(raw_results) if isinstance(r, dict)]
     if not actionable:
         print("::warning::No actionable results found in JSON report")

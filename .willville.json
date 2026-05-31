@@ -23,8 +23,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Finished making every command speak one predictable machine-readable format, so an agent can know the exact shape of every response before running anything",
-    "direction": "Putting the work on its own branch and opening a PR for review",
+    "status": "Working through review feedback on the machine-format PR — taught the CI status check to speak the same predictable format as everything else",
+    "direction": "Clearing the last review notes, then getting it merged",
     "last_update": "2026-05-31T00:00:00Z"
   },
   "queue": {

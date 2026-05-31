@@ -603,11 +603,18 @@ def _cmd_buff_status(
     interval: int,
     *,
     fail_fast: bool = False,
+    json_output: bool = False,
 ) -> int:
     """Check PR CI status through the buff rail."""
     from slopmop.cli._buff_status import cmd_buff_status
 
-    return cmd_buff_status(pr_number, watch, interval, fail_fast=fail_fast)
+    return cmd_buff_status(
+        pr_number,
+        watch,
+        interval,
+        fail_fast=fail_fast,
+        json_output=json_output,
+    )
 
 
 def _cmd_buff_resolve(
@@ -1052,6 +1059,7 @@ def cmd_buff(args: argparse.Namespace) -> int:
             normalized.watch,
             normalized.interval,
             fail_fast=normalized.fail_fast,
+            json_output=bool(getattr(args, "json_output", False)),
         )
     if normalized.action == "finalize":
         return _cmd_buff_finalize(normalized.pr_number, normalized.push_changes)

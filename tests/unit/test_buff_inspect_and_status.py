@@ -6,10 +6,80 @@ import argparse
 import json
 from unittest.mock import Mock
 
+from slopmop.cli import _buff_status as status_mod
 from slopmop.cli import buff as buff_mod
 from slopmop.cli import scan_triage as triage
 from slopmop.core.result import CheckStatus
 from tests.conftest import make_feedback_result, patch_buff_pr_resolution
+
+
+class TestBuffStatusJson:
+    def _patch_common(self, monkeypatch):
+        monkeypatch.setattr(
+            status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+        )
+        monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
+        monkeypatch.setattr(
+            status_mod,
+            "resolve_pr_number_with_source",
+            Mock(return_value=(84, "explicit")),
+        )
+        monkeypatch.setattr(status_mod, "_fire_buff_hook", Mock())
+
+    def test_status_json_clean_emits_envelope(self, monkeypatch, capsys):
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(
+            status_mod,
+            "_fetch_checks",
+            Mock(return_value=([{"name": "CI", "bucket": "pass"}], None)),
+        )
+        monkeypatch.setattr(
+            status_mod,
+            "_run_pr_feedback_gate",
+            Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
+        )
+
+        exit_code = status_mod.cmd_buff_status(84, False, 30, json_output=True)
+        assert exit_code == 0
+
+        envelope = json.loads(capsys.readouterr().out)
+        assert envelope["schema"] == "slopmop/v3"
+        assert envelope["command"] == "buff"
+        assert envelope["status"] == "ok"
+        assert envelope["exit_code"] == 0
+        assert envelope["data"]["overall_state"] == "clean"
+        assert envelope["data"]["pr_number"] == 84
+        assert envelope["data"]["checks"]["passed"] == 1
+
+    def test_status_json_feedback_blocked_emits_fail_envelope(
+        self, monkeypatch, capsys
+    ):
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(
+            status_mod,
+            "_fetch_checks",
+            Mock(return_value=([{"name": "CI", "bucket": "pass"}], None)),
+        )
+        monkeypatch.setattr(
+            status_mod,
+            "_run_pr_feedback_gate",
+            Mock(
+                return_value=make_feedback_result(
+                    CheckStatus.FAILED,
+                    output="PR #84 has unresolved review threads.",
+                    error="2 unresolved PR comment(s)",
+                )
+            ),
+        )
+
+        exit_code = status_mod.cmd_buff_status(84, False, 30, json_output=True)
+        assert exit_code == 1
+
+        envelope = json.loads(capsys.readouterr().out)
+        assert envelope["status"] == "fail"
+        assert envelope["exit_code"] == 1
+        assert envelope["data"]["overall_state"] == "feedback_blocked"
+        assert envelope["next_steps"][0]["command"] == "sm buff inspect"
 
 
 class TestBuffInspectCommand:
