@@ -2,7 +2,7 @@
 
 ## 2026-05-30 Delta: make PR-open flow watch CI before reporting
 
-Branch: `feat/captain-verb` (PR #236 open)
+Branch: `feat/captain-verb` (PR #236 merged)
 
 **Work completed:**
 - Updated the workflow state machine so `PR_OPEN` now points to
