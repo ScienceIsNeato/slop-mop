@@ -12,11 +12,13 @@ import json
 
 import pytest
 
+from slopmop.reporting import envelope as env
 from slopmop.reporting.envelope import (
     ENVELOPE_SCHEMA_VERSION,
     Diagnostic,
     NextStep,
     Status,
+    available_data_schemas,
     build_envelope,
     load_envelope_schema,
     render_envelope,
@@ -158,3 +160,27 @@ def test_status_for_exit_code() -> None:
     assert status_for_exit_code(0) is Status.OK
     assert status_for_exit_code(1) is Status.FAIL
     assert status_for_exit_code(2) is Status.FAIL
+
+
+# ── packaged schema loading ──────────────────────────────────────
+
+
+def test_load_packaged_schema_rejects_non_object(monkeypatch) -> None:
+    """A schema file that parses to a non-object is a packaging error."""
+    monkeypatch.setattr(env.json, "loads", lambda _text: ["not", "an", "object"])
+    with pytest.raises(ValueError, match="not a JSON object"):
+        env._load_packaged_schema("envelope.json")
+
+
+def test_available_data_schemas_empty_when_dir_missing(monkeypatch) -> None:
+    """No packaged ``data/`` directory yields an empty catalog, not a crash."""
+
+    class _FakeResource:
+        def joinpath(self, _name: str) -> "_FakeResource":
+            return self
+
+        def is_dir(self) -> bool:
+            return False
+
+    monkeypatch.setattr(env.resources, "files", lambda _pkg: _FakeResource())
+    assert available_data_schemas() == []

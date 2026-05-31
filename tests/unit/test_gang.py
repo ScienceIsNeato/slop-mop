@@ -120,6 +120,14 @@ class TestGenerateAliasesSh:
         assert "pr checks" in content
         assert "return 1" in content
 
+    def test_gh_pr_view_case_arm_present(self) -> None:
+        """gh pr view is gang-blocked so the mergeable-field trap can't recur."""
+        content = _generate_aliases_sh("1.0.0").decode()
+        assert '"pr view"' in content
+        # The intercept must explain why mergeable is not merge-readiness.
+        assert "mergeable" in content
+        assert "sm buff status" in content
+
     def test_npx_wrapper_present(self) -> None:
         content = _generate_aliases_sh("1.0.0").decode()
         assert "npx()" in content

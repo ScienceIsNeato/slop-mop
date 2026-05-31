@@ -9,11 +9,12 @@ lives in test_machine_interface_conformance.py.
 
 import argparse
 import json
+from unittest.mock import Mock
 
 import pytest
 
 from slopmop import sm
-from slopmop.cli.capabilities import _VERB_CATALOG, cmd_capabilities
+from slopmop.cli.capabilities import _VERB_CATALOG, _gate_entries, cmd_capabilities
 from slopmop.reporting.envelope import available_data_schemas
 
 
@@ -128,6 +129,21 @@ def test_inapplicable_gates_explain_themselves(
         if gate["applicable"] is False:
             assert isinstance(gate.get("skip_reason"), str)
             assert gate["skip_reason"]
+
+
+def test_gate_entries_skips_none_checks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    # A registered name whose check can't be instantiated (get_check → None)
+    # must be skipped, not crash the inventory.
+    ghost_registry = Mock()
+    ghost_registry.list_checks.return_value = ["ghost-gate"]
+    ghost_registry.get_check.return_value = None
+    # ensure_checks_registered() probes len(registry._check_classes); keep it
+    # non-empty so registration is treated as already done.
+    ghost_registry._check_classes = {"ghost-gate": object}
+    monkeypatch.setattr("slopmop.core.registry.get_registry", lambda: ghost_registry)
+    assert _gate_entries(tmp_path) == []
 
 
 def test_catalog_groups_are_in_the_known_vocabulary() -> None:

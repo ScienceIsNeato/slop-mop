@@ -2,9 +2,12 @@
 
 import json
 
+import pytest
+
 from slopmop.baseline import (
     filter_summary_against_baseline,
     generate_baseline_snapshot,
+    generate_baseline_snapshot_from_artifact,
     load_baseline_snapshot,
 )
 from slopmop.core.result import (
@@ -32,6 +35,13 @@ class TestGenerateBaselineSnapshot:
 
         assert snapshot_path.exists()
         assert source_path.name == "last_scour.json"
+
+    def test_artifact_without_data_key_is_rejected(self, tmp_path):
+        """A JSON object that isn't a v3 envelope (no ``data``) is rejected."""
+        artifact = tmp_path / "scour.json"
+        artifact.write_text(json.dumps({"schema": "slopmop/v3"}), encoding="utf-8")
+        with pytest.raises(ValueError, match="not a v3 envelope"):
+            generate_baseline_snapshot_from_artifact(tmp_path, artifact)
 
 
 class TestFilterSummaryAgainstBaseline:
