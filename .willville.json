@@ -23,7 +23,7 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Answered a reviewer worry on the machine-format PR by adding a guard that keeps the verb catalog honest about what each command can actually do",
+    "status": "Fixed a review catch on the machine-format PR — a still-running CI check was being reported as an outright failure, which would mislead other tools",
     "direction": "Getting the machine-format PR green and merged",
     "last_update": "2026-05-31T00:00:00Z"
   },

@@ -198,6 +198,9 @@ class TestBuffStatusJson:
         assert exit_code == 1
         envelope = json.loads(capsys.readouterr().out)
         assert envelope["data"]["overall_state"] == "ci_in_progress"
+        # "still running" is informational, not a blocking failure — agents
+        # keying off status alone must not treat an in-flight PR as failed.
+        assert envelope["status"] == "info"
         assert envelope["next_steps"][0]["command"] == "sm buff watch"
 
     def test_json_ci_failed(self, monkeypatch, capsys):

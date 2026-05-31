@@ -313,9 +313,13 @@ def cmd_buff_status(
                 continue
             if show_human:
                 print("💡 Use 'sm buff watch' to poll until complete")
+            # CI not finished is not a blocking failure: status stays INFO so
+            # agents keying off the envelope status don't treat an in-flight
+            # PR like a failed one. exit_code stays 1 ("not ready, don't
+            # proceed") to keep one-shot scripts from advancing mid-run.
             return _finish(
                 1,
-                Status.FAIL,
+                Status.INFO,
                 {
                     "overall_state": "ci_in_progress",
                     "pr_number": resolved_pr,
