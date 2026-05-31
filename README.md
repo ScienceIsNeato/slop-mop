@@ -143,7 +143,7 @@ Slop-mop has five verbs you will actually use:
 The boring version:
 
 ```text
-write code -> sm swab -> commit -> sm scour -> push/open PR -> sm buff
+write code -> sm swab -> commit -> sm scour -> push/open PR -> sm buff watch -> sm buff
 ```
 
 Not sure where you are in that loop? `sm sail` figures it out for you.

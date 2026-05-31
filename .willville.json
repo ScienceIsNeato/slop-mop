@@ -23,9 +23,9 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Built a new last-resort verb that lets an agent wake a human when it has truly run out of moves - it stops and makes the person type an order before anything continues",
-    "direction": "Opened PR #234 for review; addressing reviewer feedback",
-    "last_update": "2026-05-29T21:10:00Z"
+    "status": "Shifted the default post-PR flow so agents watch CI before reporting back, instead of just saying a PR is open",
+    "direction": "PR #236 is merged; keep enforcing watch-first reporting so agents report ready/not-ready instead of open/closed",
+    "last_update": "2026-05-30T14:20:00Z"
   },
   "queue": {
     "active": true,

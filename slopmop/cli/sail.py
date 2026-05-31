@@ -257,7 +257,7 @@ def _sail_scour_clean(args: argparse.Namespace, project_root: Path) -> int:
 
 
 def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
-    """S6 — PR_OPEN: buff inspect to triage CI + review threads."""
+    """S6 — PR_OPEN: buff watch first, then inspect CI + review threads."""
     # Sanity check: run ignored_feedback gate explicitly before advancing
     # This ensures we catch any pending reviews (e.g., Bugbot in progress)
     _print_step(

@@ -89,7 +89,7 @@ class TestWorkflowStateNextAction:
             (WorkflowState.SWAB_CLEAN, "commit"),
             (WorkflowState.SCOUR_FAILING, "sm swab"),
             (WorkflowState.SCOUR_CLEAN, "push"),
-            (WorkflowState.PR_OPEN, "sm buff"),
+            (WorkflowState.PR_OPEN, "sm buff watch"),
             (WorkflowState.BUFF_FAILING, "sm swab"),
             (WorkflowState.PR_READY, "sm buff finalize"),
         ],
