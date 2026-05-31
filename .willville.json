@@ -23,8 +23,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Tightened the push safety guard so it checks the branch you're actually pushing, not just the one you're standing on",
-    "direction": "Clearing the last review note, then getting the machine-format PR merged",
+    "status": "Squared the machine-format PR away after the captain-verb PR merged — resolved the conflicts and kept the push-guard fix",
+    "direction": "Getting the machine-format PR green and merged",
     "last_update": "2026-05-31T00:00:00Z"
   },
   "queue": {
