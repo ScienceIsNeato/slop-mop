@@ -289,6 +289,13 @@ class TestGitHooksFunctions:
         assert "--state merged" in script
         assert "You're missing some context." in script
         assert "sync against main, checkout a new branch, and open a new PR." in script
+        # Guard must inspect the refs Git passes on stdin, not just HEAD, so a
+        # push that names a branch other than the current checkout is covered.
+        assert "while read -r local_ref local_sha remote_ref remote_sha" in script
+        assert "refs/heads/*) branch=${local_ref#refs/heads/}" in script
+        # Deletions (all-zero local sha) write nothing and must be skipped.
+        assert "0000000000000000000000000000000000000000" in script
+        assert "git symbolic-ref" not in script
 
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""
@@ -526,10 +533,12 @@ class TestBuffStatus:
         """Returns error when no PR context is available for buff status."""
         args = self._make_args("status")
 
-        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
-            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+        with patch(
+            "slopmop.cli._buff_status._project_root_from_cwd", return_value="/repo"
+        ):
+            with patch("slopmop.cli._buff_status._get_repo_slug", return_value="o/r"):
                 with patch(
-                    "slopmop.cli.buff.resolve_pr_number_with_source",
+                    "slopmop.cli._buff_status.resolve_pr_number_with_source",
                     side_effect=TriageError("No open PR found for the current branch."),
                 ):
                     result = cmd_buff(args)
@@ -544,17 +553,20 @@ class TestBuffStatus:
             {"name": "test", "state": "completed", "bucket": "pass"},
         ]
 
-        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
-            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+        with patch(
+            "slopmop.cli._buff_status._project_root_from_cwd", return_value="/repo"
+        ):
+            with patch("slopmop.cli._buff_status._get_repo_slug", return_value="o/r"):
                 with patch(
-                    "slopmop.cli.buff.resolve_pr_number_with_source",
+                    "slopmop.cli._buff_status.resolve_pr_number_with_source",
                     return_value=(42, "explicit"),
                 ):
                     with patch(
-                        "slopmop.cli.buff._fetch_checks", return_value=(checks, "")
+                        "slopmop.cli._buff_status._fetch_checks",
+                        return_value=(checks, ""),
                     ):
                         with patch(
-                            "slopmop.cli.buff._run_pr_feedback_gate",
+                            "slopmop.cli._buff_status._run_pr_feedback_gate",
                             return_value=CheckResult(
                                 name="myopia:ignored-feedback",
                                 status=CheckStatus.PASSED,
@@ -582,14 +594,17 @@ class TestBuffStatus:
             },
         ]
 
-        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
-            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+        with patch(
+            "slopmop.cli._buff_status._project_root_from_cwd", return_value="/repo"
+        ):
+            with patch("slopmop.cli._buff_status._get_repo_slug", return_value="o/r"):
                 with patch(
-                    "slopmop.cli.buff.resolve_pr_number_with_source",
+                    "slopmop.cli._buff_status.resolve_pr_number_with_source",
                     return_value=(1, "explicit"),
                 ):
                     with patch(
-                        "slopmop.cli.buff._fetch_checks", return_value=(checks, "")
+                        "slopmop.cli._buff_status._fetch_checks",
+                        return_value=(checks, ""),
                     ):
                         result = cmd_buff(args)
 
@@ -606,14 +621,17 @@ class TestBuffStatus:
             {"name": "running-check", "state": "in_progress", "bucket": "pending"},
         ]
 
-        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
-            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+        with patch(
+            "slopmop.cli._buff_status._project_root_from_cwd", return_value="/repo"
+        ):
+            with patch("slopmop.cli._buff_status._get_repo_slug", return_value="o/r"):
                 with patch(
-                    "slopmop.cli.buff.resolve_pr_number_with_source",
+                    "slopmop.cli._buff_status.resolve_pr_number_with_source",
                     return_value=(1, "explicit"),
                 ):
                     with patch(
-                        "slopmop.cli.buff._fetch_checks", return_value=(checks, "")
+                        "slopmop.cli._buff_status._fetch_checks",
+                        return_value=(checks, ""),
                     ):
                         result = cmd_buff(args)
 
@@ -626,15 +644,19 @@ class TestBuffStatus:
         """Returns success when no checks found."""
         args = self._make_args("status", ["1"])
 
-        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
-            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+        with patch(
+            "slopmop.cli._buff_status._project_root_from_cwd", return_value="/repo"
+        ):
+            with patch("slopmop.cli._buff_status._get_repo_slug", return_value="o/r"):
                 with patch(
-                    "slopmop.cli.buff.resolve_pr_number_with_source",
+                    "slopmop.cli._buff_status.resolve_pr_number_with_source",
                     return_value=(1, "explicit"),
                 ):
-                    with patch("slopmop.cli.buff._fetch_checks", return_value=([], "")):
+                    with patch(
+                        "slopmop.cli._buff_status._fetch_checks", return_value=([], "")
+                    ):
                         with patch(
-                            "slopmop.cli.buff._run_pr_feedback_gate",
+                            "slopmop.cli._buff_status._run_pr_feedback_gate",
                             return_value=CheckResult(
                                 name="myopia:ignored-feedback",
                                 status=CheckStatus.PASSED,
@@ -651,14 +673,16 @@ class TestBuffStatus:
         """Returns error when gh CLI is not available."""
         args = self._make_args("status", ["1"])
 
-        with patch("slopmop.cli.buff._project_root_from_cwd", return_value="/repo"):
-            with patch("slopmop.cli.buff._get_repo_slug", return_value="o/r"):
+        with patch(
+            "slopmop.cli._buff_status._project_root_from_cwd", return_value="/repo"
+        ):
+            with patch("slopmop.cli._buff_status._get_repo_slug", return_value="o/r"):
                 with patch(
-                    "slopmop.cli.buff.resolve_pr_number_with_source",
+                    "slopmop.cli._buff_status.resolve_pr_number_with_source",
                     return_value=(1, "explicit"),
                 ):
                     with patch(
-                        "slopmop.cli.buff._fetch_checks",
+                        "slopmop.cli._buff_status._fetch_checks",
                         return_value=(
                             None,
                             "GitHub CLI (gh) not found. Install: https://cli.github.com/",

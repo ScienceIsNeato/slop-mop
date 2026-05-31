@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/barnacle.json",
+  "title": "sm barnacle data payload",
+  "description": "Result of filing an upstream tool-friction issue. Two shapes selected by mode: a dry-run preview carries the rendered issue 'body'; a real filing carries the created issue 'url'. Both always carry the title, target repo, labels, and the on-disk body file.",
+  "type": "object",
+  "required": ["title", "repo", "labels", "body_file"],
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "description": "The issue title, with the [barnacle] prefix applied.",
+      "type": "string"
+    },
+    "repo": {
+      "description": "Target GitHub repo (owner/name) the issue is filed against.",
+      "type": "string"
+    },
+    "labels": {
+      "description": "Labels applied to the issue.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "body_file": {
+      "description": "Path to the rendered Markdown issue body, retained for retry.",
+      "type": "string"
+    },
+    "body": {
+      "description": "Full rendered issue body. Present only for --dry-run.",
+      "type": "string"
+    },
+    "url": {
+      "description": "URL of the created GitHub issue. Present only on a real filing.",
+      "type": "string"
+    }
+  }
+}

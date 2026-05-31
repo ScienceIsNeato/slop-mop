@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/capabilities.json",
+  "title": "sm capabilities data payload",
+  "description": "The discovery catalog: slop-mop version, every verb with its output contract, and every registered gate with its metadata. An agent reads this once to learn the entire surface.",
+  "type": "object",
+  "required": ["version", "schema_version", "verbs", "gates"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Installed slopmop package version.",
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "Machine-interface schema version these capabilities describe.",
+      "const": "slopmop/v3"
+    },
+    "verbs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/verb"}
+    },
+    "gates": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/gate"}
+    }
+  },
+  "$defs": {
+    "verb": {
+      "type": "object",
+      "required": ["name", "summary", "group", "formats", "exit_codes", "data_schema"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "summary": {"type": "string"},
+        "group": {
+          "description": "Coarse grouping for the verb's role in the workflow.",
+          "enum": ["core", "workflow", "setup", "config", "introspection", "feedback", "escalation"]
+        },
+        "formats": {
+          "description": "Output formats the verb accepts via --format.",
+          "type": "array",
+          "items": {"enum": ["human", "json", "porcelain", "sarif"]},
+          "minItems": 1
+        },
+        "exit_codes": {
+          "description": "Map of exit code (as string) to its meaning for this verb.",
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "data_schema": {
+          "description": "$id of the verb's packaged data schema, or null when the verb has not been migrated onto the envelope yet. Fetch the full output schema with `sm schema <verb>`.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["name", "category", "category_label", "emoji", "level", "role", "description", "applicable"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Full gate name in category:check form.",
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {"type": "string", "minLength": 1},
+        "category_label": {"type": "string"},
+        "emoji": {"type": "string"},
+        "level": {
+          "description": "Lowest verb level that runs this gate.",
+          "enum": ["swab", "scour"]
+        },
+        "role": {
+          "enum": ["foundation", "diagnostic"]
+        },
+        "description": {"type": "string"},
+        "why_it_matters": {"type": ["string", "null"]},
+        "applicable": {
+          "description": "Whether the gate applies to the current project.",
+          "type": "boolean"
+        },
+        "skip_reason": {
+          "description": "Why the gate is not applicable, when applicable is false.",
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

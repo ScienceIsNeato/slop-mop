@@ -19,72 +19,75 @@ from typing import Dict, List, Optional, cast
 
 from slopmop.constants import ROLE_BADGES, format_duration_suffix
 from slopmop.core.result import CheckResult
+from slopmop.reporting.envelope import (
+    Diagnostic,
+    NextStep,
+    Status,
+    build_envelope,
+)
 from slopmop.reporting.report import RunReport
 
 
 class JsonAdapter:
-    """Render a RunReport as the compact JSON schema.
+    """Render a RunReport as the v3 response envelope.
 
-    Output shape is the established ``slopmop/v1``-and-onward contract:
-    a ``summary`` block with counts, a ``passed_gates`` name list, a
-    ``results`` array for actionable checks.  Enrichment fields
-    (``schema``, ``level``, ``log_file``, ``next_steps``) that
-    previously lived as inline computation in the CLI now come from
-    RunReport's derived state.
+    The outer frame is the invariant envelope every verb speaks
+    (``schema``/``command``/``status``/``exit_code``/``data``/
+    ``next_steps``/``diagnostics``).  The validation-specific payload —
+    a ``summary`` block, a ``passed_gates`` name list, the actionable
+    ``results`` array, plus cache/baseline provenance — lives under
+    ``data``.  Execution-context warnings (cache hits, time-budget
+    skips) become envelope ``diagnostics``; rerun/inspect/advance
+    guidance becomes structured ``next_steps``.
     """
 
     @staticmethod
     def render(report: RunReport) -> Dict[str, object]:
-        """Build the JSON-serialisable dict.  Caller owns ``json.dumps``."""
-        # Base structure from ExecutionSummary — passed_gates list,
-        # actionable results array, summary counts.  We extend it
-        # with RunReport enrichment rather than rebuilding from scratch
-        # so the to_dict() schema remains the single source of truth
-        # for per-result serialisation.
+        """Build the full v3 envelope dict.  Caller owns ``json.dumps``."""
+        all_passed = report.summary.all_passed
+        return build_envelope(
+            command=report.level or "validation",
+            status=Status.OK if all_passed else Status.FAIL,
+            exit_code=0 if all_passed else 1,
+            data=JsonAdapter._data_payload(report),
+            next_steps=JsonAdapter._next_steps(report),
+            diagnostics=JsonAdapter._diagnostics(report),
+        )
+
+    @staticmethod
+    def _data_payload(report: RunReport) -> Dict[str, object]:
+        """Build the ``data`` payload — everything below the envelope frame.
+
+        Reuses ``ExecutionSummary.to_dict()`` as the source of truth for
+        per-result serialisation, then layers on RunReport enrichment
+        (display order, log paths, fix-first pointer, cache/baseline).
+        """
         output = report.summary.to_dict()
 
-        # Preserve the established top-level schema, but replace actionable
-        # results with the report-derived display order so JSON consumers see
-        # the same fix sequence as the console summary.
+        # Replace actionable results with the report-derived display
+        # order so JSON consumers see the same fix sequence as console.
         output["results"] = [result.to_dict() for result in report.actionable]
 
-        output["schema"] = report.schema_version
         if report.level:
             output["level"] = report.level
 
-        # Attach log file paths into the per-result dicts.  This is
-        # post-hoc enrichment — CheckResult.to_dict() doesn't know
-        # about log files (they're a CLI concern, not a result
-        # concern) so we inject them here where the full picture
-        # exists.  Only applied to results that have a log entry;
-        # warnings without a log file are left alone.
+        # Attach log paths post-hoc — CheckResult.to_dict() doesn't know
+        # about log files (a CLI concern), so inject them here where the
+        # full picture exists.
         if report.log_files and isinstance(output.get("results"), list):
             for entry in cast(List[Dict[str, object]], output["results"]):
                 gate_name = str(entry.get("name", ""))
                 if gate_name in report.log_files:
                     entry["log_file"] = report.log_files[gate_name]
 
-        # Next steps should point at already-captured logs first, then
-        # tell the caller how to rerun after fixing.  The old verbose
-        # rerun loop threw away the first failing run's detail and made
-        # users pay an extra command just to inspect data we already had.
         if report.first_to_fix:
-            output["first_to_fix"] = {"gate": report.first_to_fix}
+            first_to_fix: Dict[str, object] = {"gate": report.first_to_fix}
             log_file = report.per_gate_log_file(report.first_to_fix)
             if log_file:
-                cast(Dict[str, object], output["first_to_fix"])["log_file"] = log_file
-        if report.verify_command:
-            next_steps: List[str] = []
-            if report.first_to_fix:
-                log_file = report.per_gate_log_file(report.first_to_fix)
-                if log_file:
-                    next_steps.append(f"Inspect failure details in {log_file}")
-            next_steps.append(f"After fixing, rerun {report.verify_command}")
-            output["next_steps"] = next_steps
-            if isinstance(output.get("first_to_fix"), dict):
-                cast(Dict[str, object], output["first_to_fix"])[
-                    "verify_command"
-                ] = report.verify_command
+                first_to_fix["log_file"] = log_file
+            if report.verify_command:
+                first_to_fix["verify_command"] = report.verify_command
+            output["first_to_fix"] = first_to_fix
 
         if report.baseline_filter:
             output["baseline_filter"] = report.baseline_filter
@@ -93,42 +96,74 @@ class JsonAdapter:
         if cache:
             output["cache"] = cache
 
-        # Machine-readable runtime warnings for automation/CI parsers.
-        # Keep this orthogonal to actionable gate failures: these are
-        # execution-context warnings, not check results.
-        warnings: List[Dict[str, object]] = []
-        skip_reasons = report.summary.skip_reason_summary()
-        budget_skips = skip_reasons.get("time", 0)
+        return output
+
+    @staticmethod
+    def _next_steps(report: RunReport) -> List[NextStep]:
+        """Convert rerun/inspect/advance guidance into structured steps.
+
+        On failure: point at the captured first-failure log (inspect)
+        then the rerun command.  On success: surface the workflow
+        advance hint, if any.
+        """
+        steps: List[NextStep] = []
+        if report.verify_command:
+            if report.first_to_fix:
+                log_file = report.per_gate_log_file(report.first_to_fix)
+                if log_file:
+                    steps.append(
+                        NextStep(
+                            action="inspect",
+                            reason=f"Inspect failure details in {log_file}",
+                        )
+                    )
+            steps.append(
+                NextStep(
+                    action="rerun",
+                    command=report.verify_command,
+                    reason="After fixing, rerun to confirm the fix",
+                )
+            )
+        elif report.next_step:
+            steps.append(NextStep(action="advance", reason=report.next_step))
+        return steps
+
+    @staticmethod
+    def _diagnostics(report: RunReport) -> List[Diagnostic]:
+        """Convert execution-context warnings into envelope diagnostics.
+
+        These are run-context signals (cached results, time-budget
+        skips), not gate findings — kept orthogonal to ``results``.
+        """
+        diagnostics: List[Diagnostic] = []
+        budget_skips = report.summary.skip_reason_summary().get("time", 0)
         if budget_skips > 0:
-            warnings.append(
-                {
-                    "code": "swabbing_timeout_budget_skipped",
-                    "message": (
+            diagnostics.append(
+                Diagnostic(
+                    code="swabbing_timeout_budget_skipped",
+                    level="warn",
+                    message=(
                         "Swabbing-timeout budget skipped timed checks; "
                         "run full coverage when needed."
                     ),
-                    "skipped_timed_checks": budget_skips,
-                    "suggested_command": "sm swab --swabbing-timeout 0",
-                }
+                    suggested_command="sm swab --swabbing-timeout 0",
+                )
             )
 
+        cache = report.cache_metadata()
         if cache:
-            warnings.append(
-                {
-                    "code": "cached_results_present",
-                    "message": (
+            diagnostics.append(
+                Diagnostic(
+                    code="cached_results_present",
+                    level="info",
+                    message=(
                         "Some results came from cache; rerun with --no-cache "
                         "for a fresh pass."
                     ),
-                    "cached_results": cache["cached_results"],
-                    "suggested_command": cache["refresh_command"],
-                }
+                    suggested_command=str(cache["refresh_command"]),
+                )
             )
-
-        if warnings:
-            output["runtime_warnings"] = warnings
-
-        return output
+        return diagnostics
 
 
 class SarifAdapter:

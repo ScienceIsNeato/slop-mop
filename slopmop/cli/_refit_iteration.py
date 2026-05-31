@@ -57,7 +57,10 @@ def _summarise_failure_artifact(artifact_path: Path) -> List[str]:
     if not isinstance(raw, dict):
         return []
     payload = cast(Dict[str, Any], raw)
-    results_raw = payload.get("results")
+    # The artifact is a v3 response envelope; results live under ``data``.
+    data_raw = payload.get("data")
+    data = cast(Dict[str, Any], data_raw) if isinstance(data_raw, dict) else {}
+    results_raw = data.get("results")
     if not isinstance(results_raw, list) or not results_raw:
         return []
     first = cast(Any, results_raw[0])
@@ -118,7 +121,7 @@ def _block_continue_plan(
         next_action=next_action,
         details=details,
     )
-    _refit._emit_protocol(args, project_root, protocol, human_lines)
+    _refit._emit_protocol(args, project_root, protocol, human_lines, exit_code=1)
     return 1
 
 

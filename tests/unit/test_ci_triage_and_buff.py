@@ -623,27 +623,35 @@ class TestScanTriageInternals:
         assert triage._coverage_value("no percent here") is None
 
     def test_build_payload_and_print(self, capsys):
+        # CI artifacts are v3 envelopes; the payload triage reads is under data.
         doc = {
-            "summary": {"failed": 1, "errors": 0, "warned": 1, "all_passed": False},
-            "results": [
-                {
-                    "status": "failed",
-                    "name": "myopia:just-this-once.py",
-                    "error": "Changed files have <80% coverage",
-                    "findings": [
-                        {
-                            "file": "slopmop/cli/buff.py",
-                            "message": "Coverage 62.5% on changed lines",
-                        }
-                    ],
+            "data": {
+                "summary": {
+                    "failed": 1,
+                    "errors": 0,
+                    "warned": 1,
+                    "all_passed": False,
                 },
-                {
-                    "status": "warned",
-                    "name": "myopia:ignored-feedback",
-                    "status_detail": "2 unresolved",
-                },
-                {"status": "passed", "name": "ok"},
-            ],
+                "results": [
+                    {
+                        "status": "failed",
+                        "name": "myopia:just-this-once.py",
+                        "error": "Changed files have <80% coverage",
+                        "findings": [
+                            {
+                                "file": "slopmop/cli/buff.py",
+                                "message": "Coverage 62.5% on changed lines",
+                            }
+                        ],
+                    },
+                    {
+                        "status": "warned",
+                        "name": "myopia:ignored-feedback",
+                        "status_detail": "2 unresolved",
+                    },
+                    {"status": "passed", "name": "ok"},
+                ],
+            }
         }
 
         payload, code = triage.build_triage_payload(
@@ -696,19 +704,26 @@ class TestScanTriageInternals:
         assert "src/foo.py:20: W291 trailing whitespace" in out
 
         doc = {
-            "summary": {"failed": 2, "errors": 0, "warned": 0, "all_passed": False},
-            "results": [
-                {
-                    "status": "failed",
-                    "name": "laziness:sloppy-formatting.py",
-                    "error": "fmt",
+            "data": {
+                "summary": {
+                    "failed": 2,
+                    "errors": 0,
+                    "warned": 0,
+                    "all_passed": False,
                 },
-                {
-                    "status": "failed",
-                    "name": "laziness:repeated-code",
-                    "error": "dup",
-                },
-            ],
+                "results": [
+                    {
+                        "status": "failed",
+                        "name": "laziness:sloppy-formatting.py",
+                        "error": "fmt",
+                    },
+                    {
+                        "status": "failed",
+                        "name": "laziness:repeated-code",
+                        "error": "dup",
+                    },
+                ],
+            }
         }
 
         payload, code = triage.build_triage_payload(
@@ -728,15 +743,22 @@ class TestScanTriageInternals:
 
     def test_build_payload_preserves_gate_output(self):
         doc = {
-            "summary": {"failed": 1, "errors": 0, "warned": 0, "all_passed": False},
-            "results": [
-                {
-                    "status": "failed",
-                    "name": "laziness:sloppy-formatting.py",
-                    "error": "2 violations",
-                    "output": "foo.py:1: E501 line too long\nfoo.py:2: W291 trailing whitespace",
-                }
-            ],
+            "data": {
+                "summary": {
+                    "failed": 1,
+                    "errors": 0,
+                    "warned": 0,
+                    "all_passed": False,
+                },
+                "results": [
+                    {
+                        "status": "failed",
+                        "name": "laziness:sloppy-formatting.py",
+                        "error": "2 violations",
+                        "output": "foo.py:1: E501 line too long\nfoo.py:2: W291 trailing whitespace",
+                    }
+                ],
+            }
         }
         payload, _ = triage.build_triage_payload(
             doc=doc,

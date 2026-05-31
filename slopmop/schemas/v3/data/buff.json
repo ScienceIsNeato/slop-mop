@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/buff.json",
+  "title": "sm buff data payload",
+  "description": "Two shapes selected by mode. `sm buff inspect` (the default) emits the post-PR CI triage payload: the code-scanning summary, remediation-ordered actionable rows, hard failures, PR-resolution trace, and PR-feedback state. `sm buff status` (and `watch`'s final envelope) emit the lighter CI-status payload: an overall_state token plus the live check counts and feedback gate result. The agent knows which by the subcommand it ran; a status payload always carries `overall_state`, a triage payload never does.",
+  "oneOf": [
+    {"$ref": "#/$defs/triage"},
+    {"$ref": "#/$defs/status"}
+  ],
+  "$defs": {
+    "triage": {
+      "type": "object",
+      "required": [
+        "source",
+        "summary",
+        "actionable",
+        "hard_failures",
+        "next_steps",
+        "pr_resolution",
+        "pr_feedback"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "schema": {
+          "description": "Version stamp of the nested CI-triage sub-document.",
+          "type": "string"
+        },
+        "source": {"type": "string"},
+        "run_id": {"type": ["integer", "null"]},
+        "pr_number": {"type": ["integer", "null"]},
+        "artifact_json": {"type": "string"},
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "failed": {"type": "integer"},
+            "errors": {"type": "integer"},
+            "warned": {"type": "integer"},
+            "all_passed": {"type": ["boolean", "null"]}
+          }
+        },
+        "actionable": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["status", "gate", "detail"],
+            "additionalProperties": true,
+            "properties": {
+              "status": {"type": "string"},
+              "gate": {"type": "string"},
+              "detail": {"type": "string"},
+              "output": {"type": "string"}
+            }
+          }
+        },
+        "hard_failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["status", "gate", "error"],
+            "additionalProperties": true,
+            "properties": {
+              "status": {"type": "string"},
+              "gate": {"type": "string"},
+              "error": {"type": "string"}
+            }
+          }
+        },
+        "lowest_coverage": {
+          "type": "array",
+          "items": {"type": "object"}
+        },
+        "next_steps": {
+          "description": "Human-readable triage guidance lines (distinct from the envelope's structured next_steps).",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "first_to_fix": {
+          "type": "object",
+          "required": ["gate", "detail"],
+          "additionalProperties": true,
+          "properties": {
+            "gate": {"type": "string"},
+            "detail": {"type": "string"}
+          }
+        },
+        "scan_unavailable": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "error": {"type": "string"}
+          }
+        },
+        "pr_resolution": {
+          "type": "object",
+          "required": ["source", "pr_number", "repo"],
+          "additionalProperties": true,
+          "properties": {
+            "source": {"type": "string"},
+            "pr_number": {"type": "integer"},
+            "requested_pr_number": {"type": ["integer", "null"]},
+            "repo": {"type": "string"},
+            "reason": {"type": "string"}
+          }
+        },
+        "pr_feedback": {
+          "type": "object",
+          "required": ["gate", "status"],
+          "additionalProperties": true,
+          "properties": {
+            "gate": {"type": "string"},
+            "status": {"type": "string"},
+            "status_detail": {"type": ["string", "null"]},
+            "error": {"type": ["string", "null"]},
+            "fix_suggestion": {"type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "status": {
+      "description": "CI-status snapshot from `sm buff status` / `watch`. The overall_state token names the verdict; checks carries the live tally; feedback mirrors the PR review-thread gate.",
+      "type": "object",
+      "required": ["overall_state"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_state": {
+          "enum": [
+            "clean",
+            "ci_failed",
+            "ci_in_progress",
+            "feedback_blocked",
+            "no_checks_feedback_blocked",
+            "no_checks_feedback_resolved",
+            "error"
+          ]
+        },
+        "pr_number": {"type": ["integer", "null"]},
+        "error": {"type": "string"},
+        "checks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "total": {"type": "integer"},
+            "passed": {"type": "integer"},
+            "in_progress": {"type": "integer"},
+            "failed": {"type": "integer"},
+            "in_progress_names": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "failed_names": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          }
+        },
+        "feedback": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {"type": "string"},
+            "detail": {"type": ["string", "null"]}
+          }
+        }
+      }
+    }
+  }
+}

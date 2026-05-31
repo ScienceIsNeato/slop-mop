@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/status.json",
+  "title": "sm status data payload",
+  "description": "Project dashboard snapshot produced without running any gates. Reports configuration, the gate inventory with historical results, workflow position, and (when available) CI and baseline-snapshot state. This is an observatory: the envelope status is always 'info' and exit_code is 0.",
+  "type": "object",
+  "required": ["project_root", "config_file", "swabbing_timeout", "gates", "workflow"],
+  "additionalProperties": false,
+  "properties": {
+    "project_root": {
+      "description": "Absolute path to the inspected project root.",
+      "type": "string"
+    },
+    "config_file": {
+      "description": "Path where the project config is expected (.sb_config.json).",
+      "type": "string"
+    },
+    "swabbing_timeout": {
+      "description": "Per-gate timeout from config, or null when unset.",
+      "type": ["number", "null"]
+    },
+    "gates": {
+      "type": "object",
+      "required": ["swab_count", "scour_only_count", "disabled", "inventory"],
+      "additionalProperties": false,
+      "properties": {
+        "swab_count": {"type": "integer"},
+        "scour_only_count": {"type": "integer"},
+        "disabled": {
+          "description": "Sorted list of disabled gate names.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "inventory": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/gate_entry"}
+        }
+      }
+    },
+    "scope": {
+      "description": "Source-file scope tally (files/lines). Present only when the project has source files.",
+      "type": "object"
+    },
+    "workflow": {
+      "description": "Current workflow position (phase/state).",
+      "type": "object"
+    },
+    "ci": {
+      "description": "Most recent CI signal for the working branch. Present only when CI data exists.",
+      "type": "object"
+    },
+    "recent_run": {
+      "description": "Summary of the most recent local validation run. Present only when a run artifact exists.",
+      "type": "object"
+    },
+    "baseline_snapshot": {
+      "description": "Persisted baseline snapshot data. Present only when a baseline exists.",
+      "type": "object"
+    },
+    "baseline_snapshot_generated": {
+      "description": "Details of a snapshot generated during this invocation (--generate-baseline-snapshot).",
+      "type": "object",
+      "required": ["snapshot_path", "source_path"],
+      "properties": {
+        "snapshot_path": {"type": "string"},
+        "source_path": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "gate_entry": {
+      "type": "object",
+      "required": ["name", "role", "applicable", "in_swab", "in_scour"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "role": {"type": ["string", "null"]},
+        "applicable": {"type": "boolean"},
+        "in_swab": {"type": "boolean"},
+        "in_scour": {"type": "boolean"},
+        "skip_reason": {
+          "description": "Why the gate does not apply. Present only when applicable is false.",
+          "type": "string"
+        },
+        "last_result": {
+          "description": "Status of the most recent recorded run of this gate.",
+          "type": "string"
+        },
+        "history": {
+          "description": "Up to the last 10 recorded result statuses, oldest first.",
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}

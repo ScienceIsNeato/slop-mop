@@ -757,8 +757,10 @@ class TestLatestGateResults:
         last_scour.write_text(
             json.dumps(
                 {
-                    "passed_gates": ["myopia:dependency-risk.py"],
-                    "results": [],
+                    "data": {
+                        "passed_gates": ["myopia:dependency-risk.py"],
+                        "results": [],
+                    }
                 }
             )
         )
@@ -767,8 +769,10 @@ class TestLatestGateResults:
         last_swab.write_text(
             json.dumps(
                 {
-                    "passed_gates": ["overconfidence:untested-code.py"],
-                    "results": [],
+                    "data": {
+                        "passed_gates": ["overconfidence:untested-code.py"],
+                        "results": [],
+                    }
                 }
             )
         )
@@ -1287,3 +1291,20 @@ class TestPrintCiSummary:
         )
         out = capsys.readouterr().out
         assert "2 pending" in out
+
+
+class TestEnvelopeData:
+    """Tests for unwrapping persisted v3 envelopes to their data payload."""
+
+    def test_unwraps_and_rejects_non_envelopes(self):
+        from slopmop.cli.status import _envelope_data
+
+        # A well-formed envelope yields its data payload.
+        assert _envelope_data({"data": {"x": 1}}) == {"x": 1}
+        # Non-dict input is not an envelope.
+        assert _envelope_data("not a dict") is None
+        assert _envelope_data(None) is None
+        # An envelope whose data slot isn't an object is rejected.
+        assert _envelope_data({"data": "not a dict"}) is None
+        # A dict missing the data key is rejected.
+        assert _envelope_data({}) is None

@@ -110,6 +110,23 @@ COMMAND_MAPPING: list[CommandMap] = [
         suggestion="sm buff watch <PR#>  (use gh run list/view only for investigation)",
     ),
     CommandMap(
+        forbidden="gh pr view --json mergeable",
+        sm_command="",
+        reason=(
+            "gh's `mergeable` field only reports git-conflict state (MERGEABLE = "
+            "no conflicts), NOT whether the PR can actually merge. Reading it to "
+            "judge merge-readiness is a trap: a PR with CI in flight is MERGEABLE "
+            "yet not ready. sm buff interprets CI + review threads and tells you "
+            "ready / not-ready directly."
+        ),
+        category="PR triage",
+        intercept_type="subcommand",
+        wrapper_command="gh",
+        subcommands=("pr", "view"),
+        redirect=False,
+        suggestion="sm buff status <PR#> for merge-readiness  ·  sm buff inspect <PR#> for comments",
+    ),
+    CommandMap(
         forbidden="gh pr merge",
         sm_command="",
         reason="sail mode stops at PR_READY; human decision to merge is required",

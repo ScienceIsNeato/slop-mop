@@ -344,11 +344,19 @@ class TestRunGateInventory:
         from slopmop.cli.audit import _run_gate_inventory
 
         fake_data: Dict[str, Any] = {"summary": {"total_checks": 3, "passed": 3}}
+        # scour writes a v3 envelope; the inventory payload lives under data.
+        envelope: Dict[str, Any] = {
+            "schema": "slopmop/v3",
+            "command": "scour",
+            "status": "ok",
+            "exit_code": 0,
+            "data": fake_data,
+        }
         artifact = tmp_path / ".slopmop" / "audit-gate-inventory.json"
 
         def _write_artifact(*_args: Any, **_kwargs: Any) -> None:
             artifact.parent.mkdir(parents=True, exist_ok=True)
-            artifact.write_text(json.dumps(fake_data), encoding="utf-8")
+            artifact.write_text(json.dumps(envelope), encoding="utf-8")
 
         with patch("slopmop.cli.audit.subprocess.run", side_effect=_write_artifact):
             result = _run_gate_inventory(tmp_path, quiet=True)
@@ -451,7 +459,7 @@ class TestBuildReport:
 
 
 class TestBuildJsonPayload:
-    def test_schema_and_project_root_present(self) -> None:
+    def test_generated_at_and_project_root_present(self) -> None:
         from slopmop.cli.audit import _build_json_payload
 
         payload = _build_json_payload(
@@ -463,7 +471,9 @@ class TestBuildJsonPayload:
             gate_data=None,
             timestamp="2026-04-12T00:00:00Z",
         )
-        assert payload["schema"] == "slopmop/audit/v1"
+        # schema/command live on the envelope now, not the data payload.
+        assert "schema" not in payload
+        assert payload["generated_at"] == "2026-04-12T00:00:00Z"
         assert "project_root" in payload
 
     def test_gates_key_present_when_include_gates(self) -> None:
@@ -517,8 +527,11 @@ class TestCmdAudit:
         with patch("sys.stdout", buf):
             ret = cmd_audit(args)
         assert ret == 0
-        payload = json.loads(buf.getvalue())
-        assert payload["schema"] == "slopmop/audit/v1"
+        envelope = json.loads(buf.getvalue())
+        assert envelope["schema"] == "slopmop/v3"
+        assert envelope["command"] == "audit"
+        assert envelope["status"] == "info"
+        assert "generated_at" in envelope["data"]
         # report file should still be written even in json_output mode
         assert (tmp_path / _DEFAULT_OUTPUT).exists()
 

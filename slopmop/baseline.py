@@ -83,7 +83,11 @@ def generate_baseline_snapshot_from_artifact(
     if not isinstance(source_data, dict):
         raise ValueError(f"{source.name} does not contain a JSON object")
 
-    source_dict = cast(Dict[str, Any], source_data)
+    envelope = cast(Dict[str, Any], source_data)
+    payload = envelope.get("data")
+    if not isinstance(payload, dict):
+        raise ValueError(f"{source.name} is not a v3 envelope (missing data)")
+    source_dict = cast(Dict[str, Any], payload)
     snapshot: Dict[str, object] = {
         "schema": _SCHEMA_VERSION,
         "captured_at": datetime.now(timezone.utc).isoformat(),

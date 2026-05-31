@@ -16,6 +16,7 @@ when your impulse is the left column, run the right column instead.
 | `gh pr checks <PR#>`                              | `sm buff status <PR#>`                       |
 | `gh pr checks <PR#> --watch`, `gh run watch`      | `sm buff watch <PR#>`                        |
 | `gh pr view <PR#> --comments`                     | `sm buff <PR#>`                              |
+| `gh pr view <PR#> --json mergeable` (to judge if a PR can merge) | `sm buff status <PR#>` — `mergeable` only reports git-conflict state, not merge-readiness; a PR with CI in flight is `MERGEABLE` yet not ready |
 | Reading CI logs to find the failing test          | Start with `sm buff inspect <PR#>`, then use raw `gh run list/view` or CI logs for details not surfaced yet |
 | `gh api ... resolveReviewThread`                  | `sm buff resolve <PR#> <THREAD_ID> -m "..."` |
 | `gh pr review --approve` after addressing threads | `sm buff verify <PR#>` first                 |

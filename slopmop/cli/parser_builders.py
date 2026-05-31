@@ -369,38 +369,7 @@ class RefitParserBuilder:
                 "to maintenance mode."
             ),
         )
-        mode_group = refit_parser.add_mutually_exclusive_group(required=True)
-        mode_group.add_argument(
-            "--start",
-            dest="start",
-            action="store_true",
-            help="Capture the current scour failure set and persist a refit plan.",
-        )
-        mode_group.add_argument(
-            "--iterate",
-            dest="iterate",
-            action="store_true",
-            help="Resume the persisted refit plan until the next blocker.",
-        )
-        mode_group.add_argument(
-            "--finish",
-            dest="finish",
-            action="store_true",
-            help="Check plan completion and transition from remediation to maintenance.",
-        )
-        mode_group.add_argument(
-            "--skip",
-            dest="skip",
-            metavar="REASON",
-            nargs="?",
-            const="manual skip",
-            default=None,
-            help=(
-                "Mark the current gate as skipped and advance the plan without "
-                "running it. Optionally provide a reason. Skipped gates still "
-                "block --finish; disable them in .sb_config.json to finish."
-            ),
-        )
+        self._add_mode_args(refit_parser)
         refit_parser.add_argument(
             "--project-root",
             type=str,
@@ -457,4 +426,100 @@ class RefitParserBuilder:
                 "Write machine-readable refit status to a file while preserving "
                 "stdout output mode."
             ),
+        )
+
+    @staticmethod
+    def _add_mode_args(refit_parser: argparse.ArgumentParser) -> None:
+        """Register the mutually-exclusive refit lifecycle modes."""
+        mode_group = refit_parser.add_mutually_exclusive_group(required=True)
+        mode_group.add_argument(
+            "--start",
+            dest="start",
+            action="store_true",
+            help="Capture the current scour failure set and persist a refit plan.",
+        )
+        mode_group.add_argument(
+            "--iterate",
+            dest="iterate",
+            action="store_true",
+            help="Resume the persisted refit plan until the next blocker.",
+        )
+        mode_group.add_argument(
+            "--finish",
+            dest="finish",
+            action="store_true",
+            help="Check plan completion and transition from remediation to maintenance.",
+        )
+        mode_group.add_argument(
+            "--skip",
+            dest="skip",
+            metavar="REASON",
+            nargs="?",
+            const="manual skip",
+            default=None,
+            help=(
+                "Mark the current gate as skipped and advance the plan without "
+                "running it. Optionally provide a reason. Skipped gates still "
+                "block --finish; disable them in .sb_config.json to finish."
+            ),
+        )
+
+
+class SchemaParserBuilder:
+    """Build the schema parser (machine-interface self-description)."""
+
+    def __init__(
+        self,
+        subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    ) -> None:
+        self.subparsers = subparsers
+
+    def build(self) -> None:
+        """Register the schema parser."""
+        schema_parser = self.subparsers.add_parser(
+            "schema",
+            help="Print the machine-interface JSON Schema",
+            description=(
+                "Emit the slop-mop response envelope as a JSON Schema document, "
+                "or — with a verb argument — that verb's full output schema. "
+                "Self-description without execution: learn the exact response "
+                "shape before running any command."
+            ),
+        )
+        schema_parser.add_argument(
+            "schema_verb",
+            nargs="?",
+            default=None,
+            metavar="VERB",
+            help="Optional verb whose full output schema to print (e.g. swab).",
+        )
+
+
+class CapabilitiesParserBuilder:
+    """Build the capabilities parser (machine-interface discovery catalog)."""
+
+    def __init__(
+        self,
+        subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    ) -> None:
+        self.subparsers = subparsers
+
+    def build(self) -> None:
+        """Register the capabilities parser."""
+        capabilities_parser = self.subparsers.add_parser(
+            "capabilities",
+            help="Print the discovery catalog (version, verbs, gates)",
+            description=(
+                "Emit the discovery catalog: the installed slop-mop version, "
+                "every verb with its output contract (group, formats, exit "
+                "codes, data-schema reference), and every registered gate with "
+                "its metadata and applicability to this project. Runs no gates "
+                "— read this once to learn the entire surface."
+            ),
+        )
+        capabilities_parser.add_argument(
+            "--project-root",
+            type=str,
+            default=".",
+            help=PROJECT_ROOT_HELP,
         )

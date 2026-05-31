@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/envelope.json",
+  "title": "slop-mop response envelope",
+  "description": "The invariant outer frame emitted by every sm verb in --format json. The data block is verb-specific and refined by a per-verb data schema; everything else is identical across commands so an agent can predict response shape before running any command.",
+  "type": "object",
+  "required": ["schema", "command", "status", "exit_code", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "description": "Schema identifier. Consumers assert on this to detect shape drift.",
+      "const": "slopmop/v3"
+    },
+    "command": {
+      "description": "The verb that produced this response, e.g. swab, status, doctor.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Outcome class. ok=success condition held; fail=ran and found blocking problems; error=could not complete; info=observatory verb with no pass/fail.",
+      "enum": ["ok", "fail", "error", "info"]
+    },
+    "exit_code": {
+      "description": "Mirrors the process exit code so a consumer reading captured stdout need not also inspect the shell status.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "data": {
+      "description": "Verb-specific payload. Refined by the per-verb data schema referenced from sm capabilities.",
+      "type": "object"
+    },
+    "next_steps": {
+      "description": "Ordered, machine-actionable follow-ups. Each carries a command an agent can run without parsing prose.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/nextStep"}
+    },
+    "diagnostics": {
+      "description": "Execution-context warnings (missing tool, no PR detected, cached results). Distinct from gate findings, which live in data.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/diagnostic"}
+    }
+  },
+  "$defs": {
+    "nextStep": {
+      "type": "object",
+      "required": ["action"],
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "Closed-vocabulary verb for the step.",
+          "enum": ["inspect", "rerun", "fix", "advance", "install", "commit", "push", "escalate", "wait"]
+        },
+        "command": {
+          "description": "Exact command to run, or null when the step is not a single command.",
+          "type": ["string", "null"]
+        },
+        "reason": {
+          "description": "Why this step is suggested.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "level", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "Stable machine identifier for the condition.",
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "enum": ["info", "warn", "error"]
+        },
+        "message": {
+          "description": "Human-readable explanation.",
+          "type": "string"
+        },
+        "suggested_command": {
+          "description": "Optional command that addresses the condition.",
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

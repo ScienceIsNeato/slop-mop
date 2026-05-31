@@ -150,13 +150,31 @@ def test_valid_summons_json_output(tmp_path, capsys):
     )
     captured = capsys.readouterr()
     assert code == EXIT_SUMMONED
-    payload = json.loads(captured.out)
-    assert payload["schema"] == SCHEMA_VERSION
+    envelope = json.loads(captured.out)
+    assert envelope["schema"] == "slopmop/v3"
+    assert envelope["command"] == "wake-angry-drunk-captain"
+    assert envelope["status"] == "info"
+    assert envelope["exit_code"] == EXIT_SUMMONED
+    payload = envelope["data"]
+    assert "schema" not in payload
     assert payload["objective"] == "ship the captain verb"
     assert payload["verbs_tried"] == ["sm swab — green", "sm scour — green"]
     assert payload["orders"] == ["approved"]
     assert payload["answered_at"]
     assert payload["summons_file"].endswith("last_captain_summons.md")
+
+
+def test_no_captain_json_output(tmp_path, capsys):
+    """No human at the wheel + --json emits the no_captain error envelope."""
+    args = _captain_args(project_root=str(tmp_path), json_output=True)
+    code = cmd_captain(args, isatty_fn=_no_wheel)
+    assert code == EXIT_NO_CAPTAIN
+    envelope = json.loads(capsys.readouterr().out)
+    assert envelope["command"] == "wake-angry-drunk-captain"
+    assert envelope["status"] == "error"
+    assert envelope["exit_code"] == EXIT_NO_CAPTAIN
+    assert envelope["data"]["outcome"] == "no_captain"
+    assert envelope["diagnostics"][0]["code"] == "captain.no_human"
 
 
 def test_build_summons_resolves_root_and_strips(tmp_path):

@@ -26,7 +26,8 @@ from slopmop.reporting.adapters import (
     SarifAdapter,
     _role_badge,
 )
-from slopmop.reporting.report import JSON_SCHEMA_VERSION, RunReport
+from slopmop.reporting.envelope import ENVELOPE_SCHEMA_VERSION
+from slopmop.reporting.report import RunReport
 from slopmop.workflow.state_machine import SailMode
 
 # ─── fixtures ────────────────────────────────────────────────────────────
@@ -251,23 +252,42 @@ class TestRunReportLogs:
 
 
 class TestJsonAdapter:
-    def test_schema_version_present(self) -> None:
-        summary = _summary([_result("p", CheckStatus.PASSED)])
-        report = RunReport.from_summary(summary)
-        out = JsonAdapter.render(report)
-        assert out["schema"] == JSON_SCHEMA_VERSION
+    """JsonAdapter renders the v3 response envelope.
 
-    def test_level_present_when_set(self) -> None:
+    The invariant frame (schema/command/status/exit_code) is asserted
+    here; the validation payload lives under ``data``; run-context
+    warnings become ``diagnostics`` and rerun/inspect guidance becomes
+    structured ``next_steps``.
+    """
+
+    def test_envelope_frame_present(self) -> None:
         summary = _summary([_result("p", CheckStatus.PASSED)])
         report = RunReport.from_summary(summary, level="swab")
         out = JsonAdapter.render(report)
-        assert out["level"] == "swab"
+        assert out["schema"] == ENVELOPE_SCHEMA_VERSION
+        assert out["command"] == "swab"
+        assert out["status"] == "ok"
+        assert out["exit_code"] == 0
 
-    def test_level_absent_when_unset(self) -> None:
+    def test_failure_sets_fail_status_and_exit_code(self) -> None:
+        summary = _summary([_result("f", CheckStatus.FAILED)])
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert out["status"] == "fail"
+        assert out["exit_code"] == 1
+
+    def test_level_present_in_data_when_set(self) -> None:
+        summary = _summary([_result("p", CheckStatus.PASSED)])
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        assert out["data"]["level"] == "swab"
+
+    def test_command_is_validation_when_level_unset(self) -> None:
         summary = _summary([_result("p", CheckStatus.PASSED)])
         report = RunReport.from_summary(summary)
         out = JsonAdapter.render(report)
-        assert "level" not in out
+        assert out["command"] == "validation"
+        assert "level" not in out["data"]
 
     def test_next_steps_point_to_log_then_verify(self, tmp_path) -> None:
         summary = _summary([_result("f", CheckStatus.FAILED, output="boom")])
@@ -277,9 +297,27 @@ class TestJsonAdapter:
         report.write_logs()
         out = JsonAdapter.render(report)
         assert out["next_steps"] == [
-            "Inspect failure details in .slopmop/logs/f.log",
-            "After fixing, rerun sm swab -g f",
+            {
+                "action": "inspect",
+                "command": None,
+                "reason": "Inspect failure details in .slopmop/logs/f.log",
+            },
+            {
+                "action": "rerun",
+                "command": "sm swab -g f",
+                "reason": "After fixing, rerun to confirm the fix",
+            },
         ]
+
+    def test_advance_next_step_emitted_on_success(self) -> None:
+        # A clean run with a known level surfaces the workflow advance hint.
+        summary = _summary([_result("p", CheckStatus.PASSED)])
+        report = RunReport.from_summary(summary, level="swab")
+        out = JsonAdapter.render(report)
+        steps = out["next_steps"]
+        assert isinstance(steps, list)
+        assert steps[0]["action"] == "advance"
+        assert steps[0]["reason"]
 
     def test_first_to_fix_includes_log_file_and_verify_command(self, tmp_path) -> None:
         summary = _summary([_result("f", CheckStatus.FAILED, output="boom")])
@@ -288,7 +326,7 @@ class TestJsonAdapter:
         )
         report.write_logs()
         out = JsonAdapter.render(report)
-        assert out["first_to_fix"] == {
+        assert out["data"]["first_to_fix"] == {
             "gate": "f",
             "log_file": ".slopmop/logs/f.log",
             "verify_command": "sm swab -g f",
@@ -305,11 +343,11 @@ class TestJsonAdapter:
         report = RunReport.from_summary(summary)
         report.failed = [report.failed[1], report.failed[0]]
         out = JsonAdapter.render(report)
-        results = out["results"]
+        results = out["data"]["results"]
         assert isinstance(results, list)
         assert [row["name"] for row in results] == ["f1", "f2", "w1"]
 
-    def test_next_steps_absent_when_all_passed(self) -> None:
+    def test_next_steps_absent_when_all_passed_without_level(self) -> None:
         summary = _summary([_result("p", CheckStatus.PASSED)])
         report = RunReport.from_summary(summary)
         out = JsonAdapter.render(report)
@@ -320,7 +358,7 @@ class TestJsonAdapter:
         report = RunReport.from_summary(summary, project_root=str(tmp_path))
         report.write_logs()
         out = JsonAdapter.render(report)
-        results = out["results"]
+        results = out["data"]["results"]
         assert isinstance(results, list)
         assert results[0]["log_file"].startswith(".slopmop/logs/")
 
@@ -346,13 +384,13 @@ class TestJsonAdapter:
         # Must survive round-trip through json.dumps
         payload = json.dumps(out)
         parsed = json.loads(payload)
-        assert parsed["schema"] == JSON_SCHEMA_VERSION
+        assert parsed["schema"] == ENVELOPE_SCHEMA_VERSION
 
     def test_role_appears_in_results(self) -> None:
         summary = _summary([_result("f", CheckStatus.FAILED, role="foundation")])
         report = RunReport.from_summary(summary)
         out = JsonAdapter.render(report)
-        assert out["results"][0]["role"] == "foundation"
+        assert out["data"]["results"][0]["role"] == "foundation"
 
     def test_why_it_matters_appears_in_results(self) -> None:
         summary = _summary(
@@ -366,11 +404,11 @@ class TestJsonAdapter:
         )
         report = RunReport.from_summary(summary)
         out = JsonAdapter.render(report)
-        assert out["results"][0]["why_it_matters"] == (
+        assert out["data"]["results"][0]["why_it_matters"] == (
             "Static typing catches interface bugs early."
         )
 
-    def test_runtime_warning_present_for_time_budget_skips(self) -> None:
+    def test_diagnostic_present_for_time_budget_skips(self) -> None:
         summary = _summary(
             [
                 _result("p", CheckStatus.PASSED),
@@ -379,19 +417,19 @@ class TestJsonAdapter:
         )
         report = RunReport.from_summary(summary, level="swab")
         out = JsonAdapter.render(report)
-        warnings = out.get("runtime_warnings")
-        assert isinstance(warnings, list)
-        assert warnings[0]["code"] == "swabbing_timeout_budget_skipped"
-        assert warnings[0]["skipped_timed_checks"] == 1
-        assert warnings[0]["suggested_command"] == "sm swab --swabbing-timeout 0"
+        diagnostics = out.get("diagnostics")
+        assert isinstance(diagnostics, list)
+        assert diagnostics[0]["code"] == "swabbing_timeout_budget_skipped"
+        assert diagnostics[0]["level"] == "warn"
+        assert diagnostics[0]["suggested_command"] == "sm swab --swabbing-timeout 0"
 
-    def test_runtime_warning_absent_without_time_budget_skips(self) -> None:
+    def test_diagnostics_absent_without_time_budget_skips(self) -> None:
         summary = _summary([_result("p", CheckStatus.PASSED)])
         report = RunReport.from_summary(summary, level="swab")
         out = JsonAdapter.render(report)
-        assert "runtime_warnings" not in out
+        assert "diagnostics" not in out
 
-    def test_cache_block_and_warning_present_for_cached_results(self) -> None:
+    def test_cache_block_in_data_and_diagnostic_for_cached_results(self) -> None:
         summary = _summary(
             [
                 CheckResult(
@@ -406,11 +444,11 @@ class TestJsonAdapter:
         )
         report = RunReport.from_summary(summary, level="swab")
         out = JsonAdapter.render(report)
-        assert out["cache"]["cached_results"] == 1
-        assert out["cache"]["refresh_command"] == "sm swab --no-cache"
-        warnings = out.get("runtime_warnings")
-        assert isinstance(warnings, list)
-        assert any(w["code"] == "cached_results_present" for w in warnings)
+        assert out["data"]["cache"]["cached_results"] == 1
+        assert out["data"]["cache"]["refresh_command"] == "sm swab --no-cache"
+        diagnostics = out.get("diagnostics")
+        assert isinstance(diagnostics, list)
+        assert any(d["code"] == "cached_results_present" for d in diagnostics)
 
     def test_cache_block_counts_skipped_results_in_denominator(self) -> None:
         summary = _summary(
@@ -425,8 +463,9 @@ class TestJsonAdapter:
         )
         report = RunReport.from_summary(summary, level="swab")
         out = JsonAdapter.render(report)
-        assert out["cache"]["cached_results"] == 1
-        assert out["cache"]["total_ran"] == 1
+        cache = out["data"]["cache"]
+        assert cache["cached_results"] == 1
+        assert cache["total_ran"] == 1
 
     def test_cache_block_preserves_mixed_provenance(self) -> None:
         summary = _summary(
@@ -451,11 +490,12 @@ class TestJsonAdapter:
         )
         report = RunReport.from_summary(summary, level="swab")
         out = JsonAdapter.render(report)
-        assert out["cache"]["source_commits"] == ["abc1234", "def5678"]
-        assert out["cache"]["oldest_source_timestamp"] == "2026-03-09T12:00:00+00:00"
-        assert out["cache"]["newest_source_timestamp"] == "2026-03-10T12:00:00+00:00"
-        assert "source_commit" not in out["cache"]
-        assert "source_timestamp" not in out["cache"]
+        cache = out["data"]["cache"]
+        assert cache["source_commits"] == ["abc1234", "def5678"]
+        assert cache["oldest_source_timestamp"] == "2026-03-09T12:00:00+00:00"
+        assert cache["newest_source_timestamp"] == "2026-03-10T12:00:00+00:00"
+        assert "source_commit" not in cache
+        assert "source_timestamp" not in cache
 
 
 # ─── SarifAdapter ────────────────────────────────────────────────────────

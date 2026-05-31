@@ -23,9 +23,9 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Shifted the default post-PR flow so agents watch CI before reporting back, instead of just saying a PR is open",
-    "direction": "PR #236 is merged; keep enforcing watch-first reporting so agents report ready/not-ready instead of open/closed",
-    "last_update": "2026-05-30T14:20:00Z"
+    "status": "Answered a reviewer worry on the machine-format PR by adding a guard that keeps the verb catalog honest about what each command can actually do",
+    "direction": "Getting the machine-format PR green and merged",
+    "last_update": "2026-05-31T00:00:00Z"
   },
   "queue": {
     "active": true,

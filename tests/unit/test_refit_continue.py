@@ -32,7 +32,10 @@ class TestCmdRefitContinue:
         )
 
         assert refit_mod.cmd_refit(args) == 1
-        payload = json.loads(capsys.readouterr().out)
+        envelope = json.loads(capsys.readouterr().out)
+        assert envelope["command"] == "refit"
+        assert envelope["exit_code"] == 1
+        payload = envelope["data"]
         assert payload["event"] == "missing_plan"
         assert payload["status"] == "missing_plan"
 
@@ -332,7 +335,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
-        payload = json.loads(capsys.readouterr().out)
+        payload = json.loads(capsys.readouterr().out)["data"]
         assert payload["event"] == "blocked_on_failure"
         assert payload["current_gate"] == "laziness:repeated-code"
         assert (
@@ -388,7 +391,10 @@ class TestCmdRefitContinue:
         mirrored = json.loads(output_file.read_text(encoding="utf-8"))
         assert protocol["event"] == "blocked_on_failure"
         assert protocol["protocol_file"] == str(protocol_path)
-        assert mirrored == protocol
+        # Persisted protocol stays bare; the --output mirror is enveloped.
+        assert mirrored["schema"] == "slopmop/v3"
+        assert mirrored["command"] == "refit"
+        assert mirrored["data"] == protocol
 
     def test_continue_advances_without_commit_when_gate_already_passes(
         self, monkeypatch, capsys, tmp_path: Path

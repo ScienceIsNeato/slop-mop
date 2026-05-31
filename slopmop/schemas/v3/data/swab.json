@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/swab.json",
+  "title": "sm swab data payload",
+  "description": "A validation run's results: count summary, the names of gates that passed, the actionable (failed/warned/errored) results, the fix-first pointer, and cache/baseline provenance. Identical in shape to the scour payload — only the gate set and level differ.",
+  "type": "object",
+  "required": ["level", "summary", "results"],
+  "additionalProperties": false,
+  "properties": {
+    "level": {
+      "description": "The validation level that produced this run.",
+      "enum": ["swab", "scour"]
+    },
+    "summary": {"$ref": "#/$defs/summary"},
+    "passed_gates": {
+      "description": "Names of gates that passed, collapsed to a name list to save tokens.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "results": {
+      "description": "Actionable results only (failed, warned, errored) in remediation-fix order. Passing gates appear in passed_gates instead.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/result"}
+    },
+    "first_to_fix": {"$ref": "#/$defs/first_to_fix"},
+    "baseline_filter": {
+      "description": "Present only when a baseline snapshot filtered known failures out of this run.",
+      "type": "object"
+    },
+    "cache": {"$ref": "#/$defs/cache"}
+  },
+  "$defs": {
+    "summary": {
+      "type": "object",
+      "required": [
+        "total_checks",
+        "passed",
+        "failed",
+        "warned",
+        "skipped",
+        "not_applicable",
+        "errors",
+        "all_passed",
+        "total_duration"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "total_checks": {"type": "integer"},
+        "passed": {"type": "integer"},
+        "failed": {"type": "integer"},
+        "warned": {"type": "integer"},
+        "skipped": {"type": "integer"},
+        "not_applicable": {"type": "integer"},
+        "errors": {"type": "integer"},
+        "all_passed": {"type": "boolean"},
+        "total_duration": {"type": "number"},
+        "scope": {"$ref": "#/$defs/scope"},
+        "skip_reasons": {
+          "description": "Count of skipped gates by reason code (ff, dep, n/a, off, time, sup).",
+          "type": "object",
+          "additionalProperties": {"type": "integer"}
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": {"type": "integer"},
+        "lines": {"type": "integer"}
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": ["name", "status", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "status": {"enum": ["passed", "failed", "warned", "skipped", "not_applicable", "error"]},
+        "duration": {"type": "number"},
+        "output": {"type": "string"},
+        "error": {"type": "string"},
+        "fix_suggestion": {"type": "string"},
+        "auto_fixed": {"type": "boolean"},
+        "category": {"type": "string"},
+        "scope": {"$ref": "#/$defs/scope"},
+        "skip_reason": {"enum": ["ff", "dep", "n/a", "off", "time", "sup"]},
+        "status_detail": {"type": "string"},
+        "role": {"type": "string"},
+        "why_it_matters": {"type": "string"},
+        "findings": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/finding"}
+        },
+        "cached": {"type": "boolean"},
+        "cache_timestamp": {"type": "string"},
+        "cache_commit": {"type": "string"},
+        "suppress_sarif": {"type": "boolean"},
+        "log_file": {
+          "description": "Relative path to the captured per-gate log, when one was written.",
+          "type": "string"
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["message", "level"],
+      "additionalProperties": false,
+      "properties": {
+        "message": {"type": "string"},
+        "level": {"enum": ["error", "warning", "note"]},
+        "file": {"type": "string"},
+        "line": {"type": "integer"},
+        "column": {"type": "integer"},
+        "end_line": {"type": "integer"},
+        "end_column": {"type": "integer"},
+        "rule_id": {"type": "string"},
+        "fix_strategy": {"type": "string"}
+      }
+    },
+    "first_to_fix": {
+      "description": "The single blocking gate an agent should fix first, with where to look and how to re-verify.",
+      "type": "object",
+      "required": ["gate"],
+      "additionalProperties": false,
+      "properties": {
+        "gate": {"type": "string", "minLength": 1},
+        "log_file": {"type": "string"},
+        "verify_command": {"type": "string"}
+      }
+    },
+    "cache": {
+      "description": "Provenance for results served from cache.",
+      "type": "object",
+      "required": ["cached_results", "total_ran", "refresh_command"],
+      "properties": {
+        "cached_results": {"type": "integer"},
+        "total_ran": {"type": "integer"},
+        "refresh_command": {"type": "string"}
+      }
+    }
+  }
+}

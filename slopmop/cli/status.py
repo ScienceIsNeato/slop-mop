@@ -23,6 +23,7 @@ from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory, GateLevel
 from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckStatus
+from slopmop.reporting.envelope import Status, build_envelope
 from slopmop.reporting.timings import TimingStats, load_timings
 from slopmop.workflow.state_machine import WorkflowState
 from slopmop.workflow.state_store import read_phase, read_state
@@ -499,6 +500,21 @@ def _failure_counts_from_artifact(
     return failure_rows
 
 
+def _envelope_data(raw: object) -> Optional[Dict[str, Any]]:
+    """Unwrap a v3 response envelope to its ``data`` payload.
+
+    Persisted run artifacts are full envelopes; every status reader wants
+    the validation payload underneath. Returns None for anything that
+    isn't an envelope carrying an object ``data`` slot.
+    """
+    if not isinstance(raw, dict):
+        return None
+    data = cast(Dict[str, Any], raw).get("data")
+    if not isinstance(data, dict):
+        return None
+    return cast(Dict[str, Any], data)
+
+
 def _load_latest_run_artifact(root: Path) -> Optional[Dict[str, Any]]:
     """Load the newest canonical full-run artifact, if present."""
     artifact_path = latest_run_artifact_path(root)
@@ -508,9 +524,9 @@ def _load_latest_run_artifact(root: Path) -> Optional[Dict[str, Any]]:
         raw = json.loads(artifact_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
-    if not isinstance(raw, dict):
+    artifact = _envelope_data(raw)
+    if artifact is None:
         return None
-    artifact = cast(Dict[str, Any], raw)
     artifact["source_file"] = artifact_path.name
     return artifact
 
@@ -526,9 +542,9 @@ def _load_persisted_run_artifacts(root: Path) -> List[Dict[str, Any]]:
             raw = json.loads(artifact_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
-        if not isinstance(raw, dict):
+        artifact = _envelope_data(raw)
+        if artifact is None:
             continue
-        artifact = cast(Dict[str, Any], raw)
         artifact["source_file"] = artifact_path.name
         artifact["source_mtime"] = artifact_path.stat().st_mtime
         artifacts.append(artifact)
@@ -864,7 +880,13 @@ def run_status(
             data["baseline_snapshot"] = baseline
         if snapshot_info is not None:
             data["baseline_snapshot_generated"] = snapshot_info
-        print(json.dumps(data, separators=(",", ":")))
+        envelope = build_envelope(
+            command="status",
+            status=Status.INFO,
+            exit_code=0,
+            data=data,
+        )
+        print(json.dumps(envelope, indent=2))
         return 0
 
     # ── Pretty output ─────────────────────────────────────────────

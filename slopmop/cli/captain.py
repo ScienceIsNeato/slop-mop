@@ -27,6 +27,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+from slopmop.reporting.envelope import (
+    Diagnostic,
+    Status,
+    build_envelope,
+)
 from slopmop.utils import (
     git_current_branch,
     iso_now,
@@ -34,6 +39,10 @@ from slopmop.utils import (
     markdown_numbered,
 )
 
+COMMAND = "wake-angry-drunk-captain"
+
+# Version stamp for the human-facing Markdown summons document. The machine
+# JSON format is the v3 envelope, whose schema rides on the envelope itself.
 SCHEMA_VERSION = "slopmop/captain-summons/v1"
 
 # Return codes — mirror the sail "human decision needed" idiom.
@@ -184,7 +193,6 @@ def write_summons_file(summons: CaptainSummons, body: Optional[str] = None) -> P
 
 def _summons_payload(summons: CaptainSummons, body_path: Path) -> Dict[str, Any]:
     return {
-        "schema": SCHEMA_VERSION,
         "summoned_at": summons.summoned_at,
         "answered_at": summons.answered_at,
         "branch": summons.branch,
@@ -296,8 +304,40 @@ def cmd_captain(
     A valid summons does not resolve until a human at the keyboard types
     orders. The agent cannot satisfy this verb alone — that is the point.
     """
+    json_output = bool(getattr(args, "json_output", False))
+
     missing = _missing_fields(args)
     if missing:
+        reason = (
+            "Insufficient justification — the standing order stands: do not "
+            "wake the captain without structured proof the loop is exhausted. "
+            "Missing required field(s): " + ", ".join(missing) + "."
+        )
+        if json_output:
+            print(
+                json.dumps(
+                    build_envelope(
+                        command=COMMAND,
+                        status=Status.ERROR,
+                        exit_code=EXIT_REFUSED,
+                        data={
+                            "outcome": "refused",
+                            "reason": reason,
+                            "missing": list(missing),
+                        },
+                        diagnostics=[
+                            Diagnostic(
+                                code="captain.refused",
+                                level="error",
+                                message=reason,
+                                suggested_command="sm refit",
+                            )
+                        ],
+                    ),
+                    indent=2,
+                )
+            )
+            return EXIT_REFUSED
         _print_standing_order()
         if len(missing) < 4:
             # Came partway — name exactly what's still missing.
@@ -316,6 +356,35 @@ def cmd_captain(
     orders = _collect_captain_orders(input_fn=input_fn, isatty_fn=isatty_fn)
 
     if not orders:
+        reason = (
+            "No human at the wheel — nobody answered the prompt. This verb only "
+            "resolves when a human types orders at an interactive terminal. "
+            "Nothing was decided."
+        )
+        if json_output:
+            print(
+                json.dumps(
+                    build_envelope(
+                        command=COMMAND,
+                        status=Status.ERROR,
+                        exit_code=EXIT_NO_CAPTAIN,
+                        data={"outcome": "no_captain", "reason": reason},
+                        diagnostics=[
+                            Diagnostic(
+                                code="captain.no_human",
+                                level="error",
+                                message=reason,
+                                suggested_command=(
+                                    "sm wake-angry-drunk-captain  "
+                                    "# rerun in an interactive terminal"
+                                ),
+                            )
+                        ],
+                    ),
+                    indent=2,
+                )
+            )
+            return EXIT_NO_CAPTAIN
         print(
             "\n".join(
                 [
@@ -336,8 +405,20 @@ def cmd_captain(
     summons = replace(summons, orders=orders, answered_at=iso_now())
     body_path = write_summons_file(summons, render_summons_body(summons))
 
-    if getattr(args, "json_output", False):
-        print(json.dumps(_summons_payload(summons, body_path), indent=2))
+    if json_output:
+        # A valid summons is a deliberate halt-and-await, not a failure —
+        # INFO carries the non-zero exit_code that signals "loop paused".
+        print(
+            json.dumps(
+                build_envelope(
+                    command=COMMAND,
+                    status=Status.INFO,
+                    exit_code=EXIT_SUMMONED,
+                    data=_summons_payload(summons, body_path),
+                ),
+                indent=2,
+            )
+        )
         return EXIT_SUMMONED
 
     ack = [

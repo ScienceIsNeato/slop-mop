@@ -82,9 +82,13 @@ exit 0
 def _generate_pre_push_hook_script() -> str:
     """Generate a pre-push hook that blocks pushes from merged branches.
 
-    The guard asks GitHub whether the current local branch name has an already-
-    merged PR. If yes, pushing that branch is almost always accidental follow-up
-    work on a branch that should have been retired.
+    Git feeds the refs actually being pushed on stdin (one line per ref:
+    ``<local ref> <local sha> <remote ref> <remote sha>``). The guard reads
+    those rather than ``HEAD`` so a push like
+    ``git push origin merged-feature:merged-feature`` from another checkout is
+    still inspected. For each pushed branch it asks GitHub whether that branch
+    name has an already-merged PR; if yes, pushing it is almost always
+    accidental follow-up work on a branch that should have been retired.
     """
 
     return f"""#!/bin/sh
@@ -102,40 +106,53 @@ if ! command -v gh >/dev/null 2>&1; then
     exit 1
 fi
 
-branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-if [ -z "$branch" ]; then
-    # Detached HEAD or unusual push target — allow push.
-    exit 0
-fi
+zero_sha="0000000000000000000000000000000000000000"
 
-merged_line=$(gh pr list \
-    --head "$branch" \
-    --state merged \
-    --json number,url \
-    --limit 1 \
-    --jq 'if length>0 then "\\(.[0].number)\\t\\(.[0].url)" else "" end' \
-    2>/dev/null)
-status=$?
+# Git passes the refs being pushed on stdin, one per line:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# Inspect each pushed branch rather than HEAD so a push that names a
+# branch other than the current checkout is still guarded.
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Only branch refs can correspond to a PR head.
+    case "$local_ref" in
+        refs/heads/*) branch=${{local_ref#refs/heads/}} ;;
+        *) continue ;;
+    esac
 
-if [ $status -ne 0 ]; then
-    echo "❌ Could not verify merged-PR status for branch '$branch'"
-    echo "   gh query failed; refusing push to avoid writing onto a merged branch."
-    exit 1
-fi
+    # Skip deletions (local sha all zeros) — nothing is being written.
+    if [ "$local_sha" = "$zero_sha" ]; then
+        continue
+    fi
 
-if [ -n "$merged_line" ]; then
-    pr_number=$(printf '%s' "$merged_line" | cut -f1)
-    pr_url=$(printf '%s' "$merged_line" | cut -f2-)
-    echo ""
-    echo "❌ Push blocked: branch '$branch' already has merged PR #$pr_number"
-    echo "   $pr_url"
-    echo ""
-    echo "You're missing some context. It appears as if a branch was merged"
-    echo "out from under you while you were working on it."
-    echo "sync against main, checkout a new branch, and open a new PR."
-    echo ""
-    exit 1
-fi
+    merged_line=$(gh pr list \
+        --head "$branch" \
+        --state merged \
+        --json number,url \
+        --limit 1 \
+        --jq 'if length>0 then "\\(.[0].number)\\t\\(.[0].url)" else "" end' \
+        2>/dev/null)
+    status=$?
+
+    if [ $status -ne 0 ]; then
+        echo "❌ Could not verify merged-PR status for branch '$branch'"
+        echo "   gh query failed; refusing push to avoid writing onto a merged branch."
+        exit 1
+    fi
+
+    if [ -n "$merged_line" ]; then
+        pr_number=$(printf '%s' "$merged_line" | cut -f1)
+        pr_url=$(printf '%s' "$merged_line" | cut -f2-)
+        echo ""
+        echo "❌ Push blocked: branch '$branch' already has merged PR #$pr_number"
+        echo "   $pr_url"
+        echo ""
+        echo "You're missing some context. It appears as if a branch was merged"
+        echo "out from under you while you were working on it."
+        echo "sync against main, checkout a new branch, and open a new PR."
+        echo ""
+        exit 1
+    fi
+done
 
 exit 0
 {SB_HOOK_END_MARKER}

@@ -2,9 +2,12 @@
 
 import json
 
+import pytest
+
 from slopmop.baseline import (
     filter_summary_against_baseline,
     generate_baseline_snapshot,
+    generate_baseline_snapshot_from_artifact,
     load_baseline_snapshot,
 )
 from slopmop.core.result import (
@@ -24,14 +27,21 @@ class TestGenerateBaselineSnapshot:
         sm_dir.mkdir()
         swab = sm_dir / "last_swab.json"
         scour = sm_dir / "last_scour.json"
-        swab.write_text(json.dumps({"level": "swab", "results": []}))
-        scour.write_text(json.dumps({"level": "scour", "results": []}))
+        swab.write_text(json.dumps({"data": {"level": "swab", "results": []}}))
+        scour.write_text(json.dumps({"data": {"level": "scour", "results": []}}))
         scour.touch()
 
         snapshot_path, source_path = generate_baseline_snapshot(tmp_path)
 
         assert snapshot_path.exists()
         assert source_path.name == "last_scour.json"
+
+    def test_artifact_without_data_key_is_rejected(self, tmp_path):
+        """A JSON object that isn't a v3 envelope (no ``data``) is rejected."""
+        artifact = tmp_path / "scour.json"
+        artifact.write_text(json.dumps({"schema": "slopmop/v3"}), encoding="utf-8")
+        with pytest.raises(ValueError, match="not a v3 envelope"):
+            generate_baseline_snapshot_from_artifact(tmp_path, artifact)
 
 
 class TestFilterSummaryAgainstBaseline:
@@ -44,23 +54,25 @@ class TestFilterSummaryAgainstBaseline:
         artifact.write_text(
             json.dumps(
                 {
-                    "level": "swab",
-                    "results": [
-                        {
-                            "name": "myopia:string-duplication.py",
-                            "status": "failed",
-                            "duration": 0.1,
-                            "findings": [
-                                {
-                                    "message": "duplicate string",
-                                    "level": "warning",
-                                    "file": "app.py",
-                                    "line": 10,
-                                    "rule_id": "dup-str",
-                                }
-                            ],
-                        }
-                    ],
+                    "data": {
+                        "level": "swab",
+                        "results": [
+                            {
+                                "name": "myopia:string-duplication.py",
+                                "status": "failed",
+                                "duration": 0.1,
+                                "findings": [
+                                    {
+                                        "message": "duplicate string",
+                                        "level": "warning",
+                                        "file": "app.py",
+                                        "line": 10,
+                                        "rule_id": "dup-str",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
                 }
             )
         )
@@ -101,23 +113,25 @@ class TestFilterSummaryAgainstBaseline:
         artifact.write_text(
             json.dumps(
                 {
-                    "level": "swab",
-                    "results": [
-                        {
-                            "name": "overconfidence:type-blindness.py",
-                            "status": "failed",
-                            "duration": 0.1,
-                            "findings": [
-                                {
-                                    "message": "known issue",
-                                    "level": "error",
-                                    "file": "app.py",
-                                    "line": 5,
-                                    "rule_id": "known",
-                                }
-                            ],
-                        }
-                    ],
+                    "data": {
+                        "level": "swab",
+                        "results": [
+                            {
+                                "name": "overconfidence:type-blindness.py",
+                                "status": "failed",
+                                "duration": 0.1,
+                                "findings": [
+                                    {
+                                        "message": "known issue",
+                                        "level": "error",
+                                        "file": "app.py",
+                                        "line": 5,
+                                        "rule_id": "known",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
                 }
             )
         )

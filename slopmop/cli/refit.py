@@ -38,6 +38,7 @@ from slopmop.cli._refit_precheck import (
 from slopmop.cli.buff import _load_json_file
 from slopmop.cli.scan_triage import write_json_out
 from slopmop.core.registry import get_registry
+from slopmop.reporting.envelope import Status, build_envelope
 from slopmop.utils import iso_now
 from slopmop.workflow.state_machine import RepoPhase
 from slopmop.workflow.state_store import read_phase
@@ -318,12 +319,26 @@ def _emit_protocol(
     project_root: Path,
     protocol: Dict[str, Any],
     human_lines: List[str],
+    *,
+    exit_code: int = 0,
 ) -> None:
     protocol.setdefault("protocol_file", str(_protocol_path(project_root)))
     _save_protocol(project_root, protocol)
-    write_json_out(getattr(args, "output_file", None), protocol)
+    # The persisted protocol file keeps refit's bare internal state, but the
+    # user-facing --output mirror gets the same v3 envelope as stdout so a
+    # pipeline capturing the file sees the documented contract.
+    # Successful advisory output is INFO; a non-zero exit means remediation
+    # work remains, so the envelope status must signal FAIL rather than INFO
+    # (which parsers treat as non-blocking) to agree with the exit code.
+    envelope = build_envelope(
+        command="refit",
+        status=Status.INFO if exit_code == 0 else Status.FAIL,
+        exit_code=exit_code,
+        data=protocol,
+    )
+    write_json_out(getattr(args, "output_file", None), envelope)
     if getattr(args, "json_output", False):
-        print(json.dumps(protocol, indent=2))
+        print(json.dumps(envelope, indent=2))
         return
     for line in human_lines:
         print(line)
@@ -338,6 +353,7 @@ def _emit_standalone_protocol(
     next_action: str,
     human_lines: List[str],
     details: Optional[Dict[str, Any]] = None,
+    exit_code: int = 0,
 ) -> None:
     protocol: Dict[str, Any] = {
         "schema": _SCHEMA_VERSION,
@@ -349,7 +365,7 @@ def _emit_standalone_protocol(
     }
     if details:
         protocol["details"] = details
-    _emit_protocol(args, project_root, protocol, human_lines)
+    _emit_protocol(args, project_root, protocol, human_lines, exit_code=exit_code)
 
 
 def _snapshot_protocol(
@@ -487,7 +503,11 @@ def _commit_message_for_check(name: str, check: BaseCheck) -> str:
 def _failed_results_from_scour_artifact(
     artifact: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    raw_results = artifact.get("results")
+    # The scour artifact is a v3 response envelope; the validation payload
+    # (summary, results) lives under ``data``.
+    data_raw = artifact.get("data")
+    data = cast(Dict[str, Any], data_raw) if isinstance(data_raw, dict) else {}
+    raw_results = data.get("results")
     if not isinstance(raw_results, list):
         return []
     result_items = cast(List[object], raw_results)
@@ -766,6 +786,7 @@ def _load_continue_plan(
                 next_action=next_action,
                 human_lines=lines,
                 details={"precheck_file": str(_precheck_path(project_root))},
+                exit_code=1,
             )
             return None
         _emit_standalone_protocol(
@@ -775,6 +796,7 @@ def _load_continue_plan(
             status="missing_plan",
             next_action="Run `sm refit --start`, then rerun `sm refit --iterate`.",
             human_lines=[str(exc)],
+            exit_code=1,
         )
         return None
 
@@ -805,6 +827,7 @@ def _ensure_continue_branch(
             "Refit blocked: current branch no longer matches the generated plan. "
             f"Expected {expected_branch}, found {current_branch}."
         ],
+        exit_code=1,
     )
     return False
 
@@ -835,6 +858,7 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
                 "Refit is only available while the repo is in remediation phase. "
                 "Run the normal swab/scour/buff workflow for maintenance repos."
             ],
+            exit_code=1,
         )
         return False
     if not _ensure_init_completed(project_root):
@@ -847,6 +871,7 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
             human_lines=[
                 "Refit preflight failed: no .sb_config.json found. Run `sm init` first."
             ],
+            exit_code=1,
         )
         return False
 
@@ -860,6 +885,7 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
             next_action="Resolve the doctor preflight issue, then rerun `sm refit --start`.",
             human_lines=[f"Refit preflight failed: {doctor_detail}"],
             details={"doctor_detail": doctor_detail},
+            exit_code=1,
         )
         return False
 
@@ -879,6 +905,7 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
                 "Commit, stash, or discard local changes before generating a plan."
             ],
             details={"worktree_status": worktree},
+            exit_code=1,
         )
         return False
 
@@ -911,6 +938,7 @@ def _run_start_precheck_stage(
             next_action="Fix the review command arguments, then rerun `sm refit --start`.",
             human_lines=[review_error],
             details={"precheck_file": str(_precheck_path(project_root))},
+            exit_code=1,
         )
         return None
 
@@ -924,6 +952,7 @@ def _run_start_precheck_stage(
             next_action="Resolve the gate runnability blocker, then rerun `sm refit --start`.",
             human_lines=_runnability_block_lines(project_root, precheck),
             details={"precheck_file": str(_precheck_path(project_root))},
+            exit_code=1,
         )
         return None
     if pending_fidelity_entries(precheck):
@@ -935,6 +964,7 @@ def _run_start_precheck_stage(
             next_action="Review or tune the pending gates, then rerun `sm refit --start`.",
             human_lines=_fidelity_block_lines(project_root, precheck),
             details={"precheck_file": str(_precheck_path(project_root))},
+            exit_code=1,
         )
         return None
     return precheck
@@ -957,6 +987,7 @@ def _generate_plan_from_trustworthy_scour(
                 "Refit could not generate a plan because the initial scour run errored."
             ],
             details={"artifact": str(artifact_path)},
+            exit_code=1,
         )
         return 1
 
@@ -1069,6 +1100,7 @@ def _cmd_refit_finish(args: argparse.Namespace) -> int:
                 "unresolved_count": len(unresolved),
                 "skipped_gates": [i.get("gate") for i in skipped],
             },
+            exit_code=1,
         )
         return 1
 

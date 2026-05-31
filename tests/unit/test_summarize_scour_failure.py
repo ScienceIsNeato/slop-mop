@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from scripts.summarize_scour_failure import _classify_failed_gates
+import json
+
+from scripts.summarize_scour_failure import (
+    _classify_failed_gates,
+    _read_actionable_results,
+)
 
 
 def test_scour_only_gate_summary_includes_error_detail(capsys):
@@ -42,4 +47,38 @@ def test_failure_summary_falls_back_to_status_detail(capsys):
 
     assert scour_only_failed == [
         "myopia:just-this-once.py — Diff coverage below threshold"
+    ]
+
+
+def test_read_actionable_results_unwraps_v3_envelope(tmp_path):
+    report = tmp_path / "slopmop-results.json"
+    report.write_text(
+        json.dumps(
+            {
+                "schema": "slopmop/v3",
+                "command": "scour",
+                "status": "fail",
+                "exit_code": 1,
+                "data": {
+                    "results": [
+                        {
+                            "name": "myopia:just-this-once.py",
+                            "status": "failed",
+                            "error": "Changed files have <80% coverage",
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    actionable = _read_actionable_results(str(report))
+
+    assert actionable == [
+        {
+            "name": "myopia:just-this-once.py",
+            "status": "failed",
+            "error": "Changed files have <80% coverage",
+        }
     ]

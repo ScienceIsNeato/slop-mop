@@ -122,15 +122,6 @@ def _sort_results_for_remediation_display(
     ]
 
 
-# Single source of truth for the JSON schema identifier.  Bump when
-# output shape changes (new required fields, removed fields, renamed
-# keys).  Additive-only changes (new optional fields) are a judgement
-# call — v2 was bumped for the introduction of ``role`` and
-# ``fix_strategy`` to signal "look at the changelog, there's new
-# structure here" even though v1 consumers would not break.
-JSON_SCHEMA_VERSION = "slopmop/v2"
-
-
 def _compute_next_step(
     level: Optional[str],
     sail_mode: Optional["SailMode"],
@@ -204,7 +195,6 @@ class RunReport:
     level: Optional[str]
     project_root: Optional[str]
     verbose: bool = False
-    schema_version: str = JSON_SCHEMA_VERSION
 
     # --- Derived categorisations ------------------------------------
     # Filled by from_summary().  Each list is stable-ordered (same as
