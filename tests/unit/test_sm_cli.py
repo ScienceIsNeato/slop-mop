@@ -15,6 +15,7 @@ from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
     SB_HOOK_MARKER,
     _generate_hook_script,
+    _generate_pre_push_hook_script,
     _get_git_hooks_dir,
     _parse_hook_info,
     cmd_commit_hooks,
@@ -280,6 +281,15 @@ class TestGitHooksFunctions:
         assert "--swabbing-timeout 0" in script
         assert "--json-file .slopmop/last_scour.json" in script
 
+    def test_generate_pre_push_hook_script(self):
+        """Generates pre-push merged-branch guard hook script."""
+        script = _generate_pre_push_hook_script()
+        assert "# Command: merged-branch-guard" in script
+        assert "gh pr list" in script
+        assert "--state merged" in script
+        assert "You're missing some context." in script
+        assert "sync against main, checkout a new branch, and open a new PR." in script
+
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""
         content = """# MANAGED BY SLOP-MOP
@@ -331,7 +341,7 @@ class TestCmdCommitHooks:
         assert "Git Hooks Status" in captured.out
 
     def test_install_hook(self, tmp_path, capsys):
-        """Install creates hook file with swab verb."""
+        """Install creates pre-commit and pre-push hooks."""
         (tmp_path / ".git").mkdir()
 
         args = argparse.Namespace(
@@ -343,17 +353,26 @@ class TestCmdCommitHooks:
         result = cmd_commit_hooks(args)
 
         assert result == 0
-        hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
-        assert hook_file.exists()
-        hook_text = hook_file.read_text()
-        assert "sm swab --porcelain" in hook_text
-        assert "--json-file .slopmop/last_swab.json" in hook_text
+        pre_commit_file = tmp_path / ".git" / "hooks" / "pre-commit"
+        pre_push_file = tmp_path / ".git" / "hooks" / "pre-push"
+        assert pre_commit_file.exists()
+        assert pre_push_file.exists()
+        pre_commit_text = pre_commit_file.read_text()
+        pre_push_text = pre_push_file.read_text()
+        assert "sm swab --porcelain" in pre_commit_text
+        assert "--json-file .slopmop/last_swab.json" in pre_commit_text
+        assert "# Command: merged-branch-guard" in pre_push_text
+        assert "gh pr list" in pre_push_text
 
     def test_uninstall_hook(self, tmp_path, capsys):
-        """Uninstall removes managed hooks."""
+        """Uninstall removes managed pre-commit and pre-push hooks."""
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
-        hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
-        hook_file.write_text("# MANAGED BY SLOP-MOP\n# Command: sm swab\nsm swab")
+        pre_commit_file = tmp_path / ".git" / "hooks" / "pre-commit"
+        pre_push_file = tmp_path / ".git" / "hooks" / "pre-push"
+        pre_commit_file.write_text("# MANAGED BY SLOP-MOP\n# Command: sm swab\nsm swab")
+        pre_push_file.write_text(
+            "# MANAGED BY SLOP-MOP\n# Command: merged-branch-guard"
+        )
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
@@ -363,7 +382,8 @@ class TestCmdCommitHooks:
         result = cmd_commit_hooks(args)
 
         assert result == 0
-        assert not hook_file.exists()
+        assert not pre_commit_file.exists()
+        assert not pre_push_file.exists()
 
 
 class TestMain:
@@ -743,9 +763,12 @@ class TestHooksEdgeCases:
         """Reinstalling over an existing sm-managed hook updates it."""
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
         hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+        pre_push_file = tmp_path / ".git" / "hooks" / "pre-push"
         # Write an old managed hook
         hook_file.write_text(f"{SB_HOOK_MARKER}\n# Command: sm swab\nsm swab")
+        pre_push_file.write_text(f"{SB_HOOK_MARKER}\n# Command: merged-branch-guard")
         hook_file.chmod(0o755)
+        pre_push_file.chmod(0o755)
 
         args = argparse.Namespace(
             project_root=str(tmp_path),
@@ -759,6 +782,24 @@ class TestHooksEdgeCases:
         assert "Updating existing slopmop hook" in out
         # New hook should contain the new verb
         assert "sm scour" in hook_file.read_text()
+
+    def test_install_fails_when_pre_push_hook_is_unmanaged(self, tmp_path, capsys):
+        """Install aborts when pre-push exists but is not slop-mop-managed."""
+        (tmp_path / ".git" / "hooks").mkdir(parents=True)
+        (tmp_path / ".git" / "hooks" / "pre-push").write_text(
+            "#!/bin/sh\n# third-party hook\n"
+        )
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="install",
+            hook_verb="swab",
+        )
+        result = cmd_commit_hooks(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "Existing pre-push hook found" in out
 
 
 # ─── validate edge cases ────────────────────────────────────────────────

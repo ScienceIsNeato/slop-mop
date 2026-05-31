@@ -79,15 +79,80 @@ exit 0
 """
 
 
+def _generate_pre_push_hook_script() -> str:
+    """Generate a pre-push hook that blocks pushes from merged branches.
+
+    The guard asks GitHub whether the current local branch name has an already-
+    merged PR. If yes, pushing that branch is almost always accidental follow-up
+    work on a branch that should have been retired.
+    """
+
+    return f"""#!/bin/sh
+{SB_HOOK_MARKER}
+#
+# Pre-push hook managed by slop-mop
+# Command: merged-branch-guard
+# To remove: sm commit-hooks uninstall
+#
+
+if ! command -v gh >/dev/null 2>&1; then
+    echo "❌ gh not found on PATH"
+    echo "   This guard checks whether the branch already has a merged PR."
+    echo "   Install GitHub CLI: https://cli.github.com/"
+    exit 1
+fi
+
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+if [ -z "$branch" ]; then
+    # Detached HEAD or unusual push target — allow push.
+    exit 0
+fi
+
+merged_line=$(gh pr list \
+    --head "$branch" \
+    --state merged \
+    --json number,url \
+    --limit 1 \
+    --jq 'if length>0 then "\\(.[0].number)\\t\\(.[0].url)" else "" end' \
+    2>/dev/null)
+status=$?
+
+if [ $status -ne 0 ]; then
+    echo "❌ Could not verify merged-PR status for branch '$branch'"
+    echo "   gh query failed; refusing push to avoid writing onto a merged branch."
+    exit 1
+fi
+
+if [ -n "$merged_line" ]; then
+    pr_number=$(printf '%s' "$merged_line" | cut -f1)
+    pr_url=$(printf '%s' "$merged_line" | cut -f2-)
+    echo ""
+    echo "❌ Push blocked: branch '$branch' already has merged PR #$pr_number"
+    echo "   $pr_url"
+    echo ""
+    echo "You're missing some context. It appears as if a branch was merged"
+    echo "out from under you while you were working on it."
+    echo "sync against main, checkout a new branch, and open a new PR."
+    echo ""
+    exit 1
+fi
+
+exit 0
+{SB_HOOK_END_MARKER}
+"""
+
+
 def _parse_hook_info(hook_content: str) -> Optional[dict[str, Any]]:
     """Parse sb-managed hook to extract info."""
     if SB_HOOK_MARKER not in hook_content:
         return None
 
-    # Try to extract the command verb
-    match = re.search(r"# Command: sm (\w+)", hook_content)
+    # Try to extract command label from the script header.
+    match = re.search(r"# Command: (.+)", hook_content)
     if match:
-        return {"verb": match.group(1), "managed": True}
+        command = match.group(1).strip()
+        display = command.removeprefix("sm ")
+        return {"verb": display, "managed": True}
 
     return {"verb": "unknown", "managed": True}
 
@@ -139,7 +204,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
             print()
 
     print("Commands:")
-    print("   sm commit-hooks install           # Install pre-commit hook (swab)")
+    print("   sm commit-hooks install           # Install pre-commit + pre-push guard")
     print("   sm commit-hooks uninstall          # Remove sm hooks")
     print(
         "   sm gang press                 # System-wide command intercepts + git wrapper"
@@ -149,9 +214,10 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
 
 
 def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
-    """Install a pre-commit hook."""
+    """Install managed pre-commit + pre-push hooks."""
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hook_file = hooks_dir / "pre-commit"
+    pre_push_file = hooks_dir / "pre-push"
 
     if hook_file.exists():
         content = hook_file.read_text()
@@ -167,10 +233,31 @@ def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
             print()
             return 1
 
+    if pre_push_file.exists():
+        content = pre_push_file.read_text()
+        if SB_HOOK_MARKER in content:
+            print("ℹ️  Updating existing slopmop pre-push guard...")
+        else:
+            print(f"⚠️  Existing pre-push hook found at: {pre_push_file}")
+            print("   This hook is not managed by slopmop.")
+            print()
+            print("Options:")
+            print("   1. Back up your existing hook and run install again")
+            print(
+                "   2. Manually add the merged-branch guard from sm commit-hooks output"
+            )
+            print()
+            return 1
+
     hook_content = _generate_hook_script(verb)
     hook_file.write_text(hook_content)
+    pre_push_content = _generate_pre_push_hook_script()
+    pre_push_file.write_text(pre_push_content)
     hook_file.chmod(
         hook_file.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    )
+    pre_push_file.chmod(
+        pre_push_file.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
     )
 
     print()
@@ -180,9 +267,12 @@ def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
 
     print_project_header(str(project_root))
     print(f"📄 Hook: {hook_file}")
+    print(f"📄 Hook: {pre_push_file}")
     print(f"🎯 Command: sm {verb}")
+    print("🎯 Guard: block push when branch already has a merged PR")
     print()
     print(f"The hook will run 'sm {verb}' before each commit.")
+    print("The pre-push guard will block pushes on branches that already merged.")
     print("Commits will be blocked if quality gates fail.")
     print()
     print("To remove: sm commit-hooks uninstall")
