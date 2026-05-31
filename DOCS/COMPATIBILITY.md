@@ -51,7 +51,7 @@ When a minor release changes behavior:
 
 ## Config and Output Compatibility
 
-For 1.x releases:
+Within a major release line:
 
 - committed config templates may gain new optional settings between minor
   releases

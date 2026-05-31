@@ -23,8 +23,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Answered a reviewer worry on the machine-format PR by adding a guard that keeps the verb catalog honest about what each command can actually do",
-    "direction": "Getting the machine-format PR green and merged",
+    "status": "2.0 just shipped, so I swept the readme and docs for anything still talking like it's the old version and fixed the stale bits",
+    "direction": "Wrapping up the doc cleanup, then back to the leftover CI-status fix waiting to go up",
     "last_update": "2026-05-31T00:00:00Z"
   },
   "queue": {
