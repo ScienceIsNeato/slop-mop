@@ -23,8 +23,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Working through review feedback on the machine-format PR — taught the CI status check to speak the same predictable format as everything else",
-    "direction": "Clearing the last review notes, then getting it merged",
+    "status": "Tightened the push safety guard so it checks the branch you're actually pushing, not just the one you're standing on",
+    "direction": "Clearing the last review note, then getting the machine-format PR merged",
     "last_update": "2026-05-31T00:00:00Z"
   },
   "queue": {

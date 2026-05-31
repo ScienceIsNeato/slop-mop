@@ -289,6 +289,13 @@ class TestGitHooksFunctions:
         assert "--state merged" in script
         assert "You're missing some context." in script
         assert "sync against main, checkout a new branch, and open a new PR." in script
+        # Guard must inspect the refs Git passes on stdin, not just HEAD, so a
+        # push that names a branch other than the current checkout is covered.
+        assert "while read -r local_ref local_sha remote_ref remote_sha" in script
+        assert "refs/heads/*) branch=${local_ref#refs/heads/}" in script
+        # Deletions (all-zero local sha) write nothing and must be skipped.
+        assert "0000000000000000000000000000000000000000" in script
+        assert "git symbolic-ref" not in script
 
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""
