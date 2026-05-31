@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from slopmop.reporting.envelope import Status, build_envelope
 from slopmop.utils import (
     git_current_branch,
     iso_now,
@@ -293,7 +294,13 @@ def create_barnacle_issue(
 
 
 def _print_json(payload: Dict[str, Any]) -> None:
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    envelope = build_envelope(
+        command="barnacle",
+        status=Status.OK,
+        exit_code=0,
+        data=payload,
+    )
+    print(json.dumps(envelope, indent=2, sort_keys=True))
 
 
 def cmd_barnacle_file(args: argparse.Namespace) -> int:

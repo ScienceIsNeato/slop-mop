@@ -520,12 +520,19 @@ def build_triage_payload(
     pr_number: int | None,
     ci_state: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int]:
-    summary_raw = doc.get("summary")
+    # CI artifacts are v3 response envelopes; the validation payload
+    # (summary, results) lives under ``data``.
+    data_raw = doc.get("data")
+    data: Dict[str, Any] = (
+        cast(Dict[str, Any], data_raw) if isinstance(data_raw, dict) else {}
+    )
+
+    summary_raw = data.get("summary")
     summary: Dict[str, Any] = (
         cast(Dict[str, Any], summary_raw) if isinstance(summary_raw, dict) else {}
     )
 
-    results_raw = doc.get("results")
+    results_raw = data.get("results")
     results_list: List[Any] = (
         cast(List[Any], results_raw) if isinstance(results_raw, list) else []
     )

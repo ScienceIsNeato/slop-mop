@@ -118,7 +118,7 @@ def _block_continue_plan(
         next_action=next_action,
         details=details,
     )
-    _refit._emit_protocol(args, project_root, protocol, human_lines)
+    _refit._emit_protocol(args, project_root, protocol, human_lines, exit_code=1)
     return 1
 
 

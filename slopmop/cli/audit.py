@@ -36,7 +36,9 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
+
+from slopmop.reporting.envelope import Status, build_envelope
 
 _DEFAULT_OUTPUT = ".slopmop/audit-report.md"
 _SCHEMA = "slopmop/audit/v1"
@@ -246,9 +248,15 @@ def _run_gate_inventory(
 
     if artifact_path.exists():
         try:
-            return json.loads(artifact_path.read_text(encoding="utf-8"))
+            parsed = json.loads(artifact_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return None
+        # scour writes a v3 response envelope; the gate inventory wants
+        # the validation payload under ``data``.
+        if isinstance(parsed, dict):
+            data = cast(Dict[str, Any], parsed).get("data")
+            if isinstance(data, dict):
+                return cast(Dict[str, Any], data)
     return None
 
 
@@ -512,7 +520,6 @@ def _build_json_payload(
     git_data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
-        "schema": _SCHEMA,
         "generated_at": timestamp,
         "project_root": str(Path(project_root).resolve()),
     }
@@ -615,7 +622,13 @@ def cmd_audit(args: argparse.Namespace) -> int:
             timestamp,
             git_data,
         )
-        print(json.dumps(payload, indent=2))
+        envelope = build_envelope(
+            command="audit",
+            status=Status.INFO,
+            exit_code=0,
+            data=payload,
+        )
+        print(json.dumps(envelope, indent=2))
         return 0
 
     # Print to stdout

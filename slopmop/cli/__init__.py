@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from slopmop.cli.audit import cmd_audit
     from slopmop.cli.barnacle import cmd_barnacle
     from slopmop.cli.buff import cmd_buff
+    from slopmop.cli.capabilities import cmd_capabilities
     from slopmop.cli.captain import cmd_captain
     from slopmop.cli.config import cmd_config
     from slopmop.cli.detection import detect_project_type
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
     from slopmop.cli.refit import cmd_refit
     from slopmop.cli.sail import cmd_sail
     from slopmop.cli.scan_triage import run_triage
+    from slopmop.cli.schema import cmd_schema
     from slopmop.cli.status import cmd_status, run_status
     from slopmop.cli.upgrade import cmd_upgrade
     from slopmop.cli.validate import cmd_scour, cmd_swab
@@ -34,6 +36,7 @@ _EXPORT_MAP = {
     "cmd_audit": ("slopmop.cli.audit", "cmd_audit"),
     "cmd_barnacle": ("slopmop.cli.barnacle", "cmd_barnacle"),
     "cmd_buff": ("slopmop.cli.buff", "cmd_buff"),
+    "cmd_capabilities": ("slopmop.cli.capabilities", "cmd_capabilities"),
     "cmd_captain": ("slopmop.cli.captain", "cmd_captain"),
     "cmd_commit_hooks": ("slopmop.cli.hooks", "cmd_commit_hooks"),
     "cmd_config": ("slopmop.cli.config", "cmd_config"),
@@ -43,6 +46,7 @@ _EXPORT_MAP = {
     "cmd_gang": ("slopmop.cli.gang", "cmd_gang"),
     "cmd_refit": ("slopmop.cli.refit", "cmd_refit"),
     "cmd_sail": ("slopmop.cli.sail", "cmd_sail"),
+    "cmd_schema": ("slopmop.cli.schema", "cmd_schema"),
     "cmd_scour": ("slopmop.cli.validate", "cmd_scour"),
     "cmd_status": ("slopmop.cli.status", "cmd_status"),
     "cmd_swab": ("slopmop.cli.validate", "cmd_swab"),
@@ -69,6 +73,7 @@ __all__ = [
     "cmd_agent",
     "cmd_audit",
     "cmd_barnacle",
+    "cmd_capabilities",
     "cmd_captain",
     "cmd_commit_hooks",
     "cmd_config",
@@ -79,6 +84,7 @@ __all__ = [
     "cmd_gang",
     "cmd_refit",
     "cmd_sail",
+    "cmd_schema",
     "cmd_scour",
     "cmd_status",
     "cmd_swab",

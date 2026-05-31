@@ -116,6 +116,7 @@ exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 "slopmop.data" = ["git_wrapper.sh"]
+"slopmop.schemas.v3" = ["*.json", "data/*.json"]
 "slopmop.agent_install" = [
     "templates/_shared/*",
     "templates/aider/*",

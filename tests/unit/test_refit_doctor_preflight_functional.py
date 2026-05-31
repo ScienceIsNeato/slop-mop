@@ -85,7 +85,7 @@ class TestDoctorPreflightFunctional:
         exit_code = refit_mod.cmd_refit(args)
 
         assert exit_code == 1
-        payload = json.loads(capsys.readouterr().out)
+        payload = json.loads(capsys.readouterr().out)["data"]
         assert payload["event"] == "preflight_doctor_failed"
         assert payload["status"] == "preflight_doctor_failed"
         assert "state.lock" in payload["details"]["doctor_detail"]

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/buff.json",
+  "title": "sm buff data payload",
+  "description": "Post-PR CI triage result from `sm buff inspect`. Carries the code-scanning summary, the remediation-ordered actionable rows, hard failures, PR-resolution trace, and PR-feedback state. The nested payload keeps its own ci-triage sub-schema stamp; additional keys (run_id, artifact_json, ci_state, first_to_fix, scan_unavailable) appear depending on whether the scan artifact was available.",
+  "type": "object",
+  "required": [
+    "source",
+    "summary",
+    "actionable",
+    "hard_failures",
+    "next_steps",
+    "pr_resolution",
+    "pr_feedback"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema": {
+      "description": "Version stamp of the nested CI-triage sub-document.",
+      "type": "string"
+    },
+    "source": {"type": "string"},
+    "run_id": {"type": ["integer", "null"]},
+    "pr_number": {"type": ["integer", "null"]},
+    "artifact_json": {"type": "string"},
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "failed": {"type": "integer"},
+        "errors": {"type": "integer"},
+        "warned": {"type": "integer"},
+        "all_passed": {"type": ["boolean", "null"]}
+      }
+    },
+    "actionable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["status", "gate", "detail"],
+        "additionalProperties": true,
+        "properties": {
+          "status": {"type": "string"},
+          "gate": {"type": "string"},
+          "detail": {"type": "string"},
+          "output": {"type": "string"}
+        }
+      }
+    },
+    "hard_failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["status", "gate", "error"],
+        "additionalProperties": true,
+        "properties": {
+          "status": {"type": "string"},
+          "gate": {"type": "string"},
+          "error": {"type": "string"}
+        }
+      }
+    },
+    "lowest_coverage": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "next_steps": {
+      "description": "Human-readable triage guidance lines (distinct from the envelope's structured next_steps).",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "first_to_fix": {
+      "type": "object",
+      "required": ["gate", "detail"],
+      "additionalProperties": true,
+      "properties": {
+        "gate": {"type": "string"},
+        "detail": {"type": "string"}
+      }
+    },
+    "scan_unavailable": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "error": {"type": "string"}
+      }
+    },
+    "pr_resolution": {
+      "type": "object",
+      "required": ["source", "pr_number", "repo"],
+      "additionalProperties": true,
+      "properties": {
+        "source": {"type": "string"},
+        "pr_number": {"type": "integer"},
+        "requested_pr_number": {"type": ["integer", "null"]},
+        "repo": {"type": "string"},
+        "reason": {"type": "string"}
+      }
+    },
+    "pr_feedback": {
+      "type": "object",
+      "required": ["gate", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "gate": {"type": "string"},
+        "status": {"type": "string"},
+        "status_detail": {"type": ["string", "null"]},
+        "error": {"type": ["string", "null"]},
+        "fix_suggestion": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

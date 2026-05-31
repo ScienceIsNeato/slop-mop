@@ -20,7 +20,7 @@ import pytest
 from slopmop.cli.doctor import (
     _exit_code,
     _format_human,
-    _format_json,
+    _health_data,
     _validate_patterns,
     cmd_doctor,
 )
@@ -298,11 +298,12 @@ class TestFormatHuman:
         assert "✓ state.lock" in out
 
 
-class TestFormatJson:
-    def test_roundtrips(self):
-        payload = json.loads(_format_json(_sample_results()))
+class TestHealthData:
+    def test_payload_shape(self):
+        payload = _health_data(_sample_results())
         assert payload["summary"].startswith("1 FAIL")
-        assert payload["exit_code"] == 1
+        # exit_code rides the envelope now, not the data payload.
+        assert "exit_code" not in payload
         assert len(payload["checks"]) == 4
         assert all(
             c["status"] in ("ok", "warn", "fail", "skip") for c in payload["checks"]
@@ -310,10 +311,8 @@ class TestFormatJson:
 
     def test_includes_fixes_when_present(self):
         post = {"state.lock": DoctorResult("state.lock", DoctorStatus.OK, "removed")}
-        payload = json.loads(_format_json(_sample_results(), post))
+        payload = _health_data(_sample_results(), post)
         assert payload["fixes"]["state.lock"]["status"] == "ok"
-        # Exit code drops to 0 because the only FAIL was fixed.
-        assert payload["exit_code"] == 0
 
 
 class TestExitCode:
@@ -374,9 +373,11 @@ class TestCmdDoctor:
 
     def test_json_output_parses(self, capsys, tmp_path):
         rc = cmd_doctor(_doctor_args(json_output=True, project_root=str(tmp_path)))
-        payload = json.loads(capsys.readouterr().out)
-        assert "summary" in payload
-        assert "checks" in payload
+        envelope = json.loads(capsys.readouterr().out)
+        assert envelope["schema"] == "slopmop/v3"
+        assert envelope["command"] == "doctor"
+        assert "summary" in envelope["data"]
+        assert "checks" in envelope["data"]
         assert isinstance(rc, int)
 
     def test_check_subset_runs_only_selected(self, capsys, tmp_path):
@@ -387,8 +388,8 @@ class TestCmdDoctor:
                 project_root=str(tmp_path),
             )
         )
-        payload = json.loads(capsys.readouterr().out)
-        assert [c["name"] for c in payload["checks"]] == ["runtime.platform"]
+        envelope = json.loads(capsys.readouterr().out)
+        assert [c["name"] for c in envelope["data"]["checks"]] == ["runtime.platform"]
         assert rc == 0
 
     def test_unknown_check_exits_nonzero(self, tmp_path):
@@ -410,12 +411,12 @@ class TestCmdDoctor:
                 project_root=str(tmp_path),
             )
         )
-        payload = json.loads(capsys.readouterr().out)
+        envelope = json.loads(capsys.readouterr().out)
         assert rc == 0
         # File preserved (inode kept for flock safety), metadata cleared
         assert lock_file.exists()
         assert json.loads(lock_file.read_text()) == {}
-        assert payload["fixes"]["state.lock"]["status"] == "ok"
+        assert envelope["data"]["fixes"]["state.lock"]["status"] == "ok"
 
     def test_fix_aborts_on_no(self, capsys, tmp_path, monkeypatch):
         """Interactive --fix prompt: 'n' → nothing touched, report still printed."""
@@ -477,9 +478,9 @@ class TestCmdDoctor:
                 project_root=str(tmp_path),
             )
         )
-        payload = json.loads(capsys.readouterr().out)
+        envelope = json.loads(capsys.readouterr().out)
         assert rc == 0
-        assert "fixes" not in payload
+        assert "fixes" not in envelope["data"]
 
     def test_non_tty_auto_enables_json(self, capsys, tmp_path, monkeypatch):
         monkeypatch.setattr("sys.stdout.isatty", lambda: False)

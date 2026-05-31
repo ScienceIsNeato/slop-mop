@@ -48,7 +48,9 @@ from slopmop.cli.parser_builders import (
     AgentParserBuilder,
     BarnacleParserBuilder,
     BuffParserBuilder,
+    CapabilitiesParserBuilder,
     RefitParserBuilder,
+    SchemaParserBuilder,
 )
 from slopmop.constants import PROJECT_ROOT_HELP
 from slopmop.utils import as_str_list, dedupe_str_list
@@ -1079,6 +1081,8 @@ def create_parser() -> argparse.ArgumentParser:
     _add_hooks_parser(subparsers)
     _add_gang_parser(subparsers)
     _add_audit_parser(subparsers)
+    SchemaParserBuilder(subparsers).build()
+    CapabilitiesParserBuilder(subparsers).build()
 
     parser.add_argument(
         "--no-tty",
@@ -1101,6 +1105,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_audit,
         cmd_barnacle,
         cmd_buff,
+        cmd_capabilities,
         cmd_captain,
         cmd_commit_hooks,
         cmd_config,
@@ -1110,6 +1115,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_init,
         cmd_refit,
         cmd_sail,
+        cmd_schema,
         cmd_scour,
         cmd_status,
         cmd_swab,
@@ -1122,6 +1128,23 @@ def main(args: Optional[List[str]] = None) -> int:
     no_tty = "--no-tty" in raw
     if no_tty:
         raw = [a for a in raw if a != "--no-tty"]
+
+    # --describe is a universal flag: `sm <verb> --describe` prints that
+    # verb's full output schema (the envelope with its data slot resolved)
+    # without running it, and bare `sm --describe` prints the envelope
+    # schema. Strip it before argparse so per-verb subparsers don't need
+    # to declare it, then route to the schema logic after we know the verb.
+    describe = "--describe" in raw
+    if describe:
+        raw = [a for a in raw if a != "--describe"]
+
+    if describe:
+        # Resolve the verb without a full parse: some subparsers declare
+        # required arguments (e.g. refit's mode group), and `--describe`
+        # must work without satisfying them. The verb is the first
+        # non-flag token; bare `sm --describe` yields None (envelope schema).
+        verb = next((tok for tok in raw if not tok.startswith("-")), None)
+        return cmd_schema(argparse.Namespace(schema_verb=verb))
 
     parser = create_parser()
     parsed_args = parser.parse_args(raw)
@@ -1157,6 +1180,8 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_sail=cmd_sail,
             cmd_refit=cmd_refit,
             cmd_status=cmd_status,
+            cmd_schema=cmd_schema,
+            cmd_capabilities=cmd_capabilities,
             cmd_doctor=cmd_doctor,
             cmd_config=cmd_config,
             cmd_help=cmd_help,
@@ -1196,6 +1221,10 @@ def _dispatch(
         return handlers["cmd_refit"](parsed_args)
     elif parsed_args.verb == "status":
         return handlers["cmd_status"](parsed_args)
+    elif parsed_args.verb == "schema":
+        return handlers["cmd_schema"](parsed_args)
+    elif parsed_args.verb == "capabilities":
+        return handlers["cmd_capabilities"](parsed_args)
     elif parsed_args.verb == "doctor":
         return handlers["cmd_doctor"](parsed_args)
     elif parsed_args.verb == "config":

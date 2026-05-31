@@ -22,6 +22,7 @@ def cmd_refit_skip(args: argparse.Namespace, project_root: Path) -> int:
             status="blocked_on_phase",
             next_action=_refit._MAINTENANCE_NEXT_ACTION,
             human_lines=["Refit is only available in remediation phase."],
+            exit_code=1,
         )
         return 1
 
@@ -71,6 +72,7 @@ def cmd_refit_skip(args: argparse.Namespace, project_root: Path) -> int:
             project_root,
             protocol,
             [f"Refit blocked: {exc}"],
+            exit_code=1,
         )
         return 1
 

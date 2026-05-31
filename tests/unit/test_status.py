@@ -757,8 +757,10 @@ class TestLatestGateResults:
         last_scour.write_text(
             json.dumps(
                 {
-                    "passed_gates": ["myopia:dependency-risk.py"],
-                    "results": [],
+                    "data": {
+                        "passed_gates": ["myopia:dependency-risk.py"],
+                        "results": [],
+                    }
                 }
             )
         )
@@ -767,8 +769,10 @@ class TestLatestGateResults:
         last_swab.write_text(
             json.dumps(
                 {
-                    "passed_gates": ["overconfidence:untested-code.py"],
-                    "results": [],
+                    "data": {
+                        "passed_gates": ["overconfidence:untested-code.py"],
+                        "results": [],
+                    }
                 }
             )
         )

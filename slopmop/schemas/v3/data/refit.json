@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/refit.json",
+  "title": "sm refit data payload",
+  "description": "Refit protocol state record emitted by every `sm refit` mode (--start/--iterate/--skip/--finish). Carries the event name, current status, and the next action a consumer should take. Standalone events (preflight/blocker/lifecycle) emit only the shared keys; plan-snapshot events additionally carry branch/HEAD/index/gate and a current_item view of the active gate. The nested `schema` key stamps the refit protocol sub-document version (distinct from the envelope's schema). The envelope's exit_code reflects the true process exit (0 advance/success, 1 blocked/error).",
+  "type": "object",
+  "required": [
+    "schema",
+    "recorded_at",
+    "event",
+    "status",
+    "project_root",
+    "next_action"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema": {
+      "description": "Version stamp of the refit protocol sub-document.",
+      "type": "string"
+    },
+    "recorded_at": {"type": "string"},
+    "event": {"type": "string"},
+    "status": {"type": ["string", "null"]},
+    "project_root": {"type": ["string", "null"]},
+    "next_action": {"type": "string"},
+    "protocol_file": {"type": "string"},
+    "branch": {"type": ["string", "null"]},
+    "expected_head": {"type": ["string", "null"]},
+    "current_index": {"type": "integer"},
+    "current_gate": {"type": ["string", "null"]},
+    "plan_file": {"type": "string"},
+    "summary_file": {"type": "string"},
+    "precheck_file": {"type": ["string", "null"]},
+    "current_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "id": {"type": ["string", "integer", "null"]},
+        "gate": {"type": ["string", "null"]},
+        "status": {"type": ["string", "null"]},
+        "verify_command": {"type": ["string", "null"]},
+        "commit_message": {"type": ["string", "null"]},
+        "attempt_count": {"type": ["integer", "null"]},
+        "last_artifact": {"type": ["string", "null"]}
+      }
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

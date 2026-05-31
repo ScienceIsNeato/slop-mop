@@ -32,7 +32,10 @@ class TestCmdRefitContinue:
         )
 
         assert refit_mod.cmd_refit(args) == 1
-        payload = json.loads(capsys.readouterr().out)
+        envelope = json.loads(capsys.readouterr().out)
+        assert envelope["command"] == "refit"
+        assert envelope["exit_code"] == 1
+        payload = envelope["data"]
         assert payload["event"] == "missing_plan"
         assert payload["status"] == "missing_plan"
 
@@ -332,7 +335,7 @@ class TestCmdRefitContinue:
         monkeypatch.setattr(iterate_cmd_mod, "sm_lock", _fake_lock)
 
         assert refit_mod.cmd_refit(args) == 1
-        payload = json.loads(capsys.readouterr().out)
+        payload = json.loads(capsys.readouterr().out)["data"]
         assert payload["event"] == "blocked_on_failure"
         assert payload["current_gate"] == "laziness:repeated-code"
         assert (

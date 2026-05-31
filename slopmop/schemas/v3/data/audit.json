@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/audit.json",
+  "title": "sm audit data payload",
+  "description": "Read-only codebase health snapshot: git analytics (contributors, churn, bug clusters, risk, velocity, firefighting) and a gate inventory. Both blocks are optional — they are omitted when their --no-git/--no-gates flag is set.",
+  "type": "object",
+  "required": ["generated_at", "project_root"],
+  "additionalProperties": false,
+  "properties": {
+    "generated_at": {
+      "description": "UTC timestamp the snapshot was produced (ISO-8601, Z-suffixed).",
+      "type": "string"
+    },
+    "project_root": {
+      "description": "Absolute path of the audited repository root.",
+      "type": "string"
+    },
+    "git": {"$ref": "#/$defs/git"},
+    "gates": {
+      "description": "Gate inventory — the same payload `sm scour --format json` puts under data (summary/results/...). Open object; fetch the scour data schema with `sm schema scour` for its shape.",
+      "type": ["object", "null"]
+    }
+  },
+  "$defs": {
+    "git": {
+      "type": "object",
+      "required": [
+        "contributors_all_time",
+        "contributors_recent_6mo",
+        "churn_hotspots",
+        "bug_clusters",
+        "high_risk_files",
+        "velocity_by_month",
+        "firefighting"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "contributors_all_time": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/contributor"}
+        },
+        "contributors_recent_6mo": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/contributor"}
+        },
+        "churn_hotspots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["changes", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "changes": {"type": "integer"},
+              "path": {"type": "string"}
+            }
+          }
+        },
+        "bug_clusters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["bug_commits", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "bug_commits": {"type": "integer"},
+              "path": {"type": "string"}
+            }
+          }
+        },
+        "high_risk_files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "churn", "bug_commits"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {"type": "string"},
+              "churn": {"type": "integer"},
+              "bug_commits": {"type": "integer"}
+            }
+          }
+        },
+        "velocity_by_month": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["month", "commits"],
+            "additionalProperties": false,
+            "properties": {
+              "month": {"type": "string"},
+              "commits": {"type": "integer"}
+            }
+          }
+        },
+        "firefighting": {
+          "description": "Commit subjects suggesting reactive firefighting (reverts, hotfixes).",
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "contributor": {
+      "type": "object",
+      "required": ["commits", "author"],
+      "additionalProperties": false,
+      "properties": {
+        "commits": {"type": "integer"},
+        "author": {"type": "string"}
+      }
+    }
+  }
+}

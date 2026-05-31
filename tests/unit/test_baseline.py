@@ -24,8 +24,8 @@ class TestGenerateBaselineSnapshot:
         sm_dir.mkdir()
         swab = sm_dir / "last_swab.json"
         scour = sm_dir / "last_scour.json"
-        swab.write_text(json.dumps({"level": "swab", "results": []}))
-        scour.write_text(json.dumps({"level": "scour", "results": []}))
+        swab.write_text(json.dumps({"data": {"level": "swab", "results": []}}))
+        scour.write_text(json.dumps({"data": {"level": "scour", "results": []}}))
         scour.touch()
 
         snapshot_path, source_path = generate_baseline_snapshot(tmp_path)
@@ -44,23 +44,25 @@ class TestFilterSummaryAgainstBaseline:
         artifact.write_text(
             json.dumps(
                 {
-                    "level": "swab",
-                    "results": [
-                        {
-                            "name": "myopia:string-duplication.py",
-                            "status": "failed",
-                            "duration": 0.1,
-                            "findings": [
-                                {
-                                    "message": "duplicate string",
-                                    "level": "warning",
-                                    "file": "app.py",
-                                    "line": 10,
-                                    "rule_id": "dup-str",
-                                }
-                            ],
-                        }
-                    ],
+                    "data": {
+                        "level": "swab",
+                        "results": [
+                            {
+                                "name": "myopia:string-duplication.py",
+                                "status": "failed",
+                                "duration": 0.1,
+                                "findings": [
+                                    {
+                                        "message": "duplicate string",
+                                        "level": "warning",
+                                        "file": "app.py",
+                                        "line": 10,
+                                        "rule_id": "dup-str",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
                 }
             )
         )
@@ -101,23 +103,25 @@ class TestFilterSummaryAgainstBaseline:
         artifact.write_text(
             json.dumps(
                 {
-                    "level": "swab",
-                    "results": [
-                        {
-                            "name": "overconfidence:type-blindness.py",
-                            "status": "failed",
-                            "duration": 0.1,
-                            "findings": [
-                                {
-                                    "message": "known issue",
-                                    "level": "error",
-                                    "file": "app.py",
-                                    "line": 5,
-                                    "rule_id": "known",
-                                }
-                            ],
-                        }
-                    ],
+                    "data": {
+                        "level": "swab",
+                        "results": [
+                            {
+                                "name": "overconfidence:type-blindness.py",
+                                "status": "failed",
+                                "duration": 0.1,
+                                "findings": [
+                                    {
+                                        "message": "known issue",
+                                        "level": "error",
+                                        "file": "app.py",
+                                        "line": 5,
+                                        "rule_id": "known",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
                 }
             )
         )

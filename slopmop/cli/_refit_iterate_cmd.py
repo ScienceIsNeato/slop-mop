@@ -71,6 +71,7 @@ def run_iterate(args: argparse.Namespace) -> int:
                 "Refit is only available while the repo is in remediation phase. "
                 "Run the normal swab/scour/buff workflow for maintenance repos."
             ],
+            exit_code=1,
         )
         return 1
 
@@ -124,5 +125,6 @@ def run_iterate(args: argparse.Namespace) -> int:
             project_root,
             protocol,
             [f"Refit blocked: {exc}"],
+            exit_code=1,
         )
         return 1

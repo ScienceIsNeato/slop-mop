@@ -198,7 +198,7 @@ class TestCmdRefitGeneratePlan:
         args = self._start_args(tmp_path, json_output=True)
 
         assert refit_mod.cmd_refit(args) == 1
-        payload = json.loads(capsys.readouterr().out)
+        payload = json.loads(capsys.readouterr().out)["data"]
         assert payload["event"] == "preflight_missing_init"
         assert payload["status"] == "preflight_missing_init"
 
@@ -232,7 +232,7 @@ class TestCmdRefitGeneratePlan:
         )
 
         assert refit_mod.cmd_refit(args) == 1
-        payload = json.loads(capsys.readouterr().out)
+        payload = json.loads(capsys.readouterr().out)["data"]
         assert payload["event"] == "preflight_doctor_failed"
         assert payload["status"] == "preflight_doctor_failed"
         assert "tool inventory missing" in payload["details"]["doctor_detail"]
@@ -361,7 +361,7 @@ class TestCmdRefitGeneratePlan:
         monkeypatch.setattr(refit_mod, "write_json_out", Mock())
 
         assert refit_mod.cmd_refit(args) == 0
-        payload = json.loads(capsys.readouterr().out)
+        payload = json.loads(capsys.readouterr().out)["data"]
         assert payload["event"] == "plan_generated"
         assert payload["current_gate"] == "laziness:repeated-code"
 

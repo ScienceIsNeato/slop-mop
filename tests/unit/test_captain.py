@@ -150,8 +150,13 @@ def test_valid_summons_json_output(tmp_path, capsys):
     )
     captured = capsys.readouterr()
     assert code == EXIT_SUMMONED
-    payload = json.loads(captured.out)
-    assert payload["schema"] == SCHEMA_VERSION
+    envelope = json.loads(captured.out)
+    assert envelope["schema"] == "slopmop/v3"
+    assert envelope["command"] == "wake-angry-drunk-captain"
+    assert envelope["status"] == "info"
+    assert envelope["exit_code"] == EXIT_SUMMONED
+    payload = envelope["data"]
+    assert "schema" not in payload
     assert payload["objective"] == "ship the captain verb"
     assert payload["verbs_tried"] == ["sm swab — green", "sm scour — green"]
     assert payload["orders"] == ["approved"]

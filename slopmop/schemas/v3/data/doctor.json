@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/doctor.json",
+  "title": "sm doctor data payload",
+  "description": "Environment health diagnosis. Two shapes selected by mode: the default health-check payload (per-check results plus optional --fix outcomes), or the --gates tree (quality gates grouped by level with their required tools). The agent knows which by the flag it passed.",
+  "oneOf": [
+    {"$ref": "#/$defs/health"},
+    {"$ref": "#/$defs/gates"}
+  ],
+  "$defs": {
+    "health": {
+      "type": "object",
+      "required": ["summary", "checks"],
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "description": "One-line tally of check outcomes.",
+          "type": "string"
+        },
+        "checks": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/check"}
+        },
+        "fixes": {
+          "description": "Post-fix re-run results, keyed by check name. Present only when --fix ran.",
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/check"}
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "required": ["swab", "scour"],
+      "additionalProperties": false,
+      "properties": {
+        "swab": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/gate"}
+        },
+        "scour": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/gate"}
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": ["name", "status", "summary", "can_fix"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "status": {"enum": ["ok", "warn", "fail", "skip"]},
+        "summary": {"type": "string"},
+        "detail": {"type": ["string", "null"]},
+        "fix_hint": {"type": ["string", "null"]},
+        "can_fix": {"type": "boolean"},
+        "data": {"type": "object"}
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["gate", "role", "tools"],
+      "additionalProperties": false,
+      "properties": {
+        "gate": {"type": "string", "minLength": 1},
+        "role": {"type": "string"},
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "ok"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string"},
+              "ok": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

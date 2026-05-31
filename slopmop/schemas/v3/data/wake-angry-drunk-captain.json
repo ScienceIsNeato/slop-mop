@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopmop.dev/schemas/v3/data/wake-angry-drunk-captain.json",
+  "title": "sm wake-angry-drunk-captain data payload",
+  "description": "Result of the last-resort human-escalation verb. Two shapes selected by outcome: a 'summons' once a human captain has typed orders (the loop halts and awaits them), or an 'unresolved' record when the verb refused (insufficient justification) or found no human at the wheel. The agent knows which by the envelope status and exit_code.",
+  "oneOf": [
+    {"$ref": "#/$defs/summons"},
+    {"$ref": "#/$defs/unresolved"}
+  ],
+  "$defs": {
+    "summons": {
+      "type": "object",
+      "required": [
+        "summoned_at",
+        "answered_at",
+        "branch",
+        "project_root",
+        "objective",
+        "verbs_tried",
+        "why_stuck",
+        "decision",
+        "options",
+        "orders",
+        "summons_file"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "summoned_at": {
+          "description": "When the captain was woken (ISO 8601).",
+          "type": "string"
+        },
+        "answered_at": {
+          "description": "When the human typed orders (ISO 8601), or null if unanswered.",
+          "type": ["string", "null"]
+        },
+        "branch": {"type": ["string", "null"]},
+        "project_root": {"type": "string"},
+        "objective": {
+          "description": "What the agent was trying to get done.",
+          "type": "string"
+        },
+        "verbs_tried": {
+          "description": "Verbs/steps already run and how each died.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "why_stuck": {
+          "description": "Why no remaining verb makes progress.",
+          "type": "string"
+        },
+        "decision": {
+          "description": "The single call only the human can make.",
+          "type": "string"
+        },
+        "options": {
+          "description": "Choices the agent laid out for the human.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "orders": {
+          "description": "The human's typed orders. Non-empty for a resolved summons.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "summons_file": {
+          "description": "Path to the markdown record of this summons.",
+          "type": "string"
+        }
+      }
+    },
+    "unresolved": {
+      "type": "object",
+      "required": ["outcome", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "description": "Why the summons did not resolve. 'refused' = insufficient justification (go back to the loop); 'no_captain' = no human at the wheel.",
+          "enum": ["refused", "no_captain"]
+        },
+        "reason": {
+          "description": "Human-readable explanation of the outcome.",
+          "type": "string"
+        },
+        "missing": {
+          "description": "Required justification fields left blank (refused only).",
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}

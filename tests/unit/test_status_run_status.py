@@ -56,16 +56,21 @@ class TestRunStatus:
         (sm_dir / "last_scour.json").write_text(
             json.dumps(
                 {
-                    "summary": {
-                        "passed": 1,
-                        "failed": 0,
-                        "warned": 0,
-                        "errors": 0,
-                        "skipped": 0,
+                    "schema": "slopmop/v3",
+                    "command": "scour",
+                    "status": "ok",
+                    "exit_code": 0,
+                    "data": {
+                        "summary": {
+                            "passed": 1,
+                            "failed": 0,
+                            "warned": 0,
+                            "errors": 0,
+                            "skipped": 0,
+                        },
+                        "passed_gates": ["myopia:dependency-risk.py"],
+                        "level": "scour",
                     },
-                    "passed_gates": ["myopia:dependency-risk.py"],
-                    "schema": "slopmop/v2",
-                    "level": "scour",
                 }
             )
         )
@@ -114,17 +119,22 @@ class TestRunStatus:
         (sm_dir / "last_swab.json").write_text(
             json.dumps(
                 {
-                    "schema": "slopmop/v2",
-                    "level": "swab",
-                    "summary": {"failed": 1},
-                    "results": [
-                        {
-                            "name": "laziness:dead-code.py",
-                            "status": "failed",
-                            "duration": 0.1,
-                            "output": "dead code found",
-                        }
-                    ],
+                    "schema": "slopmop/v3",
+                    "command": "swab",
+                    "status": "fail",
+                    "exit_code": 1,
+                    "data": {
+                        "level": "swab",
+                        "summary": {"failed": 1},
+                        "results": [
+                            {
+                                "name": "laziness:dead-code.py",
+                                "status": "failed",
+                                "duration": 0.1,
+                                "output": "dead code found",
+                            }
+                        ],
+                    },
                 }
             )
         )

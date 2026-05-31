@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from unittest.mock import Mock
 
 from slopmop.cli import buff as buff_mod
@@ -115,7 +116,12 @@ class TestBuffInspectCommand:
         )
 
         assert buff_mod.cmd_buff(args) == 0
-        assert '"schema": "slopmop/ci-triage/v1"' in capsys.readouterr().out
+        envelope = json.loads(capsys.readouterr().out)
+        assert envelope["schema"] == "slopmop/v3"
+        assert envelope["command"] == "buff"
+        assert envelope["status"] == "ok"
+        assert envelope["exit_code"] == 0
+        assert envelope["data"]["schema"] == "slopmop/ci-triage/v1"
 
     def test_cmd_buff_uses_pre_resolved_pr_number(self, monkeypatch):
         args = argparse.Namespace(

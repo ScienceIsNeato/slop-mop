@@ -41,6 +41,7 @@ from slopmop.doctor import (
     run_fixes,
     select_checks,
 )
+from slopmop.reporting.envelope import Status, build_envelope
 
 _GLYPH = {
     DoctorStatus.OK: "✓",
@@ -123,18 +124,22 @@ def _result_to_jsonable(r: DoctorResult) -> Dict[str, object]:
     return d
 
 
-def _format_json(
+def _health_data(
     results: List[DoctorResult],
     fixed: Dict[str, DoctorResult] | None = None,
-) -> str:
+) -> Dict[str, object]:
+    """Build the doctor health-check ``data`` payload.
+
+    The pass/fail verdict rides the envelope's ``exit_code``/``status``,
+    so it is intentionally absent here.
+    """
     payload: Dict[str, object] = {
         "summary": _counts_line(results),
-        "exit_code": _exit_code(results, fixed),
         "checks": [_result_to_jsonable(r) for r in results],
     }
     if fixed:
         payload["fixes"] = {k: _result_to_jsonable(v) for k, v in fixed.items()}
-    return json.dumps(payload, indent=2)
+    return payload
 
 
 def _exit_code(
@@ -202,7 +207,7 @@ def _print_gates_tree(project_root: Path, json_mode: bool = False) -> int:
             swab_gates.append(entry)
 
     if json_mode:
-        payload: dict[str, list[dict[str, object]]] = {
+        payload: dict[str, object] = {
             "swab": [
                 {"gate": g, "role": r, "tools": [{"name": t, "ok": ok} for t, ok in ts]}
                 for g, r, ts in swab_gates
@@ -212,7 +217,13 @@ def _print_gates_tree(project_root: Path, json_mode: bool = False) -> int:
                 for g, r, ts in scour_gates
             ],
         }
-        print(json.dumps(payload, indent=2))
+        envelope = build_envelope(
+            command="doctor",
+            status=Status.INFO,
+            exit_code=0,
+            data=payload,
+        )
+        print(json.dumps(envelope, indent=2))
         return 0
 
     def _format_group(
@@ -287,12 +298,19 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             if proceed:
                 fixed = run_fixes(ctx, results)
 
+    exit_code = _exit_code(results, fixed)
     if json_mode:
-        print(_format_json(results, fixed))
+        envelope = build_envelope(
+            command="doctor",
+            status=Status.OK if exit_code == 0 else Status.FAIL,
+            exit_code=exit_code,
+            data=_health_data(results, fixed),
+        )
+        print(json.dumps(envelope, indent=2))
     else:
         print(_format_human(results, fixed), end="")
 
-    return _exit_code(results, fixed)
+    return exit_code
 
 
 def run_doctor(args: argparse.Namespace) -> int:  # pragma: no cover — alias
