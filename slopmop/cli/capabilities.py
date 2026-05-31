@@ -103,8 +103,9 @@ _VERB_CATALOG: List[Dict[str, object]] = [
         "group": "escalation",
         "formats": ["human", "json"],
         "exit_codes": {
-            "0": "summons accepted",
+            "1": "summons answered — orders received, loop paused",
             "2": "justification insufficient — standing order read back",
+            "3": "no human at an interactive terminal — re-run where one can answer",
         },
     },
     {

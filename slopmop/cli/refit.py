@@ -327,9 +327,12 @@ def _emit_protocol(
     # The persisted protocol file keeps refit's bare internal state, but the
     # user-facing --output mirror gets the same v3 envelope as stdout so a
     # pipeline capturing the file sees the documented contract.
+    # Successful advisory output is INFO; a non-zero exit means remediation
+    # work remains, so the envelope status must signal FAIL rather than INFO
+    # (which parsers treat as non-blocking) to agree with the exit code.
     envelope = build_envelope(
         command="refit",
-        status=Status.INFO,
+        status=Status.INFO if exit_code == 0 else Status.FAIL,
         exit_code=exit_code,
         data=protocol,
     )

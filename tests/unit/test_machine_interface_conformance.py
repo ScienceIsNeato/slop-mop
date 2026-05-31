@@ -530,6 +530,54 @@ def test_buff_output_conforms_to_schema(
     assert not errors, [e.message for e in errors]
 
 
+def test_buff_status_output_conforms_to_schema(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # `sm buff status --json` emits the status branch of the buff data
+    # oneOf, a different shape from the inspect/triage payload above. Drive
+    # it with the network mocked so a real envelope is produced.
+    from unittest.mock import Mock
+
+    from slopmop.cli import _buff_status as status_mod
+    from slopmop.core.result import CheckStatus
+    from tests.conftest import make_feedback_result
+
+    monkeypatch.setattr(
+        status_mod, "_project_root_from_cwd", Mock(return_value="/repo")
+    )
+    monkeypatch.setattr(status_mod, "_get_repo_slug", Mock(return_value="o/r"))
+    monkeypatch.setattr(
+        status_mod,
+        "resolve_pr_number_with_source",
+        Mock(return_value=(84, "explicit")),
+    )
+    monkeypatch.setattr(status_mod, "_fire_buff_hook", Mock())
+    monkeypatch.setattr(
+        status_mod,
+        "_fetch_checks",
+        Mock(return_value=([{"name": "CI", "bucket": "pass"}], None)),
+    )
+    monkeypatch.setattr(
+        status_mod,
+        "_run_pr_feedback_gate",
+        Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
+    )
+
+    assert status_mod.cmd_buff_status(84, False, 30, json_output=True) == 0
+    envelope = json.loads(capsys.readouterr().out)
+    assert envelope["command"] == "buff"
+    assert envelope["data"]["overall_state"] == "clean"
+
+    data_schema = load_data_schema("buff")
+    assert data_schema is not None
+    composed = _compose_output_schema("buff", data_schema)
+
+    jsonschema = pytest.importorskip("jsonschema")
+    errors = list(jsonschema.Draft202012Validator(composed).iter_errors(envelope))
+    assert not errors, [e.message for e in errors]
+
+
 def test_buff_describe_emits_output_schema(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -559,7 +607,9 @@ def test_refit_output_conforms_to_schema(
     assert rc == 1
     envelope = json.loads(capsys.readouterr().out)
     assert envelope["command"] == "refit"
-    assert envelope["status"] == "info"
+    # A non-zero exit must not be reported as INFO (which parsers treat as
+    # non-blocking) — a blocked outcome is FAIL.
+    assert envelope["status"] == "fail"
     assert envelope["exit_code"] == 1
     assert envelope["data"]["event"] == "missing_plan"
 
