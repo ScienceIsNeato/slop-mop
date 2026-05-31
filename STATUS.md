@@ -1,5 +1,42 @@
 # Project Status
 
+## 2026-05-30 Delta: make PR-open flow watch CI before reporting
+
+Branch: `feat/captain-verb` (PR #236 open)
+
+**Work completed:**
+- Updated the workflow state machine so `PR_OPEN` now points to
+  `sm buff watch <PR#>` as the default next action.
+- Updated sail/state wording to match: watch first, then inspect.
+- Updated the public loop in README so post-PR behavior is explicit:
+  `... -> sm buff watch -> sm buff`.
+- Regenerated workflow docs so the state table + Mermaid diagram both
+  show watch-first behavior.
+
+**Validation:**
+- `python -m pytest tests/unit/test_state_machine.py -q` ✅ (47 passed)
+- `./sm swab --no-tty --output-file .slopmop/last_swab.json` ✅
+
+## 2026-05-30 Delta: dial back gang CI overreach
+
+Branch: `feat/captain-verb` (PR #234 merged; follow-up branch pushed, no new PR yet)
+
+**Work completed:**
+- Dialed back `sm gang` CI command interception policy, then restored the
+  `gh run watch` block so watch-mode stays on the `sm buff watch` rail while
+  raw `gh run list/view` remains available for investigation.
+- Reworked intercept messaging from generic "file a barnacle and wait" to
+  explanatory guidance: each block now prints `Why:` + `Use:` + `sm gang list`
+  map hint.
+- Updated agent guidance templates (`_shared/core.md`, cursor skill `sm-buff`)
+  to make `sm buff` the preferred first pass while explicitly allowing raw
+  `gh run list/view` forensics when needed and keeping `gh run watch` on the
+  buff rail.
+- Updated gang unit tests for the new policy and message format.
+
+**Validation:**
+- `python -m pytest tests/unit/test_gang.py -q` ✅ (51 passed)
+- `./sm swab --no-tty --output-file .slopmop/last_swab.json` ✅
 ## 2026-05-29 Delta: wake-angry-drunk-captain escalation verb
 
 Branch: `feat/captain-verb` (pushed; PR #234 open)

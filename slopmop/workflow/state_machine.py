@@ -23,7 +23,7 @@ from enum import Enum
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from slopmop.constants import (
-    ACTION_BUFF_INSPECT,
+    ACTION_BUFF_WATCH,
     ACTION_FIX_AND_SWAB,
     ACTION_GIT_COMMIT,
 )
@@ -107,7 +107,7 @@ class WorkflowState(str, Enum):
 
     PR_OPEN = "pr_open"
     """PR is open.  Waiting for CI to finish and/or review feedback.
-    Next: run ``sm buff inspect`` to triage results."""
+    Next: run ``sm buff watch`` to wait for CI, then triage results."""
 
     BUFF_FAILING = "buff_failing"
     """Buff found issues (CI failures or unresolved review threads).
@@ -159,7 +159,7 @@ _STATE_NEXT_ACTIONS: Dict[WorkflowState, str] = {
     WorkflowState.SWAB_CLEAN: "git commit",
     WorkflowState.SCOUR_FAILING: ACTION_FIX_AND_SWAB,
     WorkflowState.SCOUR_CLEAN: "git push, then open or update PR",
-    WorkflowState.PR_OPEN: "run sm buff status, then sm buff inspect",
+    WorkflowState.PR_OPEN: ACTION_BUFF_WATCH,
     WorkflowState.BUFF_FAILING: ACTION_FIX_AND_SWAB,
     WorkflowState.PR_READY: "run sm buff finalize --push",
 }
@@ -171,7 +171,7 @@ _STATE_DISPLAY_LABELS: Dict[WorkflowState, str] = {
     WorkflowState.SWAB_CLEAN: "Swab passed",
     WorkflowState.SCOUR_FAILING: "Scour failed \u2014 fix and re-swab",
     WorkflowState.SCOUR_CLEAN: "Scour passed",
-    WorkflowState.PR_OPEN: "PR open \u2014 awaiting CI/review",
+    WorkflowState.PR_OPEN: "PR open \u2014 watch CI first, then inspect",
     WorkflowState.BUFF_FAILING: "Buff found issues \u2014 fix and re-swab",
     WorkflowState.PR_READY: "PR ready to land",
 }
@@ -357,9 +357,9 @@ TRANSITIONS: List[Transition] = [
         from_state=WorkflowState.SCOUR_CLEAN,
         event=WorkflowEvent.PR_OPENED,
         to_state=WorkflowState.PR_OPEN,
-        next_action=ACTION_BUFF_INSPECT,
+        next_action=ACTION_BUFF_WATCH,
         label="PR opened/updated",
-        description="PR is live — triage CI and review feedback with buff.",
+        description="PR is live — watch CI first, then triage review feedback with buff.",
     ),
     # ── Buff ───────────────────────────────────────────────────────────────
     Transition(
@@ -383,9 +383,9 @@ TRANSITIONS: List[Transition] = [
         from_state=WorkflowState.PR_READY,
         event=WorkflowEvent.PR_OPENED,
         to_state=WorkflowState.PR_OPEN,
-        next_action=ACTION_BUFF_INSPECT,
+        next_action=ACTION_BUFF_WATCH,
         label="final push",
-        description="Re-enter PR_OPEN after the final push to confirm CI is still green.",
+        description="Re-enter PR_OPEN after the final push to watch CI and confirm it stays green.",
     ),
 ]
 

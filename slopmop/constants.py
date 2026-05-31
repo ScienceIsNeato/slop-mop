@@ -43,6 +43,7 @@ NOT_A_GIT_REPO = "Not a git repository"
 
 # Workflow action strings shared between the state machine and checks
 ACTION_FIX_AND_SWAB = "fix the reported findings, re-run sm swab"
+ACTION_BUFF_WATCH = "sm buff watch <PR#>"
 ACTION_BUFF_INSPECT = "sm buff inspect"
 ACTION_GIT_COMMIT = "git commit your changes"
 

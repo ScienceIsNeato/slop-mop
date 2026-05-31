@@ -21,7 +21,7 @@ stateDiagram-v2
     state "(S4) Scour failed — fix and re-swab<br/>Next: fix the reported findings, re-run sm swab" as scour_failing
     state "(S7) Buff found issues — fix and re-swab<br/>Next: fix the reported findings, re-run sm swab" as buff_failing
     state "(S5) Scour passed<br/>Next: git push, then open or update PR" as scour_clean
-    state "(S6) PR open — awaiting CI/review<br/>Next: run sm buff status, then sm buff inspect" as pr_open
+    state "(S6) PR open — watch CI first, then inspect<br/>Next: sm buff watch <PR#>" as pr_open
     state "(S8) PR ready to land<br/>Next: run sm buff finalize --push" as pr_ready
 
     state swab_check <<choice>>
@@ -65,7 +65,7 @@ stateDiagram-v2
 | S3 | `swab_clean` | Swab passed | git commit |
 | S4 | `scour_failing` | Scour failed — fix and re-swab | fix the reported findings, re-run sm swab |
 | S5 | `scour_clean` | Scour passed | git push, then open or update PR |
-| S6 | `pr_open` | PR open — awaiting CI/review | run sm buff status, then sm buff inspect |
+| S6 | `pr_open` | PR open — watch CI first, then inspect | sm buff watch <PR#> |
 | S7 | `buff_failing` | Buff found issues — fix and re-swab | fix the reported findings, re-run sm swab |
 | S8 | `pr_ready` | PR ready to land | run sm buff finalize --push |
 
@@ -86,10 +86,10 @@ stateDiagram-v2
 | `swab\_clean` | `git\_committed` | `idle` | continue coding, or run sm scour when feature is complete |
 | `idle` | `scour\_passed` | `scour\_clean` | git push && open or update PR |
 | `idle` | `scour\_failed` | `scour\_failing` | fix the reported findings, re-run sm swab |
-| `scour\_clean` | `pr\_opened` | `pr\_open` | sm buff inspect |
+| `scour\_clean` | `pr\_opened` | `pr\_open` | sm buff watch <PR#> |
 | `pr\_open` | `buff\_has\_issues` | `buff\_failing` | fix the reported findings, re-run sm swab |
 | `pr\_open` | `buff\_all\_green` | `pr\_ready` | sm buff finalize --push |
-| `pr\_ready` | `pr\_opened` | `pr\_open` | sm buff inspect |
+| `pr\_ready` | `pr\_opened` | `pr\_open` | sm buff watch <PR#> |
 
 ---
 
