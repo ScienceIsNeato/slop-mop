@@ -160,3 +160,75 @@ def test_catalog_groups_are_in_the_known_vocabulary() -> None:
     }
     for verb in _VERB_CATALOG:
         assert verb["group"] in allowed
+
+
+def _output_dests(parser: argparse.ArgumentParser) -> set[str]:
+    """Collect every action ``dest`` reachable from a verb's subparser.
+
+    Recurses into nested subcommands (e.g. ``barnacle file``,
+    ``config set``) so an output flag declared one level down still
+    counts as the verb supporting that format.
+    """
+    dests: set[str] = set()
+    for action in parser._actions:  # type: ignore[attr-defined]
+        dests.add(action.dest)
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                dests |= _output_dests(child)
+    return dests
+
+
+def _verb_subparsers() -> dict[str, argparse.ArgumentParser]:
+    parser = sm.create_parser()
+    subparsers_action = next(
+        a
+        for a in parser._actions  # type: ignore[attr-defined]
+        if isinstance(a, argparse._SubParsersAction)
+    )
+    return dict(subparsers_action.choices)
+
+
+def test_catalog_formats_track_argparse_output_flags() -> None:
+    # The `formats` field is editorial, so it can silently drift from what
+    # a verb actually offers. Pin it to the canonical output-format flags
+    # (matched by argparse `dest`, not option string — `config --json` is
+    # an input flag with a different dest and must not count as JSON
+    # output). `--sarif`/`--porcelain` are opt-in only, so they're a clean
+    # biconditional; `--json` (dest=json_output) is a forward implication
+    # because json-only verbs (schema, capabilities) emit it with no flag.
+    known_formats = {"human", "json", "porcelain", "sarif"}
+    subparsers = _verb_subparsers()
+    for verb in _VERB_CATALOG:
+        name = verb["name"]
+        assert isinstance(name, str)
+        formats = verb["formats"]
+        assert isinstance(formats, list)
+        assert set(formats) <= known_formats, (name, formats)
+
+        dests = _output_dests(subparsers[name])
+        has_sarif = "sarif_output" in dests
+        has_porcelain = "porcelain" in dests
+        has_json = "json_output" in dests
+
+        assert ("sarif" in formats) == has_sarif, f"{name}: sarif flag/catalog drift"
+        assert (
+            "porcelain" in formats
+        ) == has_porcelain, f"{name}: porcelain flag/catalog drift"
+        if has_json:
+            assert "json" in formats, f"{name}: has --json flag but catalog omits json"
+
+
+def test_catalog_exit_codes_are_well_formed() -> None:
+    # exit_codes has no second source to diff against — this literal IS the
+    # truth — so guard its shape: each code is a small non-negative integer
+    # string mapped to a non-empty human description. Catches typos like
+    # "o" for "0" or an empty meaning sneaking in during an edit.
+    for verb in _VERB_CATALOG:
+        codes = verb["exit_codes"]
+        assert isinstance(codes, dict) and codes, verb["name"]
+        for code, meaning in codes.items():
+            assert code.isdigit(), f"{verb['name']}: non-numeric exit code {code!r}"
+            assert 0 <= int(code) <= 3, f"{verb['name']}: exit code {code} out of range"
+            assert (
+                isinstance(meaning, str) and meaning.strip()
+            ), f"{verb['name']}: empty meaning for exit code {code}"

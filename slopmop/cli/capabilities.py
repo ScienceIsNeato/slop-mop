@@ -31,6 +31,13 @@ from slopmop.reporting.envelope import (
 # the parser registration order. ``data_schema`` is resolved at runtime
 # from the packaged schemas so this list never claims a contract that
 # isn't shipped — see _verb_entries().
+#
+# Drift guards (tests/unit/test_capabilities.py): the verb *set* is
+# pinned to the parser (test_catalog_lists_every_registered_verb),
+# ``group`` to an enum, and ``formats`` to each verb's actual argparse
+# output flags (test_catalog_formats_track_argparse_output_flags).
+# ``summary`` and ``exit_codes`` are editorial with no second source, so
+# this literal is their truth; exit_codes shape is structurally checked.
 _VERB_CATALOG: List[Dict[str, object]] = [
     {
         "name": "swab",
