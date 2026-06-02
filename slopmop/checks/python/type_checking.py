@@ -141,6 +141,20 @@ def _detect_venv_path(project_root: str) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+def _strip_jsonc(text: str) -> str:
+    """Make a JSONC document parseable by ``json.loads``.
+
+    pyright config files are JSONC: they may contain ``//`` line comments,
+    ``/* */`` block comments, and trailing commas — all of which ``json.loads``
+    rejects. Strip them so a project's pyrightconfig.json is honored instead of
+    silently failing to parse (which would discard its rule overrides).
+    """
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)  # block comments
+    text = re.sub(r"//[^\n]*", "", text)  # line comments
+    text = re.sub(r",(\s*[}\]])", r"\1", text)  # trailing commas
+    return text
+
+
 def _detect_source_dirs(project_root: str) -> List[str]:
     """Detect which directories contain Python source code."""
     candidates = ["src", "slopmop", "lib", "app"]
@@ -300,8 +314,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             return {}
         try:
             text = path.read_text(encoding="utf-8")
-            stripped = re.sub(r"//[^\n]*", "", text)
-            data: Any = json.loads(stripped)
+            data: Any = json.loads(_strip_jsonc(text))
         except (json.JSONDecodeError, OSError):
             return {}
         return cast(Dict[str, Any], data) if isinstance(data, dict) else {}

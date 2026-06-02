@@ -307,6 +307,30 @@ class TestPythonTypeCheckingCheck:
         # Unmentioned rules stay enforced.
         assert config["reportUnknownMemberType"] == "error"
 
+    def test_strict_honors_override_in_jsonc_config(self, tmp_path):
+        """A JSONC pyrightconfig (comments + trailing comma) still parses (#245).
+
+        Regression: stripping only // line comments left /* */ blocks and
+        trailing commas, so json.loads failed, owned_rules emptied, and every
+        rule was forced back to error — silently defeating the fix.
+        """
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+        (tmp_path / "pyrightconfig.json").write_text(
+            "{\n"
+            "  /* untyped deps live upstream */\n"
+            '  "reportUnknownMemberType": "none", // scoped out on purpose\n'
+            "}\n"
+        )
+
+        check = PythonTypeCheckingCheck({"strict": True})
+        config = check._build_pyright_config(str(tmp_path))
+
+        assert "reportUnknownMemberType" not in config
+        assert config["reportUnknownVariableType"] == "error"
+
     def test_strict_forces_all_rules_without_project_config(self, tmp_path):
         """With no project pyright config, all completeness rules are enforced."""
         from slopmop.checks.python.type_checking import (
