@@ -763,9 +763,27 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                         level=FindingLevel.ERROR,
                     )
                 )
-            count = (
-                len(findings) if findings else len(result.output.strip().split("\n"))
-            )
+            if not findings:
+                # ESLint exited non-zero but produced no per-file diagnostics:
+                # e.g. a config/plugin error printed to stderr, an empty "[]"
+                # JSON body, or all messages filtered out. Surface the raw
+                # output so the failure is diagnosable inline — otherwise the
+                # gate reports an opaque "N lint issue(s)" with no location and
+                # the only way to find the cause is a rerun (which may pass from
+                # cache once the working tree changes).
+                raw = result.output.strip()
+                findings.append(
+                    Finding(
+                        message=(
+                            "ESLint exited non-zero but reported no per-file "
+                            "diagnostics. Raw output:\n" + raw[:500]
+                            if raw
+                            else "ESLint exited non-zero with no output."
+                        ),
+                        level=FindingLevel.ERROR,
+                    )
+                )
+            count = len(findings)
             return f"{count} lint issue(s)", findings
         return None, []
 

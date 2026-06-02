@@ -23,9 +23,9 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "2.0 just shipped, so I swept the readme and docs for anything still talking like it's the old version and fixed the stale bits",
-    "direction": "Wrapping up the doc cleanup, then back to the leftover CI-status fix waiting to go up",
-    "last_update": "2026-05-31T00:00:00Z"
+    "status": "Cleared the whole backlog of tool-friction reports, plus knocked out a stray bit of noise where a safety check was printing a harmless-but-confusing error on every command",
+    "direction": "Backlog's empty. Next is getting these fixes reviewed and into a release so they actually reach people's machines",
+    "last_update": "2026-06-01T00:00:00Z"
   },
   "queue": {
     "active": true,

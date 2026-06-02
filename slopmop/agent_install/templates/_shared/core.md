@@ -96,6 +96,25 @@ Or just run `sm sail` repeatedly — it reads the workflow state and dispatches 
 
 Use `sm sail` for forward motion; use individual verbs (`sm swab -g <gate>`, `sm buff resolve`, etc.) for surgical work.
 
+### Setting up slop-mop in a repo (the install handoff)
+
+When asked to "install" or "set up" slop-mop in this repo, do **not** improvise
+ad-hoc setup. It is an ordered handoff — each step is a real `sm` verb (see
+`sm -h`). Run them in order, skipping any already done:
+
+1. **CLI present?** If `sm` is "command not found", install the utility:
+   `pipx install slopmop[all]`.
+2. **Repo-local agent instructions?** `sm agent install` (add
+   `--target copilot|cursor|claude` as needed) so every agent here follows the
+   rails.
+3. **Config?** No `.sb_config.json` yet → `sm init --non-interactive` to
+   generate one tuned to the detected stack.
+4. **Onboard the existing code:** run the refit sequence below, then enter the
+   maintenance loop.
+
+"Install slop-mop in the repo" means all of the above, not just step 1. Unsure
+which steps remain? `sm sail` reads the repo state and names the next move.
+
 ### Refit (step 0 — before entering the loop)
 
 Refit is a nearly necessary first step for any repository adopting slop-mop. It is not part of the maintenance loop — it is how you earn the right to enter it.

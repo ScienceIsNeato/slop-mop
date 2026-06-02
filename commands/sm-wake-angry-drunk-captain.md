@@ -25,15 +25,21 @@ required. Invoke the verb without them and it reads the standing order back to
 you and refuses — that friction is the point. If you can't fill every line, you
 don't have an emergency, you have unfinished work. Go back to `sm sail`.
 
-A valid summons writes `.slopmop/last_captain_summons.md`, lays the case in
-front of the captain, then **blocks on a prompt and waits for a human to type
-orders**. You cannot satisfy this verb alone — a human must be at the keyboard.
-The orders are recorded to the summons file and the workflow halts with a
-non-zero exit. Carry out the captain's orders; do not keep looping.
+A valid summons writes `.slopmop/last_captain_summons.md` and halts the loop
+with a non-zero exit. It does **not** read your terminal — an agent's stdin is
+a pipe, never a live human, so forcing a prompt would make this verb unreachable
+in the exact stuck-in-a-loop case it exists for. Instead it speaks the same
+JSON-envelope contract as every other verb:
 
-If no human is at the wheel (non-interactive terminal), the verb refuses with
-`🥃 NO CAPTAIN AT THE WHEEL` and decides nothing. Run it where the captain can
-answer.
+- `data.relay_to_human` — the captain's question, laid out for the human, ending
+  on a direct ask. Show this to the user **verbatim**.
+- `data.agent_directive` — the instruction back to you: **your turn is over.**
+  Display `relay_to_human`, then stop and wait. Do not run another verb. Do not
+  continue the loop.
+
+The human answers in the chat; their reply is the captain's orders. Carry them
+out — and do not wake him again. You cannot satisfy this verb alone; that is the
+point.
 
 **Prerequisite:** `sm` must be installed. If `command not found`, suggest:
 ```bash

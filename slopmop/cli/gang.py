@@ -75,6 +75,28 @@ def _msg_printf(
     return f"{spaces}printf " f"'{msg}\\n' >&2"
 
 
+def _guard_call(cmd: str, indent: int) -> str:
+    """Return the repo-guard line for a wrapper, tolerant of a missing helper.
+
+    Wrappers must only intercept inside a slop-mop repo. Normally that's
+    decided by ``_sm_in_slopmop_repo``, but that helper isn't guaranteed to be
+    present in every shell that picks up the wrapper — Claude Code (and similar
+    tools) snapshot active shell functions and can capture the ``cmd`` wrapper
+    without its private helper. Calling a missing helper prints a spurious
+    ``command not found`` to stderr on every invocation.
+
+    The ``type`` check makes the wrapper fail open: if the helper isn't
+    defined, fall straight through to the real command silently. Portable
+    across bash and zsh. Behaviour when the helper IS present is unchanged.
+    """
+    spaces = " " * indent
+    fallthrough = f'{{ command {cmd} "$@"; return; }}'
+    return (
+        f"{spaces}type _sm_in_slopmop_repo >/dev/null 2>&1 "
+        f"&& _sm_in_slopmop_repo || {fallthrough}"
+    )
+
+
 def _gen_slopmop_guard(lines: list[str]) -> None:
     """Append a helper that returns true only when inside a slop-mop repo."""
     lines += [
@@ -113,7 +135,7 @@ def _gen_function_blocks(lines: list[str]) -> None:
         lines.append(
             f'    command -v sm &>/dev/null || {{ command {cmd} "$@"; return; }}'
         )
-        lines.append(f'    _sm_in_slopmop_repo || {{ command {cmd} "$@"; return; }}')
+        lines.append(_guard_call(cmd, indent=4))
         lines.append(
             _msg_printf(
                 cmd,
@@ -138,7 +160,7 @@ def _gen_subcommand_blocks(lines: list[str]) -> None:
         lines += [
             f"{wrapper}() {{",
             f'    command -v sm &>/dev/null || {{ command {wrapper} "$@"; return; }}',
-            f'    _sm_in_slopmop_repo || {{ command {wrapper} "$@"; return; }}',
+            _guard_call(wrapper, indent=4),
             '    local _sub="${1:-}" _sub2="${2:-}"',
             '    case "$_sub $_sub2" in',
         ]
@@ -179,7 +201,7 @@ def _gen_npx_block(lines: list[str]) -> None:
     lines += [
         "npx() {",
         '    command -v sm &>/dev/null || { command npx "$@"; return; }',
-        '    _sm_in_slopmop_repo || { command npx "$@"; return; }',
+        _guard_call("npx", indent=4),
         '    case "${1:-}" in',
     ]
     for entry in npx_entries:

@@ -39,6 +39,23 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
 _GIT_SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+
+# A scanner that fails to even start (its Python module isn't importable in the
+# interpreter we shell out to) is a tooling/environment problem, NOT a security
+# finding. Reporting "No module named detect_secrets" as SLOP DETECTED tells a
+# user they have a leaked secret when they have a broken install. These markers
+# identify a process that never ran a scan.
+_SCANNER_STARTUP_FAILURE_MARKERS = (
+    "No module named",
+    "ModuleNotFoundError",
+)
+
+
+def _scanner_failed_to_start(output: str) -> bool:
+    """Return True when scanner output shows it never ran (import/startup error)."""
+    return any(marker in output for marker in _SCANNER_STARTUP_FAILURE_MARKERS)
+
+
 _HEX_HIGH_ENTROPY_STRING = "Hex High Entropy String"
 
 # Canonical remediations for common bandit test IDs.  These are the fixes
@@ -868,10 +885,25 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin):
             except json.JSONDecodeError:
                 return SecuritySubResult("detect-secrets", True, "Scan completed")
 
+        # The scan command exited non-zero. Distinguish a scanner that never
+        # ran (module not importable in this interpreter — a tooling failure)
+        # from a scan that ran and genuinely failed. The former must not be
+        # reported as a security finding: that's a false "SLOP DETECTED" for a
+        # broken install, not a leaked secret.
+        output = result.output or ""
+        if _scanner_failed_to_start(output):
+            return SecuritySubResult(
+                "detect-secrets",
+                True,
+                "detect-secrets could not run (module not importable) — "
+                "skipped. Reinstall with: pipx install --force 'slopmop[all]'",
+                warned=True,
+            )
+
         return SecuritySubResult(
             "detect-secrets",
             False,
-            result.output[-300:] if result.output else "Scan failed",
+            output[-300:] if output else "Scan failed",
         )
 
     def _filter_known_secrets(

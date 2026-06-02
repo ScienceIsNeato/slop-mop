@@ -645,6 +645,30 @@ class TestIntegrationAliasesSh:
         assert "[slop-mop]" not in result.stderr
         assert "fake-gh" in result.stdout
 
+    def test_missing_repo_guard_helper_falls_through_silently(
+        self, tmp_path: Path
+    ) -> None:
+        """Wrapper without its _sm_in_slopmop_repo helper must not spam errors.
+
+        Regression: tools like Claude Code snapshot active shell functions and
+        can capture a wrapper (e.g. ``gh``) without its private helper. Calling
+        the missing helper printed ``command not found`` on every invocation.
+        The wrapper must fail open — run the real command, silently.
+        """
+        aliases = self._make_aliases(tmp_path)
+        fake_bin = self._make_fake_bin(tmp_path, ("sm", "gh"))
+        # Source, then drop the helper to simulate the snapshot picking up the
+        # wrapper alone. ``gh run watch`` would otherwise be blocked in-repo.
+        result = self._bash(
+            aliases,
+            fake_bin,
+            "unset -f _sm_in_slopmop_repo; gh run watch",
+        )
+        assert "command not found" not in result.stderr
+        assert "_sm_in_slopmop_repo" not in result.stderr
+        assert "[slop-mop]" not in result.stderr
+        assert "fake-gh" in result.stdout
+
     def test_sm_not_found_falls_through_to_real_command(self, tmp_path: Path) -> None:
         """When sm is absent from PATH, intercepts fall through to the real command."""
         import shutil

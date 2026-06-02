@@ -44,6 +44,41 @@ class TestRunDetectSecrets:
         assert result.passed is True
         assert "No secrets" in result.findings
 
+    def test_detect_secrets_module_missing_is_not_a_finding(self, tmp_path):
+        """A scanner that can't import is a tooling failure, not SLOP.
+
+        Regression for the barnacle where ``No module named detect_secrets``
+        was reported as a security finding (SLOP DETECTED) instead of a
+        graceful skip — telling users they had a leaked secret when they
+        actually had a broken install.
+        """
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.output = "/path/to/python: No module named detect_secrets\n"  # pragma: allowlist secret
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.name == "detect-secrets"
+        # Not a failure — it never ran, so it cannot be a security finding.
+        assert result.passed is True
+        assert result.warned is True
+        assert "could not run" in result.findings
+
+    def test_detect_secrets_real_scan_failure_still_fails(self, tmp_path):
+        """A genuine scan failure (not a startup error) is still reported."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.output = "detect-secrets: error: unrecognized arguments: --bogus"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.name == "detect-secrets"
+        assert result.passed is False
+
     def test_detect_secrets_with_findings(self, tmp_path):
         """Test _run_detect_secrets with secrets found."""
         check = SecurityLocalCheck({})
