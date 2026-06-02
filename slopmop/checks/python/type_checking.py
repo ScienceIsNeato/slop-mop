@@ -366,21 +366,18 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
 
     @staticmethod
     def _completeness_rules_owned_by_project(cfg: Dict[str, Any]) -> set[str]:
-        """Return the reportUnknown* rules the project's config already sets.
+        """Return the reportUnknown* rules the project sets at the **top level**.
 
-        Checks both top-level keys and per-path ``executionEnvironments``
-        entries, so a project can scope a rule down (e.g.
-        ``reportUnknownMemberType: "none"`` for an untyped-dependency call
-        site) without the gate clobbering it back to ``error``.
+        Only top-level settings count as taking global ownership of a rule. A
+        per-path ``executionEnvironments`` entry is deliberately *not* counted:
+        pyright applies per-path settings on top of the top-level one, so the
+        gate can still force the rule to ``error`` globally and the project's
+        scoped ``"none"`` will win for just its root — suppressing noise on an
+        untyped-dependency path without dropping enforcement everywhere else.
+        Counting a per-path override as global ownership would leave the rule
+        unenforced across the whole codebase (standard mode defaults it off).
         """
-        owned: set[str] = {rule for rule in TYPE_COMPLETENESS_RULES if rule in cfg}
-        exec_envs = cfg.get("executionEnvironments")
-        if isinstance(exec_envs, list):
-            for env in cast(List[Any], exec_envs):
-                if isinstance(env, dict):
-                    env_dict = cast(Dict[str, Any], env)
-                    owned.update(r for r in TYPE_COMPLETENESS_RULES if r in env_dict)
-        return owned
+        return {rule for rule in TYPE_COMPLETENESS_RULES if rule in cfg}
 
     def _build_pyright_config(self, project_root: str) -> Dict[str, Any]:
         """Build pyrightconfig.json content for this run."""

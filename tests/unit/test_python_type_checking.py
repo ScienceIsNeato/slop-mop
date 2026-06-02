@@ -283,8 +283,15 @@ class TestPythonTypeCheckingCheck:
         assert config["reportUnknownVariableType"] == "error"
         assert config["reportUnknownArgumentType"] == "error"
 
-    def test_strict_honors_per_path_execution_environment_override(self, tmp_path):
-        """A per-path executionEnvironments override is also honored (#245)."""
+    def test_per_path_override_keeps_global_enforcement(self, tmp_path):
+        """A per-path override must NOT drop the rule globally (#245).
+
+        pyright applies executionEnvironments settings on top of the top-level
+        one, so the gate still forces the rule to error globally and the
+        project's scoped "none" wins only for its root. Counting the per-path
+        entry as global ownership would leave the rule unenforced everywhere
+        (standard mode defaults reportUnknown* off).
+        """
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
@@ -302,9 +309,9 @@ class TestPythonTypeCheckingCheck:
         check = PythonTypeCheckingCheck({"strict": True})
         config = check._build_pyright_config(str(tmp_path))
 
-        # The scoped-down rule is not clobbered back to error at top level.
-        assert "reportUnknownArgumentType" not in config
-        # Unmentioned rules stay enforced.
+        # Still enforced globally; the per-path "none" (from the extended
+        # config) applies only to its root.
+        assert config["reportUnknownArgumentType"] == "error"
         assert config["reportUnknownMemberType"] == "error"
 
     def test_strict_honors_override_in_jsonc_config(self, tmp_path):
