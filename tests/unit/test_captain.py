@@ -4,36 +4,17 @@ import argparse
 import json
 
 from slopmop.cli.captain import (
-    EXIT_NO_CAPTAIN,
+    AGENT_DIRECTIVE,
     EXIT_REFUSED,
     EXIT_SUMMONED,
     SCHEMA_VERSION,
     CaptainSummons,
+    build_relay_message,
     build_summons,
     cmd_captain,
     render_summons_body,
     write_summons_file,
 )
-
-
-def _scripted_captain(*lines):
-    """Return an input() stand-in that feeds the given lines, then EOF."""
-    queue = list(lines)
-
-    def _input(_prompt=""):
-        if not queue:
-            raise EOFError
-        return queue.pop(0)
-
-    return _input
-
-
-def _at_the_wheel():
-    return True
-
-
-def _no_wheel():
-    return False
 
 
 def _captain_args(**kwargs) -> argparse.Namespace:
@@ -93,61 +74,24 @@ def test_partial_justification_names_missing_fields(capsys):
     assert captured.out == ""
 
 
-def test_valid_summons_requires_orders_and_halts(tmp_path, capsys):
+def test_valid_summons_halts_and_presents_case(tmp_path, capsys):
     args = _captain_args(project_root=str(tmp_path))
-    code = cmd_captain(
-        args,
-        input_fn=_scripted_captain("hold the merge", "rename later", ""),
-        isatty_fn=_at_the_wheel,
-    )
+    code = cmd_captain(args)
     captured = capsys.readouterr()
+    # A valid summons is a deliberate halt-and-await, not a failure.
     assert code == EXIT_SUMMONED
-    # The case is presented to the captain on stderr.
-    assert "CAPTAIN ON DECK" in captured.err
-    # Orders acknowledged on stdout.
-    assert "ORDERS RECEIVED" in captured.out
-    assert "hold the merge" in captured.out
+    # The captain's question is laid out for the human on stdout.
+    assert "CAPTAIN ON DECK" in captured.out
+    assert "approve the name wake-angry-drunk-captain" in captured.out
     artifact = tmp_path / ".slopmop" / "last_captain_summons.md"
     assert artifact.exists()
     body = artifact.read_text(encoding="utf-8")
     assert "ship the captain verb" in body
-    assert "Captain's Orders" in body
-    assert "hold the merge" in body
-    assert "rename later" in body
-
-
-def test_no_captain_at_the_wheel_refuses(tmp_path, capsys):
-    args = _captain_args(project_root=str(tmp_path))
-    code = cmd_captain(args, isatty_fn=_no_wheel)
-    captured = capsys.readouterr()
-    assert code == EXIT_NO_CAPTAIN
-    assert "NO CAPTAIN AT THE WHEEL" in captured.err
-    # Nothing decided: no orders recorded in the artifact.
-    artifact = tmp_path / ".slopmop" / "last_captain_summons.md"
-    body = artifact.read_text(encoding="utf-8")
-    assert "Captain's Orders" not in body
-
-
-def test_silent_captain_eventually_refuses(tmp_path, capsys):
-    args = _captain_args(project_root=str(tmp_path))
-    # Captain stares at the prompt, types nothing, then walks off (EOF).
-    code = cmd_captain(
-        args,
-        input_fn=_scripted_captain("", "", ""),
-        isatty_fn=_at_the_wheel,
-    )
-    captured = capsys.readouterr()
-    assert code == EXIT_NO_CAPTAIN
-    assert "NO CAPTAIN AT THE WHEEL" in captured.err
 
 
 def test_valid_summons_json_output(tmp_path, capsys):
     args = _captain_args(project_root=str(tmp_path), json_output=True)
-    code = cmd_captain(
-        args,
-        input_fn=_scripted_captain("approved", ""),
-        isatty_fn=_at_the_wheel,
-    )
+    code = cmd_captain(args)
     captured = capsys.readouterr()
     assert code == EXIT_SUMMONED
     envelope = json.loads(captured.out)
@@ -157,24 +101,18 @@ def test_valid_summons_json_output(tmp_path, capsys):
     assert envelope["exit_code"] == EXIT_SUMMONED
     payload = envelope["data"]
     assert "schema" not in payload
+    assert payload["outcome"] == "summoned"
+    assert payload["turn_over"] is True
     assert payload["objective"] == "ship the captain verb"
     assert payload["verbs_tried"] == ["sm swab — green", "sm scour — green"]
-    assert payload["orders"] == ["approved"]
-    assert payload["answered_at"]
+    # The agent gets an explicit "turn over" directive and the verbatim relay.
+    assert payload["agent_directive"] == AGENT_DIRECTIVE
+    assert "CAPTAIN ON DECK" in payload["relay_to_human"]
+    assert "approve the name wake-angry-drunk-captain" in payload["relay_to_human"]
     assert payload["summons_file"].endswith("last_captain_summons.md")
-
-
-def test_no_captain_json_output(tmp_path, capsys):
-    """No human at the wheel + --json emits the no_captain error envelope."""
-    args = _captain_args(project_root=str(tmp_path), json_output=True)
-    code = cmd_captain(args, isatty_fn=_no_wheel)
-    assert code == EXIT_NO_CAPTAIN
-    envelope = json.loads(capsys.readouterr().out)
-    assert envelope["command"] == "wake-angry-drunk-captain"
-    assert envelope["status"] == "error"
-    assert envelope["exit_code"] == EXIT_NO_CAPTAIN
-    assert envelope["data"]["outcome"] == "no_captain"
-    assert envelope["diagnostics"][0]["code"] == "captain.no_human"
+    # The machine signal to halt rides on next_steps + the info diagnostic.
+    assert envelope["next_steps"][0]["action"] == "wait"
+    assert envelope["diagnostics"][0]["code"] == "captain.summoned"
 
 
 def test_build_summons_resolves_root_and_strips(tmp_path):
@@ -187,6 +125,17 @@ def test_build_summons_resolves_root_and_strips(tmp_path):
     assert summons.objective == "padded objective"
     assert summons.verbs_tried == ["sm swab — green"]
     assert summons.project_root == str(tmp_path.resolve())
+
+
+def test_relay_message_carries_question_and_account(tmp_path):
+    summons = _summons(tmp_path)
+    relay = build_relay_message(summons)
+    assert "THE QUESTION" in relay
+    assert summons.decision in relay
+    assert summons.objective in relay
+    assert summons.why_stuck in relay
+    # Ends on a direct ask to the human.
+    assert "What's your call?" in relay
 
 
 def test_render_body_handles_missing_options(tmp_path):

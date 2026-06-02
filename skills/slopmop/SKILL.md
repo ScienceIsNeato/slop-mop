@@ -4,8 +4,9 @@ description: >-
   Trigger when you would normally reach for pytest, gh, mypy, black, or other
   raw repo tooling. Redirect to `sm swab`, `sm scour`, `sm buff`, `sm sail`,
   `sm refit`, or `sm doctor` so remediation follows the established rails.
-  Also trigger when you find a repo with sm installed but no .sb_config.json
-  — use `sm init --non-interactive` before entering the loop.
+  Also trigger when asked to "install" or "set up" slop-mop in a repo, or
+  when you find a repo with sm installed but no .sb_config.json — follow the
+  install handoff (sm agent install → sm init → sm refit) before the loop.
   Also trigger when filing issues about slop-mop friction — use
   `sm barnacle file` / `/sm-barnacle`, never `gh issue create`.
   Also trigger when the maintenance loop is exhausted and only a human
@@ -18,6 +19,27 @@ description: >-
 
 Slop-mop (`sm`) has two primary modes: **refit** (one-time onboarding) and **maintenance** (steady-state development). Refit remediates all existing slop and installs permanent guards; the swab/scour/buff loop then keeps the repo clean as you work.
 
+## Setting up slop-mop in a repo (the install handoff)
+
+When the user says "install slop-mop", "set up slop-mop in this repo", or
+similar, do **not** improvise ad-hoc setup. It is an ordered handoff — each
+step is a real CLI surface (`sm -h` lists them). Run them in order, skipping
+any that are already done:
+
+1. **CLI present?** If `sm` is "command not found", install the utility:
+   `pipx install slopmop[all]`.
+2. **Repo-local agent instructions?** Install them so every agent in this repo
+   follows the rails: `sm agent install` (add `--target copilot|cursor|claude`
+   as needed).
+3. **Config?** If there's no `.sb_config.json`, generate one tuned to the
+   detected stack: `sm init --non-interactive`.
+4. **Onboard the existing code:** `sm refit --start` → `sm refit --iterate` →
+   `sm refit --finish`, then enter the maintenance loop.
+
+"Install slop-mop in the repo" means all of the above, not just step 1. If you
+are unsure which steps remain, `sm sail` reads the repo state and tells you the
+next move.
+
 ## When to use
 
 - **Initial setup (step -1)**: Run `sm init --non-interactive` when the repo has
@@ -28,7 +50,7 @@ Slop-mop (`sm`) has two primary modes: **refit** (one-time onboarding) and **mai
 - **During implementation**: Run `sm swab` after every meaningful code change. Keep running until clean.
 - **Before PR**: Run `sm scour` for a comprehensive sweep.
 - **After CI/review**: Run `sm buff <PR_NUMBER>` to convert feedback into next steps.
-- **Loop exhausted (last resort)**: Run `sm wake-angry-drunk-captain` only when barnacles are filed, gates are green or truly unfixable, and the one move left is a human judgment call no verb can make. It demands structured proof and then blocks for a human to type orders. See below.
+- **Loop exhausted (last resort)**: Run `sm wake-angry-drunk-captain` only when barnacles are filed, gates are green or truly unfixable, and the one move left is a human judgment call no verb can make. It demands structured proof, then ends your turn and hands you the captain's question to relay to the human. See below.
 
 ## When the loop is exhausted: wake the captain
 
@@ -48,7 +70,7 @@ sm wake-angry-drunk-captain \
   --option "approach A" --option "approach B"
 ```
 
-A valid summons blocks on a prompt and **waits for a human to type orders** — you cannot complete it alone. If no human is at the wheel, it refuses and decides nothing. When orders come, carry them out; do not keep looping. Full detail: `/sm-wake-angry-drunk-captain`.
+A valid summons doesn't resolve into more agent work. The verb writes `.slopmop/last_captain_summons.md`, then returns an envelope whose `data.relay_to_human` is the captain's question and whose `data.agent_directive` says, plainly: **your turn is over.** Show the user `relay_to_human` verbatim, then stop and wait — the human's next message is the captain's orders. You cannot complete this verb alone; that is the point. Carry out the orders when they come; do not keep looping. Full detail: `/sm-wake-angry-drunk-captain`.
 
 ## The maintenance loop
 

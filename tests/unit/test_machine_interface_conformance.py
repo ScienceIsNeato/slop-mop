@@ -381,30 +381,35 @@ def test_captain_summons_output_conforms_to_schema(
     tmp_path: "object",
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # The summons branch needs a human at the wheel, so drive cmd_captain
-    # directly with scripted I/O rather than shelling through sm.main.
-    from slopmop.cli.captain import cmd_captain
-
-    args = argparse.Namespace(
-        objective="ship it",
-        verbs_tried=["sm swab — green"],
-        why_stuck="nothing left to automate",
-        decision="merge or hold?",
-        options=["merge", "hold"],
-        project_root=str(tmp_path),
-        json_output=True,
-    )
-    orders = iter(["merge", ""])
-    rc = cmd_captain(
-        args,
-        input_fn=lambda _prompt: next(orders),
-        isatty_fn=lambda: True,
+    # A valid summons halts and hands the agent the relay payload — no stdin,
+    # so it drives straight through sm.main with full justification.
+    rc = sm.main(
+        [
+            "wake-angry-drunk-captain",
+            "--objective",
+            "ship it",
+            "--verbs-tried",
+            "sm swab — green",
+            "--why-stuck",
+            "nothing left to automate",
+            "--decision",
+            "merge or hold?",
+            "--option",
+            "merge",
+            "--option",
+            "hold",
+            "--project-root",
+            str(tmp_path),
+            "--json",
+        ]
     )
     assert rc == 1
     envelope = json.loads(capsys.readouterr().out)
     assert envelope["command"] == "wake-angry-drunk-captain"
     assert envelope["status"] == "info"
-    assert envelope["data"]["orders"] == ["merge"]
+    assert envelope["data"]["outcome"] == "summoned"
+    assert envelope["data"]["turn_over"] is True
+    assert envelope["data"]["relay_to_human"]
 
     data_schema = load_data_schema("wake-angry-drunk-captain")
     assert data_schema is not None

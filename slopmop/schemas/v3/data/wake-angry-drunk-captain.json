@@ -2,17 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://slopmop.dev/schemas/v3/data/wake-angry-drunk-captain.json",
   "title": "sm wake-angry-drunk-captain data payload",
-  "description": "Result of the last-resort human-escalation verb. Two shapes selected by outcome: a 'summons' once a human captain has typed orders (the loop halts and awaits them), or an 'unresolved' record when the verb refused (insufficient justification) or found no human at the wheel. The agent knows which by the envelope status and exit_code.",
+  "description": "Result of the last-resort human-escalation verb. Two shapes selected by outcome: a 'summoned' record once the agent has supplied valid justification (the loop halts, the agent's turn is over, and it must relay the captain's question to the human and await a reply), or an 'unresolved' record when the verb refused (insufficient justification). The agent knows which by the envelope status and exit_code.",
   "oneOf": [
-    {"$ref": "#/$defs/summons"},
+    {"$ref": "#/$defs/summoned"},
     {"$ref": "#/$defs/unresolved"}
   ],
   "$defs": {
-    "summons": {
+    "summoned": {
       "type": "object",
       "required": [
+        "outcome",
+        "turn_over",
         "summoned_at",
-        "answered_at",
         "branch",
         "project_root",
         "objective",
@@ -20,18 +21,23 @@
         "why_stuck",
         "decision",
         "options",
-        "orders",
-        "summons_file"
+        "summons_file",
+        "agent_directive",
+        "relay_to_human"
       ],
       "additionalProperties": false,
       "properties": {
+        "outcome": {
+          "description": "Always 'summoned' for a valid escalation.",
+          "const": "summoned"
+        },
+        "turn_over": {
+          "description": "Always true. The agent's turn is over: relay the question to the human and wait, do not continue the loop.",
+          "const": true
+        },
         "summoned_at": {
           "description": "When the captain was woken (ISO 8601).",
           "type": "string"
-        },
-        "answered_at": {
-          "description": "When the human typed orders (ISO 8601), or null if unanswered.",
-          "type": ["string", "null"]
         },
         "branch": {"type": ["string", "null"]},
         "project_root": {"type": "string"},
@@ -57,13 +63,16 @@
           "type": "array",
           "items": {"type": "string"}
         },
-        "orders": {
-          "description": "The human's typed orders. Non-empty for a resolved summons.",
-          "type": "array",
-          "items": {"type": "string"}
-        },
         "summons_file": {
           "description": "Path to the markdown record of this summons.",
+          "type": "string"
+        },
+        "agent_directive": {
+          "description": "Explicit instruction to the agent: its turn is over; show relay_to_human verbatim and wait for the human.",
+          "type": "string"
+        },
+        "relay_to_human": {
+          "description": "The exact text the agent must show the human, verbatim — the captain's question and the crew's account, ending on a direct ask.",
           "type": "string"
         }
       }
@@ -74,8 +83,8 @@
       "additionalProperties": false,
       "properties": {
         "outcome": {
-          "description": "Why the summons did not resolve. 'refused' = insufficient justification (go back to the loop); 'no_captain' = no human at the wheel.",
-          "enum": ["refused", "no_captain"]
+          "description": "Why the summons did not resolve. 'refused' = insufficient justification (go back to the loop).",
+          "enum": ["refused"]
         },
         "reason": {
           "description": "Human-readable explanation of the outcome.",

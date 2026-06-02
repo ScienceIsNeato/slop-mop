@@ -134,10 +134,17 @@ def _reconcile_runtime_state(
 
 
 def _print_step(icon: str, heading: str, detail: str = "") -> None:
-    print(f"\n⛵ sail → {icon} {heading}")
+    # Flush immediately. stdout is block-buffered when piped (an agent's
+    # stdout always is), and sail's handlers hand off to long-running
+    # delegates like ``buff watch`` right after announcing the step. If that
+    # delegate is killed (timeout/interrupt) before the process exits
+    # normally, an unflushed buffer is lost — the invocation looks silent
+    # with no dispatch line. Flushing here guarantees the dispatch signal is
+    # durable no matter what happens next.
+    print(f"\n⛵ sail → {icon} {heading}", flush=True)
     if detail:
-        print(f"   {detail}")
-    print()
+        print(f"   {detail}", flush=True)
+    print(flush=True)
 
 
 def _swab_args(args: argparse.Namespace) -> argparse.Namespace:
@@ -359,7 +366,8 @@ def _sail_pr_ready(args: argparse.Namespace, project_root: Path) -> int:
         "\n⛵ sail → 🏁 PR ready for human review\n"
         "   All CI green, no unresolved threads.\n"
         "   Share the PR with the human and await their decision.\n"
-        "   (Sail mode reset to tacking for the next feature.)\n"
+        "   (Sail mode reset to tacking for the next feature.)\n",
+        flush=True,
     )
     return 0
 
@@ -412,7 +420,10 @@ def cmd_sail(args: argparse.Namespace) -> int:
 
     handler = _STATE_HANDLERS.get(state)
     if handler is None:
-        print(f"⛵ sail: unknown state {state.value!r} — falling back to swab.")
+        print(
+            f"⛵ sail: unknown state {state.value!r} — falling back to swab.",
+            flush=True,
+        )
         from slopmop.cli import cmd_swab
 
         return cmd_swab(_swab_args(args))

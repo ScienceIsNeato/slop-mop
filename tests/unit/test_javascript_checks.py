@@ -603,6 +603,46 @@ class TestJavaScriptLintFormatCheck:
             "corrupted" in f.message for f in result.findings
         ), "Expected raw output snippet in finding"
 
+    def test_run_eslint_nonzero_with_empty_json_surfaces_raw_output(self, tmp_path):
+        """ESLint exiting non-zero with empty JSON must not hide the failure.
+
+        Regression for barnacle #220: when ESLint exits non-zero but emits a
+        valid-but-empty JSON body (real error printed to stderr), the gate used
+        to report an opaque "N lint issue(s)" with no location, forcing a rerun
+        to diagnose. The finding must now carry the raw output.
+        """
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+        check = JavaScriptLintFormatCheck({})
+
+        eslint_result = MagicMock()
+        eslint_result.success = False
+        eslint_result.stdout = "[]"
+        eslint_result.output = (
+            "Oops! Something went wrong! :(\n"
+            "ESLint couldn't determine the plugin uniquely."
+        )
+
+        prettier_result = MagicMock()
+        prettier_result.success = True
+        prettier_result.output = ""
+
+        with patch.object(
+            check, "_run_command", side_effect=[eslint_result, prettier_result]
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert result.findings, "Expected a finding even with empty ESLint JSON"
+        # The real error text must be surfaced, not swallowed into a generic count.
+        assert any(
+            "plugin uniquely" in f.message for f in result.findings
+        ), "Expected raw ESLint error output in finding"
+        # And it must NOT be only the contentless aggregate message.
+        assert not all(
+            "issue(s) found" in f.message for f in result.findings
+        ), "Failure was reported with no diagnosable detail"
+
     # ------------------------------------------------------------------
     # Deno project tests
     # ------------------------------------------------------------------

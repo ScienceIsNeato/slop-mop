@@ -23,12 +23,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from slopmop.reporting.envelope import (
     Diagnostic,
+    NextStep,
     Status,
     build_envelope,
 )
@@ -46,15 +47,24 @@ COMMAND = "wake-angry-drunk-captain"
 SCHEMA_VERSION = "slopmop/captain-summons/v1"
 
 # Return codes — mirror the sail "human decision needed" idiom.
-EXIT_SUMMONED = 1  # Valid summons: captain spoke, loop halted, await orders.
+EXIT_SUMMONED = 1  # Valid summons: turn is over, await the human's reply.
 EXIT_REFUSED = 2  # Insufficient justification: go back to the loop.
-EXIT_NO_CAPTAIN = 3  # No human at the wheel: run this where one can answer.
-
-# Max times to re-prompt a silent captain before giving up.
-_MAX_PROMPT_ATTEMPTS = 3
 
 # Placeholder rendered for an empty numbered list.
 _EMPTY_NUMBERED = "1. (none provided)"
+
+# The verbatim directive handed to the agent on a valid summons. The whole
+# point of this verb is that the agent cannot resolve it alone: it surfaces
+# the captain's question to the human and ends its turn. Reading stdin is
+# pointless — an agent's stdin is a pipe, never a live human — so instead the
+# verb hands back an explicit "your turn is over" instruction and the exact
+# words to relay, the same JSON-envelope contract every other verb speaks.
+AGENT_DIRECTIVE = (
+    "YOUR TURN IS OVER. Show the user the text in `relay_to_human` exactly as "
+    "written — verbatim, nothing added, nothing summarized, nothing after it — "
+    "then STOP and wait for the human's reply. Do not run any sm verb. Do not "
+    "continue the loop. The human's next message carries the captain's orders."
+)
 
 
 def _default_summons_file(project_root: str) -> Path:
@@ -73,8 +83,6 @@ class CaptainSummons:
     project_root: str
     branch: str
     summoned_at: str
-    orders: Sequence[str] = ()
-    answered_at: Optional[str] = None
 
 
 def _clean_lines(values: Sequence[str]) -> List[str]:
@@ -171,12 +179,6 @@ def render_summons_body(summons: CaptainSummons) -> str:
         ),
         "",
     ]
-    if summons.orders:
-        lines += [
-            f"## Captain's Orders ({summons.answered_at or 'unrecorded'})",
-            markdown_numbered(summons.orders, _EMPTY_NUMBERED),
-            "",
-        ]
     return "\n".join(lines)
 
 
@@ -193,8 +195,9 @@ def write_summons_file(summons: CaptainSummons, body: Optional[str] = None) -> P
 
 def _summons_payload(summons: CaptainSummons, body_path: Path) -> Dict[str, Any]:
     return {
+        "outcome": "summoned",
+        "turn_over": True,
         "summoned_at": summons.summoned_at,
-        "answered_at": summons.answered_at,
         "branch": summons.branch,
         "project_root": summons.project_root,
         "objective": summons.objective,
@@ -202,15 +205,20 @@ def _summons_payload(summons: CaptainSummons, body_path: Path) -> Dict[str, Any]
         "why_stuck": summons.why_stuck,
         "decision": summons.decision,
         "options": list(summons.options),
-        "orders": list(summons.orders),
         "summons_file": str(body_path),
+        "agent_directive": AGENT_DIRECTIVE,
+        "relay_to_human": build_relay_message(summons),
     }
 
 
-def _present_case(summons: CaptainSummons) -> None:
-    """Lay the agent's case in front of the captain (stderr, always shown)."""
+def build_relay_message(summons: CaptainSummons) -> str:
+    """Render the exact words the agent must relay to the human, verbatim.
+
+    This is the captain's question laid in front of the human, ending on a
+    direct ask. The agent does not paraphrase it — it shows this text and
+    ends its turn, and the human answers in the chat.
+    """
     lines = [
-        "",
         "🥃 CAPTAIN ON DECK",
         "",
         "*A deckhand shakes the captain awake, hat in hand.*",
@@ -239,70 +247,19 @@ def _present_case(summons: CaptainSummons) -> None:
         "Why the loop can't continue",
         f"   {summons.why_stuck}",
         "",
+        "*The captain squints at you, swaying, and waits.*",
+        '"Well? What\'s your call?"',
     ]
-    print("\n".join(lines), file=sys.stderr)
+    return "\n".join(lines)
 
 
-def _collect_captain_orders(
-    input_fn: Optional[Callable[[str], str]] = None,
-    isatty_fn: Optional[Callable[[], bool]] = None,
-) -> Optional[List[str]]:
-    """Block until the human captain types orders.
-
-    Returns the typed order lines, or ``None`` when no human is at the wheel
-    (non-interactive stdin, or the captain ends input without a word).
-    """
-    resolved_input: Callable[[str], str] = input_fn if input_fn is not None else input
-    resolved_isatty: Callable[[], bool] = (
-        isatty_fn if isatty_fn is not None else sys.stdin.isatty
-    )
-
-    if not resolved_isatty():
-        return None
-
-    prompt = (
-        '"What\'s your call, captain?"\n'
-        "(type your orders — blank line when you're done)\n> "
-    )
-    silent_retry = (
-        "\"...Still nothing, captain? The crew's waiting on your word.\n"
-        ' Give the order, or we send them back to the loop empty-handed."\n> '
-    )
-
-    for _ in range(_MAX_PROMPT_ATTEMPTS):
-        orders: List[str] = []
-        current = prompt
-        while True:
-            try:
-                # Prompt is UI: emit to stderr so --json stdout stays clean.
-                print(current, end="", file=sys.stderr, flush=True)
-                line = resolved_input("")
-            except EOFError:
-                line = ""
-                # EOF ends collection; fall through to evaluate what we have.
-                if orders:
-                    return orders
-                break
-            if not line.strip():
-                if orders:
-                    return orders
-                break  # Empty first line — re-prompt sternly.
-            orders.append(line.strip())
-            current = "> "
-        prompt = silent_retry
-
-    return None
-
-
-def cmd_captain(
-    args: argparse.Namespace,
-    input_fn: Optional[Callable[[str], str]] = None,
-    isatty_fn: Optional[Callable[[], bool]] = None,
-) -> int:
+def cmd_captain(args: argparse.Namespace) -> int:
     """Wake the angry, drunk captain — only when the loop is truly exhausted.
 
-    A valid summons does not resolve until a human at the keyboard types
-    orders. The agent cannot satisfy this verb alone — that is the point.
+    A valid summons does not resolve into more agent work: the verb hands the
+    agent the captain's question and an explicit "your turn is over" directive,
+    then halts. The agent relays the question to the human and waits. The agent
+    cannot satisfy this verb alone — that is the point.
     """
     json_output = bool(getattr(args, "json_output", False))
 
@@ -350,64 +307,13 @@ def cmd_captain(
 
     summons = build_summons(args)
     body_path = write_summons_file(summons, render_summons_body(summons))
-
-    # Lay the case in front of the captain, then demand his orders.
-    _present_case(summons)
-    orders = _collect_captain_orders(input_fn=input_fn, isatty_fn=isatty_fn)
-
-    if not orders:
-        reason = (
-            "No human at the wheel — nobody answered the prompt. This verb only "
-            "resolves when a human types orders at an interactive terminal. "
-            "Nothing was decided."
-        )
-        if json_output:
-            print(
-                json.dumps(
-                    build_envelope(
-                        command=COMMAND,
-                        status=Status.ERROR,
-                        exit_code=EXIT_NO_CAPTAIN,
-                        data={"outcome": "no_captain", "reason": reason},
-                        diagnostics=[
-                            Diagnostic(
-                                code="captain.no_human",
-                                level="error",
-                                message=reason,
-                                suggested_command=(
-                                    "sm wake-angry-drunk-captain  "
-                                    "# rerun in an interactive terminal"
-                                ),
-                            )
-                        ],
-                    ),
-                    indent=2,
-                )
-            )
-            return EXIT_NO_CAPTAIN
-        print(
-            "\n".join(
-                [
-                    "",
-                    "🥃 NO CAPTAIN AT THE WHEEL",
-                    "",
-                    "You hollered into an empty cabin — nobody's here to answer.",
-                    "This verb only resolves when a human types orders at the",
-                    "prompt. Run it where the captain can answer — an interactive",
-                    "terminal, with him at the keyboard. Nothing was decided.",
-                    "",
-                ]
-            ),
-            file=sys.stderr,
-        )
-        return EXIT_NO_CAPTAIN
-
-    summons = replace(summons, orders=orders, answered_at=iso_now())
-    body_path = write_summons_file(summons, render_summons_body(summons))
+    relay = build_relay_message(summons)
 
     if json_output:
         # A valid summons is a deliberate halt-and-await, not a failure —
         # INFO carries the non-zero exit_code that signals "loop paused".
+        # The agent reads the directive, relays `relay_to_human` verbatim,
+        # and ends its turn; the human answers in the chat.
         print(
             json.dumps(
                 build_envelope(
@@ -415,26 +321,30 @@ def cmd_captain(
                     status=Status.INFO,
                     exit_code=EXIT_SUMMONED,
                     data=_summons_payload(summons, body_path),
+                    next_steps=[
+                        NextStep(
+                            action="wait",
+                            reason=(
+                                "Your turn is over. Relay `relay_to_human` to "
+                                "the user verbatim, then wait for their reply."
+                            ),
+                        )
+                    ],
+                    diagnostics=[
+                        Diagnostic(
+                            code="captain.summoned",
+                            level="info",
+                            message=AGENT_DIRECTIVE,
+                        )
+                    ],
                 ),
                 indent=2,
             )
         )
         return EXIT_SUMMONED
 
-    ack = [
-        "",
-        "🥃 ORDERS RECEIVED — the captain has spoken",
-        "",
-    ]
-    for idx, order in enumerate(orders, 1):
-        ack.append(f"   {idx}. {order}")
-    ack += [
-        "",
-        f"Logged to: {body_path}",
-        "",
-        '"You have your orders. Carry them out. And do NOT wake me again"',
-        "   *...he mutters, stumbling back to his bunk.*",
-        "",
-    ]
-    print("\n".join(ack))
+    # Human running the verb directly: lay the case out, then stop. There is
+    # no prompt to type into — the question stands and the human answers it.
+    print(relay)
+    print(f"\nLogged to: {body_path}")
     return EXIT_SUMMONED
