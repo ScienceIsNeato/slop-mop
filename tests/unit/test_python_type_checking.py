@@ -318,10 +318,16 @@ class TestPythonTypeCheckingCheck:
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "__init__.py").touch()
+        # Includes glob patterns (src/**, packages/*/dist) whose /* and */ would
+        # fool a regex comment-stripper into eating the rule key between them,
+        # plus a // inside a string value, a block comment, and a trailing comma.
         (tmp_path / "pyrightconfig.json").write_text(
             "{\n"
             "  /* untyped deps live upstream */\n"
+            '  "include": ["src/**"],\n'
+            '  "docs": "see http://example.com/style",\n'
             '  "reportUnknownMemberType": "none", // scoped out on purpose\n'
+            '  "executionEnvironments": [{"root": "packages/*/dist"}],\n'
             "}\n"
         )
 

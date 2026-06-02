@@ -24,7 +24,6 @@ would have to guess. This gate eliminates that guessing.
 
 import json
 import os
-import re
 import shutil
 import time
 from collections import Counter
@@ -148,11 +147,57 @@ def _strip_jsonc(text: str) -> str:
     ``/* */`` block comments, and trailing commas — all of which ``json.loads``
     rejects. Strip them so a project's pyrightconfig.json is honored instead of
     silently failing to parse (which would discard its rule overrides).
+
+    A naive regex can't do this: pyright glob values like ``"src/**"`` and
+    ``"packages/*/dist"`` contain ``/*`` and ``*/``, and a path could contain
+    ``//`` — a regex would treat those as comment markers and swallow the rule
+    keys in between. So this scans character by character, never touching the
+    contents of a (double-quoted, escape-aware) JSON string.
     """
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)  # block comments
-    text = re.sub(r"//[^\n]*", "", text)  # line comments
-    text = re.sub(r",(\s*[}\]])", r"\1", text)  # trailing commas
-    return text
+    out: List[str] = []
+    i = 0
+    n = len(text)
+    in_string = False
+    while i < n:
+        ch = text[i]
+        if in_string:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:  # keep escaped char verbatim
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":  # line comment
+            i += 2
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":  # block comment
+            i += 2
+            while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+        if ch in "}]":  # drop a trailing comma already emitted before this
+            k = len(out) - 1
+            while k >= 0 and out[k] in " \t\r\n":
+                k -= 1
+            if k >= 0 and out[k] == ",":
+                del out[k]
+            out.append(ch)
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _detect_source_dirs(project_root: str) -> List[str]:
