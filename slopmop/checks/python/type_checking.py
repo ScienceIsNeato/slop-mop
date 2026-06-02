@@ -24,6 +24,7 @@ would have to guess. This gate eliminates that guessing.
 
 import json
 import os
+import re
 import shutil
 import time
 from collections import Counter
@@ -284,22 +285,76 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         """Return reason for skipping (delegates to PythonCheckMixin)."""
         return PythonCheckMixin.skip_reason(self, project_root)
 
+    @staticmethod
+    def _read_project_pyright_config(
+        project_root: str, base_config_file: Optional[str]
+    ) -> Dict[str, Any]:
+        """Parse the project's own pyright config, or {} if absent/unreadable.
+
+        Tolerates ``//`` line comments (pyright accepts JSONC-style configs).
+        """
+        if not base_config_file:
+            return {}
+        path = Path(project_root) / base_config_file
+        if not path.exists():
+            return {}
+        try:
+            text = path.read_text(encoding="utf-8")
+            stripped = re.sub(r"//[^\n]*", "", text)
+            data: Any = json.loads(stripped)
+        except (json.JSONDecodeError, OSError):
+            return {}
+        return cast(Dict[str, Any], data) if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _completeness_rules_owned_by_project(cfg: Dict[str, Any]) -> set[str]:
+        """Return the reportUnknown* rules the project's config already sets.
+
+        Checks both top-level keys and per-path ``executionEnvironments``
+        entries, so a project can scope a rule down (e.g.
+        ``reportUnknownMemberType: "none"`` for an untyped-dependency call
+        site) without the gate clobbering it back to ``error``.
+        """
+        owned: set[str] = {rule for rule in TYPE_COMPLETENESS_RULES if rule in cfg}
+        exec_envs = cfg.get("executionEnvironments")
+        if isinstance(exec_envs, list):
+            for env in cast(List[Any], exec_envs):
+                if isinstance(env, dict):
+                    env_dict = cast(Dict[str, Any], env)
+                    owned.update(r for r in TYPE_COMPLETENESS_RULES if r in env_dict)
+        return owned
+
     def _build_pyright_config(self, project_root: str) -> Dict[str, Any]:
         """Build pyrightconfig.json content for this run."""
         source_dirs = _detect_source_dirs(project_root)
         python_version = _detect_python_version(project_root)
         venv_path, venv_name = _detect_venv_path(project_root)
         base_config_file = self.config.get("pyright_config_file")
+        explicitly_configured = bool(base_config_file)
+        # Fall back to a project-owned pyrightconfig.json so its rule overrides
+        # (including per-path executionEnvironments) are honored, not ignored.
+        if not base_config_file:
+            auto = Path(project_root) / "pyrightconfig.json"
+            if auto.exists():
+                base_config_file = auto.name
         explicit_include_dirs = self.config.get("include_dirs", [])
         include_dirs: List[str] = source_dirs
         if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
             include_dirs = cast(List[str], explicit_include_dirs)
+
+        base_cfg = self._read_project_pyright_config(project_root, base_config_file)
+        owned_rules = self._completeness_rules_owned_by_project(base_cfg)
 
         config: Dict[str, Any] = {"typeCheckingMode": "standard"}
 
         if isinstance(base_config_file, str) and base_config_file:
             config["extends"] = base_config_file
             if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
+                config["include"] = include_dirs
+            elif not explicitly_configured and "include" not in base_cfg:
+                # Auto-detected pyrightconfig.json that doesn't scope includes:
+                # keep source-dir scoping so the gate doesn't balloon to the
+                # whole tree. (An explicitly configured base is trusted as-is.)
                 config["include"] = include_dirs
         else:
             config["include"] = include_dirs
@@ -310,9 +365,15 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             config["venvPath"] = venv_path
             config["venv"] = venv_name
 
-        # Add type-completeness rules if strict mode
+        # Add type-completeness rules in strict mode — but never re-force a rule
+        # the project already configured itself. That lets a repo suppress
+        # reportUnknown* noise from untyped dependencies (globally or per-path in
+        # its own pyrightconfig.json) without disabling the gate wholesale, while
+        # still catching real type errors. (barnacle #245)
         if self.config.get("strict", True):
-            config.update(TYPE_COMPLETENESS_RULES)
+            for rule, level in TYPE_COMPLETENESS_RULES.items():
+                if rule not in owned_rules:
+                    config[rule] = level
 
         return config
 

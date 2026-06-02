@@ -23,8 +23,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Fixed the secret scanner choking on repos with giant vendored and dependency folders — it was crawling everything and timing out. Now it skips the heavy stuff and finishes in a blink",
-    "direction": "Folding this into the open review with the rest of the friction fixes, then getting it all into a release",
+    "status": "Type checker was burying people under errors coming from other people's untyped libraries, with no way to quiet them short of switching the whole check off. Now it respects a project's own settings so they can hush just the noisy bits",
+    "direction": "Getting this reviewed and shipped alongside the other friction fixes",
     "last_update": "2026-06-01T00:00:00Z"
   },
   "queue": {
