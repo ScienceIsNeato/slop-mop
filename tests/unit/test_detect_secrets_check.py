@@ -30,6 +30,59 @@ class TestRunDetectSecrets:
         assert check._is_path_excluded_for_detect_secrets("server/tests/test_auth.py")
         assert not check._is_path_excluded_for_detect_secrets("server/app/auth.py")
 
+    def test_scan_paths_prune_excluded_top_level_dirs(self, tmp_path):
+        """Helper drops venv/node_modules/dot-dirs but keeps real source.
+
+        Regression for barnacle #244: detect-secrets must not descend into
+        large vendored/venv directories — they cause the 60s-timeout flake.
+        """
+        (tmp_path / "src").mkdir()
+        (tmp_path / "venv").mkdir()
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / ".git").mkdir()
+        (tmp_path / "config.yml").write_text("name: ci\n")
+
+        check = SecurityLocalCheck({})
+        paths = check._detect_secrets_scan_paths(str(tmp_path))
+
+        assert "src" in paths
+        assert "config.yml" in paths
+        assert "venv" not in paths
+        assert "node_modules" not in paths
+        assert ".git" not in paths
+
+    def test_scan_paths_empty_when_root_unlistable(self):
+        """Unlistable root falls back to whole-tree scan (no path args)."""
+        check = SecurityLocalCheck({})
+        assert check._detect_secrets_scan_paths("/nonexistent/path/xyz") == []
+
+    def test_detect_secrets_scopes_walk_to_unexcluded_paths(self, tmp_path):
+        """_run_detect_secrets passes scoped paths so the walk is pruned.
+
+        The big vendored dirs must never reach the scan argv; the real source
+        dirs must. This is what takes the scan from ~49s to ~1.7s (#244).
+        """
+        (tmp_path / "src").mkdir()
+        (tmp_path / "venv").mkdir()
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "config.yml").write_text("name: ci\n")
+
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = json.dumps({"results": {}})
+
+        with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
+            check._run_detect_secrets(str(tmp_path))
+
+        argv = mock_run.call_args[0][0]
+        assert "scan" in argv
+        assert "src" in argv
+        assert "config.yml" in argv
+        # The expensive vendored dirs must be pruned before the walk.
+        assert "venv" not in argv
+        assert "node_modules" not in argv
+
     def test_detect_secrets_no_findings(self, tmp_path):
         """Test _run_detect_secrets with no secrets found."""
         check = SecurityLocalCheck({})

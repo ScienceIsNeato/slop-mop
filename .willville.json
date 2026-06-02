@@ -23,8 +23,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Cleared the whole backlog of tool-friction reports, plus knocked out a stray bit of noise where a safety check was printing a harmless-but-confusing error on every command",
-    "direction": "Backlog's empty. Next is getting these fixes reviewed and into a release so they actually reach people's machines",
+    "status": "Fixed the secret scanner choking on repos with giant vendored and dependency folders — it was crawling everything and timing out. Now it skips the heavy stuff and finishes in a blink",
+    "direction": "Folding this into the open review with the rest of the friction fixes, then getting it all into a release",
     "last_update": "2026-06-01T00:00:00Z"
   },
   "queue": {
