@@ -140,6 +140,66 @@ def _detect_venv_path(project_root: str) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+def _strip_jsonc(text: str) -> str:
+    """Make a JSONC document parseable by ``json.loads``.
+
+    pyright config files are JSONC: they may contain ``//`` line comments,
+    ``/* */`` block comments, and trailing commas — all of which ``json.loads``
+    rejects. Strip them so a project's pyrightconfig.json is honored instead of
+    silently failing to parse (which would discard its rule overrides).
+
+    A naive regex can't do this: pyright glob values like ``"src/**"`` and
+    ``"packages/*/dist"`` contain ``/*`` and ``*/``, and a path could contain
+    ``//`` — a regex would treat those as comment markers and swallow the rule
+    keys in between. So this scans character by character, never touching the
+    contents of a (double-quoted, escape-aware) JSON string.
+    """
+    out: List[str] = []
+    i = 0
+    n = len(text)
+    in_string = False
+    while i < n:
+        ch = text[i]
+        if in_string:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:  # keep escaped char verbatim
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":  # line comment
+            i += 2
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":  # block comment
+            i += 2
+            while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+        if ch in "}]":  # drop a trailing comma already emitted before this
+            k = len(out) - 1
+            while k >= 0 and out[k] in " \t\r\n":
+                k -= 1
+            if k >= 0 and out[k] == ",":
+                del out[k]
+            out.append(ch)
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _detect_source_dirs(project_root: str) -> List[str]:
     """Detect which directories contain Python source code."""
     candidates = ["src", "slopmop", "lib", "app"]
@@ -284,22 +344,72 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         """Return reason for skipping (delegates to PythonCheckMixin)."""
         return PythonCheckMixin.skip_reason(self, project_root)
 
+    @staticmethod
+    def _read_project_pyright_config(
+        project_root: str, base_config_file: Optional[str]
+    ) -> Dict[str, Any]:
+        """Parse the project's own pyright config, or {} if absent/unreadable.
+
+        Tolerates ``//`` line comments (pyright accepts JSONC-style configs).
+        """
+        if not base_config_file:
+            return {}
+        path = Path(project_root) / base_config_file
+        if not path.exists():
+            return {}
+        try:
+            text = path.read_text(encoding="utf-8")
+            data: Any = json.loads(_strip_jsonc(text))
+        except (json.JSONDecodeError, OSError):
+            return {}
+        return cast(Dict[str, Any], data) if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _completeness_rules_owned_by_project(cfg: Dict[str, Any]) -> set[str]:
+        """Return the reportUnknown* rules the project sets at the **top level**.
+
+        Only top-level settings count as taking global ownership of a rule. A
+        per-path ``executionEnvironments`` entry is deliberately *not* counted:
+        pyright applies per-path settings on top of the top-level one, so the
+        gate can still force the rule to ``error`` globally and the project's
+        scoped ``"none"`` will win for just its root — suppressing noise on an
+        untyped-dependency path without dropping enforcement everywhere else.
+        Counting a per-path override as global ownership would leave the rule
+        unenforced across the whole codebase (standard mode defaults it off).
+        """
+        return {rule for rule in TYPE_COMPLETENESS_RULES if rule in cfg}
+
     def _build_pyright_config(self, project_root: str) -> Dict[str, Any]:
         """Build pyrightconfig.json content for this run."""
         source_dirs = _detect_source_dirs(project_root)
         python_version = _detect_python_version(project_root)
         venv_path, venv_name = _detect_venv_path(project_root)
         base_config_file = self.config.get("pyright_config_file")
+        explicitly_configured = bool(base_config_file)
+        # Fall back to a project-owned pyrightconfig.json so its rule overrides
+        # (including per-path executionEnvironments) are honored, not ignored.
+        if not base_config_file:
+            auto = Path(project_root) / "pyrightconfig.json"
+            if auto.exists():
+                base_config_file = auto.name
         explicit_include_dirs = self.config.get("include_dirs", [])
         include_dirs: List[str] = source_dirs
         if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
             include_dirs = cast(List[str], explicit_include_dirs)
+
+        base_cfg = self._read_project_pyright_config(project_root, base_config_file)
+        owned_rules = self._completeness_rules_owned_by_project(base_cfg)
 
         config: Dict[str, Any] = {"typeCheckingMode": "standard"}
 
         if isinstance(base_config_file, str) and base_config_file:
             config["extends"] = base_config_file
             if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
+                config["include"] = include_dirs
+            elif not explicitly_configured and "include" not in base_cfg:
+                # Auto-detected pyrightconfig.json that doesn't scope includes:
+                # keep source-dir scoping so the gate doesn't balloon to the
+                # whole tree. (An explicitly configured base is trusted as-is.)
                 config["include"] = include_dirs
         else:
             config["include"] = include_dirs
@@ -310,9 +420,15 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             config["venvPath"] = venv_path
             config["venv"] = venv_name
 
-        # Add type-completeness rules if strict mode
+        # Add type-completeness rules in strict mode — but never re-force a rule
+        # the project already configured itself. That lets a repo suppress
+        # reportUnknown* noise from untyped dependencies (globally or per-path in
+        # its own pyrightconfig.json) without disabling the gate wholesale, while
+        # still catching real type errors. (barnacle #245)
         if self.config.get("strict", True):
-            config.update(TYPE_COMPLETENESS_RULES)
+            for rule, level in TYPE_COMPLETENESS_RULES.items():
+                if rule not in owned_rules:
+                    config[rule] = level
 
         return config
 

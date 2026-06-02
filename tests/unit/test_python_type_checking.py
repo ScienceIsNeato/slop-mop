@@ -262,6 +262,104 @@ class TestPythonTypeCheckingCheck:
         for rule in TYPE_COMPLETENESS_RULES:
             assert rule in config
 
+    def test_strict_honors_project_rule_override(self, tmp_path):
+        """A rule the project sets in pyrightconfig.json is not re-forced (#245)."""
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+        (tmp_path / "pyrightconfig.json").write_text(
+            json.dumps({"reportUnknownMemberType": "none"})
+        )
+
+        check = PythonTypeCheckingCheck({"strict": True})
+        config = check._build_pyright_config(str(tmp_path))
+
+        # Auto-detected project config is extended...
+        assert config["extends"] == "pyrightconfig.json"
+        # ...and the project's suppression is left intact, not slammed to error.
+        assert "reportUnknownMemberType" not in config
+        # Rules the project did NOT set are still enforced.
+        assert config["reportUnknownVariableType"] == "error"
+        assert config["reportUnknownArgumentType"] == "error"
+
+    def test_per_path_override_keeps_global_enforcement(self, tmp_path):
+        """A per-path override must NOT drop the rule globally (#245).
+
+        pyright applies executionEnvironments settings on top of the top-level
+        one, so the gate still forces the rule to error globally and the
+        project's scoped "none" wins only for its root. Counting the per-path
+        entry as global ownership would leave the rule unenforced everywhere
+        (standard mode defaults reportUnknown* off).
+        """
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+        (tmp_path / "pyrightconfig.json").write_text(
+            json.dumps(
+                {
+                    "executionEnvironments": [
+                        {"root": "src", "reportUnknownArgumentType": "none"}
+                    ]
+                }
+            )
+        )
+
+        check = PythonTypeCheckingCheck({"strict": True})
+        config = check._build_pyright_config(str(tmp_path))
+
+        # Still enforced globally; the per-path "none" (from the extended
+        # config) applies only to its root.
+        assert config["reportUnknownArgumentType"] == "error"
+        assert config["reportUnknownMemberType"] == "error"
+
+    def test_strict_honors_override_in_jsonc_config(self, tmp_path):
+        """A JSONC pyrightconfig (comments + trailing comma) still parses (#245).
+
+        Regression: stripping only // line comments left /* */ blocks and
+        trailing commas, so json.loads failed, owned_rules emptied, and every
+        rule was forced back to error — silently defeating the fix.
+        """
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+        # Includes glob patterns (src/**, packages/*/dist) whose /* and */ would
+        # fool a regex comment-stripper into eating the rule key between them,
+        # plus a // inside a string value, a block comment, and a trailing comma.
+        (tmp_path / "pyrightconfig.json").write_text(
+            "{\n"
+            "  /* untyped deps live upstream */\n"
+            '  "include": ["src/**"],\n'
+            '  "docs": "see http://example.com/style",\n'
+            '  "reportUnknownMemberType": "none", // scoped out on purpose\n'
+            '  "executionEnvironments": [{"root": "packages/*/dist"}],\n'
+            "}\n"
+        )
+
+        check = PythonTypeCheckingCheck({"strict": True})
+        config = check._build_pyright_config(str(tmp_path))
+
+        assert "reportUnknownMemberType" not in config
+        assert config["reportUnknownVariableType"] == "error"
+
+    def test_strict_forces_all_rules_without_project_config(self, tmp_path):
+        """With no project pyright config, all completeness rules are enforced."""
+        from slopmop.checks.python.type_checking import (
+            TYPE_COMPLETENESS_RULES,
+            PythonTypeCheckingCheck,
+        )
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        check = PythonTypeCheckingCheck({"strict": True})
+        config = check._build_pyright_config(str(tmp_path))
+
+        for rule in TYPE_COMPLETENESS_RULES:
+            assert config[rule] == "error"
+
     def test_run_uses_generated_overlay_without_mutating_pyrightconfig(self, tmp_path):
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
