@@ -225,14 +225,24 @@ class TestAllFail:
         result_all_fail.assert_prerequisites()
         _assert_gate_failed(result_all_fail, "sloppy-formatting.js")
 
-    def test_security_gate_fails(self, result_all_fail: RunResult) -> None:
-        """vulnerability-blindness.py should fail — hardcoded DB_PASSWORD triggers bandit B105.
+    def test_security_gate_is_scour_only(self, result_all_fail: RunResult) -> None:
+        """Both security gates are scour-level — neither runs during ``sm swab``.
 
-        Note: dependency-risk.py is scour-level and does not run during ``sm swab``.
-        vulnerability-blindness.py is the swab-level security gate.
+        vulnerability-blindness.py moved to scour because semgrep ``--config=auto``
+        fetches rulesets over the network (a swab gate must be network-free), and
+        dependency-risk.py was already scour. Secret/vuln *detection* is covered
+        by unit tests; here we just guard that swab stays fast and network-free.
         """
         result_all_fail.assert_prerequisites()
-        _assert_gate_failed(result_all_fail, "vulnerability-blindness.py")
+        leaked = [
+            line
+            for line in result_all_fail.output.splitlines()
+            if "vulnerability-blindness" in line.lower() and "fail" in line.lower()
+        ]
+        assert not leaked, (
+            "vulnerability-blindness.py is scour-level and must not run during "
+            "swab:\n" + "\n".join(leaked)
+        )
 
     def test_pytest_gate_fails(self, result_all_fail: RunResult) -> None:
         """untested-code.py should not pass.
@@ -267,13 +277,22 @@ class TestMixed:
             result_mixed.exit_code == 1
         ), f"Expected exit 1 (some validate failures) on mixed branch:\n{result_mixed}"
 
-    def test_security_gate_fails(self, result_mixed: RunResult) -> None:
-        """vulnerability-blindness.py should fail — hardcoded INTERNAL_API_KEY triggers bandit.
+    def test_security_gate_is_scour_only(self, result_mixed: RunResult) -> None:
+        """Security gates are scour-level — they don't run during ``sm swab``.
 
-        Note: dependency-risk.py is scour-level and does not run during ``sm swab``.
+        vulnerability-blindness.py and dependency-risk.py are both scour now
+        (semgrep --config=auto needs the network), so neither appears in swab.
         """
         result_mixed.assert_prerequisites()
-        _assert_gate_failed(result_mixed, "vulnerability-blindness.py")
+        leaked = [
+            line
+            for line in result_mixed.output.splitlines()
+            if "vulnerability-blindness" in line.lower() and "fail" in line.lower()
+        ]
+        assert not leaked, (
+            "vulnerability-blindness.py is scour-level and must not run during "
+            "swab:\n" + "\n".join(leaked)
+        )
 
     def test_dead_code_gate_fails(self, result_mixed: RunResult) -> None:
         result_mixed.assert_prerequisites()

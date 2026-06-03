@@ -18,6 +18,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    GateLevel,
     ScopeInfo,
     ToolContext,
     count_source_scope,
@@ -38,7 +39,9 @@ class StringDuplicationCheck(BaseCheck):
     literals repeated across multiple files. These are candidates
     for extraction to a constants module.
 
-    Level: swab
+    Level: scour. Cross-file scanning is comparatively expensive and the
+    signal changes slowly, so it runs in the pre-PR sweep rather than on
+    every commit.
 
     Configuration:
       threshold: 2 — minimum occurrences to flag a string.
@@ -60,10 +63,11 @@ class StringDuplicationCheck(BaseCheck):
           in tools/find-duplicate-strings/.
 
     Re-check:
-      sm swab -g myopia:string-duplication.py --verbose
+      sm scour -g myopia:string-duplication.py --verbose
     """
 
     tool_context = ToolContext.NODE
+    level = GateLevel.SCOUR
     # DIAGNOSTIC not FOUNDATION — the detection tool is vendored in
     # tools/find-duplicate-strings/, not pip/npm-installable.  The
     # protocol's litmus test is "could a developer reproduce this gate

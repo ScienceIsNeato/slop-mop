@@ -24,6 +24,7 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    GateLevel,
     RemediationChurn,
     ScopeInfo,
     ToolContext,
@@ -44,7 +45,10 @@ class RepeatedCodeCheck(BaseCheck):
     TypeScript, and other languages. Reports specific file pairs and
     line ranges so you know exactly what to deduplicate.
 
-    Level: swab
+    Level: scour. jscpd clone detection is comparatively expensive and the
+    signal (cross-file duplication) changes slowly, so it runs in the
+    pre-PR sweep rather than on every commit — matching the agent rails,
+    which route any duplication scanner to ``sm scour``.
 
     Configuration:
       threshold: 5 — maximum allowed duplication percentage. 5% is
@@ -63,11 +67,12 @@ class RepeatedCodeCheck(BaseCheck):
       jscpd not available: npm install -g jscpd
 
     Re-check:
-      sm swab -g laziness:repeated-code --verbose
+      sm scour -g laziness:repeated-code --verbose
     """
 
     tool_context = ToolContext.NODE
     role = CheckRole.FOUNDATION
+    level = GateLevel.SCOUR
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
 
     def __init__(self, config: Dict[str, Any], threshold: float = DEFAULT_THRESHOLD):
