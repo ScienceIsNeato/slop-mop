@@ -190,24 +190,62 @@ class TestCreateBarnacleIssue:
         assert "barnacle" in command
         assert "bug" in command
 
-    def test_retries_without_barnacle_label_when_missing(self, tmp_path):
+    def test_creates_label_and_retries_with_it_when_missing(self, tmp_path):
+        """Missing barnacle label → create the label, retry WITH it (#244/#245)."""
         missing = subprocess.CompletedProcess(
             args=["gh"], returncode=1, stdout="", stderr="label barnacle not found"
+        )
+        label_created = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout="", stderr=""
         )
         success = subprocess.CompletedProcess(
             args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
         )
         with patch(
-            "slopmop.cli.barnacle.subprocess.run", side_effect=[missing, success]
+            "slopmop.cli.barnacle.subprocess.run",
+            side_effect=[missing, label_created, success],
         ) as run:
             result, _body_path = create_barnacle_issue(
                 _issue(project_root=str(tmp_path))
             )
 
         assert result.returncode == 0
-        fallback_command = run.call_args_list[1].args[0]
+        # Second call creates the label.
+        label_command = run.call_args_list[1].args[0]
+        assert label_command[:3] == ["gh", "label", "create"]
+        assert "barnacle" in label_command
+        # Third call re-files the issue WITH the barnacle label intact.
+        retry_command = run.call_args_list[2].args[0]
+        assert retry_command[:3] == ["gh", "issue", "create"]
+        assert "barnacle" in retry_command
+        assert "bug" in retry_command
+
+    def test_files_without_label_as_last_resort_when_label_create_fails(
+        self, tmp_path, capsys
+    ):
+        """If the label can't be created, file without it but warn loudly."""
+        missing = subprocess.CompletedProcess(
+            args=["gh"], returncode=1, stdout="", stderr="label barnacle not found"
+        )
+        label_failed = subprocess.CompletedProcess(
+            args=["gh"], returncode=1, stdout="", stderr="permission denied"
+        )
+        success = subprocess.CompletedProcess(
+            args=["gh"], returncode=0, stdout="https://example.test/1\n", stderr=""
+        )
+        with patch(
+            "slopmop.cli.barnacle.subprocess.run",
+            side_effect=[missing, label_failed, success],
+        ) as run:
+            result, _body_path = create_barnacle_issue(
+                _issue(project_root=str(tmp_path))
+            )
+
+        assert result.returncode == 0
+        fallback_command = run.call_args_list[2].args[0]
         assert "barnacle" not in fallback_command
         assert "bug" in fallback_command
+        assert "could not apply the 'barnacle' label" in capsys.readouterr().err.lower()
 
     def test_does_not_retry_for_non_label_error_mentioning_barnacle(self, tmp_path):
         failed = subprocess.CompletedProcess(

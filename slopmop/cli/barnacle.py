@@ -43,6 +43,9 @@ _MISSING_LABEL_MARKERS = (
     "couldn't find",
     "unable to resolve",
 )
+# Used when auto-creating the label in a repo that doesn't have it yet.
+_BARNACLE_LABEL_COLOR = "5319e7"
+_BARNACLE_LABEL_DESCRIPTION = "Slop-mop tool-friction report from real usage"
 
 
 @dataclass(frozen=True)
@@ -262,10 +265,46 @@ def _is_missing_barnacle_label(stderr: str) -> bool:
     return any(marker in text for marker in _MISSING_LABEL_MARKERS)
 
 
+def _ensure_barnacle_label(repo: str) -> bool:
+    """Best-effort create the ``barnacle`` label in ``repo``.
+
+    Returns True if the label exists afterwards (created or already present).
+    ``gh label create --force`` upserts, so a pre-existing label is fine.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "label",
+                "create",
+                "barnacle",
+                "--repo",
+                repo,
+                "--color",
+                _BARNACLE_LABEL_COLOR,
+                "--description",
+                _BARNACLE_LABEL_DESCRIPTION,
+                "--force",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False
+    return result.returncode == 0
+
+
 def create_barnacle_issue(
     issue: BarnacleIssue, body_file: Optional[str] = None, body: Optional[str] = None
 ) -> Tuple[subprocess.CompletedProcess[str], Path]:
-    """Create the GitHub issue, retrying without the barnacle label if needed."""
+    """Create the GitHub issue, ensuring the barnacle label is applied.
+
+    If the repo is missing the ``barnacle`` label, create it and retry *with*
+    the label — dropping it silently is how barnacles end up unlabeled and
+    invisible to ``--label barnacle`` triage. Only if the label can't be
+    created do we fall back to filing without it, and we warn when we do.
+    """
     issue_body_path = write_issue_body_file(issue, body_file, body)
     try:
         result = subprocess.run(
@@ -281,6 +320,25 @@ def create_barnacle_issue(
     if not missing_label or "barnacle" not in issue.labels:
         return result, issue_body_path
 
+    # The repo lacks the `barnacle` label. Create it and retry with the label
+    # so the barnacle stays discoverable.
+    if _ensure_barnacle_label(issue.repo):
+        retry = subprocess.run(
+            _issue_create_command(issue, issue.labels, issue_body_path),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if retry.returncode == 0 or not _is_missing_barnacle_label(retry.stderr):
+            return retry, issue_body_path
+
+    # Last resort: file without the barnacle label rather than not at all, but
+    # make the gap visible so a human can re-tag it.
+    print(
+        "⚠️  Could not apply the 'barnacle' label; filing without it. "
+        "Create the label and re-tag this issue so it shows up in triage.",
+        file=sys.stderr,
+    )
     fallback_labels = tuple(label for label in issue.labels if label != "barnacle")
     return (
         subprocess.run(
