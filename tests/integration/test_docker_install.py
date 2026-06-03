@@ -192,10 +192,12 @@ class TestHappyPath:
 
     def test_key_gates_run(self, result_all_pass: RunResult) -> None:
         result_all_pass.assert_prerequisites()
+        # All swab-level gates. vulnerability-blindness.py is intentionally not
+        # here — it's scour-only (semgrep --config=auto needs the network).
         for gate in (
             "sloppy-formatting.py",
             "untested-code.py",
-            "vulnerability-blindness.py",
+            "dead-code.py",
         ):
             assert (
                 gate in result_all_pass.output
