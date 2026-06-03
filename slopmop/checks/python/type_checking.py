@@ -40,6 +40,7 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+from slopmop.utils.jsonc import loads_jsonc
 
 # pyright rules we enforce for type completeness
 TYPE_COMPLETENESS_RULES: Dict[str, str] = {
@@ -138,66 +139,6 @@ def _detect_venv_path(project_root: str) -> Tuple[Optional[str], Optional[str]]:
         return venv_parent, venv_name
 
     return None, None
-
-
-def _strip_jsonc(text: str) -> str:
-    """Make a JSONC document parseable by ``json.loads``.
-
-    pyright config files are JSONC: they may contain ``//`` line comments,
-    ``/* */`` block comments, and trailing commas — all of which ``json.loads``
-    rejects. Strip them so a project's pyrightconfig.json is honored instead of
-    silently failing to parse (which would discard its rule overrides).
-
-    A naive regex can't do this: pyright glob values like ``"src/**"`` and
-    ``"packages/*/dist"`` contain ``/*`` and ``*/``, and a path could contain
-    ``//`` — a regex would treat those as comment markers and swallow the rule
-    keys in between. So this scans character by character, never touching the
-    contents of a (double-quoted, escape-aware) JSON string.
-    """
-    out: List[str] = []
-    i = 0
-    n = len(text)
-    in_string = False
-    while i < n:
-        ch = text[i]
-        if in_string:
-            out.append(ch)
-            if ch == "\\" and i + 1 < n:  # keep escaped char verbatim
-                out.append(text[i + 1])
-                i += 2
-                continue
-            if ch == '"':
-                in_string = False
-            i += 1
-            continue
-        if ch == '"':
-            in_string = True
-            out.append(ch)
-            i += 1
-            continue
-        if ch == "/" and i + 1 < n and text[i + 1] == "/":  # line comment
-            i += 2
-            while i < n and text[i] != "\n":
-                i += 1
-            continue
-        if ch == "/" and i + 1 < n and text[i + 1] == "*":  # block comment
-            i += 2
-            while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
-                i += 1
-            i += 2
-            continue
-        if ch in "}]":  # drop a trailing comma already emitted before this
-            k = len(out) - 1
-            while k >= 0 and out[k] in " \t\r\n":
-                k -= 1
-            if k >= 0 and out[k] == ",":
-                del out[k]
-            out.append(ch)
-            i += 1
-            continue
-        out.append(ch)
-        i += 1
-    return "".join(out)
 
 
 def _detect_source_dirs(project_root: str) -> List[str]:
@@ -359,7 +300,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             return {}
         try:
             text = path.read_text(encoding="utf-8")
-            data: Any = json.loads(_strip_jsonc(text))
+            data: Any = loads_jsonc(text)
         except (json.JSONDecodeError, OSError):
             return {}
         return cast(Dict[str, Any], data) if isinstance(data, dict) else {}

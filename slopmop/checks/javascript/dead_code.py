@@ -2,7 +2,6 @@
 
 import json
 import os
-import re
 import time
 from typing import Any, Dict, List, Optional, cast
 
@@ -17,6 +16,7 @@ from slopmop.checks.base import (
 from slopmop.checks.mixins import JavaScriptCheckMixin
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+from slopmop.utils.jsonc import loads_jsonc
 
 
 class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
@@ -247,9 +247,9 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
             try:
                 with open(cfg_path) as f:
                     text = f.read()
-                # Strip // line comments (JSONC) before parsing
-                stripped = re.sub(r"//[^\n]*", "", text)
-                parsed: Any = json.loads(stripped)
+                # knip configs are JSONC (comments + trailing commas); parse
+                # with the shared string-aware stripper.
+                parsed: Any = loads_jsonc(text)
                 if isinstance(parsed, dict):
                     return cast(Dict[str, Any], parsed)
             except (json.JSONDecodeError, OSError):

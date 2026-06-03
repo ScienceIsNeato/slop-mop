@@ -71,6 +71,7 @@ security = [
     "pyasn1>=0.6.3",  # GHSA-jr27-m4p2-rc6r
     "requests>=2.33.0",  # GHSA-gc5v-m9x4-r6x2
     "python-multipart>=0.0.27",  # GHSA-pp6c-gr5w-3c5g via semgrep/mcp
+    "pyjwt>=2.13.0",  # PYSEC-2026-175, PYSEC-2026-177, PYSEC-2026-179 via semgrep/mcp
     "starlette>=1.0.1",  # PYSEC-2026-161 via mcp/sse-starlette
     "semgrep>=1.140.0",
     "pip-audit>=2.0.0",

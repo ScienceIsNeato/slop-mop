@@ -23,8 +23,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Type checker was burying people under errors coming from other people's untyped libraries, with no way to quiet them short of switching the whole check off. Now it respects a project's own settings so they can hush just the noisy bits",
-    "direction": "Getting this reviewed and shipped alongside the other friction fixes",
+    "status": "Tidying up two things at once: one shared way to read config files with comments (we had three slightly-broken copies), and making sure friction reports always get tagged so they don't get lost",
+    "direction": "Wrapping these up; one unrelated security alert on a borrowed library is in the way and needs a call on how to handle it",
     "last_update": "2026-06-01T00:00:00Z"
   },
   "queue": {
