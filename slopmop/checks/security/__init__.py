@@ -117,13 +117,16 @@ class SecuritySubResult:
 
 
 class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
-    """Local security scanning (no network required).
+    """Security scanning: bandit + detect-secrets + semgrep, in parallel.
 
-    Wraps bandit, semgrep, and detect-secrets in parallel.
-    Reports only HIGH/MEDIUM severity findings to reduce noise
-    while catching real security issues.
+    Reports only HIGH/MEDIUM severity findings to reduce noise while
+    catching real security issues.
 
-    Level: scour
+    Level: scour. bandit and detect-secrets are local, but semgrep runs
+    ``--config=auto``, which fetches rulesets over the network on every run.
+    A SWAB gate must be network-free (and security scanning is a pre-push
+    concern, not a per-commit one), so this runs at scour — matching the
+    agent rails, which already route bandit/detect-secrets to ``sm scour``.
 
     Configuration:
       scanners: ["bandit", "semgrep", "detect-secrets"] — all three
@@ -141,12 +144,13 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
           .secrets.baseline if it's a false positive.
 
     Re-check:
-      sm swab -g myopia:vulnerability-blindness.py --verbose
+      sm scour -g myopia:vulnerability-blindness.py --verbose
     """
 
     tool_context = ToolContext.SM_TOOL
     required_tools = ["bandit", "detect-secrets"]
     role = CheckRole.FOUNDATION
+    level = GateLevel.SCOUR
 
     @property
     def name(self) -> str:

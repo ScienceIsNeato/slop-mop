@@ -503,7 +503,7 @@ class TestCmdConfig:
             exclude_dir=None,
             json=None,
             swabbing_timeout=None,
-            swab_off="myopia:vulnerability-blindness.py",
+            swab_off="laziness:sloppy-formatting.py",
             swab_on=None,
         )
 
@@ -511,9 +511,7 @@ class TestCmdConfig:
 
         assert result == 0
         config = json.loads((tmp_path / ".sb_config.json").read_text())
-        assert (
-            config["myopia"]["gates"]["vulnerability-blindness.py"]["run_on"] == "scour"
-        )
+        assert config["laziness"]["gates"]["sloppy-formatting.py"]["run_on"] == "scour"
 
     def test_swab_on_gate(self, tmp_path):
         """--swab-on promotes a gate into the swab rail."""

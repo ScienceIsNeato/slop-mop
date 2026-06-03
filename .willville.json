@@ -23,8 +23,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Tidying up two things at once: one shared way to read config files with comments (we had three slightly-broken copies), and making sure friction reports always get tagged so they don't get lost",
-    "direction": "Wrapping these up; one unrelated security alert on a borrowed library is in the way and needs a call on how to handle it",
+    "status": "Moved the slow and network-using checks out of the quick every-commit pass and into the thorough pre-PR pass, so the quick loop stays fast and stays offline like it's supposed to",
+    "direction": "Getting this reviewed and shipped; also flagging that my local copy of the tool is out of date",
     "last_update": "2026-06-01T00:00:00Z"
   },
   "queue": {
