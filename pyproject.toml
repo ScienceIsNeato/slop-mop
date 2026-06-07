@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slopmop"
-version = "2.1.0"
+# Version is the single source of truth in slopmop/_version.py (read below via
+# [tool.setuptools.dynamic]). Do not hardcode a version here.
+dynamic = ["version"]
 description = "Quality gates for AI-assisted codebases — catch the slop LLMs leave behind."
 readme = "README.md"
 license = {text = "Slop-Mop Attribution License v1.0"}
@@ -109,6 +111,9 @@ Homepage = "https://github.com/ScienceIsNeato/slop-mop"
 Repository = "https://github.com/ScienceIsNeato/slop-mop"
 Issues = "https://github.com/ScienceIsNeato/slop-mop/issues"
 Changelog = "https://github.com/ScienceIsNeato/slop-mop/releases"
+
+[tool.setuptools.dynamic]
+version = { attr = "slopmop._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["."]

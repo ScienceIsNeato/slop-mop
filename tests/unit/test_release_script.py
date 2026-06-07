@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 _RELEASE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "release.sh"
+_SYNC_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "sync_version.py"
 _HAS_BASH = shutil.which("bash") is not None
 _HAS_GIT = shutil.which("git") is not None
 _IS_UNIX = os.name != "nt"
@@ -43,11 +44,9 @@ def _checked(
     return result.stdout.strip()
 
 
-def _write_pyproject(path: Path, version: str) -> None:
-    path.write_text(
-        "[project]\n" 'name = "slopmop"\n' f'version = "{version}"\n',
-        encoding="utf-8",
-    )
+def _write_version_file(path: Path, version: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'__version__ = "{version}"\n', encoding="utf-8")
 
 
 def _init_release_repo(tmp_path: Path) -> Path:
@@ -76,10 +75,17 @@ def _init_release_repo(tmp_path: Path) -> Path:
 
     (work / "scripts").mkdir()
     shutil.copy2(_RELEASE_SCRIPT, work / "scripts" / "release.sh")
-    _write_pyproject(work / "pyproject.toml", "0.14.1")
+    shutil.copy2(_SYNC_SCRIPT, work / "scripts" / "sync_version.py")
+    _write_version_file(work / "slopmop" / "_version.py", "0.14.1")
 
     _checked(
-        work, "git", "add", "pyproject.toml", "scripts/release.sh", label="git add"
+        work,
+        "git",
+        "add",
+        "slopmop/_version.py",
+        "scripts/release.sh",
+        "scripts/sync_version.py",
+        label="git add",
     )
     _checked(work, "git", "commit", "-m", "initial", label="git commit")
     _checked(work, "git", "push", "-u", "origin", "main", label="git push main")
@@ -88,8 +94,8 @@ def _init_release_repo(tmp_path: Path) -> Path:
 
 def _create_remote_release_branch(work: Path, branch_name: str, version: str) -> str:
     _checked(work, "git", "checkout", "-b", branch_name, label="git checkout release")
-    _write_pyproject(work / "pyproject.toml", version)
-    _checked(work, "git", "add", "pyproject.toml", label="git add release")
+    _write_version_file(work / "slopmop" / "_version.py", version)
+    _checked(work, "git", "add", "slopmop/_version.py", label="git add release")
     _checked(
         work,
         "git",

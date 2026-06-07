@@ -7,10 +7,11 @@
 #   ./scripts/release.sh major   # 0.3.0 → 1.0.0
 #
 # What it does:
-#   1. Reads the current version from pyproject.toml
+#   1. Reads the current version from slopmop/_version.py (the single source)
 #   2. Computes the bumped version
 #   3. Creates a release/<new_version> branch off main
-#   4. Updates pyproject.toml with the new version
+#   4. Updates slopmop/_version.py and runs scripts/sync_version.py to
+#      propagate it into the docs, issue template, and cursor plugin manifest
 #   5. Commits, pushes, and opens a PR
 #
 # The PR merge is still manual. This script is the PR-based fallback for cases
@@ -34,12 +35,14 @@ usage() {
     exit 1
 }
 
-pyproject_version_from_stream() {
+version_from_stream() {
     python3 -c "
+import re
 import sys
-import tomllib
 
-print(tomllib.loads(sys.stdin.read())['project']['version'])
+text = sys.stdin.read()
+match = re.search(r'__version__\s*=\s*[\"\']([^\"\']+)[\"\']', text)
+print(match.group(1) if match else '')
 "
 }
 
@@ -82,13 +85,9 @@ if [[ -n "$(git status --porcelain)" ]]; then
     die "Working tree is dirty. Commit or stash changes first."
 fi
 
-# ── Read current version from pyproject.toml ─────────────
+# ── Read current version from the single source of truth ─
 
-CURRENT_VERSION=$(python3 -c "
-import tomllib
-with open('pyproject.toml', 'rb') as f:
-    print(tomllib.load(f)['project']['version'])
-")
+CURRENT_VERSION=$(version_from_stream < slopmop/_version.py)
 
 echo "📦 Current version: $CURRENT_VERSION"
 
@@ -133,38 +132,37 @@ if [[ "$REMOTE_BRANCH_EXISTS" == "true" ]]; then
     echo "ℹ️  Remote branch $BRANCH_NAME already exists. Reusing it..."
     git fetch origin "$BRANCH_NAME" >/dev/null 2>&1 || die "Could not fetch existing remote branch $BRANCH_NAME"
 
-    REMOTE_VERSION="$(git show FETCH_HEAD:pyproject.toml 2>/dev/null | pyproject_version_from_stream 2>/dev/null || true)"
+    REMOTE_VERSION="$(git show FETCH_HEAD:slopmop/_version.py 2>/dev/null | version_from_stream 2>/dev/null || true)"
     if [[ "$REMOTE_VERSION" != "$NEW_VERSION" ]]; then
         die "Remote branch $BRANCH_NAME already exists but targets version ${REMOTE_VERSION:-unknown}, not $NEW_VERSION. Inspect or delete the branch first."
     fi
 else
     git checkout -b "$BRANCH_NAME"
 
-    # ── Bump version in pyproject.toml ───────────────────────
+    # ── Bump the single source of truth, then sync everything ─
 
     # Use python to do a precise in-place replacement (no sed portability issues)
     python3 -c "
 import re, pathlib
-p = pathlib.Path('pyproject.toml')
+p = pathlib.Path('slopmop/_version.py')
 text = p.read_text()
 text = re.sub(
-    r'^version\s*=\s*\"[^\"]+\"',
-    'version = \"${NEW_VERSION}\"',
+    r'^__version__\s*=\s*\"[^\"]+\"',
+    '__version__ = \"${NEW_VERSION}\"',
     text,
     count=1,
     flags=re.MULTILINE,
 )
 p.write_text(text)
-print('✅ pyproject.toml updated')
+print('✅ slopmop/_version.py updated')
 "
+
+    # Propagate into README, docs, issue template, and the cursor plugin.
+    python3 scripts/sync_version.py
 
     # ── Verify the bump ─────────────────────────────────────
 
-    VERIFY_VERSION=$(python3 -c "
-import tomllib
-with open('pyproject.toml', 'rb') as f:
-    print(tomllib.load(f)['project']['version'])
-")
+    VERIFY_VERSION=$(version_from_stream < slopmop/_version.py)
 
     if [[ "$VERIFY_VERSION" != "$NEW_VERSION" ]]; then
         die "Version verification failed: expected $NEW_VERSION, got $VERIFY_VERSION"
@@ -172,7 +170,7 @@ with open('pyproject.toml', 'rb') as f:
 
     # ── Commit + push ────────────────────────────────────────
 
-    git add pyproject.toml
+    git add -A
     git commit -m "chore: bump version to ${NEW_VERSION} for PyPI release"
 
     echo "🚀 Pushing $BRANCH_NAME..."

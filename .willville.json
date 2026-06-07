@@ -5,7 +5,9 @@
     "display_name": "The Mop Bucket",
     "district": "slop-wharf",
     "stop": "the-mop-bucket",
-    "lines": ["quality"],
+    "lines": [
+      "quality"
+    ],
     "visibility": "public",
     "homepage": "https://github.com/ScienceIsNeato/slop-mop",
     "repo": "ScienceIsNeato/slop-mop"
@@ -23,8 +25,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Moved the slow and network-using checks out of the quick every-commit pass and into the thorough pre-PR pass, so the quick loop stays fast and stays offline like it's supposed to",
-    "direction": "Getting this reviewed and shipped; also flagging that my local copy of the tool is out of date",
+    "status": "Made the version number live in exactly one place. Everything else - the docs, the install files, the release tooling - now copies from that one spot, and a test fails the build if anything ever disagrees",
+    "direction": "So version numbers can never quietly fall out of sync again",
     "last_update": "2026-06-01T00:00:00Z"
   },
   "queue": {
