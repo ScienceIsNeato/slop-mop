@@ -30,7 +30,7 @@
         "pre-pr"
       ],
       "homepage": "https://github.com/ScienceIsNeato/slop-mop",
-      "license": "Slop-Mop Attribution License v1.0",
+      "license": "Apache-2.0",
       "author": {
         "name": "ScienceIsNeato",
         "url": "https://github.com/ScienceIsNeato"

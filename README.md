@@ -369,6 +369,6 @@ For local development, see [DOCS/DEVELOPING.md](https://github.com/ScienceIsNeat
 
 ## License
 
-Slop-mop uses the [Slop-Mop Attribution License v1.0](https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE).
+Slop-mop is licensed under the [Apache License 2.0](https://github.com/ScienceIsNeato/slop-mop/blob/main/LICENSE).
 
-If you use it, attribution is required.
+Attribution is appreciated — see the [NOTICE](https://github.com/ScienceIsNeato/slop-mop/blob/main/NOTICE) file.

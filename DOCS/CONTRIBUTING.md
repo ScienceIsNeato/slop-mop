@@ -16,4 +16,4 @@ Participation in this project is governed by our
 
 ## License
 
-This project is licensed under the Slop-Mop Attribution License v1.0 — you're free to use, modify, and redistribute, but attribution back to [ScienceIsNeato/slop-mop](https://github.com/ScienceIsNeato/slop-mop) is required. See [LICENSE](../LICENSE) for full terms.
+This project is licensed under the [Apache License 2.0](../LICENSE) — you're free to use, modify, and redistribute, including in commercial and proprietary products, provided you preserve the license and the attribution in the [NOTICE](../NOTICE) file. By contributing, you agree your contributions are licensed under the same terms.
