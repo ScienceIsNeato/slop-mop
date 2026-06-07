@@ -25,8 +25,8 @@
     "updated": "2026-05-26"
   },
   "agent": {
-    "status": "Putting out the welcome mat for outside contributors — house rules, a conduct policy, and fill-in-the-blank forms for reporting bugs and asking for features",
-    "direction": "Part of a bigger push to make the project easy for newcomers to trust and join",
+    "status": "Switched the project to a standard, widely-trusted open-source license so companies and app stores will actually adopt it, with attribution preserved",
+    "direction": "Keeps the option open to offer a paid version down the road",
     "last_update": "2026-06-01T00:00:00Z"
   },
   "queue": {
