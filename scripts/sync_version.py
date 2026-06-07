@@ -24,15 +24,16 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _VERSION_RE = re.compile(r"__version__\s*=\s*[\"']([^\"']+)[\"']")
 
 
-def source_version() -> str:
-    """Read the canonical version from slopmop/_version.py (no import needed)."""
-    text = (REPO_ROOT / "slopmop" / "_version.py").read_text(encoding="utf-8")
+def source_version(root: Optional[Path] = None) -> str:
+    """Read the canonical version from <root>/slopmop/_version.py (no import)."""
+    root = root or REPO_ROOT
+    text = (root / "slopmop" / "_version.py").read_text(encoding="utf-8")
     match = _VERSION_RE.search(text)
     if not match:
         raise SystemExit("Could not find __version__ in slopmop/_version.py")
@@ -79,12 +80,16 @@ def _sub_version(text: str, pattern: str, version: str) -> str:
     return re.sub(pattern, lambda m: m.group(0).replace(m.group(1), version), text)
 
 
-def check() -> Tuple[str, List[str]]:
+def check(
+    root: Optional[Path] = None, targets: Optional[Iterable[Target]] = None
+) -> Tuple[str, List[str]]:
     """Return (source_version, problems). Empty problems means fully in sync."""
-    version = source_version()
+    root = root or REPO_ROOT
+    targets = TARGETS if targets is None else targets
+    version = source_version(root)
     problems: List[str] = []
-    for target in TARGETS:
-        path = REPO_ROOT / target.path
+    for target in targets:
+        path = root / target.path
         if not path.exists():
             # Tolerate targets that live on a not-yet-merged branch.
             continue
@@ -105,12 +110,16 @@ def check() -> Tuple[str, List[str]]:
     return version, problems
 
 
-def apply() -> Tuple[str, List[str]]:
+def apply(
+    root: Optional[Path] = None, targets: Optional[Iterable[Target]] = None
+) -> Tuple[str, List[str]]:
     """Rewrite targets to the source version. Return (version, changed_paths)."""
-    version = source_version()
+    root = root or REPO_ROOT
+    targets = TARGETS if targets is None else targets
+    version = source_version(root)
     changed: List[str] = []
-    for target in TARGETS:
-        path = REPO_ROOT / target.path
+    for target in targets:
+        path = root / target.path
         if not path.exists():
             continue
         text = path.read_text(encoding="utf-8")
@@ -121,14 +130,14 @@ def apply() -> Tuple[str, List[str]]:
     return version, changed
 
 
-def main() -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--check",
         action="store_true",
         help="Report drift and exit non-zero instead of rewriting.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.check:
         version, problems = check()
