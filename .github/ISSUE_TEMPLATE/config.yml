@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Tool friction while using slop-mop in another repo
+    url: https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CONTRIBUTING.md
+    about: Run `sm barnacle file` from the affected repo — it captures reproduction context and applies the right labels automatically.
+  - name: Security vulnerability
+    url: https://github.com/ScienceIsNeato/slop-mop/security/policy
+    about: Please report security issues privately via the security policy, not as a public issue.
+  - name: Documentation & contributing guide
+    url: https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CONTRIBUTING.md
+    about: How to set up, run the gates, and open a PR.

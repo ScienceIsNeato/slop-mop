@@ -9,6 +9,11 @@ Honestly, I'm not really sure what my plans are for this project long term? For 
 - **Self-validate.** Run `sm swab` before opening a PR. If the gates don't pass on slop-mop itself, the CI won't either.
 - **CI model.** The first-class merge blocker is the `slop-mop primary code scanning gate` workflow (`Primary Code Scanning Gate (blocking)` job). A downstream `slop-mop downstream dogfood sanity` workflow is optional and runs only after the primary gate passes on PRs.
 
+## Code of Conduct
+
+Participation in this project is governed by our
+[Code of Conduct](../CODE_OF_CONDUCT.md). Be respectful and constructive.
+
 ## License
 
 This project is licensed under the Slop-Mop Attribution License v1.0 — you're free to use, modify, and redistribute, but attribution back to [ScienceIsNeato/slop-mop](https://github.com/ScienceIsNeato/slop-mop) is required. See [LICENSE](../LICENSE) for full terms.
