@@ -1,7 +1,7 @@
 {
   "name": "slopmop",
   "displayName": "slop-mop",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Quality gates for AI-assisted codebases — catch the slop LLMs leave behind. Wraps pytest, black, mypy, gh, and every other tool behind a single `sm` CLI with caching, ordering, and directed remediation built in.",
   "author": {
     "name": "ScienceIsNeato",

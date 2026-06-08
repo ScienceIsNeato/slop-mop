@@ -16,7 +16,7 @@ body:
     attributes:
       label: slop-mop version
       description: "Output of `sm --version` (or the PyPI version installed)."
-      placeholder: "2.2.0"
+      placeholder: "2.3.0"
     validations:
       required: true
   - type: textarea
