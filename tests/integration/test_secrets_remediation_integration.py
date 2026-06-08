@@ -118,7 +118,7 @@ class TestSecretsRemediationIntegration:
         strategy = self._verify_check_fails_with_instructions(project_root_str)
 
         # 2. Verify STEP 2 Command (Barnacle Filing Dry-Run)
-        self._verify_barnacle_dry_run(project_root_str, strategy)
+        self._verify_wake_captain_summons(project_root_str, strategy)
 
         # 3. Verify STEP 4 Command (Baseline Whitelisting)
         self._verify_baseline_whitelisting(project_root_str, strategy, project_root)
@@ -161,46 +161,48 @@ class TestSecretsRemediationIntegration:
         assert "STEP 4 - IF SAFE_AND_CLEAN:" in strategy
         return strategy
 
-    def _verify_barnacle_dry_run(self, project_root_str: str, strategy: str) -> None:
-        # Extract the exact barnacle filing command from the instruction text.
-        # Find the line starting with "  sm barnacle file "
+    def _verify_wake_captain_summons(
+        self, project_root_str: str, strategy: str
+    ) -> None:
+        # Extract the exact wake-angry-drunk-captain command from the instruction text.
+        # Find the line starting with "  sm wake-angry-drunk-captain "
         command_lines = [
             line.strip()
             for line in strategy.splitlines()
-            if "sm barnacle file " in line
+            if "sm wake-angry-drunk-captain" in line
         ]
         assert (
             len(command_lines) == 1
-        ), "Failed to find the sm barnacle command in fix_strategy"
-        barnacle_cmd = command_lines[0]
+        ), "Failed to find the sm wake-angry-drunk-captain command in fix_strategy"
+        wake_cmd = command_lines[0]
 
-        # Replace 'sm' with sys.executable + ' -m slopmop.sm' to run it in-process safely
-        args = shlex.split(barnacle_cmd)
+        # Replace 'sm' with sys.executable + ' -m slopmop.sm' to run it in-process.
+        args = shlex.split(wake_cmd)
         # Strip the leading 'sm' or './sm'
         args = args[1:]
-        # Append --dry-run and run via subprocess using the virtualenv python
+
+        # Captain summons requires structured justification flags; in the test we
+        # only validate the CLI wiring + JSON contract.
         run_args = (
             [sys.executable, "-m", "slopmop.sm"]
             + args
-            + ["--dry-run", "--project-root", project_root_str]
+            + ["--json", "--project-root", project_root_str]
         )
 
-        result_barnacle = subprocess.run(
+        result_wake = subprocess.run(
             run_args,
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
             cwd=project_root_str,
         )
-        assert result_barnacle.returncode == 0
-        assert (
-            "Title: [barnacle] Live credential leak in src/config.py"
-            in result_barnacle.stdout
-        )
-        assert (
-            "Dangerous credential detected in src/config.py at line 1"
-            in result_barnacle.stdout
-        )
+        # EXIT_SUMMONED is 1 for a valid summons.
+        assert result_wake.returncode == 1
+        assert result_wake.stdout.strip(), result_wake.stderr
+
+        payload = json.loads(result_wake.stdout)
+        assert payload.get("command") == "wake-angry-drunk-captain"
+        assert "relay_to_human" in payload.get("data", {})
 
     def _verify_baseline_whitelisting(
         self, project_root_str: str, strategy: str, project_root: Path

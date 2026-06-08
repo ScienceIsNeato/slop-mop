@@ -938,14 +938,12 @@ class TestDetectSecretsHeuristics:
         assert finding.fix_strategy is not None
         assert "STEP 1 - CLASSIFY Credential" in finding.fix_strategy
         assert "src/auth.py:42" in finding.fix_strategy
-        assert (
-            'sm barnacle file --title "Live credential leak in src/auth.py"'
-            in finding.fix_strategy
-        )
-        assert (
-            '--actual "Dangerous credential detected in src/auth.py at line 42"'
-            in finding.fix_strategy
-        )
+        assert "sm wake-angry-drunk-captain --objective" in finding.fix_strategy
+        assert "--decision" in finding.fix_strategy
+        assert "Obviate:" in finding.fix_strategy
+        assert "Obfuscate:" in finding.fix_strategy
+        assert "Consolidate:" in finding.fix_strategy
+        assert "Relocate:" in finding.fix_strategy
         assert (
             "python3 -m detect_secrets scan --baseline .secrets.baseline"
             in finding.fix_strategy

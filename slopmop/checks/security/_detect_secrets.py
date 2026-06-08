@@ -540,15 +540,21 @@ class DetectSecretsMixin:
                     f"  - SAFE_BUT_SLOPPY: Mock/test credential, but hardcoded in production paths or scattered ad-hoc.\n"
                     f"  - SAFE_AND_CLEAN: Mock/test credential, properly centralized in tests or mock directories.\n\n"
                     f"STEP 2 - IF DANGEROUS:\n"
-                    f"  Run this exact command to file a blocker and alert the captain:\n"
-                    f'  sm barnacle file --title "Live credential leak in {path}" --command "sm swab" '
-                    f'--expected "Credentials must not be hardcoded or committed to git" '
-                    f'--actual "Dangerous credential detected in {path} at line {line_val}" '
-                    f'--workflow "swab" --blocker-type "blocking"\n'
+                    f"  Run this exact command to wake the angry, drunk captain for a human security decision:\n"
+                    f'  sm wake-angry-drunk-captain --objective "Dangerous credential leak in {path}:{line_val}" '
+                    f'--verbs-tried "sm swab" '
+                    f'--why-stuck "detect-secrets classified this credential as DANGEROUS; no remaining sm verb can safely resolve a live secret without human judgment." '
+                    f'--decision "Block merge and revoke/rotate, unless a human confirms it is non-live/test" '
+                    f'--option "Block merge + revoke/rotate credential" '
+                    f'--option "Allow PR after confirmation it is non-live/test"\n'
                     f"  Then exit the loop.\n\n"
                     f"STEP 3 - IF SAFE_BUT_SLOPPY:\n"
-                    f"  Refactor the code to manage via environment variable (e.g., os.getenv) or move it to a test fixture file. "
-                    f"Then start over at STEP 1.\n\n"
+                    f"  Refactor using one (or more) of these options:\n"
+                    f"   - Obviate: remove the secret from source; load it at runtime via env/secret manager.\n"
+                    f"   - Obfuscate: keep it behind env/.env config loading and ensure it is never committed.\n"
+                    f"   - Consolidate: centralize the handling so secrets aren't scattered ad-hoc.\n"
+                    f"   - Relocate: move to tests/fixtures (mock dirs) and update the baseline for SAFE_AND_CLEAN.\n"
+                    f"  Then start over at STEP 1.\n\n"
                     f"STEP 4 - IF SAFE_AND_CLEAN:\n"
                     f"  Run this exact command to add the approved test credential to the baseline:\n"
                     f"  python3 -m detect_secrets scan --baseline .secrets.baseline"
