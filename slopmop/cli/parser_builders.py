@@ -197,7 +197,7 @@ class AgentParserBuilder:
             default="all",
             help=(
                 "Which agent templates to install. "
-                "'all' installs cursor, claude, copilot, windsurf, cline, roo, and aider."
+                "'all' installs all available agent targets."
             ),
         )
         install_parser.add_argument(
