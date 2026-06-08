@@ -134,6 +134,8 @@ exclude = ["tests*"]
     "templates/copilot/.copilot/skills/slopmop/*",
     "templates/copilot/.github/*",
     "templates/cursor/.cursor/rules/*",
+    "templates/gemini/.gemini/skills/slopmop/*",
+    "templates/gemini/GEMINI.md",
     "templates/roo/.roo/rules/*",
     "templates/windsurf/.windsurf/rules/*",
 ]
