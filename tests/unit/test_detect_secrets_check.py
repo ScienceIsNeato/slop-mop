@@ -674,6 +674,98 @@ class TestRunDetectSecrets:
         ).exists(), "Temp plugin-config baseline must be deleted after the scan"
         assert json.loads(baseline.read_text()) == baseline_content
 
+    def test_load_tmp_baseline_report_reads_json(self, tmp_path):
+        path = tmp_path / "baseline.json"
+        path.write_text(json.dumps({"results": {"a.py": []}}))
+        loaded = SecurityLocalCheck._load_tmp_baseline_report(str(path))
+        assert loaded == {"results": {"a.py": []}}
+
+    def test_load_tmp_baseline_report_invalid_json(self, tmp_path):
+        path = tmp_path / "baseline.json"
+        path.write_text("not json")
+        assert SecurityLocalCheck._load_tmp_baseline_report(str(path)) is None
+
+    def test_parse_detect_secrets_report_prefers_tmp_baseline(self):
+        tmp_report = {"results": {"x.py": []}}
+        stdout = json.dumps({"results": {}})
+        parsed = SecurityLocalCheck._parse_detect_secrets_report(stdout, tmp_report)
+        assert parsed == tmp_report
+
+    def test_parse_detect_secrets_report_falls_back_to_stdout(self):
+        stdout = json.dumps({"results": {"y.py": []}})
+        parsed = SecurityLocalCheck._parse_detect_secrets_report(stdout, None)
+        assert parsed == {"results": {"y.py": []}}
+
+    def test_parse_detect_secrets_report_non_dict_stdout(self):
+        assert SecurityLocalCheck._parse_detect_secrets_report("[]", None) == {}
+
+    def test_subresult_from_report_no_secrets(self, tmp_path):
+        check = SecurityLocalCheck({})
+        sub = check._subresult_from_detect_secrets_report(
+            str(tmp_path), {"results": {}}
+        )
+        assert sub.passed is True
+        assert "No secrets" in sub.findings
+
+    def test_subresult_from_report_with_secrets(self, tmp_path):
+        check = SecurityLocalCheck({})
+        report = {
+            "results": {
+                "cfg.py": [
+                    {
+                        "type": "Secret Keyword",
+                        "line_number": 1,
+                    }  # pragma: allowlist secret
+                ]
+            }
+        }
+        sub = check._subresult_from_detect_secrets_report(str(tmp_path), report)
+        assert sub.passed is False
+        assert "cfg.py" in sub.findings
+
+    def test_run_detect_secrets_reads_throwaway_baseline_when_stdout_empty(
+        self, tmp_path
+    ):
+        """Regression: --baseline mode leaves stdout empty; read the temp file."""
+        baseline_content = {
+            "plugins_used": [{"name": "KeywordDetector"}],
+            "filters_used": [],
+            "results": {},
+        }
+        baseline = tmp_path / ".secrets.baseline"
+        baseline.write_text(json.dumps(baseline_content))
+
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = ""
+
+        def _capture(cmd: list[str], **kwargs: Any) -> MagicMock:  # type: ignore[misc]
+            if "--baseline" in cmd:
+                idx = cmd.index("--baseline")
+                Path(cmd[idx + 1]).write_text(
+                    json.dumps(
+                        {
+                            **baseline_content,
+                            "results": {
+                                "evil.py": [
+                                    {
+                                        "type": "Secret Keyword",
+                                        "line_number": 2,
+                                    }  # pragma: allowlist secret
+                                ]
+                            },
+                        }
+                    )
+                )
+            return mock_result
+
+        with patch.object(check, "_run_command", side_effect=_capture):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is False
+        assert "evil.py" in result.findings
+
     def test_detect_secrets_suppresses_cloudflare_account_id(self, tmp_path):
         """Cloudflare accountId (32-char hex) in workflow files should not be flagged."""
         workflow_dir = tmp_path / ".github" / "workflows"

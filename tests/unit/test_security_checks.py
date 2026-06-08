@@ -260,6 +260,27 @@ class TestSecurityLocalCheck:
         assert "1 security scanner(s) found issues" in result.error
         assert "bandit" in result.output
 
+    def test_resolve_configured_scanners_skips_unknown_and_unavailable(self):
+        """Unknown scanner names and missing tools should not run as failures."""
+        check = SecurityLocalCheck(
+            {"scanners": ["bandit", "unknown-scanner", "semgrep"]}
+        )
+        scanner_map = {
+            "bandit": check._run_bandit,
+            "semgrep": check._run_semgrep,
+            "detect-secrets": check._run_detect_secrets,
+        }
+        with patch.object(
+            check,
+            "_is_scanner_available",
+            side_effect=lambda name, _: name == "bandit",
+        ):
+            sub_checks, skipped = check._resolve_configured_scanners(scanner_map)
+
+        assert len(sub_checks) == 1
+        assert sub_checks[0] == check._run_bandit
+        assert skipped == ["semgrep (not installed)"]
+
     def test_run_with_detect_secrets_failure(self, tmp_path):
         """Test run() when detect-secrets fails, verifying the custom fix_suggestion."""
         (tmp_path / "app.py").write_text("print('hello')")
@@ -474,6 +495,16 @@ class TestSecurityCheck:
 
         assert result.status == CheckStatus.PASSED
         assert "myopia:dependency-risk.py" in result.name
+
+    def test_failures_result_includes_detect_secrets_protocol(self):
+        """SecurityCheck failures should mention the STEP 1-4 workflow."""
+        check = SecurityCheck({})
+        failures = [
+            SecuritySubResult("detect-secrets", False, "Potential secret in cfg.py")
+        ]
+        result = check._failures_result(failures, [], 0.5)
+        assert result.fix_suggestion is not None
+        assert "STEP 1-4 classification" in result.fix_suggestion
 
     def test_run_pip_audit_failure(self, tmp_path):
         """Test run() when pip-audit check fails."""
