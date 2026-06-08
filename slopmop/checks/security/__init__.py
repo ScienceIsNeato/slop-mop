@@ -304,6 +304,28 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
         # External binary (semgrep, etc.)
         return shutil.which(name) is not None
 
+    def _resolve_configured_scanners(
+        self,
+        scanner_map: dict[str, Callable[[str], SecuritySubResult]],
+    ) -> tuple[List[Callable[[str], SecuritySubResult]], List[str]]:
+        """Identify which scanners are configured and available to run."""
+        configured = self.config.get("scanners", list(scanner_map.keys()))
+        sub_checks: List[Callable[[str], SecuritySubResult]] = []
+        skipped: List[str] = []
+        _importable = {
+            "bandit": "bandit",
+            "detect-secrets": "detect_secrets",  # pragma: allowlist secret
+        }
+        for name in configured:
+            if name not in scanner_map:
+                continue
+            available = self._is_scanner_available(name, _importable)
+            if available:
+                sub_checks.append(scanner_map[name])
+            else:
+                skipped.append(_SCANNER_NOT_INSTALLED.format(name=name))
+        return sub_checks, skipped
+
     def run(self, project_root: str) -> CheckResult:
         """Run configured security checks in parallel.
 
@@ -320,23 +342,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             "detect-secrets": self._run_detect_secrets,
         }
 
-        configured = self.config.get("scanners", list(scanner_map.keys()))
-        # Filter to only configured scanners that we know about
-        sub_checks: List[Callable[[str], SecuritySubResult]] = []
-        skipped: List[str] = []
-        # Map scanner names to their Python module for importability check
-        _importable = {
-            "bandit": "bandit",
-            "detect-secrets": "detect_secrets",  # pragma: allowlist secret
-        }
-        for name in configured:
-            if name not in scanner_map:
-                continue
-            available = self._is_scanner_available(name, _importable)
-            if available:
-                sub_checks.append(scanner_map[name])
-            else:
-                skipped.append(_SCANNER_NOT_INSTALLED.format(name=name))
+        sub_checks, skipped = self._resolve_configured_scanners(scanner_map)
 
         if not sub_checks:
             duration = time.time() - start_time
@@ -386,16 +392,25 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                         level=FindingLevel.ERROR,
                     )
                 )
+        is_secret_failure = any(f.name == "detect-secrets" for f in failures)
+        fix_suggestion = (
+            "Each finding above has a rule-specific fix where known. "
+            "Bandit's HIGH severity findings are real vulnerabilities "
+            "\u2014 fix those first."
+        )
+        if is_secret_failure:
+            fix_suggestion += (
+                " For detect-secrets failures, follow the exact STEP 1-4 classification "
+                "protocol detailed in the finding's fix_strategy."
+            )
+        fix_suggestion += " Verify with: " + self.verify_command
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
-            fix_suggestion=(
-                "Each finding above has a rule-specific fix where known. "
-                "Bandit's HIGH severity findings are real vulnerabilities "
-                "\u2014 fix those first. Verify with: " + self.verify_command
-            ),
+            fix_suggestion=fix_suggestion,
             findings=all_findings,
         )
 
@@ -656,16 +671,25 @@ class SecurityCheck(SecurityLocalCheck):
                 self._collect_findings(warnings, fallback_level=FindingLevel.WARNING)
             )
         detail = "\n\n".join(detail_parts)
+        is_secret_failure = any(f.name == "detect-secrets" for f in failures)
+        fix_suggestion = (
+            "Each finding above has a rule-specific fix where known. "
+            "Bandit's HIGH severity findings are real vulnerabilities "
+            "\u2014 fix those first."
+        )
+        if is_secret_failure:
+            fix_suggestion += (
+                " For detect-secrets failures, follow the exact STEP 1-4 classification "
+                "protocol detailed in the finding's fix_strategy."
+            )
+        fix_suggestion += " Verify with: " + self.verify_command
+
         return self._create_result(
             status=CheckStatus.FAILED,
             duration=duration,
             output=detail,
             error=f"{len(failures)} security scanner(s) found issues",
-            fix_suggestion=(
-                "Each finding above has a rule-specific fix where known. "
-                "Bandit's HIGH severity findings are real vulnerabilities "
-                "\u2014 fix those first. Verify with: " + self.verify_command
-            ),
+            fix_suggestion=fix_suggestion,
             findings=all_findings,
         )
 
