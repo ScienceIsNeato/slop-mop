@@ -827,3 +827,34 @@ class TestDetectSecretsHeuristics:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         known = check._load_detect_secrets_allowlist(str(tmp_path))
         assert ("a.py", "abc123") in known
+
+    def test_build_detect_secrets_sarif_populates_fix_strategy(self):
+        real_secrets = {
+            "src/auth.py": [
+                {
+                    "type": "Secret Keyword",
+                    "line_number": 42,
+                }
+            ]
+        }
+        check = SecurityLocalCheck({})
+        findings = check._build_detect_secrets_sarif(real_secrets)
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.file == "src/auth.py"
+        assert finding.line == 42
+        assert finding.fix_strategy is not None
+        assert "STEP 1 - CLASSIFY Credential" in finding.fix_strategy
+        assert "src/auth.py:42" in finding.fix_strategy
+        assert (
+            'sm barnacle file --title "Live credential leak in src/auth.py"'
+            in finding.fix_strategy
+        )
+        assert (
+            '--actual "Dangerous credential detected in src/auth.py at line 42"'
+            in finding.fix_strategy
+        )
+        assert (
+            "python3 -m detect_secrets scan --baseline .secrets.baseline"
+            in finding.fix_strategy
+        )

@@ -260,6 +260,37 @@ class TestSecurityLocalCheck:
         assert "1 security scanner(s) found issues" in result.error
         assert "bandit" in result.output
 
+    def test_run_with_detect_secrets_failure(self, tmp_path):
+        """Test run() when detect-secrets fails, verifying the custom fix_suggestion."""
+        (tmp_path / "app.py").write_text("print('hello')")
+        check = SecurityLocalCheck({})
+
+        results = [
+            SecuritySubResult("bandit", True, "OK"),
+            SecuritySubResult("semgrep", True, "OK"),
+            SecuritySubResult(
+                "detect-secrets", False, "Potential secret: Secret Keyword"
+            ),
+        ]
+
+        with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
+            mock_executor = MagicMock()
+            mock_executor_class.return_value.__enter__.return_value = mock_executor
+            mock_futures = [MagicMock() for _ in results]
+            for future, res in zip(mock_futures, results):
+                future.result.return_value = res
+            mock_executor.submit.side_effect = mock_futures
+
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+        assert "1 security scanner(s) found issues" in result.error
+        assert "detect-secrets" in result.output
+        assert (
+            "For detect-secrets failures, follow the exact STEP 1-4 classification"
+            in result.fix_suggestion
+        )
+
     def test_run_handles_exceptions(self, tmp_path):
         """Test run() handles scanner exceptions gracefully."""
         (tmp_path / "app.py").write_text("print('hello')")

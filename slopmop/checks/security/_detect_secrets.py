@@ -357,6 +357,55 @@ class DetectSecretsMixin:
         except (json.JSONDecodeError, OSError):
             return None
 
+    @staticmethod
+    def _load_tmp_baseline_report(
+        tmp_baseline_path: str,
+    ) -> Optional[dict[str, Any]]:
+        """Read scan results detect-secrets wrote into a throwaway baseline."""
+        try:
+            loaded = json.loads(Path(tmp_baseline_path).read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                return cast(dict[str, Any], loaded)
+        except (json.JSONDecodeError, OSError):
+            return None
+        return None
+
+    @staticmethod
+    def _parse_detect_secrets_report(
+        result_output: str,
+        report_from_tmp_baseline: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Normalize stdout JSON or throwaway-baseline JSON into one report."""
+        if report_from_tmp_baseline is not None:
+            return report_from_tmp_baseline
+        report_loaded: Any = json.loads(result_output)
+        if isinstance(report_loaded, dict):
+            return cast(dict[str, Any], report_loaded)
+        return {}
+
+    def _subresult_from_detect_secrets_report(
+        self, project_root: str, report: dict[str, Any]
+    ) -> SecuritySubResult:
+        """Turn a detect-secrets report dict into a pass/fail sub-result."""
+        from slopmop.checks.security import SecuritySubResult
+
+        known = self._load_detect_secrets_allowlist(project_root)
+        detected_any = report.get("results", {})
+        detected = (
+            cast(dict[str, Any], detected_any) if isinstance(detected_any, dict) else {}
+        )
+        real_secrets = self._filter_known_secrets(detected, known, project_root)
+        if not real_secrets:
+            return SecuritySubResult("detect-secrets", True, "No secrets detected")
+
+        detail_lines: list[str] = []
+        for path, secrets in real_secrets.items():
+            types = [str(secret.get("type", "?")) for secret in secrets]
+            detail_lines.append(f"  Potential secret in {path}: {', '.join(types)}")
+        detail = "\n".join(detail_lines)
+        sarif = self._build_detect_secrets_sarif(real_secrets)
+        return SecuritySubResult("detect-secrets", False, detail, sarif)
+
     def _run_detect_secrets(self, project_root: str) -> SecuritySubResult:
         """Run detect-secrets scan without touching the real baseline file.
 
@@ -389,48 +438,23 @@ class DetectSecretsMixin:
         if tmp_baseline_path:
             cmd.extend(["--baseline", tmp_baseline_path])
 
+        report_from_tmp_baseline: Optional[dict[str, Any]] = None
         try:
             result = self._run_command(cmd, cwd=project_root, timeout=60)
+            if tmp_baseline_path and not (result.stdout or "").strip():
+                report_from_tmp_baseline = self._load_tmp_baseline_report(
+                    tmp_baseline_path
+                )
         finally:
             if tmp_baseline_path:
                 Path(tmp_baseline_path).unlink(missing_ok=True)
 
         if result.success:
             try:
-                report_loaded: Any = json.loads(result.output)
-                report: dict[str, Any]
-                if isinstance(report_loaded, dict):
-                    report = cast(dict[str, Any], report_loaded)
-                else:
-                    report = {}
-
-                # Build a read-only allowlist from the existing baseline file.
-                # Keys: (normalized_path, hashed_secret) — secrets already known/accepted.
-                known = self._load_detect_secrets_allowlist(project_root)
-
-                detected_any = report.get("results", {})
-                detected = (
-                    cast(dict[str, Any], detected_any)
-                    if isinstance(detected_any, dict)
-                    else {}
+                report = self._parse_detect_secrets_report(
+                    result.output, report_from_tmp_baseline
                 )
-                real_secrets = self._filter_known_secrets(detected, known, project_root)
-                if not real_secrets:
-                    return SecuritySubResult(
-                        "detect-secrets", True, "No secrets detected"
-                    )
-
-                detail_lines: list[str] = []
-                for path, secrets in real_secrets.items():
-                    types: list[str] = []
-                    for secret in secrets:
-                        types.append(str(secret.get("type", "?")))
-                    detail_lines.append(
-                        f"  Potential secret in {path}: {', '.join(types)}"
-                    )
-                detail = "\n".join(detail_lines)
-                sarif = self._build_detect_secrets_sarif(real_secrets)
-                return SecuritySubResult("detect-secrets", False, detail, sarif)
+                return self._subresult_from_detect_secrets_report(project_root, report)
             except json.JSONDecodeError:
                 return SecuritySubResult("detect-secrets", True, "Scan completed")
 
@@ -507,12 +531,36 @@ class DetectSecretsMixin:
         for path, secrets in real_secrets.items():
             for s in secrets:
                 ln = s.get("line_number")
+                line_val = ln if isinstance(ln, int) else 1
+
+                fix_strategy = (
+                    f"STEP 1 - CLASSIFY Credential:\n"
+                    f"  Evaluate the detected credential at {path}:{line_val} and classify it:\n"
+                    f"  - DANGEROUS: Real sensitive credential (e.g., live API key, production password, private SSH key).\n"
+                    f"  - SAFE_BUT_SLOPPY: Mock/test credential, but hardcoded in production paths or scattered ad-hoc.\n"
+                    f"  - SAFE_AND_CLEAN: Mock/test credential, properly centralized in tests or mock directories.\n\n"
+                    f"STEP 2 - IF DANGEROUS:\n"
+                    f"  Run this exact command to file a blocker and alert the captain:\n"
+                    f'  sm barnacle file --title "Live credential leak in {path}" --command "sm swab" '
+                    f'--expected "Credentials must not be hardcoded or committed to git" '
+                    f'--actual "Dangerous credential detected in {path} at line {line_val}" '
+                    f'--workflow "swab" --blocker-type "blocking"\n'
+                    f"  Then exit the loop.\n\n"
+                    f"STEP 3 - IF SAFE_BUT_SLOPPY:\n"
+                    f"  Refactor the code to manage via environment variable (e.g., os.getenv) or move it to a test fixture file. "
+                    f"Then start over at STEP 1.\n\n"
+                    f"STEP 4 - IF SAFE_AND_CLEAN:\n"
+                    f"  Run this exact command to add the approved test credential to the baseline:\n"
+                    f"  python3 -m detect_secrets scan --baseline .secrets.baseline"
+                )
+
                 sarif.append(
                     Finding(
                         message=f"Potential secret: {s.get('type', '?')}",
                         level=FindingLevel.ERROR,
                         file=path,
                         line=ln if isinstance(ln, int) else None,
+                        fix_strategy=fix_strategy,
                     )
                 )
         return sarif
