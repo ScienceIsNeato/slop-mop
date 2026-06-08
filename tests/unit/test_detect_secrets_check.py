@@ -766,6 +766,36 @@ class TestRunDetectSecrets:
         assert result.passed is False
         assert "evil.py" in result.findings
 
+    def test_run_detect_secrets_fails_closed_when_tmp_baseline_unreadable(
+        self, tmp_path
+    ):
+        """In --baseline mode, empty stdout must not pass if tmp baseline can't be read."""
+        baseline_content = {
+            "plugins_used": [{"name": "KeywordDetector"}],
+            "filters_used": [],
+            "results": {},
+        }
+        (tmp_path / ".secrets.baseline").write_text(
+            json.dumps(baseline_content), encoding="utf-8"
+        )
+
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = ""
+        mock_result.stderr = ""
+        mock_result.output = ""
+
+        with (
+            patch.object(check, "_run_command", return_value=mock_result),
+            patch.object(check, "_load_tmp_baseline_report", return_value=None),
+        ):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is False
+        assert "temp baseline could not be read" in result.findings
+
     def test_detect_secrets_suppresses_cloudflare_account_id(self, tmp_path):
         """Cloudflare accountId (32-char hex) in workflow files should not be flagged."""
         workflow_dir = tmp_path / ".github" / "workflows"

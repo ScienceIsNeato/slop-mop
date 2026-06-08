@@ -451,11 +451,31 @@ class DetectSecretsMixin:
 
         if result.success:
             try:
+                if (
+                    tmp_baseline_path
+                    and report_from_tmp_baseline is None
+                    and not (result.output or "").strip()
+                ):
+                    # In --baseline mode detect-secrets often leaves stdout empty
+                    # and writes the report into the temp file. If we can't read
+                    # that file, we must fail closed: passing open here can
+                    # hide real secrets.
+                    return SecuritySubResult(
+                        "detect-secrets",
+                        False,
+                        "detect-secrets scan produced empty/unparseable report in --baseline mode (stdout empty and temp baseline could not be read)",
+                    )
                 report = self._parse_detect_secrets_report(
                     result.output, report_from_tmp_baseline
                 )
                 return self._subresult_from_detect_secrets_report(project_root, report)
             except json.JSONDecodeError:
+                if tmp_baseline_path:
+                    return SecuritySubResult(
+                        "detect-secrets",
+                        False,
+                        "detect-secrets scan succeeded but report parsing failed in --baseline mode",
+                    )
                 return SecuritySubResult("detect-secrets", True, "Scan completed")
 
         # The scan command exited non-zero. Distinguish a scanner that never
