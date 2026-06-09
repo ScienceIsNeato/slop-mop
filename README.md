@@ -27,7 +27,7 @@ It is purposefully opinionated, as structure begets adherence to best practices.
 
 ## Project Status
 
-slop-mop is at version 2.3.0. The current public policy surface for release and
+slop-mop is at version 2.3.1. The current public policy surface for release and
 stability expectations lives here:
 
 - [DOCS/COMPATIBILITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/COMPATIBILITY.md)
