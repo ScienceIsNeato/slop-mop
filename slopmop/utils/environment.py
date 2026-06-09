@@ -32,4 +32,4 @@ def is_interactive_terminal() -> bool:
         return False
     if is_agent_environment():
         return False
-    return not os.environ.get("NO_COLOR")
+    return "NO_COLOR" not in os.environ

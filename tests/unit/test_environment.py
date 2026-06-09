@@ -18,6 +18,7 @@ _ENV_VARS = [
     "AGENT_MODE",
     "TERM_PROGRAM",
     "NO_COLOR",
+    "SLOPMOP_SAIL_VERBOSE",
 ]
 
 
@@ -67,8 +68,14 @@ class TestIsInteractiveTerminal:
         with mock.patch("sys.stdout.isatty", return_value=True):
             assert is_interactive_terminal() is False
 
+    def test_empty_no_color_still_disables_interactive(self, clean_env):
+        # NO_COLOR spec: present at any value (incl. "") disables color.
+        clean_env.setenv("NO_COLOR", "")
+        with mock.patch("sys.stdout.isatty", return_value=True):
+            assert is_interactive_terminal() is False
 
-def _ns(**kw):
+
+def _ns(**kw: object) -> argparse.Namespace:
     return argparse.Namespace(**kw)
 
 
@@ -179,3 +186,25 @@ class TestBuffAutoDetect:
         ):
             buff.cmd_buff(args)
         assert args.json_output is False
+
+
+class TestSailPrintStep:
+    def test_decorative_step_skipped_in_agent_env(self, clean_env, capsys):
+        from slopmop.cli.sail import _print_step
+
+        clean_env.setenv("CI", "1")
+        _print_step("🧹", "Running swab", "checking gates")
+        assert capsys.readouterr().out == ""
+
+    def test_forced_step_prints_in_agent_env(self, clean_env, capsys):
+        from slopmop.cli.sail import _print_step
+
+        clean_env.setenv("CI", "1")
+        _print_step("⚓", "HOLD", "address feedback", force=True)
+        assert "HOLD" in capsys.readouterr().out
+
+    def test_step_prints_for_human(self, clean_env, capsys):
+        from slopmop.cli.sail import _print_step
+
+        _print_step("🧹", "Running swab", "checking gates")
+        assert "Running swab" in capsys.readouterr().out

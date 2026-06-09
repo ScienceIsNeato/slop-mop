@@ -134,12 +134,19 @@ def _reconcile_runtime_state(
     return WorkflowState.PR_OPEN
 
 
-def _print_step(icon: str, heading: str, detail: str = "") -> None:
-    # Skip printing if we're in an agent environment that prefers JSON,
-    # unless it's explicitly turned off.
+def _print_step(
+    icon: str, heading: str, detail: str = "", *, force: bool = False
+) -> None:
+    # Skip decorative steps in an agent environment that prefers JSON, unless
+    # verbose output is requested or the step is forced (e.g. a HOLD block the
+    # agent contract requires us to surface even in terse mode).
     from slopmop.utils.environment import is_agent_environment
 
-    if is_agent_environment() and os.environ.get("SLOPMOP_SAIL_VERBOSE") != "1":
+    if (
+        not force
+        and is_agent_environment()
+        and os.environ.get("SLOPMOP_SAIL_VERBOSE") != "1"
+    ):
         return
 
     # Flush immediately. stdout is block-buffered when piped (an agent's
@@ -307,6 +314,7 @@ def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
             "HOLD",
             "Ignored-feedback gate detected pending reviews.\n"
             "   Address the feedback, then: sm sail",
+            force=True,
         )
         return 1
 
