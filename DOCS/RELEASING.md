@@ -9,7 +9,7 @@ The primary release path is the GitHub Actions dispatcher: Actions →
 **Release** → **Run workflow** from `main` with the desired bump type. That
 manual run prepares the release through the protected-branch PR path:
 
-1. bump `pyproject.toml`
+1. bump `slopmop/_version.py` (the single source of truth)
 2. create a release PR
 3. wait for the PR checks to pass
 4. merge the PR into `main`
@@ -19,7 +19,7 @@ manual run prepares the release through the protected-branch PR path:
 8. create the GitHub release
 
 Merging ordinary PRs never publishes a release. The workflow is intentionally
-manual-only, so a `pyproject.toml` version change on `main` is inert unless it
+manual-only, so a `slopmop/_version.py` version change on `main` is inert unless it
 was created by the active **Release** workflow run.
 
 This requires a `RELEASE_PR_TOKEN` repository secret from a fine-grained PAT or
@@ -41,7 +41,8 @@ preparation from a developer machine, but it is not the normal publish path:
 ./scripts/release.sh major
 ```
 
-The fallback script creates a release branch and PR that bumps `pyproject.toml`.
+The fallback script creates a release branch and PR that bumps `slopmop/_version.py`
+and runs `scripts/sync_version.py` to propagate it.
 Merge alone will not publish, and the **Release** workflow computes its own bump
 when manually dispatched. Prefer the workflow dispatcher for normal releases so
 the bump, PR, merge, build, publish, and GitHub Release stay in one audited run.
@@ -63,7 +64,7 @@ Before merging a release-bump PR created by `scripts/release.sh`:
 `release.yml` performs these checks before PyPI publication:
 
 - build `sdist` and wheel
-- verify the detected release version matches `pyproject.toml`
+- verify the detected release version matches `slopmop/_version.py`
 - run `twine check` on built artifacts
 - install the built wheel into a clean virtualenv
 - smoke-test the installed CLI (`sm --version`, `sm --help`, `sm init`)
