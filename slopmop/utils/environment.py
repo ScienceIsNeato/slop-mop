@@ -23,10 +23,7 @@ def is_agent_environment() -> bool:
         return True
     # TERM_PROGRAM is often set by specialized terminal emulators or agents
     term_program = os.environ.get("TERM_PROGRAM", "")
-    if term_program in ("Gemini", "ClaudeCode"):
-        return True
-
-    return False
+    return term_program in ("Gemini", "ClaudeCode")
 
 
 def is_interactive_terminal() -> bool:
@@ -35,6 +32,4 @@ def is_interactive_terminal() -> bool:
         return False
     if is_agent_environment():
         return False
-    if os.environ.get("NO_COLOR"):
-        return False
-    return True
+    return not os.environ.get("NO_COLOR")

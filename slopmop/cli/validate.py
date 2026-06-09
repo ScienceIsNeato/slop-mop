@@ -89,8 +89,13 @@ def _is_json_mode(args: argparse.Namespace) -> bool:
 
 def _is_porcelain_mode(args: argparse.Namespace) -> bool:
     """Return whether validation should print token-terse agent output."""
-    if bool(getattr(args, "porcelain", False)):
+    if getattr(args, "porcelain", False):
         return True
+
+    # Don't auto-enable agent/porcelain output when the user has explicitly
+    # chosen --json or --no-json; only auto-detect when json mode is unset.
+    if getattr(args, "json_output", None) is not None:
+        return False
 
     from slopmop.utils.environment import is_agent_environment
 
