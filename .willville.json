@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Wrapping a batch of cleanups — open-source license switch, slow checks moved to the pre-PR sweep, version number now lives in one place. Now dogfooding on a big real-world repo and logging the snags as we hit them.",
-    "direction": "Turn those snags into fixes and keep making the project easy for newcomers to trust and adopt.",
-    "last_update": "2026-06-09T00:00:00Z"
+    "status": "Fixing barnacle #262 — pyright was sweeping venv when no source dirs configured, PR in progress",
+    "direction": "Get the type-blindness scope fix merged, then continue the barnacle queue",
+    "last_update": "2026-06-09T01:00:00Z"
   }
 }

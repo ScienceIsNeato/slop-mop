@@ -55,6 +55,24 @@ TYPE_COMPLETENESS_RULES: Dict[str, str] = {
 MAX_ERRORS_TO_SHOW = 5
 MAX_FILES_TO_SHOW = 10
 
+# Directories to exclude when pyright scans from the project root.
+# These contain generated, build, or third-party files that should never
+# drive type errors — particularly important when include falls back to ["."].
+_BROAD_SCAN_EXCLUDES: List[str] = [
+    "**/__pycache__",
+    "**/node_modules",
+    "venv",
+    ".venv",
+    "env",
+    ".env",
+    "build",
+    "dist",
+    "*.egg-info",
+    ".eggs",
+    ".tox",
+    ".nox",
+]
+
 
 def _fix_strategy_for_pyright(rule: str, message: str) -> Optional[str]:
     """Return a prescriptive remediation for common pyright rules."""
@@ -352,9 +370,23 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                 # keep source-dir scoping so the gate doesn't balloon to the
                 # whole tree. (An explicitly configured base is trusted as-is.)
                 config["include"] = include_dirs
+                # If we fell back to the whole-tree include, guard against
+                # venv/build dirs sweeping in. The overlay exclude adds on top
+                # of the base config (the base has no "include" so likely no
+                # meaningful "exclude" either). (#262)
+                if include_dirs == ["."]:
+                    excludes = list(_BROAD_SCAN_EXCLUDES)
+                    if venv_name and venv_name not in excludes:
+                        excludes.append(venv_name)
+                    config["exclude"] = excludes
         else:
             config["include"] = include_dirs
-            config["exclude"] = ["**/__pycache__", "**/node_modules"]
+            # Use the broad exclude list so that include:["."] (the auto-detect
+            # fallback) doesn't sweep venv, build, and generated dirs. (#262)
+            excludes = list(_BROAD_SCAN_EXCLUDES)
+            if venv_name and venv_name not in excludes:
+                excludes.append(venv_name)
+            config["exclude"] = excludes
             config["pythonVersion"] = python_version
 
         if venv_path and venv_name:
