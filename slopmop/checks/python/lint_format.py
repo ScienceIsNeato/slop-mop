@@ -144,13 +144,15 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             ConfigField(
                 name="formatter",
                 field_type="string",
-                default=None,
+                default="auto",
+                choices=["auto", "ruff", "black", "none"],
                 description=(
                     "Python formatter to use. Options: 'auto' (detect from project "
                     "config — default), 'ruff' (always use ruff format + ruff check), "
                     "'black' (always use autoflake + black + isort), 'none' (skip "
-                    "formatting entirely). Auto-detection checks pyproject.toml, "
-                    ".ruff.toml, and .pre-commit-config.yaml."
+                    "formatting entirely — flake8 syntax checks still run). "
+                    "Auto-detection checks pyproject.toml, .ruff.toml, and "
+                    ".pre-commit-config.yaml."
                 ),
             ),
         ]
@@ -299,13 +301,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         output_parts: List[str] = []
 
         if formatter == "none":
-            return self._create_result(
-                status=CheckStatus.PASSED,
-                duration=time.time() - start_time,
-                output="Formatting skipped (formatter: none)",
-            )
-
-        if formatter == "ruff":
+            output_parts.append("Formatting skipped (formatter: none)")
+            fix_hint = "Run: flake8 --select=E9,F63,F7,F82,F401 . to check syntax"
+        elif formatter == "ruff":
             # Check 1: ruff format
             fmt_result = self._check_ruff_format(project_root)
             if fmt_result:
@@ -398,7 +396,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if not result.success:
             output = (result.output or "").strip()
             if output:
-                lines = [l for l in output.splitlines() if l.strip()]
+                lines = [line for line in output.splitlines() if line.strip()]
                 if len(lines) <= 5:
                     return "Import order issues:\n  " + "\n  ".join(lines)
                 shown = "\n  ".join(lines[:5])
@@ -429,6 +427,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     "--check",
                     "--line-length",
                     "88",
+                    "--extend-exclude",
+                    _BLACK_EXTEND_EXCLUDE,
                     target,
                 ],
                 cwd=project_root,

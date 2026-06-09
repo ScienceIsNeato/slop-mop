@@ -32,6 +32,7 @@ def detect_host_python_formatter(project_root: str) -> Optional[str]:
       5. Nothing found → None
     """
     root = Path(project_root)
+    pyproject_has_black = False
 
     # 1. pyproject.toml
     pyproject = root / "pyproject.toml"
@@ -41,13 +42,16 @@ def detect_host_python_formatter(project_root: str) -> Optional[str]:
             # Matches [tool.ruff], [tool.ruff.format], [tool.ruff.lint], etc.
             if re.search(r"^\s*\[tool\.ruff[.\]]", content, re.MULTILINE):
                 return "ruff"
-            # Matches [tool.black] or [tool.black.*]
+            # Matches [tool.black] or [tool.black.*] — defer the return so that
+            # a standalone ruff config or pre-commit ruff hook can still win
+            # (e.g. a project that migrated from black to ruff but kept the
+            # legacy [tool.black] section for history).
             if re.search(r"^\s*\[tool\.black[.\]]", content, re.MULTILINE):
-                return "black"
+                pyproject_has_black = True
         except OSError:
             pass  # Unreadable pyproject — fall through
 
-    # 2. Standalone ruff config files
+    # 2. Standalone ruff config files (checked before honouring pyproject black)
     if (root / ".ruff.toml").exists() or (root / "ruff.toml").exists():
         return "ruff"
 
@@ -61,5 +65,9 @@ def detect_host_python_formatter(project_root: str) -> Optional[str]:
                 return "ruff"
         except OSError:
             pass
+
+    # 4. Fall back to black if we saw it in pyproject but no ruff signal won
+    if pyproject_has_black:
+        return "black"
 
     return None

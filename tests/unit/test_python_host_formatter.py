@@ -54,6 +54,23 @@ class TestDetectHostPythonFormatter:
         )
         assert detect_host_python_formatter(str(tmp_path)) == "ruff"
 
+    def test_ruff_toml_wins_over_pyproject_black(self, tmp_path):
+        # Migrated project: pyproject.toml still has [tool.black] but .ruff.toml exists
+        (tmp_path / "pyproject.toml").write_text("[tool.black]\nline-length = 88\n")
+        (tmp_path / ".ruff.toml").write_text("line-length = 88\n")
+        assert detect_host_python_formatter(str(tmp_path)) == "ruff"
+
+    def test_precommit_ruff_wins_over_pyproject_black(self, tmp_path):
+        # Migrated project: pyproject.toml has [tool.black] but pre-commit uses ruff
+        (tmp_path / "pyproject.toml").write_text("[tool.black]\nline-length = 88\n")
+        (tmp_path / ".pre-commit-config.yaml").write_text(
+            "repos:\n"
+            "  - repo: https://github.com/astral-sh/ruff-pre-commit\n"
+            "    hooks:\n"
+            "      - id: ruff\n"
+        )
+        assert detect_host_python_formatter(str(tmp_path)) == "ruff"
+
     def test_dot_ruff_toml_returns_ruff(self, tmp_path):
         (tmp_path / ".ruff.toml").write_text("line-length = 88\n")
         assert detect_host_python_formatter(str(tmp_path)) == "ruff"
@@ -235,11 +252,18 @@ class TestRunRuffBranch:
         assert black_check, "black --check should have been called"
 
     def test_run_passes_when_formatter_none(self, tmp_path):
-        check = PythonLintFormatCheck({"formatter": "none"})
+        # formatter: none skips formatting but flake8 still runs
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+        runner = self._make_runner(returncode=0)
+        check = PythonLintFormatCheck({"formatter": "none"}, runner=runner)
         result = check.run(str(tmp_path))
 
         assert result.status == CheckStatus.PASSED
         assert "none" in result.output.lower()
+        # Flake8 must still have been called
+        calls = [c.args[0] for c in runner.run.call_args_list]
+        assert any("flake8" in c[0] for c in calls if c)
 
     def test_run_fails_when_ruff_format_fails(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n")

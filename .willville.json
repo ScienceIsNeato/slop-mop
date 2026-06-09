@@ -1,6 +1,6 @@
 {
   "agent": {
-    "status": "Barnacle #264 — host formatter deference + migration exclusion, PR #273 open",
+    "status": "Addressing 8 reviewer threads on PR #273 — all valid, fixing now",
     "direction": "Get #273 merged, then pick up #263 or #253",
     "last_update": "2026-06-09T03:00:00Z"
   }
