@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Barnacle #264 — refit now defers to host ruff/black instead of forcing its own formatter, PR in progress",
-    "direction": "Get formatter-deference merged, then tackle #263 (migration exclusion) and #253 (detect-secrets allowlist)",
-    "last_update": "2026-06-09T02:00:00Z"
+    "status": "Barnacle #264 — host formatter deference + migration exclusion, PR #273 open",
+    "direction": "Get #273 merged, then pick up #263 or #253",
+    "last_update": "2026-06-09T03:00:00Z"
   }
 }

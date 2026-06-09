@@ -17,8 +17,6 @@ import re
 import time
 from typing import List, Optional
 
-from slopmop.checks.python._host_formatter import detect_host_python_formatter
-
 from slopmop.checks.base import (
     BaseCheck,
     CheckRole,
@@ -29,6 +27,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.checks.python._host_formatter import detect_host_python_formatter
 from slopmop.constants import ISSUES_FOUND_TEMPLATE
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -61,7 +60,9 @@ _DEFAULT_EXCLUDE_DIRS = [
 # Black --extend-exclude regex built from _DEFAULT_EXCLUDE_DIRS so that
 # recursive runs on a top-level package (e.g. "enterprise") don't descend
 # into nested migration dirs like enterprise/migrations/versions/. (#263)
-_BLACK_EXTEND_EXCLUDE = r"/(" + "|".join(re.escape(d) for d in _DEFAULT_EXCLUDE_DIRS) + r")/"
+_BLACK_EXTEND_EXCLUDE = (
+    r"/(" + "|".join(re.escape(d) for d in _DEFAULT_EXCLUDE_DIRS) + r")/"
+)
 
 
 def _is_import_error(output: str) -> bool:

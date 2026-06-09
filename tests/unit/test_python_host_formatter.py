@@ -8,9 +8,7 @@ Covers:
   - _BLACK_EXTEND_EXCLUDE presence in black calls (barnacle #263)
 """
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from slopmop.checks.python._host_formatter import detect_host_python_formatter
 from slopmop.checks.python.lint_format import (
@@ -19,7 +17,6 @@ from slopmop.checks.python.lint_format import (
 )
 from slopmop.core.result import CheckStatus
 from slopmop.subprocess.runner import SubprocessResult
-
 
 # ---------------------------------------------------------------------------
 # detect_host_python_formatter
@@ -189,9 +186,9 @@ class TestAutoFixDispatching:
         black_calls = [c for c in calls if c and "black" in c[0]]
         assert black_calls, "black should have been called"
         for cmd in black_calls:
-            assert "--extend-exclude" in cmd, (
-                "black must pass --extend-exclude to skip migration dirs"
-            )
+            assert (
+                "--extend-exclude" in cmd
+            ), "black must pass --extend-exclude to skip migration dirs"
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +216,9 @@ class TestRunRuffBranch:
         assert result.status == CheckStatus.PASSED
         calls = [c.args[0] for c in runner.run.call_args_list]
         ruff_format_check = [
-            c for c in calls if c and "ruff" in c[0] and "format" in c and "--check" in c
+            c
+            for c in calls
+            if c and "ruff" in c[0] and "format" in c and "--check" in c
         ]
         assert ruff_format_check, "ruff format --check should have been called"
 
