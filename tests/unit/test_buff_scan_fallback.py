@@ -52,13 +52,18 @@ class TestBuffScanFallback:
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
         monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
 
-        assert buff_mod.cmd_buff(args) == 1
+        # #252 Case A: genuine absence (no code-scanning run on this repo)
+        # degrades to a pass once PR feedback is resolved — nothing to verify.
+        assert buff_mod.cmd_buff(args) == 0
         out = capsys.readouterr().out
-        assert "Buff inspect incomplete: PR feedback is resolved" in out
-        assert "CI scan artifact is still missing" in out
+        assert "PR feedback resolved" in out
+        assert "no code-scanning gate" in out
+        assert "Buff inspect incomplete" not in out
         feedback_gate.assert_called_once_with(86, "/repo")
 
-    def test_cmd_buff_falls_back_when_scan_artifact_missing(self, monkeypatch, capsys):
+    def test_cmd_buff_blocks_when_artifact_missing_from_existing_run(
+        self, monkeypatch, capsys
+    ):
         args = argparse.Namespace(
             json_output=False,
             repo=None,
@@ -96,10 +101,12 @@ class TestBuffScanFallback:
         feedback_gate = Mock(return_value=make_feedback_result(CheckStatus.PASSED))
         monkeypatch.setattr(buff_mod, "_run_pr_feedback_gate", feedback_gate)
 
+        # #252 Case B: a run exists but didn't produce the artifact — a CI
+        # defect buff surfaces (blocks) instead of silently passing.
         assert buff_mod.cmd_buff(args) == 1
         out = capsys.readouterr().out
         assert "CI scan artifact unavailable" in out
-        assert "Buff inspect incomplete: PR feedback is resolved" in out
+        assert "did not produce the 'slopmop-results' artifact" in out
         feedback_gate.assert_called_once_with(84, "/repo")
 
     def test_cmd_buff_scan_fallback_still_blocks_on_review_feedback(
@@ -154,8 +161,7 @@ class TestBuffScanFallback:
         assert buff_mod.cmd_buff(args) == 1
         out = capsys.readouterr().out
         assert "CI scan artifact unavailable" in out
-        assert "Buff inspect incomplete: CI scan artifact is still missing." in out
-        assert "PR feedback is resolved" not in out
+        assert "no code-scanning run for this repo" in out
         assert "Buff inspect found unresolved PR review threads." in out
         assert "PR #85 has unresolved review threads." in out
 
@@ -200,7 +206,7 @@ class TestBuffScanFallback:
         assert "CI scan artifact unavailable" in out
         assert "Scan detail:" not in out
 
-    def test_cmd_buff_json_mode_keeps_scan_absence_nonzero(self, monkeypatch, capsys):
+    def test_cmd_buff_json_mode_blocks_when_artifact_missing(self, monkeypatch, capsys):
         args = argparse.Namespace(
             json_output=True,
             repo=None,
@@ -237,13 +243,29 @@ class TestBuffScanFallback:
             Mock(return_value=make_feedback_result(CheckStatus.PASSED)),
         )
 
+        # #252 Case B: a missing artifact from an existing run is a CI defect —
+        # the JSON envelope reports fail, scan_unavailable kept for detail.
         assert buff_mod.cmd_buff(args) == 1
         out = capsys.readouterr().out
         assert '"scan_unavailable"' in out
-        assert "Buff inspect incomplete" not in out
+        assert '"status": "fail"' in out
 
 
 class TestBuffScanHelpers:
+    def test_scan_unavailable_kind_distinguishes_absence_from_missing(self):
+        assert (
+            buff_scan.scan_unavailable_kind(
+                "No workflow runs found for that PR/workflow. Pass --run-id."
+            )
+            == "no_workflow_run"
+        )
+        assert (
+            buff_scan.scan_unavailable_kind(
+                "no artifact matches any of the names or patterns provided"
+            )
+            == "artifact_missing"
+        )
+
     def test_is_scan_unavailable_error_matches_known_missing_sources(self):
         assert buff_scan.is_scan_unavailable_error(
             triage.TriageError("No workflow runs found for that PR/workflow")

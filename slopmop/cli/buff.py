@@ -890,6 +890,7 @@ def _render_inspect_failure(
     *,
     scan_exit: int,
     scan_unavailable: bool,
+    scan_kind: str,
     feedback_result: CheckResult,
     json_output: bool,
 ) -> None:
@@ -898,14 +899,17 @@ def _render_inspect_failure(
     if json_output:
         return
     if scan_exit != 0:
-        if scan_unavailable:
-            if feedback_result.status in {CheckStatus.FAILED, CheckStatus.ERROR}:
-                print("\nBuff inspect incomplete: CI scan artifact is still missing.")
-            else:
-                print(
-                    "\nBuff inspect incomplete: PR feedback is resolved, "
-                    "but the CI scan artifact is still missing."
-                )
+        if scan_unavailable and scan_kind == "artifact_missing":
+            print(
+                "\nBuff inspect: the code-scanning workflow ran but did not "
+                "produce the 'slopmop-results' artifact, so findings could not "
+                "be verified. Fix the workflow's artifact upload or re-run CI."
+            )
+        elif scan_unavailable:
+            print(
+                "\nBuff inspect: CI scan artifact unavailable "
+                "(no code-scanning run for this repo)."
+            )
         else:
             print("\nBuff inspect found unresolved CI scan signals.")
     if feedback_result.status == CheckStatus.FAILED:
@@ -917,6 +921,76 @@ def _render_inspect_failure(
         print("Buff inspect failed: could not verify unresolved PR feedback.")
         if feedback_result.error:
             print(f"ERROR: {feedback_result.error}")
+
+
+def _resolve_inspect_verdict(
+    scan_exit: int,
+    payload: dict[str, Any],
+    feedback_result: CheckResult,
+) -> tuple[int, bool, str]:
+    """Resolve (exit_code, scan_unavailable, scan_kind) for an inspect run.
+
+    Only a *genuinely absent* scan is non-blocking: the repo runs no
+    code-scanning gate, so no workflow run exists and the artifact cannot be
+    produced. A run that exists but didn't yield the artifact is a CI defect to
+    surface, not silence (#252).
+    """
+
+    feedback_blocking = feedback_result.status in {
+        CheckStatus.FAILED,
+        CheckStatus.ERROR,
+    }
+    scan_unavailable_obj = payload.get("scan_unavailable")
+    scan_unavailable = bool(scan_unavailable_obj)
+    scan_kind = ""
+    if isinstance(scan_unavailable_obj, dict):
+        unavailable = cast(dict[str, Any], scan_unavailable_obj)
+        scan_kind = str(unavailable.get("kind") or "")
+    scan_genuinely_absent = scan_unavailable and scan_kind == "no_workflow_run"
+    scan_blocking = scan_exit != 0 and not scan_genuinely_absent
+    exit_code = 1 if (scan_blocking or feedback_blocking) else 0
+    return exit_code, scan_unavailable, scan_kind
+
+
+def _render_inspect_result(
+    *,
+    exit_code: int,
+    scan_unavailable: bool,
+    scan_kind: str,
+    scan_exit: int,
+    payload: dict[str, Any],
+    feedback_result: CheckResult,
+) -> int:
+    """Print human inspect output + verdict; return the resolved exit code."""
+
+    _print_inspect_output(
+        payload=payload,
+        scan_exit=scan_exit,
+        feedback_result=feedback_result,
+    )
+
+    if exit_code == 1:
+        _render_inspect_failure(
+            scan_exit=scan_exit,
+            scan_unavailable=scan_unavailable,
+            scan_kind=scan_kind,
+            feedback_result=feedback_result,
+            json_output=False,
+        )
+        return 1
+
+    if scan_unavailable:
+        # Only reached for a genuinely-absent gate (no workflow run); a missing
+        # artifact from an existing run is blocking above.
+        print(
+            "\nBuff inspect: this repo runs no code-scanning gate, so there is "
+            "nothing to verify. PR feedback resolved — nothing to act on."
+        )
+        print("Next step: run 'sm buff finalize --push' when you want to publish.")
+        return 0
+    print("\nBuff inspect clean: CI scan signals and PR feedback are resolved.")
+    print("Next step: run 'sm buff finalize --push' when you want to publish.")
+    return 0
 
 
 def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
@@ -976,11 +1050,9 @@ def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
         feedback_result=feedback_result,
     )
 
-    feedback_blocking = feedback_result.status in {
-        CheckStatus.FAILED,
-        CheckStatus.ERROR,
-    }
-    exit_code = 1 if (scan_exit != 0 or feedback_blocking) else 0
+    exit_code, scan_unavailable, scan_kind = _resolve_inspect_verdict(
+        scan_exit, payload, feedback_result
+    )
 
     # The triage payload is the buff data slot verbatim — it keeps its own
     # ci-triage sub-schema stamp and instruction list. The envelope adds the
@@ -999,24 +1071,14 @@ def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
         print(json.dumps(envelope, indent=2))
         return exit_code
 
-    scan_unavailable = _print_inspect_output(
-        payload=payload,
+    return _render_inspect_result(
+        exit_code=exit_code,
+        scan_unavailable=scan_unavailable,
+        scan_kind=scan_kind,
         scan_exit=scan_exit,
+        payload=payload,
         feedback_result=feedback_result,
     )
-
-    if exit_code == 1:
-        _render_inspect_failure(
-            scan_exit=scan_exit,
-            scan_unavailable=scan_unavailable,
-            feedback_result=feedback_result,
-            json_output=False,
-        )
-        return 1
-
-    print("\nBuff inspect clean: CI scan signals and PR feedback are resolved.")
-    print("Next step: run 'sm buff finalize --push' when you want to publish.")
-    return 0
 
 
 def cmd_buff(args: argparse.Namespace) -> int:

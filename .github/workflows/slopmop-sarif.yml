@@ -172,6 +172,18 @@ jobs:
             --json-file slopmop-results.json \
             --no-json
 
+      # buff inspect downloads this actions artifact (gh run download --name
+      # slopmop-results) to verify code-scanning findings. upload-sarif feeds
+      # Code Scanning but is NOT downloadable, so buff needs this too. always()
+      # because findings exist precisely when the gate fails.
+      - name: Upload scan results for buff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slopmop-results
+          path: slopmop-results.json
+          if-no-files-found: warn
+
       - name: Publish SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v4
         with:

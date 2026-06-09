@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from slopmop.cli.ci import _categorize_checks
 from slopmop.cli.scan_triage import PRResolutionSource
@@ -136,8 +136,14 @@ def print_ci_state_summary(checks: list[dict[str, Any]]) -> None:
 def _scan_state_label(scan_exit: int, payload: dict[str, Any]) -> tuple[str, str]:
     """Return a compact human status for the CI scan artifact."""
 
-    if payload.get("scan_unavailable"):
-        return "unavailable", "CI scan artifact is missing or not downloadable"
+    unavailable = payload.get("scan_unavailable")
+    if unavailable:
+        kind = ""
+        if isinstance(unavailable, dict):
+            kind = str(cast(dict[str, Any], unavailable).get("kind") or "")
+        if kind == "artifact_missing":
+            return "missing", "CI scan ran but its results artifact is missing"
+        return "unavailable", "no code-scanning run for this repo"
     if scan_exit == 0:
         return "clean", "CI scan artifact has no actionable signals"
     return "needs work", "CI scan artifact contains actionable signals"
@@ -151,13 +157,21 @@ def _inspect_overall_state(
 
     if scan_state == "clean" and feedback_state == "resolved":
         return "clean", "CI scan signals and PR feedback are resolved"
+    if scan_state == "missing":
+        return (
+            "blocked",
+            "CI scan ran but its results artifact is missing — fix the upload",
+        )
     if scan_state == "unavailable":
         if feedback_state == "resolved":
             return (
-                "incomplete",
-                "PR feedback is resolved, but the scan artifact is missing",
+                "resolved",
+                "PR feedback resolved; no code-scanning gate to verify",
             )
-        return "incomplete", "scan artifact is missing and PR feedback is not clean"
+        return (
+            "needs work",
+            "no code-scanning run; PR feedback still needs attention",
+        )
     if feedback_state == "error":
         return "blocked", "buff could not verify PR feedback"
     return "needs work", "CI scan signals or PR feedback still need attention"
