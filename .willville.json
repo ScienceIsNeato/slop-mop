@@ -1,38 +1,7 @@
 {
-  "schema_version": 1,
-  "project": {
-    "name": "slop-mop",
-    "display_name": "The Mop Bucket",
-    "district": "slop-wharf",
-    "stop": "the-mop-bucket",
-    "lines": [
-      "quality"
-    ],
-    "visibility": "public",
-    "homepage": "https://github.com/ScienceIsNeato/slop-mop",
-    "repo": "ScienceIsNeato/slop-mop"
-  },
-  "status": {
-    "state": "shipping",
-    "summary": "PR #223 merged: starlette PYSEC-2026-161 pin + dead-code.js knip 6 compat + ignore_patterns/ignore_dependencies config fields. Starlette blocker cleared; next is cutting v1.1.0.",
-    "blockers": [
-      "Pin GitHub Actions in barnacle templates to commit SHAs before tagging v1.1."
-    ],
-    "next": [
-      "Cut v1.1.0 once the buff helper has docs and one more dogfooded PR.",
-      "Publish the `sm sail` walkthrough to the docs site."
-    ],
-    "updated": "2026-05-26"
-  },
   "agent": {
-    "status": "Switched the project to a standard, widely-trusted open-source license so companies and app stores will actually adopt it, with attribution preserved",
-    "direction": "Keeps the option open to offer a paid version down the road",
-    "last_update": "2026-06-01T00:00:00Z"
-  },
-  "queue": {
-    "active": true,
-    "milestone": "v1.1 release",
-    "eta_days": 1,
-    "priority": 1
+    "status": "Wrapping a batch of cleanups — open-source license switch, slow checks moved to the pre-PR sweep, version number now lives in one place. Now dogfooding on a big real-world repo and logging the snags as we hit them.",
+    "direction": "Turn those snags into fixes and keep making the project easy for newcomers to trust and adopt.",
+    "last_update": "2026-06-09T00:00:00Z"
   }
 }
