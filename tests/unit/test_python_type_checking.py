@@ -394,7 +394,7 @@ class TestPythonTypeCheckingCheck:
         # it (only checks 'venv' and '.venv') so it won't be in BROAD_SCAN_EXCLUDES.
         # But when it IS detected (via VIRTUAL_ENV env var) it should be appended.
         import os
-        import unittest.mock as mock
+        from unittest import mock
 
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
@@ -453,8 +453,29 @@ class TestPythonTypeCheckingCheck:
         assert "**/.venv" in exclude
         assert "**/build" in exclude
 
-    def test_extends_with_explicit_include_no_extra_excludes_forced(self, tmp_path):
-        """Extends branch with explicitly configured include_dirs: no override needed."""
+    def test_extends_explicit_include_dot_gets_broad_excludes(self, tmp_path):
+        """Extends branch with explicit include_dirs:['.'] still gets broad excludes.
+
+        Previously the explicit-include-dirs path in the extends branch only
+        wrote include, skipping _fallback_excludes. (#262)
+        """
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "pyrightconfig.json").write_text("{}")
+
+        check = PythonTypeCheckingCheck(
+            {"pyright_config_file": "pyrightconfig.json", "include_dirs": ["."]}
+        )
+        config = check._build_pyright_config(str(tmp_path))
+
+        assert config["include"] == ["."]
+        assert "**/venv" in config["exclude"]
+        assert "**/build" in config["exclude"]
+
+    def test_extends_with_explicit_scoped_include_no_extra_excludes_forced(
+        self, tmp_path
+    ):
+        """Extends branch with a scoped include_dirs: no broad excludes injected."""
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "pyrightconfig.json").write_text("{}")
@@ -466,7 +487,7 @@ class TestPythonTypeCheckingCheck:
         config = check._build_pyright_config(str(tmp_path))
 
         assert config["include"] == ["myapp"]
-        # No gate-injected exclude when user already scoped to a dir
+        # No gate-injected exclude when user already scoped to a real dir
         assert "exclude" not in config
 
     def test_run_uses_generated_overlay_without_mutating_pyrightconfig(self, tmp_path):

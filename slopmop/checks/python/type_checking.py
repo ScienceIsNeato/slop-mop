@@ -86,7 +86,7 @@ def _fallback_excludes(venv_name: Optional[str]) -> List[str]:
     excludes = list(_BROAD_SCAN_EXCLUDES)
     if venv_name:
         prefixed = f"**/{venv_name}"
-        if prefixed not in excludes and venv_name not in excludes:
+        if prefixed not in excludes:
             excludes.append(prefixed)
     return excludes
 
@@ -382,6 +382,10 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             config["extends"] = base_config_file
             if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
                 config["include"] = include_dirs
+                # Explicit include:["."] still needs broad excludes — same guard
+                # as the auto-detect fallback below. (#262)
+                if include_dirs == ["."]:
+                    config["exclude"] = _fallback_excludes(venv_name)
             elif not explicitly_configured and "include" not in base_cfg:
                 # Auto-detected pyrightconfig.json that doesn't scope includes:
                 # keep source-dir scoping so the gate doesn't balloon to the
