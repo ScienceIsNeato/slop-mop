@@ -4,6 +4,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+_AGENT_ENV_VARS = ("CI", "GEMINI_CLI", "CLAUDE_CODE", "AGENT_MODE", "TERM_PROGRAM")
+
+
+@pytest.fixture(autouse=True)
+def _neutralize_agent_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep unit tests deterministic regardless of where they run.
+
+    sm auto-detects agent/CI environments and switches to terse/JSON output.
+    Under GitHub Actions (CI=true) that would flip commands the tests exercise
+    into JSON/non-interactive mode and break assertions written against human
+    output. Clear the markers so every test starts from a human-output
+    baseline; tests that exercise agent behavior re-set the vars they need.
+    """
+    for var in _AGENT_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
 
 def mk_python_project(root: Path) -> None:
     """Write a minimal pyproject.toml so doctor checks see a Python project."""

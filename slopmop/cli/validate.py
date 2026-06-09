@@ -89,7 +89,17 @@ def _is_json_mode(args: argparse.Namespace) -> bool:
 
 def _is_porcelain_mode(args: argparse.Namespace) -> bool:
     """Return whether validation should print token-terse agent output."""
-    return bool(getattr(args, "porcelain", False))
+    if getattr(args, "porcelain", False):
+        return True
+
+    # Don't auto-enable agent/porcelain output when the user has explicitly
+    # chosen --json or --no-json; only auto-detect when json mode is unset.
+    if getattr(args, "json_output", None) is not None:
+        return False
+
+    from slopmop.utils.environment import is_agent_environment
+
+    return is_agent_environment()
 
 
 def _parse_quality_gates(args: argparse.Namespace) -> Optional[List[str]]:
@@ -388,6 +398,8 @@ def _run_validation_locked(
     # JSON mode suppresses all interactive output
     # SARIF-to-stdout mode also suppresses console output so the JSON
     # payload is not corrupted by progress/header text.
+    from slopmop.utils.environment import is_interactive_terminal
+
     sarif_to_stdout = getattr(args, "sarif_output", False) and not getattr(
         args, "output_file", None
     )
@@ -395,8 +407,7 @@ def _run_validation_locked(
         not json_mode
         and not porcelain_mode
         and not sarif_to_stdout
-        and sys.stdout.isatty()
-        and not os.environ.get("NO_COLOR")
+        and is_interactive_terminal()
         and not args.quiet
         and not getattr(args, "static", False)
     )

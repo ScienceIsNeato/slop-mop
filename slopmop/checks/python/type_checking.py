@@ -371,6 +371,12 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
                 if rule not in owned_rules:
                     config[rule] = level
 
+        # Copy any report* rules from base config to the generated config to prevent
+        # them from being overridden/reset by typeCheckingMode: standard.
+        for rule, level in base_cfg.items():
+            if rule.startswith("report") and rule not in config:
+                config[rule] = level
+
         return config
 
     def run(self, project_root: str) -> CheckResult:

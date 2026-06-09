@@ -24,6 +24,7 @@ Design principles:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -133,7 +134,21 @@ def _reconcile_runtime_state(
     return WorkflowState.PR_OPEN
 
 
-def _print_step(icon: str, heading: str, detail: str = "") -> None:
+def _print_step(
+    icon: str, heading: str, detail: str = "", *, force: bool = False
+) -> None:
+    # Skip decorative steps in an agent environment that prefers JSON, unless
+    # verbose output is requested or the step is forced (e.g. a HOLD block the
+    # agent contract requires us to surface even in terse mode).
+    from slopmop.utils.environment import is_agent_environment
+
+    if (
+        not force
+        and is_agent_environment()
+        and os.environ.get("SLOPMOP_SAIL_VERBOSE") != "1"
+    ):
+        return
+
     # Flush immediately. stdout is block-buffered when piped (an agent's
     # stdout always is), and sail's handlers hand off to long-running
     # delegates like ``buff watch`` right after announcing the step. If that
@@ -299,6 +314,7 @@ def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
             "HOLD",
             "Ignored-feedback gate detected pending reviews.\n"
             "   Address the feedback, then: sm sail",
+            force=True,
         )
         return 1
 
@@ -392,6 +408,13 @@ _STATE_HANDLERS = {
 def cmd_sail(args: argparse.Namespace) -> int:
     """Drive the workflow toward a green PR — one step at a time."""
     project_root = Path(getattr(args, "project_root", "."))
+
+    # Auto-detect JSON mode for agents if not explicitly specified
+    if not getattr(args, "json_output", False):
+        from slopmop.utils.environment import is_agent_environment
+
+        if is_agent_environment():
+            args.json_output = True
 
     status = _onboard_status(project_root)
     if status == "fresh":

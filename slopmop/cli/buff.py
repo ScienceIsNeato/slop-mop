@@ -1022,6 +1022,14 @@ def _cmd_buff_inspect(args: argparse.Namespace, pr_number: int | None) -> int:
 def cmd_buff(args: argparse.Namespace) -> int:
     """Run post-PR CI triage and return non-zero on unresolved signals."""
 
+    # Auto-detect JSON mode for agents only when unset; an explicit
+    # --no-json (json_output=False) must be respected.
+    if getattr(args, "json_output", None) is None:
+        from slopmop.utils.environment import is_agent_environment
+
+        if is_agent_environment():
+            args.json_output = True
+
     if hasattr(args, "pr_or_action"):
         try:
             normalized = _normalize_buff_args(args)

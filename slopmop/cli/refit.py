@@ -1134,6 +1134,15 @@ def _cmd_refit_skip(args: argparse.Namespace) -> int:
 
 def cmd_refit(args: argparse.Namespace) -> int:
     """Run the structured remediation process."""
+
+    # Auto-detect JSON mode for agents only when unset; an explicit
+    # --no-json (json_output=False) must be respected.
+    if getattr(args, "json_output", None) is None:
+        from slopmop.utils.environment import is_agent_environment
+
+        if is_agent_environment():
+            args.json_output = True
+
     arg_error = _validate_start_review_args(args)
     if arg_error:
         print(arg_error)
