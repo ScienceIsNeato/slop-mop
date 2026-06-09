@@ -378,21 +378,25 @@ class TestPythonTypeCheckingCheck:
 
         assert config["include"] == ["."]
         exclude = config["exclude"]
-        assert "venv" in exclude
-        assert ".venv" in exclude
-        assert "build" in exclude
-        assert "dist" in exclude
+        # All patterns use **/ for depth-aware exclusion
+        assert "**/venv" in exclude
+        assert "**/.venv" in exclude
+        assert "**/build" in exclude
+        assert "**/dist" in exclude
         assert "**/__pycache__" in exclude
+        # env/. env removed — too ambiguous (legitimate package names)
+        assert "**/env" not in exclude
+        assert "**/.env" not in exclude
 
     def test_detected_venv_name_appended_to_excludes(self, tmp_path):
         """Non-standard venv name is appended to excludes even if not in defaults."""
-        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
-
         # Create a venv with a non-standard name — _detect_venv_path won't find
         # it (only checks 'venv' and '.venv') so it won't be in BROAD_SCAN_EXCLUDES.
         # But when it IS detected (via VIRTUAL_ENV env var) it should be appended.
         import os
         import unittest.mock as mock
+
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         myenv = tmp_path / "myenv"
         myenv.mkdir()
@@ -406,10 +410,15 @@ class TestPythonTypeCheckingCheck:
             config = check._build_pyright_config(str(tmp_path))
 
         exclude = config["exclude"]
-        assert "myenv" in exclude
+        # Non-standard venv name gets **/myenv prefix
+        assert "**/myenv" in exclude
 
-    def test_scoped_include_also_gets_broad_excludes(self, tmp_path):
-        """Even when source dirs are found, the exclude list is comprehensive."""
+    def test_scoped_include_gets_minimal_excludes_only(self, tmp_path):
+        """When source dirs are detected, broad excludes are NOT injected.
+
+        Broad patterns like '**/build' could shadow a real package with that
+        name. Scoped includes already prevent venv from being scanned. (#262)
+        """
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
@@ -419,9 +428,10 @@ class TestPythonTypeCheckingCheck:
         config = check._build_pyright_config(str(tmp_path))
 
         assert config["include"] == ["src"]
-        # Comprehensive excludes still present — belt-and-suspenders
-        assert "venv" in config["exclude"]
-        assert ".venv" in config["exclude"]
+        # Scoped include → only minimal excludes (broad patterns would shadow packages)
+        assert "**/venv" not in config["exclude"]
+        assert "**/build" not in config["exclude"]
+        assert "**/__pycache__" in config["exclude"]
 
     def test_extends_with_fallback_include_gets_broad_excludes(self, tmp_path):
         """Extends branch: auto-detected config without 'include' gets broad excludes
@@ -439,9 +449,9 @@ class TestPythonTypeCheckingCheck:
         assert config["extends"] == "pyrightconfig.json"
         assert config["include"] == ["."]
         exclude = config["exclude"]
-        assert "venv" in exclude
-        assert ".venv" in exclude
-        assert "build" in exclude
+        assert "**/venv" in exclude
+        assert "**/.venv" in exclude
+        assert "**/build" in exclude
 
     def test_extends_with_explicit_include_no_extra_excludes_forced(self, tmp_path):
         """Extends branch with explicitly configured include_dirs: no override needed."""
