@@ -157,6 +157,8 @@ def _inspect_overall_state(
 
     if scan_state == "clean" and feedback_state == "resolved":
         return "clean", "CI scan signals and PR feedback are resolved"
+    if feedback_state == "error":
+        return "blocked", "buff could not verify PR feedback"
     if scan_state == "missing":
         return (
             "blocked",
@@ -172,8 +174,6 @@ def _inspect_overall_state(
             "needs work",
             "no code-scanning run; PR feedback still needs attention",
         )
-    if feedback_state == "error":
-        return "blocked", "buff could not verify PR feedback"
     return "needs work", "CI scan signals or PR feedback still need attention"
 
 

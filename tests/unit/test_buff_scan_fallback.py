@@ -252,6 +252,14 @@ class TestBuffScanFallback:
 
 
 class TestBuffScanHelpers:
+    def test_overall_state_surfaces_feedback_error_over_unavailable(self):
+        from slopmop.cli.buff_narration import _inspect_overall_state
+
+        # A hard feedback-verification error must block, not be downgraded to
+        # "needs work" by the scan-unavailable branch.
+        state, _ = _inspect_overall_state("unavailable", "error")
+        assert state == "blocked"
+
     def test_scan_unavailable_kind_distinguishes_absence_from_missing(self):
         assert (
             buff_scan.scan_unavailable_kind(
