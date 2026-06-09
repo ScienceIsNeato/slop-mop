@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Wrapping a batch of cleanups — open-source license switch, slow checks moved to the pre-PR sweep, version number now lives in one place. Now dogfooding on a big real-world repo and logging the snags as we hit them.",
-    "direction": "Turn those snags into fixes and keep making the project easy for newcomers to trust and adopt.",
-    "last_update": "2026-06-09T00:00:00Z"
+    "status": "Barnacle #264 — refit now defers to host ruff/black instead of forcing its own formatter, PR in progress",
+    "direction": "Get formatter-deference merged, then tackle #263 (migration exclusion) and #253 (detect-secrets allowlist)",
+    "last_update": "2026-06-09T02:00:00Z"
   }
 }
