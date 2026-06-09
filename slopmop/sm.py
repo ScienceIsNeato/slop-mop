@@ -54,6 +54,7 @@ from slopmop.cli.parser_builders import (
 )
 from slopmop.constants import PROJECT_ROOT_HELP
 from slopmop.utils import as_str_list, dedupe_str_list
+from slopmop.utils.environment import is_agent_environment
 
 logger = logging.getLogger(__name__)
 
@@ -1125,8 +1126,8 @@ def main(args: Optional[List[str]] = None) -> int:
     # Strip --no-tty from wherever it appears (before or after the subcommand)
     # so argparse doesn't reject it as an unrecognised subcommand argument.
     raw = list(args) if args is not None else sys.argv[1:]
-    no_tty = "--no-tty" in raw
-    if no_tty:
+    no_tty = "--no-tty" in raw or is_agent_environment()
+    if "--no-tty" in raw:
         raw = [a for a in raw if a != "--no-tty"]
 
     # --describe is a universal flag: `sm <verb> --describe` prints that

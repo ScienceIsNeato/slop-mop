@@ -24,6 +24,7 @@ Design principles:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -134,6 +135,13 @@ def _reconcile_runtime_state(
 
 
 def _print_step(icon: str, heading: str, detail: str = "") -> None:
+    # Skip printing if we're in an agent environment that prefers JSON,
+    # unless it's explicitly turned off.
+    from slopmop.utils.environment import is_agent_environment
+
+    if is_agent_environment() and os.environ.get("SLOPMOP_SAIL_VERBOSE") != "1":
+        return
+
     # Flush immediately. stdout is block-buffered when piped (an agent's
     # stdout always is), and sail's handlers hand off to long-running
     # delegates like ``buff watch`` right after announcing the step. If that
@@ -392,6 +400,13 @@ _STATE_HANDLERS = {
 def cmd_sail(args: argparse.Namespace) -> int:
     """Drive the workflow toward a green PR — one step at a time."""
     project_root = Path(getattr(args, "project_root", "."))
+
+    # Auto-detect JSON mode for agents if not explicitly specified
+    if not getattr(args, "json_output", False):
+        from slopmop.utils.environment import is_agent_environment
+
+        if is_agent_environment():
+            args.json_output = True
 
     status = _onboard_status(project_root)
     if status == "fresh":

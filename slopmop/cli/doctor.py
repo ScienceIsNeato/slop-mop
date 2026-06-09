@@ -262,7 +262,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         project_root = Path(getattr(args, "project_root", ".") or ".").resolve()
         json_mode = args.json_output
         if json_mode is None:
-            json_mode = not sys.stdout.isatty()
+            from slopmop.utils.environment import is_agent_environment
+
+            json_mode = not sys.stdout.isatty() or is_agent_environment()
         return _print_gates_tree(project_root, json_mode=json_mode)
 
     patterns = _validate_patterns(args.checks or [])
@@ -273,7 +275,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     # forces on, explicit --no-json forces off.
     json_mode = args.json_output
     if json_mode is None:
-        json_mode = not sys.stdout.isatty()
+        from slopmop.utils.environment import is_agent_environment
+
+        json_mode = not sys.stdout.isatty() or is_agent_environment()
 
     results = run_checks(ctx, patterns)
 

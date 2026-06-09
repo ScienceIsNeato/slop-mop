@@ -804,9 +804,11 @@ def run_status(
         print(f"❌ Project root not found: {root}")
         return 1
 
-    # Resolve JSON mode: explicit flag > auto-detect (not TTY → JSON)
+    # Resolve JSON mode: explicit flag > auto-detect (not TTY or Agent → JSON)
     if json_output is None:
-        json_mode = not sys.stdout.isatty()
+        from slopmop.utils.environment import is_agent_environment
+
+        json_mode = not sys.stdout.isatty() or is_agent_environment()
     else:
         json_mode = json_output
 

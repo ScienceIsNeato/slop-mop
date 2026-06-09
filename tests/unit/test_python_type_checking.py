@@ -277,8 +277,9 @@ class TestPythonTypeCheckingCheck:
 
         # Auto-detected project config is extended...
         assert config["extends"] == "pyrightconfig.json"
-        # ...and the project's suppression is left intact, not slammed to error.
-        assert "reportUnknownMemberType" not in config
+        # ...and the project's suppression is preserved explicitly, so a later
+        # typeCheckingMode: standard can't silently reset it (#245).
+        assert config["reportUnknownMemberType"] == "none"
         # Rules the project did NOT set are still enforced.
         assert config["reportUnknownVariableType"] == "error"
         assert config["reportUnknownArgumentType"] == "error"
@@ -341,7 +342,7 @@ class TestPythonTypeCheckingCheck:
         check = PythonTypeCheckingCheck({"strict": True})
         config = check._build_pyright_config(str(tmp_path))
 
-        assert "reportUnknownMemberType" not in config
+        assert config["reportUnknownMemberType"] == "none"
         assert config["reportUnknownVariableType"] == "error"
 
     def test_strict_forces_all_rules_without_project_config(self, tmp_path):

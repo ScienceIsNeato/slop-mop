@@ -673,14 +673,17 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     # Auto-detect non-interactive terminal (e.g. AI agent, piped stdin, CI).
     non_interactive = args.non_interactive
-    if not non_interactive and not sys.stdin.isatty():
-        non_interactive = True
-        print(
-            "🤖 Non-interactive terminal detected — "
-            "using auto-detected defaults.\n"
-            "   (To force interactive mode, run from a TTY. "
-            "To silence this message, pass --non-interactive.)"
-        )
+    if not non_interactive:
+        from slopmop.utils.environment import is_agent_environment
+
+        if not sys.stdin.isatty() or is_agent_environment():
+            non_interactive = True
+            print(
+                "🤖 Non-interactive terminal detected — "
+                "using auto-detected defaults.\n"
+                "   (To force interactive mode, run from a TTY. "
+                "To silence this message, pass --non-interactive.)"
+            )
 
     if non_interactive:
         print("\n🪣 Slop-Mop Setup (non-interactive mode)")

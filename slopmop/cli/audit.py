@@ -569,7 +569,12 @@ def cmd_audit(args: argparse.Namespace) -> int:
     include_gates = not getattr(args, "no_gates", False)
     output_path_str: Optional[str] = getattr(args, "output", None)
     json_flag = getattr(args, "json_output", None)
-    json_mode = json_flag is True or (json_flag is None and not sys.stdout.isatty())
+    if json_flag is None:
+        from slopmop.utils.environment import is_agent_environment
+
+        json_mode = not sys.stdout.isatty() or is_agent_environment()
+    else:
+        json_mode = json_flag
     quiet = getattr(args, "quiet", False)
 
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
