@@ -1,6 +1,6 @@
 {
   "agent": {
-    "status": "Second pass on PR #273 reviewer threads — 3 more fixes landed",
+    "status": "PR #273 — fixing coverage + constant + test URL issues",
     "direction": "Get #273 merged, then pick up #263 or #253",
     "last_update": "2026-06-09T03:00:00Z"
   }

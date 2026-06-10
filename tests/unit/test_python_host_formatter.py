@@ -8,7 +8,7 @@ Covers:
   - _BLACK_EXTEND_EXCLUDE presence in black calls (barnacle #263)
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from slopmop.checks.python._host_formatter import detect_host_python_formatter
 from slopmop.checks.python.lint_format import (
@@ -100,11 +100,10 @@ class TestDetectHostPythonFormatter:
         assert detect_host_python_formatter(str(tmp_path)) is None
 
     def test_precommit_ruff_url_without_hook_returns_none(self, tmp_path):
-        # Repo URL contains 'ruff' but no actual ruff hook — should NOT match
+        # Repo URL contains 'ruff' but hook ID is not ruff — should NOT match
         (tmp_path / ".pre-commit-config.yaml").write_text(
-            "# migrated away from ruff-pre-commit\n"
             "repos:\n"
-            "  - repo: https://github.com/psf/black\n"
+            "  - repo: https://github.com/astral-sh/ruff-pre-commit\n"
             "    hooks:\n"
             "      - id: black\n"
         )
@@ -299,6 +298,135 @@ class TestRunRuffBranch:
 
         assert result.status == CheckStatus.FAILED
         assert "ruff" in result.fix_suggestion.lower()
+
+
+# ---------------------------------------------------------------------------
+# _RUFF_SKIPPED paths and _check_ruff_imports error paths
+# ---------------------------------------------------------------------------
+
+
+class TestRuffSkippedAndErrorPaths:
+    """Coverage for _RUFF_SKIPPED sentinel and _check_ruff_imports error branches."""
+
+    def _cmd_not_found_result(self):
+        return SubprocessResult(
+            returncode=-1, stdout="", stderr="Command not found: ruff", duration=0.1
+        )
+
+    def _success(self):
+        return SubprocessResult(returncode=0, stdout="", stderr="", duration=0.1)
+
+    def test_run_skips_ruff_format_when_not_installed(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        runner = MagicMock()
+
+        def side_effect(cmd, *args, **kwargs):
+            if cmd and "ruff" in cmd[0] and "format" in cmd:
+                return self._cmd_not_found_result()
+            return self._success()
+
+        runner.run.side_effect = side_effect
+        check = PythonLintFormatCheck({}, runner=runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert "skipped" in result.output.lower()
+
+    def test_run_skips_ruff_imports_when_not_installed(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        runner = MagicMock()
+
+        def side_effect(cmd, *args, **kwargs):
+            if cmd and "ruff" in cmd[0] and "check" in cmd:
+                return self._cmd_not_found_result()
+            return self._success()
+
+        runner.run.side_effect = side_effect
+        check = PythonLintFormatCheck({}, runner=runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
+        assert "skipped" in result.output.lower()
+
+    def test_run_ruff_imports_fail_adds_to_issues(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "__init__.py").touch()
+
+        runner = MagicMock()
+
+        def side_effect(cmd, *args, **kwargs):
+            if cmd and "ruff" in cmd[0] and "check" in cmd and "--select" in cmd:
+                return SubprocessResult(
+                    returncode=1,
+                    stdout="src/main.py:1:1: I001 Import block is un-sorted",
+                    stderr="",
+                    duration=0.1,
+                )
+            return self._success()
+
+        runner.run.side_effect = side_effect
+        check = PythonLintFormatCheck({}, runner=runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.FAILED
+
+    def test_check_ruff_imports_no_output_returns_generic_message(self, tmp_path):
+        runner = MagicMock()
+        runner.run.return_value = SubprocessResult(
+            returncode=1, stdout="", stderr="", duration=0.1
+        )
+        check = PythonLintFormatCheck({"formatter": "ruff"}, runner=runner)
+        result = check._check_ruff_imports(str(tmp_path))
+
+        assert result == "Import order issues found"
+
+    def test_check_ruff_imports_many_lines_truncates(self, tmp_path):
+        many_lines = "\n".join(
+            f"src/file.py:{i}:1: I001 Import block is un-sorted" for i in range(10)
+        )
+        runner = MagicMock()
+        runner.run.return_value = SubprocessResult(
+            returncode=1, stdout=many_lines, stderr="", duration=0.1
+        )
+        check = PythonLintFormatCheck({"formatter": "ruff"}, runner=runner)
+        result = check._check_ruff_imports(str(tmp_path))
+
+        assert result is not None
+        assert "... and 5 more" in result
+
+    def test_auto_fix_ruff_returns_false_when_all_fail(self, tmp_path):
+        runner = MagicMock()
+        runner.run.return_value = SubprocessResult(
+            returncode=1, stdout="", stderr="", duration=0.1
+        )
+        check = PythonLintFormatCheck({"formatter": "ruff"}, runner=runner)
+        result = check.auto_fix(str(tmp_path))
+
+        assert result is False
+
+
+class TestHostFormatterOsErrors:
+    """Coverage for OSError paths in detect_host_python_formatter."""
+
+    def test_oserror_reading_pyproject_falls_through(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[tool.black]\n")
+        with patch("pathlib.Path.read_text", side_effect=OSError("permission denied")):
+            result = detect_host_python_formatter(str(tmp_path))
+        # OSError swallowed; no ruff signal → None
+        assert result is None
+
+    def test_oserror_reading_precommit_falls_through(self, tmp_path):
+        (tmp_path / ".pre-commit-config.yaml").write_text("repos: []\n")
+        with patch("pathlib.Path.read_text", side_effect=OSError("permission denied")):
+            result = detect_host_python_formatter(str(tmp_path))
+        assert result is None
 
 
 # ---------------------------------------------------------------------------

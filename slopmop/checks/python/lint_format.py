@@ -26,6 +26,7 @@ from slopmop.checks.base import (
     RemediationChurn,
     ToolContext,
 )
+from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.checks.python._host_formatter import detect_host_python_formatter
 from slopmop.constants import ISSUES_FOUND_TEMPLATE
@@ -388,7 +389,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         )
         if not result.success:
             output = (result.output or "").strip()
-            if "Command not found" in output:
+            if COMMAND_NOT_FOUND in output:
                 return _RUFF_SKIPPED
             return output or "Ruff format check failed"
         return None
@@ -402,7 +403,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         )
         if not result.success:
             output = (result.output or "").strip()
-            if "Command not found" in output:
+            if COMMAND_NOT_FOUND in output:
                 return _RUFF_SKIPPED
             if output:
                 lines = [line for line in output.splitlines() if line.strip()]
