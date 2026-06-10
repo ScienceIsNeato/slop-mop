@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "PR #273 — fixing coverage + constant + test URL issues",
-    "direction": "Get #273 merged, then pick up #263 or #253",
-    "last_update": "2026-06-09T03:00:00Z"
+    "status": "Fixing barnacle #262 — pyright was sweeping venv when no source dirs configured, PR in progress",
+    "direction": "Get the type-blindness scope fix merged, then continue the barnacle queue",
+    "last_update": "2026-06-09T01:00:00Z"
   }
 }

@@ -55,6 +55,41 @@ TYPE_COMPLETENESS_RULES: Dict[str, str] = {
 MAX_ERRORS_TO_SHOW = 5
 MAX_FILES_TO_SHOW = 10
 
+# Excludes injected when include falls back to ["."] (the whole-tree scan).
+# All patterns use "**/" so nested subproject directories are excluded too —
+# a bare "venv" only excludes the root-level dir in pyright. (#262)
+# "env" and ".env" are intentionally omitted: "env" is a legitimate Python
+# package name, and ".env" is nearly always a file rather than a directory.
+_BROAD_SCAN_EXCLUDES: List[str] = [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/venv",
+    "**/.venv",
+    "**/build",
+    "**/dist",
+    "**/*.egg-info",
+    "**/.eggs",
+    "**/.tox",
+    "**/.nox",
+]
+
+# Safe minimal excludes applied for every scoped include (won't shadow real packages).
+_MINIMAL_EXCLUDES: List[str] = ["**/__pycache__", "**/node_modules"]
+
+
+def _fallback_excludes(venv_name: Optional[str]) -> List[str]:
+    """Build the exclude list for the whole-tree include:['.'] fallback.
+
+    Appends the detected venv name (with **/ prefix) when it isn't already
+    covered by _BROAD_SCAN_EXCLUDES, e.g. a non-standard name like 'myenv'.
+    """
+    excludes = list(_BROAD_SCAN_EXCLUDES)
+    if venv_name:
+        prefixed = f"**/{venv_name}"
+        if prefixed not in excludes:
+            excludes.append(prefixed)
+    return excludes
+
 
 def _fix_strategy_for_pyright(rule: str, message: str) -> Optional[str]:
     """Return a prescriptive remediation for common pyright rules."""
@@ -347,14 +382,29 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             config["extends"] = base_config_file
             if isinstance(explicit_include_dirs, list) and explicit_include_dirs:
                 config["include"] = include_dirs
+                # Explicit include:["."] still needs broad excludes — same guard
+                # as the auto-detect fallback below. (#262)
+                if include_dirs == ["."]:
+                    config["exclude"] = _fallback_excludes(venv_name)
             elif not explicitly_configured and "include" not in base_cfg:
                 # Auto-detected pyrightconfig.json that doesn't scope includes:
                 # keep source-dir scoping so the gate doesn't balloon to the
                 # whole tree. (An explicitly configured base is trusted as-is.)
                 config["include"] = include_dirs
+                # Only inject broad excludes for the whole-tree fallback; a
+                # scoped include already limits the scan and broad excludes
+                # could silently shadow a real package with the same name. (#262)
+                if include_dirs == ["."]:
+                    config["exclude"] = _fallback_excludes(venv_name)
         else:
             config["include"] = include_dirs
-            config["exclude"] = ["**/__pycache__", "**/node_modules"]
+            if include_dirs == ["."]:
+                # Whole-tree fallback: guard venv/build/generated dirs. (#262)
+                config["exclude"] = _fallback_excludes(venv_name)
+            else:
+                # Scoped include: minimal excludes only — broad patterns could
+                # shadow a real package whose name happens to match (e.g. "env").
+                config["exclude"] = list(_MINIMAL_EXCLUDES)
             config["pythonVersion"] = python_version
 
         if venv_path and venv_name:
