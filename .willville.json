@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Wrapping a batch of cleanups — open-source license switch, slow checks moved to the pre-PR sweep, version number now lives in one place. Now dogfooding on a big real-world repo and logging the snags as we hit them.",
-    "direction": "Turn those snags into fixes and keep making the project easy for newcomers to trust and adopt.",
-    "last_update": "2026-06-09T00:00:00Z"
+    "status": "PR #273 — fixing coverage + constant + test URL issues",
+    "direction": "Get #273 merged, then pick up #263 or #253",
+    "last_update": "2026-06-09T03:00:00Z"
   }
 }

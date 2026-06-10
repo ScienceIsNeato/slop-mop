@@ -1,10 +1,15 @@
 """Python lint and format check using black, isort, autoflake, and flake8.
 
 This check:
-1. Auto-removes unused imports with autoflake
-2. Auto-fixes formatting with black
-3. Auto-fixes import order with isort
+1. Auto-removes unused imports with autoflake (or ruff when configured)
+2. Auto-fixes formatting with black (or ruff when configured)
+3. Auto-fixes import order with isort (or ruff when configured)
 4. Checks for critical lint errors with flake8
+
+When the project already pins ruff (detected via pyproject.toml, ruff.toml,
+or .pre-commit-config.yaml), the gate defers to ruff format + ruff check
+instead of running black/isort/autoflake.  This prevents formatting churn
+when the host's CI would immediately reformat slop-mop's output.
 """
 
 import os
@@ -21,7 +26,9 @@ from slopmop.checks.base import (
     RemediationChurn,
     ToolContext,
 )
+from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.checks.python._host_formatter import detect_host_python_formatter
 from slopmop.constants import ISSUES_FOUND_TEMPLATE
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -33,6 +40,7 @@ _FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
 # a string (real formatting failure) so that run() can report the
 # skip without treating it as a pass.
 _BLACK_SKIPPED = "__BLACK_SKIPPED_BROKEN_INSTALL__"
+_RUFF_SKIPPED = "__RUFF_SKIPPED_NOT_INSTALLED__"
 
 _DEFAULT_EXCLUDE_DIRS = [
     "venv",
@@ -50,6 +58,13 @@ _DEFAULT_EXCLUDE_DIRS = [
     "alembic",
     "ephemeral",
 ]
+
+# Black --extend-exclude regex built from _DEFAULT_EXCLUDE_DIRS so that
+# recursive runs on a top-level package (e.g. "enterprise") don't descend
+# into nested migration dirs like enterprise/migrations/versions/. (#263)
+_BLACK_EXTEND_EXCLUDE = (
+    r"/(" + "|".join(re.escape(d) for d in _DEFAULT_EXCLUDE_DIRS) + r")/"
+)
 
 
 def _is_import_error(output: str) -> bool:
@@ -93,7 +108,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["black", "isort", "autoflake", "flake8"]
+    required_tools = ["black", "isort", "autoflake", "flake8", "ruff"]
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
     is_formatting_gate = True
@@ -128,7 +143,35 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 description="Maximum line length for black",
                 permissiveness="lower_is_stricter",
             ),
+            ConfigField(
+                name="formatter",
+                field_type="string",
+                default="auto",
+                choices=["auto", "ruff", "black", "none"],
+                description=(
+                    "Python formatter to use. Options: 'auto' (detect from project "
+                    "config — default), 'ruff' (always use ruff format + ruff check), "
+                    "'black' (always use autoflake + black + isort), 'none' (skip "
+                    "formatting entirely — flake8 syntax checks still run). "
+                    "Auto-detection checks pyproject.toml, .ruff.toml, and "
+                    ".pre-commit-config.yaml."
+                ),
+            ),
         ]
+
+    def _effective_formatter(self, project_root: str) -> Optional[str]:
+        """Return 'ruff', 'black', or None (use black defaults).
+
+        Respects an explicit 'formatter' config override; falls back to
+        auto-detection via the project's own config files.
+        """
+        override = self.config.get("formatter")
+        if override == "none":
+            return "none"
+        if override in ("ruff", "black"):
+            return override
+        # 'auto' or unset: detect from project
+        return detect_host_python_formatter(project_root)
 
     def is_applicable(self, project_root: str) -> bool:
         return self.is_python_project(project_root)
@@ -137,7 +180,46 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         return True
 
     def auto_fix(self, project_root: str) -> bool:
-        """Auto-fix formatting issues with autoflake, black, and isort."""
+        """Auto-fix formatting issues.
+
+        Defers to the project's own formatter when one is configured
+        (ruff), falling back to autoflake + black + isort otherwise.
+        """
+        formatter = self._effective_formatter(project_root)
+        if formatter == "none":
+            return False
+        if formatter == "ruff":
+            return self._auto_fix_ruff(project_root)
+        return self._auto_fix_black(project_root)
+
+    def _auto_fix_ruff(self, project_root: str) -> bool:
+        """Format with ruff — defers to the project's own ruff config."""
+        fixed = False
+
+        # ruff format replaces black
+        result = self._run_command(
+            ["ruff", "format", "."],
+            cwd=project_root,
+            timeout=60,
+        )
+        if result.success:
+            fixed = True
+
+        # ruff check --fix --select I replaces isort; F401 replaces autoflake.
+        # --select overrides pyproject config for this invocation so we touch
+        # only style (not logic-altering rules).
+        result = self._run_command(
+            ["ruff", "check", "--fix", "--select", "I,F401", "."],
+            cwd=project_root,
+            timeout=60,
+        )
+        if result.success:
+            fixed = True
+
+        return fixed
+
+    def _auto_fix_black(self, project_root: str) -> bool:
+        """Format with autoflake + black + isort (slop-mop defaults)."""
         fixed = False
 
         # Find Python source directories to format
@@ -161,13 +243,16 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if result.success:
             fixed = True
 
-        # Run black on each target
+        # Run black on each target.  --extend-exclude prevents recursive
+        # descent into nested migration/alembic dirs (#263).
         for target in targets:
             result = self._run_command(
                 [
                     "black",
                     "--line-length",
                     "88",
+                    "--extend-exclude",
+                    _BLACK_EXTEND_EXCLUDE,
                     target,
                 ],
                 cwd=project_root,
@@ -207,30 +292,63 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         return targets
 
     def run(self, project_root: str) -> CheckResult:
-        """Run lint and format checks."""
+        """Run lint and format checks.
+
+        Uses ruff when the project has it configured; black/isort otherwise.
+        Flake8 runs in both cases for critical syntax/undefined-name errors.
+        """
         start_time = time.time()
+        formatter = self._effective_formatter(project_root)
         issues: List[str] = []
         output_parts: List[str] = []
 
-        # Check 1: Black formatting
-        black_result = self._check_black(project_root)
-        if black_result == _BLACK_SKIPPED:
-            output_parts.append("Black: ⚠️ Skipped (broken installation)")
-        elif black_result:
-            issues.append(black_result)
-            output_parts.append(f"Black: {black_result}")
-        else:
-            output_parts.append("Black: ✅ Formatting OK")
+        if formatter == "none":
+            output_parts.append("Formatting skipped (formatter: none)")
+            fix_hint = "Run: flake8 --select=E9,F63,F7,F82,F401 . to check syntax"
+        elif formatter == "ruff":
+            # Check 1: ruff format
+            fmt_result = self._check_ruff_format(project_root)
+            if fmt_result == _RUFF_SKIPPED:
+                output_parts.append("Ruff format: ⚠️ Skipped (ruff not installed)")
+            elif fmt_result:
+                issues.append(fmt_result)
+                output_parts.append(f"Ruff format: {fmt_result}")
+            else:
+                output_parts.append("Ruff format: ✅ Formatting OK")
 
-        # Check 2: Isort imports
-        isort_result = self._check_isort(project_root)
-        if isort_result:
-            issues.append(isort_result)
-            output_parts.append(f"Isort: {isort_result}")
-        else:
-            output_parts.append("Isort: ✅ Import order OK")
+            # Check 2: ruff import order
+            import_result = self._check_ruff_imports(project_root)
+            if import_result == _RUFF_SKIPPED:
+                output_parts.append("Ruff imports: ⚠️ Skipped (ruff not installed)")
+            elif import_result:
+                issues.append(import_result)
+                output_parts.append(f"Ruff imports: {import_result}")
+            else:
+                output_parts.append("Ruff imports: ✅ Import order OK")
 
-        # Check 3: Flake8 critical errors
+            fix_hint = "Run: ruff format . && ruff check --fix --select I,F401 ."
+        else:
+            # Check 1: Black formatting
+            black_result = self._check_black(project_root)
+            if black_result == _BLACK_SKIPPED:
+                output_parts.append("Black: ⚠️ Skipped (broken installation)")
+            elif black_result:
+                issues.append(black_result)
+                output_parts.append(f"Black: {black_result}")
+            else:
+                output_parts.append("Black: ✅ Formatting OK")
+
+            # Check 2: Isort imports
+            isort_result = self._check_isort(project_root)
+            if isort_result:
+                issues.append(isort_result)
+                output_parts.append(f"Isort: {isort_result}")
+            else:
+                output_parts.append("Isort: ✅ Import order OK")
+
+            fix_hint = "Run: black . && isort . to auto-fix formatting"
+
+        # Check 3: Flake8 critical errors (always)
         flake8_result, flake8_findings = self._check_flake8(project_root)
         if flake8_result:
             issues.append(flake8_result)
@@ -242,7 +360,6 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         if issues:
             msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
-            # Prefer flake8_findings if available; if none, use generic message
             final_findings = (
                 flake8_findings
                 if flake8_findings
@@ -253,7 +370,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 duration=duration,
                 output="\n".join(output_parts),
                 error=msg,
-                fix_suggestion="Run: black . && isort . to auto-fix formatting",
+                fix_suggestion=fix_hint,
                 findings=final_findings,
             )
 
@@ -262,6 +379,40 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             duration=duration,
             output="\n".join(output_parts),
         )
+
+    def _check_ruff_format(self, project_root: str) -> Optional[str]:
+        """Check ruff formatting (equivalent of black --check)."""
+        result = self._run_command(
+            ["ruff", "format", "--check", "."],
+            cwd=project_root,
+            timeout=60,
+        )
+        if not result.success:
+            output = (result.output or "").strip()
+            if COMMAND_NOT_FOUND in output:
+                return _RUFF_SKIPPED
+            return output or "Ruff format check failed"
+        return None
+
+    def _check_ruff_imports(self, project_root: str) -> Optional[str]:
+        """Check import order with ruff (equivalent of isort --check-only)."""
+        result = self._run_command(
+            ["ruff", "check", "--select", "I", "."],
+            cwd=project_root,
+            timeout=60,
+        )
+        if not result.success:
+            output = (result.output or "").strip()
+            if COMMAND_NOT_FOUND in output:
+                return _RUFF_SKIPPED
+            if output:
+                lines = [line for line in output.splitlines() if line.strip()]
+                if len(lines) <= 5:
+                    return "Import order issues:\n  " + "\n  ".join(lines)
+                shown = "\n  ".join(lines[:5])
+                return f"Import order issues:\n  {shown}\n  ... and {len(lines)-5} more"
+            return "Import order issues found"
+        return None
 
     def _check_black(self, project_root: str) -> Optional[str]:
         """Check black formatting.
@@ -286,6 +437,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     "--check",
                     "--line-length",
                     "88",
+                    "--extend-exclude",
+                    _BLACK_EXTEND_EXCLUDE,
                     target,
                 ],
                 cwd=project_root,
