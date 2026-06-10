@@ -99,6 +99,17 @@ class TestDetectHostPythonFormatter:
         # black via pre-commit alone doesn't return 'black' — no pyproject.toml
         assert detect_host_python_formatter(str(tmp_path)) is None
 
+    def test_precommit_ruff_url_without_hook_returns_none(self, tmp_path):
+        # Repo URL contains 'ruff' but no actual ruff hook — should NOT match
+        (tmp_path / ".pre-commit-config.yaml").write_text(
+            "# migrated away from ruff-pre-commit\n"
+            "repos:\n"
+            "  - repo: https://github.com/psf/black\n"
+            "    hooks:\n"
+            "      - id: black\n"
+        )
+        assert detect_host_python_formatter(str(tmp_path)) is None
+
     def test_unreadable_pyproject_falls_through(self, tmp_path):
         # Can't chmod in a tmp_path test to make it unreadable portably,
         # but a malformed pyproject.toml should not crash detection.

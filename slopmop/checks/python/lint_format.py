@@ -39,6 +39,7 @@ _FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
 # a string (real formatting failure) so that run() can report the
 # skip without treating it as a pass.
 _BLACK_SKIPPED = "__BLACK_SKIPPED_BROKEN_INSTALL__"
+_RUFF_SKIPPED = "__RUFF_SKIPPED_NOT_INSTALLED__"
 
 _DEFAULT_EXCLUDE_DIRS = [
     "venv",
@@ -106,7 +107,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["black", "isort", "autoflake", "flake8"]
+    required_tools = ["black", "isort", "autoflake", "flake8", "ruff"]
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
     is_formatting_gate = True
@@ -306,7 +307,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         elif formatter == "ruff":
             # Check 1: ruff format
             fmt_result = self._check_ruff_format(project_root)
-            if fmt_result:
+            if fmt_result == _RUFF_SKIPPED:
+                output_parts.append("Ruff format: ⚠️ Skipped (ruff not installed)")
+            elif fmt_result:
                 issues.append(fmt_result)
                 output_parts.append(f"Ruff format: {fmt_result}")
             else:
@@ -314,7 +317,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
             # Check 2: ruff import order
             import_result = self._check_ruff_imports(project_root)
-            if import_result:
+            if import_result == _RUFF_SKIPPED:
+                output_parts.append("Ruff imports: ⚠️ Skipped (ruff not installed)")
+            elif import_result:
                 issues.append(import_result)
                 output_parts.append(f"Ruff imports: {import_result}")
             else:
@@ -382,7 +387,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             timeout=60,
         )
         if not result.success:
-            output = (result.output or result.stderr or "").strip()
+            output = (result.output or "").strip()
+            if "Command not found" in output:
+                return _RUFF_SKIPPED
             return output or "Ruff format check failed"
         return None
 
@@ -395,6 +402,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         )
         if not result.success:
             output = (result.output or "").strip()
+            if "Command not found" in output:
+                return _RUFF_SKIPPED
             if output:
                 lines = [line for line in output.splitlines() if line.strip()]
                 if len(lines) <= 5:

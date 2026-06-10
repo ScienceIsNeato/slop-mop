@@ -60,8 +60,9 @@ def detect_host_python_formatter(project_root: str) -> Optional[str]:
     if precommit.exists():
         try:
             content = precommit.read_text(encoding="utf-8")
-            # astral-sh/ruff-pre-commit or any repo with 'ruff' as hook id
-            if re.search(r"\bruff\b", content):
+            # Match `- id: ruff` or `- id: ruff-format` (actual hook IDs),
+            # not URLs or comments that merely mention "ruff".
+            if re.search(r"^\s*-\s+id:\s+ruff", content, re.MULTILINE):
                 return "ruff"
         except OSError:
             pass
