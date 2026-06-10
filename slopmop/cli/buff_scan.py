@@ -22,6 +22,25 @@ def is_scan_unavailable_error(exc: TriageError) -> bool:
     return any(marker in message for marker in _SCAN_UNAVAILABLE_MARKERS)
 
 
+_NO_WORKFLOW_RUN_MARKER = "no workflow runs found for that pr/workflow"
+
+
+def scan_unavailable_kind(error: str) -> str:
+    """Classify why the CI scan is unavailable.
+
+    - ``no_workflow_run``: the repo doesn't run the code-scanning gate, so the
+      artifact genuinely cannot exist (non-blocking — nothing to verify).
+    - ``artifact_missing``: a workflow run exists but didn't yield the expected
+      results artifact — a CI defect to surface, not silence.
+    """
+
+    return (
+        "no_workflow_run"
+        if _NO_WORKFLOW_RUN_MARKER in error.lower()
+        else "artifact_missing"
+    )
+
+
 def scan_unavailable_detail(error: str) -> str:
     """Return a concise scan-unavailable detail line."""
 
@@ -57,6 +76,7 @@ def build_scan_unavailable_payload(
         ],
         "scan_unavailable": {
             "error": error,
+            "kind": scan_unavailable_kind(error),
         },
     }
 
