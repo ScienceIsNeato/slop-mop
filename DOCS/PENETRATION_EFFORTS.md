@@ -169,6 +169,38 @@ for AI-heavy repos. The fastest path is still `pipx install slopmop[all]`.
 - Issues mention direct CLI usage rather than Claude plugin install.
 - People ask about integrating `sm` into existing CI or repo templates.
 
+## Vector: pre-commit Framework Registry
+
+### Theory
+
+Python developers setting up a new project almost always run
+`pre-commit install` and browse the hooks directory at pre-commit.com.
+Slop-mop already wraps the same tools people put in pre-commit (ruff,
+black, mypy), so discovery there feels natural rather than "also add
+this." The repo exports `.pre-commit-hooks.yaml` with two hooks:
+`slopmop-swab` (quick gates, pre-commit stage) and `slopmop-scour`
+(full PR-readiness suite, pre-push stage). Both warn-and-pass in
+repos that haven't been onboarded, so adding them to a shared config
+is zero-risk — the hook itself becomes the adoption nudge, printing
+the onboarding command to every contributor until someone runs it.
+
+### TODOs
+
+- [ ] Submit the repo to the pre-commit.com hooks directory
+  (PR against https://github.com/pre-commit/pre-commit.github.io
+  adding the repo to `all-repos.yaml`).
+- [ ] Cut a release tag after the hooks land so `rev:` has a target
+  with `.pre-commit-hooks.yaml` in it.
+- [ ] Keep the README pre-commit snippet's `rev:` example current
+  with each release.
+
+### Success Signals
+
+- GitHub referrers show pre-commit.com.
+- Clones spike without corresponding PyPI download spikes
+  (pre-commit clones the repo rather than pip-installing from PyPI).
+- Issues mention the hook ids or the not-onboarded warning text.
+
 ## Vector: GitHub / OSS Discovery
 
 ### Theory

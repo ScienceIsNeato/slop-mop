@@ -1,0 +1,39 @@
+# Hooks exported for the pre-commit framework (https://pre-commit.com).
+#
+# Consumers add to their .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/ScienceIsNeato/slop-mop
+#       rev: v2.3.1  # use the latest tag
+#       hooks:
+#         - id: slopmop-swab
+#         - id: slopmop-scour
+#
+# Both hooks are no-ops (warn + pass) until the repo is onboarded via
+# `sm init` + `sm refit --start`, so adding them never blocks a team
+# that hasn't adopted slop-mop yet.
+
+- id: slopmop-swab
+  name: slop-mop swab (quick quality gates)
+  description: >-
+    Run slop-mop's swab-level quality gates — the fast, every-commit
+    validation suite. Skips with a warning if the repo is not onboarded.
+  entry: sm hook swab
+  language: python
+  pass_filenames: false
+  always_run: true
+  stages: [pre-commit]
+  minimum_pre_commit_version: "3.2.0"
+
+- id: slopmop-scour
+  name: slop-mop scour (full PR-readiness validation)
+  description: >-
+    Run the complete slop-mop gate suite (swab + scour levels) before
+    push — the same bar a PR must clear. Skips with a warning if the
+    repo is not onboarded.
+  entry: sm hook scour
+  language: python
+  pass_filenames: false
+  always_run: true
+  stages: [pre-push]
+  minimum_pre_commit_version: "3.2.0"
