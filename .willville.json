@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Building pre-commit framework hooks so teams can adopt slop-mop straight from their pre-commit config",
-    "direction": "Land the hooks, then submit slop-mop to the pre-commit.com directory for organic discovery",
-    "last_update": "2026-06-12T00:00:00Z"
+    "status": "Cleanup sweep: CI supply-chain hardening, release provenance, and the detect-secrets baseline fix",
+    "direction": "Land the cleanup PR; pre-commit.com directory submission is in their review queue",
+    "last_update": "2026-06-12T19:00:00Z"
   }
 }
