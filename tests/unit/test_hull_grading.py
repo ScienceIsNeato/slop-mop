@@ -143,7 +143,9 @@ class TestRunReportGrading:
         assert report.hull_grade is None
 
     def test_errors_count_as_failing(self, tmp_path):
-        summary = _statuses_summary(CheckStatus.FAILED, CheckStatus.ERROR, CheckStatus.PASSED)
+        summary = _statuses_summary(
+            CheckStatus.FAILED, CheckStatus.ERROR, CheckStatus.PASSED
+        )
         report = RunReport.from_summary(
             summary, level="scour", project_root=_initialized(tmp_path)
         )
@@ -192,7 +194,9 @@ class TestRunReportGrading:
 class TestAdapterSurfacing:
     def _graded_report(self, tmp_path: Path, *statuses: CheckStatus) -> RunReport:
         return RunReport.from_summary(
-            _statuses_summary(*statuses), level="swab", project_root=_initialized(tmp_path)
+            _statuses_summary(*statuses),
+            level="swab",
+            project_root=_initialized(tmp_path),
         )
 
     def test_json_payload_includes_hull_grade(self, tmp_path):
