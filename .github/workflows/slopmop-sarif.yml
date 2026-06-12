@@ -93,7 +93,6 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
           persist-credentials: false
-        with:
           # diff-cover and gate-dodging need history to compare
           # against the base branch.  Shallow clone (the default)
           # breaks both with cryptic "unknown revision" errors.
@@ -318,7 +317,6 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
           persist-credentials: false
-        with:
           fetch-depth: 0
 
       - name: Set up Python
