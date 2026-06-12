@@ -108,7 +108,9 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.stdout = mock_result.output = "/path/to/python: No module named detect_secrets\n"  # pragma: allowlist secret
+        mock_result.stdout = mock_result.output = (
+            "/path/to/python: No module named detect_secrets\n"  # pragma: allowlist secret
+        )
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -124,7 +126,9 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.stdout = mock_result.output = "detect-secrets: error: unrecognized arguments: --bogus"
+        mock_result.stdout = mock_result.output = (
+            "detect-secrets: error: unrecognized arguments: --bogus"
+        )
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
