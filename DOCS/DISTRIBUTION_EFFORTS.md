@@ -198,10 +198,16 @@ the onboarding command to every contributor until someone runs it.
 - [ ] Keep the README pre-commit snippet's `rev:` example current
   with each release. (Now enforced: managed by scripts/sync_version.py
   and test_version_consistency.py.)
+- [x] Add pre-commit GitHub topics so the repo surfaces on the de-facto
+  registry (the `pre-commit-hook` topic page is where black,
+  ansible-lint, etc. are tagged). Added 2026-06-12: `pre-commit`,
+  `pre-commit-hook`, `pre-commit-hooks`, `git-hooks`.
 - [ ] Since directory listing is closed off, lean on the channels that
   don't need gatekeepers: README install snippet, awesome-lists, and
   blog/newsletter mentions that show the `.pre-commit-config.yaml`
   usage directly.
+- [ ] Scout live community awesome-lists for pre-commit hooks and
+  submit where maintained.
 
 ### What We Learned
 
