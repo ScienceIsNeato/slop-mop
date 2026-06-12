@@ -27,7 +27,7 @@ It is purposefully opinionated, as structure begets adherence to best practices.
 
 ## Project Status
 
-slop-mop is at version 2.4.0. The current public policy surface for release and
+slop-mop is at version 2.4.1. The current public policy surface for release and
 stability expectations lives here:
 
 - [DOCS/COMPATIBILITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/COMPATIBILITY.md)
@@ -137,7 +137,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/ScienceIsNeato/slop-mop
-    rev: v2.4.0  # use the latest release tag
+    rev: v2.4.1  # use the latest release tag
     hooks:
       - id: slopmop-swab    # quick gates on every commit
       - id: slopmop-scour   # full PR-readiness suite on push
