@@ -294,7 +294,16 @@ class TestSecurityLocalCheck:
             ),
         ]
 
-        with patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class:
+        # Pin the resolved scanner list so the mocked futures line up 1:1
+        # regardless of which scanner modules are importable in this env.
+        sub_checks = [check._run_bandit, check._run_semgrep, check._run_detect_secrets]
+
+        with (
+            patch.object(
+                check, "_resolve_configured_scanners", return_value=(sub_checks, [])
+            ),
+            patch("slopmop.checks.security.ThreadPoolExecutor") as mock_executor_class,
+        ):
             mock_executor = MagicMock()
             mock_executor_class.return_value.__enter__.return_value = mock_executor
             mock_futures = [MagicMock() for _ in results]

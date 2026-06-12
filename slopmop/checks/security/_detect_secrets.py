@@ -12,7 +12,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
@@ -82,6 +81,13 @@ class DetectSecretsMixin:
         normalized = self._normalize_ds_path(str(path))
         if not normalized:
             return False
+
+        # The baseline file itself is never a finding: its recorded
+        # hashed_secret values are sha1 hex strings that trip the
+        # high-entropy detectors on every scan (barnacle #253).
+        config_file = self.config.get("config_file_path")
+        if config_file and normalized == self._normalize_ds_path(str(config_file)):
+            return True
 
         padded = f"/{normalized}/"
         for raw in self._get_exclude_dirs():
@@ -297,92 +303,6 @@ class DetectSecretsMixin:
         except (json.JSONDecodeError, OSError):
             return set()
 
-    def _create_plugin_config_baseline(self, project_root: str) -> Optional[str]:
-        """Write a temp baseline carrying plugin/filter config (no results).
-
-        ``detect-secrets scan --baseline <file>`` reads its plugin and filter
-        configuration from the baseline rather than using defaults.  We can't
-        pass the real baseline because that rewrites ``generated_at``.  Instead
-        we write a throwaway file inside ``.slopmop/`` (which is git-ignored)
-        that contains only the config blocks and an empty ``results`` dict.
-        detect-secrets will update that temp file on its own — we don't care.
-
-        Returns the temp file path, or ``None`` when no baseline config is found.
-        """
-        config_file = self.config.get("config_file_path")
-        if not config_file:
-            return None
-        baseline_path = Path(project_root) / config_file
-        if not baseline_path.exists():
-            return None
-        try:
-            baseline_raw: dict[str, Any] = json.loads(
-                baseline_path.read_text(encoding="utf-8")
-            )
-            plugins_used: Any = baseline_raw.get("plugins_used", [])
-            filters_used: Any = baseline_raw.get("filters_used", [])
-            if not plugins_used and not filters_used:
-                return None
-            tmp_baseline: dict[str, Any] = {
-                "custom_plugin_paths": baseline_raw.get("custom_plugin_paths", []),
-                "exclude": baseline_raw.get("exclude", {"files": None, "lines": None}),
-                "filters_used": filters_used,
-                "plugins_used": plugins_used,
-                "results": {},
-                "version": baseline_raw.get("version", ""),
-            }
-            slopmop_dir = Path(project_root) / ".slopmop"
-            slopmop_dir.mkdir(exist_ok=True)
-            fd, tmp_path_str = tempfile.mkstemp(
-                prefix="detect-secrets-plugin-config-",
-                suffix=".json",
-                dir=slopmop_dir,
-            )
-            tmp_path = Path(tmp_path_str)
-            try:
-                # Close the mkstemp fd before write_text so Windows does not
-                # raise a sharing-violation error when opening the file.
-                os.close(fd)
-                tmp_path.write_text(
-                    json.dumps(tmp_baseline, indent=2), encoding="utf-8"
-                )
-            except OSError:
-                # Clean up the orphaned temp file before signalling failure.
-                try:
-                    tmp_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                return None
-            return str(tmp_path)
-        except (json.JSONDecodeError, OSError):
-            return None
-
-    @staticmethod
-    def _load_tmp_baseline_report(
-        tmp_baseline_path: str,
-    ) -> Optional[dict[str, Any]]:
-        """Read scan results detect-secrets wrote into a throwaway baseline."""
-        try:
-            loaded = json.loads(Path(tmp_baseline_path).read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                return cast(dict[str, Any], loaded)
-        except (json.JSONDecodeError, OSError):
-            return None
-        return None
-
-    @staticmethod
-    def _parse_detect_secrets_report(
-        result_output: str,
-        report_from_tmp_baseline: Optional[dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Normalize stdout JSON or throwaway-baseline JSON into one report."""
-        if report_from_tmp_baseline is not None:
-            return report_from_tmp_baseline
-        report_loaded: Any = json.loads(result_output)
-        if isinstance(report_loaded, dict):
-            return cast(dict[str, Any], report_loaded)
-        return {}
-
     def _subresult_from_detect_secrets_report(
         self, project_root: str, report: dict[str, Any]
     ) -> SecuritySubResult:
@@ -407,14 +327,20 @@ class DetectSecretsMixin:
         return SecuritySubResult("detect-secrets", False, detail, sarif)
 
     def _run_detect_secrets(self, project_root: str) -> SecuritySubResult:
-        """Run detect-secrets scan without touching the real baseline file.
+        """Run a plain detect-secrets scan and diff against the baseline.
 
-        Passing the *real* ``--baseline`` would make detect-secrets rewrite it
-        (fresh ``generated_at``) on every run, dirtying the working tree. So we
-        pass a throwaway baseline carrying only the real one's
-        ``plugins_used`` / ``filters_used`` (empty ``results``) to honour plugin
-        config, and separately load the real ``results`` as a read-only
-        allowlist so previously-accepted secrets stay suppressed.
+        The scan always runs with detect-secrets' default plugin/filter
+        config — the same config ``detect-secrets scan > .secrets.baseline``
+        uses — so the reported ``(path, hashed_secret)`` pairs line up with
+        the committed baseline, which is loaded read-only as an allowlist
+        (``hashed_secret`` is a sha1 of the secret value, independent of
+        which plugin flagged it). The real baseline file is never written.
+
+        History (barnacle #253): earlier versions replayed the baseline's
+        ``plugins_used``/``filters_used`` through a throwaway ``--baseline``
+        file. That replay dropped detect-secrets' default heuristic filters
+        (inflating findings ~4x) and its re-scan results never matched the
+        baseline allowlist, so a valid committed baseline suppressed nothing.
         """
         # Imported lazily to avoid an import cycle: this mixin lives in a
         # sibling module that security/__init__ imports at load time.
@@ -430,53 +356,29 @@ class DetectSecretsMixin:
         # timeout — a flaky false failure, not a real finding (barnacle #244).
         scan_paths = self._detect_secrets_scan_paths(project_root)
         cmd.extend(scan_paths)
-        # Pass a throwaway baseline so the plugin/filter config from the real
-        # baseline is honoured. detect-secrets will rewrite the throwaway file
-        # (updating its generated_at), but the real .secrets.baseline is never
-        # touched, so the working tree stays clean.
-        tmp_baseline_path = self._create_plugin_config_baseline(project_root)
-        if tmp_baseline_path:
-            cmd.extend(["--baseline", tmp_baseline_path])
-
-        report_from_tmp_baseline: Optional[dict[str, Any]] = None
-        try:
-            result = self._run_command(cmd, cwd=project_root, timeout=60)
-            if tmp_baseline_path and not (result.stdout or "").strip():
-                report_from_tmp_baseline = self._load_tmp_baseline_report(
-                    tmp_baseline_path
-                )
-        finally:
-            if tmp_baseline_path:
-                Path(tmp_baseline_path).unlink(missing_ok=True)
+        result = self._run_command(cmd, cwd=project_root, timeout=60)
 
         if result.success:
             try:
-                if (
-                    tmp_baseline_path
-                    and report_from_tmp_baseline is None
-                    and not (result.output or "").strip()
-                ):
-                    # In --baseline mode detect-secrets often leaves stdout empty
-                    # and writes the report into the temp file. If we can't read
-                    # that file, we must fail closed: passing open here can
-                    # hide real secrets.
-                    return SecuritySubResult(
-                        "detect-secrets",
-                        False,
-                        "detect-secrets scan produced empty/unparseable report in --baseline mode (stdout empty and temp baseline could not be read)",
-                    )
-                report = self._parse_detect_secrets_report(
-                    result.output, report_from_tmp_baseline
+                # Parse stdout only: the JSON report goes to stdout, and any
+                # stderr noise (warnings, deprecations) would corrupt a
+                # combined-stream parse and silently drop real findings.
+                report_loaded: Any = json.loads(result.stdout)
+                report: dict[str, Any] = (
+                    cast(dict[str, Any], report_loaded)
+                    if isinstance(report_loaded, dict)
+                    else {}
                 )
                 return self._subresult_from_detect_secrets_report(project_root, report)
-            except json.JSONDecodeError:
-                if tmp_baseline_path:
-                    return SecuritySubResult(
-                        "detect-secrets",
-                        False,
-                        "detect-secrets scan succeeded but report parsing failed in --baseline mode",
-                    )
-                return SecuritySubResult("detect-secrets", True, "Scan completed")
+            except (json.JSONDecodeError, TypeError):
+                # A successful scan must still produce a parseable report —
+                # passing open here could hide real secrets.
+                return SecuritySubResult(
+                    "detect-secrets",
+                    False,
+                    "detect-secrets scan succeeded but stdout was not a "
+                    "parseable JSON report",
+                )
 
         # The scan command exited non-zero. Distinguish a scanner that never
         # ran (module not importable in this interpreter — a tooling failure)
