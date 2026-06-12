@@ -27,9 +27,23 @@
       "description": "Present only when a baseline snapshot filtered known failures out of this run.",
       "type": "object"
     },
-    "cache": {"$ref": "#/$defs/cache"}
+    "cache": {"$ref": "#/$defs/cache"},
+    "hull_grade": {"$ref": "#/$defs/hull_grade"}
   },
   "$defs": {
+    "hull_grade": {
+      "description": "Deterministic hull rating for the full run: letter grade plus boat-condition level. Absent on partial (-g) runs. 'provisional' means operational skips (missing tool, fail-fast, time budget) may have hidden failing gates.",
+      "type": "object",
+      "required": ["grade", "level", "failing", "warned", "provisional"],
+      "additionalProperties": false,
+      "properties": {
+        "grade": {"enum": ["A+", "A", "B", "C", "D", "F", "N/A"]},
+        "level": {"enum": ["shipshape", "seaworthy", "serviceable", "weathered", "fouled", "scuttled", "dry-dock"]},
+        "failing": {"type": "integer", "minimum": 0},
+        "warned": {"type": "integer", "minimum": 0},
+        "provisional": {"type": "boolean"}
+      }
+    },
     "summary": {
       "type": "object",
       "required": [

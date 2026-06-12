@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Building pre-commit framework hooks so teams can adopt slop-mop straight from their pre-commit config",
-    "direction": "Land the hooks, then submit slop-mop to the pre-commit.com directory for organic discovery",
-    "last_update": "2026-06-12T00:00:00Z"
+    "status": "Hull ratings are in — swab and scour now grade the repo A+ through F with matching boat names",
+    "direction": "Land the grading PR, then build toward the GitHub Action that surfaces the grade",
+    "last_update": "2026-06-12T21:00:00Z"
   }
 }

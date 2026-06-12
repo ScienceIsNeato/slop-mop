@@ -177,6 +177,28 @@ write code -> sm swab -> commit -> sm scour -> push/open PR -> sm buff watch -> 
 Not sure where you are in that loop? `sm sail` figures it out for you.
 Full state machine: [DOCS/WORKFLOW.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/WORKFLOW.md).
 
+## Hull Ratings
+
+Every full `sm swab` or `sm scour` run grades the repo's hull — a
+deterministic rating computed from how many gates are failing:
+
+| Grade | Hull | Meaning |
+| --- | --- | --- |
+| A+ | shipshape | All gates green |
+| A | seaworthy | All green, with warnings |
+| B | serviceable | 1 gate failing |
+| C | weathered | 2 gates failing |
+| D | fouled | 3 gates failing |
+| F | scuttled | 4+ gates failing |
+| N/A | dry-dock | Repo never initialized |
+
+The rating appears in the console summary, porcelain output, and the
+JSON artifact (`hull_grade` in the data payload) for CI consumers.
+Skipped or not-applicable gates never count toward the grade; if any
+applicable gate was skipped (missing tool, fail-fast, time budget) the
+rating is marked *provisional*. Partial runs (`-g`) don't grade — you
+can't rate a hull you only half inspected.
+
 <figure>
   <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/sm-swab-human-readable.png" alt="Human-readable sm swab output showing grouped quality gates and a no slop detected summary" />
   <figcaption>
