@@ -1,15 +1,16 @@
-# Penetration Efforts
+# Distribution Efforts
 
-This is the working notebook for getting slop-mop into more developer and agent
-workflows. Each vector should record the current theory, the next concrete
-actions, how we will know whether it worked, and what we learned.
+This is the working notebook for sharing slop-mop with more developers and
+agent workflows. Each channel should record the current theory, the next
+concrete actions, how we will know whether it is helping people, and what we
+learned.
 
-Use this as a campaign log, not polished marketing copy. Keep it blunt and
+Use this as a working log, not polished marketing copy. Keep it honest and
 update it whenever a channel produces signal.
 
 ## Operating Loop
 
-For each vector:
+For each channel:
 
 1. Name the audience and the moment where slop-mop helps.
 2. Make the install path obvious.
@@ -56,7 +57,7 @@ Five-minute Friday ritual:
 4. Record stars/forks delta.
 5. Add any notable channel-specific observations below.
 
-## Vector: Claude Plugin Marketplace
+## Channel: Claude Plugin Marketplace
 
 ### Theory
 
@@ -123,7 +124,7 @@ Claude config may mirror them, but it should not become the publishing source.
   `/plugin install slopmop`, then prompt with `sail this repo`.
 - [ ] Tag pushed and GitHub release notes published.
 
-### Promotion TODOs
+### Sharing TODOs
 
 - [ ] Submit to Anthropic's official curated marketplace once the plugin is
   stable enough for broader discovery.
@@ -137,7 +138,7 @@ Claude config may mirror them, but it should not become the publishing source.
 
 ### Success Signals
 
-- PyPI downloads rise after plugin promotion.
+- PyPI downloads rise after the plugin is shared.
 - GitHub unique cloners rise after marketplace links are shared.
 - Referrers show Claude/Discord/community-list traffic.
 - Users ask questions or file issues mentioning Claude Code or Cowork.
@@ -149,7 +150,7 @@ Claude config may mirror them, but it should not become the publishing source.
 - Do not include hidden user telemetry in the plugin. If better attribution is
   needed later, use an explicit landing page or opt-in CLI telemetry.
 
-## Vector: PyPI / Direct CLI
+## Channel: PyPI / Direct CLI
 
 ### Theory
 
@@ -169,19 +170,19 @@ for AI-heavy repos. The fastest path is still `pipx install slopmop[all]`.
 - Issues mention direct CLI usage rather than Claude plugin install.
 - People ask about integrating `sm` into existing CI or repo templates.
 
-## Vector: pre-commit Framework Registry
+## Channel: pre-commit Framework Registry
 
 ### Theory
 
 Python developers setting up a new project almost always run
 `pre-commit install` and browse the hooks directory at pre-commit.com.
 Slop-mop already wraps the same tools people put in pre-commit (ruff,
-black, mypy), so discovery there feels natural rather than "also add
+black, mypy), so finding it there feels natural rather than "also add
 this." The repo exports `.pre-commit-hooks.yaml` with two hooks:
 `slopmop-swab` (quick gates, pre-commit stage) and `slopmop-scour`
 (full PR-readiness suite, pre-push stage). Both warn-and-pass in
 repos that haven't been onboarded, so adding them to a shared config
-is zero-risk — the hook itself becomes the adoption nudge, printing
+is zero-risk — the hook itself becomes a friendly nudge, printing
 the onboarding command to every contributor until someone runs it.
 
 ### TODOs
@@ -201,7 +202,7 @@ the onboarding command to every contributor until someone runs it.
   (pre-commit clones the repo rather than pip-installing from PyPI).
 - Issues mention the hook ids or the not-onboarded warning text.
 
-## Vector: GitHub / OSS Discovery
+## Channel: GitHub / OSS Discovery
 
 ### Theory
 
@@ -223,7 +224,7 @@ pile of linters.
 - Referrers show GitHub search, curated lists, blog posts, or newsletters.
 - New issues reference the README language or demo directly.
 
-## Vector: Community Lists and Newsletters
+## Channel: Community Lists and Newsletters
 
 ### Theory
 
@@ -244,18 +245,19 @@ people revisit.
 - PyPI downloads rise in the same week.
 - Users arrive with vocabulary from the listing blurb.
 
-## Vector: Direct User Conversations
+## Channel: Direct User Conversations
 
 ### Theory
 
 The best early signal may come from people already feeling agent-code pain.
-Manual outreach can reveal whether the positioning lands before broader
-promotion burns attention.
+Talking with them directly can reveal whether the positioning lands — and
+what is missing — before sharing more broadly.
 
 ### TODOs
 
 - [ ] Identify 5-10 likely users maintaining AI-assisted repos.
-- [ ] Ask what currently breaks in their agent workflow before pitching.
+- [ ] Ask what currently breaks in their agent workflow before suggesting
+  slop-mop.
 - [ ] Offer one concrete command path: `sm init`, `sm swab`, `sm scour`.
 - [ ] Record objections and missing docs.
 

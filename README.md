@@ -126,8 +126,8 @@ When `sm` itself gives invalid guidance or blocks valid work, use
 reporting path; do not file ad hoc `gh issue create` reports for slop-mop
 tooling defects.
 
-Distribution notes, promotion TODOs, and adoption-tracking signals live in
-[DOCS/PENETRATION_EFFORTS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/PENETRATION_EFFORTS.md).
+Distribution notes, sharing TODOs, and adoption-tracking signals live in
+[DOCS/DISTRIBUTION_EFFORTS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/DISTRIBUTION_EFFORTS.md).
 
 ## Use with pre-commit
 
