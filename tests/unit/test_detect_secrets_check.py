@@ -643,7 +643,9 @@ class TestRunDetectSecrets:
         baseline_content = {
             "generated_at": "2026-01-01T00:00:00Z",
             "plugins_used": [{"name": "HexHighEntropyString", "hex_limit": 3.0}],
-            "filters_used": [{"path": "detect_secrets.filters.heuristic.is_sequential_string"}],
+            "filters_used": [
+                {"path": "detect_secrets.filters.heuristic.is_sequential_string"}
+            ],
             "results": {},
         }
         baseline = tmp_path / ".secrets.baseline"
@@ -722,9 +724,9 @@ class TestRunDetectSecrets:
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
 
-        assert result.passed is True, (
-            "the baseline file's own hashes must never be reported as secrets"
-        )
+        assert (
+            result.passed is True
+        ), "the baseline file's own hashes must never be reported as secrets"
 
     def test_baseline_file_pruned_from_scan_walk(self, tmp_path):
         """The configured baseline is excluded from the top-level scan paths."""
