@@ -360,15 +360,25 @@ class DetectSecretsMixin:
 
         if result.success:
             try:
-                report_loaded: Any = json.loads(result.output)
+                # Parse stdout only: the JSON report goes to stdout, and any
+                # stderr noise (warnings, deprecations) would corrupt a
+                # combined-stream parse and silently drop real findings.
+                report_loaded: Any = json.loads(result.stdout)
                 report: dict[str, Any] = (
                     cast(dict[str, Any], report_loaded)
                     if isinstance(report_loaded, dict)
                     else {}
                 )
                 return self._subresult_from_detect_secrets_report(project_root, report)
-            except json.JSONDecodeError:
-                return SecuritySubResult("detect-secrets", True, "Scan completed")
+            except (json.JSONDecodeError, TypeError):
+                # A successful scan must still produce a parseable report —
+                # passing open here could hide real secrets.
+                return SecuritySubResult(
+                    "detect-secrets",
+                    False,
+                    "detect-secrets scan succeeded but stdout was not a "
+                    "parseable JSON report",
+                )
 
         # The scan command exited non-zero. Distinguish a scanner that never
         # ran (module not importable in this interpreter — a tooling failure)

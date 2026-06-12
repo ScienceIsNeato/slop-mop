@@ -16,7 +16,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
 
         with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
             check._run_detect_secrets("/tmp/project")
@@ -70,7 +70,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
 
         with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
             check._run_detect_secrets(str(tmp_path))
@@ -88,7 +88,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -108,7 +108,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.output = "/path/to/python: No module named detect_secrets\n"  # pragma: allowlist secret
+        mock_result.stdout = mock_result.output = "/path/to/python: No module named detect_secrets\n"  # pragma: allowlist secret
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -124,7 +124,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.output = "detect-secrets: error: unrecognized arguments: --bogus"
+        mock_result.stdout = mock_result.output = "detect-secrets: error: unrecognized arguments: --bogus"
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -137,7 +137,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "config.py": [
@@ -162,7 +162,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {"results": {"constants.py": [{"type": "High Entropy String"}]}}
         )
 
@@ -185,7 +185,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "client/.metadata": [
@@ -232,7 +232,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "server/tests/test_auth.py": [
@@ -255,7 +255,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "ios/Flutter/ephemeral/generated.xcconfig": [
@@ -283,7 +283,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "app/config.py": [
@@ -320,7 +320,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "scenarios/happy-path-small.json": [
@@ -346,7 +346,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "helpers.py": [
@@ -383,7 +383,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "helpers.py": [
@@ -423,24 +423,44 @@ class TestRunDetectSecrets:
         assert second == "line2"
         assert read_calls["count"] == 1
 
-    def test_detect_secrets_json_error(self, tmp_path):
-        """Test _run_detect_secrets handles JSON errors."""
+    def test_detect_secrets_json_error_fails_closed(self, tmp_path):
+        """Unparseable stdout from a successful scan must fail, not pass.
+
+        Passing open on a corrupt report could silently hide real secrets.
+        """
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = "not json"
+        mock_result.stdout = mock_result.output = "not json"
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
 
-        assert result.passed is True  # Scan completed
+        assert result.passed is False
+        assert "not a parseable JSON report" in result.findings
+
+    def test_detect_secrets_parses_stdout_not_combined_output(self, tmp_path):
+        """stderr noise must not corrupt report parsing (stdout-only parse)."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = json.dumps({"results": {}})
+        mock_result.stderr = "WARNING: some deprecation notice\n"
+        # Combined output is polluted — parsing it would raise JSONDecodeError
+        mock_result.output = mock_result.stdout + "\n" + mock_result.stderr
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True
+        assert "No secrets" in result.findings
 
     def test_detect_secrets_failure(self, tmp_path):
         """Test _run_detect_secrets with command failure."""
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.output = "Error running scan"
+        mock_result.stdout = mock_result.output = "Error running scan"
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -462,7 +482,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
         captured_cmd: list[str] = []
 
         def _capture(cmd: list[str], **kwargs: Any) -> MagicMock:  # type: ignore[misc]
@@ -489,7 +509,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
 
         with patch.object(check, "_run_command", return_value=mock_result):
             check._run_detect_secrets(str(tmp_path))
@@ -521,7 +541,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "config.py": [
@@ -564,7 +584,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "config.py": [
@@ -607,7 +627,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "config.py": [
@@ -654,7 +674,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
         captured_cmd: list[str] = []
 
         def _capture(cmd: list[str], **kwargs: Any) -> MagicMock:  # type: ignore[misc]
@@ -707,7 +727,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     ".secrets.baseline": [
@@ -753,7 +773,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     ".github/workflows/deploy-pages.yml": [
