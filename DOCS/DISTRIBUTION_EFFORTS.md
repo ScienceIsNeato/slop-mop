@@ -187,17 +187,33 @@ the onboarding command to every contributor until someone runs it.
 
 ### TODOs
 
-- [ ] Submit the repo to the pre-commit.com hooks directory
-  (PR against https://github.com/pre-commit/pre-commit.github.io
-  adding the repo to `all-repos.yaml`).
-- [ ] Cut a release tag after the hooks land so `rev:` has a target
-  with `.pre-commit-hooks.yaml` in it.
+- [x] Cut a release tag after the hooks land so `rev:` has a target
+  with `.pre-commit-hooks.yaml` in it. (v2.4.0, 2026-06-12)
+- [x] Submit the repo to the pre-commit.com hooks directory.
+  (2026-06-12: PR pre-commit/pre-commit.com#1086 — closed by the
+  maintainer without comment. The old `all-repos.yaml` registry no
+  longer exists; the hooks page is a hand-picked list of already-popular
+  tools, and additions of newer tools are routinely declined. Not worth
+  re-litigating; revisit only if slop-mop reaches obvious popularity.)
 - [ ] Keep the README pre-commit snippet's `rev:` example current
-  with each release.
+  with each release. (Now enforced: managed by scripts/sync_version.py
+  and test_version_consistency.py.)
+- [ ] Since directory listing is closed off, lean on the channels that
+  don't need gatekeepers: README install snippet, awesome-lists, and
+  blog/newsletter mentions that show the `.pre-commit-config.yaml`
+  usage directly.
+
+### What We Learned
+
+The hooks themselves work for any consumer via the repo URL — directory
+listing was only ever a discovery amplifier, not a prerequisite. The
+channel survives the rejection; discovery just has to come from our own
+surfaces instead of pre-commit.com's.
 
 ### Success Signals
 
-- GitHub referrers show pre-commit.com.
+- GitHub referrers show pre-commit.com (people land via the framework
+  docs even without the listing).
 - Clones spike without corresponding PyPI download spikes
   (pre-commit clones the repo rather than pip-installing from PyPI).
 - Issues mention the hook ids or the not-onboarded warning text.
