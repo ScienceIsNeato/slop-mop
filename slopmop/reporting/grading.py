@@ -110,6 +110,8 @@ def is_repo_initialized(project_root: str) -> bool:
             content = pyproject.read_text(encoding="utf-8")
             if re.search(r"^\s*\[tool\.slopmop[.\]]", content, re.MULTILINE):
                 return True
-        except OSError:
+        except (OSError, UnicodeDecodeError):
+            # Unreadable/undecodable pyproject — treat as not initialized
+            # rather than crashing report construction.
             pass
     return False

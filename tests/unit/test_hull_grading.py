@@ -10,7 +10,12 @@ Covers:
 
 from pathlib import Path
 
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    ExecutionSummary,
+    SkipReason,
+)
 from slopmop.reporting.adapters import ConsoleAdapter, JsonAdapter, PorcelainAdapter
 from slopmop.reporting.grading import (
     HullGrade,
@@ -105,14 +110,22 @@ class TestIsRepoInitialized:
         (tmp_path / "pyproject.toml").write_text("[tool.black]\n")
         assert is_repo_initialized(str(tmp_path)) is False
 
+    def test_undecodable_pyproject_treated_as_not_initialized(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_bytes(b"\xff\xfe[tool.slopmop]\x00\xdc")
+        assert is_repo_initialized(str(tmp_path)) is False
+
 
 # ---------------------------------------------------------------------------
 # RunReport wiring
 # ---------------------------------------------------------------------------
 
 
-def _gate_result(name: str, status: CheckStatus) -> CheckResult:
-    return CheckResult(name=name, status=status, duration=0.1)
+def _gate_result(
+    name: str,
+    status: CheckStatus,
+    skip_reason: "SkipReason | None" = None,
+) -> CheckResult:
+    return CheckResult(name=name, status=status, duration=0.1, skip_reason=skip_reason)
 
 
 def _statuses_summary(*statuses: CheckStatus) -> ExecutionSummary:
@@ -153,13 +166,47 @@ class TestRunReportGrading:
         assert report.hull_grade.failing == 2
         assert report.hull_grade.grade == "C"
 
-    def test_skips_make_grade_provisional(self, tmp_path):
+    def test_operational_skips_make_grade_provisional(self, tmp_path):
+        # Skips with no reason are treated as operational (conservative).
         summary = _statuses_summary(CheckStatus.PASSED, CheckStatus.SKIPPED)
         report = RunReport.from_summary(
             summary, level="swab", project_root=_initialized(tmp_path)
         )
         assert report.hull_grade is not None
         assert report.hull_grade.provisional is True
+
+    def test_time_budget_and_fail_fast_skips_are_provisional(self, tmp_path):
+        for reason in (
+            SkipReason.TIME_BUDGET,
+            SkipReason.FAIL_FAST,
+            SkipReason.FAILED_DEPENDENCY,
+        ):
+            results = [
+                _gate_result("gate-a", CheckStatus.PASSED),
+                _gate_result("gate-b", CheckStatus.SKIPPED, skip_reason=reason),
+            ]
+            summary = ExecutionSummary.from_results(results, duration=1.0)
+            report = RunReport.from_summary(
+                summary, level="swab", project_root=_initialized(tmp_path)
+            )
+            assert report.hull_grade is not None
+            assert report.hull_grade.provisional is True, reason
+
+    def test_config_deterministic_skips_are_not_provisional(self, tmp_path):
+        # Disabled-in-config and superseded gates are part of the
+        # (commit, config) function — they don't reduce grade certainty.
+        for reason in (SkipReason.DISABLED, SkipReason.SUPERSEDED):
+            results = [
+                _gate_result("gate-a", CheckStatus.PASSED),
+                _gate_result("gate-b", CheckStatus.SKIPPED, skip_reason=reason),
+            ]
+            summary = ExecutionSummary.from_results(results, duration=1.0)
+            report = RunReport.from_summary(
+                summary, level="swab", project_root=_initialized(tmp_path)
+            )
+            assert report.hull_grade is not None
+            assert report.hull_grade.provisional is False, reason
+            assert report.hull_grade.grade == "A+"
 
     def test_not_applicable_does_not_mark_provisional(self, tmp_path):
         summary = _statuses_summary(CheckStatus.PASSED, CheckStatus.NOT_APPLICABLE)

@@ -32,7 +32,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    ExecutionSummary,
+    SkipReason,
+)
 from slopmop.reporting.grading import (
     HullGrade,
     compute_hull_grade,
@@ -294,17 +299,30 @@ class RunReport:
         next_step = _compute_next_step(level, sail_mode) if summary.all_passed else None
 
         # Hull grade — full-suite runs only (level is None for -g runs).
-        # Operational skips make the grade provisional: the same commit
-        # could grade differently where those gates actually ran.
+        # Only *operational* skips (fail-fast, missing dep, time budget,
+        # or unknown) make the grade provisional: those gates could have
+        # failed had they run. Config-deterministic skips — disabled in
+        # config (off) or superseded by a more thorough gate (sup) — are
+        # part of the (commit, config) function and don't reduce certainty.
         hull_grade: Optional[HullGrade] = None
         if level is not None:
             if project_root is not None and not is_repo_initialized(project_root):
                 hull_grade = dry_dock_grade()
             else:
+                deterministic_skips = {
+                    SkipReason.DISABLED,
+                    SkipReason.SUPERSEDED,
+                    SkipReason.NOT_APPLICABLE,
+                }
+                operational_skips = [
+                    r
+                    for r in status_buckets[CheckStatus.SKIPPED]
+                    if r.skip_reason not in deterministic_skips
+                ]
                 hull_grade = compute_hull_grade(
                     failing=len(failed) + len(errored),
                     warned=len(warned),
-                    provisional=bool(status_buckets[CheckStatus.SKIPPED]),
+                    provisional=bool(operational_skips),
                 )
 
         return cls(
