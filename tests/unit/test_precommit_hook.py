@@ -9,6 +9,7 @@ Covers:
 
 import argparse
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import yaml
@@ -97,7 +98,7 @@ class TestOnboardedDelegation:
 class TestManifest:
     """The .pre-commit-hooks.yaml manifest this repo exports."""
 
-    def _manifest(self):
+    def _manifest(self) -> list[dict[str, Any]]:
         manifest_path = REPO_ROOT / ".pre-commit-hooks.yaml"
         assert manifest_path.exists(), ".pre-commit-hooks.yaml missing from repo root"
         return yaml.safe_load(manifest_path.read_text())

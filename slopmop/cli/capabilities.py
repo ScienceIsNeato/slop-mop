@@ -222,6 +222,7 @@ _VERB_CATALOG: List[Dict[str, object]] = [
         "exit_codes": {
             "0": "gates passed or repo not onboarded",
             "1": "gates failed",
+            "2": "invalid hook verb",
         },
     },
     {

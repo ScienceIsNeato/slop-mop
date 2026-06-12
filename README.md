@@ -137,7 +137,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/ScienceIsNeato/slop-mop
-    rev: v2.3.1  # use the latest release tag
+    rev: v2.3.2  # use the latest release tag
     hooks:
       - id: slopmop-swab    # quick gates on every commit
       - id: slopmop-scour   # full PR-readiness suite on push

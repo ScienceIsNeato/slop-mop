@@ -73,6 +73,16 @@ TARGETS: Tuple[Target, ...] = (
         r'"version": "(\d+\.\d+\.\d+)"',
         "Cursor plugin manifest version",
     ),
+    Target(
+        "README.md",
+        r"rev: v(\d+\.\d+\.\d+)  # use the latest release tag",
+        "README pre-commit framework rev example",
+    ),
+    Target(
+        ".pre-commit-hooks.yaml",
+        r"rev: v(\d+\.\d+\.\d+)  # use the latest tag",
+        "pre-commit hooks manifest rev example",
+    ),
 )
 
 

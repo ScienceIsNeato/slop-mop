@@ -1014,7 +1014,15 @@ def create_parser() -> argparse.ArgumentParser:
 
 
 def _disable_tty_stdout() -> None:
-    """Wrap stdout so it reports non-TTY, and disable color output."""
+    """Wrap stdout so it reports non-TTY, and disable color output.
+
+    The proxy delegates every attribute to the real stream and only
+    overrides ``isatty()``. Limitation: after wrapping, identity/type
+    checks like ``isinstance(sys.stdout, io.TextIOWrapper)`` no longer
+    hold — acceptable here because slop-mop only probes ``isatty()``.
+    The ``Any``-typed ``__getattr__`` is intentional: it is a pure
+    delegation shim over a dynamic stream object.
+    """
     os.environ["NO_COLOR"] = "1"
 
     class _NT:

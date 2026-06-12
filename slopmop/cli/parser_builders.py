@@ -53,7 +53,13 @@ def add_config_parser(
 
     # Custom error handler to catch common mistakes
     def config_error(message: str) -> None:
-        """Custom error handler with helpful suggestions."""
+        """Custom error handler with helpful suggestions.
+
+        When a suggestion is printed, exit directly instead of calling
+        ``original_error``: argparse's handler would re-print the raw
+        message plus a usage dump after our friendlier hint. Exit code 2
+        matches what argparse itself uses for argument errors.
+        """
         common_flags = {"enable", "disable", "set", "unset", "show", "json"}
         if try_suggest_config_command(message, common_flags):
             sys.exit(2)

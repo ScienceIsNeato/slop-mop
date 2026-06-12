@@ -34,6 +34,9 @@ def cmd_hook(args: argparse.Namespace) -> int:
 
     from slopmop.cli.sail import _onboard_status
 
+    # Contract (see _onboard_status docstring): returns exactly one of
+    # "onboarded" | "init_done" | "fresh". All three paths are covered by
+    # tests/unit/test_precommit_hook.py, so a contract change breaks loudly.
     status = _onboard_status(project_root)
     if status != "onboarded":
         remedy = (
