@@ -16,7 +16,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
 
         with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
             check._run_detect_secrets("/tmp/project")
@@ -70,7 +70,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
 
         with patch.object(check, "_run_command", return_value=mock_result) as mock_run:
             check._run_detect_secrets(str(tmp_path))
@@ -88,7 +88,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -108,7 +108,9 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.output = "/path/to/python: No module named detect_secrets\n"  # pragma: allowlist secret
+        mock_result.stdout = mock_result.output = (
+            "/path/to/python: No module named detect_secrets\n"  # pragma: allowlist secret
+        )
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -124,7 +126,9 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.output = "detect-secrets: error: unrecognized arguments: --bogus"
+        mock_result.stdout = mock_result.output = (
+            "detect-secrets: error: unrecognized arguments: --bogus"
+        )
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -137,7 +141,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "config.py": [
@@ -162,7 +166,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {"results": {"constants.py": [{"type": "High Entropy String"}]}}
         )
 
@@ -185,7 +189,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "client/.metadata": [
@@ -232,7 +236,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "server/tests/test_auth.py": [
@@ -255,7 +259,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "ios/Flutter/ephemeral/generated.xcconfig": [
@@ -283,7 +287,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "app/config.py": [
@@ -320,7 +324,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "scenarios/happy-path-small.json": [
@@ -346,7 +350,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "helpers.py": [
@@ -383,7 +387,7 @@ class TestRunDetectSecrets:
         )
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "helpers.py": [
@@ -423,24 +427,44 @@ class TestRunDetectSecrets:
         assert second == "line2"
         assert read_calls["count"] == 1
 
-    def test_detect_secrets_json_error(self, tmp_path):
-        """Test _run_detect_secrets handles JSON errors."""
+    def test_detect_secrets_json_error_fails_closed(self, tmp_path):
+        """Unparseable stdout from a successful scan must fail, not pass.
+
+        Passing open on a corrupt report could silently hide real secrets.
+        """
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = "not json"
+        mock_result.stdout = mock_result.output = "not json"
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
 
-        assert result.passed is True  # Scan completed
+        assert result.passed is False
+        assert "not a parseable JSON report" in result.findings
+
+    def test_detect_secrets_parses_stdout_not_combined_output(self, tmp_path):
+        """stderr noise must not corrupt report parsing (stdout-only parse)."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = json.dumps({"results": {}})
+        mock_result.stderr = "WARNING: some deprecation notice\n"
+        # Combined output is polluted — parsing it would raise JSONDecodeError
+        mock_result.output = mock_result.stdout + "\n" + mock_result.stderr
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.passed is True
+        assert "No secrets" in result.findings
 
     def test_detect_secrets_failure(self, tmp_path):
         """Test _run_detect_secrets with command failure."""
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
-        mock_result.output = "Error running scan"
+        mock_result.stdout = mock_result.output = "Error running scan"
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
@@ -462,7 +486,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
         captured_cmd: list[str] = []
 
         def _capture(cmd: list[str], **kwargs: Any) -> MagicMock:  # type: ignore[misc]
@@ -489,7 +513,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
 
         with patch.object(check, "_run_command", return_value=mock_result):
             check._run_detect_secrets(str(tmp_path))
@@ -521,7 +545,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "config.py": [
@@ -564,7 +588,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "config.py": [
@@ -607,7 +631,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     "config.py": [
@@ -629,17 +653,23 @@ class TestRunDetectSecrets:
             "(path normalization strips leading './')"
         )
 
-    def test_detect_secrets_plugin_config_passed_via_temp_baseline(self, tmp_path):
-        """When the baseline has plugins_used, --baseline must point to a temp file.
+    def test_detect_secrets_plugin_config_baseline_does_not_trigger_replay(
+        self, tmp_path
+    ):
+        """A baseline with plugins_used must NOT trigger a --baseline replay (#253).
 
-        The real .secrets.baseline must not be passed because detect-secrets
-        rewrites it; a throwaway temp file inside .slopmop/ carries the plugin
-        config instead.
+        The old config-replay (throwaway baseline carrying plugins_used /
+        filters_used) dropped detect-secrets' default heuristic filters and
+        produced results that never matched the allowlist. The scan must run
+        plain so its (path, hashed_secret) pairs line up with a baseline
+        generated by `detect-secrets scan > .secrets.baseline`.
         """
         baseline_content = {
             "generated_at": "2026-01-01T00:00:00Z",
             "plugins_used": [{"name": "HexHighEntropyString", "hex_limit": 3.0}],
-            "filters_used": [],
+            "filters_used": [
+                {"path": "detect_secrets.filters.heuristic.is_sequential_string"}
+            ],
             "results": {},
         }
         baseline = tmp_path / ".secrets.baseline"
@@ -648,7 +678,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps({"results": {}})
+        mock_result.stdout = mock_result.output = json.dumps({"results": {}})
         captured_cmd: list[str] = []
 
         def _capture(cmd: list[str], **kwargs: Any) -> MagicMock:  # type: ignore[misc]
@@ -658,46 +688,11 @@ class TestRunDetectSecrets:
         with patch.object(check, "_run_command", side_effect=_capture):
             check._run_detect_secrets(str(tmp_path))
 
-        assert (
-            "--baseline" in captured_cmd
-        ), "--baseline should be in cmd when baseline has plugins_used"
-        idx = captured_cmd.index("--baseline")
-        passed_path = captured_cmd[idx + 1]
-        real_baseline = str(tmp_path / ".secrets.baseline")
-        assert (
-            passed_path != real_baseline
-        ), "The real .secrets.baseline must never be the --baseline argument"
-        from pathlib import Path as _Path
-
-        assert not _Path(
-            passed_path
-        ).exists(), "Temp plugin-config baseline must be deleted after the scan"
+        assert "--baseline" not in captured_cmd, (
+            "--baseline must never be passed: the config replay drops "
+            "detect-secrets' default filters and breaks allowlist matching"
+        )
         assert json.loads(baseline.read_text()) == baseline_content
-
-    def test_load_tmp_baseline_report_reads_json(self, tmp_path):
-        path = tmp_path / "baseline.json"
-        path.write_text(json.dumps({"results": {"a.py": []}}))
-        loaded = SecurityLocalCheck._load_tmp_baseline_report(str(path))
-        assert loaded == {"results": {"a.py": []}}
-
-    def test_load_tmp_baseline_report_invalid_json(self, tmp_path):
-        path = tmp_path / "baseline.json"
-        path.write_text("not json")
-        assert SecurityLocalCheck._load_tmp_baseline_report(str(path)) is None
-
-    def test_parse_detect_secrets_report_prefers_tmp_baseline(self):
-        tmp_report = {"results": {"x.py": []}}
-        stdout = json.dumps({"results": {}})
-        parsed = SecurityLocalCheck._parse_detect_secrets_report(stdout, tmp_report)
-        assert parsed == tmp_report
-
-    def test_parse_detect_secrets_report_falls_back_to_stdout(self):
-        stdout = json.dumps({"results": {"y.py": []}})
-        parsed = SecurityLocalCheck._parse_detect_secrets_report(stdout, None)
-        assert parsed == {"results": {"y.py": []}}
-
-    def test_parse_detect_secrets_report_non_dict_stdout(self):
-        assert SecurityLocalCheck._parse_detect_secrets_report("[]", None) == {}
 
     def test_subresult_from_report_no_secrets(self, tmp_path):
         check = SecurityLocalCheck({})
@@ -723,78 +718,51 @@ class TestRunDetectSecrets:
         assert sub.passed is False
         assert "cfg.py" in sub.findings
 
-    def test_run_detect_secrets_reads_throwaway_baseline_when_stdout_empty(
-        self, tmp_path
-    ):
-        """Regression: --baseline mode leaves stdout empty; read the temp file."""
-        baseline_content = {
-            "plugins_used": [{"name": "KeywordDetector"}],
-            "filters_used": [],
-            "results": {},
-        }
+    def test_baseline_file_itself_never_reported(self, tmp_path):
+        """The baseline's own sha1 hashes must not be findings (#253).
+
+        A fresh plain scan walks the baseline file and its hashed_secret
+        values trip the high-entropy detectors. The configured baseline
+        path is excluded from both the walk and the report.
+        """
         baseline = tmp_path / ".secrets.baseline"
-        baseline.write_text(json.dumps(baseline_content))
+        baseline.write_text(json.dumps({"results": {}}))
 
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.stdout = ""
-
-        def _capture(cmd: list[str], **kwargs: Any) -> MagicMock:  # type: ignore[misc]
-            if "--baseline" in cmd:
-                idx = cmd.index("--baseline")
-                Path(cmd[idx + 1]).write_text(
-                    json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
+            {
+                "results": {
+                    ".secrets.baseline": [
                         {
-                            **baseline_content,
-                            "results": {
-                                "evil.py": [
-                                    {
-                                        "type": "Secret Keyword",
-                                        "line_number": 2,
-                                    }  # pragma: allowlist secret
-                                ]
-                            },
-                        }
-                    )
-                )
-            return mock_result
-
-        with patch.object(check, "_run_command", side_effect=_capture):
-            result = check._run_detect_secrets(str(tmp_path))
-
-        assert result.passed is False
-        assert "evil.py" in result.findings
-
-    def test_run_detect_secrets_fails_closed_when_tmp_baseline_unreadable(
-        self, tmp_path
-    ):
-        """In --baseline mode, empty stdout must not pass if tmp baseline can't be read."""
-        baseline_content = {
-            "plugins_used": [{"name": "KeywordDetector"}],
-            "filters_used": [],
-            "results": {},
-        }
-        (tmp_path / ".secrets.baseline").write_text(
-            json.dumps(baseline_content), encoding="utf-8"
+                            "type": "Hex High Entropy String",
+                            "hashed_secret": "a" * 40,
+                            "line_number": 5,
+                        }  # pragma: allowlist secret
+                    ]
+                }
+            }
         )
 
-        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
-
-        mock_result = MagicMock()
-        mock_result.success = True
-        mock_result.stdout = ""
-        mock_result.stderr = ""
-        mock_result.output = ""
-
-        with (
-            patch.object(check, "_run_command", return_value=mock_result),
-            patch.object(check, "_load_tmp_baseline_report", return_value=None),
-        ):
+        with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_detect_secrets(str(tmp_path))
 
-        assert result.passed is False
-        assert "temp baseline could not be read" in result.findings
+        assert (
+            result.passed is True
+        ), "the baseline file's own hashes must never be reported as secrets"
+
+    def test_baseline_file_pruned_from_scan_walk(self, tmp_path):
+        """The configured baseline is excluded from the top-level scan paths."""
+        baseline = tmp_path / ".secrets.baseline"
+        baseline.write_text(json.dumps({"results": {}}))
+        (tmp_path / "src").mkdir()
+
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+        paths = check._detect_secrets_scan_paths(str(tmp_path))
+
+        assert "src" in paths
+        assert ".secrets.baseline" not in paths
 
     def test_detect_secrets_suppresses_cloudflare_account_id(self, tmp_path):
         """Cloudflare accountId (32-char hex) in workflow files should not be flagged."""
@@ -809,7 +777,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
-        mock_result.output = json.dumps(
+        mock_result.stdout = mock_result.output = json.dumps(
             {
                 "results": {
                     ".github/workflows/deploy-pages.yml": [
@@ -920,27 +888,6 @@ class TestDetectSecretsHeuristics:
         assert check._safe_read_line(str(tmp_path), "f.py", 2, cache) == "line2"
         # Second read hits the cache branch.
         assert check._safe_read_line(str(tmp_path), "f.py", 1, cache) == "line1"
-
-    def test_create_plugin_config_baseline_none_without_config(self, tmp_path):
-        check = SecurityLocalCheck({})
-        assert check._create_plugin_config_baseline(str(tmp_path)) is None
-
-    def test_create_plugin_config_baseline_writes_throwaway(self, tmp_path):
-        (tmp_path / ".secrets.baseline").write_text(
-            json.dumps(
-                {
-                    "plugins_used": [{"name": "Base64HighEntropyString"}],
-                    "version": "1.4.0",
-                }
-            )
-        )
-        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
-        path = check._create_plugin_config_baseline(str(tmp_path))
-        assert path is not None
-        data = json.loads(Path(path).read_text())
-        assert data["plugins_used"] == [{"name": "Base64HighEntropyString"}]
-        assert data["results"] == {}
-        Path(path).unlink()
 
     def test_load_allowlist_returns_known_pairs(self, tmp_path):
         (tmp_path / ".secrets.baseline").write_text(
