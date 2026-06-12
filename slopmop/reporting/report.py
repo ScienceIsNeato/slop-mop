@@ -32,7 +32,18 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from slopmop.core.result import CheckResult, CheckStatus, ExecutionSummary
+from slopmop.core.result import (
+    CheckResult,
+    CheckStatus,
+    ExecutionSummary,
+    SkipReason,
+)
+from slopmop.reporting.grading import (
+    HullGrade,
+    compute_hull_grade,
+    dry_dock_grade,
+    is_repo_initialized,
+)
 
 if TYPE_CHECKING:
     from slopmop.core.registry import CheckRegistry
@@ -228,6 +239,9 @@ class RunReport:
     # next_step is emitted on success to tell the agent what to do now.
     # Computed from the current workflow state + sail mode when available.
     next_step: Optional[str] = None
+    # Hull grade — the deterministic rating for full-suite runs.  None
+    # for partial (-g) runs, which can't rate the whole hull.
+    hull_grade: Optional[HullGrade] = None
 
     @classmethod
     def from_summary(
@@ -284,6 +298,33 @@ class RunReport:
 
         next_step = _compute_next_step(level, sail_mode) if summary.all_passed else None
 
+        # Hull grade — full-suite runs only (level is None for -g runs).
+        # Only *operational* skips (fail-fast, missing dep, time budget,
+        # or unknown) make the grade provisional: those gates could have
+        # failed had they run. Config-deterministic skips — disabled in
+        # config (off) or superseded by a more thorough gate (sup) — are
+        # part of the (commit, config) function and don't reduce certainty.
+        hull_grade: Optional[HullGrade] = None
+        if level is not None:
+            if project_root is not None and not is_repo_initialized(project_root):
+                hull_grade = dry_dock_grade()
+            else:
+                deterministic_skips = {
+                    SkipReason.DISABLED,
+                    SkipReason.SUPERSEDED,
+                    SkipReason.NOT_APPLICABLE,
+                }
+                operational_skips = [
+                    r
+                    for r in status_buckets[CheckStatus.SKIPPED]
+                    if r.skip_reason not in deterministic_skips
+                ]
+                hull_grade = compute_hull_grade(
+                    failing=len(failed) + len(errored),
+                    warned=len(warned),
+                    provisional=bool(operational_skips),
+                )
+
         return cls(
             summary=summary,
             level=level,
@@ -298,6 +339,7 @@ class RunReport:
             verify_command=verify,
             first_to_fix=first_blocking.name if first_blocking is not None else None,
             next_step=next_step,
+            hull_grade=hull_grade,
         )
 
     def per_gate_verify_command(self, gate_name: str) -> str:

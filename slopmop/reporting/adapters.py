@@ -96,6 +96,9 @@ class JsonAdapter:
         if cache:
             output["cache"] = cache
 
+        if report.hull_grade is not None:
+            output["hull_grade"] = report.hull_grade.to_dict()
+
         return output
 
     @staticmethod
@@ -199,6 +202,8 @@ class PorcelainAdapter:
     def render(report: RunReport) -> str:
         """Return a compact line-oriented validation summary."""
         lines = [PorcelainAdapter._summary_line(report)]
+        if report.hull_grade is not None:
+            lines.append(f"grade: {report.hull_grade.label}")
         for result in report.actionable:
             lines.append(result.name)
             detail = PorcelainAdapter._detail_line(result)
@@ -315,6 +320,8 @@ class ConsoleAdapter:
         else:
             print(header)
 
+        self._render_hull_grade()
+
         cache_line = r.cache_summary()
         if cache_line:
             print(f"   {cache_line}")
@@ -355,6 +362,8 @@ class ConsoleAdapter:
             print(f"   {' · '.join(counts)}{duration}")
         else:
             print(header)
+
+        self._render_hull_grade()
 
         cache_line = r.cache_summary()
         if cache_line:
@@ -454,6 +463,13 @@ class ConsoleAdapter:
             + str(cache["refresh_command"])
             + "` if you need uncached results."
         )
+
+    def _render_hull_grade(self) -> None:
+        """Print the hull rating line for full-suite runs."""
+        grade = self.report.hull_grade
+        if grade is None:
+            return
+        print(f"   ⚓ hull rating: {grade.label}")
 
     def _render_baseline_filter_note(self) -> None:
         """Print a short note when baseline filtering was applied."""

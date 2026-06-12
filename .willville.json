@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Cleanup sweep: CI supply-chain hardening, release provenance, and the detect-secrets baseline fix",
-    "direction": "Land the cleanup PR; pre-commit.com directory submission is in their review queue",
-    "last_update": "2026-06-12T19:00:00Z"
+    "status": "Hull ratings are in — swab and scour now grade the repo A+ through F with matching boat names",
+    "direction": "Land the grading PR, then build toward the GitHub Action that surfaces the grade",
+    "last_update": "2026-06-12T21:00:00Z"
   }
 }
