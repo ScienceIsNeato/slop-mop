@@ -51,6 +51,8 @@ from slopmop.cli.parser_builders import (
     CapabilitiesParserBuilder,
     RefitParserBuilder,
     SchemaParserBuilder,
+    add_config_parser,
+    try_suggest_config_command,
 )
 from slopmop.constants import PROJECT_ROOT_HELP
 from slopmop.utils import as_str_list, dedupe_str_list
@@ -512,124 +514,6 @@ def _add_upgrade_parser(
     )
 
 
-def _try_suggest_config_command(message: str, flag_set: set[str]) -> bool:
-    """Suggest correct config syntax if error message contains a config flag.
-
-    Returns True if a suggestion was printed and error should exit, False otherwise.
-    """
-    words = message.lower().split()
-    for flag in flag_set:
-        if flag in words:
-            print(f"\n❌ {message}")
-            print(f"\n💡 Hint: Did you forget the '--' prefix?")
-            print(f"   Try: sm config --{flag}")
-            if flag == "set":
-                print(f"        sm config --set <gate> <field> <value>")
-            elif flag == "unset":
-                print(f"        sm config --unset <gate> <field>")
-            return True
-    return False
-
-
-def _add_config_parser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-) -> None:
-    """Add the config subcommand parser."""
-    config_parser = subparsers.add_parser(
-        "config",
-        help="View or update configuration",
-        description="View or update quality gate configuration.",
-    )
-
-    # Store original error method
-    original_error = config_parser.error
-
-    # Custom error handler to catch common mistakes
-    def config_error(message: str) -> None:
-        """Custom error handler with helpful suggestions."""
-        common_flags = {"enable", "disable", "set", "unset", "show", "json"}
-        if _try_suggest_config_command(message, common_flags):
-            sys.exit(2)
-        original_error(message)
-
-    config_parser.error = config_error  # type: ignore[method-assign]
-
-    config_parser.add_argument(
-        "--show",
-        action="store_true",
-        help="Show current configuration and enabled gates",
-    )
-    config_parser.add_argument(
-        "--enable",
-        metavar="GATE",
-        help="Enable a specific quality gate",
-    )
-    config_parser.add_argument(
-        "--disable",
-        metavar="GATE",
-        help="Disable a specific quality gate",
-    )
-    config_parser.add_argument(
-        "--json",
-        metavar="FILE",
-        help="Update configuration from JSON file",
-    )
-    config_parser.add_argument(
-        "--swabbing-timeout",
-        type=int,
-        metavar="SECONDS",
-        help="Set the swabbing-timeout budget (seconds). 0 or negative disables the limit.",
-    )
-    config_parser.add_argument(
-        "--swabbing-time",
-        type=int,
-        metavar="SECONDS",
-        dest="swabbing_timeout",
-        help=argparse.SUPPRESS,  # deprecated alias for --swabbing-timeout
-    )
-    config_parser.add_argument(
-        "--swab-off",
-        metavar="GATE",
-        help="Keep a gate out of swab while still running it during scour.",
-    )
-    config_parser.add_argument(
-        "--swab-on",
-        metavar="GATE",
-        help="Make a gate run during both swab and scour.",
-    )
-    config_parser.add_argument(
-        "--set",
-        dest="set_field",
-        nargs=3,
-        metavar=("GATE", "FIELD", "VALUE"),
-        help="Set gate config field: --set <gate> <field> <value> where gate is category:name (e.g., myopia:ignore-feedback)",
-    )
-    config_parser.add_argument(
-        "--unset",
-        dest="unset_field",
-        nargs=2,
-        metavar=("GATE", "FIELD"),
-        help="Remove a gate-specific config field override.",
-    )
-    config_parser.add_argument(
-        "--current-pr-number",
-        type=int,
-        metavar="PR",
-        help="Set the working pull request number for buff commands.",
-    )
-    config_parser.add_argument(
-        "--clear-current-pr",
-        action="store_true",
-        help="Clear the working pull request number.",
-    )
-    config_parser.add_argument(
-        "--project-root",
-        type=str,
-        default=".",
-        help=PROJECT_ROOT_HELP,
-    )
-
-
 def _add_help_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -725,6 +609,36 @@ def _add_hooks_parser(
         help="Remove all sm-managed commit hooks",
     )
     hooks_uninstall.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
+
+
+def _add_hook_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the hook subcommand parser (pre-commit framework entry point)."""
+    hook_parser = subparsers.add_parser(
+        "hook",
+        help="Entry point for pre-commit framework hooks (.pre-commit-hooks.yaml)",
+        description=(
+            "Run a validation verb as a pre-commit framework hook. "
+            "Unlike the bare verbs, this entry point checks the repo's "
+            "onboarding status first: repos that have not completed "
+            "`sm init` + `sm refit` get a warning and exit 0 instead of "
+            "a blocked commit. Used by .pre-commit-hooks.yaml; not "
+            "intended for interactive use — run `sm swab` or `sm scour` "
+            "directly instead."
+        ),
+    )
+    hook_parser.add_argument(
+        "hook_verb",
+        choices=["swab", "scour"],
+        help="Validation verb to run: swab (pre-commit) or scour (pre-push)",
+    )
+    hook_parser.add_argument(
         "--project-root",
         type=str,
         default=".",
@@ -1057,7 +971,7 @@ def create_parser() -> argparse.ArgumentParser:
     def main_error(message: str) -> None:
         """Custom error handler to catch common config command mistakes."""
         config_flags = {"enable", "disable", "set", "unset"}
-        if _try_suggest_config_command(message, config_flags):
+        if try_suggest_config_command(message, config_flags):
             sys.exit(2)
         original_error(message)
 
@@ -1075,11 +989,12 @@ def create_parser() -> argparse.ArgumentParser:
     BarnacleParserBuilder(subparsers).build()
     _add_status_parser(subparsers)
     _add_doctor_parser(subparsers)
-    _add_config_parser(subparsers)
+    add_config_parser(subparsers)
     _add_help_parser(subparsers)
     _add_init_parser(subparsers)
     _add_agent_parser(subparsers)
     _add_hooks_parser(subparsers)
+    _add_hook_parser(subparsers)
     _add_gang_parser(subparsers)
     _add_audit_parser(subparsers)
     SchemaParserBuilder(subparsers).build()
@@ -1098,6 +1013,28 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _disable_tty_stdout() -> None:
+    """Wrap stdout so it reports non-TTY, and disable color output.
+
+    The proxy delegates every attribute to the real stream and only
+    overrides ``isatty()``. Limitation: after wrapping, identity/type
+    checks like ``isinstance(sys.stdout, io.TextIOWrapper)`` no longer
+    hold — acceptable here because slop-mop only probes ``isatty()``.
+    The ``Any``-typed ``__getattr__`` is intentional: it is a pure
+    delegation shim over a dynamic stream object.
+    """
+    os.environ["NO_COLOR"] = "1"
+
+    class _NT:
+        def isatty(self) -> bool:
+            return False
+
+        def __getattr__(self, n: str, _o: Any = sys.stdout) -> Any:
+            return getattr(_o, n)
+
+    sys.stdout = _NT()  # type: ignore[assignment]
+
+
 def main(args: Optional[List[str]] = None) -> int:
     """Main entry point for sm CLI."""
     from slopmop import MissingDependencyError
@@ -1113,6 +1050,7 @@ def main(args: Optional[List[str]] = None) -> int:
         cmd_doctor,
         cmd_gang,
         cmd_help,
+        cmd_hook,
         cmd_init,
         cmd_refit,
         cmd_sail,
@@ -1151,16 +1089,7 @@ def main(args: Optional[List[str]] = None) -> int:
     parsed_args = parser.parse_args(raw)
 
     if no_tty or getattr(parsed_args, "no_tty", False):
-        os.environ["NO_COLOR"] = "1"
-
-        class _NT:
-            def isatty(self) -> bool:
-                return False
-
-            def __getattr__(self, n: str, _o: Any = sys.stdout) -> Any:
-                return getattr(_o, n)
-
-        sys.stdout = _NT()  # type: ignore[assignment]
+        _disable_tty_stdout()
 
     # Setup logging
     if hasattr(parsed_args, "verbose") and parsed_args.verbose:
@@ -1191,6 +1120,7 @@ def main(args: Optional[List[str]] = None) -> int:
             cmd_audit=cmd_audit,
             cmd_commit_hooks=cmd_commit_hooks,
             cmd_gang=cmd_gang,
+            cmd_hook=cmd_hook,
         )
     except MissingDependencyError as exc:
         print(f"❌ {exc}", file=sys.stderr)
@@ -1238,6 +1168,8 @@ def _dispatch(
         return handlers["cmd_agent"](parsed_args)
     elif parsed_args.verb == "commit-hooks":
         return handlers["cmd_commit_hooks"](parsed_args)
+    elif parsed_args.verb == "hook":
+        return handlers["cmd_hook"](parsed_args)
     elif parsed_args.verb == "gang":
         return handlers["cmd_gang"](parsed_args)
     elif parsed_args.verb == "audit":

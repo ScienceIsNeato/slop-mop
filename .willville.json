@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Fixing barnacle #262 — pyright was sweeping venv when no source dirs configured, PR in progress",
-    "direction": "Get the type-blindness scope fix merged, then continue the barnacle queue",
-    "last_update": "2026-06-09T01:00:00Z"
+    "status": "Building pre-commit framework hooks so teams can adopt slop-mop straight from their pre-commit config",
+    "direction": "Land the hooks, then submit slop-mop to the pre-commit.com directory for organic discovery",
+    "last_update": "2026-06-12T00:00:00Z"
   }
 }

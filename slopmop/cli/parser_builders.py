@@ -7,6 +7,7 @@ main verb registry module.
 from __future__ import annotations
 
 import argparse
+import sys
 
 from slopmop.agent_install.registry import (
     INSTALL_HELP_HOME_PREVIEW_ROOT,
@@ -16,6 +17,130 @@ from slopmop.agent_install.registry import (
     preview_install_paths,
 )
 from slopmop.constants import PROJECT_ROOT_HELP
+
+
+def try_suggest_config_command(message: str, flag_set: set[str]) -> bool:
+    """Suggest correct config syntax if error message contains a config flag.
+
+    Returns True if a suggestion was printed and error should exit, False otherwise.
+    """
+    words = message.lower().split()
+    for flag in flag_set:
+        if flag in words:
+            print(f"\n❌ {message}")
+            print("\n💡 Hint: Did you forget the '--' prefix?")
+            print(f"   Try: sm config --{flag}")
+            if flag == "set":
+                print("        sm config --set <gate> <field> <value>")
+            elif flag == "unset":
+                print("        sm config --unset <gate> <field>")
+            return True
+    return False
+
+
+def add_config_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the config subcommand parser."""
+    config_parser = subparsers.add_parser(
+        "config",
+        help="View or update configuration",
+        description="View or update quality gate configuration.",
+    )
+
+    # Store original error method
+    original_error = config_parser.error
+
+    # Custom error handler to catch common mistakes
+    def config_error(message: str) -> None:
+        """Custom error handler with helpful suggestions.
+
+        When a suggestion is printed, exit directly instead of calling
+        ``original_error``: argparse's handler would re-print the raw
+        message plus a usage dump after our friendlier hint. Exit code 2
+        matches what argparse itself uses for argument errors.
+        """
+        common_flags = {"enable", "disable", "set", "unset", "show", "json"}
+        if try_suggest_config_command(message, common_flags):
+            sys.exit(2)
+        original_error(message)
+
+    config_parser.error = config_error  # type: ignore[method-assign]
+
+    config_parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Show current configuration and enabled gates",
+    )
+    config_parser.add_argument(
+        "--enable",
+        metavar="GATE",
+        help="Enable a specific quality gate",
+    )
+    config_parser.add_argument(
+        "--disable",
+        metavar="GATE",
+        help="Disable a specific quality gate",
+    )
+    config_parser.add_argument(
+        "--json",
+        metavar="FILE",
+        help="Update configuration from JSON file",
+    )
+    config_parser.add_argument(
+        "--swabbing-timeout",
+        type=int,
+        metavar="SECONDS",
+        help="Set the swabbing-timeout budget (seconds). 0 or negative disables the limit.",
+    )
+    config_parser.add_argument(
+        "--swabbing-time",
+        type=int,
+        metavar="SECONDS",
+        dest="swabbing_timeout",
+        help=argparse.SUPPRESS,  # deprecated alias for --swabbing-timeout
+    )
+    config_parser.add_argument(
+        "--swab-off",
+        metavar="GATE",
+        help="Keep a gate out of swab while still running it during scour.",
+    )
+    config_parser.add_argument(
+        "--swab-on",
+        metavar="GATE",
+        help="Make a gate run during both swab and scour.",
+    )
+    config_parser.add_argument(
+        "--set",
+        dest="set_field",
+        nargs=3,
+        metavar=("GATE", "FIELD", "VALUE"),
+        help="Set gate config field: --set <gate> <field> <value> where gate is category:name (e.g., myopia:ignore-feedback)",
+    )
+    config_parser.add_argument(
+        "--unset",
+        dest="unset_field",
+        nargs=2,
+        metavar=("GATE", "FIELD"),
+        help="Remove a gate-specific config field override.",
+    )
+    config_parser.add_argument(
+        "--current-pr-number",
+        type=int,
+        metavar="PR",
+        help="Set the working pull request number for buff commands.",
+    )
+    config_parser.add_argument(
+        "--clear-current-pr",
+        action="store_true",
+        help="Clear the working pull request number.",
+    )
+    config_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help=PROJECT_ROOT_HELP,
+    )
 
 
 class BuffParserBuilder:

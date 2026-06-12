@@ -215,6 +215,17 @@ _VERB_CATALOG: List[Dict[str, object]] = [
         },
     },
     {
+        "name": "hook",
+        "summary": "Pre-commit framework entry point: run swab/scour if onboarded, warn-and-pass otherwise.",
+        "group": "setup",
+        "formats": ["human"],
+        "exit_codes": {
+            "0": "gates passed or repo not onboarded",
+            "1": "gates failed",
+            "2": "invalid hook verb",
+        },
+    },
+    {
         "name": "gang",
         "summary": "Press-gang forbidden shell commands into the correct sm rail.",
         "group": "setup",

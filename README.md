@@ -126,8 +126,35 @@ When `sm` itself gives invalid guidance or blocks valid work, use
 reporting path; do not file ad hoc `gh issue create` reports for slop-mop
 tooling defects.
 
-Distribution notes, promotion TODOs, and adoption-tracking signals live in
-[DOCS/PENETRATION_EFFORTS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/PENETRATION_EFFORTS.md).
+Distribution notes, sharing TODOs, and adoption-tracking signals live in
+[DOCS/DISTRIBUTION_EFFORTS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/DISTRIBUTION_EFFORTS.md).
+
+## Use with pre-commit
+
+Slop-mop exports hooks for the [pre-commit framework](https://pre-commit.com).
+Add to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/ScienceIsNeato/slop-mop
+    rev: v2.3.2  # use the latest release tag
+    hooks:
+      - id: slopmop-swab    # quick gates on every commit
+      - id: slopmop-scour   # full PR-readiness suite on push
+```
+
+`slopmop-swab` runs the fast every-commit gate suite; `slopmop-scour` runs
+the complete validation (the same bar a PR must clear) at `pre-push` — the
+last local checkpoint before you open a PR. Install both stages with
+`pre-commit install --hook-type pre-commit --hook-type pre-push`.
+
+Both hooks are safe to add to a shared config before the whole team has
+adopted slop-mop: in a repo that hasn't been onboarded (`sm init` +
+`sm refit --start`), they print a one-line note and pass instead of
+blocking the commit.
+
+If you prefer raw git hooks without the pre-commit framework,
+`sm commit-hooks install` does the same job with sm-managed scripts.
 
 ## The Loop
 
