@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Refreshing the README intro to match the harm-reduction voice from the site and Substack post",
-    "direction": "Land the README voice pass through develop, then back to shipping the hull-grade action",
-    "last_update": "2026-06-12T23:00:00Z"
+    "status": "Copy-edited the README intro and trimmed ~90 lines of repeated walkthrough out of the body",
+    "direction": "Land the README cleanup through develop, then back to the hull-grade action",
+    "last_update": "2026-06-13T00:00:00Z"
   }
 }
