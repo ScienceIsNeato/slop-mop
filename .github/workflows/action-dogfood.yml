@@ -20,6 +20,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dogfood:
     name: slop-mop-action @v1
@@ -28,6 +32,11 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
           persist-credentials: false
+          # Full history: git-aware gates (diff coverage, gate-dodging)
+          # resolve origin/main, matching the primary scour workflow. A
+          # shallow clone makes them skip, which both diverges this grade
+          # from the real gate and inflates "provisional".
+          fetch-depth: 0
 
       - id: sm
         uses: ScienceIsNeato/slop-mop-action@v1
@@ -37,6 +46,10 @@ jobs:
           upload-sarif: "false"
 
       - name: Report hull grade
+        env:
+          GRADE: ${{ steps.sm.outputs.grade }}
+          HULL: ${{ steps.sm.outputs.hull }}
+          PROVISIONAL: ${{ steps.sm.outputs.provisional }}
         run: |
-          echo "Hull grade: ${{ steps.sm.outputs.grade }} — ${{ steps.sm.outputs.hull }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "grade=${{ steps.sm.outputs.grade }} hull=${{ steps.sm.outputs.hull }} provisional=${{ steps.sm.outputs.provisional }}"
+          echo "Hull grade: $GRADE — $HULL" >> "$GITHUB_STEP_SUMMARY"
+          echo "grade=$GRADE hull=$HULL provisional=$PROVISIONAL"
