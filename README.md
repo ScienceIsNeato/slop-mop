@@ -328,8 +328,7 @@ so failed filings are retryable without reconstructing context.
 
 ## Project Documentation
 
-slop-mop is at version 2.4.0. The public policy surface for release and
-stability expectations lives here:
+The public policy surface for release and stability expectations lives here:
 
 - [DOCS/COMPATIBILITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/COMPATIBILITY.md)
 - [DOCS/MIGRATIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/MIGRATIONS.md)

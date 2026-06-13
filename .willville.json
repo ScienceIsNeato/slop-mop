@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Copy-edited the README intro and trimmed ~90 lines of repeated walkthrough out of the body",
-    "direction": "Land the README cleanup through develop, then back to the hull-grade action",
-    "last_update": "2026-06-13T00:00:00Z"
+    "status": "Pulling the version mention out of the README and retiring the bit of release tooling that enforced it",
+    "direction": "Land this, then cut a clean 2.5.0 release now that hull ratings are in",
+    "last_update": "2026-06-13T01:00:00Z"
   }
 }
