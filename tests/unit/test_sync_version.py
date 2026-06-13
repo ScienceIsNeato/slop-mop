@@ -111,7 +111,12 @@ def test_main_check_passes_on_real_repo(capsys):
 
 def test_main_check_fails_on_drift(tmp_path, monkeypatch, capsys):
     _make_repo(tmp_path, "1.2.3")
-    (tmp_path / "README.md").write_text("slop-mop is at version 9.9.9\n")
+    # Use a real remaining target (the Cursor plugin manifest) as the drift
+    # fixture; the README project-status line is no longer managed.
+    (tmp_path / ".cursor-plugin").mkdir()
+    (tmp_path / ".cursor-plugin" / "plugin.json").write_text(
+        '{"version": "9.9.9"}\n', encoding="utf-8"
+    )
     monkeypatch.setattr(sync, "REPO_ROOT", tmp_path)
     assert sync.main(["--check"]) == 1
     assert "drift" in capsys.readouterr().err.lower()
@@ -119,13 +124,14 @@ def test_main_check_fails_on_drift(tmp_path, monkeypatch, capsys):
 
 def test_main_apply_syncs_then_reports_already_in_sync(tmp_path, monkeypatch, capsys):
     _make_repo(tmp_path, "2.2.2")
-    readme = tmp_path / "README.md"
-    readme.write_text("slop-mop is at version 1.1.1\n")
+    (tmp_path / ".cursor-plugin").mkdir()
+    manifest = tmp_path / ".cursor-plugin" / "plugin.json"
+    manifest.write_text('{"version": "1.1.1"}\n', encoding="utf-8")
     monkeypatch.setattr(sync, "REPO_ROOT", tmp_path)
 
     assert sync.main([]) == 0
     assert "Synced" in capsys.readouterr().out
-    assert "version 2.2.2" in readme.read_text()
+    assert '"version": "2.2.2"' in manifest.read_text()
 
     assert sync.main([]) == 0
     assert "Already in sync" in capsys.readouterr().out

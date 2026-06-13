@@ -54,11 +54,6 @@ class Target:
 # mention(s) in that file.
 TARGETS: Tuple[Target, ...] = (
     Target(
-        "README.md",
-        r"slop-mop is at version (\d+\.\d+\.\d+)",
-        "README project-status line",
-    ),
-    Target(
         "DOCS/MACHINE_INTERFACE.md",
         r'"version": "(\d+\.\d+\.\d+)"',
         "sm capabilities example envelope",
