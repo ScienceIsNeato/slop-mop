@@ -11,48 +11,56 @@
   <a href="https://github.com/ScienceIsNeato/slop-mop#use-with-claude"><img src="https://img.shields.io/badge/Claude-skill%20%2B%20plugin-7a5bff?logo=anthropic&amp;logoColor=white" alt="Claude skill + plugin"/></a>
 </p>
 
-Slop-mop reshapes the agent’s terrain so the most maintainable move feels like the easiest one downhill.
+Slop-mop is a longitudinal force multiplier for humans building with AI. It
+optimizes repositories toward long-term maintainability and overall throughput
+in three ways:
+
+- enforcing "no-brainer" SOPs (linting, typing, structure, test coverage, etc.)
+- catching bullshit (bogus tests, disabled safety checks, ignored feedback, etc.)
+- providing "greased rails" for agents to ride along — protocol-like instruction
+  sequences for both humans and AI that make PR review, comment triage, and
+  remediation fast and thorough
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop heraldic" width="300" align="right"/>
 
-It does not try to turn agents into what they aren't. Slop-mop reshapes the workflow
-landscape around them: refit carves the initial terrain, swab/scour/buff keep the
-gradient pointed at maintainable code, and wake-angry-drunk-captain blocks fake
-progress when only a human decision can break the tie.
+Coding agents optimize for apparent completion — the nearest green checkmark,
+not the right one. They act like balls rolling downhill, and left to their own
+momentum they settle in the shallowest local minimum: untested claims, coverage
+gamed by a `true is true`, a silenced gate, a `git commit --no-verify`. The code
+runs. The PR looks clean. The slop is already in — junk DNA that threatens the
+code's offspring down the line.
 
-Don't make sloppy choices. Keep moving forward and address debt relentlessly.
-Resist the urge to side-step the check. Just fix what it flags and keep moving: that is the whole idea.
+Slop-mop keeps the rule **outside the loop**. Your standards live in external
+gates, not inside the agent's reward function, so they hold even when reward
+pressure is high — and following the rail becomes the shortest path to the
+reward instead of a wall to climb. Refit carves the initial terrain,
+swab/scour/buff keep the gradient pointed at maintainable code, and
+wake-angry-drunk-captain blocks fake progress when only a human can break the
+tie.
 
-It is purposefully opinionated, as structure begets adherence to best practices.
+The verbs are deliberately nautical — `swab`, `scour`, `buff`, `sail`,
+`barnacle`. Novel tokens from naval practice don't come with a million training
+examples of how to weasel around them, which helps keep models out of dangerous
+eddies.
 
-## Project Status
-
-slop-mop is at version 2.4.0. The current public policy surface for release and
-stability expectations lives here:
-
-- [DOCS/COMPATIBILITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/COMPATIBILITY.md)
-- [DOCS/MIGRATIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/MIGRATIONS.md)
-- [DOCS/RELEASING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/RELEASING.md)
-- [SECURITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/SECURITY.md)
+This is harm reduction, not prevention. A determined model will still find a
+seam when the reward pressure is high enough; the honest claim is narrower —
+more catches than misses, over time. That is enough to keep a codebase
+navigable. It is purposefully opinionated, because structure begets
+adherence to best practices.
 
 ## Quick Start
 
-Install it:
+Install it and set up a repo (omit `[all]` for the framework only — gates whose
+tools like `black`, `pyright`, or `pytest` are missing will say so):
 
 ```bash
 pipx install slopmop[all]
-```
-
-Set up a repo:
-
-```bash
 sm init
 ```
 
-Choose a starting point.
-
-For an existing repo, start with refit. It walks the project through a
-structured cleanup before you enter the day-to-day maintenance loop:
+Inherited an existing codebase? Run refit first — it builds a remediation plan
+and walks you gate-by-gate until the repo is clean enough for the daily loop:
 
 ```bash
 sm refit --start
@@ -60,40 +68,10 @@ sm refit --iterate
 sm refit --finish
 ```
 
-If you cannot do the full refit right now, generate a baseline as a temporary
-escape hatch. That keeps new failures loud while you come back to the cleanup:
-
-```bash
-sm status --generate-baseline-snapshot
-sm swab --ignore-baseline-failures
-```
-
-Run the normal loop:
-
-```bash
-sm swab
-```
-
-If it fails, fix what it reported and run `sm swab` again. When it passes,
-commit. Before opening or updating a PR, run the deeper pass:
-
-```bash
-sm scour
-```
-
-After CI or review feedback lands:
-
-```bash
-sm buff
-```
-
-If you are not sure what comes next, use the auto-advance command:
-
-```bash
-sm sail
-```
-
-It reads the current workflow state and runs the next obvious slop-mop verb.
+Then it's just the loop: `sm swab` while you work, `sm scour` before a PR,
+`sm buff` after CI or review feedback lands. Not sure what's next? `sm sail`
+reads the workflow state and runs the right verb. See [The Loop](#the-loop) for
+the full table, or [Baselines](#baselines) if you need to defer the cleanup.
 
 ## Use with Claude
 
@@ -121,10 +99,8 @@ friction"*. The skill activates on remediation language and runs the right verb.
 The CLI itself is still a prerequisite — install it once with
 `pipx install slopmop[all]` and the plugin will call into it.
 
-When `sm` itself gives invalid guidance or blocks valid work, use
-`/sm-barnacle` or `sm barnacle file`. That is the preferred internal friction
-reporting path; do not file ad hoc `gh issue create` reports for slop-mop
-tooling defects.
+When `sm` itself misbehaves, file a barnacle (`/sm-barnacle`) rather than an
+ad-hoc issue — see [When To Push Back On The Tool](#when-to-push-back-on-the-tool).
 
 Distribution notes, sharing TODOs, and adoption-tracking signals live in
 [DOCS/DISTRIBUTION_EFFORTS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/DISTRIBUTION_EFFORTS.md).
@@ -202,15 +178,15 @@ can't rate a hull you only half inspected.
 <figure>
   <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/sm-swab-human-readable.png" alt="Human-readable sm swab output showing grouped quality gates and a no slop detected summary" />
   <figcaption>
-    The default <code>sm swab</code> view is built for humans: grouped gates,
-    progress, timings, and a clear final verdict. Agent loops can use
-    <code>--porcelain</code> when they need terse output instead.
+    The default <code>sm swab</code> view is built for humans; agent loops can
+    use <code>--porcelain</code> for terse output instead.
   </figcaption>
 </figure>
 
 ## What It Checks
 
-Slop-mop groups gates around four common agent failure modes.
+Slop-mop groups its gates around the four shallow minima agents fall into —
+the cheap wins that look like progress and aren't.
 
 **Overconfidence**  
 The code compiles. Tests pass. That's not the same as being tested or covered.
@@ -233,42 +209,6 @@ security gaps, dependency risk - things that only show up when you zoom out
 past the file you're in.
 
 The full gate reasoning lives in [DOCS/GATE_REASONING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/GATE_REASONING.md).
-
-## Refit vs Maintenance
-
-New repo or inherited mess? Start with refit. It builds a remediation plan
-and walks you through gate-by-gate until the codebase is clean enough to
-enter the maintenance loop:
-
-```bash
-sm refit --start
-sm refit --iterate
-sm refit --finish
-```
-
-Once you're in decent shape, maintenance is just the loop:
-
-```bash
-sm swab
-sm scour
-sm buff
-```
-
-Don't skip refit to go straight to maintenance on a dirty repo. You'll spend
-more time fighting the gates than fixing the code. Do the work upfront.
-
-## Minimal Install
-
-If you only want the framework without optional gate dependencies:
-
-```bash
-pipx install slopmop
-```
-
-Minimal install gives you the framework. Gates that need tools like `black`,
-`pyright`, `bandit`, or `pytest` will tell you what is missing.
-
-Developer setup details live in [DOCS/DEVELOPING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/DEVELOPING.md).
 
 ## Configuration
 
@@ -305,29 +245,15 @@ baseline mode - it's a temporary unblocker, not a permanent config.
 
 ## CI
 
-Run slop-mop in CI the same way you run it locally: install it and run the gate
-command.
-
+Run slop-mop in CI exactly as you do locally: install it, run the gate command.
 See [DOCS/CI.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/CI.md) for a GitHub Actions template.
 
 ## Agent Setup
 
-Slop-mop can install repo-local agent instructions for common coding agents:
-
-```bash
-sm agent install
-```
-
-You can target one agent if you prefer:
-
-```bash
-sm agent install --target copilot
-sm agent install --target cursor
-sm agent install --target claude
-```
-
-Generated agent files are local workspace configuration. They should stay out
-of source control; the reusable source templates live in this repository under
+Slop-mop installs repo-local agent instructions for common coding agents —
+`sm agent install`, or `sm agent install --target copilot|cursor|claude` for
+just one. The generated files are local workspace configuration and should stay
+out of source control; the source templates live under
 `slopmop/agent_install/templates/`.
 
 The short version for agents: ride the rail, fix what it reports, do not bypass
@@ -336,9 +262,9 @@ the gate.
 ## PR Review and Bot Integration
 
 Slop-mop closes the loop on PR feedback too, not just local code quality. Once
-a PR is open, review comments accumulate from humans, and bots alike. Left 
-unaddressed, they block the merge and erode reviewer trust. `sm buff`
-handles this:
+a PR is open, review comments accumulate from humans and bots alike — left
+unaddressed, they block the merge and erode reviewer trust. `sm buff` handles
+this:
 
 ```bash
 sm buff inspect <PR>      # triage CI results + fetch all unresolved threads
@@ -355,27 +281,19 @@ mode, so the post-PR rail won't report a PR as clean while comments remain open.
 
 ### Review Bots
 
-Copilot code review, Cursor's bugbot and the like catch things slop-mop deliberately
-doesn't try to own: logic errors in your specific domain, API misuse, smelly design
-patterns and logical errors. They're trained on human review patterns;
-slop-mop is optimized for the failure modes unique to agent-generated code.
+Copilot review, Cursor's bugbot, and the like catch what slop-mop deliberately
+doesn't own — domain logic errors, API misuse, smelly design. They're trained on
+human review patterns; slop-mop targets the failure modes unique to
+agent-generated code. Run them in parallel, not as alternatives.
 
-Run them in parallel, not as alternatives. The combination covers more ground:
-
-- slop-mop: duplication, complexity creep, coverage gaps, unaddressed feedback
-- Copilot / bugbot / human reviewers: logic correctness, style conformance, domain-specific hazards
-
-When a bot leaves a comment, treat it like a human reviewer left it. Use
-`sm buff resolve` to reply and close the thread - the same workflow applies
-regardless of who opened it.
+When a bot leaves a comment, treat it like a human reviewer's: `sm buff resolve`
+replies and closes the thread regardless of who opened it.
 
 ## Custom Gates
 
-Slop-mop's CI framework is well adapted to existing checks that are not covered
-by built-in gates. Add your own check as a custom gate and manage it like any
-other slop-mop quality gate.
-
-Start with [DOCS/NEW_GATE_PROTOCOL.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/NEW_GATE_PROTOCOL.md).
+Have checks the built-in gates don't cover? Add them as custom gates and manage
+them like any built-in one. Start with
+[DOCS/NEW_GATE_PROTOCOL.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/NEW_GATE_PROTOCOL.md).
 
 ## When To Push Back On The Tool
 
@@ -407,6 +325,16 @@ create structured GitHub issues tagged for maintainer triage. They are not a
 local queue and not a replacement for fixing real target-repo failures.
 The generated Markdown body is also written to `.slopmop/last_barnacle_issue.md`
 so failed filings are retryable without reconstructing context.
+
+## Project Documentation
+
+slop-mop is at version 2.4.0. The public policy surface for release and
+stability expectations lives here:
+
+- [DOCS/COMPATIBILITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/COMPATIBILITY.md)
+- [DOCS/MIGRATIONS.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/MIGRATIONS.md)
+- [DOCS/RELEASING.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/DOCS/RELEASING.md)
+- [SECURITY.md](https://github.com/ScienceIsNeato/slop-mop/blob/main/SECURITY.md)
 
 ## Contributing
 
