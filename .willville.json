@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Hull ratings are in — swab and scour now grade the repo A+ through F with matching boat names",
-    "direction": "Land the grading PR, then build toward the GitHub Action that surfaces the grade",
-    "last_update": "2026-06-12T21:00:00Z"
+    "status": "Copy-edited the README intro and trimmed ~90 lines of repeated walkthrough out of the body",
+    "direction": "Land the README cleanup through develop, then back to the hull-grade action",
+    "last_update": "2026-06-13T00:00:00Z"
   }
 }
