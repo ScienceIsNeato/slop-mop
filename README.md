@@ -11,19 +11,34 @@
   <a href="https://github.com/ScienceIsNeato/slop-mop#use-with-claude"><img src="https://img.shields.io/badge/Claude-skill%20%2B%20plugin-7a5bff?logo=anthropic&amp;logoColor=white" alt="Claude skill + plugin"/></a>
 </p>
 
-Slop-mop reshapes the agent’s terrain so the most maintainable move feels like the easiest one downhill.
+Slop-mop is a bullshit detector for the work that *looks* done.
 
 <img src="https://raw.githubusercontent.com/ScienceIsNeato/slop-mop/main/assets/heraldic_splash.png" alt="Slop-Mop heraldic" width="300" align="right"/>
 
-It does not try to turn agents into what they aren't. Slop-mop reshapes the workflow
-landscape around them: refit carves the initial terrain, swab/scour/buff keep the
-gradient pointed at maintainable code, and wake-angry-drunk-captain blocks fake
-progress when only a human decision can break the tie.
+Coding agents optimize for apparent completion — the nearest green checkmark,
+not the right one. Left to roll downhill they settle in the shallowest local
+minimum: a test that asserts nothing, coverage gamed by a `true is true`, a
+silenced gate, a `git commit --no-verify`. The code runs. The PR looks clean.
+The slop is already in. The nearest minimum is rarely the right one.
 
-Don't make sloppy choices. Keep moving forward and address debt relentlessly.
-Resist the urge to side-step the check. Just fix what it flags and keep moving: that is the whole idea.
+Slop-mop keeps the rule **outside the loop**. Your standards live in external
+gates, not inside the agent's reward function, so they hold even when reward
+pressure is high — and following the rail becomes the shortest path to the
+reward instead of a wall to climb. Refit carves the initial terrain,
+swab/scour/buff keep the gradient pointed at maintainable code, and
+wake-angry-drunk-captain blocks fake progress when only a human can break the
+tie.
 
-It is purposefully opinionated, as structure begets adherence to best practices.
+The verbs are deliberately nautical — `swab`, `scour`, `buff`, `sail`,
+`barnacle`. Novel tokens don't come with a million training examples of how to
+weasel around them, which keeps models honest in a way that `pre-commit` and
+`lint` no longer can.
+
+This is harm reduction, not prevention. A determined model will still find a
+seam when the reward pressure is high enough; the honest claim is narrower —
+more catches than misses, over time. That is enough to keep a codebase
+navigable, and it is purposefully opinionated, because structure begets
+adherence to best practices.
 
 ## Project Status
 
@@ -210,7 +225,8 @@ can't rate a hull you only half inspected.
 
 ## What It Checks
 
-Slop-mop groups gates around four common agent failure modes.
+Slop-mop groups its gates around the four shallow minima agents fall into —
+the cheap wins that look like progress and aren't.
 
 **Overconfidence**  
 The code compiles. Tests pass. That's not the same as being tested or covered.
