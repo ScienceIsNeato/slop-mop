@@ -1,0 +1,42 @@
+# Dogfood the published Marketplace action against slop-mop itself.
+#
+# This runs ScienceIsNeato/slop-mop-action@v1 — the exact ref consumers
+# use — so we find out immediately if a slopmop release breaks the
+# action's grade/SARIF/output contract. It is intentionally NOT pinned to
+# a SHA: the whole point is to validate what `@v1` resolves to today.
+#
+# Advisory by design. The repo's own gates (slopmop-sarif.yml) own
+# enforcement; this job only fails if the action itself breaks, not on
+# scour findings (fail-on-failure: false). SARIF upload is left to the
+# primary gate to avoid duplicate Code Scanning alerts.
+name: Action Dogfood
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood:
+    name: slop-mop-action @v1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
+
+      - id: sm
+        uses: ScienceIsNeato/slop-mop-action@v1
+        with:
+          command: scour
+          fail-on-failure: "false"
+          upload-sarif: "false"
+
+      - name: Report hull grade
+        run: |
+          echo "Hull grade: ${{ steps.sm.outputs.grade }} — ${{ steps.sm.outputs.hull }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "grade=${{ steps.sm.outputs.grade }} hull=${{ steps.sm.outputs.hull }} provisional=${{ steps.sm.outputs.provisional }}"
