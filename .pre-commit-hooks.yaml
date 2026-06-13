@@ -4,7 +4,7 @@
 #
 #   repos:
 #     - repo: https://github.com/ScienceIsNeato/slop-mop
-#       rev: v2.4.0  # use the latest tag
+#       rev: v2.5.0  # use the latest tag
 #       hooks:
 #         - id: slopmop-swab
 #         - id: slopmop-scour
