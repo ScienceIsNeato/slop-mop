@@ -78,6 +78,12 @@ permissions:
   security-events: write
   actions: read
 
+# Cancel a superseded run when a newer commit lands on the same ref, so rapid
+# pushes don't stack up redundant runs (the main Actions-budget drain).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   scan:
     name: Primary Code Scanning Gate (blocking)
