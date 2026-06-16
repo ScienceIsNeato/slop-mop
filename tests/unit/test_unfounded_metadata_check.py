@@ -77,9 +77,21 @@ class TestPasses:
         assert _um_run(tmp_path).status == CheckStatus.PASSED
 
     def test_faq_present_despite_markup_and_smart_quotes(self, tmp_path):
-        # JSON-LD answer is plain; visible copy wraps it in markup + smart quote
-        q, a = "Does it work", "It is the agents best friend"
-        body = f"<h2>{q}</h2><p>It is the agents <b>best</b> friend</p>"
+        # JSON-LD uses a straight apostrophe; the visible copy uses a curly one
+        # and wraps the answer in markup. flatten_text folds both -> they match.
+        q, a = "Does it work", "It is the agent's best friend"
+        body = "<h2>Does it work</h2><p>It is the agent’s <b>best</b> friend</p>"
+        (tmp_path / "faq.html").write_text(_um_page(_um_faq_jsonld(q, a), body))
+        assert _um_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_long_question_fully_present_passes(self, tmp_path):
+        # a question longer than the answer-only length cap, fully on the page
+        q = (
+            "What exactly does slop-mop do when an agent ships metadata that "
+            "the visible page never actually backs up in its copy?"
+        )
+        a = "It flags the drift."
+        body = f"<h2>{q}</h2><p>{a}</p>"
         (tmp_path / "faq.html").write_text(_um_page(_um_faq_jsonld(q, a), body))
         assert _um_run(tmp_path).status == CheckStatus.PASSED
 
@@ -107,6 +119,23 @@ class TestFailures:
     def test_faq_question_not_on_page(self, tmp_path):
         q, a = "A question never shown to the reader", "Visible answer text here."
         body = "<p>Visible answer text here.</p>"
+        (tmp_path / "faq.html").write_text(_um_page(_um_faq_jsonld(q, a), body))
+        result = _um_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert any(f.rule_id == "faq-question-not-on-page" for f in result.findings)
+
+    def test_long_question_only_prefix_on_page_still_flagged(self, tmp_path):
+        # questions are matched in FULL, not truncated to the answer-only cap:
+        # the page contains the first 80+ chars of the question but NOT the
+        # phantom tail, so a truncated match would wrongly pass -> must flag.
+        shared = (
+            "what exactly does slop-mop do when an agent ships metadata the "
+            "page never actually backs up in its visible copy"
+        )
+        assert len(shared) > 80  # the shared prefix alone exceeds the answer cap
+        q = shared + " plus a phantom tail clause nobody ever wrote"
+        a = "It flags it."
+        body = f"<h2>{shared}</h2><p>{a}</p>"
         (tmp_path / "faq.html").write_text(_um_page(_um_faq_jsonld(q, a), body))
         result = _um_run(tmp_path)
         assert result.status == CheckStatus.FAILED

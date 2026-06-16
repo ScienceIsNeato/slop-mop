@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import ClassVar, Dict, List, Tuple
 
 from slopmop.checks.base import (
+    EXCLUDE_DIRS_DESCRIPTION,
     SCOPE_EXCLUDED_DIRS,
     BaseCheck,
     CheckRole,
@@ -46,10 +47,12 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.general._web_meta import (
     HtmlMeta,
+    is_sitemap_index,
     iter_html_files,
     load_sitemap_locs,
     normalize_url,
     parse_html,
+    resolve_local_path,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -114,7 +117,7 @@ class ConflictingMetadataCheck(BaseCheck):
                 name="exclude_dirs",
                 field_type="string[]",
                 default=[],
-                description="Additional directories to exclude from the scan",
+                description=EXCLUDE_DIRS_DESCRIPTION,
                 permissiveness="more_is_stricter",
             ),
         ]
@@ -179,22 +182,44 @@ class ConflictingMetadataCheck(BaseCheck):
                 )
         return findings
 
-    @staticmethod
+    @classmethod
     def _collect_sitemap(
-        root: Path, spellings: Dict[str, Dict[str, str]]
+        cls, root: Path, spellings: Dict[str, Dict[str, str]]
     ) -> Dict[str, str]:
-        """Index sitemap <loc> URLs (normalized -> sitemap path) and their spellings."""
+        """Index page <loc> URLs (normalized -> sitemap path) and their spellings."""
         sitemap_norms: Dict[str, str] = {}
         for name in _SITEMAP_NAMES:
             sm = root / name
-            if not sm.is_file():
-                continue
-            sm_rel = sm.relative_to(root).as_posix()
-            for loc in load_sitemap_locs(sm):
-                norm = normalize_url(loc)
-                sitemap_norms[norm] = sm_rel
-                spellings[norm][loc.strip()] = f"{sm_rel} <loc>"
+            if sm.is_file():
+                cls._ingest_sitemap(sm, root, sitemap_norms, spellings, depth=0)
         return sitemap_norms
+
+    @classmethod
+    def _ingest_sitemap(
+        cls,
+        sm: Path,
+        root: Path,
+        sitemap_norms: Dict[str, str],
+        spellings: Dict[str, Dict[str, str]],
+        depth: int,
+    ) -> None:
+        """Record a sitemap's page <loc>s; for a <sitemapindex>, follow its
+        children to local files instead of treating them as pages."""
+        if is_sitemap_index(sm):
+            if depth >= 3:  # guard against cyclic / pathological index nesting
+                return
+            for child in load_sitemap_locs(sm):
+                child_path = resolve_local_path(root, child)
+                if child_path is not None:
+                    cls._ingest_sitemap(
+                        child_path, root, sitemap_norms, spellings, depth + 1
+                    )
+            return
+        sm_rel = sm.relative_to(root).as_posix()
+        for loc in load_sitemap_locs(sm):
+            norm = normalize_url(loc)
+            sitemap_norms[norm] = sm_rel
+            spellings[norm][loc.strip()] = f"{sm_rel} <loc>"
 
     @staticmethod
     def _scan_noindex(

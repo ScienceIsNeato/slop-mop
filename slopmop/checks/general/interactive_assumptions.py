@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import ClassVar, List
 
 from slopmop.checks.base import (
+    EXCLUDE_DIRS_DESCRIPTION,
     SCOPE_EXCLUDED_DIRS,
     BaseCheck,
     CheckRole,
@@ -231,7 +232,7 @@ class InteractiveAssumptionsCheck(BaseCheck):
                 name="exclude_dirs",
                 field_type="string[]",
                 default=[],
-                description="Additional directories to exclude from the scan",
+                description=EXCLUDE_DIRS_DESCRIPTION,
                 permissiveness="more_is_stricter",
             ),
         ]

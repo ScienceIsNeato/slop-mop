@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import ClassVar, List, Tuple
 
 from slopmop.checks.base import (
+    EXCLUDE_DIRS_DESCRIPTION,
     SCOPE_EXCLUDED_DIRS,
     BaseCheck,
     CheckRole,
@@ -110,7 +111,7 @@ class UnfoundedMetadataCheck(BaseCheck):
                 name="exclude_dirs",
                 field_type="string[]",
                 default=[],
-                description="Additional directories to exclude from the scan",
+                description=EXCLUDE_DIRS_DESCRIPTION,
                 permissiveness="more_is_stricter",
             ),
         ]
@@ -197,7 +198,14 @@ def _faq_parity_findings(rel: str, data: object, page_text: str) -> List[Finding
     findings: List[Finding] = []
     for question, answer in extract_faq_pairs(data):
         for label, text, rule in _faq_targets(question, answer):
-            needle = flatten_text(text)[:_ANSWER_PREFIX].strip()
+            normalized = flatten_text(text)
+            # Only answers get the length cap; questions are short and must
+            # match in full so long questions aren't silently truncated.
+            needle = (
+                normalized[:_ANSWER_PREFIX]
+                if rule == "faq-answer-not-on-page"
+                else normalized
+            ).strip()
             if needle and needle not in page_text:
                 findings.append(
                     Finding(

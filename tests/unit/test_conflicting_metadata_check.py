@@ -36,6 +36,15 @@ def _sitemap(*locs):
     )
 
 
+def _sitemap_index(*child_locs):
+    entries = "".join(f"<sitemap><loc>{loc}</loc></sitemap>" for loc in child_locs)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"{entries}</sitemapindex>"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Identity / metadata
 # ---------------------------------------------------------------------------
@@ -91,12 +100,11 @@ class TestPasses:
         assert _cm_run(tmp_path).status == CheckStatus.PASSED
 
     def test_trailing_slash_only_difference_is_normalized_away(self, tmp_path):
-        # canonical and og:url differ ONLY by trailing slash -> still consistent
+        # canonical and og:url differ only by trailing slash on a single page,
+        # no sitemap involved -> normalization treats them as the same URL
         (tmp_path / "about.html").write_text(
             _page(canonical=CANONICAL, og_url=CANONICAL + "/")
         )
-        # but the sitemap also uses the same trailing-slash style as canonical,
-        # so there is no cross-file spelling conflict here
         assert _cm_run(tmp_path).status == CheckStatus.PASSED
 
 
@@ -130,6 +138,31 @@ class TestFailures:
         result = _cm_run(tmp_path)
         assert result.status == CheckStatus.FAILED
         assert any(f.rule_id == "noindex-in-sitemap" for f in result.findings)
+
+    def test_non_default_port_not_stripped(self, tmp_path):
+        # http://host:443 is a DIFFERENT host than http://host — :443 is only
+        # the default port for https, so the conflict must survive normalization
+        (tmp_path / "about.html").write_text(
+            _page(
+                canonical="http://example.com/about",
+                og_url="http://example.com:443/about",
+            )
+        )
+        result = _cm_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert any(f.rule_id == "canonical-vs-og-url" for f in result.findings)
+
+    def test_sitemap_index_follows_child_sitemaps(self, tmp_path):
+        # a sitemap index points at a child sitemap whose <loc> trailing-slash
+        # conflicts with the page canonical — the gate must follow the child
+        (tmp_path / "about.html").write_text(_page(canonical=CANONICAL))
+        (tmp_path / "sitemap-pages.xml").write_text(_sitemap(CANONICAL + "/"))
+        (tmp_path / "sitemap_index.xml").write_text(
+            _sitemap_index("https://example.com/sitemap-pages.xml")
+        )
+        result = _cm_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert any(f.rule_id == "inconsistent-url-spelling" for f in result.findings)
 
     def test_exclude_dirs_suppresses(self, tmp_path):
         vendored = tmp_path / "thirdparty"

@@ -4,7 +4,8 @@ Both ``myopia:conflicting-metadata`` and ``deceptiveness:unfounded-metadata``
 read the same things out of an HTML page — its canonical/og URLs, robots
 directive, JSON-LD blocks, and visible text — plus the sitemap. This module
 holds that parsing using only the standard library (``html.parser``, ``json``,
-``xml.etree``), so the gates stay ``ToolContext.PURE`` with no extra deps.
+plus flat regex for the sitemap), so the gates stay ``ToolContext.PURE`` with
+no extra deps and no XML-parser attack surface.
 """
 
 from __future__ import annotations
@@ -14,7 +15,6 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
-from xml.etree import ElementTree
 
 # html.parser hands attributes back as (name, value) pairs; value is None for
 # valueless attributes (e.g. ``<script defer>``).
@@ -149,25 +149,63 @@ def normalize_url(url: str) -> str:
         return u.rstrip("/") or u
     scheme = m.group(1).lower()
     host = m.group(2).lower()
-    host = re.sub(r":(80|443)$", "", host)
+    # Strip only the default port FOR THE SCHEME — http://h:443 and
+    # http://h are genuinely different hosts and must not be conflated.
+    if scheme == "http":
+        host = re.sub(r":80$", "", host)
+    elif scheme == "https":
+        host = re.sub(r":443$", "", host)
     path = m.group(3) or "/"
     if path != "/":
         path = path.rstrip("/")
     return f"{scheme}://{host}{path}"
 
 
+_LOC_RE = re.compile(r"<loc>\s*(.*?)\s*</loc>", re.IGNORECASE | re.DOTALL)
+
+
 def load_sitemap_locs(sitemap_path: Path) -> List[str]:
-    """Return the raw ``<loc>`` URLs from a sitemap.xml (namespace-agnostic)."""
+    """Return the raw ``<loc>`` URLs from a sitemap (namespace-agnostic).
+
+    Uses a flat ``<loc>`` regex rather than an XML parser: we need one field,
+    and regex extraction sidesteps the XXE / billion-laughs attack surface of
+    ``xml.etree`` with no extra dependency.
+    """
     try:
-        tree = ElementTree.parse(sitemap_path)
-    except (OSError, ElementTree.ParseError):
+        text = sitemap_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
         return []
-    locs: List[str] = []
-    for el in tree.iter():
-        tag = el.tag.rsplit("}", 1)[-1]  # strip namespace
-        if tag == "loc" and el.text:
-            locs.append(el.text.strip())
-    return locs
+    return [m.strip() for m in _LOC_RE.findall(text) if m.strip()]
+
+
+def is_sitemap_index(sitemap_path: Path) -> bool:
+    """True when the file is a ``<sitemapindex>`` (its <loc>s point at child
+    sitemaps, not pages)."""
+    try:
+        return (
+            "<sitemapindex"
+            in sitemap_path.read_text(encoding="utf-8", errors="replace").lower()
+        )
+    except OSError:
+        return False
+
+
+def resolve_local_path(root: Path, url: str) -> Optional[Path]:
+    """Best-effort map a sitemap URL to a local file under ``root``.
+
+    Tries the URL's path under root, then a basename match, so a child
+    sitemap reference like ``https://site/sitemaps/pages.xml`` resolves to the
+    committed file. Returns ``None`` when nothing local matches.
+    """
+    m = re.match(r"^https?://[^/]+(/.*)?$", url.strip(), re.IGNORECASE)
+    rel = (m.group(1) if m and m.group(1) else url.strip()).lstrip("/")
+    if not rel:
+        return None
+    candidate = root / rel
+    if candidate.is_file():
+        return candidate
+    base = root / Path(rel).name
+    return base if base.is_file() else None
 
 
 def iter_html_files(root: Path, excluded: set[str]) -> List[Path]:
