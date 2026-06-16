@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from xml.etree import ElementTree
 
 # html.parser hands attributes back as (name, value) pairs; value is None for
@@ -188,3 +188,62 @@ def iter_html_files(root: Path, excluded: set[str]) -> List[Path]:
 
 def parse_all_html(root: Path, excluded: set[str]) -> Dict[Path, HtmlMeta]:
     return {p: parse_html(p) for p in iter_html_files(root, excluded)}
+
+
+def flatten_text(text: str) -> str:
+    """Normalize text for cross-source comparison: strip HTML tags, fold smart
+    quotes to ASCII, collapse whitespace, lowercase. JSON-LD answer text and
+    visible page text are then comparable even when one carries inline markup."""
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = (
+        text.replace("’", "'")
+        .replace("‘", "'")
+        .replace("“", '"')
+        .replace("”", '"')
+        .replace("–", "-")
+        .replace("—", "-")
+        .replace(" ", " ")
+    )
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _type_set(node: Dict[str, Any]) -> set[str]:
+    raw: Any = node.get("@type")
+    if isinstance(raw, list):
+        return {str(t) for t in cast(List[Any], raw)}
+    return {str(raw)} if raw else set()
+
+
+def extract_faq_pairs(data: Any) -> List[Tuple[str, str]]:
+    """Walk parsed JSON-LD and return (question, answer) text pairs.
+
+    Namespace-tolerant: handles a top-level object, a list, or an ``@graph``
+    wrapper, and finds any ``Question`` node carrying ``name`` plus an
+    ``acceptedAnswer`` (object or list) with ``text``.
+    """
+    pairs: List[Tuple[str, str]] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, list):
+            for item in cast(List[Any], node):
+                walk(item)
+            return
+        if not isinstance(node, dict):
+            return
+        d = cast(Dict[str, Any], node)
+        if "Question" in _type_set(d) and d.get("name"):
+            answers: Any = d.get("acceptedAnswer") or d.get("suggestedAnswer")
+            answer_list: List[Any] = (
+                cast(List[Any], answers) if isinstance(answers, list) else [answers]
+            )
+            for ans in answer_list:
+                if isinstance(ans, dict):
+                    ans_d = cast(Dict[str, Any], ans)
+                    if ans_d.get("text"):
+                        pairs.append((str(d["name"]), str(ans_d["text"])))
+        for value in d.values():
+            if isinstance(value, (list, dict)):
+                walk(value)
+
+    walk(data)
+    return pairs

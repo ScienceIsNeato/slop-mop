@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Adding two web-metadata gates — first one catches pages whose canonical, og:url, and sitemap disagree about their own URL",
-    "direction": "Next gate flags structured data that claims things the visible page never says",
+    "status": "Landed two web-metadata gates — one catches pages that disagree about their own URL, the other catches structured data claiming things the page never says",
+    "direction": "Open the PR and run them past CI",
     "last_update": "2026-06-16T00:00:00Z"
   }
 }

@@ -141,6 +141,33 @@ def _bogus_tests_reasoning(language: str) -> Reasoning:
 
 
 @lru_cache(maxsize=1)
+def _unfounded_metadata_reasoning_entry() -> tuple[type[BaseCheck], Reasoning]:
+    from slopmop.checks.general.unfounded_metadata import UnfoundedMetadataCheck
+
+    return (
+        UnfoundedMetadataCheck,
+        _reasoning(
+            rationale=(
+                "Structured data is a promise to search engines about what the page "
+                "shows.  An agent bolts on FAQ schema or rich snippets that assert "
+                "Q&As and claims the visible copy never makes — theatre that reads as "
+                "'I added structured data' while telling crawlers a story the page "
+                "does not back up."
+            ),
+            tradeoffs=(
+                "Text matching is lenient (whitespace, markup, smart quotes folded) "
+                "but cannot model every legitimate paraphrase, so a site that "
+                "deliberately rewords its JSON-LD may need a directory exclusion."
+            ),
+            override_when=(
+                "Suppress for generated or vendored HTML you do not author, or where "
+                "structured data is intentionally authored apart from visible copy.  "
+                "Add the directory to exclude_dirs in .sb_config.json."
+            ),
+        ),
+    )
+
+
 def _deceptiveness_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning], ...]:
     from slopmop.checks.dart import (
         DartBogusTestsCheck,
@@ -154,6 +181,7 @@ def _deceptiveness_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning
     )
 
     return (
+        _unfounded_metadata_reasoning_entry(),
         (DartBogusTestsCheck, _bogus_tests_reasoning("Dart")),
         (JavaScriptBogusTestsCheck, _bogus_tests_reasoning("JavaScript")),
         (BogusTestsCheck, _bogus_tests_reasoning("Python")),

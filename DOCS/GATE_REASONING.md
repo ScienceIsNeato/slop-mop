@@ -96,6 +96,12 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Tradeoffs: Assertion-enforcement can be noisy while a test is half-written or when a framework hides assertions behind helpers.
 - Override When: Bend this only for draft local work or framework edge cases you have explicitly accounted for.
 
+### `deceptiveness:unfounded-metadata`
+
+- Rationale: Structured data is a promise to search engines about what the page shows.  An agent bolts on FAQ schema or rich snippets that assert Q&As and claims the visible copy never makes — theatre that reads as 'I added structured data' while telling crawlers a story the page does not back up.
+- Tradeoffs: Text matching is lenient (whitespace, markup, smart quotes folded) but cannot model every legitimate paraphrase, so a site that deliberately rewords its JSON-LD may need a directory exclusion.
+- Override When: Suppress for generated or vendored HTML you do not author, or where structured data is intentionally authored apart from visible copy.  Add the directory to exclude_dirs in .sb_config.json.
+
 ## 🟠 Laziness
 
 ### `laziness:broken-templates.py`
