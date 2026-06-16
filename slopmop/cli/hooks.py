@@ -58,7 +58,7 @@ def _generate_merged_branch_guard() -> str:
     exits non-zero.  Returns a plain shell string (no Python interpolation)
     so it embeds verbatim via a single f-string field.
     """
-    return r'''# --- merged/deleted-branch guard (slop-mop) ---
+    return r"""# --- merged/deleted-branch guard (slop-mop) ---
 export GIT_TERMINAL_PROMPT=0  # never hang on an auth prompt inside a hook
 
 _sm_block() {
@@ -121,7 +121,7 @@ _sm_merged_branch_guard() {
 }
 
 _sm_merged_branch_guard
-# --- end merged/deleted-branch guard ---'''
+# --- end merged/deleted-branch guard ---"""
 
 
 def _generate_hook_script(verb: str) -> str:

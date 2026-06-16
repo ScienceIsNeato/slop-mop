@@ -344,9 +344,7 @@ class TestGitHooksFunctions:
     def _git(self, cwd, *args) -> None:
         import subprocess
 
-        subprocess.run(
-            ["git", *args], cwd=str(cwd), check=True, capture_output=True
-        )
+        subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True)
 
     def test_guard_blocks_branch_merged_into_default(self, tmp_path):
         """A branch fully contained in a moved-on origin/main is blocked."""
@@ -355,9 +353,7 @@ class TestGitHooksFunctions:
         remote = tmp_path / "remote.git"
         subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
         work = tmp_path / "work"
-        subprocess.run(
-            ["git", "clone", "-q", str(remote), str(work)], check=True
-        )
+        subprocess.run(["git", "clone", "-q", str(remote), str(work)], check=True)
         self._git(work, "config", "user.email", "t@t.t")
         self._git(work, "config", "user.name", "t")
         self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
@@ -381,9 +377,7 @@ class TestGitHooksFunctions:
         remote = tmp_path / "remote.git"
         subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
         work = tmp_path / "work"
-        subprocess.run(
-            ["git", "clone", "-q", str(remote), str(work)], check=True
-        )
+        subprocess.run(["git", "clone", "-q", str(remote), str(work)], check=True)
         self._git(work, "config", "user.email", "t@t.t")
         self._git(work, "config", "user.name", "t")
         self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
