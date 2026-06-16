@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Ported a dead-branch commit guard into slopmop's hooks — refuses commits on already-merged or deleted branches",
-    "direction": "Land the guard so every slopmop user stops piling work onto closed-out branches",
-    "last_update": "2026-06-14T00:00:00Z"
+    "status": "Adding two web-metadata gates — first one catches pages whose canonical, og:url, and sitemap disagree about their own URL",
+    "direction": "Next gate flags structured data that claims things the visible page never says",
+    "last_update": "2026-06-16T00:00:00Z"
   }
 }

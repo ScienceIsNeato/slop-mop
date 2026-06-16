@@ -480,6 +480,32 @@ def _github_actions_hygiene_reasoning_entry() -> tuple[type[BaseCheck], Reasonin
     )
 
 
+def _conflicting_metadata_reasoning_entry() -> tuple[type[BaseCheck], Reasoning]:
+    from slopmop.checks.general.conflicting_metadata import ConflictingMetadataCheck
+
+    return (
+        ConflictingMetadataCheck,
+        _reasoning(
+            rationale=(
+                "A page describes its own URL in several places — the canonical "
+                "link, og:url, the sitemap.  An agent edits one and leaves the "
+                "others stale, so the page ships conflicting answers to 'what URL "
+                "am I?'  Crawlers then split its ranking across phantom duplicates."
+            ),
+            tradeoffs=(
+                "Pure string comparison after URL normalization: it cannot tell an "
+                "intentional cross-domain canonical from a mistake, so a deliberate "
+                "canonical pointing off-site reads as a conflict and must be excluded."
+            ),
+            override_when=(
+                "Suppress for generated or vendored HTML you do not author, or for "
+                "directories with intentional cross-origin canonicals.  Add the "
+                "directory to exclude_dirs in .sb_config.json."
+            ),
+        ),
+    )
+
+
 @lru_cache(maxsize=1)
 def _myopia_risk_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning], ...]:
     from slopmop.checks.general.interactive_assumptions import (
@@ -490,6 +516,7 @@ def _myopia_risk_reasoning_entries() -> tuple[tuple[type[BaseCheck], Reasoning],
 
     return (
         _github_actions_hygiene_reasoning_entry(),
+        _conflicting_metadata_reasoning_entry(),
         (
             InteractiveAssumptionsCheck,
             _reasoning(

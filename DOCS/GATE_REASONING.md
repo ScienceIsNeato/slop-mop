@@ -110,6 +110,12 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Tradeoffs: Refactors to reduce complexity can be broader and riskier than the immediate bug fix that triggered the work.
 - Override When: Bend this during incident stabilization, then come back and split the function once the fire is out.
 
+### `laziness:dead-code.js`
+
+- Rationale: Dead JS/TS exports and files make the module graph a lie — readers study paths that nobody calls and miss the ones that matter.
+- Tradeoffs: Knip can false-positive on dynamic entrypoints, plugin APIs, and exports consumed by bundlers through non-import paths.
+- Override When: Override for known dynamic entrypoints with a concrete explanation in the knip config or a per-export ignore comment, not because deletion feels inconvenient right now.
+
 ### `laziness:dead-code.py`
 
 - Rationale: Dead code makes the map lie. People read paths that do not matter and miss the ones that do.
@@ -178,11 +184,23 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Tradeoffs: Splitting code takes time and can feel like ceremony while you are still exploring the shape of the solution.
 - Override When: Bend this for short spikes while the design is still liquid, then pay the split tax before the code hardens.
 
+### `myopia:conflicting-metadata`
+
+- Rationale: A page describes its own URL in several places — the canonical link, og:url, the sitemap.  An agent edits one and leaves the others stale, so the page ships conflicting answers to 'what URL am I?'  Crawlers then split its ranking across phantom duplicates.
+- Tradeoffs: Pure string comparison after URL normalization: it cannot tell an intentional cross-domain canonical from a mistake, so a deliberate canonical pointing off-site reads as a conflict and must be excluded.
+- Override When: Suppress for generated or vendored HTML you do not author, or for directories with intentional cross-origin canonicals.  Add the directory to exclude_dirs in .sb_config.json.
+
 ### `myopia:dependency-risk.py`
 
 - Rationale: Code can pass tests and types and still be an own-goal from a security perspective.
 - Tradeoffs: Security scanners throw false positives and sometimes demand context they cannot infer from static analysis.
 - Override When: Waive only with a specific risk decision and rationale, not because the scanner is inconvenient.
+
+### `myopia:github-actions-hygiene`
+
+- Rationale: GitHub workflows are executable infrastructure; YAML can look fine while embedded scripts, action runtimes, or token permissions fail only after CI has already started.
+- Tradeoffs: Workflow policy checks can be noisy if they guess from weak signals, so this gate only hard-fails high-confidence patterns.
+- Override When: Suppress only for workflow directories whose execution context is intentionally managed outside GitHub Actions defaults.
 
 ### `myopia:ignored-feedback`
 
