@@ -247,8 +247,6 @@ class TestGitHooksFunctions:
         Before the fix, any upstream-name != local-name branch was skipped, so
         a merged renamed branch would wrongly accept commits.
         """
-        import subprocess
-
         remote = tmp_path / "remote.git"
         subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
         work = tmp_path / "work"
