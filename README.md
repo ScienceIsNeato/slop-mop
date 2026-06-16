@@ -130,7 +130,14 @@ adopted slop-mop: in a repo that hasn't been onboarded (`sm init` +
 blocking the commit.
 
 If you prefer raw git hooks without the pre-commit framework,
-`sm commit-hooks install` does the same job with sm-managed scripts.
+`sm commit-hooks install` does the same job with sm-managed scripts. Those
+hooks also carry a **merged/deleted-branch guard**: the pre-commit hook
+refuses a commit when the current branch has already been merged (a merged
+PR, the remote head deleted, or HEAD already contained in a moved-on default
+branch) so you don't pile work onto a branch that's closed out and would have
+to be redone on a fresh one. It fails open (offline commits are never
+blocked) and leaves integration, never-pushed, and base-tracking branches
+alone. Override a single commit with `git commit --no-verify`.
 
 ## The Loop
 

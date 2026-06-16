@@ -92,15 +92,22 @@ _sm_merged_branch_guard() {
     [ -z "$_sm_default_branch" ] && _sm_default_branch=main
     _sm_default_ref="$_sm_remote/$_sm_default_branch"
 
+    # Skip ALL checks for a base-tracking branch (git checkout -b X origin/main):
+    # it tracks the default, not its own remote branch, so it can't be "closed
+    # out". This must come before the gh check — otherwise a fresh base-tracking
+    # branch that happens to reuse an old merged branch's name gets false-blocked
+    # by that stale PR, and the ref checks would false-positive once the default
+    # moves ahead.
+    [ "$_sm_remote_branch" != "$_sm_branch" ] && return 0
+
     # 1) Authoritative: a MERGED PR for this branch (squash/rebase safe).
+    #    `// empty` so "no merged PR" yields an empty string, not the literal
+    #    "null" that jq emits for an absent field (which would false-block as
+    #    "PR #null").
     if command -v gh >/dev/null 2>&1; then
-        _sm_merged_pr=$(gh pr list --head "$_sm_branch" --state merged --json number --jq '.[0].number' 2>/dev/null || true)
+        _sm_merged_pr=$(gh pr list --head "$_sm_branch" --state merged --json number --jq '.[0].number // empty' 2>/dev/null || true)
         [ -n "$_sm_merged_pr" ] && _sm_block "was merged via PR #$_sm_merged_pr"
     fi
-
-    # Ref-based checks only for a branch tracking its OWN remote branch; a
-    # base-tracking branch would false-positive once the default moves ahead.
-    [ "$_sm_remote_branch" != "$_sm_branch" ] && return 0
 
     # 2) Remote head deleted (the usual post-merge state).
     if _sm_remote_heads=$(git ls-remote --heads "$_sm_remote" "$_sm_branch" 2>/dev/null); then
