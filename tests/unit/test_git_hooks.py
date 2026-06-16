@@ -1,0 +1,286 @@
+"""Git-hook generation tests (split out of test_sm_cli.py for size).
+
+Covers pre-commit/pre-push hook script generation, the merged/deleted-branch
+guard's detection logic, and hook-info parsing.
+"""
+
+import subprocess
+from pathlib import Path
+
+from slopmop.cli.hooks import (
+    _generate_hook_script,
+    _generate_merged_branch_guard,
+    _generate_pre_push_hook_script,
+    _get_git_hooks_dir,
+    _parse_hook_info,
+)
+
+
+class TestGitHooksFunctions:
+    """Tests for git hooks helper functions."""
+
+    def test_get_git_hooks_dir(self, tmp_path):
+        """Returns hooks dir for git repo."""
+        (tmp_path / ".git").mkdir()
+        result = _get_git_hooks_dir(tmp_path)
+        assert result == tmp_path / ".git" / "hooks"
+
+    def test_get_git_hooks_dir_not_git(self, tmp_path):
+        """Returns None for non-git directory."""
+        result = _get_git_hooks_dir(tmp_path)
+        assert result is None
+
+    def test_generate_hook_script(self):
+        """Generates valid hook script with swab verb."""
+        script = _generate_hook_script("swab")
+        assert "sm swab" in script
+        assert "MANAGED BY SLOP-MOP" in script
+        # Should use PATH-based sm lookup
+        assert "command -v sm" in script
+        # Should write structured output for LLM consumption
+        assert "--swabbing-timeout 0" in script
+        assert "--json-file .slopmop/last_swab.json" in script
+        assert "--json --output-file" not in script
+        assert "Structured results:" in script
+        assert "mkdir -p .slopmop" in script
+
+    def test_generate_hook_script_direct_verb(self):
+        """Generates hook script when given a verb directly."""
+        script = _generate_hook_script("scour")
+        assert "sm scour" in script
+        assert "# Command: sm scour" in script
+        assert "--swabbing-timeout 0" in script
+        assert "--json-file .slopmop/last_scour.json" in script
+
+    def test_generate_pre_push_hook_script(self):
+        """Generates pre-push merged-branch guard hook script."""
+        script = _generate_pre_push_hook_script()
+        assert "# Command: merged-branch-guard" in script
+        assert "gh pr list" in script
+        assert "--state merged" in script
+        assert "You're missing some context." in script
+        assert "sync against main, checkout a new branch, and open a new PR." in script
+        # Guard must inspect the refs Git passes on stdin, not just HEAD, so a
+        # push that names a branch other than the current checkout is covered.
+        assert "while read -r local_ref local_sha remote_ref remote_sha" in script
+        assert "refs/heads/*) branch=${local_ref#refs/heads/}" in script
+        # Deletions (all-zero local sha) write nothing and must be skipped.
+        assert "0000000000000000000000000000000000000000" in script
+        assert "git symbolic-ref" not in script
+
+    def test_precommit_hook_embeds_merged_branch_guard(self):
+        """The pre-commit hook guards a merged/deleted branch before swab runs."""
+        script = _generate_hook_script("swab")
+        assert "merged/deleted-branch guard" in script
+        # Guard must run BEFORE the swab invocation, or work piles onto a dead
+        # branch before the gate even checks. Anchor on the real invocation
+        # (with --swabbing-timeout), not the "# Command:" comment.
+        assert script.index("\n_sm_merged_branch_guard\n") < script.index(
+            "sm swab --porcelain --swabbing-timeout"
+        )
+        # The three detection strategies, strongest first.
+        assert "gh pr list --head" in script and "--state merged" in script
+        assert "git ls-remote --heads" in script
+        assert "git merge-base --is-ancestor HEAD" in script
+        # Allow-lists: integration branches and never-pushed (no upstream).
+        assert "main|master|develop" in script
+        assert "@{upstream}" in script
+        # Escape hatch surfaced to the user.
+        assert "git commit --no-verify" in script
+
+    def test_precommit_hook_is_valid_posix_sh(self):
+        """The generated hook (guard + swab) must parse as POSIX sh."""
+
+        for verb in ("swab", "scour"):
+            script = _generate_hook_script(verb)
+            result = subprocess.run(
+                ["sh", "-n", "/dev/stdin"],
+                input=script,
+                text=True,
+                capture_output=True,
+            )
+            assert result.returncode == 0, f"{verb}: {result.stderr}"
+
+    def _run_guard(self, cwd, fake_gh_json: "str | None" = None) -> int:
+        """Run the guard in cwd; return exit code.
+
+        When ``fake_gh_json`` is given, a fake ``gh`` is placed first on PATH
+        that *applies the --jq filter* (like real gh) to that JSON array — so
+        the merged-PR check path is exercised faithfully, including the
+        ``.[0].number // empty`` handling of an empty result.
+        """
+        import os
+        import stat as _stat
+
+        guard = "#!/bin/sh\n" + _generate_merged_branch_guard() + "\nexit 0\n"
+        script = cwd / ".guard.sh"
+        script.write_text(guard)
+        env = dict(os.environ)
+        if fake_gh_json is not None:
+            bindir = cwd / ".fakebin"
+            bindir.mkdir(exist_ok=True)
+            gh = bindir / "gh"
+            gh.write_text(
+                "#!/bin/sh\n"
+                'f=""; p=""\n'
+                'for a in "$@"; do [ "$p" = "--jq" ] && f="$a"; p="$a"; done\n'
+                f"printf '%s' '{fake_gh_json}' | jq -r \"$f\"\n"
+            )
+            gh.chmod(gh.stat().st_mode | _stat.S_IXUSR | _stat.S_IXGRP | _stat.S_IXOTH)
+            env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH', '')}"
+        return subprocess.run(["sh", str(script)], cwd=str(cwd), env=env).returncode
+
+    def _git(self, cwd, *args) -> None:
+
+        subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True)
+
+    def test_guard_blocks_branch_merged_into_default(self, tmp_path):
+        """A branch fully contained in a moved-on origin/main is blocked."""
+
+        remote = tmp_path / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        work = tmp_path / "work"
+        subprocess.run(["git", "clone", "-q", str(remote), str(work)], check=True)
+        self._git(work, "config", "user.email", "t@t.t")
+        self._git(work, "config", "user.name", "t")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(work, "branch", "-M", "main")
+        self._git(work, "push", "-q", "-u", "origin", "main")
+        self._git(work, "remote", "set-head", "origin", "main")
+        # feature branch, pushed (own tracking ref), then merged into main
+        self._git(work, "checkout", "-q", "-b", "feat/x")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "w")
+        self._git(work, "push", "-q", "-u", "origin", "feat/x")
+        self._git(work, "checkout", "-q", "main")
+        self._git(work, "merge", "-q", "--no-ff", "feat/x", "-m", "merge")
+        self._git(work, "push", "-q", "origin", "main")
+        self._git(work, "checkout", "-q", "feat/x")
+        assert self._run_guard(work) == 1  # blocked
+
+    def test_guard_allows_fresh_open_branch(self, tmp_path):
+        """An open branch not yet merged is allowed through."""
+
+        remote = tmp_path / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        work = tmp_path / "work"
+        subprocess.run(["git", "clone", "-q", str(remote), str(work)], check=True)
+        self._git(work, "config", "user.email", "t@t.t")
+        self._git(work, "config", "user.name", "t")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(work, "branch", "-M", "main")
+        self._git(work, "push", "-q", "-u", "origin", "main")
+        self._git(work, "remote", "set-head", "origin", "main")
+        self._git(work, "checkout", "-q", "-b", "feat/open")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "w")
+        self._git(work, "push", "-q", "-u", "origin", "feat/open")
+        assert self._run_guard(work) == 0  # allowed
+
+    def test_guard_allows_integration_branch(self, tmp_path):
+        """Committing directly on main is never blocked by the guard."""
+
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        self._git(tmp_path, "config", "user.email", "t@t.t")
+        self._git(tmp_path, "config", "user.name", "t")
+        self._git(tmp_path, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(tmp_path, "branch", "-M", "main")
+        assert self._run_guard(tmp_path) == 0
+
+    def _setup_pushed_branch(self, tmp_path, branch: str, base: str = "") -> "Path":
+        """Init a repo with origin/main and a `branch` (optionally base-tracking)."""
+
+        remote = tmp_path / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        work = tmp_path / "work"
+        subprocess.run(["git", "clone", "-q", str(remote), str(work)], check=True)
+        self._git(work, "config", "user.email", "t@t.t")
+        self._git(work, "config", "user.name", "t")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(work, "branch", "-M", "main")
+        self._git(work, "push", "-q", "-u", "origin", "main")
+        self._git(work, "remote", "set-head", "origin", "main")
+        if base:  # base-tracking branch (tracks origin/main, not its own remote)
+            self._git(work, "checkout", "-q", "-b", branch, base)
+        else:  # own-tracking branch
+            self._git(work, "checkout", "-q", "-b", branch)
+            self._git(work, "commit", "-q", "--allow-empty", "-m", "w")
+            self._git(work, "push", "-q", "-u", "origin", branch)
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "more")
+        return work
+
+    def test_guard_allows_open_branch_when_gh_reports_no_merged_pr(self, tmp_path):
+        """jq null fix: an empty merged-PR list must NOT block (was 'PR #null')."""
+        work = self._setup_pushed_branch(tmp_path, "feat/open")
+        # gh installed, returns [] for a still-open branch — must be allowed.
+        assert self._run_guard(work, fake_gh_json="[]") == 0
+
+    def test_guard_blocks_when_gh_reports_a_merged_pr(self, tmp_path):
+        """An own-tracking branch with a real merged PR is blocked."""
+        work = self._setup_pushed_branch(tmp_path, "feat/done")
+        assert self._run_guard(work, fake_gh_json='[{"number": 7}]') == 1
+
+    def test_guard_allows_base_tracking_branch_despite_stale_merged_pr(self, tmp_path):
+        """Reorder fix: base-tracking branch skips the gh check, so a stale
+        merged PR reusing the branch name doesn't false-block it."""
+        work = self._setup_pushed_branch(tmp_path, "feat/reused", base="origin/main")
+        assert self._run_guard(work, fake_gh_json='[{"number": 99}]') == 0
+
+    def test_guard_uses_jq_empty_fallback(self):
+        """The guard must use `// empty` so an absent number isn't the literal 'null'."""
+        assert ".[0].number // empty" in _generate_merged_branch_guard()
+
+    def test_guard_blocks_deleted_remote_head(self, tmp_path):
+        """Strategy #2: remote branch head deleted (merge cleanup) is blocked.
+
+        Delete the ref directly in the bare remote so the local remote-tracking
+        ref persists (no prune) — the realistic state after a GitHub merge+delete.
+        """
+        work = self._setup_pushed_branch(tmp_path, "feat/gone")
+        self._git(tmp_path / "remote.git", "branch", "-D", "feat/gone")
+        # fake gh returns [] so the merged-PR check doesn't interfere; the
+        # ls-remote check must see the head is gone and block.
+        assert self._run_guard(work, fake_gh_json="[]") == 1
+
+    def test_guard_checks_renamed_tracking_branch(self, tmp_path):
+        """A branch tracking a NON-default remote ref (renamed) is NOT base-
+        tracking — it has its own remote branch and must still be checked.
+
+        Before the fix, any upstream-name != local-name branch was skipped, so
+        a merged renamed branch would wrongly accept commits.
+        """
+        remote = tmp_path / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        work = tmp_path / "work"
+        subprocess.run(["git", "clone", "-q", str(remote), str(work)], check=True)
+        self._git(work, "config", "user.email", "t@t.t")
+        self._git(work, "config", "user.name", "t")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(work, "branch", "-M", "main")
+        self._git(work, "push", "-q", "-u", "origin", "main")
+        self._git(work, "remote", "set-head", "origin", "main")
+        # local 'feat/local' pushed to a DIFFERENT remote name 'feat/remote'
+        self._git(work, "checkout", "-q", "-b", "feat/local")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "w")
+        self._git(work, "push", "-q", "origin", "feat/local:feat/remote")
+        self._git(work, "branch", "--set-upstream-to=origin/feat/remote")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "more")
+        # remote_branch=feat/remote != default(main): checked, not skipped.
+        # gh reports a merged PR for the head -> blocked (would allow if skipped).
+        assert self._run_guard(work, fake_gh_json='[{"number": 12}]') == 1
+
+    def test_parse_hook_info_new_format(self):
+        """Parses new-format hook info (Command: sm verb)."""
+        content = """# MANAGED BY SLOP-MOP
+#!/bin/sh
+# Command: sm swab
+sm swab
+"""
+        result = _parse_hook_info(content)
+        assert result is not None
+        assert result["verb"] == "swab"
+        assert result["managed"] is True
+
+    def test_parse_hook_info_not_managed(self):
+        """Returns None for non-managed hook."""
+        content = "#!/bin/sh\necho hello"
+        result = _parse_hook_info(content)
+        assert result is None

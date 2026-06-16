@@ -14,10 +14,6 @@ from slopmop.cli.buff import cmd_buff
 from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
     SB_HOOK_MARKER,
-    _generate_hook_script,
-    _generate_pre_push_hook_script,
-    _get_git_hooks_dir,
-    _parse_hook_info,
     cmd_commit_hooks,
 )
 from slopmop.cli.init import prompt_user, prompt_yes_no
@@ -243,77 +239,6 @@ class TestCmdHelp:
         assert result == 0
         captured = capsys.readouterr()
         assert "Python Tests" in captured.out
-
-
-class TestGitHooksFunctions:
-    """Tests for git hooks helper functions."""
-
-    def test_get_git_hooks_dir(self, tmp_path):
-        """Returns hooks dir for git repo."""
-        (tmp_path / ".git").mkdir()
-        result = _get_git_hooks_dir(tmp_path)
-        assert result == tmp_path / ".git" / "hooks"
-
-    def test_get_git_hooks_dir_not_git(self, tmp_path):
-        """Returns None for non-git directory."""
-        result = _get_git_hooks_dir(tmp_path)
-        assert result is None
-
-    def test_generate_hook_script(self):
-        """Generates valid hook script with swab verb."""
-        script = _generate_hook_script("swab")
-        assert "sm swab" in script
-        assert "MANAGED BY SLOP-MOP" in script
-        # Should use PATH-based sm lookup
-        assert "command -v sm" in script
-        # Should write structured output for LLM consumption
-        assert "--swabbing-timeout 0" in script
-        assert "--json-file .slopmop/last_swab.json" in script
-        assert "--json --output-file" not in script
-        assert "Structured results:" in script
-        assert "mkdir -p .slopmop" in script
-
-    def test_generate_hook_script_direct_verb(self):
-        """Generates hook script when given a verb directly."""
-        script = _generate_hook_script("scour")
-        assert "sm scour" in script
-        assert "# Command: sm scour" in script
-        assert "--swabbing-timeout 0" in script
-        assert "--json-file .slopmop/last_scour.json" in script
-
-    def test_generate_pre_push_hook_script(self):
-        """Generates pre-push merged-branch guard hook script."""
-        script = _generate_pre_push_hook_script()
-        assert "# Command: merged-branch-guard" in script
-        assert "gh pr list" in script
-        assert "--state merged" in script
-        assert "You're missing some context." in script
-        assert "sync against main, checkout a new branch, and open a new PR." in script
-        # Guard must inspect the refs Git passes on stdin, not just HEAD, so a
-        # push that names a branch other than the current checkout is covered.
-        assert "while read -r local_ref local_sha remote_ref remote_sha" in script
-        assert "refs/heads/*) branch=${local_ref#refs/heads/}" in script
-        # Deletions (all-zero local sha) write nothing and must be skipped.
-        assert "0000000000000000000000000000000000000000" in script
-        assert "git symbolic-ref" not in script
-
-    def test_parse_hook_info_new_format(self):
-        """Parses new-format hook info (Command: sm verb)."""
-        content = """# MANAGED BY SLOP-MOP
-#!/bin/sh
-# Command: sm swab
-sm swab
-"""
-        result = _parse_hook_info(content)
-        assert result is not None
-        assert result["verb"] == "swab"
-        assert result["managed"] is True
-
-    def test_parse_hook_info_not_managed(self):
-        """Returns None for non-managed hook."""
-        content = "#!/bin/sh\necho hello"
-        result = _parse_hook_info(content)
-        assert result is None
 
 
 class TestCmdCommitHooks:
