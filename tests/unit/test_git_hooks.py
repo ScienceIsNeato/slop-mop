@@ -228,6 +228,47 @@ class TestGitHooksFunctions:
         """The guard must use `// empty` so an absent number isn't the literal 'null'."""
         assert ".[0].number // empty" in _generate_merged_branch_guard()
 
+    def test_guard_blocks_deleted_remote_head(self, tmp_path):
+        """Strategy #2: remote branch head deleted (merge cleanup) is blocked.
+
+        Delete the ref directly in the bare remote so the local remote-tracking
+        ref persists (no prune) — the realistic state after a GitHub merge+delete.
+        """
+        work = self._setup_pushed_branch(tmp_path, "feat/gone")
+        self._git(tmp_path / "remote.git", "branch", "-D", "feat/gone")
+        # fake gh returns [] so the merged-PR check doesn't interfere; the
+        # ls-remote check must see the head is gone and block.
+        assert self._run_guard(work, fake_gh_json="[]") == 1
+
+    def test_guard_checks_renamed_tracking_branch(self, tmp_path):
+        """A branch tracking a NON-default remote ref (renamed) is NOT base-
+        tracking — it has its own remote branch and must still be checked.
+
+        Before the fix, any upstream-name != local-name branch was skipped, so
+        a merged renamed branch would wrongly accept commits.
+        """
+        import subprocess
+
+        remote = tmp_path / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        work = tmp_path / "work"
+        subprocess.run(["git", "clone", "-q", str(remote), str(work)], check=True)
+        self._git(work, "config", "user.email", "t@t.t")
+        self._git(work, "config", "user.name", "t")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(work, "branch", "-M", "main")
+        self._git(work, "push", "-q", "-u", "origin", "main")
+        self._git(work, "remote", "set-head", "origin", "main")
+        # local 'feat/local' pushed to a DIFFERENT remote name 'feat/remote'
+        self._git(work, "checkout", "-q", "-b", "feat/local")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "w")
+        self._git(work, "push", "-q", "origin", "feat/local:feat/remote")
+        self._git(work, "branch", "--set-upstream-to=origin/feat/remote")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "more")
+        # remote_branch=feat/remote != default(main): checked, not skipped.
+        # gh reports a merged PR for the head -> blocked (would allow if skipped).
+        assert self._run_guard(work, fake_gh_json='[{"number": 12}]') == 1
+
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""
         content = """# MANAGED BY SLOP-MOP
