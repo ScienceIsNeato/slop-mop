@@ -15,6 +15,7 @@ from slopmop.cli.help import cmd_help
 from slopmop.cli.hooks import (
     SB_HOOK_MARKER,
     _generate_hook_script,
+    _generate_merged_branch_guard,
     _generate_pre_push_hook_script,
     _get_git_hooks_dir,
     _parse_hook_info,
@@ -296,6 +297,114 @@ class TestGitHooksFunctions:
         # Deletions (all-zero local sha) write nothing and must be skipped.
         assert "0000000000000000000000000000000000000000" in script
         assert "git symbolic-ref" not in script
+
+    def test_precommit_hook_embeds_merged_branch_guard(self):
+        """The pre-commit hook guards a merged/deleted branch before swab runs."""
+        script = _generate_hook_script("swab")
+        assert "merged/deleted-branch guard" in script
+        # Guard must run BEFORE the swab invocation, or work piles onto a dead
+        # branch before the gate even checks. Anchor on the real invocation
+        # (with --swabbing-timeout), not the "# Command:" comment.
+        assert script.index("\n_sm_merged_branch_guard\n") < script.index(
+            "sm swab --porcelain --swabbing-timeout"
+        )
+        # The three detection strategies, strongest first.
+        assert "gh pr list --head" in script and "--state merged" in script
+        assert "git ls-remote --heads" in script
+        assert "git merge-base --is-ancestor HEAD" in script
+        # Allow-lists: integration branches and never-pushed (no upstream).
+        assert "main|master|develop" in script
+        assert "@{upstream}" in script
+        # Escape hatch surfaced to the user.
+        assert "git commit --no-verify" in script
+
+    def test_precommit_hook_is_valid_posix_sh(self):
+        """The generated hook (guard + swab) must parse as POSIX sh."""
+        import subprocess
+
+        for verb in ("swab", "scour"):
+            script = _generate_hook_script(verb)
+            result = subprocess.run(
+                ["sh", "-n", "/dev/stdin"],
+                input=script,
+                text=True,
+                capture_output=True,
+            )
+            assert result.returncode == 0, f"{verb}: {result.stderr}"
+
+    def _run_guard(self, cwd) -> int:
+        """Write the guard to a temp script and run it in cwd; return exit code."""
+        import subprocess
+
+        guard = "#!/bin/sh\n" + _generate_merged_branch_guard() + "\nexit 0\n"
+        script = cwd / ".guard.sh"
+        script.write_text(guard)
+        return subprocess.run(["sh", str(script)], cwd=str(cwd)).returncode
+
+    def _git(self, cwd, *args) -> None:
+        import subprocess
+
+        subprocess.run(
+            ["git", *args], cwd=str(cwd), check=True, capture_output=True
+        )
+
+    def test_guard_blocks_branch_merged_into_default(self, tmp_path):
+        """A branch fully contained in a moved-on origin/main is blocked."""
+        import subprocess
+
+        remote = tmp_path / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        work = tmp_path / "work"
+        subprocess.run(
+            ["git", "clone", "-q", str(remote), str(work)], check=True
+        )
+        self._git(work, "config", "user.email", "t@t.t")
+        self._git(work, "config", "user.name", "t")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(work, "branch", "-M", "main")
+        self._git(work, "push", "-q", "-u", "origin", "main")
+        self._git(work, "remote", "set-head", "origin", "main")
+        # feature branch, pushed (own tracking ref), then merged into main
+        self._git(work, "checkout", "-q", "-b", "feat/x")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "w")
+        self._git(work, "push", "-q", "-u", "origin", "feat/x")
+        self._git(work, "checkout", "-q", "main")
+        self._git(work, "merge", "-q", "--no-ff", "feat/x", "-m", "merge")
+        self._git(work, "push", "-q", "origin", "main")
+        self._git(work, "checkout", "-q", "feat/x")
+        assert self._run_guard(work) == 1  # blocked
+
+    def test_guard_allows_fresh_open_branch(self, tmp_path):
+        """An open branch not yet merged is allowed through."""
+        import subprocess
+
+        remote = tmp_path / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        work = tmp_path / "work"
+        subprocess.run(
+            ["git", "clone", "-q", str(remote), str(work)], check=True
+        )
+        self._git(work, "config", "user.email", "t@t.t")
+        self._git(work, "config", "user.name", "t")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(work, "branch", "-M", "main")
+        self._git(work, "push", "-q", "-u", "origin", "main")
+        self._git(work, "remote", "set-head", "origin", "main")
+        self._git(work, "checkout", "-q", "-b", "feat/open")
+        self._git(work, "commit", "-q", "--allow-empty", "-m", "w")
+        self._git(work, "push", "-q", "-u", "origin", "feat/open")
+        assert self._run_guard(work) == 0  # allowed
+
+    def test_guard_allows_integration_branch(self, tmp_path):
+        """Committing directly on main is never blocked by the guard."""
+        import subprocess
+
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        self._git(tmp_path, "config", "user.email", "t@t.t")
+        self._git(tmp_path, "config", "user.name", "t")
+        self._git(tmp_path, "commit", "-q", "--allow-empty", "-m", "init")
+        self._git(tmp_path, "branch", "-M", "main")
+        assert self._run_guard(tmp_path) == 0
 
     def test_parse_hook_info_new_format(self):
         """Parses new-format hook info (Command: sm verb)."""

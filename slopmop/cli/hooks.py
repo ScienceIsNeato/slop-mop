@@ -28,6 +28,102 @@ def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
     return git_dir / "hooks"
 
 
+def _generate_merged_branch_guard() -> str:
+    """POSIX-sh guard: refuse a commit on an already-merged/deleted branch.
+
+    Embedded at the top of the pre-commit hook so the dead-branch case is
+    caught at *commit* time — before a pile of work accumulates on a ref
+    that's already closed out and would just have to be redone on a fresh
+    branch.  slopmop already ships a pre-push guard for the merged-PR case;
+    this catches it earlier and handles more states.
+
+    Detection, strongest first (each fail-open if the network or tooling is
+    unavailable, so offline commits are never blocked):
+
+      1. A MERGED PR for this branch via ``gh`` — catches squash/rebase
+         merges that leave no ancestor relationship.  Authoritative.
+      2. The remote head is gone (``git ls-remote``) — the usual post-merge
+         state once the branch has been deleted.
+      3. HEAD is already fully contained in a moved-on default branch
+         (ref math) — the non-squash merge case.
+
+    Allowed without question: integration branches (main/master/develop),
+    never-pushed branches (no upstream), base-tracking branches
+    (``git checkout -b X origin/main``), and mid rebase/merge/cherry-pick.
+    Override one commit with ``git commit --no-verify``.
+
+    Adapted from the welcome-to-willville ``check-branch-not-merged`` guard.
+    Because the guard runs *before* the swab step, "allowed" cases must
+    fall through (``return 0``) rather than ``exit`` — only a real block
+    exits non-zero.  Returns a plain shell string (no Python interpolation)
+    so it embeds verbatim via a single f-string field.
+    """
+    return r'''# --- merged/deleted-branch guard (slop-mop) ---
+export GIT_TERMINAL_PROMPT=0  # never hang on an auth prompt inside a hook
+
+_sm_block() {
+    echo "" >&2
+    echo "  ⛔ Branch '$_sm_branch' $1." >&2
+    echo "     You're committing onto a branch that's already closed out. Start fresh:" >&2
+    echo "" >&2
+    echo "         git fetch $_sm_remote --prune" >&2
+    echo "         git checkout -b <new-branch> $_sm_default_ref" >&2
+    echo "" >&2
+    echo "     (Intentional? Override this one commit with: git commit --no-verify)" >&2
+    echo "" >&2
+    exit 1
+}
+
+_sm_merged_branch_guard() {
+    _sm_git_dir=$(git rev-parse --git-dir 2>/dev/null || echo .git)
+    if [ -d "$_sm_git_dir/rebase-merge" ] || [ -d "$_sm_git_dir/rebase-apply" ] || [ -f "$_sm_git_dir/MERGE_HEAD" ] || [ -f "$_sm_git_dir/CHERRY_PICK_HEAD" ]; then
+        return 0  # mid rebase/merge/cherry-pick — HEAD is intentionally unusual
+    fi
+    _sm_branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
+    [ -z "$_sm_branch" ] && return 0  # detached HEAD
+    case "$_sm_branch" in
+        main|master|develop) return 0 ;;  # integration branches are fine
+    esac
+    _sm_upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
+    [ -z "$_sm_upstream" ] && return 0  # never pushed — no upstream to check
+    _sm_remote=${_sm_upstream%%/*}
+    _sm_remote_branch=${_sm_upstream#*/}
+    _sm_default_branch=$(git symbolic-ref --quiet --short "refs/remotes/$_sm_remote/HEAD" 2>/dev/null | sed "s#^$_sm_remote/##")
+    [ -z "$_sm_default_branch" ] && _sm_default_branch=main
+    _sm_default_ref="$_sm_remote/$_sm_default_branch"
+
+    # 1) Authoritative: a MERGED PR for this branch (squash/rebase safe).
+    if command -v gh >/dev/null 2>&1; then
+        _sm_merged_pr=$(gh pr list --head "$_sm_branch" --state merged --json number --jq '.[0].number' 2>/dev/null || true)
+        [ -n "$_sm_merged_pr" ] && _sm_block "was merged via PR #$_sm_merged_pr"
+    fi
+
+    # Ref-based checks only for a branch tracking its OWN remote branch; a
+    # base-tracking branch would false-positive once the default moves ahead.
+    [ "$_sm_remote_branch" != "$_sm_branch" ] && return 0
+
+    # 2) Remote head deleted (the usual post-merge state).
+    if _sm_remote_heads=$(git ls-remote --heads "$_sm_remote" "$_sm_branch" 2>/dev/null); then
+        [ -z "$_sm_remote_heads" ] && _sm_block "no longer exists on '$_sm_remote' (deleted, typically after a merge)"
+    fi
+
+    # 3) HEAD already fully merged into the default branch (non-squash). Require
+    #    the default to be strictly AHEAD so a fresh branch at the default tip
+    #    isn't flagged.
+    git fetch --quiet "$_sm_remote" "$_sm_default_branch" 2>/dev/null || true
+    if git rev-parse --verify --quiet "$_sm_default_ref" >/dev/null; then
+        _sm_ahead=$(git rev-list --count "HEAD..$_sm_default_ref" 2>/dev/null || echo 0)
+        if [ "$_sm_ahead" -gt 0 ] && git merge-base --is-ancestor HEAD "$_sm_default_ref" 2>/dev/null; then
+            _sm_block "is already fully merged into $_sm_default_ref"
+        fi
+    fi
+    return 0
+}
+
+_sm_merged_branch_guard
+# --- end merged/deleted-branch guard ---'''
+
+
 def _generate_hook_script(verb: str) -> str:
     """Generate the pre-commit hook script content.
 
@@ -48,13 +144,17 @@ def _generate_hook_script(verb: str) -> str:
     """
 
     json_file = f".slopmop/last_{verb}.json"
+    guard = _generate_merged_branch_guard()
     return f"""#!/bin/sh
 {SB_HOOK_MARKER}
 #
 # Pre-commit hook managed by slop-mop
 # Command: sm {verb} --porcelain
+# Guard: refuse commits on an already-merged or deleted branch
 # To remove: sm commit-hooks uninstall
 #
+
+{guard}
 
 if ! command -v sm >/dev/null 2>&1; then
     echo "❌ sm not found on PATH"
@@ -286,11 +386,12 @@ def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
     print(f"📄 Hook: {hook_file}")
     print(f"📄 Hook: {pre_push_file}")
     print(f"🎯 Command: sm {verb}")
-    print("🎯 Guard: block push when branch already has a merged PR")
+    print("🎯 Guard: block commits/pushes on an already-merged or deleted branch")
     print()
-    print(f"The hook will run 'sm {verb}' before each commit.")
-    print("The pre-push guard will block pushes on branches that already merged.")
-    print("Commits will be blocked if quality gates fail.")
+    print(f"The pre-commit hook runs 'sm {verb}' before each commit and first")
+    print("refuses the commit if the branch is already merged or deleted (so")
+    print("you don't pile work onto a dead branch). The pre-push guard is the")
+    print("push-time backstop. Commits are also blocked if quality gates fail.")
     print()
     print("To remove: sm commit-hooks uninstall")
     print()

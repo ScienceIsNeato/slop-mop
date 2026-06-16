@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Pulling the version mention out of the README and retiring the bit of release tooling that enforced it",
-    "direction": "Land this, then cut a clean 2.5.0 release now that hull ratings are in",
-    "last_update": "2026-06-13T01:00:00Z"
+    "status": "Ported a dead-branch commit guard into slopmop's hooks — refuses commits on already-merged or deleted branches",
+    "direction": "Land the guard so every slopmop user stops piling work onto closed-out branches",
+    "last_update": "2026-06-14T00:00:00Z"
   }
 }
