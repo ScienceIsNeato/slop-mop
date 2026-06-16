@@ -94,6 +94,16 @@ class TestPasses:
         )
         assert _cm_run(tmp_path).status == CheckStatus.PASSED
 
+    def test_dot_dirs_are_pruned(self, tmp_path):
+        # HTML under dot-dirs (.venv, .git, …) is out of scope like every gate
+        dotdir = tmp_path / ".venv"
+        dotdir.mkdir()
+        (dotdir / "about.html").write_text(
+            _page(canonical=CANONICAL, og_url="https://example.com/team")
+        )
+        assert _cm_check().is_applicable(str(tmp_path)) is False
+        assert _cm_run(tmp_path).status == CheckStatus.PASSED
+
     def test_canonical_matches_sitemap(self, tmp_path):
         (tmp_path / "about.html").write_text(_page(canonical=CANONICAL))
         (tmp_path / "sitemap.xml").write_text(_sitemap(CANONICAL))
@@ -148,6 +158,31 @@ class TestFailures:
                 og_url="http://example.com:443/about",
             )
         )
+        result = _cm_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert any(f.rule_id == "canonical-vs-og-url" for f in result.findings)
+
+    def test_http_https_scheme_drift_between_canonical_and_sitemap(self, tmp_path):
+        # canonical is https, sitemap loc is http for the same path — a real
+        # duplicate-content conflict that must not slip through scheme-keyed keys
+        (tmp_path / "about.html").write_text(
+            _page(canonical="https://example.com/about")
+        )
+        (tmp_path / "sitemap.xml").write_text(_sitemap("http://example.com/about"))
+        result = _cm_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert any(f.rule_id == "inconsistent-url-spelling" for f in result.findings)
+
+    def test_rel_canonical_in_token_list_is_recognized(self, tmp_path):
+        # rel allows space-separated tokens; "alternate canonical" still carries
+        # a canonical that must be read and compared against og:url
+        page = (
+            "<!doctype html><html><head>"
+            '<link rel="alternate canonical" href="https://example.com/about">'
+            '<meta property="og:url" content="https://example.com/team">'
+            "</head><body><p>x</p></body></html>"
+        )
+        (tmp_path / "about.html").write_text(page)
         result = _cm_run(tmp_path)
         assert result.status == CheckStatus.FAILED
         assert any(f.rule_id == "canonical-vs-og-url" for f in result.findings)

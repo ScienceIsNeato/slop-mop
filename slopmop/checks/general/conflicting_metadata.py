@@ -50,6 +50,7 @@ from slopmop.checks.general._web_meta import (
     is_sitemap_index,
     iter_html_files,
     load_sitemap_locs,
+    loose_key,
     normalize_url,
     parse_html,
     resolve_local_path,
@@ -138,10 +139,11 @@ class ConflictingMetadataCheck(BaseCheck):
         pages = iter_html_files(root, self._excluded())
         metas = [(p.relative_to(root).as_posix(), parse_html(p)) for p in pages]
 
-        # raw spelling -> source label, keyed by normalized URL, so the same
-        # address written two ways across page + sitemap surfaces as one group.
+        # raw spelling -> source label, keyed by a SCHEME-INSENSITIVE URL key,
+        # so the same address written two ways across page + sitemap — including
+        # http vs https — collapses into one group worth flagging.
         spellings: Dict[str, Dict[str, str]] = defaultdict(dict)
-        canonical_norms: Dict[str, str] = {}  # normalized canonical -> rel path
+        canonical_norms: Dict[str, str] = {}  # loose key -> rel path
 
         findings = self._scan_pages(metas, spellings, canonical_norms)
         sitemap_norms = self._collect_sitemap(root, spellings)
@@ -160,9 +162,11 @@ class ConflictingMetadataCheck(BaseCheck):
         findings: List[Finding] = []
         for rel, meta in metas:
             if meta.canonical:
-                norm = normalize_url(meta.canonical)
-                spellings[norm][meta.canonical.strip()] = f"{rel} canonical"
-                canonical_norms[norm] = rel
+                key = loose_key(meta.canonical)
+                spellings[key][meta.canonical.strip()] = f"{rel} canonical"
+                canonical_norms[key] = rel
+            # Same-page equality keeps the scheme: a canonical/og:url that
+            # differ only by http vs https IS the conflict to report here.
             if (
                 meta.canonical
                 and meta.og_url
@@ -217,9 +221,9 @@ class ConflictingMetadataCheck(BaseCheck):
             return
         sm_rel = sm.relative_to(root).as_posix()
         for loc in load_sitemap_locs(sm):
-            norm = normalize_url(loc)
-            sitemap_norms[norm] = sm_rel
-            spellings[norm][loc.strip()] = f"{sm_rel} <loc>"
+            key = loose_key(loc)
+            sitemap_norms[key] = sm_rel
+            spellings[key][loc.strip()] = f"{sm_rel} <loc>"
 
     @staticmethod
     def _scan_noindex(
@@ -230,13 +234,13 @@ class ConflictingMetadataCheck(BaseCheck):
         for rel, meta in metas:
             if not (meta.is_noindex and meta.canonical):
                 continue
-            norm = normalize_url(meta.canonical)
-            if norm in sitemap_norms:
+            key = loose_key(meta.canonical)
+            if key in sitemap_norms:
                 findings.append(
                     Finding(
                         message=(
                             f"page is noindex but its URL is listed in "
-                            f"{sitemap_norms[norm]}: {meta.canonical.strip()}"
+                            f"{sitemap_norms[key]}: {meta.canonical.strip()}"
                         ),
                         level=FindingLevel.ERROR,
                         file=rel,

@@ -15,6 +15,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from slopmop.checks.base import should_prune_dir
+
 # html.parser hands attributes back as (name, value) pairs; value is None for
 # valueless attributes (e.g. ``<script defer>``).
 _Attrs = List[Tuple[str, Optional[str]]]
@@ -49,7 +51,8 @@ class _MetaParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: _Attrs) -> None:
         tag = tag.lower()
         if tag == "link":
-            if (self._attr(attrs, "rel") or "").lower() == "canonical":
+            # rel is a space-separated token list (e.g. "alternate canonical")
+            if "canonical" in (self._attr(attrs, "rel") or "").lower().split():
                 self.meta.canonical = self._attr(attrs, "href")
         elif tag == "meta":
             prop = (self._attr(attrs, "property") or "").lower()
@@ -97,6 +100,15 @@ def normalize_url(url: str) -> str:
     return f"{scheme}://{host}{path}"
 
 
+def loose_key(url: str) -> str:
+    """Scheme-insensitive grouping key: the same host+path regardless of
+    http vs https. Used to detect one logical resource spelled differently —
+    including http/https drift between a canonical and a sitemap entry.
+    ``normalize_url`` keeps the scheme for same-page equality checks, where a
+    canonical/og:url scheme mismatch is itself the conflict to report."""
+    return re.sub(r"^https?://", "", normalize_url(url), flags=re.IGNORECASE)
+
+
 _LOC_RE = re.compile(r"<loc>\s*(.*?)\s*</loc>", re.IGNORECASE | re.DOTALL)
 
 
@@ -134,7 +146,8 @@ def resolve_local_path(root: Path, url: str) -> Optional[Path]:
     committed file. Returns ``None`` when nothing local matches.
     """
     m = re.match(r"^https?://[^/]+(/.*)?$", url.strip(), re.IGNORECASE)
-    rel = (m.group(1) if m and m.group(1) else url.strip()).lstrip("/")
+    path_part = m.group(1) if m and m.group(1) else url.strip()
+    rel = path_part.split("?", 1)[0].split("#", 1)[0].lstrip("/")
     if not rel:
         return None
     candidate = root / rel
@@ -154,7 +167,10 @@ def iter_html_files(root: Path, excluded: set[str]) -> List[Path]:
             rel = path.relative_to(root)
         except ValueError:
             continue
-        if set(rel.parts[:-1]) & excluded:
+        parents = rel.parts[:-1]
+        # Prune both configured excludes and the standard noise/dot-dirs
+        # (.git, .venv, node_modules, …) every other gate skips.
+        if set(parents) & excluded or any(should_prune_dir(p) for p in parents):
             continue
         out.append(path)
     return out
