@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Landed two web-metadata gates — one catches pages that disagree about their own URL, the other catches structured data claiming things the page never says",
-    "direction": "Open the PR and run them past CI",
+    "status": "Trimmed the web-metadata work down to one gate — the URL-consistency check — and dropped the structured-data one as too niche for everyone",
+    "direction": "Land the single gate and close out the dropped idea",
     "last_update": "2026-06-16T00:00:00Z"
   }
 }

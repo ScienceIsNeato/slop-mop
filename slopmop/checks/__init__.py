@@ -87,7 +87,6 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
         InteractiveAssumptionsCheck,
     )
     from slopmop.checks.general.jinja2_templates import TemplateValidationCheck
-    from slopmop.checks.general.unfounded_metadata import UnfoundedMetadataCheck
     from slopmop.checks.pr.comments import PRCommentsCheck
     from slopmop.checks.quality import (
         AmbiguityMinesCheck,
@@ -114,7 +113,6 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(DebuggerArtifactsCheck)
     registry.register(GateDodgingCheck)
     registry.register(ConflictingMetadataCheck)
-    registry.register(UnfoundedMetadataCheck)
     registry.register(InteractiveAssumptionsCheck)
     registry.register(RepeatedCodeCheck)
     registry.register(StringDuplicationCheck)
