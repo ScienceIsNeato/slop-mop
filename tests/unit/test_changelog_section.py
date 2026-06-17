@@ -9,7 +9,8 @@ _SPEC = importlib.util.spec_from_file_location(
     "changelog_section",
     Path(__file__).resolve().parents[2] / "scripts" / "changelog_section.py",
 )
-assert _SPEC and _SPEC.loader
+assert _SPEC is not None
+assert _SPEC.loader is not None
 changelog_section = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(changelog_section)
 
@@ -34,7 +35,8 @@ class TestExtractSection:
     def test_extracts_named_version(self):
         body = extract_section(SAMPLE, "2.6.0")
         assert body is not None
-        assert "thing one" in body and "thing two" in body
+        assert "thing one" in body
+        assert "thing two" in body
         assert "older stuff" not in body  # stops at the next ## heading
 
     def test_extracts_bracketed_version(self):
