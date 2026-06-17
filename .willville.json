@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Built a gate that catches broken doc links — markdown links pointing at files that aren't there after a rename or move",
-    "direction": "Kept it dead simple so it never cries wolf; opening the PR next",
+    "status": "Making release notes mandatory — releases now fail unless the changelog has a section for the version being cut, and that section becomes the release writeup",
+    "direction": "Land this, then cut 2.6.0 with the two new gates",
     "last_update": "2026-06-17T00:00:00Z"
   }
 }
