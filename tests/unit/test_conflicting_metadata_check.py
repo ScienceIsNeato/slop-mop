@@ -1,6 +1,7 @@
 """Tests for the myopia:conflicting-metadata gate."""
 
 from slopmop.checks.base import GateCategory, GateLevel, ToolContext
+from slopmop.checks.general._web_meta import resolve_local_path
 from slopmop.checks.general.conflicting_metadata import ConflictingMetadataCheck
 from slopmop.core.result import CheckStatus
 
@@ -208,3 +209,37 @@ class TestFailures:
         result = _cm_run(tmp_path, {"exclude_dirs": ["thirdparty"]})
         # no applicable pages remain after exclusion -> nothing to flag
         assert result.status == CheckStatus.PASSED
+
+    def test_nested_exclude_dirs_suppresses(self, tmp_path):
+        # a nested filter like "pages/legacy" must match, not just single
+        # path segments (and neither segment is a default-excluded dir)
+        nested = tmp_path / "pages" / "legacy"
+        nested.mkdir(parents=True)
+        (nested / "about.html").write_text(
+            _page(canonical=CANONICAL, og_url="https://example.com/team")
+        )
+        bad = _cm_run(tmp_path)
+        assert bad.status == CheckStatus.FAILED  # flagged without the exclude
+        ok = _cm_run(tmp_path, {"exclude_dirs": ["pages/legacy"]})
+        assert ok.status == CheckStatus.PASSED
+
+
+# ---------------------------------------------------------------------------
+# Path-traversal safety
+# ---------------------------------------------------------------------------
+
+
+class TestPathSafety:
+    def test_resolve_local_path_rejects_root_escape(self, tmp_path):
+        # a hostile child-sitemap <loc> with ../ must never resolve to a file
+        # outside the project root
+        outside = tmp_path / "outside.xml"
+        outside.write_text("<urlset/>")
+        root = tmp_path / "site"
+        root.mkdir()
+        assert resolve_local_path(root, "https://example.com/../outside.xml") is None
+
+    def test_resolve_local_path_resolves_in_root(self, tmp_path):
+        (tmp_path / "pages.xml").write_text("<urlset/>")
+        got = resolve_local_path(tmp_path, "https://example.com/pages.xml")
+        assert got is not None and got.name == "pages.xml"

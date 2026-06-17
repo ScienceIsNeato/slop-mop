@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from slopmop.checks.base import should_prune_dir
+from slopmop.utils import is_path_excluded
 
 # html.parser hands attributes back as (name, value) pairs; value is None for
 # valueless attributes (e.g. ``<script defer>``).
@@ -139,26 +140,35 @@ def is_sitemap_index(sitemap_path: Path) -> bool:
 
 
 def resolve_local_path(root: Path, url: str) -> Optional[Path]:
-    """Best-effort map a sitemap URL to a local file under ``root``.
+    """Best-effort map a sitemap URL to a local file *inside* ``root``.
 
     Tries the URL's path under root, then a basename match, so a child
     sitemap reference like ``https://site/sitemaps/pages.xml`` resolves to the
-    committed file. Returns ``None`` when nothing local matches.
+    committed file. Any candidate that escapes the project root (``..``
+    segments in a hostile ``<loc>``) is rejected — the gate never reads files
+    outside the repo. Returns ``None`` when nothing local matches.
     """
     m = re.match(r"^https?://[^/]+(/.*)?$", url.strip(), re.IGNORECASE)
     path_part = m.group(1) if m and m.group(1) else url.strip()
     rel = path_part.split("?", 1)[0].split("#", 1)[0].lstrip("/")
     if not rel:
         return None
-    candidate = root / rel
-    if candidate.is_file():
-        return candidate
-    base = root / Path(rel).name
-    return base if base.is_file() else None
+    try:
+        root_resolved = root.resolve()
+    except OSError:
+        return None
+    for candidate in (root / rel, root / Path(rel).name):
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved.is_file() and resolved.is_relative_to(root_resolved):
+            return resolved
+    return None
 
 
 def iter_html_files(root: Path, excluded: set[str]) -> List[Path]:
-    """All .html/.htm files under root, excluded dirs pruned."""
+    """All .html/.htm files under root, excluded and noise dirs pruned."""
     out: List[Path] = []
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in (".html", ".htm"):
@@ -167,10 +177,12 @@ def iter_html_files(root: Path, excluded: set[str]) -> List[Path]:
             rel = path.relative_to(root)
         except ValueError:
             continue
-        parents = rel.parts[:-1]
-        # Prune both configured excludes and the standard noise/dot-dirs
-        # (.git, .venv, node_modules, …) every other gate skips.
-        if set(parents) & excluded or any(should_prune_dir(p) for p in parents):
+        # is_path_excluded handles nested ("vendor/generated") and glob
+        # filters, not just single segments; should_prune_dir drops the
+        # standard noise/dot-dirs (.git, .venv, node_modules, …).
+        if is_path_excluded(rel, excluded) or any(
+            should_prune_dir(p) for p in rel.parts[:-1]
+        ):
             continue
         out.append(path)
     return out
