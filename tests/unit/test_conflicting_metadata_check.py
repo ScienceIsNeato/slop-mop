@@ -151,6 +151,15 @@ class TestFailures:
         assert result.status == CheckStatus.FAILED
         assert any(f.rule_id == "noindex-in-sitemap" for f in result.findings)
 
+    def test_noindexable_robots_is_not_noindex(self, tmp_path):
+        # "noindexable" is not the "noindex" directive — substring must not match
+        (tmp_path / "page.html").write_text(
+            _page(canonical=CANONICAL, robots="noindexable, follow")
+        )
+        (tmp_path / "sitemap.xml").write_text(_sitemap(CANONICAL))
+        result = _cm_run(tmp_path)
+        assert result.status == CheckStatus.PASSED
+
     def test_non_default_port_not_stripped(self, tmp_path):
         # http://host:443 is a DIFFERENT host than http://host — :443 is only
         # the default port for https, so the conflict must survive normalization
@@ -244,3 +253,10 @@ class TestPathSafety:
         (tmp_path / "pages.xml").write_text("<urlset/>")
         got = resolve_local_path(tmp_path, "https://example.com/pages.xml")
         assert got is not None and got.name == "pages.xml"
+
+    def test_resolve_local_path_no_basename_fallback(self, tmp_path):
+        # a child URL path that does not exist must NOT silently bind to an
+        # unrelated file that merely shares the basename
+        (tmp_path / "pages.xml").write_text("<urlset/>")
+        got = resolve_local_path(tmp_path, "https://example.com/sitemaps/pages.xml")
+        assert got is None

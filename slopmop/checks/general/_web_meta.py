@@ -34,7 +34,10 @@ class HtmlMeta:
 
     @property
     def is_noindex(self) -> bool:
-        return bool(self.robots) and "noindex" in (self.robots or "").lower()
+        # robots is a comma/space-separated token list — match the exact
+        # "noindex" directive, not substrings like "noindexable".
+        tokens = re.split(r"[,\s]+", (self.robots or "").lower())
+        return "noindex" in tokens
 
 
 class _MetaParser(HTMLParser):
@@ -140,13 +143,14 @@ def is_sitemap_index(sitemap_path: Path) -> bool:
 
 
 def resolve_local_path(root: Path, url: str) -> Optional[Path]:
-    """Best-effort map a sitemap URL to a local file *inside* ``root``.
+    """Map a sitemap URL to the local file at its exact path under ``root``.
 
-    Tries the URL's path under root, then a basename match, so a child
-    sitemap reference like ``https://site/sitemaps/pages.xml`` resolves to the
-    committed file. Any candidate that escapes the project root (``..``
-    segments in a hostile ``<loc>``) is rejected — the gate never reads files
-    outside the repo. Returns ``None`` when nothing local matches.
+    A child-sitemap ``<loc>`` like ``https://site/sitemaps/pages.xml`` resolves
+    to ``root/sitemaps/pages.xml``. We deliberately do NOT fall back to a
+    basename match: an unrelated committed file sharing the basename would be
+    ingested as the wrong sitemap. Any candidate that escapes the project root
+    (``..`` in a hostile ``<loc>``) is rejected. Returns ``None`` when no file
+    sits at that exact path.
     """
     m = re.match(r"^https?://[^/]+(/.*)?$", url.strip(), re.IGNORECASE)
     path_part = m.group(1) if m and m.group(1) else url.strip()
@@ -155,15 +159,11 @@ def resolve_local_path(root: Path, url: str) -> Optional[Path]:
         return None
     try:
         root_resolved = root.resolve()
+        resolved = (root / rel).resolve()
     except OSError:
         return None
-    for candidate in (root / rel, root / Path(rel).name):
-        try:
-            resolved = candidate.resolve()
-        except OSError:
-            continue
-        if resolved.is_file() and resolved.is_relative_to(root_resolved):
-            return resolved
+    if resolved.is_file() and resolved.is_relative_to(root_resolved):
+        return resolved
     return None
 
 
