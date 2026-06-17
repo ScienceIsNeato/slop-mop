@@ -275,6 +275,11 @@ SCOPE_EXCLUDED_DIRS = {
 }
 
 
+# Shared ConfigField description for the near-universal exclude_dirs option,
+# so gates don't each redeclare the same literal (string-duplication gate).
+EXCLUDE_DIRS_DESCRIPTION = "Additional directories to exclude from the scan"
+
+
 def should_prune_dir(name: str) -> bool:
     """Return True if a directory should be excluded from file scanning.
 

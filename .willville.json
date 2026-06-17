@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Ported a dead-branch commit guard into slopmop's hooks — refuses commits on already-merged or deleted branches",
-    "direction": "Land the guard so every slopmop user stops piling work onto closed-out branches",
-    "last_update": "2026-06-14T00:00:00Z"
+    "status": "Made the URL-consistency gate a ship-time check instead of every-commit, and locked in that onboarding turns it on only for sites with real pages",
+    "direction": "Push and let CI confirm before the merge call",
+    "last_update": "2026-06-16T00:00:00Z"
   }
 }

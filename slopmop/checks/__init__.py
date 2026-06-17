@@ -82,6 +82,7 @@ def _register_dart_checks(registry: CheckRegistry) -> None:
 
 def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     """Register security, quality, and general checks."""
+    from slopmop.checks.general.conflicting_metadata import ConflictingMetadataCheck
     from slopmop.checks.general.interactive_assumptions import (
         InteractiveAssumptionsCheck,
     )
@@ -111,6 +112,7 @@ def _register_crosscutting_checks(registry: CheckRegistry) -> None:
     registry.register(DeadCodeCheck)
     registry.register(DebuggerArtifactsCheck)
     registry.register(GateDodgingCheck)
+    registry.register(ConflictingMetadataCheck)
     registry.register(InteractiveAssumptionsCheck)
     registry.register(RepeatedCodeCheck)
     registry.register(StringDuplicationCheck)
