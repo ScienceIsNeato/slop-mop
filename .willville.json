@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Trimmed the web-metadata work down to one gate — the URL-consistency check — and dropped the structured-data one as too niche for everyone",
-    "direction": "Land the single gate and close out the dropped idea",
+    "status": "Made the URL-consistency gate a ship-time check instead of every-commit, and locked in that onboarding turns it on only for sites with real pages",
+    "direction": "Push and let CI confirm before the merge call",
     "last_update": "2026-06-16T00:00:00Z"
   }
 }

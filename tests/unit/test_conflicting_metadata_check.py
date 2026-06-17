@@ -62,7 +62,8 @@ class TestMetadata:
         assert _cm_check().category == GateCategory.MYOPIA
 
     def test_gate_level(self):
-        assert ConflictingMetadataCheck.level == GateLevel.SWAB
+        # SCOUR: metadata drift is a ship-time concern, not a per-commit block
+        assert ConflictingMetadataCheck.level == GateLevel.SCOUR
 
     def test_tool_context(self):
         assert ConflictingMetadataCheck.tool_context == ToolContext.PURE

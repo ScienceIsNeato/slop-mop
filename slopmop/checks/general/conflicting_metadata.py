@@ -74,18 +74,19 @@ class ConflictingMetadataCheck(BaseCheck):
 
     PURE check — stdlib HTML/XML parsing, no external tools or network.
 
-    Level: swab (cheap, deterministic — safe on every commit).
+    Level: scour (PR-readiness / CI sweep, not every commit) — metadata drift
+    is a ship-time concern, not something to block a work-in-progress commit.
 
     Configuration:
       exclude_dirs: [] — additional directories to skip.
 
     Re-check:
-      sm swab -g myopia:conflicting-metadata --verbose
+      sm scour -g myopia:conflicting-metadata --verbose
     """
 
     tool_context: ClassVar[ToolContext] = ToolContext.PURE
     role = CheckRole.DIAGNOSTIC
-    level = GateLevel.SWAB
+    level = GateLevel.SCOUR
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 
     @property
