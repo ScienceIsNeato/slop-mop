@@ -46,6 +46,17 @@ class TestApplicability:
         (tmp_path / "app.py").write_text("print('hi')\n")
         assert _dr_check().is_applicable(str(tmp_path)) is False
 
+    def test_noise_and_excluded_dirs_are_pruned(self, tmp_path):
+        # markdown inside node_modules / .git / a configured exclude must not
+        # be scanned (and must not make the gate applicable on its own)
+        for d in ("node_modules", ".git", "thirdparty"):
+            sub = tmp_path / d
+            sub.mkdir()
+            (sub / "BROKEN.md").write_text("[x](./does-not-exist.md)\n")
+        check = _dr_check({"exclude_dirs": ["thirdparty"]})
+        assert check.is_applicable(str(tmp_path)) is False
+        assert check.run(str(tmp_path)).status == CheckStatus.PASSED
+
 
 # ---------------------------------------------------------------------------
 # Fail cases — genuinely broken relative references
@@ -79,6 +90,16 @@ class TestFailures:
         # guide.md is absent → broken regardless of the anchor
         assert _dr_run(tmp_path).status == CheckStatus.FAILED
 
+    def test_repo_escaping_target_is_flagged(self, tmp_path):
+        # a relative link climbing above the repo root can never resolve in a
+        # published/CI context (the issue's "outside the published tree" goal)
+        root = tmp_path / "repo"
+        root.mkdir()
+        (root / "README.md").write_text("[x](../../secrets.md)\n")
+        result = DanglingReferencesCheck({}).run(str(root))
+        assert result.status == CheckStatus.FAILED
+        assert any(f.rule_id == "dangling-reference" for f in result.findings)
+
 
 # ---------------------------------------------------------------------------
 # Pass cases — references that DO resolve
@@ -101,6 +122,15 @@ class TestResolves:
     def test_percent_encoded_space(self, tmp_path):
         (tmp_path / "my file.md").write_text("x\n")
         (tmp_path / "README.md").write_text("[f](./my%20file.md)\n")
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_existing_link_with_parentheses_in_path(self, tmp_path):
+        # parentheses are legal in Markdown destinations when balanced — the
+        # path must be captured whole, not truncated at the first ")"
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "api(v2).md").write_text("# API\n")
+        (tmp_path / "README.md").write_text("[api](./docs/api(v2).md)\n")
         assert _dr_run(tmp_path).status == CheckStatus.PASSED
 
 
@@ -140,9 +170,10 @@ class TestNoFalsePositives:
         (tmp_path / "README.md").write_text("[cdn](//cdn.example.com/x.png)\n")
         assert _dr_run(tmp_path).status == CheckStatus.PASSED
 
-    def test_parent_escape_not_flagged(self, tmp_path):
-        # a target that climbs out of the repo is out of scope, never flagged
-        root = tmp_path / "repo"
-        root.mkdir()
-        (root / "README.md").write_text("[x](../../etc/passwd)\n")
-        assert DanglingReferencesCheck({}).run(str(root)).status == CheckStatus.PASSED
+    def test_repo_internal_parent_link_resolves(self, tmp_path):
+        # ../ that stays inside the repo resolves normally (monorepo sibling)
+        (tmp_path / "guide.md").write_text("# Guide\n")
+        sub = tmp_path / "docs"
+        sub.mkdir()
+        (sub / "page.md").write_text("[home](../guide.md)\n")
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED

@@ -31,6 +31,7 @@ left out.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from pathlib import Path, PurePosixPath
@@ -79,8 +80,9 @@ _SOURCE_EXTS = frozenset(
 _TEMPLATE_MARKERS = ("{{", "}}", "{%", "%}", "<%", "%>", "${")
 
 # Inline link/image target: [text](TARGET ...) — TARGET is <bracketed> or a
-# whitespace-delimited token (optionally followed by a "title").
-_INLINE_RE = re.compile(r"!?\[[^\]]*\]\(\s*(<[^>]+>|[^)\s]+)")
+# whitespace-delimited token whose parentheses are balanced, so a path like
+# ./docs/api(v2).md is captured whole rather than truncated at the first ")".
+_INLINE_RE = re.compile(r"!?\[[^\]]*\]\(\s*(<[^>]+>|(?:[^()\s]+|\([^)]*\))+)")
 # Reference definition at line start: [id]: TARGET "optional title"
 _REFDEF_RE = re.compile(r"^\s*\[[^\]]+\]:\s*(<[^>]+>|\S+)")
 # A leading URL scheme (mailto:, http:, tel:, …).
@@ -203,21 +205,32 @@ class DanglingReferencesCheck(BaseCheck):
 
 
 def _iter_markdown_files(root: Path, excluded: set[str]) -> List[Path]:
-    """All .md/.markdown files under root, excluded and noise dirs pruned."""
+    """All .md/.markdown files under root, excluded and noise dirs pruned.
+
+    Prunes excluded/noise directories top-down so we never descend into
+    node_modules, .git, vendor, … — important since this gate applies to any
+    repo with Markdown, where those trees can dwarf the source.
+    """
     out: List[Path] = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in _MARKDOWN_EXTS:
-            continue
-        try:
-            rel = path.relative_to(root)
-        except ValueError:
-            continue
-        if is_path_excluded(rel, excluded) or any(
-            should_prune_dir(p) for p in rel.parts[:-1]
-        ):
-            continue
-        out.append(path)
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+        rel_dir = Path(dirpath).relative_to(root)
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if not should_prune_dir(d)
+            and not is_path_excluded(_rel_join(rel_dir, d), excluded)
+        ]
+        for name in filenames:
+            if PurePosixPath(name).suffix.lower() not in _MARKDOWN_EXTS:
+                continue
+            out.append(Path(dirpath) / name)
+    out.sort()
     return out
+
+
+def _rel_join(rel_dir: Path, name: str) -> Path:
+    """Join a child name onto a repo-relative dir, dropping the leading '.'."""
+    return Path(name) if rel_dir == Path(".") else rel_dir / name
 
 
 def _scan_markdown(md: Path, root: Path) -> List[Finding]:
@@ -291,5 +304,7 @@ def _resolves(md_dir: Path, root: Path, target: str) -> bool:
     except OSError:
         return True  # cannot resolve safely → do not flag
     if not resolved.is_relative_to(root_resolved):
-        return True  # escapes the repo → out of scope, never flag
+        # climbs above the repo root — unresolvable in any published/CI context
+        # (and we never stat outside the repo). Flag it as a broken reference.
+        return False
     return resolved.exists()
