@@ -221,6 +221,14 @@ jobs:
                   )
           PY
 
+      - name: Require CHANGELOG entry for this release
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          # Release notes are mandatory: fail before opening a release PR or
+          # publishing if CHANGELOG.md has no section for this version.
+          python scripts/changelog_section.py "$VERSION" >/dev/null
+
       - name: Create release PR and merge after green checks
         id: release_pr
         if: steps.resolve.outputs.commit_sha == ''
@@ -445,13 +453,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-context.outputs.tag }}
           TARGET: ${{ needs.release-context.outputs.commit_sha }}
+          VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "GitHub Release $TAG already exists"
             exit 0
           fi
 
+          # Release body = the human-authored CHANGELOG.md section for this
+          # version (required: this fails if the section is missing).
+          python scripts/changelog_section.py "$VERSION" > release_body.md
+
           gh release create "$TAG" dist/* \
             --target "$TARGET" \
             --title "$TAG" \
-            --generate-notes
+            --notes-file release_body.md
