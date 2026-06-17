@@ -22,6 +22,12 @@ This file is generated from built-in gate metadata. Edit the gate reasoning sour
 - Tradeoffs: Coverage work slows down spikes and sometimes forces harness cleanup before the feature feels done.
 - Override When: Bend this for short-lived spikes, active incidents, or other explicitly time-critical work with agreement that the coverage debt gets paid back.
 
+### `overconfidence:dangling-references`
+
+- Rationale: An agent writes a relative Markdown link or image and moves on; the file renders, so it looks done.  The broken reference only surfaces when a reader clicks it — the agent's mental model of the file tree disagreed with the real one and nothing made it look.
+- Tradeoffs: Deliberately narrow to stay false-positive-free: only literal relative paths in Markdown are checked, so broken HTML src, anchors, and external links are missed by design.
+- Override When: Suppress for generated or vendored docs you do not author.  Add the directory to exclude_dirs in .sb_config.json.
+
 ### `overconfidence:missing-annotations.dart`
 
 - Rationale: Missing Dart annotations turn interfaces into vibes and push type noise downstream for somebody else to untangle.
