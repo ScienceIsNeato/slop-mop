@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Made the URL-consistency gate a ship-time check instead of every-commit, and locked in that onboarding turns it on only for sites with real pages",
-    "direction": "Push and let CI confirm before the merge call",
-    "last_update": "2026-06-16T00:00:00Z"
+    "status": "Built a gate that catches broken doc links — markdown links pointing at files that aren't there after a rename or move",
+    "direction": "Kept it dead simple so it never cries wolf; opening the PR next",
+    "last_update": "2026-06-17T00:00:00Z"
   }
 }

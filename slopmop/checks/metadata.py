@@ -480,6 +480,32 @@ def _github_actions_hygiene_reasoning_entry() -> tuple[type[BaseCheck], Reasonin
     )
 
 
+def _dangling_references_reasoning_entry() -> tuple[type[BaseCheck], Reasoning]:
+    from slopmop.checks.general.dangling_references import DanglingReferencesCheck
+
+    return (
+        DanglingReferencesCheck,
+        _reasoning(
+            rationale=(
+                "An agent writes a relative Markdown link or image and moves on; "
+                "the file renders, so it looks done.  The broken reference only "
+                "surfaces when a reader clicks it — the agent's mental model of "
+                "the file tree disagreed with the real one and nothing made it "
+                "look."
+            ),
+            tradeoffs=(
+                "Deliberately narrow to stay false-positive-free: only literal "
+                "relative paths in Markdown are checked, so broken HTML src, "
+                "anchors, and external links are missed by design."
+            ),
+            override_when=(
+                "Suppress for generated or vendored docs you do not author.  Add "
+                "the directory to exclude_dirs in .sb_config.json."
+            ),
+        ),
+    )
+
+
 def _conflicting_metadata_reasoning_entry() -> tuple[type[BaseCheck], Reasoning]:
     from slopmop.checks.general.conflicting_metadata import ConflictingMetadataCheck
 
@@ -609,6 +635,7 @@ def _overconfidence_reasoning_entries() -> (
     from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
     return (
+        _dangling_references_reasoning_entry(),
         (DartCoverageCheck, _coverage_reasoning("Dart")),
         (JavaScriptCoverageCheck, _coverage_reasoning("JavaScript")),
         (PythonCoverageCheck, _coverage_reasoning("Python")),
