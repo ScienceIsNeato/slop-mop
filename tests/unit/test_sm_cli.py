@@ -931,7 +931,8 @@ class TestValidateJsonOutputFile:
         mock_print,
         tmp_path,
     ):
-        """--json with --output-file writes payload to file and stdout."""
+        """--json with --output-file writes pretty JSON to the file and a
+        compact payload to stdout (same data, different formatting)."""
         from slopmop.cli.validate import _run_validation
 
         mock_executor = MagicMock()
@@ -962,7 +963,11 @@ class TestValidateJsonOutputFile:
 
         assert result == 0
         assert output_file.exists()
-        assert output_file.read_text(encoding="utf-8") == '{"ok":true}'
+        # File is pretty-printed (multi-line, indent=2) for human/artifact use.
+        file_text = output_file.read_text(encoding="utf-8")
+        assert file_text == '{\n  "ok": true\n}'
+        assert json.loads(file_text) == {"ok": True}
+        # stdout stays compact for pipeline consumers.
         mock_print.assert_called_once_with('{"ok":true}')
 
 
