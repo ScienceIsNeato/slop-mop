@@ -519,6 +519,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -B "$branch"
           git commit -am "chore: bump slopmop-version pin to ==${VERSION}"
+          # The shallow clone has no remote-tracking ref for the bump branch, so
+          # --force-with-lease would fail on a rerun where the branch already
+          # exists remotely. Fetch the ref first so the lease has a reference
+          # point (no-op on the first run where the branch doesn't exist yet).
+          git fetch --depth 1 origin \
+            "refs/heads/${branch}:refs/remotes/origin/${branch}" 2>/dev/null || true
           if ! git push --force-with-lease origin "$branch"; then
             echo "::warning::Failed to push ${branch} to ${ACTION_REPO} (token may lack write access) — bump slopmop-version to ==${VERSION} manually."
             exit 0
