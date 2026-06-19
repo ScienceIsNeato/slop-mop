@@ -48,7 +48,7 @@ closed to fake green:
 - `out_of_scope_ticketed` — valid but not this PR. File an issue, link it.
 
 ```bash
-sm buff resolve <PR#> <THREAD_ID> --scenario <scenario> -m "<evidence>"
+sm buff resolve <PR#> <THREAD_ID> --scenario <scenario> --message "<evidence>"
 ```
 
 **Never mark a thread resolved just to turn the box green.** If you can't
@@ -109,7 +109,7 @@ resolution to escape.
 | Snapshot without blocking       | `sm buff status <PR#>`                                     |
 | What failed + remediation       | `sm buff inspect <PR#>`                                    |
 | Take the next thread batch      | `sm buff iterate <PR#>`                                    |
-| Resolve one thread              | `sm buff resolve <PR#> <THREAD_ID> --scenario <s> -m "…"` |
+| Resolve one thread              | `sm buff resolve <PR#> <THREAD_ID> --scenario <s> --message "…"` |
 | Commit + push the batch         | `sm buff finalize <PR#> --push`                            |
 | Confirm threads cleared         | `sm buff verify <PR#>`                                     |
 

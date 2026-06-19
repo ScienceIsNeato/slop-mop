@@ -18,7 +18,7 @@ when your impulse is the left column, run the right column instead.
 | `gh pr view <PR#> --comments`                     | `sm buff <PR#>`                              |
 | `gh pr view <PR#> --json mergeable` (to judge if a PR can merge) | `sm buff status <PR#>` — `mergeable` only reports git-conflict state, not merge-readiness; a PR with CI in flight is `MERGEABLE` yet not ready |
 | Reading CI logs to find the failing test          | Start with `sm buff inspect <PR#>`, then use raw `gh run list/view` or CI logs for details not surfaced yet |
-| `gh api ... resolveReviewThread`                  | `sm buff resolve <PR#> <THREAD_ID> -m "..."` |
+| `gh api ... resolveReviewThread`                  | `sm buff resolve <PR#> <THREAD_ID> --message "..."` |
 | `gh pr review --approve` after addressing threads | `sm buff verify <PR#>` first                 |
 | `gh pr merge`                                     | **Wait for human decision.** Sail stops at PR_READY. Share the PR with human, await their merge call. |
 | `gh issue create` for slop-mop tool friction      | `sm barnacle file`                           |
