@@ -55,7 +55,7 @@ class TestGitHooksFunctions:
     def test_generate_pre_push_hook_script(self):
         """Generates pre-push merged-branch guard hook script."""
         script = _generate_pre_push_hook_script()
-        assert "# Command: merged-branch-guard" in script
+        assert "# Command: merged-branch-guard + sm scour" in script
         assert "gh pr list" in script
         assert "--state merged" in script
         assert "You're missing some context." in script
@@ -67,6 +67,19 @@ class TestGitHooksFunctions:
         # Deletions (all-zero local sha) write nothing and must be skipped.
         assert "0000000000000000000000000000000000000000" in script
         assert "git symbolic-ref" not in script
+
+    def test_pre_push_hook_runs_scour_after_guard(self):
+        """The pre-push hook runs a cached scour, after the merged-branch guard."""
+        script = _generate_pre_push_hook_script()
+        # scour runs, and reuses the swab cache (no --no-cache).
+        assert "sm scour --porcelain --json-file .slopmop/last_scour.json" in script
+        assert "--no-cache" not in script
+        # The guard's stdin loop must finish before scour starts, so the merged
+        # check happens first and scour doesn't consume the pushed refs.
+        assert script.index("\ndone\n") < script.index("sm scour --porcelain")
+        # A failing scour blocks the push, with the standard bypass.
+        assert "Push blocked by slop-mop scour" in script
+        assert "git push --no-verify" in script
 
     def test_precommit_hook_embeds_merged_branch_guard(self):
         """The pre-commit hook guards a merged/deleted branch before swab runs."""

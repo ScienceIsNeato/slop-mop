@@ -191,22 +191,30 @@ exit 0
 
 
 def _generate_pre_push_hook_script() -> str:
-    """Generate a pre-push hook that blocks pushes from merged branches.
+    """Generate a pre-push hook: merged-branch guard, then a full scour.
 
-    Git feeds the refs actually being pushed on stdin (one line per ref:
-    ``<local ref> <local sha> <remote ref> <remote sha>``). The guard reads
-    those rather than ``HEAD`` so a push like
-    ``git push origin merged-feature:merged-feature`` from another checkout is
-    still inspected. For each pushed branch it asks GitHub whether that branch
-    name has an already-merged PR; if yes, pushing it is almost always
-    accidental follow-up work on a branch that should have been retired.
+    Two things run before a push is allowed:
+
+    1. Merged-branch guard. Git feeds the refs actually being pushed on stdin
+       (one line per ref: ``<local ref> <local sha> <remote ref> <remote
+       sha>``). The guard reads those rather than ``HEAD`` so a push like
+       ``git push origin merged-feature:merged-feature`` from another checkout
+       is still inspected. For each pushed branch it asks GitHub whether that
+       branch name has an already-merged PR; if yes, pushing it is almost
+       always accidental follow-up on a branch that should have been retired.
+
+    2. ``sm scour``. The thorough validation CI runs, executed locally so
+       scour-only failures surface here instead of on a red build. swab-level
+       results from the pre-commit hook are reused from the cache (keyed
+       per-gate by a fingerprint), so only scour-only and changed gates run
+       fresh — a cached scour is dramatically faster than a cold one.
     """
 
     return f"""#!/bin/sh
 {SB_HOOK_MARKER}
 #
 # Pre-push hook managed by slop-mop
-# Command: merged-branch-guard
+# Command: merged-branch-guard + sm scour
 # To remove: sm commit-hooks uninstall
 #
 
@@ -264,6 +272,31 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         exit 1
     fi
 done
+
+# Merged-branch guard passed for every pushed ref. Now run the full scour so
+# scour-only failures are caught here instead of in CI. swab-level gate results
+# from the pre-commit hook are reused from cache; only scour-only and changed
+# gates run fresh, so this is fast on an unchanged tree.
+if ! command -v sm >/dev/null 2>&1; then
+    echo "❌ sm not found on PATH"
+    echo "   Install: pipx install slopmop"
+    exit 1
+fi
+
+mkdir -p .slopmop
+echo "🧽 slop-mop: running scour before push (cached swab results are reused)…"
+sm scour --porcelain --json-file .slopmop/last_scour.json
+scour_result=$?
+
+if [ $scour_result -ne 0 ]; then
+    echo ""
+    echo "❌ Push blocked by slop-mop scour"
+    echo "   Structured results: .slopmop/last_scour.json"
+    echo "   This is the same scour CI runs — fix it here to avoid a red build."
+    echo "   Bypass once (not recommended): git push --no-verify"
+    echo ""
+    exit 1
+fi
 
 exit 0
 {SB_HOOK_END_MARKER}
@@ -396,13 +429,18 @@ def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
     print_project_header(str(project_root))
     print(f"📄 Hook: {hook_file}")
     print(f"📄 Hook: {pre_push_file}")
-    print(f"🎯 Command: sm {verb}")
-    print("🎯 Guard: block commits/pushes on an already-merged or deleted branch")
+    print(f"🎯 Pre-commit: sm {verb} + merged/deleted-branch guard")
+    print("🎯 Pre-push:   merged-branch guard + sm scour")
     print()
     print(f"The pre-commit hook runs 'sm {verb}' before each commit and first")
     print("refuses the commit if the branch is already merged or deleted (so")
-    print("you don't pile work onto a dead branch). The pre-push guard is the")
-    print("push-time backstop. Commits are also blocked if quality gates fail.")
+    print("you don't pile work onto a dead branch).")
+    print()
+    print("The pre-push hook runs the full 'sm scour' — the same validation CI")
+    print("runs — so scour-only failures are caught before you push, not on a red")
+    print("build. swab results from the commit hook are reused from cache, so")
+    print("only scour-only and changed gates run fresh. Bypass once with")
+    print("'git push --no-verify'.")
     print()
     print("To remove: sm commit-hooks uninstall")
     print()

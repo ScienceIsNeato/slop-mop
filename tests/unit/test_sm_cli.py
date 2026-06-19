@@ -293,8 +293,11 @@ class TestCmdCommitHooks:
         pre_push_text = pre_push_file.read_text()
         assert "sm swab --porcelain" in pre_commit_text
         assert "--json-file .slopmop/last_swab.json" in pre_commit_text
-        assert "# Command: merged-branch-guard" in pre_push_text
+        assert "# Command: merged-branch-guard + sm scour" in pre_push_text
         assert "gh pr list" in pre_push_text
+        assert "sm scour --porcelain --json-file .slopmop/last_scour.json" in (
+            pre_push_text
+        )
 
     def test_uninstall_hook(self, tmp_path, capsys):
         """Uninstall removes managed pre-commit and pre-push hooks."""
