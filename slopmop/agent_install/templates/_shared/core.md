@@ -78,6 +78,33 @@ edit → sm swab → fix → repeat            (until swab is clean)
 
 Or just run `sm sail` repeatedly — it reads the workflow state and dispatches the right verb automatically.
 
+#### Definition of done — a PR turn is not over until the PR is clean
+
+Once you push to a PR, you own it through to green. **Do not end your turn
+with CI in flight, a red check, or an unanswered review comment.** "I pushed"
+is not done. The machine-checkable contract is:
+
+```
+sm buff watch <PR#>   →   "Final PR state: clean - CI checks passed and
+                           PR feedback is resolved"  (exit 0)
+```
+
+`sm buff watch` exits 0 *only* when CI is green **and** every review thread is
+resolved. Until you have seen that line, you are still in the loop: re-run
+`sm buff inspect`, fix the failure or resolve the thread with a real scenario
+and evidence, run `sm scour`, push, and watch again. Convergence over 2–4
+rounds is normal — LLM reviewers (CodeRabbit, Cursor Bugbot) re-review every
+new commit, so each push can raise a fresh, smaller batch. Keep going.
+
+The **only** reason to return to the human before clean is a review thread that
+needs a decision you cannot make — an architectural fork, a product call, or
+genuinely ambiguous intent. Resolve it `--scenario needs_human_feedback
+--no-resolve`, finish everything else, then surface the single decision. A
+nitpick, lint finding, coverage gap, or a bug you understand is yours to fix,
+not to ask about. Never mark a thread resolved just to fake green, and never
+silence a failing check. (`/sm-buff` carries the full drive-to-green loop,
+including the circuit breaker for flaky/infra failures.)
+
 ### Why you lose if you bypass `sm`
 
 - **Cache:** swab/scour skip gates whose inputs haven't changed since
