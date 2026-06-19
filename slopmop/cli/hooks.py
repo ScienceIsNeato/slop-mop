@@ -434,6 +434,17 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
 
     print_project_header(str(project_root))
     print(f"📁 Hooks dir: {hooks_dir}")
+
+    # Surface the global install state so the user knows which hooks are active.
+    global_dir = _global_hooks_dir()
+    current_hooks_path = subprocess.run(
+        ["git", "config", "--global", "--get", "core.hooksPath"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if current_hooks_path == str(global_dir) and global_dir.exists():
+        print(f"🌐 Global install active: {global_dir}")
+        print("   Git runs hooks from the global dir; per-repo hooks are shadowed.")
     print()
 
     if not hooks_dir.exists():
@@ -499,6 +510,28 @@ def _hooks_install(
 
     # Per-repo installs must not clobber a hook we don't own. The global dir is
     # slopmop-owned, so foreign hooks there can't exist — skip the check.
+    if not global_install:
+        # Warn if machine-wide hooks are already active: local hooks written to
+        # .git/hooks won't run while core.hooksPath shadows them.
+        current_hooks_path = subprocess.run(
+            ["git", "config", "--global", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if current_hooks_path == str(_global_hooks_dir()):
+            print(
+                "⚠️  Machine-wide hooks are active (core.hooksPath → "
+                f"{current_hooks_path})."
+            )
+            print(
+                "   Per-repo hooks written to .git/hooks won't run while global "
+                "hooks shadow them."
+            )
+            print(
+                "   Run 'sm commit-hooks uninstall --global' first, or use "
+                "'sm commit-hooks install --global' to update the global hooks."
+            )
+            print()
     if not global_install:
         for existing, label, fix in (
             (hook_file, "pre-commit", "Manually add 'sm swab' to your existing hook"),
