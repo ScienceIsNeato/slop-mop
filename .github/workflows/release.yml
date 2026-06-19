@@ -519,9 +519,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -B "$branch"
           git commit -am "chore: bump slopmop-version pin to ==${VERSION}"
-          git push --force-with-lease origin "$branch"
+          if ! git push --force-with-lease origin "$branch"; then
+            echo "::warning::Failed to push ${branch} to ${ACTION_REPO} (token may lack write access) — bump slopmop-version to ==${VERSION} manually."
+            exit 0
+          fi
           gh pr create --repo "$ACTION_REPO" \
             --title "chore: bump slopmop-version pin to ==${VERSION}" \
             --body "Automated bump from the Slop-Mop ${VERSION} release. Keeps the action's default pin (and install cache) aligned with the latest release." \
             --base main --head "$branch" \
-            || echo "::warning::Could not open PR (it may already exist for ${branch})."
+            || echo "::warning::Push succeeded but PR creation failed — a PR for ${branch} may already exist, or the token lacks PR scope. Open it manually if needed."
