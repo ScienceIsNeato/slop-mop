@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Making the push hook run the full check suite locally, so people stop discovering in CI that something failed — and it reuses the quick-check results so it stays fast",
-    "direction": "Land it, keep an eye on whether the caching really saves the repeat work",
-    "last_update": "2026-06-19T00:00:00Z"
+    "status": "Added --global flag to commit-hooks install so it wires up machine-wide git hooks via core.hooksPath — PR #298",
+    "direction": "Get PR #298 reviewed and merge, then dogfood with sm commit-hooks install --global",
+    "last_update": "2026-06-19T12:00:00Z"
   }
 }

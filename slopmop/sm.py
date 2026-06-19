@@ -602,6 +602,16 @@ def _add_hooks_parser(
         default=".",
         help=PROJECT_ROOT_HELP,
     )
+    hooks_install.add_argument(
+        "--global",
+        dest="global_install",
+        action="store_true",
+        help=(
+            "Install machine-wide via git's global core.hooksPath (applies to "
+            "every repo) instead of just this one. Delegates to repo-local "
+            "hooks and only acts in onboarded repos."
+        ),
+    )
 
     # commit-hooks uninstall
     hooks_uninstall = hooks_subparsers.add_parser(
@@ -613,6 +623,12 @@ def _add_hooks_parser(
         type=str,
         default=".",
         help=PROJECT_ROOT_HELP,
+    )
+    hooks_uninstall.add_argument(
+        "--global",
+        dest="global_install",
+        action="store_true",
+        help="Remove the machine-wide install and unset global core.hooksPath.",
     )
 
 

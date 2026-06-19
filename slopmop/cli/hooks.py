@@ -3,12 +3,57 @@
 import argparse
 import re
 import stat
+import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
 # Hook markers
 SB_HOOK_MARKER = "# MANAGED BY SLOP-MOP"
 SB_HOOK_END_MARKER = "# END SLOP-MOP HOOK"
+
+
+def _global_hooks_dir() -> Path:
+    """Machine-wide hooks dir wired in via ``git config --global core.hooksPath``."""
+    return Path.home() / ".slopmop" / "git-hooks"
+
+
+def _global_preamble(hook_name: str, *, capture_stdin: bool) -> str:
+    """Preamble for a GLOBAL hook (one installed via ``core.hooksPath``).
+
+    A global ``core.hooksPath`` makes git look ONLY at that dir, shadowing every
+    repo's own ``.git/hooks``. Two things keep that non-destructive:
+
+    1. Delegate to the repo's local hook (if any, and not one of ours) so other
+       tools' hooks — husky, custom scripts — keep firing.
+    2. Only run slop-mop where the repo is onboarded (``.sb_config.json`` or a
+       ``[tool.slopmop]`` table); otherwise exit 0 so non-slop-mop repos are
+       untouched.
+
+    ``capture_stdin`` is for pre-push, which receives the pushed refs on stdin:
+    we slurp them once so both the delegated hook and our own guard can read
+    them.
+    """
+    grab_stdin = "_sm_stdin=$(cat)\n" if capture_stdin else ""
+    delegate_run = (
+        'printf \'%s\\n\' "$_sm_stdin" | "$_sm_local" "$@" || exit $?'
+        if capture_stdin
+        else '"$_sm_local" "$@" || exit $?'
+    )
+    return f"""# --- slop-mop global hook (installed via core.hooksPath) ---
+_sm_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+{grab_stdin}# Run the repo's own {hook_name} too — a global hooksPath shadows
+# .git/hooks, so we delegate to keep other tools' hooks working.
+_sm_local="$_sm_root/.git/hooks/{hook_name}"
+if [ -x "$_sm_local" ] && ! grep -q "{SB_HOOK_MARKER}" "$_sm_local" 2>/dev/null; then
+    {delegate_run}
+fi
+# Only act in onboarded repos so every other repo is left alone.
+if [ ! -f "$_sm_root/.sb_config.json" ] \\
+    && ! grep -q '^\\[tool.slopmop\\]' "$_sm_root/pyproject.toml" 2>/dev/null; then
+    exit 0
+fi
+# --- end slop-mop global preamble ---
+"""
 
 
 def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
@@ -135,7 +180,7 @@ _sm_merged_branch_guard
 # --- end merged/deleted-branch guard ---"""
 
 
-def _generate_hook_script(verb: str) -> str:
+def _generate_hook_script(verb: str, *, global_install: bool = False) -> str:
     """Generate the pre-commit hook script content.
 
     The hook assumes ``sm`` is on PATH — ``pipx install slopmop``
@@ -152,20 +197,29 @@ def _generate_hook_script(verb: str) -> str:
 
     Args:
         verb: The validation command to run ("swab" or "scour").
+        global_install: When True, prepend the global preamble (delegate to a
+            repo-local hook, then act only in onboarded repos) so the hook is
+            safe to fire in every repo via ``core.hooksPath``.
     """
 
     json_file = f".slopmop/last_{verb}.json"
     guard = _generate_merged_branch_guard()
+    scope = " (global)" if global_install else ""
+    preamble = (
+        _global_preamble("pre-commit", capture_stdin=False) + "\n"
+        if global_install
+        else ""
+    )
     return f"""#!/bin/sh
 {SB_HOOK_MARKER}
 #
-# Pre-commit hook managed by slop-mop
+# Pre-commit hook managed by slop-mop{scope}
 # Command: sm {verb} --porcelain
 # Guard: refuse commits on an already-merged or deleted branch
 # To remove: sm commit-hooks uninstall
 #
 
-{guard}
+{preamble}{guard}
 
 if ! command -v sm >/dev/null 2>&1; then
     echo "❌ sm not found on PATH"
@@ -190,7 +244,7 @@ exit 0
 """
 
 
-def _generate_pre_push_hook_script() -> str:
+def _generate_pre_push_hook_script(*, global_install: bool = False) -> str:
     """Generate a pre-push hook: merged-branch guard, then a full scour.
 
     Two things run before a push is allowed:
@@ -210,15 +264,27 @@ def _generate_pre_push_hook_script() -> str:
        fresh — a cached scour is dramatically faster than a cold one.
     """
 
+    scope = " (global)" if global_install else ""
+    preamble = (
+        _global_preamble("pre-push", capture_stdin=True) + "\n"
+        if global_install
+        else ""
+    )
+    # Per-repo reads the pushed refs straight from stdin; the global hook
+    # already slurped them into $_sm_stdin (so it could also feed a delegated
+    # hook), so the guard loop reads them back from a here-doc instead.
+    refs_redirect = (
+        "" if not global_install else " <<SLOPMOP_REFS\n$_sm_stdin\nSLOPMOP_REFS"
+    )
     return f"""#!/bin/sh
 {SB_HOOK_MARKER}
 #
-# Pre-push hook managed by slop-mop
+# Pre-push hook managed by slop-mop{scope}
 # Command: merged-branch-guard + sm scour
 # To remove: sm commit-hooks uninstall
 #
 
-if ! command -v gh >/dev/null 2>&1; then
+{preamble}if ! command -v gh >/dev/null 2>&1; then
     echo "❌ gh not found on PATH"
     echo "   This guard checks whether the branch already has a merged PR."
     echo "   Install GitHub CLI: https://cli.github.com/"
@@ -271,7 +337,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         echo ""
         exit 1
     fi
-done
+done{refs_redirect}
 
 # Merged-branch guard passed for every pushed ref. Now run the full scour so
 # scour-only failures are caught here instead of in CI. swab-level gate results
@@ -374,46 +440,53 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
     return 0
 
 
-def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
-    """Install managed pre-commit + pre-push hooks."""
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-    hook_file = hooks_dir / "pre-commit"
-    pre_push_file = hooks_dir / "pre-push"
+def _hooks_install(
+    project_root: Path, hooks_dir: Path, verb: str, *, global_install: bool = False
+) -> int:
+    """Install managed pre-commit + pre-push hooks.
 
-    if hook_file.exists():
-        content = hook_file.read_text()
-        if SB_HOOK_MARKER in content:
-            print("ℹ️  Updating existing slopmop hook...")
-        else:
-            print(f"⚠️  Existing pre-commit hook found at: {hook_file}")
-            print("   This hook is not managed by slopmop.")
-            print()
-            print("Options:")
-            print("   1. Back up your existing hook and run install again")
-            print("   2. Manually add 'sm swab' to your existing hook")
-            print()
-            return 1
+    Per-repo (default): write to this repo's ``.git/hooks``. Machine-wide
+    (``global_install``): write to ``~/.slopmop/git-hooks`` and point
+    ``git config --global core.hooksPath`` at it so the hooks apply to every
+    repo (the generated scripts delegate to repo-local hooks and only act in
+    onboarded repos, so other repos are left alone).
+    """
+    target_dir = _global_hooks_dir() if global_install else hooks_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+    hook_file = target_dir / "pre-commit"
+    pre_push_file = target_dir / "pre-push"
 
-    if pre_push_file.exists():
-        content = pre_push_file.read_text()
-        if SB_HOOK_MARKER in content:
-            print("ℹ️  Updating existing slopmop pre-push guard...")
-        else:
-            print(f"⚠️  Existing pre-push hook found at: {pre_push_file}")
-            print("   This hook is not managed by slopmop.")
-            print()
-            print("Options:")
-            print("   1. Back up your existing hook and run install again")
-            print(
-                "   2. Manually add the merged-branch guard from sm commit-hooks output"
-            )
-            print()
-            return 1
+    # Per-repo installs must not clobber a hook we don't own. The global dir is
+    # slopmop-owned, so foreign hooks there can't exist — skip the check.
+    if not global_install:
+        for existing, label, fix in (
+            (hook_file, "pre-commit", "Manually add 'sm swab' to your existing hook"),
+            (
+                pre_push_file,
+                "pre-push",
+                "Manually add the merged-branch guard from sm commit-hooks output",
+            ),
+        ):
+            if existing.exists() and SB_HOOK_MARKER not in existing.read_text():
+                print(f"⚠️  Existing {label} hook found at: {existing}")
+                print("   This hook is not managed by slopmop.")
+                print()
+                print("Options:")
+                print("   1. Back up your existing hook and run install again")
+                print(f"   2. {fix}")
+                print()
+                return 1
 
-    hook_content = _generate_hook_script(verb)
-    hook_file.write_text(hook_content)
-    pre_push_content = _generate_pre_push_hook_script()
-    pre_push_file.write_text(pre_push_content)
+    if any(
+        f.exists() and SB_HOOK_MARKER in f.read_text()
+        for f in (hook_file, pre_push_file)
+    ):
+        print("ℹ️  Updating existing slopmop hook...")
+
+    hook_file.write_text(_generate_hook_script(verb, global_install=global_install))
+    pre_push_file.write_text(
+        _generate_pre_push_hook_script(global_install=global_install)
+    )
     hook_file.chmod(
         hook_file.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
     )
@@ -421,17 +494,36 @@ def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
         pre_push_file.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
     )
 
-    print()
-    print("✅ Pre-commit hook installed!")
-    print("=" * 60)
-    from slopmop.reporting import print_project_header
+    if global_install:
+        subprocess.run(
+            ["git", "config", "--global", "core.hooksPath", str(target_dir)],
+            check=True,
+        )
 
-    print_project_header(str(project_root))
+    print()
+    print(
+        "✅ Machine-wide hooks installed!"
+        if global_install
+        else "✅ Pre-commit hook installed!"
+    )
+    print("=" * 60)
+    if not global_install:
+        from slopmop.reporting import print_project_header
+
+        print_project_header(str(project_root))
     print(f"📄 Hook: {hook_file}")
     print(f"📄 Hook: {pre_push_file}")
     print(f"🎯 Pre-commit: sm {verb} + merged/deleted-branch guard")
     print("🎯 Pre-push:   merged-branch guard + sm scour")
     print()
+    if global_install:
+        print("These hooks now apply to EVERY git repo on this machine via")
+        print("'git config --global core.hooksPath'. In each repo they:")
+        print("  • delegate to that repo's own .git/hooks first (other tools keep")
+        print("    working), then")
+        print("  • run slop-mop only if the repo is onboarded (.sb_config.json or")
+        print("    [tool.slopmop]) — every other repo is passed through untouched.")
+        print()
     print(f"The pre-commit hook runs 'sm {verb}' before each commit and first")
     print("refuses the commit if the branch is already merged or deleted (so")
     print("you don't pile work onto a dead branch).")
@@ -442,14 +534,21 @@ def _hooks_install(project_root: Path, hooks_dir: Path, verb: str) -> int:
     print("only scour-only and changed gates run fresh. Bypass once with")
     print("'git push --no-verify'.")
     print()
-    print("To remove: sm commit-hooks uninstall")
+    print(
+        "To remove: sm commit-hooks uninstall --global"
+        if global_install
+        else "To remove: sm commit-hooks uninstall"
+    )
     print()
     return 0
 
 
-def _hooks_uninstall(_project_root: Path, hooks_dir: Path) -> int:
-    """Remove all sm-managed hooks."""
-    if not hooks_dir.exists():
+def _hooks_uninstall(
+    _project_root: Path, hooks_dir: Path, *, global_install: bool = False
+) -> int:
+    """Remove all sm-managed hooks (per-repo, or machine-wide with global)."""
+    target_dir = _global_hooks_dir() if global_install else hooks_dir
+    if not target_dir.exists():
         print("ℹ️  No hooks directory found")
         return 0
 
@@ -457,18 +556,34 @@ def _hooks_uninstall(_project_root: Path, hooks_dir: Path) -> int:
     hook_types = ["pre-commit", "pre-push", "commit-msg"]
 
     for hook_type in hook_types:
-        hook_file = hooks_dir / hook_type
+        hook_file = target_dir / hook_type
         if hook_file.exists():
             content = hook_file.read_text()
             if SB_HOOK_MARKER in content:
                 hook_file.unlink()
                 removed.append(hook_type)
 
+    if global_install:
+        # Only unset core.hooksPath if it still points at our dir, so we don't
+        # clobber a hooksPath the user set to something else.
+        current = subprocess.run(
+            ["git", "config", "--global", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if current == str(target_dir):
+            subprocess.run(
+                ["git", "config", "--global", "--unset", "core.hooksPath"],
+                check=False,
+            )
+
     print()
     if removed:
         print("✅ Removed slopmop-managed hooks:")
         for hook_type in removed:
             print(f"   • {hook_type}")
+        if global_install:
+            print("   • global core.hooksPath (unset)")
     else:
         print("ℹ️  No slopmop-managed hooks found")
     print()
@@ -478,23 +593,31 @@ def _hooks_uninstall(_project_root: Path, hooks_dir: Path) -> int:
 def cmd_commit_hooks(args: argparse.Namespace) -> int:
     """Handle the commit-hooks command."""
     project_root = Path(args.project_root).resolve()
+    global_install = bool(getattr(args, "global_install", False))
 
     if not args.hooks_action:
         args.hooks_action = "status"
 
     hooks_dir = _get_git_hooks_dir(project_root)
 
-    if not hooks_dir:
+    # Global install/uninstall targets ~/.slopmop/git-hooks via core.hooksPath,
+    # so it doesn't need to run inside a git repo. Per-repo actions do.
+    if not hooks_dir and not (
+        global_install and args.hooks_action in ("install", "uninstall")
+    ):
         print(f"❌ Not a git repository: {project_root}")
         print("   Initialize git first: git init")
         return 1
+    target = hooks_dir if hooks_dir is not None else _global_hooks_dir()
 
     if args.hooks_action == "status":
-        return _hooks_status(project_root, hooks_dir)
+        return _hooks_status(project_root, target)
     elif args.hooks_action == "install":
-        return _hooks_install(project_root, hooks_dir, args.hook_verb)
+        return _hooks_install(
+            project_root, target, args.hook_verb, global_install=global_install
+        )
     elif args.hooks_action == "uninstall":
-        return _hooks_uninstall(project_root, hooks_dir)
+        return _hooks_uninstall(project_root, target, global_install=global_install)
     else:
         print(f"❌ Unknown action: {args.hooks_action}")
         return 1

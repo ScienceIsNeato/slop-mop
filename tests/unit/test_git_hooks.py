@@ -12,8 +12,17 @@ from slopmop.cli.hooks import (
     _generate_merged_branch_guard,
     _generate_pre_push_hook_script,
     _get_git_hooks_dir,
+    _global_hooks_dir,
     _parse_hook_info,
 )
+
+
+def _is_posix_sh(script: str) -> bool:
+    import tempfile
+
+    p = Path(tempfile.mktemp(suffix=".sh"))
+    p.write_text(script)
+    return subprocess.run(["sh", "-n", str(p)], capture_output=True).returncode == 0
 
 
 class TestGitHooksFunctions:
@@ -297,3 +306,42 @@ sm swab
         content = "#!/bin/sh\necho hello"
         result = _parse_hook_info(content)
         assert result is None
+
+
+class TestGlobalHooks:
+    """Machine-wide (core.hooksPath) hook generation."""
+
+    def test_global_dir_is_under_slopmop_home(self):
+        assert _global_hooks_dir() == Path.home() / ".slopmop" / "git-hooks"
+
+    def test_per_repo_hooks_have_no_global_preamble(self):
+        # Per-repo hooks run in their own repo — no delegation/onboarding guard.
+        assert "core.hooksPath" not in _generate_hook_script("swab")
+        assert "git rev-parse --show-toplevel" not in _generate_hook_script("swab")
+        assert "git rev-parse --show-toplevel" not in _generate_pre_push_hook_script()
+
+    def test_global_pre_commit_delegates_then_guards_onboarding(self):
+        script = _generate_hook_script("swab", global_install=True)
+        # Delegates to the repo-local hook so other tools keep working...
+        assert '"$_sm_local" "$@" || exit $?' in script
+        assert '_sm_local="$_sm_root/.git/hooks/pre-commit"' in script
+        # ...and only runs slop-mop in onboarded repos (else exit 0).
+        assert ".sb_config.json" in script and "tool.slopmop" in script
+        assert _is_posix_sh(script)
+
+    def test_global_pre_push_captures_stdin_and_feeds_guard(self):
+        script = _generate_pre_push_hook_script(global_install=True)
+        # stdin is slurped once, then fed to the delegated hook AND the guard.
+        assert "_sm_stdin=$(cat)" in script
+        assert 'printf \'%s\\n\' "$_sm_stdin" | "$_sm_local"' in script
+        # The merged-branch guard loop reads the refs back from a here-doc.
+        assert "done <<SLOPMOP_REFS" in script
+        # scour still runs, and the whole thing is valid POSIX sh.
+        assert "sm scour --porcelain" in script
+        assert _is_posix_sh(script)
+
+    def test_global_hook_marker_lets_delegation_skip_our_own_hooks(self):
+        # The delegation guard skips a local hook that is itself slop-mop's, so
+        # a per-repo install under a global install won't double-run.
+        script = _generate_hook_script("swab", global_install=True)
+        assert '! grep -q "# MANAGED BY SLOP-MOP" "$_sm_local"' in script
