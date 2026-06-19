@@ -43,7 +43,7 @@ def _global_preamble(hook_name: str, *, capture_stdin: bool) -> str:
 _sm_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 {grab_stdin}# Run the repo's own {hook_name} too — a global hooksPath shadows
 # .git/hooks, so we delegate to keep other tools' hooks working.
-_sm_local="$_sm_root/.git/hooks/{hook_name}"
+_sm_local="$(git rev-parse --git-dir 2>/dev/null)/hooks/{hook_name}"
 if [ -x "$_sm_local" ] && ! grep -q "{SB_HOOK_MARKER}" "$_sm_local" 2>/dev/null; then
     {delegate_run}
 fi
@@ -495,10 +495,21 @@ def _hooks_install(
     )
 
     if global_install:
-        subprocess.run(
-            ["git", "config", "--global", "core.hooksPath", str(target_dir)],
-            check=True,
-        )
+        existing_path = subprocess.run(
+            ["git", "config", "--global", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if existing_path and existing_path != str(target_dir):
+            print(f"⚠️  Replacing existing global core.hooksPath: {existing_path}")
+        try:
+            subprocess.run(
+                ["git", "config", "--global", "core.hooksPath", str(target_dir)],
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to set global core.hooksPath: {e}")
+            return 1
 
     print()
     print(

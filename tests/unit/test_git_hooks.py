@@ -4,6 +4,7 @@ Covers pre-commit/pre-push hook script generation, the merged/deleted-branch
 guard's detection logic, and hook-info parsing.
 """
 
+import argparse
 import subprocess
 from pathlib import Path
 
@@ -14,15 +15,25 @@ from slopmop.cli.hooks import (
     _get_git_hooks_dir,
     _global_hooks_dir,
     _parse_hook_info,
+    cmd_commit_hooks,
 )
 
 
 def _is_posix_sh(script: str) -> bool:
     import tempfile
 
-    p = Path(tempfile.mktemp(suffix=".sh"))
-    p.write_text(script)
-    return subprocess.run(["sh", "-n", str(p)], capture_output=True).returncode == 0
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as tmp:
+        tmp.write(script)
+        p = Path(tmp.name)
+    try:
+        return (
+            subprocess.run(
+                ["sh", "-n", str(p)], capture_output=True, check=False
+            ).returncode
+            == 0
+        )
+    finally:
+        p.unlink(missing_ok=True)
 
 
 class TestGitHooksFunctions:
@@ -324,7 +335,10 @@ class TestGlobalHooks:
         script = _generate_hook_script("swab", global_install=True)
         # Delegates to the repo-local hook so other tools keep working...
         assert '"$_sm_local" "$@" || exit $?' in script
-        assert '_sm_local="$_sm_root/.git/hooks/pre-commit"' in script
+        assert (
+            '_sm_local="$(git rev-parse --git-dir 2>/dev/null)/hooks/pre-commit"'
+            in script
+        )
         # ...and only runs slop-mop in onboarded repos (else exit 0).
         assert ".sb_config.json" in script and "tool.slopmop" in script
         assert _is_posix_sh(script)
@@ -345,3 +359,80 @@ class TestGlobalHooks:
         # a per-repo install under a global install won't double-run.
         script = _generate_hook_script("swab", global_install=True)
         assert '! grep -q "# MANAGED BY SLOP-MOP" "$_sm_local"' in script
+
+    def test_global_worktree_delegation_uses_git_dir(self):
+        # The local hook path must use `git rev-parse --git-dir` so linked
+        # worktrees (where .git is a file, not a dir) resolve correctly.
+        script = _generate_hook_script("swab", global_install=True)
+        assert "$(git rev-parse --git-dir 2>/dev/null)/hooks/pre-commit" in script
+
+    def test_global_install_writes_hooks_and_sets_hooksPath(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """cmd_commit_hooks --global writes hooks and sets core.hooksPath."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setenv("HOME", str(fake_home))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="install",
+            hook_verb="swab",
+            global_install=True,
+        )
+        result = cmd_commit_hooks(args)
+
+        assert result == 0
+        global_dir = fake_home / ".slopmop" / "git-hooks"
+        assert (global_dir / "pre-commit").exists()
+        assert (global_dir / "pre-push").exists()
+        out = capsys.readouterr().out
+        assert "Machine-wide hooks installed" in out
+        assert "core.hooksPath" in out
+        # Verify git actually recorded the path.
+        cfg = subprocess.run(
+            ["git", "config", "--global", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert cfg.returncode == 0
+        assert cfg.stdout.strip() == str(global_dir)
+
+    def test_global_uninstall_removes_hooks_and_unsets_hooksPath(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """cmd_commit_hooks --global uninstall removes hooks and unsets core.hooksPath."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setenv("HOME", str(fake_home))
+
+        # Install first so there's something to uninstall.
+        install_args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="install",
+            hook_verb="swab",
+            global_install=True,
+        )
+        assert cmd_commit_hooks(install_args) == 0
+        capsys.readouterr()  # discard install output
+
+        # Now uninstall.
+        uninstall_args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="uninstall",
+            global_install=True,
+        )
+        result = cmd_commit_hooks(uninstall_args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "global core.hooksPath" in out
+        # core.hooksPath should be gone.
+        cfg = subprocess.run(
+            ["git", "config", "--global", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert cfg.returncode != 0  # key not found → exit 1
