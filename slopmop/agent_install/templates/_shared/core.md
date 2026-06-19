@@ -84,7 +84,7 @@ Once you push to a PR, you own it through to green. **Do not end your turn
 with CI in flight, a red check, or an unanswered review comment.** "I pushed"
 is not done. The machine-checkable contract is:
 
-```
+```text
 sm buff watch <PR#>   →   "Final PR state: clean - CI checks passed and
                            PR feedback is resolved"  (exit 0)
 ```

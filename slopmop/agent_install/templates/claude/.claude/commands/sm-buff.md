@@ -21,7 +21,7 @@ loop condition — you are not finished until it is 0.
 
 ## The loop
 
-```
+```text
 until clean:
     sm buff watch <PR#>            # blocks on CI; exit 0 = clean, stop here
     sm buff inspect <PR#>          # what failed + what to do about it
@@ -47,7 +47,7 @@ closed to fake green:
 - `no_longer_applicable` — code moved since the comment. Say what changed.
 - `out_of_scope_ticketed` — valid but not this PR. File an issue, link it.
 
-```
+```bash
 sm buff resolve <PR#> <THREAD_ID> --scenario <scenario> -m "<evidence>"
 ```
 
@@ -118,5 +118,5 @@ colour; `sm buff` knows the fix.
 
 **Prerequisite:** `sm` must be installed. If `command not found`:
 ```bash
-pipx install slopmop[all]
+pipx install 'slopmop[all]'
 ```
