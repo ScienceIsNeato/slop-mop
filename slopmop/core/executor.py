@@ -284,7 +284,10 @@ class CheckExecutor:
                 if self._on_check_disabled:
                     self._on_check_disabled(check.full_name)
                 else:
-                    logger.info(f"Disabled — {check.full_name}: {reason}")
+                    # Disabled gates already show as SKIPPED in the summary; keep
+                    # the per-gate reason at debug so scour/CI output isn't buried
+                    # under a wall of "Disabled —" lines.
+                    logger.debug(f"Disabled — {check.full_name}: {reason}")
 
         # Propagate: if a dependency is disabled, disable its dependents too
         changed = True
@@ -298,7 +301,7 @@ class CheckExecutor:
                             if self._on_check_disabled:
                                 self._on_check_disabled(check.full_name)
                             else:
-                                logger.info(
+                                logger.debug(
                                     f"Disabled — {check.full_name}: "
                                     f"dependency {dep} is disabled"
                                 )

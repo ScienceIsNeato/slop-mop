@@ -558,8 +558,9 @@ def _run_validation_locked(
             json_output = JsonAdapter.render(report)
             json_path = Path(json_file)
             json_path.parent.mkdir(parents=True, exist_ok=True)
+            # Files are read by humans and archived as artifacts — pretty-print.
             json_path.write_text(
-                json.dumps(json_output, separators=(",", ":")),
+                json.dumps(json_output, indent=2),
                 encoding="utf-8",
             )
 
@@ -579,12 +580,14 @@ def _run_validation_locked(
 
         if json_mode:
             output = JsonAdapter.render(report)
-            json_payload = json.dumps(output, separators=(",", ":"))
             if output_file and not sarif_requested:
-                # Mirror JSON to disk for archival, but keep stdout payload
-                # so callers can consume it directly in pipelines.
-                Path(output_file).write_text(json_payload, encoding="utf-8")
-            print(json_payload)
+                # Mirror JSON to disk for archival — pretty-printed for humans.
+                Path(output_file).write_text(
+                    json.dumps(output, indent=2), encoding="utf-8"
+                )
+            # Keep the stdout payload compact so callers can consume it
+            # directly in pipelines.
+            print(json.dumps(output, separators=(",", ":")))
         elif porcelain_mode:
             print(PorcelainAdapter.render(report))
         else:
