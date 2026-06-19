@@ -373,7 +373,7 @@ class TestGlobalHooks:
         for hook_name in _GLOBAL_PASSTHROUGH_HOOKS:
             script = _generate_passthrough_hook(hook_name)
             assert "# MANAGED BY SLOP-MOP" in script
-            assert f"/hooks/{hook_name}" in script
+            assert f"$(git rev-parse --git-dir 2>/dev/null)/hooks/{hook_name}" in script
             assert 'exec "$_sm_local" "$@"' in script
             assert _is_posix_sh(script), f"sh -n failed for passthrough {hook_name}"
 
@@ -397,9 +397,9 @@ class TestGlobalHooks:
         global_dir = fake_home / ".slopmop" / "git-hooks"
         assert (global_dir / "pre-commit").exists()
         assert (global_dir / "pre-push").exists()
-        # Passthrough hooks for other types should also be present.
-        assert (global_dir / "commit-msg").exists()
-        assert (global_dir / "prepare-commit-msg").exists()
+        # All passthrough hooks must be present.
+        for hook_name in _GLOBAL_PASSTHROUGH_HOOKS:
+            assert (global_dir / hook_name).exists(), f"missing global hook {hook_name}"
         out = capsys.readouterr().out
         assert "Machine-wide hooks installed" in out
         assert "core.hooksPath" in out

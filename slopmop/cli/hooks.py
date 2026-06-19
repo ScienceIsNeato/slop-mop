@@ -615,7 +615,7 @@ def _hooks_uninstall(
         return 0
 
     removed: list[str] = []
-    hook_types = ["pre-commit", "pre-push"] + _GLOBAL_PASSTHROUGH_HOOKS
+    hook_types = ["pre-commit", "pre-push", *_GLOBAL_PASSTHROUGH_HOOKS]
 
     for hook_type in hook_types:
         hook_file = target_dir / hook_type
