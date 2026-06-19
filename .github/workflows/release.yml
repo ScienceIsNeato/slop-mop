@@ -468,3 +468,60 @@ jobs:
             --target "$TARGET" \
             --title "$TAG" \
             --notes-file release_body.md
+
+  bump-action-pin:
+    name: Bump slop-mop-action pin
+    needs:
+      - release-context
+      - github-release
+    if: needs.release-context.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # Keep the published slop-mop-action pinned to the freshly released
+      # version so its install cache stays deterministic and current. Opens a
+      # PR (reviewable) rather than pushing to main. Best-effort: the release
+      # is already published, so a failure here never blocks shipping.
+      - name: Open PR to bump the action's slopmop-version pin
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+          ACTION_REPO: ScienceIsNeato/slop-mop-action
+        run: |
+          set -uo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::RELEASE_PR_TOKEN not set — bump slopmop-version to ==${VERSION} in ${ACTION_REPO} manually."
+            exit 0
+          fi
+
+          workdir="$(mktemp -d)"
+          if ! git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${ACTION_REPO}.git" \
+            "$workdir" 2>/dev/null; then
+            echo "::warning::Could not clone ${ACTION_REPO} (token may lack access) — bump slopmop-version to ==${VERSION} manually."
+            exit 0
+          fi
+          cd "$workdir"
+
+          # Replace the default of the slopmop-version input only (the sed
+          # range is bounded to that input block).
+          sed -i -E \
+            "/^[[:space:]]*slopmop-version:/,/default:/ s|^([[:space:]]*)default:.*|\\1default: \"==${VERSION}\"|" \
+            action.yml
+
+          if git diff --quiet; then
+            echo "${ACTION_REPO} already pinned to ==${VERSION}; nothing to do."
+            exit 0
+          fi
+
+          branch="chore/bump-slopmop-${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git commit -am "chore: bump slopmop-version pin to ==${VERSION}"
+          git push --force-with-lease origin "$branch"
+          gh pr create --repo "$ACTION_REPO" \
+            --title "chore: bump slopmop-version pin to ==${VERSION}" \
+            --body "Automated bump from the Slop-Mop ${VERSION} release. Keeps the action's default pin (and install cache) aligned with the latest release." \
+            --base main --head "$branch" \
+            || echo "::warning::Could not open PR (it may already exist for ${branch})."

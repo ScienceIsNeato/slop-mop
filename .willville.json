@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Making release notes mandatory — releases now fail unless the changelog has a section for the version being cut, and that section becomes the release writeup",
-    "direction": "Land this, then cut 2.6.0 with the two new gates",
+    "status": "Wiring releases so they automatically keep the GitHub Action pointed at the just-shipped version — no more manual bumps, no more stale install caches",
+    "direction": "Land this so the next release bumps the action on its own",
     "last_update": "2026-06-17T00:00:00Z"
   }
 }
