@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "PR #298 clean — scour on push + --global install, all CI green and review resolved",
-    "direction": "Ready to merge; after merge, dogfood with sm commit-hooks install --global",
-    "last_update": "2026-06-19T14:08:00Z"
+    "status": "Made the post-push helper drive a PR all the way to green on its own, instead of stopping halfway — PR #302, clean and ready",
+    "direction": "So agents stop handing back half-finished PRs; folded the same 'not done until it's green' rule into the shared instructions",
+    "last_update": "2026-06-19T16:16:00Z"
   }
 }
