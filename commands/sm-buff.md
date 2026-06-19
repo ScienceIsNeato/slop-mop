@@ -54,14 +54,17 @@ sm buff resolve <PR#> <THREAD_ID> --scenario <scenario> --message "<evidence>"
 **Never mark a thread resolved just to turn the box green.** If you can't
 honestly pick one of the four above, it's an escalation — see below.
 
-## The one exit to the human
+## Returning to the human before clean
 
-Use `needs_human_feedback` **only** when a thread needs a decision you can't
-make: an architectural fork, a product call, or genuinely ambiguous intent.
-(This is the "slow down at the forks" rule — pushing harder in the wrong
-direction is the trap, not the fix.)
+There are exactly two sanctioned reasons to stop before the PR is green — a
+**decision** you can't make, and a **blocker** you can't clear. Everything
+else is yours to finish.
 
-When you hit one:
+**1. A decision fork — `needs_human_feedback`.** Use it **only** when a thread
+needs a call you can't make: an architectural fork, a product decision, or
+genuinely ambiguous intent. (This is the "slow down at the forks" rule —
+pushing harder in the wrong direction is the trap, not the fix.) When you hit
+one:
 
 1. Resolve that thread `--scenario needs_human_feedback --no-resolve` with the
    specific question.
@@ -70,9 +73,13 @@ When you hit one:
 3. Then surface to the human: the PR number, the single decision you need, and
    the options.
 
-That is the *only* reason to return before clean. A nitpick, a lint finding, a
-coverage gap, a logic bug you understand — those are yours to fix, not to ask
-about.
+**2. A blocker you can't clear — the circuit breaker** (below): repeated
+flaky/infra CI failures or external outages. You're not asking for a decision;
+you're reporting that forward progress is impossible from where you sit.
+
+Neither covers ordinary work. A nitpick, a lint finding, a coverage gap, a
+logic bug you understand — those are yours to fix, not to ask about. Never
+return on work you could have finished.
 
 ## Expect convergence, not one pass
 
