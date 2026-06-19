@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Added --global flag to commit-hooks install so it wires up machine-wide git hooks via core.hooksPath — PR #298",
-    "direction": "Get PR #298 reviewed and merge, then dogfood with sm commit-hooks install --global",
-    "last_update": "2026-06-19T12:00:00Z"
+    "status": "PR #298 clean — scour on push + --global install, all CI green and review resolved",
+    "direction": "Ready to merge; after merge, dogfood with sm commit-hooks install --global",
+    "last_update": "2026-06-19T14:08:00Z"
   }
 }
