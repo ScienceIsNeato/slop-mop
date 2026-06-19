@@ -4,16 +4,38 @@ Covers pre-commit/pre-push hook script generation, the merged/deleted-branch
 guard's detection logic, and hook-info parsing.
 """
 
+import argparse
 import subprocess
 from pathlib import Path
 
 from slopmop.cli.hooks import (
+    _GLOBAL_PASSTHROUGH_HOOKS,
     _generate_hook_script,
     _generate_merged_branch_guard,
+    _generate_passthrough_hook,
     _generate_pre_push_hook_script,
     _get_git_hooks_dir,
+    _global_hooks_dir,
     _parse_hook_info,
+    cmd_commit_hooks,
 )
+
+
+def _is_posix_sh(script: str) -> bool:
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as tmp:
+        tmp.write(script)
+        p = Path(tmp.name)
+    try:
+        return (
+            subprocess.run(
+                ["sh", "-n", str(p)], capture_output=True, check=False
+            ).returncode
+            == 0
+        )
+    finally:
+        p.unlink(missing_ok=True)
 
 
 class TestGitHooksFunctions:
@@ -55,7 +77,7 @@ class TestGitHooksFunctions:
     def test_generate_pre_push_hook_script(self):
         """Generates pre-push merged-branch guard hook script."""
         script = _generate_pre_push_hook_script()
-        assert "# Command: merged-branch-guard" in script
+        assert "# Command: merged-branch-guard + sm scour" in script
         assert "gh pr list" in script
         assert "--state merged" in script
         assert "You're missing some context." in script
@@ -67,6 +89,19 @@ class TestGitHooksFunctions:
         # Deletions (all-zero local sha) write nothing and must be skipped.
         assert "0000000000000000000000000000000000000000" in script
         assert "git symbolic-ref" not in script
+
+    def test_pre_push_hook_runs_scour_after_guard(self):
+        """The pre-push hook runs a cached scour, after the merged-branch guard."""
+        script = _generate_pre_push_hook_script()
+        # scour runs, and reuses the swab cache (no --no-cache).
+        assert "sm scour --porcelain --json-file .slopmop/last_scour.json" in script
+        assert "--no-cache" not in script
+        # The guard's stdin loop must finish before scour starts, so the merged
+        # check happens first and scour doesn't consume the pushed refs.
+        assert script.index("\ndone\n") < script.index("sm scour --porcelain")
+        # A failing scour blocks the push, with the standard bypass.
+        assert "Push blocked by slop-mop scour" in script
+        assert "git push --no-verify" in script
 
     def test_precommit_hook_embeds_merged_branch_guard(self):
         """The pre-commit hook guards a merged/deleted branch before swab runs."""
@@ -284,3 +319,134 @@ sm swab
         content = "#!/bin/sh\necho hello"
         result = _parse_hook_info(content)
         assert result is None
+
+
+class TestGlobalHooks:
+    """Machine-wide (core.hooksPath) hook generation."""
+
+    def test_global_dir_is_under_slopmop_home(self):
+        assert _global_hooks_dir() == Path.home() / ".slopmop" / "git-hooks"
+
+    def test_per_repo_hooks_have_no_global_preamble(self):
+        # Per-repo hooks run in their own repo — no delegation/onboarding guard.
+        assert "core.hooksPath" not in _generate_hook_script("swab")
+        assert "git rev-parse --show-toplevel" not in _generate_hook_script("swab")
+        assert "git rev-parse --show-toplevel" not in _generate_pre_push_hook_script()
+
+    def test_global_pre_commit_delegates_then_guards_onboarding(self):
+        script = _generate_hook_script("swab", global_install=True)
+        # Delegates to the repo-local hook so other tools keep working...
+        assert '"$_sm_local" "$@" || exit $?' in script
+        assert (
+            '_sm_local="$(git rev-parse --git-dir 2>/dev/null)/hooks/pre-commit"'
+            in script
+        )
+        # ...and only runs slop-mop in onboarded repos (else exit 0).
+        assert ".sb_config.json" in script and "tool.slopmop" in script
+        assert _is_posix_sh(script)
+
+    def test_global_pre_push_captures_stdin_and_feeds_guard(self):
+        script = _generate_pre_push_hook_script(global_install=True)
+        # stdin is slurped once, then fed to the delegated hook AND the guard.
+        assert "_sm_stdin=$(cat)" in script
+        assert 'printf \'%s\\n\' "$_sm_stdin" | "$_sm_local"' in script
+        # The merged-branch guard loop reads the refs back from a here-doc.
+        assert "done <<SLOPMOP_REFS" in script
+        # scour still runs, and the whole thing is valid POSIX sh.
+        assert "sm scour --porcelain" in script
+        assert _is_posix_sh(script)
+
+    def test_global_hook_marker_lets_delegation_skip_our_own_hooks(self):
+        # The delegation guard skips a local hook that is itself slop-mop's, so
+        # a per-repo install under a global install won't double-run.
+        script = _generate_hook_script("swab", global_install=True)
+        assert '! grep -q "# MANAGED BY SLOP-MOP" "$_sm_local"' in script
+
+    def test_global_worktree_delegation_uses_git_dir(self):
+        # The local hook path must use `git rev-parse --git-dir` so linked
+        # worktrees (where .git is a file, not a dir) resolve correctly.
+        script = _generate_hook_script("swab", global_install=True)
+        assert "$(git rev-parse --git-dir 2>/dev/null)/hooks/pre-commit" in script
+
+    def test_passthrough_hook_delegates_and_is_valid_posix_sh(self):
+        # Each passthrough hook should forward to the local hook and be POSIX sh.
+        for hook_name in _GLOBAL_PASSTHROUGH_HOOKS:
+            script = _generate_passthrough_hook(hook_name)
+            assert "# MANAGED BY SLOP-MOP" in script
+            assert f"$(git rev-parse --git-dir 2>/dev/null)/hooks/{hook_name}" in script
+            assert 'exec "$_sm_local" "$@"' in script
+            assert _is_posix_sh(script), f"sh -n failed for passthrough {hook_name}"
+
+    def test_global_install_writes_hooks_and_sets_hooksPath(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """cmd_commit_hooks --global writes hooks and sets core.hooksPath."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setenv("HOME", str(fake_home))
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="install",
+            hook_verb="swab",
+            global_install=True,
+        )
+        result = cmd_commit_hooks(args)
+
+        assert result == 0
+        global_dir = fake_home / ".slopmop" / "git-hooks"
+        assert (global_dir / "pre-commit").exists()
+        assert (global_dir / "pre-push").exists()
+        # All passthrough hooks must be present.
+        for hook_name in _GLOBAL_PASSTHROUGH_HOOKS:
+            assert (global_dir / hook_name).exists(), f"missing global hook {hook_name}"
+        out = capsys.readouterr().out
+        assert "Machine-wide hooks installed" in out
+        assert "core.hooksPath" in out
+        # Verify git actually recorded the path.
+        cfg = subprocess.run(
+            ["git", "config", "--global", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert cfg.returncode == 0
+        assert cfg.stdout.strip() == str(global_dir)
+
+    def test_global_uninstall_removes_hooks_and_unsets_hooksPath(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """cmd_commit_hooks --global uninstall removes hooks and unsets core.hooksPath."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setenv("HOME", str(fake_home))
+
+        # Install first so there's something to uninstall.
+        install_args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="install",
+            hook_verb="swab",
+            global_install=True,
+        )
+        assert cmd_commit_hooks(install_args) == 0
+        capsys.readouterr()  # discard install output
+
+        # Now uninstall.
+        uninstall_args = argparse.Namespace(
+            project_root=str(tmp_path),
+            hooks_action="uninstall",
+            global_install=True,
+        )
+        result = cmd_commit_hooks(uninstall_args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "global core.hooksPath" in out
+        # core.hooksPath should be gone.
+        cfg = subprocess.run(
+            ["git", "config", "--global", "--get", "core.hooksPath"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert cfg.returncode != 0  # key not found → exit 1

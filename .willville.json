@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Wiring releases so they automatically keep the GitHub Action pointed at the just-shipped version — no more manual bumps, no more stale install caches",
-    "direction": "Land this so the next release bumps the action on its own",
-    "last_update": "2026-06-17T00:00:00Z"
+    "status": "PR #298 clean — scour on push + --global install, all CI green and review resolved",
+    "direction": "Ready to merge; after merge, dogfood with sm commit-hooks install --global",
+    "last_update": "2026-06-19T14:08:00Z"
   }
 }
