@@ -9,8 +9,10 @@ import subprocess
 from pathlib import Path
 
 from slopmop.cli.hooks import (
+    _GLOBAL_PASSTHROUGH_HOOKS,
     _generate_hook_script,
     _generate_merged_branch_guard,
+    _generate_passthrough_hook,
     _generate_pre_push_hook_script,
     _get_git_hooks_dir,
     _global_hooks_dir,
@@ -366,6 +368,15 @@ class TestGlobalHooks:
         script = _generate_hook_script("swab", global_install=True)
         assert "$(git rev-parse --git-dir 2>/dev/null)/hooks/pre-commit" in script
 
+    def test_passthrough_hook_delegates_and_is_valid_posix_sh(self):
+        # Each passthrough hook should forward to the local hook and be POSIX sh.
+        for hook_name in _GLOBAL_PASSTHROUGH_HOOKS:
+            script = _generate_passthrough_hook(hook_name)
+            assert "# MANAGED BY SLOP-MOP" in script
+            assert f"/hooks/{hook_name}" in script
+            assert 'exec "$_sm_local" "$@"' in script
+            assert _is_posix_sh(script), f"sh -n failed for passthrough {hook_name}"
+
     def test_global_install_writes_hooks_and_sets_hooksPath(
         self, tmp_path, monkeypatch, capsys
     ):
@@ -386,6 +397,9 @@ class TestGlobalHooks:
         global_dir = fake_home / ".slopmop" / "git-hooks"
         assert (global_dir / "pre-commit").exists()
         assert (global_dir / "pre-push").exists()
+        # Passthrough hooks for other types should also be present.
+        assert (global_dir / "commit-msg").exists()
+        assert (global_dir / "prepare-commit-msg").exists()
         out = capsys.readouterr().out
         assert "Machine-wide hooks installed" in out
         assert "core.hooksPath" in out

@@ -56,6 +56,47 @@ fi
 """
 
 
+# Client-side hooks that should get passthrough delegation when global hooks
+# are installed. We exclude pre-commit and pre-push (managed by us) and all
+# server-side hooks (post-receive, pre-receive, update, post-update).
+_GLOBAL_PASSTHROUGH_HOOKS = [
+    "applypatch-msg",
+    "commit-msg",
+    "post-applypatch",
+    "post-checkout",
+    "post-commit",
+    "post-merge",
+    "post-rewrite",
+    "pre-applypatch",
+    "pre-auto-gc",
+    "pre-merge-commit",
+    "pre-rebase",
+    "prepare-commit-msg",
+    "push-to-checkout",
+]
+
+
+def _generate_passthrough_hook(hook_name: str) -> str:
+    """Generate a delegation-only hook for types we don't manage.
+
+    When ``core.hooksPath`` is set git resolves ALL hook types from that
+    directory, not each repo's ``.git/hooks``.  For the hook types we don't
+    manage (commit-msg, post-checkout, …) we still need a script in the
+    global dir — otherwise those hooks are silently skipped for every repo.
+    This script simply forwards to the repo-local hook if one exists.
+    """
+    return f"""#!/bin/sh
+{SB_HOOK_MARKER}
+# Command: passthrough-delegation for {hook_name}
+# Forwards to the repo's own {hook_name} hook so other tools keep working.
+_sm_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+_sm_local="$(git rev-parse --git-dir 2>/dev/null)/hooks/{hook_name}"
+if [ -x "$_sm_local" ]; then
+    exec "$_sm_local" "$@"
+fi
+"""
+
+
 def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
     """Find the .git/hooks directory for a project."""
     git_dir = project_root / ".git"
@@ -495,6 +536,16 @@ def _hooks_install(
     )
 
     if global_install:
+        # Write passthrough delegation scripts for hook types we don't manage.
+        # core.hooksPath shadows ALL hook types — without these, commit-msg,
+        # post-checkout, prepare-commit-msg, etc. would be silently skipped.
+        for pt_hook in _GLOBAL_PASSTHROUGH_HOOKS:
+            pt_file = target_dir / pt_hook
+            pt_file.write_text(_generate_passthrough_hook(pt_hook))
+            pt_file.chmod(
+                pt_file.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+            )
+
         existing_path = subprocess.run(
             ["git", "config", "--global", "--get", "core.hooksPath"],
             capture_output=True,
@@ -564,7 +615,7 @@ def _hooks_uninstall(
         return 0
 
     removed: list[str] = []
-    hook_types = ["pre-commit", "pre-push", "commit-msg"]
+    hook_types = ["pre-commit", "pre-push"] + _GLOBAL_PASSTHROUGH_HOOKS
 
     for hook_type in hook_types:
         hook_file = target_dir / hook_type
