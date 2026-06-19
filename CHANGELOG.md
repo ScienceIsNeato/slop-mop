@@ -6,6 +6,25 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.7.0
+
+### Hooks
+
+- **Scour on push** (#298) — native pre-push hook now runs the full `sm scour`
+  after the merged-branch guard. Reuses the swab cache so only scour-only and
+  changed gates run fresh (~135ms cached vs ~3.6s cold, 27× speedup).
+- **Machine-wide install** (#298) — `sm commit-hooks install --global` writes
+  hooks to `~/.slopmop/git-hooks/` and sets `git config --global core.hooksPath`
+  so every repo on the machine gets swab on commit + scour on push. Global hooks
+  delegate to each repo's own `.git/hooks` first (preserving other tools' hooks),
+  skip non-onboarded repos, and write passthrough delegation scripts for all
+  other hook types (commit-msg, prepare-commit-msg, post-checkout, etc.) so
+  `core.hooksPath` doesn't silently swallow them. `--global` also works on
+  install/uninstall.
+- **Status + UX** (#298) — `sm commit-hooks status` now surfaces an active
+  global install; per-repo install warns when global hooks are already shadowing
+  `.git/hooks`.
+
 ## 2.6.0
 
 ### New gates
