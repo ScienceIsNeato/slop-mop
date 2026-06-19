@@ -455,3 +455,107 @@ class TestSailMode:
         sail_mod.cmd_sail(args)
 
         write_sail_mode.assert_any_call(tmp_path, SailMode.TACKING)
+
+
+class TestSailDrive:
+    """sm sail drives through consecutive tool-steps in one invocation,
+    stopping only when the workflow parks on an agent/human action or reaches
+    PR_READY."""
+
+    @pytest.fixture(autouse=True)
+    def _onboarded(self, monkeypatch):
+        monkeypatch.setattr(sail_mod, "_onboard_status", lambda _: "onboarded")
+        monkeypatch.setattr(sail_mod, "write_sail_mode", Mock())
+        monkeypatch.setattr(sail_mod, "write_state", Mock())
+        # reconcile is identity here — we drive state purely via the holder.
+        monkeypatch.setattr(
+            sail_mod, "_reconcile_runtime_state", lambda state, _root: state
+        )
+
+    def _drive(self, monkeypatch, start, transitions):
+        """Wire a state holder + mock handlers.
+
+        ``transitions`` maps a state to the state it advances to (or ``None``
+        to park). Returns the ordered list of states whose handlers ran.
+        """
+        holder = {"state": start}
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: holder["state"])
+
+        calls: list[WorkflowState] = []
+
+        def make_handler(advance_to):
+            def handler(_args, _root):
+                calls.append(holder["state"])
+                if advance_to is not None:
+                    holder["state"] = advance_to
+                return 0
+
+            return handler
+
+        handlers = {
+            state: make_handler(advance_to) for state, advance_to in transitions.items()
+        }
+        monkeypatch.setattr(sail_mod, "_STATE_HANDLERS", handlers)
+        return calls
+
+    def test_chains_swab_scour_until_parked_at_push(self, monkeypatch, tmp_path: Path):
+        # After a fix, one `sm sail` runs swab → scour and parks at the push step.
+        calls = self._drive(
+            monkeypatch,
+            WorkflowState.SCOUR_FAILING,
+            {
+                WorkflowState.SCOUR_FAILING: WorkflowState.SWAB_CLEAN,
+                WorkflowState.SWAB_CLEAN: WorkflowState.SCOUR_CLEAN,
+                WorkflowState.SCOUR_CLEAN: None,  # parks — agent must push
+            },
+        )
+        assert sail_mod.cmd_sail(_base_args(tmp_path)) == 0
+        assert calls == [
+            WorkflowState.SCOUR_FAILING,
+            WorkflowState.SWAB_CLEAN,
+            WorkflowState.SCOUR_CLEAN,
+        ]
+
+    def test_stops_at_pr_ready_without_looping_past_it(
+        self, monkeypatch, tmp_path: Path
+    ):
+        # PR_READY is terminal: its handler runs, then sail returns even if the
+        # handler would otherwise advance the state.
+        calls = self._drive(
+            monkeypatch,
+            WorkflowState.PR_OPEN,
+            {
+                WorkflowState.PR_OPEN: WorkflowState.PR_READY,
+                WorkflowState.PR_READY: WorkflowState.IDLE,  # must NOT be followed
+            },
+        )
+        assert sail_mod.cmd_sail(_base_args(tmp_path)) == 0
+        assert calls == [WorkflowState.PR_OPEN, WorkflowState.PR_READY]
+
+    def test_parks_immediately_when_state_does_not_advance(
+        self, monkeypatch, tmp_path: Path
+    ):
+        # A handler that needs the agent (e.g. failing gate) doesn't advance the
+        # state, so the drive stops after one step.
+        calls = self._drive(
+            monkeypatch,
+            WorkflowState.SWAB_FAILING,
+            {WorkflowState.SWAB_FAILING: None},
+        )
+        assert sail_mod.cmd_sail(_base_args(tmp_path)) == 0
+        assert calls == [WorkflowState.SWAB_FAILING]
+
+    def test_cycle_guard_bails_on_ping_pong(self, monkeypatch, tmp_path: Path):
+        # If the machine ping-pongs between two states, the cycle guard stops it
+        # rather than spinning to the step cap.
+        calls = self._drive(
+            monkeypatch,
+            WorkflowState.SWAB_CLEAN,
+            {
+                WorkflowState.SWAB_CLEAN: WorkflowState.SCOUR_FAILING,
+                WorkflowState.SCOUR_FAILING: WorkflowState.SWAB_CLEAN,
+            },
+        )
+        assert sail_mod.cmd_sail(_base_args(tmp_path)) == 0
+        # Each state's handler runs once; the revisit is caught before a third.
+        assert calls == [WorkflowState.SWAB_CLEAN, WorkflowState.SCOUR_FAILING]

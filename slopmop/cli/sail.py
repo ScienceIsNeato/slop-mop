@@ -40,6 +40,11 @@ from slopmop.workflow.state_store import (
 
 _THEN_SAIL = "   Then: sm sail"
 
+# Safety cap on how many steps a single ``sm sail`` drive may chain before
+# returning control. The lifecycle is ~5 states (IDLE → SWAB → SCOUR → PR_OPEN
+# → PR_READY), so anything past this means the state machine is cycling.
+_MAX_SAIL_STEPS = 12
+
 
 def _has_uncommitted_changes(project_root: Path) -> bool:
     """Return True when the working tree or index has uncommitted changes."""
@@ -406,7 +411,18 @@ _STATE_HANDLERS = {
 
 
 def cmd_sail(args: argparse.Namespace) -> int:
-    """Drive the workflow toward a green PR — one step at a time."""
+    """Drive the workflow toward a green PR — autonomously.
+
+    A single ``sm sail`` invocation keeps dispatching the next step (swab,
+    scour, buff watch, …) and stops only when the workflow parks on something
+    the agent or human must do — fix a failing gate, commit, push, open the PR,
+    resolve review threads — or reaches PR_READY. Parking is detected by the
+    state failing to advance: informational handlers (commit/push/HOLD) leave
+    the state where it is, while tool steps move it forward. Note that commit,
+    push, and PR creation remain agent steps (they need an authored message and
+    body), so sail never mutates git or publishes on its own — it just no longer
+    makes the agent re-invoke it between every validation step.
+    """
     project_root = Path(getattr(args, "project_root", "."))
 
     # Auto-detect JSON mode for agents if not explicitly specified
@@ -436,19 +452,43 @@ def cmd_sail(args: argparse.Namespace) -> int:
     # Activating sail sets SAILING mode — persists across calls until PR_READY.
     write_sail_mode(project_root, SailMode.SAILING)
 
-    persisted_state = read_state(project_root) or WorkflowState.IDLE
-    state = _reconcile_runtime_state(persisted_state, project_root)
-    if state != persisted_state:
-        write_state(project_root, state)
+    last_result = 0
+    seen: set[WorkflowState] = set()
+    for _ in range(_MAX_SAIL_STEPS):
+        persisted_state = read_state(project_root) or WorkflowState.IDLE
+        state = _reconcile_runtime_state(persisted_state, project_root)
+        if state != persisted_state:
+            write_state(project_root, state)
 
-    handler = _STATE_HANDLERS.get(state)
-    if handler is None:
-        print(
-            f"⛵ sail: unknown state {state.value!r} — falling back to swab.",
-            flush=True,
+        # Cycle guard: if a drive returns to a state it has already run this
+        # invocation, the machine is ping-ponging — hand back rather than spin.
+        if state in seen:
+            return last_result
+        seen.add(state)
+
+        handler = _STATE_HANDLERS.get(state)
+        if handler is None:
+            print(
+                f"⛵ sail: unknown state {state.value!r} — falling back to swab.",
+                flush=True,
+            )
+            from slopmop.cli import cmd_swab
+
+            return cmd_swab(_swab_args(args))
+
+        last_result = handler(args, project_root)
+
+        # PR_READY is terminal — its handler already surfaced to the human.
+        if state == WorkflowState.PR_READY:
+            return last_result
+
+        # Parked: the next action needs the agent/human (fix, commit, push,
+        # resolve threads), so the state didn't advance. Hand control back.
+        next_state = _reconcile_runtime_state(
+            read_state(project_root) or WorkflowState.IDLE, project_root
         )
-        from slopmop.cli import cmd_swab
+        if next_state == state:
+            return last_result
 
-        return cmd_swab(_swab_args(args))
-
-    return handler(args, project_root)
+    # Hit the safety cap — return whatever the last step yielded.
+    return last_result
