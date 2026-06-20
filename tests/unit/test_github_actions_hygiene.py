@@ -386,13 +386,33 @@ jobs:
         # Config-disabled gates don't resolve actionlint at all.
         assert _check()._actionlint_path(str(tmp_path)) is None
 
-    def test_passed_note_distinguishes_disabled_from_missing(self, tmp_path):
-        # A clean run with actionlint OFF must say "disabled", not "not
-        # installed" — they are different states (#305 review).
+    def test_passed_note_distinguishes_all_three_states(self, tmp_path):
+        # The pass note must distinguish disabled / checked / not-installed —
+        # all three states, not just one (#305 review).
         _write_workflow(tmp_path, "name: CI\non: push\n")
-        result = GitHubActionsHygieneCheck({"run_actionlint": False}).run(str(tmp_path))
-        assert result.status == CheckStatus.PASSED
-        assert "actionlint disabled" in result.output
+        find_tool = "slopmop.checks.workflow.github_actions.find_tool"
+
+        # 1. Disabled by config → "disabled".
+        disabled = GitHubActionsHygieneCheck({"run_actionlint": False}).run(
+            str(tmp_path)
+        )
+        assert disabled.status == CheckStatus.PASSED
+        assert "actionlint disabled" in disabled.output
+
+        # 2. Enabled + resolvable + clean run → "checked".
+        check = GitHubActionsHygieneCheck({"run_actionlint": True})
+        clean = MagicMock(returncode=0, output="")
+        with patch(find_tool, return_value="/usr/bin/actionlint"):
+            with patch.object(check._runner, "run", return_value=clean):
+                checked = check.run(str(tmp_path))
+        assert "actionlint checked" in checked.output
+
+        # 3. Enabled + not resolvable → "not installed".
+        with patch(find_tool, return_value=None):
+            missing = GitHubActionsHygieneCheck({"run_actionlint": True}).run(
+                str(tmp_path)
+            )
+        assert "actionlint not installed" in missing.output
 
     def test_with_repo_relative_file_handles_no_file_and_outside_root(self, tmp_path):
         check = _check()
