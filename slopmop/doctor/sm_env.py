@@ -13,8 +13,9 @@ reinstalling inside a pipx-managed env via raw ``pip install`` is a
 footgun.  The hint points to the right reinstall command.
 
 ``sm_env.tool_inventory`` — the check that actually tells you why gates
-are skipping.  Reuses ``REQUIRED_TOOLS`` and ``find_tool()`` so it
-reports exactly what the gates will see.  Also sanity-tests each
+are skipping.  Derives its tool list from each gate's ``requirements()``
+(via ``gate_tool_inventory()``) and ``find_tool()`` so it reports exactly
+what the gates will see.  Also sanity-tests each
 resolved path against the subprocess validator so the very bug that
 prompted this feature (Windows ``.exe`` rejected by the allowlist)
 surfaces as a FAIL here rather than a silent gate skip.
@@ -25,7 +26,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from slopmop.checks.base import find_tool
 from slopmop.checks.tool_inventory import gate_tool_inventory
@@ -111,6 +112,24 @@ class SmPipCheck(DoctorCheck):
             fix_hint=_reinstall_hint(),
             data=data,
         )
+
+
+def _load_repo_config(project_root: object) -> Dict[str, Any]:
+    """Load this repo's .sb_config.json (or {}) so config-dependent
+    requirements() reflect the repo, not the defaults."""
+    import json
+    from pathlib import Path
+
+    path = Path(str(project_root)) / ".sb_config.json"
+    if not path.exists():
+        return {}
+    try:
+        data: object = json.loads(path.read_text())
+        if isinstance(data, dict):
+            return cast(Dict[str, Any], data)
+        return {}
+    except (OSError, ValueError):
+        return {}
 
 
 def _reinstall_hint() -> str:
@@ -226,7 +245,12 @@ class ToolInventoryCheck(DoctorCheck):
     def _collect_version_violations(
         self, resolved: Dict[str, str], root: str
     ) -> List[Tuple[str, str, str]]:
-        """Check required_tool_versions constraints for all registered gates."""
+        """Warn when an installed tool is older than a gate's declared pin.
+
+        Reads each gate's requirements() (the pins replaced the retired
+        required_tool_versions map). The pin is treated as a FLOOR — a newer
+        installed version is fine, an older one is flagged.
+        """
         violations: List[Tuple[str, str, str]] = []
         try:
             from slopmop.checks import ensure_checks_registered  # noqa: PLC0415
@@ -236,22 +260,22 @@ class ToolInventoryCheck(DoctorCheck):
             registry = get_registry()
             seen: set[Tuple[str, str]] = set()
             for gate_name in registry.list_checks():
-                check_cls = registry._check_classes.get(gate_name)
-                if check_cls is None:
+                check = registry.get_check(gate_name, {})
+                if check is None:
                     continue
-                for tool, spec in getattr(
-                    check_cls, "required_tool_versions", {}
-                ).items():
-                    key = (tool, spec)
+                for req in check.requirements().items:
+                    if not req.version:
+                        continue
+                    key = (req.name, req.version)
                     if key in seen:
                         continue
                     seen.add(key)
-                    path = resolved.get(tool) or find_tool(tool, root)
+                    path = resolved.get(req.name) or find_tool(req.name, root)
                     if not path:
                         continue
-                    msg = _check_version_constraint(tool, path, spec)
+                    msg = _check_version_constraint(req.name, path, f">={req.version}")
                     if msg:
-                        violations.append((tool, gate_name, msg))
+                        violations.append((req.name, gate_name, msg))
         except Exception:  # noqa: BLE001 — advisory only
             pass
         return violations
@@ -417,6 +441,10 @@ class GateReadinessCheck(DoctorCheck):
         ensure_checks_registered()
         registry = get_registry()
         root = str(ctx.project_root)
+        # requirements() is config-dependent (configured scanners, run_actionlint
+        # …), so instantiate each gate with THIS repo's config for accurate
+        # readiness rather than the defaults.
+        config = _load_repo_config(ctx.project_root)
 
         total_gates = 0
         ready_gates = 0
@@ -424,11 +452,14 @@ class GateReadinessCheck(DoctorCheck):
         missing_tools: set[str] = set()
 
         for name in registry.list_checks():
-            check = registry.get_check(name, {})
+            check = registry.get_check(name, config)
             if check is None:
                 continue
             total_gates += 1
-            gate_missing = check.missing_requirements(root)
+            # Only REQUIRED missing tools block — optional tools just degrade.
+            gate_missing = [
+                r for r in check.missing_requirements(root) if not r.optional
+            ]
             if gate_missing:
                 blocked_gates.append(name)
                 missing_tools.update(r.name for r in gate_missing)

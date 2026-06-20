@@ -624,13 +624,15 @@ class Requirement:
         }
 
     def resolved_install_hint(self) -> str:
-        """The install command to show a user, with a kind-based fallback."""
+        """The remediation to show a user, with a kind-based fallback."""
         if self.install_hint:
             return self.install_hint
         if self.kind == "python":
             return f"pip install {self.name}"
         if self.kind == "npm":
             return f"npm install -g {self.name}"
+        if self.kind == "env":
+            return f"Set the {self.name} environment variable"
         return f"Install {self.name}"
 
 

@@ -94,8 +94,14 @@ def _gate_config_fingerprint(config: Dict[str, Any], gate_name: str) -> str:
 
 
 def _missing_required_tools(check: BaseCheck, project_root: Path) -> Tuple[str, ...]:
+    # Only REQUIRED tools block a gate — an absent optional tool just degrades
+    # it (the gate WARNs and runs), so it must not count as "blocked".
     return tuple(
-        sorted(req.name for req in check.missing_requirements(str(project_root)))
+        sorted(
+            req.name
+            for req in check.missing_requirements(str(project_root))
+            if not req.optional
+        )
     )
 
 

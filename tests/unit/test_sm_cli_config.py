@@ -213,7 +213,7 @@ class TestCmdConfig:
             swabbing_timeout=None,
         )
 
-        cmd_config(args)
+        assert cmd_config(args) == 0
 
         out = capsys.readouterr().out
         assert "Missing tools" in out

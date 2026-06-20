@@ -188,12 +188,16 @@ def _print_gates_tree(project_root: Path, json_mode: bool = False) -> int:
     ensure_checks_registered()
     registry = get_registry()
     root = str(project_root)
+    # requirements() is config-dependent, so render with THIS repo's config.
+    from slopmop.doctor.sm_env import _load_repo_config
+
+    config = _load_repo_config(project_root)
 
     swab_gates: List[Tuple[str, str, List[Tuple[str, bool]]]] = []
     scour_gates: List[Tuple[str, str, List[Tuple[str, bool]]]] = []
 
     for name in registry.list_checks():
-        check = registry.get_check(name, {})
+        check = registry.get_check(name, config)
         if check is None:
             continue
         cls = type(check)
