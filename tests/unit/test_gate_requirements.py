@@ -738,7 +738,31 @@ class TestRequiredDepsManifest:
         second = capsys.readouterr().out
         assert first == second  # byte-stable for a fixed config
 
-    def test_aggregate_raises_on_conflicting_declarations(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "first, second",
+        [
+            # Every identity field the aggregator compares must trip the raise.
+            (
+                Requirement(kind="python", name="black", version="26.5.1"),
+                Requirement(kind="python", name="black", version="25.1.0"),
+            ),  # version
+            (
+                Requirement(kind="python", name="black"),
+                Requirement(kind="npm", name="black"),
+            ),  # kind
+            (
+                Requirement(kind="python", name="black", probe="binary"),
+                Requirement(kind="python", name="black", probe="import"),
+            ),  # probe
+            (
+                Requirement(kind="python", name="black", import_name="black"),
+                Requirement(kind="python", name="black", import_name="blackd"),
+            ),  # import_name
+        ],
+    )
+    def test_aggregate_raises_on_conflicting_declarations(
+        self, monkeypatch, first, second
+    ):
         from unittest.mock import MagicMock
 
         from slopmop.checks import tool_inventory
@@ -748,11 +772,8 @@ class TestRequiredDepsManifest:
             m.requirements.return_value = Requirements(items=tuple(reqs))
             return m
 
-        # Same name, DIFFERENT version — must fail fast, not silently pick one.
-        gates = {
-            "g1": gate(Requirement(kind="python", name="black", version="26.5.1")),
-            "g2": gate(Requirement(kind="python", name="black", version="25.1.0")),
-        }
+        # Two gates declare the same tool but disagree — must fail fast.
+        gates = {"g1": gate(first), "g2": gate(second)}
         import slopmop.checks as checks_mod
         import slopmop.core.registry as reg_mod
 

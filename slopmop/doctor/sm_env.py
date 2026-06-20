@@ -122,13 +122,22 @@ def _load_repo_config(project_root: object) -> Dict[str, Any]:
     Delegates to the canonical ``load_config`` rather than reading only
     ``.sb_config.json``, so config set in pyproject isn't ignored.
     """
+    import logging
     from pathlib import Path
 
     from slopmop.sm import load_config
 
     try:
         return load_config(Path(str(project_root)))
-    except Exception:  # noqa: BLE001 — advisory; doctor must never crash
+    except Exception as exc:  # noqa: BLE001 — doctor must never crash
+        # Non-crash, but DON'T hide it: a swallowed failure means the manifest
+        # silently falls back to defaults and no longer reflects the real repo.
+        logging.getLogger(__name__).warning(
+            "Could not load repo config from %s (%s); "
+            "requirements will use defaults.",
+            project_root,
+            exc,
+        )
         return {}
 
 
