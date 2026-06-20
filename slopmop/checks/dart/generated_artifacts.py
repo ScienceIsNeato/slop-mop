@@ -26,7 +26,6 @@ class DartGeneratedArtifactsCheck(BaseCheck):
     """Fail when Flutter build/tool artifacts are committed."""
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["flutter"]
 
     def requirements(self) -> Requirements:
         # Optional: a missing flutter WARNs (degrades), it does not fail
@@ -44,7 +43,6 @@ class DartGeneratedArtifactsCheck(BaseCheck):
             )
         )
 
-    install_hint = "path"
     role = CheckRole.DIAGNOSTIC
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 

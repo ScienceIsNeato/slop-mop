@@ -92,7 +92,6 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["mypy"]
     role = CheckRole.FOUNDATION
 
     def requirements(self) -> Requirements:

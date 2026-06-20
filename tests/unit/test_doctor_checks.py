@@ -367,7 +367,10 @@ class TestToolInventoryCheck:
             ("black", "gate.complex", "install-cmd"),
         ]
         with (
-            patch("slopmop.doctor.sm_env.REQUIRED_TOOLS", fake_required),
+            patch(
+                "slopmop.doctor.sm_env.gate_tool_inventory",
+                return_value=fake_required,
+            ),
             patch("slopmop.doctor.sm_env.find_tool", return_value=None),
         ):
             r = ToolInventoryCheck().run(ctx)
@@ -399,7 +402,10 @@ class TestToolInventoryCheck:
             return "/bin/black" if name == "black" else None
 
         with (
-            patch("slopmop.doctor.sm_env.REQUIRED_TOOLS", fake_required),
+            patch(
+                "slopmop.doctor.sm_env.gate_tool_inventory",
+                return_value=fake_required,
+            ),
             patch("slopmop.doctor.sm_env.find_tool", side_effect=fake_find),
             patch(
                 "slopmop.subprocess.validator.CommandValidator.validate",

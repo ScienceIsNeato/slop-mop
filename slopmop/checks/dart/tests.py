@@ -39,7 +39,6 @@ class FlutterTestsCheck(BaseCheck):
     """Run flutter test across all discovered test packages."""
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["flutter"]
 
     def requirements(self) -> Requirements:
         # Optional: a missing flutter WARNs (degrades), it does not fail
@@ -57,7 +56,6 @@ class FlutterTestsCheck(BaseCheck):
             )
         )
 
-    install_hint = "path"
     role = CheckRole.FOUNDATION
 
     @property

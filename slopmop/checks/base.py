@@ -756,26 +756,10 @@ class BaseCheck(ABC):
     # rather than relying on gate-name string matching.
     is_formatting_gate: ClassVar[bool] = False
 
-    # Tools this gate needs at runtime.  Doctor uses this to verify
-    # tool availability *before* the gate runs.  Opt-in: gates that
-    # don't declare this are still diagnosed by tool_context heuristics
-    # (e.g. NODE gates check for node_modules, PROJECT gates check for
-    # venv), but SM_TOOL gates should list specific executables.
-    required_tools: ClassVar[List[str]] = []
-
-    # Minimum version constraints for tools declared in ``required_tools``.
-    # Maps tool name → PEP 440 version specifier string (e.g. ``">=24.0"``).
-    # Doctor uses this to call ``<tool> --version`` and warn when the
-    # installed version does not satisfy the constraint.  Opt-in: most
-    # gates leave this empty.
-    required_tool_versions: ClassVar[Dict[str, str]] = {}
-
-    # How to install missing tools.  Doctor reads this to generate
-    # actionable remediation hints.  Use "pip" for Python-ecosystem
-    # tools, or a freeform string like "Install {tool} from https://..."
-    # for tools that aren't pip-installable.  Default "pip" covers most
-    # SM_TOOL gates.  Override in subclasses for non-pip tools.
-    install_hint: ClassVar[str] = "pip"
+    # External tools a gate needs are declared via requirements() (the
+    # Requirement contract — name, exact pin, kind/probe, install_hint). The
+    # former required_tools / required_tool_versions / install_hint class
+    # attributes have been retired in favour of that single source.
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None

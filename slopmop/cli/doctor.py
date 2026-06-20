@@ -182,7 +182,7 @@ def _print_list_checks() -> None:
 def _print_gates_tree(project_root: Path, json_mode: bool = False) -> int:
     """Show quality gates grouped by level with required tools and status."""
     from slopmop.checks import ensure_checks_registered
-    from slopmop.checks.base import GateLevel, find_tool
+    from slopmop.checks.base import GateLevel
     from slopmop.core.registry import get_registry
 
     ensure_checks_registered()
@@ -192,11 +192,15 @@ def _print_gates_tree(project_root: Path, json_mode: bool = False) -> int:
     swab_gates: List[Tuple[str, str, List[Tuple[str, bool]]]] = []
     scour_gates: List[Tuple[str, str, List[Tuple[str, bool]]]] = []
 
-    for name, cls in registry._check_classes.items():
-        tools_status: List[Tuple[str, bool]] = []
-        for tool in cls.required_tools:
-            path = find_tool(tool, root)
-            tools_status.append((tool, path is not None))
+    for name in registry.list_checks():
+        check = registry.get_check(name, {})
+        if check is None:
+            continue
+        cls = type(check)
+        tools_status: List[Tuple[str, bool]] = [
+            (req.name, check.is_requirement_satisfied(req, root))
+            for req in check.requirements().items
+        ]
 
         role_tag = cls.role.value if hasattr(cls, "role") else ""
         entry = (name, role_tag, tools_status)

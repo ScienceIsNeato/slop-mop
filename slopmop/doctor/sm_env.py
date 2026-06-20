@@ -28,7 +28,7 @@ import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 from slopmop.checks.base import find_tool
-from slopmop.cli.detection import REQUIRED_TOOLS
+from slopmop.checks.tool_inventory import gate_tool_inventory
 from slopmop.cli.upgrade import UpgradeError, classify_install
 from slopmop.doctor.base import DoctorCheck, DoctorContext, DoctorResult
 from slopmop.subprocess.validator import SecurityError, get_validator
@@ -207,7 +207,7 @@ class ToolInventoryCheck(DoctorCheck):
         validator_rejects: List[Tuple[str, str]] = []
         seen: set[str] = set()
 
-        for tool_name, check_name, install_cmd in REQUIRED_TOOLS:
+        for tool_name, check_name, install_cmd in gate_tool_inventory():
             if tool_name in seen:
                 continue
             seen.add(tool_name)
@@ -412,7 +412,6 @@ class GateReadinessCheck(DoctorCheck):
 
     def run(self, ctx: DoctorContext) -> DoctorResult:
         from slopmop.checks import ensure_checks_registered
-        from slopmop.checks.base import find_tool
         from slopmop.core.registry import get_registry
 
         ensure_checks_registered()
@@ -424,17 +423,17 @@ class GateReadinessCheck(DoctorCheck):
         blocked_gates: List[str] = []
         missing_tools: set[str] = set()
 
-        for name, cls in registry._check_classes.items():
+        for name in registry.list_checks():
+            check = registry.get_check(name, {})
+            if check is None:
+                continue
             total_gates += 1
-            gate_ok = True
-            for tool in cls.required_tools:
-                if not find_tool(tool, root):
-                    gate_ok = False
-                    missing_tools.add(tool)
-            if gate_ok:
-                ready_gates += 1
-            else:
+            gate_missing = check.missing_requirements(root)
+            if gate_missing:
                 blocked_gates.append(name)
+                missing_tools.update(r.name for r in gate_missing)
+            else:
+                ready_gates += 1
 
         data: dict[str, object] = {
             "total_gates": total_gates,
@@ -464,7 +463,11 @@ class GateReadinessCheck(DoctorCheck):
             ),
             fix_hint="sm doctor --gates   # full dependency tree\n"
             + _group_install_hints(
-                [(t, "", cmd) for t, _, cmd in REQUIRED_TOOLS if t in missing_tools]
+                [
+                    (t, "", cmd)
+                    for t, _, cmd in gate_tool_inventory()
+                    if t in missing_tools
+                ]
             ),
             data=data,
         )

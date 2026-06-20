@@ -110,7 +110,6 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["black", "isort", "autoflake", "flake8", "ruff"]
     role = CheckRole.FOUNDATION
 
     def requirements(self) -> Requirements:

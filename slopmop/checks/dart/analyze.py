@@ -37,7 +37,6 @@ class FlutterAnalyzeCheck(BaseCheck):
     """Run flutter analyze across all discovered pubspec packages."""
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["flutter"]
 
     def requirements(self) -> Requirements:
         # Optional: a missing flutter WARNs (degrades), it does not fail
@@ -55,7 +54,6 @@ class FlutterAnalyzeCheck(BaseCheck):
             )
         )
 
-    install_hint = "path"
     role = CheckRole.FOUNDATION
 
     @property

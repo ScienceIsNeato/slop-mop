@@ -149,7 +149,6 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["bandit", "detect-secrets"]
     role = CheckRole.FOUNDATION
     level = GateLevel.SCOUR
 

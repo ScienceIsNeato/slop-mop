@@ -455,10 +455,10 @@ class TestVersionPinsTrackPyproject:
 
 
 class TestAllToolGatesDeclareRequirements:
-    """Registry-wide invariant: every gate that needs external tools declares
-    them via requirements(). Guards against a new gate re-introducing the
-    scattered-detection problem, and keeps the legacy required_tools list in
-    sync with the contract until the doctor migration retires it."""
+    """Registry-wide invariant: the requirements() contract is now the single
+    source of "what external tools do gates need". These guard that the derived
+    inventory stays complete and well-formed (the legacy required_tools /
+    REQUIRED_TOOLS sources have been retired)."""
 
     def _registry(self):
         from slopmop.checks import ensure_checks_registered
@@ -467,27 +467,44 @@ class TestAllToolGatesDeclareRequirements:
         ensure_checks_registered()
         return get_registry()
 
-    def test_required_tools_gates_declare_matching_requirements(self):
-        registry = self._registry()
-        offenders = []
-        for name in registry.list_checks():
-            check = registry.get_check(name, {})
-            if check is None:
-                continue
-            legacy = list(getattr(check, "required_tools", []) or [])
-            if not legacy:
-                continue
-            covered = set()
-            for req in check.requirements().items:
-                covered.add(req.name)
-                covered.update(req.alternatives)
-            missing = [t for t in legacy if t not in covered]
-            if missing:
-                offenders.append((name, missing))
-        assert not offenders, (
-            "gates list required_tools without a matching requirements() "
-            f"declaration: {offenders}"
-        )
+    def test_inventory_covers_the_core_first_party_tools(self):
+        # The derived inventory must keep covering the tools the gates run — a
+        # snapshot so a future gate that drops a requirement is caught.
+        from slopmop.checks.tool_inventory import gate_tool_inventory
+
+        tools = {t for t, _gate, _hint in gate_tool_inventory()}
+        expected = {
+            "black",
+            "isort",
+            "autoflake",
+            "flake8",
+            "ruff",
+            "mypy",
+            "pyright",
+            "vulture",
+            "radon",
+            "bandit",
+            "semgrep",
+            "detect-secrets",  # pragma: allowlist secret
+            "pip-audit",
+            "flutter",
+            "dart",
+        }
+        assert expected <= tools, f"inventory missing: {expected - tools}"
+
+    def test_inventory_rows_carry_a_nonempty_install_hint(self):
+        from slopmop.checks.tool_inventory import gate_tool_inventory
+
+        for tool, gate, hint in gate_tool_inventory():
+            assert hint, f"{tool} (in {gate}) has no install hint"
+
+    def test_security_tools_share_the_extras_install_hint(self):
+        # The extras-group remediation that REQUIRED_TOOLS used to hardcode is
+        # now derived from requirements().
+        from slopmop.checks.security import SecurityCheck
+
+        for req in SecurityCheck({}).requirements().items:
+            assert req.resolved_install_hint() == "pipx install slopmop[security]"
 
     def test_every_declared_requirement_is_well_formed(self):
         registry = self._registry()
