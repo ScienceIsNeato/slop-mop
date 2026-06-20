@@ -13,7 +13,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    Requirements,
     ToolContext,
+    pip_cli_requirement,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
@@ -92,6 +94,16 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     tool_context = ToolContext.SM_TOOL
     required_tools = ["mypy"]
     role = CheckRole.FOUNDATION
+
+    def requirements(self) -> Requirements:
+        # Optional: a missing mypy WARNs (degrades), it doesn't fail the gate.
+        return Requirements(
+            items=(
+                pip_cli_requirement(
+                    "mypy", "1.19.1", "static type analysis", optional=True
+                ),
+            )
+        )
 
     @property
     def name(self) -> str:
@@ -217,9 +229,14 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
         return source_dirs or ["."]
 
-    def _build_command(self, source_dirs: List[str]) -> List[str]:
+    def _build_command(
+        self, source_dirs: List[str], project_root: str = ""
+    ) -> List[str]:
         """Build the mypy command with configured flags."""
-        cmd = ["mypy", *source_dirs, "--ignore-missing-imports", "--no-strict-optional"]
+        # Invoke the mypy the requirement resolves (venv-aware), not a bare name.
+        (mypy_req,) = self.requirements().items
+        mypy = self.resolve_requirement_path(mypy_req, project_root) or "mypy"
+        cmd = [mypy, *source_dirs, "--ignore-missing-imports", "--no-strict-optional"]
 
         if self._is_strict():
             cmd.extend(["--disallow-untyped-defs", "--disallow-any-generics"])
@@ -304,7 +321,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         start_time = time.time()
 
         source_dirs = self._detect_source_dirs(project_root)
-        cmd = self._build_command(source_dirs)
+        cmd = self._build_command(source_dirs, project_root)
         result = self._run_command(cmd, cwd=project_root, timeout=120)
 
         duration = time.time() - start_time

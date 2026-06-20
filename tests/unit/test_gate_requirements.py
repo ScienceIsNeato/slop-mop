@@ -452,3 +452,34 @@ class TestVersionPinsTrackPyproject:
                 assert Version(req.version) >= Version(
                     floor
                 ), f"{req.name} pin {req.version} is below pyproject floor {floor}"
+
+
+class TestRequiredToolPolicy:
+    """A genuinely required tool missing → could-not-run ERROR (not WARN)."""
+
+    def test_static_analysis_declares_mypy_optional(self):
+        from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
+
+        (req,) = PythonStaticAnalysisCheck({}).requirements().items
+        assert req.name == "mypy"
+        assert req.version == "1.19.1"
+        assert req.optional is True  # missing mypy WARNs, doesn't block
+
+    def test_type_checking_declares_pyright_required(self):
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (req,) = PythonTypeCheckingCheck({}).requirements().items
+        assert req.name == "pyright"
+        assert req.version == "1.1.408"
+        assert req.optional is False  # type checking can't run without it
+
+    def test_missing_pyright_blocks_with_error(self, monkeypatch, tmp_path):
+        # The policy: a missing REQUIRED tool fails the gate (ERROR), so a
+        # broken type-check environment can't silently pass the merge gate.
+        from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
+
+        (tmp_path / "m.py").write_text("x = 1\n")
+        monkeypatch.setattr("slopmop.checks.base.find_tool", lambda name, root: None)
+        result = PythonTypeCheckingCheck({}).run(str(tmp_path))
+        assert result.status == CheckStatus.ERROR
+        assert not result.passed
