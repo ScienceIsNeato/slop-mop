@@ -589,3 +589,46 @@ class TestMigrationCoverage:
         monkeypatch.setattr("slopmop.checks.base.find_tool", lambda name, root: None)
         gate = _RequiredToolGate({})
         assert _missing_required_tools(gate, Path(tmp_path)) == ("frobnicate",)
+
+
+class TestDoctorMigrationFixes:
+    """Cover the #310 review-fix paths."""
+
+    def test_resolved_install_hint_env_fallback(self):
+        assert (
+            Requirement(kind="env", name="GH_TOKEN").resolved_install_hint()
+            == "Set the GH_TOKEN environment variable"
+        )
+
+    def test_load_repo_config_reads_sb_config(self, tmp_path):
+        import json
+
+        from slopmop.doctor.sm_env import _load_repo_config
+
+        assert _load_repo_config(tmp_path) == {}  # missing file → {}
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"k": "v"}))
+        assert _load_repo_config(tmp_path) == {"k": "v"}
+        (tmp_path / ".sb_config.json").write_text("not json{")
+        assert _load_repo_config(tmp_path) == {}  # invalid → {}
+
+    def test_optional_missing_tool_does_not_block_preflight(
+        self, monkeypatch, tmp_path
+    ):
+        from pathlib import Path
+
+        from slopmop.doctor.gate_preflight import _missing_required_tools
+
+        class _OptionalToolGate(_ToollessGate):
+            def requirements(self) -> Requirements:
+                return Requirements(
+                    items=(
+                        Requirement(kind="system", name="opt", optional=True),
+                        Requirement(kind="system", name="req", optional=False),
+                    )
+                )
+
+        monkeypatch.setattr("slopmop.checks.base.find_tool", lambda n, r: None)
+        # Only the required tool counts toward "blocked".
+        assert _missing_required_tools(_OptionalToolGate({}), Path(tmp_path)) == (
+            "req",
+        )
