@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple
 
 from slopmop.checks.base import find_tool
 from slopmop.checks.tool_inventory import gate_tool_inventory
@@ -115,20 +115,20 @@ class SmPipCheck(DoctorCheck):
 
 
 def _load_repo_config(project_root: object) -> Dict[str, Any]:
-    """Load this repo's .sb_config.json (or {}) so config-dependent
-    requirements() reflect the repo, not the defaults."""
-    import json
+    """Load this repo's RESOLVED config (``.sb_config.json`` merged with
+    ``[tool.slopmop]`` from pyproject.toml) so config-dependent requirements()
+    match exactly what ``sm swab``/``sm scour`` run with.
+
+    Delegates to the canonical ``load_config`` rather than reading only
+    ``.sb_config.json``, so config set in pyproject isn't ignored.
+    """
     from pathlib import Path
 
-    path = Path(str(project_root)) / ".sb_config.json"
-    if not path.exists():
-        return {}
+    from slopmop.sm import load_config
+
     try:
-        data: object = json.loads(path.read_text())
-        if isinstance(data, dict):
-            return cast(Dict[str, Any], data)
-        return {}
-    except (OSError, ValueError):
+        return load_config(Path(str(project_root)))
+    except Exception:  # noqa: BLE001 — advisory; doctor must never crash
         return {}
 
 

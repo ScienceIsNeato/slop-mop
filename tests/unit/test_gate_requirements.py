@@ -737,3 +737,35 @@ class TestRequiredDepsManifest:
         _print_required_deps(tmp_path)
         second = capsys.readouterr().out
         assert first == second  # byte-stable for a fixed config
+
+    def test_aggregate_raises_on_conflicting_declarations(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from slopmop.checks import tool_inventory
+
+        def gate(*reqs):
+            m = MagicMock()
+            m.requirements.return_value = Requirements(items=tuple(reqs))
+            return m
+
+        # Same name, DIFFERENT version — must fail fast, not silently pick one.
+        gates = {
+            "g1": gate(Requirement(kind="python", name="black", version="26.5.1")),
+            "g2": gate(Requirement(kind="python", name="black", version="25.1.0")),
+        }
+        import slopmop.checks as checks_mod
+        import slopmop.core.registry as reg_mod
+
+        monkeypatch.setattr(
+            reg_mod,
+            "get_registry",
+            lambda: MagicMock(
+                list_checks=lambda: list(gates), get_check=lambda n, c: gates[n]
+            ),
+        )
+        monkeypatch.setattr(checks_mod, "ensure_checks_registered", lambda: None)
+
+        with pytest.raises(
+            ValueError, match="Conflicting requirements for tool 'black'"
+        ):
+            tool_inventory.aggregate_requirements()

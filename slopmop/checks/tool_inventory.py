@@ -81,6 +81,26 @@ def aggregate_requirements(config: Optional[Dict[str, Any]] = None) -> "Requirem
             continue
         for req in check.requirements().items:
             # Dedup by tool name — a tool has one pin/kind regardless of how
-            # many gates use it. First declaration wins (they agree).
-            by_name.setdefault(req.name, req)
+            # many gates use it. Identical re-declarations collapse, but a
+            # genuine DISAGREEMENT (different kind/version/probe/import_name)
+            # is a bug: the manifest would otherwise silently install whichever
+            # gate happened to register first. Fail loudly instead.
+            existing = by_name.get(req.name)
+            if existing is None:
+                by_name[req.name] = req
+                continue
+            existing_id = (
+                existing.kind,
+                existing.version,
+                existing.probe,
+                existing.import_name,
+            )
+            incoming_id = (req.kind, req.version, req.probe, req.import_name)
+            if existing_id != incoming_id:
+                raise ValueError(
+                    f"Conflicting requirements for tool {req.name!r}: "
+                    f"{existing_id} vs {incoming_id}. Two gates declare the "
+                    "same tool with different kind/version/probe — reconcile "
+                    "them so the dependency manifest is unambiguous."
+                )
     return Requirements(items=tuple(by_name.values()))
