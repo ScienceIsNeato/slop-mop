@@ -100,6 +100,21 @@ class TestStringDuplicationCheck:
         assert "--json" in cmd
         assert "2" in cmd  # default threshold
 
+    def test_node_resolved_through_find_tool(self, check, monkeypatch, tmp_path):
+        """node is resolved via find_tool (the same primitive the requirements
+        contract probes), not invoked bare — so "declared present" and "the gate
+        runs it" can't drift."""
+        monkeypatch.setattr(
+            "slopmop.checks.quality.duplicate_strings.find_tool",
+            lambda name, root: "/opt/node/bin/node" if name == "node" else None,
+        )
+        js_tool = tmp_path / "index.js"
+        js_tool.write_text("// tool")
+        cmd = check._build_command(
+            check._get_effective_config(), js_tool, str(tmp_path)
+        )
+        assert cmd[0] == "/opt/node/bin/node"  # resolved, not bare "node"
+
     def test_build_command_with_ignore(self, check):
         """Test command includes ignore patterns."""
         config = check._get_effective_config()
