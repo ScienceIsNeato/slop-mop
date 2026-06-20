@@ -676,10 +676,12 @@ class TestRequiredDepsManifest:
             m.requirements.return_value = Requirements(items=tuple(reqs))
             return m
 
-        # Two gates both declare black; the union lists it once.
+        # Two gates both declare black; the union lists it once. A None gate
+        # (get_check miss) and a non-str entry are skipped defensively.
         gates = {
             "g1": gate(black, Requirement(kind="python", name="ruff")),
             "g2": gate(black),
+            "g3": None,
         }
         import slopmop.checks as checks_mod
         import slopmop.core.registry as reg_mod
@@ -688,7 +690,8 @@ class TestRequiredDepsManifest:
             reg_mod,
             "get_registry",
             lambda: MagicMock(
-                list_checks=lambda: list(gates), get_check=lambda n, c: gates[n]
+                list_checks=lambda: [*gates, 123],  # 123 is a non-str entry
+                get_check=lambda n, c: gates.get(n),
             ),
         )
         monkeypatch.setattr(checks_mod, "ensure_checks_registered", lambda: None)
@@ -696,6 +699,21 @@ class TestRequiredDepsManifest:
         reqs = tool_inventory.aggregate_requirements()
         names = sorted(r.name for r in reqs.items)
         assert names == ["black", "ruff"]
+
+    def test_cmd_doctor_routes_required_deps(self, capsys, tmp_path):
+        import argparse
+
+        from slopmop.cli.doctor import cmd_doctor
+
+        args = argparse.Namespace(
+            list_checks=False,
+            required_deps=True,
+            gates=False,
+            project_root=str(tmp_path),
+        )
+        assert cmd_doctor(args) == 0
+        doc = json.loads(capsys.readouterr().out)
+        assert doc["schema_version"] == REQUIREMENTS_MANIFEST_SCHEMA_VERSION
 
     def test_emitter_outputs_schema_versioned_manifest(self, capsys, tmp_path):
         from slopmop.cli.doctor import _print_required_deps
