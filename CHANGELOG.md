@@ -15,9 +15,9 @@ Format: one `## X.Y.Z` section per release, newest first.
   changed gates run fresh (~135ms cached vs ~3.6s cold, 27× speedup).
 - **Machine-wide install** (#298) — `sm commit-hooks install --global` writes
   hooks to `~/.slopmop/git-hooks/` and sets `git config --global core.hooksPath`
-  so every repo on the machine gets swab on commit + scour on push. Global hooks
-  delegate to each repo's own `.git/hooks` first (preserving other tools' hooks),
-  skip non-onboarded repos, and write passthrough delegation scripts for all
+  so every onboarded repo on the machine gets swab on commit + scour on push.
+  Global hooks delegate to each repo's own `.git/hooks` first (preserving other
+  tools' hooks), skip non-onboarded repos, and write passthrough delegation scripts for all
   other hook types (commit-msg, prepare-commit-msg, post-checkout, etc.) so
   `core.hooksPath` doesn't silently swallow them. `--global` also works on
   install/uninstall.
