@@ -19,7 +19,6 @@ from slopmop.checks.base import (
     Requirement,
     Requirements,
     ToolContext,
-    find_tool,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -290,15 +289,19 @@ class GitHubActionsHygieneCheck(BaseCheck):
         )
 
     def _actionlint_path(self, project_root: str) -> Optional[str]:
-        """Resolve the actionlint executable via the declared requirement.
+        """Resolve actionlint via the gate's own declared requirement.
 
-        Single detection path (venv-aware ``find_tool``) instead of an inline
-        ``shutil.which`` — so "what the gate looks for" and "what the gate
-        declares" can never drift.
+        Resolves whatever the requirement declares (name + ``alternatives``)
+        through the shared :meth:`BaseCheck.resolve_requirement_path`, so the
+        gate runs exactly the tool ``missing_requirements``/doctor consider
+        satisfied — "what the gate looks for" and "what it declares" can't
+        drift. Returns ``None`` when ``run_actionlint`` is off (no requirement
+        declared) or the tool isn't found.
         """
-        if not self.config.get("run_actionlint", True):
-            return None
-        return find_tool("actionlint", project_root)
+        for req in self.requirements().items:
+            if req.name == "actionlint":
+                return self.resolve_requirement_path(req, project_root)
+        return None
 
     def is_applicable(self, project_root: str) -> bool:
         root = Path(project_root)

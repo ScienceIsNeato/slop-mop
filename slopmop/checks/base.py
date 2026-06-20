@@ -845,20 +845,38 @@ class BaseCheck(ABC):
         """
         return Requirements()
 
+    def resolve_requirement_path(
+        self, req: Requirement, project_root: str
+    ) -> Optional[str]:
+        """Resolve a ``system`` requirement to an executable path, or ``None``.
+
+        Tries the declared name and every ``alternatives`` entry (any one
+        satisfies it), via the venv-aware :func:`find_tool`. This is the SINGLE
+        resolution path: both :meth:`missing_requirements` (what doctor reports)
+        and a gate's own tool lookup (what the gate runs) go through it, so
+        "declared as present" and "the gate found it" can never disagree.
+        """
+        if req.kind != "system":
+            return None
+        for candidate in (req.name, *req.alternatives):
+            path = find_tool(candidate, project_root)
+            if path:
+                return path
+        return None
+
     def missing_requirements(self, project_root: str) -> List[Requirement]:
         """Return the declared requirements whose tool can't be resolved.
 
         Only ``system`` requirements are resolved in-process (via
-        :func:`find_tool`, honouring ``alternatives``); ``python``/``npm``/
-        ``env`` kinds are enumerated for doctor/the Action but not probed here
-        (that resolution belongs to the installing layer, not the gate).
+        :meth:`resolve_requirement_path`, honouring ``alternatives``);
+        ``python``/``npm``/``env`` kinds are enumerated for doctor/the Action
+        but not probed here (that resolution belongs to the installing layer).
         """
         missing: List[Requirement] = []
         for req in self.requirements().items:
             if req.kind != "system":
                 continue
-            candidates = (req.name, *req.alternatives)
-            if not any(find_tool(name, project_root) for name in candidates):
+            if self.resolve_requirement_path(req, project_root) is None:
                 missing.append(req)
         return missing
 

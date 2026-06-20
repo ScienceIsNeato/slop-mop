@@ -135,6 +135,35 @@ class TestMissingDetection:
 
         assert _AltGate({}).missing_requirements(str(tmp_path)) == []
 
+    def test_path_resolution_and_missing_agree_on_alternatives(
+        self, monkeypatch, tmp_path
+    ):
+        # The gate's own tool lookup and missing_requirements must agree: if an
+        # alternative satisfies the requirement, the gate must resolve it (not
+        # silently skip while doctor reports it present).
+        def fake_find(name: str, root: str):
+            return "/usr/bin/actionlint-bin" if name == "actionlint-bin" else None
+
+        monkeypatch.setattr("slopmop.checks.base.find_tool", fake_find)
+
+        class _AltActionlint(GitHubActionsHygieneCheck):
+            def requirements(self) -> Requirements:
+                return Requirements(
+                    items=(
+                        Requirement(
+                            kind="system",
+                            name="actionlint",
+                            alternatives=("actionlint-bin",),
+                            optional=True,
+                        ),
+                    )
+                )
+
+        gate = _AltActionlint({"run_actionlint": True})
+        # Both views agree the requirement is satisfied via the alternative.
+        assert gate.missing_requirements(str(tmp_path)) == []
+        assert gate._actionlint_path(str(tmp_path)) == "/usr/bin/actionlint-bin"
+
 
 class TestThreeStateResult:
     def test_missing_required_tool_yields_error_not_pass(self, monkeypatch, tmp_path):

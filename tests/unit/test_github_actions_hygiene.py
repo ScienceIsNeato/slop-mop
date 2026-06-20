@@ -390,7 +390,8 @@ jobs:
         # The pass note must distinguish disabled / checked / not-installed —
         # all three states, not just one (#305 review).
         _write_workflow(tmp_path, "name: CI\non: push\n")
-        find_tool = "slopmop.checks.workflow.github_actions.find_tool"
+        # Resolution flows through the shared base helper now, not the gate.
+        find_tool = "slopmop.checks.base.find_tool"
 
         # 1. Disabled by config → "disabled".
         disabled = GitHubActionsHygieneCheck({"run_actionlint": False}).run(
