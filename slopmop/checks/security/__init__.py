@@ -527,7 +527,17 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
 
     def _run_semgrep(self, project_root: str) -> SecuritySubResult:
         """Run semgrep static analysis."""
-        cmd = ["semgrep", "scan", "--config=auto", "--json", "--quiet"]
+        # Invoke the same executable the availability probe resolved. Detection
+        # is venv-aware (find_tool), so a venv-only semgrep must be run by its
+        # resolved path, not a bare name PATH can't see — otherwise broadening
+        # detection would turn a former skip into a failure.
+        semgrep = (
+            self.resolve_requirement_path(
+                self._SCANNER_REQUIREMENTS["semgrep"], project_root
+            )
+            or "semgrep"
+        )
+        cmd = [semgrep, "scan", "--config=auto", "--json", "--quiet"]
         for d in self._get_exclude_dirs():
             cmd.extend(["--exclude", d])
 

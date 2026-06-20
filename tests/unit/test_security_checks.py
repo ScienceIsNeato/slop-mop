@@ -34,6 +34,25 @@ class TestSecuritySubResult:
 class TestSecurityLocalCheck:
     """Tests for SecurityLocalCheck."""
 
+    def test_semgrep_invoked_via_resolved_path(self, monkeypatch):
+        """semgrep is run by the path find_tool resolved (venv-aware), not a
+        bare name — so broadening detection to the venv can't turn a former
+        skip into a failure (#306 review)."""
+        check = SecurityLocalCheck({})
+        monkeypatch.setattr(
+            "slopmop.checks.base.find_tool",
+            lambda name, root: "/proj/venv/bin/semgrep" if name == "semgrep" else None,
+        )
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return MagicMock(success=True, output="", returncode=0)
+
+        monkeypatch.setattr(check, "_run_command", fake_run)
+        check._run_semgrep("/proj")
+        assert captured["cmd"][0] == "/proj/venv/bin/semgrep"
+
     def test_name(self):
         """Test check name."""
         check = SecurityLocalCheck({})
