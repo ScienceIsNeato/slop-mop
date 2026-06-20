@@ -19,6 +19,8 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     GateLevel,
+    Requirement,
+    Requirements,
     ScopeInfo,
     ToolContext,
     count_source_scope,
@@ -182,6 +184,27 @@ class StringDuplicationCheck(BaseCheck):
             ["."],
             {".py"},
             self._get_effective_config(),
+        )
+
+    def requirements(self) -> Requirements:
+        """The Node runtime that runs the find-duplicate-strings tool.
+
+        Optional: when Node (or a global ``find-duplicate-strings`` binary) is
+        absent the gate degrades to a WARNED result rather than failing. The
+        tool script itself ships vendored with slop-mop; ``node`` is the only
+        external dependency, and declaring it lets doctor/the Action ensure it
+        is present instead of the gate discovering it missing at runtime.
+        """
+        return Requirements(
+            items=(
+                Requirement(
+                    kind="system",
+                    name="node",
+                    optional=True,
+                    alternatives=("find-duplicate-strings",),
+                    reason="runtime for the find-duplicate-strings duplication scanner",
+                ),
+            )
         )
 
     def is_applicable(self, project_root: str) -> bool:

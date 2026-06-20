@@ -261,6 +261,22 @@ def find_tool(name: str, project_root: str) -> Optional[str]:
     return shutil.which(name)
 
 
+def _module_available(import_name: str) -> bool:
+    """Return True if a Python module is importable, without importing it.
+
+    Uses ``importlib.util.find_spec`` rather than ``import_module``: importing
+    some packages (e.g. bandit) pulls in stevedore, which enumerates every
+    entry-point plugin and logs a WARNING per failed load. ``find_spec`` probes
+    the import machinery without executing the target package.
+    """
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec(import_name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
+
+
 # Non-dot directories to exclude from scope counting (dot-prefixed directories
 # are always excluded automatically via should_prune_dir()).
 SCOPE_EXCLUDED_DIRS = {
@@ -566,14 +582,26 @@ class Requirement:
     ``alternatives`` lists interchangeable names that also satisfy the
     requirement (any one present is enough) — for tools resolvable under more
     than one binary name / install path.
+
+    ``kind`` is the INSTALL channel (how the Action installs it); ``probe`` is
+    how presence is DETECTED — they are orthogonal. A pip-installed tool that's
+    invoked as a binary (e.g. ``semgrep``) is ``kind="python", probe="binary"``.
+    ``probe`` defaults per kind: python→import, system/npm→binary, env→env.
+
+    ``import_name`` is the module to probe when ``probe="import"`` and the
+    install name differs from the import name (e.g. ``detect-secrets`` installs
+    under that name but imports as ``detect_secrets``). Empty ⇒ derive from
+    ``name`` by replacing ``-`` with ``_``.
     """
 
-    kind: str  # "system" | "python" | "npm" | "env"
+    kind: str  # "system" | "python" | "npm" | "env"  — the install channel
     name: str
     version: Optional[str] = None  # exact pin; None = any present version
     reason: str = ""
     optional: bool = False
     alternatives: tuple[str, ...] = ()
+    probe: str = ""  # "" = default by kind; "binary" | "import" | "env" | "none"
+    import_name: str = ""  # for probe="import" when it differs from name
 
     def to_manifest(self) -> Dict[str, Any]:
         """Serialize to the deterministic manifest shape doctor/the Action read."""
@@ -583,6 +611,8 @@ class Requirement:
             "version": self.version,
             "optional": self.optional,
             "alternatives": sorted(self.alternatives),
+            "probe": self.probe,
+            "import_name": self.import_name,
             "reason": self.reason,
         }
 
@@ -845,18 +875,31 @@ class BaseCheck(ABC):
         """
         return Requirements()
 
+    @staticmethod
+    def _effective_probe(req: Requirement) -> str:
+        """How to detect this requirement's presence (``probe`` or kind default)."""
+        if req.probe:
+            return req.probe
+        return {
+            "python": "import",
+            "system": "binary",
+            "npm": "binary",
+            "env": "env",
+        }.get(req.kind, "binary")
+
     def resolve_requirement_path(
         self, req: Requirement, project_root: str
     ) -> Optional[str]:
-        """Resolve a ``system`` requirement to an executable path, or ``None``.
+        """Resolve a binary-probed requirement to an executable path, or ``None``.
 
         Tries the declared name and every ``alternatives`` entry (any one
-        satisfies it), via the venv-aware :func:`find_tool`. This is the SINGLE
-        resolution path: both :meth:`missing_requirements` (what doctor reports)
-        and a gate's own tool lookup (what the gate runs) go through it, so
-        "declared as present" and "the gate found it" can never disagree.
+        satisfies it), via the venv-aware :func:`find_tool`. Only meaningful for
+        binary-probed requirements (a Python import has no path); returns
+        ``None`` otherwise. A gate that needs to *invoke* a tool resolves it
+        here, the same path :meth:`is_requirement_satisfied` checks — so "the
+        gate found it" and "declared satisfied" can never disagree.
         """
-        if req.kind != "system":
+        if self._effective_probe(req) != "binary":
             return None
         for candidate in (req.name, *req.alternatives):
             path = find_tool(candidate, project_root)
@@ -864,21 +907,37 @@ class BaseCheck(ABC):
                 return path
         return None
 
-    def missing_requirements(self, project_root: str) -> List[Requirement]:
-        """Return the declared requirements whose tool can't be resolved.
+    def is_requirement_satisfied(self, req: Requirement, project_root: str) -> bool:
+        """Whether *req* is present, probed the way its ``kind``/``probe`` says.
 
-        Only ``system`` requirements are resolved in-process (via
-        :meth:`resolve_requirement_path`, honouring ``alternatives``);
-        ``python``/``npm``/``env`` kinds are enumerated for doctor/the Action
-        but not probed here (that resolution belongs to the installing layer).
+        - ``binary`` → resolvable on PATH/venv (see resolve_requirement_path)
+        - ``import`` → the module is importable (install-name → import-name)
+        - ``env``    → the named environment variable is set and non-empty
+        - ``none``   → cannot probe in-process; assumed satisfied (installer's job)
         """
-        missing: List[Requirement] = []
-        for req in self.requirements().items:
-            if req.kind != "system":
-                continue
-            if self.resolve_requirement_path(req, project_root) is None:
-                missing.append(req)
-        return missing
+        probe = self._effective_probe(req)
+        if probe == "binary":
+            return self.resolve_requirement_path(req, project_root) is not None
+        if probe == "import":
+            names = [req.import_name or req.name.replace("-", "_")]
+            names += [alt.replace("-", "_") for alt in req.alternatives]
+            return any(_module_available(name) for name in names)
+        if probe == "env":
+            return bool(os.environ.get(req.name))
+        return True  # "none" — defer to the installing layer
+
+    def missing_requirements(self, project_root: str) -> List[Requirement]:
+        """Return the declared requirements that aren't satisfied in-process.
+
+        Each requirement is probed the way its kind/probe dictates
+        (binary/import/env). ``none``-probed requirements are never reported
+        missing here — verifying them belongs to the installing layer.
+        """
+        return [
+            req
+            for req in self.requirements().items
+            if not self.is_requirement_satisfied(req, project_root)
+        ]
 
     def requirement_block_result(
         self, project_root: str, duration: float = 0.0
