@@ -379,3 +379,76 @@ class TestHardGateRequirements:
         assert req.name == "node"
         assert req.optional is True
         assert "find-duplicate-strings" in req.alternatives
+
+
+class TestPythonToolGates:
+    """Python tool-gates declare their pip-installed CLIs with exact pins."""
+
+    def test_dead_code_declares_vulture(self):
+        from slopmop.checks.quality.dead_code import DeadCodeCheck
+
+        (req,) = DeadCodeCheck({}).requirements().items
+        assert req.name == "vulture"
+        assert req.kind == "python" and req.probe == "binary"
+        assert req.version == "2.14"
+        assert req.optional is True  # missing vulture WARNs, doesn't block
+
+    def test_complexity_declares_radon(self):
+        from slopmop.checks.quality.complexity import ComplexityCheck
+
+        (req,) = ComplexityCheck({}).requirements().items
+        assert req.name == "radon"
+        assert req.version == "6.0.1"
+        assert req.optional is True  # missing radon WARNs, doesn't block
+
+    def test_complexity_invokes_radon_via_resolved_path(self, monkeypatch, tmp_path):
+        # radon is invoked by the path the requirement resolves (venv-aware),
+        # not a bare name — same drift fix as semgrep/node.
+        from slopmop.checks.quality.complexity import ComplexityCheck
+
+        (tmp_path / "m.py").write_text("def f():\n    return 1\n")
+        monkeypatch.setattr(
+            "slopmop.checks.base.find_tool",
+            lambda name, root: "/venv/bin/radon" if name == "radon" else None,
+        )
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            from unittest.mock import MagicMock
+
+            return MagicMock(returncode=0, output="", success=True)
+
+        check = ComplexityCheck({"src_dirs": [str(tmp_path)]})
+        monkeypatch.setattr(check, "_run_command", fake_run)
+        check.run(str(tmp_path))
+        assert captured["cmd"][0] == "/venv/bin/radon"
+
+
+class TestVersionPinsTrackPyproject:
+    """Exact pins must satisfy pyproject's declared floor (no drift below it)."""
+
+    def _pyproject_floor(self, tool: str) -> str:
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        text = (root / "pyproject.toml").read_text()
+        m = re.search(rf'"{re.escape(tool)}>=([0-9][^"]*)"', text)
+        assert m, f"{tool} not found with a floor in pyproject.toml"
+        return m.group(1)
+
+    def test_pins_satisfy_pyproject_floors(self):
+        from packaging.version import Version
+
+        from slopmop.checks.quality.complexity import ComplexityCheck
+        from slopmop.checks.quality.dead_code import DeadCodeCheck
+
+        for gate in (DeadCodeCheck({}), ComplexityCheck({})):
+            for req in gate.requirements().items:
+                if req.version is None:
+                    continue
+                floor = self._pyproject_floor(req.name)
+                assert Version(req.version) >= Version(
+                    floor
+                ), f"{req.name} pin {req.version} is below pyproject floor {floor}"
