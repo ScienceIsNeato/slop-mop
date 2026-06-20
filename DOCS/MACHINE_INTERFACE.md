@@ -185,7 +185,7 @@ sm capabilities
   "status": "info",
   "exit_code": 0,
   "data": {
-    "version": "2.7.0",
+    "version": "2.8.0",
     "verbs": [
       { "name": "swab", "summary": "…", "level": "core",
         "formats": ["human", "json", "porcelain", "sarif"],
