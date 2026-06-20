@@ -16,7 +16,11 @@ from slopmop.checks.base import (
     find_tool,
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
-from slopmop.checks.dart.common import find_pubspec_dirs, format_package_label
+from slopmop.checks.dart.common import (
+    find_pubspec_dirs,
+    format_package_label,
+    DART_INSTALL_HINT,
+)
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -40,7 +44,7 @@ class DartFormatCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="dart",
-                    install_hint="Install Dart SDK: https://dart.dev/get-dart",
+                    install_hint=DART_INSTALL_HINT,
                     optional=True,
                     reason="formats Dart code",
                 ),

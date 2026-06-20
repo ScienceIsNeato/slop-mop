@@ -25,6 +25,7 @@ from slopmop.checks.dart.common import (
     find_flutter_test_package_dirs,
     find_pubspec_dirs,
     format_package_label,
+    FLUTTER_INSTALL_HINT,
 )
 from slopmop.core.result import (
     CheckResult,
@@ -49,7 +50,7 @@ class FlutterTestsCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="flutter",
-                    install_hint="Install Flutter SDK: https://docs.flutter.dev/get-started/install",
+                    install_hint=FLUTTER_INSTALL_HINT,
                     optional=True,
                     reason="runs the Flutter/Dart test suite",
                 ),

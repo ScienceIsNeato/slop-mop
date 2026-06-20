@@ -523,3 +523,69 @@ class TestAllToolGatesDeclareRequirements:
                     assert not any(
                         c in req.version for c in "<>=~ "
                     ), f"{name}: {req.name} version {req.version!r} looks like a range"
+
+
+class TestMigrationCoverage:
+    """Exercise the consumer-migration code paths."""
+
+    def test_resolved_install_hint_fallbacks(self):
+        assert (
+            Requirement(
+                kind="python", name="x", install_hint="custom hint"
+            ).resolved_install_hint()
+            == "custom hint"
+        )
+        assert (
+            Requirement(kind="python", name="bandit").resolved_install_hint()
+            == "pip install bandit"
+        )
+        assert (
+            Requirement(kind="npm", name="jscpd").resolved_install_hint()
+            == "npm install -g jscpd"
+        )
+        assert (
+            Requirement(kind="system", name="flutter").resolved_install_hint()
+            == "Install flutter"
+        )
+
+    def test_inventory_skips_env_requirements(self, monkeypatch):
+        # env-kind requirements are not installable tools — excluded.
+        from slopmop.checks import tool_inventory
+
+        class _FakeReg:
+            def list_checks(self):
+                return ["fake:gate"]
+
+            def get_check(self, name, cfg):
+                return _EnvAndToolGate({})
+
+        class _EnvAndToolGate(_ToollessGate):
+            def requirements(self):
+                return Requirements(
+                    items=(
+                        Requirement(kind="env", name="GH_TOKEN"),
+                        Requirement(kind="system", name="sometool"),
+                    )
+                )
+
+        # tool_inventory lazily imports these — patch them at their source.
+        import slopmop.checks as checks_mod
+        import slopmop.core.registry as reg_mod
+
+        monkeypatch.setattr(reg_mod, "get_registry", lambda: _FakeReg())
+        monkeypatch.setattr(checks_mod, "ensure_checks_registered", lambda: None)
+        rows = tool_inventory.gate_tool_inventory()
+        names = {t for t, _g, _h in rows}
+        assert "sometool" in names
+        assert "GH_TOKEN" not in names
+
+    def test_gate_preflight_missing_tools_uses_requirements(
+        self, monkeypatch, tmp_path
+    ):
+        from pathlib import Path
+
+        from slopmop.doctor.gate_preflight import _missing_required_tools
+
+        monkeypatch.setattr("slopmop.checks.base.find_tool", lambda name, root: None)
+        gate = _RequiredToolGate({})
+        assert _missing_required_tools(gate, Path(tmp_path)) == ("frobnicate",)

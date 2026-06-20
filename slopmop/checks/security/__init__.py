@@ -37,6 +37,7 @@ from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
+_SECURITY_INSTALL_HINT = "pipx install slopmop[security]"
 
 # A scanner that fails to even start (its Python module isn't importable in the
 # interpreter we shell out to) is a tooling/environment problem, NOT a security
@@ -295,7 +296,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             name="bandit",
             optional=True,
             reason="static security analysis of Python code",
-            install_hint="pipx install slopmop[security]",
+            install_hint=_SECURITY_INSTALL_HINT,
         ),
         "semgrep": Requirement(
             kind="python",
@@ -303,7 +304,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             probe="binary",
             optional=True,
             reason="pattern-based security scanning (pip-installed, run as a binary)",
-            install_hint="pipx install slopmop[security]",
+            install_hint=_SECURITY_INSTALL_HINT,
         ),
         "detect-secrets": Requirement(  # pragma: allowlist secret
             kind="python",
@@ -311,7 +312,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             import_name="detect_secrets",  # pragma: allowlist secret
             optional=True,
             reason="scans for secrets committed to the repo",
-            install_hint="pipx install slopmop[security]",
+            install_hint=_SECURITY_INSTALL_HINT,
         ),
     }
 
@@ -655,7 +656,7 @@ class SecurityCheck(SecurityLocalCheck):
                     import_name="pip_audit",
                     optional=True,
                     reason="audits installed dependencies for known CVEs (OSV database)",
-                    install_hint="pipx install slopmop[security]",
+                    install_hint=_SECURITY_INSTALL_HINT,
                 ),
             )
         )

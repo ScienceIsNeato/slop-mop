@@ -187,6 +187,38 @@ class TestCmdConfig:
             "disabled_gates", []
         )
 
+    def test_enable_gate_shows_missing_tool_install_hint(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """Enabling a gate whose tools are missing surfaces each requirement's
+        own install hint (derived from requirements(), not a class attr)."""
+        (tmp_path / "main.py").write_text("print('x')\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps({"disabled_gates": ["myopia:vulnerability-blindness.py"]})
+        )
+        # Make every tool look absent so the readiness block fires.
+        monkeypatch.setattr("slopmop.checks.base.find_tool", lambda n, r: None)
+        monkeypatch.setattr("slopmop.checks.base._module_available", lambda n: False)
+
+        args = argparse.Namespace(
+            project_root=str(tmp_path),
+            show=False,
+            enable="myopia:vulnerability-blindness.py",
+            disable=None,
+            current_pr_number=None,
+            clear_current_pr=False,
+            include_dir=None,
+            exclude_dir=None,
+            json=None,
+            swabbing_timeout=None,
+        )
+
+        cmd_config(args)
+
+        out = capsys.readouterr().out
+        assert "Missing tools" in out
+        assert "pipx install slopmop[security]" in out
+
     def test_enable_gate_not_applicable(self, tmp_path, capsys):
         """--enable refuses gates that cannot apply to this repo."""
         (tmp_path / ".sb_config.json").write_text(

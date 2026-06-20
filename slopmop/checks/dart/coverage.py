@@ -29,6 +29,7 @@ from slopmop.checks.dart.common import (
     FLUTTER_NOT_AVAILABLE,
     NO_FLUTTER_TEST_DIRECTORIES_FOUND,
     find_pubspec_dirs,
+    FLUTTER_INSTALL_HINT,
 )
 from slopmop.constants import COVERAGE_BELOW_THRESHOLD
 from slopmop.core.result import (
@@ -69,7 +70,7 @@ class DartCoverageCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="flutter",
-                    install_hint="Install Flutter SDK: https://docs.flutter.dev/get-started/install",
+                    install_hint=FLUTTER_INSTALL_HINT,
                     optional=True,
                     reason="measures Flutter/Dart test coverage",
                 ),

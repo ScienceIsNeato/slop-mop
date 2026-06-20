@@ -23,6 +23,7 @@ from slopmop.checks.dart.common import (
     FLUTTER_NOT_AVAILABLE,
     find_pubspec_dirs,
     format_package_label,
+    FLUTTER_INSTALL_HINT,
 )
 from slopmop.core.result import (
     CheckResult,
@@ -47,7 +48,7 @@ class FlutterAnalyzeCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="flutter",
-                    install_hint="Install Flutter SDK: https://docs.flutter.dev/get-started/install",
+                    install_hint=FLUTTER_INSTALL_HINT,
                     optional=True,
                     reason="static analysis of Flutter/Dart code",
                 ),

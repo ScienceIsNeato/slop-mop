@@ -16,7 +16,11 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
-from slopmop.checks.dart.common import find_pubspec_dirs, unique_strings
+from slopmop.checks.dart.common import (
+    find_pubspec_dirs,
+    unique_strings,
+    FLUTTER_INSTALL_HINT,
+)
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_SHOWN = 20
@@ -36,7 +40,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="flutter",
-                    install_hint="Install Flutter SDK: https://docs.flutter.dev/get-started/install",
+                    install_hint=FLUTTER_INSTALL_HINT,
                     optional=True,
                     reason="checks generated Dart artifacts are current",
                 ),
