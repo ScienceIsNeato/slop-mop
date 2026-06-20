@@ -40,11 +40,6 @@ from slopmop.workflow.state_store import (
 
 _THEN_SAIL = "   Then: sm sail"
 
-# Safety cap on how many steps a single ``sm sail`` drive may chain before
-# returning control. The lifecycle is ~5 states (IDLE → SWAB → SCOUR → PR_OPEN
-# → PR_READY), so anything past this means the state machine is cycling.
-_MAX_SAIL_STEPS = 12
-
 
 def _has_uncommitted_changes(project_root: Path) -> bool:
     """Return True when the working tree or index has uncommitted changes."""
@@ -454,7 +449,10 @@ def cmd_sail(args: argparse.Namespace) -> int:
 
     last_result = 0
     seen: set[WorkflowState] = set()
-    for _ in range(_MAX_SAIL_STEPS):
+    # Terminates because each pass either returns or records a new state in
+    # ``seen``; WorkflowState is finite, so a revisit (the cycle guard below) is
+    # the worst case — the loop cannot run more times than there are states.
+    while True:
         persisted_state = read_state(project_root) or WorkflowState.IDLE
         state = _reconcile_runtime_state(persisted_state, project_root)
         if state != persisted_state:
@@ -489,6 +487,3 @@ def cmd_sail(args: argparse.Namespace) -> int:
         )
         if next_state == state:
             return last_result
-
-    # Hit the safety cap — return whatever the last step yielded.
-    return last_result

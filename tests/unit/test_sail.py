@@ -559,3 +559,14 @@ class TestSailDrive:
         assert sail_mod.cmd_sail(_base_args(tmp_path)) == 0
         # Each state's handler runs once; the revisit is caught before a third.
         assert calls == [WorkflowState.SWAB_CLEAN, WorkflowState.SCOUR_FAILING]
+
+    def test_unknown_state_falls_back_to_swab(self, monkeypatch, tmp_path: Path):
+        # A state with no registered handler falls back to swab rather than
+        # crashing — the drive's safety net.
+        monkeypatch.setattr(sail_mod, "read_state", lambda _: WorkflowState.IDLE)
+        monkeypatch.setattr(sail_mod, "_STATE_HANDLERS", {})  # no handler for IDLE
+        mock_swab = Mock(return_value=0)
+        monkeypatch.setattr("slopmop.cli.cmd_swab", mock_swab)
+
+        assert sail_mod.cmd_sail(_base_args(tmp_path)) == 0
+        mock_swab.assert_called_once()
