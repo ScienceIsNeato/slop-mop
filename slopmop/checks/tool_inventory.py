@@ -8,22 +8,28 @@ instead of a hand-maintained list. Replaces the former hardcoded
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
-def gate_tool_inventory() -> List[Tuple[str, str, str]]:
+def gate_tool_inventory(
+    config: Optional[Dict[str, Any]] = None,
+) -> List[Tuple[str, str, str]]:
     """Return ``(tool_name, gate_name, install_hint)`` for every declared tool.
 
-    Walks every registered gate's ``requirements()`` (instantiated with empty
-    config, so the full default tool set is reported) and emits one row per
+    Walks every registered gate's ``requirements()`` and emits one row per
     ``(tool, gate)``. ``install_hint`` is the user-facing remediation command
     (``pipx install slopmop[security]``, an SDK URL, …). Sorted for stable
     output. Only ``system``/``python``/``npm`` tools are listed — ``env``
     requirements aren't "installable tools".
+
+    ``requirements()`` is config-dependent (configured scanners, run_actionlint
+    …), so pass the repo's resolved config to report exactly what THIS repo's
+    gates need; the default (``{}``) reports the full default tool set.
     """
     from slopmop.checks import ensure_checks_registered
     from slopmop.core.registry import get_registry
 
+    config = config or {}
     ensure_checks_registered()
     registry = get_registry()
 
@@ -32,7 +38,7 @@ def gate_tool_inventory() -> List[Tuple[str, str, str]]:
     for gate_name in registry.list_checks():
         if not isinstance(gate_name, str):
             continue
-        check = registry.get_check(gate_name, {})
+        check = registry.get_check(gate_name, config)
         if check is None:
             continue
         for req in check.requirements().items:

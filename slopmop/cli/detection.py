@@ -157,12 +157,14 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
         - missing_tools: list of (tool_name, check_name, install_command) for missing tools
     """
     from slopmop.checks.tool_inventory import gate_tool_inventory
+    from slopmop.doctor.sm_env import _load_repo_config
 
     available: List[str] = []
     missing: List[Tuple[str, str, str]] = []
     seen_available: Set[str] = set()
 
-    for tool_name, check_name, install_cmd in gate_tool_inventory():
+    config = _load_repo_config(project_root)
+    for tool_name, check_name, install_cmd in gate_tool_inventory(config):
         found = find_tool(tool_name, str(project_root))
         if found:
             if tool_name not in seen_available:

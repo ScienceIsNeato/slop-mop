@@ -627,8 +627,35 @@ class TestDoctorMigrationFixes:
                     )
                 )
 
-        monkeypatch.setattr("slopmop.checks.base.find_tool", lambda n, r: None)
+        monkeypatch.setattr("slopmop.checks.base.find_tool", lambda *_a: None)
         # Only the required tool counts toward "blocked".
         assert _missing_required_tools(_OptionalToolGate({}), Path(tmp_path)) == (
             "req",
         )
+
+    def test_inventory_forwards_config_to_get_check(self, monkeypatch):
+        # Config-awareness: the repo config reaches get_check so config-gated
+        # requirements reflect the repo (#310 review).
+        from unittest.mock import MagicMock
+
+        from slopmop.checks import tool_inventory
+
+        captured = {}
+
+        class _Reg:
+            def list_checks(self):
+                return ["g"]
+
+            def get_check(self, name, cfg):
+                captured["cfg"] = cfg
+                m = MagicMock()
+                m.requirements.return_value = Requirements()
+                return m
+
+        import slopmop.checks as checks_mod
+        import slopmop.core.registry as reg_mod
+
+        monkeypatch.setattr(reg_mod, "get_registry", lambda: _Reg())
+        monkeypatch.setattr(checks_mod, "ensure_checks_registered", lambda: None)
+        tool_inventory.gate_tool_inventory({"x": 1})
+        assert captured["cfg"] == {"x": 1}

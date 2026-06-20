@@ -219,14 +219,15 @@ class ToolInventoryCheck(DoctorCheck):
         List[Tuple[str, str, str]],
         List[Tuple[str, str]],
     ]:
-        """Iterate REQUIRED_TOOLS and classify as resolved/missing/rejected."""
+        """Classify the inventory's tools as resolved/missing/rejected."""
         validator = get_validator()
         resolved: Dict[str, str] = {}
         missing: List[Tuple[str, str, str]] = []
         validator_rejects: List[Tuple[str, str]] = []
         seen: set[str] = set()
 
-        for tool_name, check_name, install_cmd in gate_tool_inventory():
+        config = _load_repo_config(root)
+        for tool_name, check_name, install_cmd in gate_tool_inventory(config):
             if tool_name in seen:
                 continue
             seen.add(tool_name)
@@ -496,7 +497,7 @@ class GateReadinessCheck(DoctorCheck):
             + _group_install_hints(
                 [
                     (t, "", cmd)
-                    for t, _, cmd in gate_tool_inventory()
+                    for t, _, cmd in gate_tool_inventory(config)
                     if t in missing_tools
                 ]
             ),
