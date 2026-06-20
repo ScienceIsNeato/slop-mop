@@ -923,7 +923,9 @@ class BaseCheck(ABC):
             names += [alt.replace("-", "_") for alt in req.alternatives]
             return any(_module_available(name) for name in names)
         if probe == "env":
-            return bool(os.environ.get(req.name))
+            # Honour alternatives like binary/import do (e.g. GH_TOKEN with a
+            # GITHUB_TOKEN alternative) — any one set satisfies it.
+            return any(os.environ.get(n) for n in (req.name, *req.alternatives))
         return True  # "none" — defer to the installing layer
 
     def missing_requirements(self, project_root: str) -> List[Requirement]:

@@ -311,6 +311,25 @@ class TestProbeKinds:
         monkeypatch.setenv("SM_TEST_TOKEN", "x")
         assert gate.missing_requirements(str(tmp_path)) == []
 
+    def test_env_probe_honours_alternatives(self, monkeypatch, tmp_path):
+        # GH_TOKEN with a GITHUB_TOKEN alternative — either set satisfies it.
+        class _EnvAlt(_ToollessGate):
+            def requirements(self) -> Requirements:
+                return Requirements(
+                    items=(
+                        Requirement(
+                            kind="env",
+                            name="SM_PRIMARY_TOKEN",
+                            alternatives=("SM_ALT_TOKEN",),
+                        ),
+                    )
+                )
+
+        gate = _EnvAlt({})
+        monkeypatch.delenv("SM_PRIMARY_TOKEN", raising=False)
+        monkeypatch.setenv("SM_ALT_TOKEN", "x")
+        assert gate.missing_requirements(str(tmp_path)) == []
+
 
 class TestHardGateRequirements:
     """The two API-stressing gates declare their real deps."""
@@ -324,13 +343,23 @@ class TestHardGateRequirements:
         assert by_name["semgrep"].probe == "binary"  # pip install, binary probe
         assert all(r.optional for r in reqs.items)  # graceful degradation
 
-    def test_security_full_adds_pip_audit(self):
+    def test_security_full_declares_fixed_set_regardless_of_config(self):
         from slopmop.checks.security import SecurityCheck
 
-        by_name = {r.name: r for r in SecurityCheck({}).requirements().items}
-        assert "pip-audit" in by_name
-        # pip-audit runs as `python -m pip_audit`, so it's import-probed, not a
-        # binary on PATH — detection must match invocation (#306 review).
+        # run() executes a fixed scanner set ignoring `scanners`, so
+        # requirements() must declare that whole set even when config trims it,
+        # or doctor/the Action would under-install (#306 review).
+        by_name = {
+            r.name: r
+            for r in SecurityCheck({"scanners": ["bandit"]}).requirements().items
+        }
+        assert set(by_name) == {
+            "bandit",
+            "semgrep",
+            "detect-secrets",  # pragma: allowlist secret
+            "pip-audit",
+        }
+        # pip-audit runs as `python -m pip_audit`, so it's import-probed.
         assert by_name["pip-audit"].probe == "import"
         assert by_name["pip-audit"].import_name == "pip_audit"
 

@@ -634,10 +634,16 @@ class SecurityCheck(SecurityLocalCheck):
 
         pip-audit is pip-installed but invoked as a binary (probe="binary").
         """
-        base = super().requirements()
+        # Unlike security:local, the full audit's run() executes a FIXED scanner
+        # set regardless of the `scanners` config, so declare exactly that set —
+        # otherwise doctor/the Action could install fewer tools than run() uses.
         return Requirements(
-            items=base.items
-            + (
+            items=(
+                self._SCANNER_REQUIREMENTS["bandit"],
+                self._SCANNER_REQUIREMENTS["semgrep"],
+                self._SCANNER_REQUIREMENTS[
+                    "detect-secrets"
+                ],  # pragma: allowlist secret
                 Requirement(
                     kind="python",
                     name="pip-audit",
