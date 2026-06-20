@@ -402,9 +402,11 @@ jobs:
         # 2. Enabled + resolvable + clean run → "checked".
         check = GitHubActionsHygieneCheck({"run_actionlint": True})
         clean = MagicMock(returncode=0, output="")
-        with patch(find_tool, return_value="/usr/bin/actionlint"):
-            with patch.object(check._runner, "run", return_value=clean):
-                checked = check.run(str(tmp_path))
+        with (
+            patch(find_tool, return_value="/usr/bin/actionlint"),
+            patch.object(check._runner, "run", return_value=clean),
+        ):
+            checked = check.run(str(tmp_path))
         assert "actionlint checked" in checked.output
 
         # 3. Enabled + not resolvable → "not installed".
