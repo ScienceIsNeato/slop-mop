@@ -64,8 +64,8 @@ def aggregate_requirements(config: Optional[Dict[str, Any]] = None) -> "Requirem
     inventory — pass the repo config to reflect only the tools THIS repo's gates
     need. Deterministic: the Requirements manifest sorts by (kind, name).
     """
-    from slopmop.checks.base import Requirements
     from slopmop.checks import ensure_checks_registered
+    from slopmop.checks.base import Requirements
     from slopmop.core.registry import get_registry
 
     config = config or {}
