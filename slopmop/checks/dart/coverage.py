@@ -26,10 +26,10 @@ from slopmop.checks.dart.common import (
     FLUTTER_CACHE_NOT_WRITABLE,
     FLUTTER_CACHE_PERMISSION_ERROR,
     FLUTTER_INSTALL_FIX_SUGGESTION,
+    FLUTTER_INSTALL_HINT,
     FLUTTER_NOT_AVAILABLE,
     NO_FLUTTER_TEST_DIRECTORIES_FOUND,
     find_pubspec_dirs,
-    FLUTTER_INSTALL_HINT,
 )
 from slopmop.constants import COVERAGE_BELOW_THRESHOLD
 from slopmop.core.result import (

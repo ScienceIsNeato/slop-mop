@@ -17,9 +17,9 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 from slopmop.checks.dart.common import (
+    FLUTTER_INSTALL_HINT,
     find_pubspec_dirs,
     unique_strings,
-    FLUTTER_INSTALL_HINT,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 

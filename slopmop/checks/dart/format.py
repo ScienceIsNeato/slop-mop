@@ -17,9 +17,9 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 from slopmop.checks.dart.common import (
+    DART_INSTALL_HINT,
     find_pubspec_dirs,
     format_package_label,
-    DART_INSTALL_HINT,
 )
 from slopmop.core.result import (
     CheckResult,

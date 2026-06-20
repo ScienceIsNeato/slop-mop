@@ -20,10 +20,10 @@ from slopmop.checks.dart.common import (
     FLUTTER_CACHE_NOT_WRITABLE,
     FLUTTER_CACHE_PERMISSION_ERROR,
     FLUTTER_INSTALL_FIX_SUGGESTION,
+    FLUTTER_INSTALL_HINT,
     FLUTTER_NOT_AVAILABLE,
     find_pubspec_dirs,
     format_package_label,
-    FLUTTER_INSTALL_HINT,
 )
 from slopmop.core.result import (
     CheckResult,
