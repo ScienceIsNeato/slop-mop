@@ -327,8 +327,12 @@ class TestHardGateRequirements:
     def test_security_full_adds_pip_audit(self):
         from slopmop.checks.security import SecurityCheck
 
-        names = {r.name for r in SecurityCheck({}).requirements().items}
-        assert "pip-audit" in names
+        by_name = {r.name: r for r in SecurityCheck({}).requirements().items}
+        assert "pip-audit" in by_name
+        # pip-audit runs as `python -m pip_audit`, so it's import-probed, not a
+        # binary on PATH — detection must match invocation (#306 review).
+        assert by_name["pip-audit"].probe == "import"
+        assert by_name["pip-audit"].import_name == "pip_audit"
 
     def test_detect_secrets_import_name_declared(self):
         from slopmop.checks.security import SecurityLocalCheck

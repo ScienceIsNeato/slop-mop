@@ -641,7 +641,10 @@ class SecurityCheck(SecurityLocalCheck):
                 Requirement(
                     kind="python",
                     name="pip-audit",
-                    probe="binary",
+                    # Invoked as ``python -m pip_audit``, so detection must probe
+                    # the module, not a ``pip-audit`` script that may not exist.
+                    probe="import",
+                    import_name="pip_audit",
                     optional=True,
                     reason="audits installed dependencies for known CVEs (OSV database)",
                 ),
