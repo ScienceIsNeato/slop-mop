@@ -6,6 +6,36 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.9.0
+
+### Gate dependencies
+
+- **Every gate now declares the external tools it needs** (#305–#310) — each
+  gate exposes a `requirements()` contract: the tool name, how it's installed
+  (system / Python / npm / env var), an exact version pin, and whether it's
+  required or merely degrades the gate when absent. This replaces the scattered,
+  hardcoded tool lists with one source of truth per gate, covering the linters
+  and formatters (ruff, black, isort, flake8, autoflake), the analyzers (mypy,
+  pyright, vulture, radon), the security scanners (bandit, semgrep,
+  detect-secrets, pip-audit), the string-duplication runtime (node), the
+  Dart/Flutter toolchain, and actionlint.
+- **`sm doctor --required-deps` emits a dependency manifest** (#311) — a
+  schema-versioned JSON document listing exactly the tools your repo's enabled
+  gates need, by exact pin, for the config you actually run. Deterministic and
+  byte-stable, so CI and the GitHub Action can install precisely the right
+  toolset (and cache on it) instead of installing everything and hoping. This is
+  the single source of truth the v2 Slop-Mop Action installs from.
+- **Missing `pyright` is now a hard failure, not a silent skip** (#308) — when a
+  gate genuinely *requires* a tool and it isn't installed, the gate reports a
+  could-not-run **ERROR** that fails the verdict, rather than quietly passing.
+  Optional tools still degrade gracefully (the gate warns and runs). A broken CI
+  environment can no longer mask a gate that never actually ran.
+- **`sm doctor` reads the same contract** (#310) — doctor's gate-readiness and
+  tool-inventory checks now derive entirely from `requirements()` and honour
+  your repo's resolved config (`.sb_config.json` merged with `[tool.slopmop]` in
+  `pyproject.toml`), so "which tools are missing" reflects exactly what the gates
+  will see — and a tool a disabled gate would have needed is no longer flagged.
+
 ## 2.8.0
 
 ### Workflow
