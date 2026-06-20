@@ -10,12 +10,10 @@ tool does not block. The actionlint gate is the first real consumer.
 from __future__ import annotations
 
 import json
-from typing import List
 
 from slopmop.checks.base import (
     REQUIREMENTS_MANIFEST_SCHEMA_VERSION,
     BaseCheck,
-    CheckRole,
     Flaw,
     GateCategory,
     Requirement,
