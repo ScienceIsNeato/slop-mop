@@ -6,6 +6,25 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.8.0
+
+### Workflow
+
+- **`sm sail` drives to green on its own** (#302) — `sm sail` is now autonomous.
+  A single invocation runs the next workflow step (swab → scour → CI watch →
+  review triage) and keeps going until it parks on something only you can do —
+  fix a failing gate, commit, push, open the PR, resolve a review thread — or
+  the PR is ready for human review. It no longer stops after one step, so you
+  run one command instead of re-invoking it between every check. Commit, push,
+  and PR creation stay manual (they need an authored message and body), so sail
+  never mutates git or publishes on its own.
+- **One verb, the rest under the hood** (#302) — the agent-facing surface
+  collapses onto `sm sail`. `swab`, `scour`, and `buff` still exist for surgical
+  work, but the drive-to-green loop, the definition of done (a change isn't done
+  until sail reports *PR ready for human review*), and the command guidance all
+  route through sail. `/sm-sail` is the primary loop; `/sm-buff` is demoted to
+  the under-the-hood triage reference.
+
 ## 2.7.0
 
 ### Hooks
