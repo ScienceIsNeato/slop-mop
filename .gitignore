@@ -61,7 +61,11 @@ AGENTS.md
 .clinerules/
 .roo/
 .windsurf/
-.slopmop/
+# Ignore .slopmop/ contents (not the dir itself) so the committed dependency
+# manifest below can be re-included — a negation can't escape a fully-ignored dir.
+.slopmop/*
+# …except the committed dependency manifest the v2 action installs from.
+!.slopmop/required-deps.json
 
 # Claude Code session state (hooks, settings, transcripts)
 .claude/

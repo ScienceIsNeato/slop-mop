@@ -1,9 +1,13 @@
 # Dogfood the published Marketplace action against slop-mop itself.
 #
-# This runs ScienceIsNeato/slop-mop-action@v1 — the exact ref consumers
+# This runs ScienceIsNeato/slop-mop-action@v2 — the exact ref consumers
 # use — so we find out immediately if a slopmop release breaks the
 # action's grade/SARIF/output contract. It is intentionally NOT pinned to
-# a SHA: the whole point is to validate what `@v1` resolves to today.
+# a SHA: the whole point is to validate what `@v2` resolves to today.
+#
+# v2 installs gate tools from the committed .slopmop/required-deps.json
+# (`sm doctor --required-deps`) and fails if that manifest has drifted, so
+# this job also exercises the deterministic-install + drift-guard path.
 #
 # Advisory by design. The repo's own gates (slopmop-sarif.yml) own
 # enforcement; this job only fails if the action itself breaks, not on
@@ -26,7 +30,7 @@ concurrency:
 
 jobs:
   dogfood:
-    name: slop-mop-action @v1
+    name: slop-mop-action @v2
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -39,7 +43,7 @@ jobs:
           fetch-depth: 0
 
       - id: sm
-        uses: ScienceIsNeato/slop-mop-action@v1
+        uses: ScienceIsNeato/slop-mop-action@v2
         with:
           command: scour
           fail-on-failure: "false"
