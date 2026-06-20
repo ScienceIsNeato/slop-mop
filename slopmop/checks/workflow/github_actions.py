@@ -333,11 +333,12 @@ class GitHubActionsHygieneCheck(BaseCheck):
 
         elapsed = time.perf_counter() - start
         if not findings:
-            note = (
-                "actionlint checked"
-                if actionlint_path is not None
-                else "actionlint not installed"
-            )
+            if not self.config.get("run_actionlint", True):
+                note = "actionlint disabled"
+            elif actionlint_path is not None:
+                note = "actionlint checked"
+            else:
+                note = "actionlint not installed"
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=elapsed,

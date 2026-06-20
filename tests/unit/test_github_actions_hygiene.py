@@ -386,6 +386,14 @@ jobs:
         # Config-disabled gates don't resolve actionlint at all.
         assert _check()._actionlint_path(str(tmp_path)) is None
 
+    def test_passed_note_distinguishes_disabled_from_missing(self, tmp_path):
+        # A clean run with actionlint OFF must say "disabled", not "not
+        # installed" — they are different states (#305 review).
+        _write_workflow(tmp_path, "name: CI\non: push\n")
+        result = GitHubActionsHygieneCheck({"run_actionlint": False}).run(str(tmp_path))
+        assert result.status == CheckStatus.PASSED
+        assert "actionlint disabled" in result.output
+
     def test_with_repo_relative_file_handles_no_file_and_outside_root(self, tmp_path):
         check = _check()
         no_file = check._with_repo_relative_file(Finding(message="x"), tmp_path)
