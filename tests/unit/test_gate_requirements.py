@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from slopmop.checks.base import (
     REQUIREMENTS_MANIFEST_SCHEMA_VERSION,
     BaseCheck,
@@ -219,3 +221,161 @@ class TestManifestDeterminism:
         # Pinned version round-trips for the consumer to install exactly.
         bandit = next(r for r in doc["requirements"] if r["name"] == "bandit")
         assert bandit["version"] == "1.7.5"
+        # probe + import_name are part of the serialized contract.
+        assert "probe" in bandit and "import_name" in bandit
+
+
+class TestProbeKinds:
+    """Detection probes the way kind/probe dictates (driven by the hard gates)."""
+
+    def test_python_kind_probes_importability(self, monkeypatch, tmp_path):
+        seen = {}
+
+        def fake_module(name: str) -> bool:
+            seen["name"] = name
+            return True
+
+        monkeypatch.setattr("slopmop.checks.base._module_available", fake_module)
+
+        class _PyGate(_ToollessGate):
+            def requirements(self) -> Requirements:
+                return Requirements(items=(Requirement(kind="python", name="bandit"),))
+
+        gate = _PyGate({})
+        assert gate.is_requirement_satisfied(
+            gate.requirements().items[0], str(tmp_path)
+        )
+        # Binary lookup is NOT used for a python/import requirement.
+        assert seen["name"] == "bandit"
+        # A python requirement has no resolvable path.
+        assert (
+            gate.resolve_requirement_path(gate.requirements().items[0], str(tmp_path))
+            is None
+        )
+
+    def test_import_name_differs_from_install_name(self, monkeypatch, tmp_path):
+        # detect-secrets installs under that name but imports as detect_secrets.
+        importable = {"detect_secrets"}
+        monkeypatch.setattr(
+            "slopmop.checks.base._module_available", lambda n: n in importable
+        )
+
+        class _DS(_ToollessGate):
+            def requirements(self) -> Requirements:
+                return Requirements(
+                    items=(
+                        Requirement(
+                            kind="python",
+                            name="detect-secrets",
+                            import_name="detect_secrets",
+                        ),
+                    )
+                )
+
+        gate = _DS({})
+        assert gate.missing_requirements(str(tmp_path)) == []
+
+    def test_semgrep_is_python_install_but_binary_probe(self, monkeypatch, tmp_path):
+        # Probed as a binary even though kind=python (pip-installed CLI).
+        monkeypatch.setattr(
+            "slopmop.checks.base.find_tool",
+            lambda name, root: "/usr/bin/semgrep" if name == "semgrep" else None,
+        )
+        # _module_available must NOT be consulted for a binary-probed req.
+        monkeypatch.setattr(
+            "slopmop.checks.base._module_available",
+            lambda n: pytest.fail("import probe used for binary requirement"),
+        )
+
+        class _SG(_ToollessGate):
+            def requirements(self) -> Requirements:
+                return Requirements(
+                    items=(Requirement(kind="python", name="semgrep", probe="binary"),)
+                )
+
+        gate = _SG({})
+        assert gate.missing_requirements(str(tmp_path)) == []
+
+    def test_env_kind_probes_environment(self, monkeypatch, tmp_path):
+        class _EnvGate(_ToollessGate):
+            def requirements(self) -> Requirements:
+                return Requirements(
+                    items=(Requirement(kind="env", name="SM_TEST_TOKEN"),)
+                )
+
+        gate = _EnvGate({})
+        monkeypatch.delenv("SM_TEST_TOKEN", raising=False)
+        assert [r.name for r in gate.missing_requirements(str(tmp_path))] == [
+            "SM_TEST_TOKEN"
+        ]
+        monkeypatch.setenv("SM_TEST_TOKEN", "x")
+        assert gate.missing_requirements(str(tmp_path)) == []
+
+    def test_env_probe_honours_alternatives(self, monkeypatch, tmp_path):
+        # GH_TOKEN with a GITHUB_TOKEN alternative — either set satisfies it.
+        class _EnvAlt(_ToollessGate):
+            def requirements(self) -> Requirements:
+                return Requirements(
+                    items=(
+                        Requirement(
+                            kind="env",
+                            name="SM_PRIMARY_TOKEN",
+                            alternatives=("SM_ALT_TOKEN",),
+                        ),
+                    )
+                )
+
+        gate = _EnvAlt({})
+        monkeypatch.delenv("SM_PRIMARY_TOKEN", raising=False)
+        monkeypatch.setenv("SM_ALT_TOKEN", "x")
+        assert gate.missing_requirements(str(tmp_path)) == []
+
+
+class TestHardGateRequirements:
+    """The two API-stressing gates declare their real deps."""
+
+    def test_security_declares_configured_scanners(self):
+        from slopmop.checks.security import SecurityLocalCheck
+
+        reqs = SecurityLocalCheck({"scanners": ["bandit", "semgrep"]}).requirements()
+        by_name = {r.name: r for r in reqs.items}
+        assert set(by_name) == {"bandit", "semgrep"}
+        assert by_name["semgrep"].probe == "binary"  # pip install, binary probe
+        assert all(r.optional for r in reqs.items)  # graceful degradation
+
+    def test_security_full_declares_fixed_set_regardless_of_config(self):
+        from slopmop.checks.security import SecurityCheck
+
+        # run() executes a fixed scanner set ignoring `scanners`, so
+        # requirements() must declare that whole set even when config trims it,
+        # or doctor/the Action would under-install (#306 review).
+        by_name = {
+            r.name: r
+            for r in SecurityCheck({"scanners": ["bandit"]}).requirements().items
+        }
+        assert set(by_name) == {
+            "bandit",
+            "semgrep",
+            "detect-secrets",  # pragma: allowlist secret
+            "pip-audit",
+        }
+        # pip-audit runs as `python -m pip_audit`, so it's import-probed.
+        assert by_name["pip-audit"].probe == "import"
+        assert by_name["pip-audit"].import_name == "pip_audit"
+
+    def test_detect_secrets_import_name_declared(self):
+        from slopmop.checks.security import SecurityLocalCheck
+
+        reqs = SecurityLocalCheck(
+            {"scanners": ["detect-secrets"]}  # pragma: allowlist secret
+        ).requirements()
+        (ds,) = reqs.items
+        assert ds.import_name == "detect_secrets"  # pragma: allowlist secret
+
+    def test_duplicate_strings_declares_node(self):
+        from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
+
+        (req,) = StringDuplicationCheck({}).requirements().items
+        assert req.name == "node"
+        assert req.optional is True
+        assert "find-duplicate-strings" in req.alternatives

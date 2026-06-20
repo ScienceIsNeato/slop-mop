@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Made `sm sail` drive a change all the way to a green PR on its own, so there's one command to run instead of a handful — PR #302, green",
-    "direction": "Point everyone at that single command and tuck the rest of the tooling behind it",
-    "last_update": "2026-06-19T22:01:00Z"
+    "status": "Teaching each check to declare what tools it needs, so one place can install them — did the two tricky ones (security scanners, duplicate-strings) on PR #306, stacked on #305",
+    "direction": "Convert the rest of the checks the same way, then let doctor read the list and have the GitHub Action install from it",
+    "last_update": "2026-06-20T02:25:00Z"
   }
 }

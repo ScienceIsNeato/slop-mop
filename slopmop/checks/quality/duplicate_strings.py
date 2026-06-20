@@ -19,9 +19,12 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     GateLevel,
+    Requirement,
+    Requirements,
     ScopeInfo,
     ToolContext,
     count_source_scope,
+    find_tool,
     should_prune_dir,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
@@ -184,6 +187,27 @@ class StringDuplicationCheck(BaseCheck):
             self._get_effective_config(),
         )
 
+    def requirements(self) -> Requirements:
+        """The Node runtime that runs the find-duplicate-strings tool.
+
+        Optional: when Node (or a global ``find-duplicate-strings`` binary) is
+        absent the gate degrades to a WARNED result rather than failing. The
+        tool script itself ships vendored with slop-mop; ``node`` is the only
+        external dependency, and declaring it lets doctor/the Action ensure it
+        is present instead of the gate discovering it missing at runtime.
+        """
+        return Requirements(
+            items=(
+                Requirement(
+                    kind="system",
+                    name="node",
+                    optional=True,
+                    alternatives=("find-duplicate-strings",),
+                    reason="runtime for the find-duplicate-strings duplication scanner",
+                ),
+            )
+        )
+
     def is_applicable(self, project_root: str) -> bool:
         """Check if there are source files to analyze."""
         root = Path(project_root)
@@ -205,7 +229,7 @@ class StringDuplicationCheck(BaseCheck):
         1. The target project's tools/ directory (works for projects
            that vendor the tool, or when sm is pip-installed)
         2. The slopmop package source tree (works in a git checkout)
-        3. Global npm installation via shutil.which
+        3. Global ``find-duplicate-strings`` binary via the shared resolver
 
         Returns the path to index.js, or None if not found.
         """
@@ -223,8 +247,10 @@ class StringDuplicationCheck(BaseCheck):
         if candidate.exists():
             return candidate
 
-        # 3. Global npm: check if find-duplicate-strings is on PATH
-        global_bin = shutil.which("find-duplicate-strings")
+        # 3. Global binary — resolve via the same venv-aware find_tool the
+        # requirements contract uses, so "declared present" and "the gate
+        # found it" can't drift.
+        global_bin = find_tool("find-duplicate-strings", project_root)
         if global_bin:
             return Path(global_bin)
 
@@ -259,11 +285,16 @@ class StringDuplicationCheck(BaseCheck):
         return {**defaults, **self.config}
 
     def _build_command(
-        self, config: dict[str, Any], tool_path: Optional[Path] = None
+        self,
+        config: dict[str, Any],
+        tool_path: Optional[Path] = None,
+        project_root: str = "",
     ) -> list[str]:
         """Build the find-duplicate-strings command."""
         if tool_path is None:
-            tool_path = self._get_tool_path() or Path("find-duplicate-strings")
+            tool_path = self._get_tool_path(project_root) or Path(
+                "find-duplicate-strings"
+            )
         threshold = config.get("threshold", 3)
         include_patterns = config.get("include_patterns", ["**/*.py"])
         ignore_patterns = config.get("ignore_patterns", [])
@@ -285,10 +316,13 @@ class StringDuplicationCheck(BaseCheck):
             else:
                 glob_pattern = include_patterns[0]
 
+        # Resolve node through the same find_tool the requirement uses, so the
+        # runtime the gate invokes matches the one doctor/the contract probe.
+        node = find_tool("node", project_root) or "node"
         cmd: list[str] = (
             # If tool_path points to a .js file, invoke via node;
-            # if it's a global binary (from shutil.which), call directly
-            ["node", str(tool_path)]
+            # if it's a global binary, call it directly.
+            [node, str(tool_path)]
             if str(tool_path).endswith(".js")
             else [str(tool_path)]
         )
@@ -699,7 +733,7 @@ class StringDuplicationCheck(BaseCheck):
         scan_root = tmp_dir if tmp_dir else project_root
 
         try:
-            cmd = self._build_command(effective_config, tool_path)
+            cmd = self._build_command(effective_config, tool_path, project_root)
             result = self._run_command(cmd, cwd=scan_root)
             try:
                 self._write_string_inventory(

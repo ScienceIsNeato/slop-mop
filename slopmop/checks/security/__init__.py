@@ -13,13 +13,12 @@ with code files, not just Python projects.
 
 import json
 import os
-import shutil
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any, Callable, ClassVar, Dict, List, Optional, cast
 
 from slopmop.checks.base import (
     BaseCheck,
@@ -28,6 +27,8 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     GateLevel,
+    Requirement,
+    Requirements,
     ToolContext,
 )
 from slopmop.checks.mixins import PythonCheckMixin
@@ -283,44 +284,74 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
         """Return reason for skipping - no source files to scan."""
         return "No Python, JavaScript, or TypeScript files found to scan for security issues"
 
-    @staticmethod
-    def _is_scanner_available(name: str, importable: dict[str, str]) -> bool:
-        """Check if a scanner tool is available on this system.
+    # External-dependency contract: the tool each scanner needs, declared once
+    # and consumed by both requirements() (what doctor/the Action installs) and
+    # _is_scanner_available (what the gate runs) — so they can't drift. All are
+    # optional: a missing scanner degrades gracefully, it doesn't fail the gate.
+    # detect-secrets installs under that name but imports as ``detect_secrets``;
+    # semgrep is pip-installed yet invoked as a binary (probe="binary").
+    _SCANNER_REQUIREMENTS: ClassVar[Dict[str, Requirement]] = {
+        "bandit": Requirement(
+            kind="python",
+            name="bandit",
+            optional=True,
+            reason="static security analysis of Python code",
+        ),
+        "semgrep": Requirement(
+            kind="python",
+            name="semgrep",
+            probe="binary",
+            optional=True,
+            reason="pattern-based security scanning (pip-installed, run as a binary)",
+        ),
+        "detect-secrets": Requirement(  # pragma: allowlist secret
+            kind="python",
+            name="detect-secrets",  # pragma: allowlist secret
+            import_name="detect_secrets",  # pragma: allowlist secret
+            optional=True,
+            reason="scans for secrets committed to the repo",
+        ),
+    }
 
-        For Python-based scanners (bandit, detect-secrets), checks
-        importability via ``find_spec`` (not ``import_module``).
-        ``import_module("bandit")`` pulls in stevedore, which enumerates
-        every entry-point plugin and logs WARNING for each failed load —
-        "Could not load 'sarif'" on every run.  ``find_spec`` probes the
-        import machinery without executing the target package.
+    def requirements(self) -> Requirements:
+        """The configured scanners' tools, for doctor/the Action to install.
+
+        Config-dependent: only the scanners this repo enables are declared.
         """
-        if name in importable:
-            try:
-                import importlib.util
+        configured = self.config.get("scanners", list(self._SCANNER_REQUIREMENTS))
+        return Requirements(
+            items=tuple(
+                self._SCANNER_REQUIREMENTS[name]
+                for name in configured
+                if name in self._SCANNER_REQUIREMENTS
+            )
+        )
 
-                return importlib.util.find_spec(importable[name]) is not None
-            except (ImportError, ModuleNotFoundError, ValueError):
-                return False
-        # External binary (semgrep, etc.)
-        return shutil.which(name) is not None
+    def _is_scanner_available(self, name: str, project_root: str) -> bool:
+        """Whether scanner *name* can run, via the shared requirement probe.
+
+        Python scanners (bandit, detect-secrets) are probed by importability;
+        semgrep by binary presence — the same checks ``requirements()`` /
+        ``missing_requirements`` use, so availability and declaration agree.
+        """
+        req = self._SCANNER_REQUIREMENTS.get(name)
+        if req is None:
+            return False
+        return self.is_requirement_satisfied(req, project_root)
 
     def _resolve_configured_scanners(
         self,
         scanner_map: dict[str, Callable[[str], SecuritySubResult]],
+        project_root: str = "",
     ) -> tuple[List[Callable[[str], SecuritySubResult]], List[str]]:
-        """Identify which scanners are configured and available to run."""
+        """Identify which configured scanners are available to run."""
         configured = self.config.get("scanners", list(scanner_map.keys()))
         sub_checks: List[Callable[[str], SecuritySubResult]] = []
         skipped: List[str] = []
-        _importable = {
-            "bandit": "bandit",
-            "detect-secrets": "detect_secrets",  # pragma: allowlist secret
-        }
         for name in configured:
             if name not in scanner_map:
                 continue
-            available = self._is_scanner_available(name, _importable)
-            if available:
+            if self._is_scanner_available(name, project_root):
                 sub_checks.append(scanner_map[name])
             else:
                 skipped.append(_SCANNER_NOT_INSTALLED.format(name=name))
@@ -342,7 +373,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             "detect-secrets": self._run_detect_secrets,
         }
 
-        sub_checks, skipped = self._resolve_configured_scanners(scanner_map)
+        sub_checks, skipped = self._resolve_configured_scanners(
+            scanner_map, project_root
+        )
 
         if not sub_checks:
             duration = time.time() - start_time
@@ -494,7 +527,17 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
 
     def _run_semgrep(self, project_root: str) -> SecuritySubResult:
         """Run semgrep static analysis."""
-        cmd = ["semgrep", "scan", "--config=auto", "--json", "--quiet"]
+        # Invoke the same executable the availability probe resolved. Detection
+        # is venv-aware (find_tool), so a venv-only semgrep must be run by its
+        # resolved path, not a bare name PATH can't see — otherwise broadening
+        # detection would turn a former skip into a failure.
+        semgrep = (
+            self.resolve_requirement_path(
+                self._SCANNER_REQUIREMENTS["semgrep"], project_root
+            )
+            or "semgrep"
+        )
+        cmd = [semgrep, "scan", "--config=auto", "--json", "--quiet"]
         for d in self._get_exclude_dirs():
             cmd.extend(["--exclude", d])
 
@@ -585,6 +628,34 @@ class SecurityCheck(SecurityLocalCheck):
     def superseded_by(self) -> Optional[str]:
         """Full security audit is the superseding gate, not the superseded one."""
         return None
+
+    def requirements(self) -> Requirements:
+        """The configured code scanners plus pip-audit for dependency auditing.
+
+        pip-audit is pip-installed but invoked as a binary (probe="binary").
+        """
+        # Unlike security:local, the full audit's run() executes a FIXED scanner
+        # set regardless of the `scanners` config, so declare exactly that set —
+        # otherwise doctor/the Action could install fewer tools than run() uses.
+        return Requirements(
+            items=(
+                self._SCANNER_REQUIREMENTS["bandit"],
+                self._SCANNER_REQUIREMENTS["semgrep"],
+                self._SCANNER_REQUIREMENTS[
+                    "detect-secrets"
+                ],  # pragma: allowlist secret
+                Requirement(
+                    kind="python",
+                    name="pip-audit",
+                    # Invoked as ``python -m pip_audit``, so detection must probe
+                    # the module, not a ``pip-audit`` script that may not exist.
+                    probe="import",
+                    import_name="pip_audit",
+                    optional=True,
+                    reason="audits installed dependencies for known CVEs (OSV database)",
+                ),
+            )
+        )
 
     def run(self, project_root: str) -> CheckResult:
         """Run all security checks including dependency scanning."""
