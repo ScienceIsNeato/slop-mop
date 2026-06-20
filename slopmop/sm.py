@@ -768,6 +768,16 @@ def _add_doctor_parser(
         help="Show quality gates grouped by level with required tools and resolution status.",
     )
     doctor_parser.add_argument(
+        "--required-deps",
+        action="store_true",
+        dest="required_deps",
+        help=(
+            "Emit the external-dependency manifest (schema-versioned JSON) the "
+            "GitHub Action installs from — the union of every gate's "
+            "requirements() for this repo's config."
+        ),
+    )
+    doctor_parser.add_argument(
         "--fix",
         action="store_true",
         help=(
