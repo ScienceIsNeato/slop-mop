@@ -24,7 +24,9 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     RemediationChurn,
+    Requirements,
     ToolContext,
+    pip_cli_requirement,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
@@ -110,6 +112,29 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     tool_context = ToolContext.SM_TOOL
     required_tools = ["black", "isort", "autoflake", "flake8", "ruff"]
     role = CheckRole.FOUNDATION
+
+    def requirements(self) -> Requirements:
+        # All optional: a missing formatter/linter is skipped with a note, not a
+        # failure. _run_command resolves each (venv-aware) at invocation time.
+        return Requirements(
+            items=(
+                pip_cli_requirement(
+                    "black", "26.5.1", "code formatting", optional=True
+                ),
+                pip_cli_requirement("isort", "8.0.1", "import sorting", optional=True),
+                pip_cli_requirement(
+                    "autoflake",
+                    "2.3.3",
+                    "removes unused imports/variables",
+                    optional=True,
+                ),
+                pip_cli_requirement("flake8", "7.3.0", "style linting", optional=True),
+                pip_cli_requirement(
+                    "ruff", "0.15.0", "fast linting + formatting", optional=True
+                ),
+            )
+        )
+
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
     is_formatting_gate = True
 

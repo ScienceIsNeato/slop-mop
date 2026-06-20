@@ -10,6 +10,8 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    Requirement,
+    Requirements,
     RemediationChurn,
     ToolContext,
 )
@@ -25,6 +27,22 @@ class DartGeneratedArtifactsCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     required_tools = ["flutter"]
+
+    def requirements(self) -> Requirements:
+        # Optional: a missing flutter WARNs (degrades), it does not fail
+        # the gate. ``version=None`` — the flutter toolchain version is
+        # environment-specific, not something slop-mop pins.
+        return Requirements(
+            items=(
+                Requirement(
+                    kind="system",
+                    name="flutter",
+                    optional=True,
+                    reason="checks generated Dart artifacts are current",
+                ),
+            )
+        )
+
     install_hint = "path"
     role = CheckRole.DIAGNOSTIC
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY

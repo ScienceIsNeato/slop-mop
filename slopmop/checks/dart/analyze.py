@@ -9,6 +9,8 @@ from slopmop.checks.base import (
     CheckRole,
     Flaw,
     GateCategory,
+    Requirement,
+    Requirements,
     ToolContext,
     count_source_scope,
     find_tool,
@@ -36,6 +38,22 @@ class FlutterAnalyzeCheck(BaseCheck):
 
     tool_context = ToolContext.SM_TOOL
     required_tools = ["flutter"]
+
+    def requirements(self) -> Requirements:
+        # Optional: a missing flutter WARNs (degrades), it does not fail
+        # the gate. ``version=None`` — the flutter toolchain version is
+        # environment-specific, not something slop-mop pins.
+        return Requirements(
+            items=(
+                Requirement(
+                    kind="system",
+                    name="flutter",
+                    optional=True,
+                    reason="static analysis of Flutter/Dart code",
+                ),
+            )
+        )
+
     install_hint = "path"
     role = CheckRole.FOUNDATION
 
