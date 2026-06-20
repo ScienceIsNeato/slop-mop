@@ -314,7 +314,8 @@ class GitHubActionsHygieneCheck(BaseCheck):
         workflow_dirs = self.config.get("workflow_dirs") or [".github/workflows"]
         workflows = _workflow_files(root, workflow_dirs)
         findings: list[Finding] = []
-        actionlint_available = False
+        # Resolve actionlint once per run, not once per workflow file.
+        actionlint_path = self._actionlint_path(str(root))
 
         for path in workflows:
             rel_path = _rel(path, root)
@@ -328,16 +329,13 @@ class GitHubActionsHygieneCheck(BaseCheck):
                 continue
 
             findings.extend(self._workflow_findings(workflow, rel_path, lines))
-            findings.extend(self._actionlint_findings(path, root))
-            actionlint_available = (
-                actionlint_available or self._actionlint_path(str(root)) is not None
-            )
+            findings.extend(self._actionlint_findings(path, root, actionlint_path))
 
         elapsed = time.perf_counter() - start
         if not findings:
             note = (
                 "actionlint checked"
-                if actionlint_available
+                if actionlint_path is not None
                 else "actionlint not installed"
             )
             return self._create_result(
@@ -483,8 +481,9 @@ class GitHubActionsHygieneCheck(BaseCheck):
                 )
         return findings
 
-    def _actionlint_findings(self, path: Path, root: Path) -> list[Finding]:
-        actionlint = self._actionlint_path(str(root))
+    def _actionlint_findings(
+        self, path: Path, root: Path, actionlint: Optional[str]
+    ) -> list[Finding]:
         if not actionlint:
             return []
         result = self._runner.run([actionlint, str(path)], cwd=str(root), timeout=30)

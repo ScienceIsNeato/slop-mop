@@ -582,7 +582,7 @@ class Requirement:
             "name": self.name,
             "version": self.version,
             "optional": self.optional,
-            "alternatives": list(self.alternatives),
+            "alternatives": sorted(self.alternatives),
             "reason": self.reason,
         }
 
