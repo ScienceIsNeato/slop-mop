@@ -13,14 +13,15 @@ when your impulse is the left column, run the right column instead.
 | `pytest --cov`, `diff-cover`                      | `sm scour`                                   |
 | `bandit -r .`, `pip-audit`, `detect-secrets`      | `sm scour`                                   |
 | `jscpd`, any duplication scanner                  | `sm scour`                                   |
-| `gh pr checks <PR#>`                              | `sm buff status <PR#>`                       |
-| `gh pr checks <PR#> --watch`, `gh run watch`      | `sm buff watch <PR#>`                        |
+| "what's next?" / drive a PR forward / after a push | `sm sail` — drives swab→scour→CI watch→triage, parks when it needs you |
+| `gh pr checks <PR#> --watch`, `gh run watch`      | `sm sail` (watches under the hood) — `sm buff watch <PR#>` only for a standalone wait |
+| `gh pr checks <PR#>` (quick snapshot)             | `sm buff status <PR#>`                       |
 | `gh pr view <PR#> --comments`                     | `sm buff <PR#>`                              |
-| `gh pr view <PR#> --json mergeable` (to judge if a PR can merge) | `sm buff status <PR#>` — `mergeable` only reports git-conflict state, not merge-readiness; a PR with CI in flight is `MERGEABLE` yet not ready |
-| Reading CI logs to find the failing test          | Start with `sm buff inspect <PR#>`, then use raw `gh run list/view` or CI logs for details not surfaced yet |
+| `gh pr view <PR#> --json mergeable` (to judge if a PR can merge) | `sm sail` / `sm buff status <PR#>` — `mergeable` only reports git-conflict state, not merge-readiness; a PR with CI in flight is `MERGEABLE` yet not ready |
+| Reading CI logs to find the failing test          | `sm sail` surfaces it; for raw detail use `sm buff inspect <PR#>`, then `gh run list/view` |
 | `gh api ... resolveReviewThread`                  | `sm buff resolve <PR#> <THREAD_ID> --message "..."` |
 | `gh pr review --approve` after addressing threads | `sm buff verify <PR#>` first                 |
-| `gh pr merge`                                     | **Wait for human decision.** Sail stops at PR_READY. Share the PR with human, await their merge call. |
+| `gh pr merge`                                     | **Wait for human decision.** Sail stops at "PR ready for human review." Share the PR, await their merge call. |
 | `gh issue create` for slop-mop tool friction      | `sm barnacle file`                           |
 | No `.sb_config.json` in repo (first setup)        | `sm init --non-interactive`                  |
 | "not sure what to do next"                        | `sm sail`                                    |
@@ -66,44 +67,53 @@ For project-specific directories not in that list, add them **once** at the top 
 This applies to every gate. Do **not** reach for per-gate `extra_exclude_paths` unless you
 need a gate-specific exception. `sm init` auto-populates common ones for detected project types.
 
-### The loop
-
-```
-edit → sm swab → fix → repeat            (until swab is clean)
-       sm scour → fix → repeat           (until scour is clean)
-       git push
-       sm buff watch <PR#>               (blocks until CI settles)
-       sm buff <PR#> → fix → repeat      (until CI + threads clean)
-```
-
-Or just run `sm sail` repeatedly — it reads the workflow state and dispatches the right verb automatically.
-
-#### Definition of done — a PR turn is not over until the PR is clean
-
-Once you push to a PR, you own it through to green. **Do not end your turn
-with CI in flight, a red check, or an unanswered review comment.** "I pushed"
-is not done. The machine-checkable contract is:
+### The loop — there is one verb, and it is `sm sail`
 
 ```text
-sm buff watch <PR#>   →   "Final PR state: clean - CI checks passed and
-                           PR feedback is resolved"  (exit 0)
+until sail says "PR ready for human review":
+    sm sail            # drives swab → scour → push → CI watch → triage,
+                       # then parks with ONE thing for you to do:
+    #   failing gate  → fix the reported issues
+    #   "commit"      → git add -A && git commit -m "..."
+    #   "push / PR"   → git push  (and gh pr create --fill if new)
+    #   review thread → fix in code, or resolve honestly with evidence
+    #   ⚓ HOLD / fork → make the call, or escalate to the human
+    # then run sm sail again
 ```
 
-`sm buff watch` exits 0 *only* when CI is green **and** every review thread is
-resolved. Until you have seen that line, you are still in the loop: re-run
-`sm buff inspect`, fix the failure or resolve the thread with a real scenario
-and evidence, run `sm scour`, push, and watch again. Convergence over 2–4
-rounds is normal — LLM reviewers (CodeRabbit, Cursor Bugbot) re-review every
-new commit, so each push can raise a fresh, smaller batch. Keep going.
+`sm sail` is autonomous: a single invocation keeps running the next step until
+the workflow parks on something only you can do, or the PR is ready. It runs
+`swab`, `scour`, `buff watch`, and review triage **under the hood** — you don't
+call those directly. (It never commits, pushes, or opens the PR on its own —
+those need your authored message and body, so it parks and asks.) Reach for an
+individual verb (`sm swab -g <gate>`, `sm buff resolve`) only for surgical work.
 
-The **only** reason to return to the human before clean is a review thread that
-needs a decision you cannot make — an architectural fork, a product call, or
-genuinely ambiguous intent. Resolve it `--scenario needs_human_feedback
---no-resolve`, finish everything else, then surface the single decision. A
-nitpick, lint finding, coverage gap, or a bug you understand is yours to fix,
-not to ask about. Never mark a thread resolved just to fake green, and never
-silence a failing check. (`/sm-buff` carries the full drive-to-green loop,
-including the circuit breaker for flaky/infra failures.)
+#### Definition of done — a PR turn is not over until sail says "PR ready"
+
+Once you start sailing a change, you own it through to green. **Do not end your
+turn with `sm sail` parked on a step you could have taken** — a failing gate, an
+uncommitted change, an unpushed commit, an unresolved review thread. "I ran sail
+once" is not done. You are done only when `sm sail` prints **"PR ready for human
+review."**
+
+Until then you are still in the loop: run `sm sail`, do the one thing it parked
+on, run `sm sail` again. Convergence over 2–4 rounds is normal — LLM reviewers
+(CodeRabbit, Cursor Bugbot) re-review every push, so each round can surface a
+smaller batch. Keep sailing.
+
+There are exactly **two** reasons to return to the human before "PR ready":
+
+1. **A decision you can't make** — an architectural fork, a product call, or
+   genuinely ambiguous intent. Resolve that thread `--scenario
+   needs_human_feedback --no-resolve` with the specific question, finish
+   everything else, then surface the single decision.
+2. **A blocker you can't clear** — the same CI gate failing repeatedly despite
+   real fixes, stalled progress, or an external outage. Report what's stuck.
+
+Everything else — a nitpick, lint finding, coverage gap, or a bug you
+understand — is yours to fix, then `sm sail` again. Never mark a thread resolved
+just to fake green, and never silence a failing check. (`/sm-sail` carries the
+full loop; `/sm-buff` is the under-the-hood triage reference.)
 
 ### Why you lose if you bypass `sm`
 
