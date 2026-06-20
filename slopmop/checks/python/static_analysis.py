@@ -100,7 +100,11 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         return Requirements(
             items=(
                 pip_cli_requirement(
-                    "mypy", "1.19.1", "static type analysis", optional=True
+                    "mypy",
+                    "1.19.1",
+                    "static type analysis",
+                    optional=True,
+                    extra="typing",
                 ),
             )
         )

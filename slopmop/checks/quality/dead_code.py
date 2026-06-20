@@ -100,6 +100,7 @@ class DeadCodeCheck(BaseCheck):
                     "2.14",
                     "detects unused (dead) Python code",
                     optional=True,
+                    extra="analysis",
                 ),
             )
         )

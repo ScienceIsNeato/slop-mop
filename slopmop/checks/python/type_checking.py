@@ -250,7 +250,10 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         return Requirements(
             items=(
                 pip_cli_requirement(
-                    "pyright", "1.1.408", "static type checking of Python code"
+                    "pyright",
+                    "1.1.408",
+                    "static type checking of Python code",
+                    extra="typing",
                 ),
             )
         )

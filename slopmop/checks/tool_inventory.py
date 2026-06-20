@@ -1,0 +1,46 @@
+"""Registry-derived external-tool inventory.
+
+Single source of truth for "what external tools do slop-mop's gates need, and
+how does a user install them" — derived from each gate's ``requirements()``
+instead of a hand-maintained list. Replaces the former hardcoded
+``REQUIRED_TOOLS`` in ``slopmop.cli.detection``.
+"""
+
+from __future__ import annotations
+
+from typing import List, Tuple
+
+
+def gate_tool_inventory() -> List[Tuple[str, str, str]]:
+    """Return ``(tool_name, gate_name, install_hint)`` for every declared tool.
+
+    Walks every registered gate's ``requirements()`` (instantiated with empty
+    config, so the full default tool set is reported) and emits one row per
+    ``(tool, gate)``. ``install_hint`` is the user-facing remediation command
+    (``pipx install slopmop[security]``, an SDK URL, …). Sorted for stable
+    output. Only ``system``/``python``/``npm`` tools are listed — ``env``
+    requirements aren't "installable tools".
+    """
+    from slopmop.checks import ensure_checks_registered
+    from slopmop.core.registry import get_registry
+
+    ensure_checks_registered()
+    registry = get_registry()
+
+    rows: List[Tuple[str, str, str]] = []
+    seen: set[Tuple[str, str]] = set()
+    for gate_name in registry.list_checks():
+        if not isinstance(gate_name, str):
+            continue
+        check = registry.get_check(gate_name, {})
+        if check is None:
+            continue
+        for req in check.requirements().items:
+            if req.kind == "env":
+                continue
+            key = (req.name, gate_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append((req.name, gate_name, req.resolved_install_hint()))
+    return sorted(rows)

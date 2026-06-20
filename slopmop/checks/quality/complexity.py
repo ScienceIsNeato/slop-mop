@@ -77,6 +77,7 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
                     "6.0.1",
                     "measures cyclomatic complexity",
                     optional=True,
+                    extra="analysis",
                 ),
             )
         )

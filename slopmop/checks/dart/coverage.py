@@ -70,6 +70,7 @@ class DartCoverageCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="flutter",
+                    install_hint="Install Flutter SDK: https://docs.flutter.dev/get-started/install",
                     optional=True,
                     reason="measures Flutter/Dart test coverage",
                 ),

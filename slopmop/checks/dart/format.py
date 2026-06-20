@@ -41,6 +41,7 @@ class DartFormatCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="dart",
+                    install_hint="Install Dart SDK: https://dart.dev/get-dart",
                     optional=True,
                     reason="formats Dart code",
                 ),

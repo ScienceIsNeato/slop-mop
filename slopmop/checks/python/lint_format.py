@@ -119,18 +119,27 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         return Requirements(
             items=(
                 pip_cli_requirement(
-                    "black", "26.5.1", "code formatting", optional=True
+                    "black", "26.5.1", "code formatting", optional=True, extra="lint"
                 ),
-                pip_cli_requirement("isort", "8.0.1", "import sorting", optional=True),
+                pip_cli_requirement(
+                    "isort", "8.0.1", "import sorting", optional=True, extra="lint"
+                ),
                 pip_cli_requirement(
                     "autoflake",
                     "2.3.3",
                     "removes unused imports/variables",
                     optional=True,
+                    extra="lint",
                 ),
-                pip_cli_requirement("flake8", "7.3.0", "style linting", optional=True),
                 pip_cli_requirement(
-                    "ruff", "0.15.0", "fast linting + formatting", optional=True
+                    "flake8", "7.3.0", "style linting", optional=True, extra="lint"
+                ),
+                pip_cli_requirement(
+                    "ruff",
+                    "0.15.0",
+                    "fast linting + formatting",
+                    optional=True,
+                    extra="lint",
                 ),
             )
         )

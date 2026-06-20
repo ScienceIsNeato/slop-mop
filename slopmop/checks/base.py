@@ -602,6 +602,12 @@ class Requirement:
     alternatives: tuple[str, ...] = ()
     probe: str = ""  # "" = default by kind; "binary" | "import" | "env" | "none"
     import_name: str = ""  # for probe="import" when it differs from name
+    # User-facing install command for slop-mop's OWN env-doctor remediation —
+    # e.g. "pipx install slopmop[security]" or "Install Flutter SDK: …". Distinct
+    # from how the downstream Action installs (name + version + kind): this tells
+    # a slop-mop *user* how to fix their environment. Empty ⇒ doctor falls back
+    # to a kind-based default ("pip install <name>").
+    install_hint: str = ""
 
     def to_manifest(self) -> Dict[str, Any]:
         """Serialize to the deterministic manifest shape doctor/the Action read."""
@@ -613,8 +619,19 @@ class Requirement:
             "alternatives": sorted(self.alternatives),
             "probe": self.probe,
             "import_name": self.import_name,
+            "install_hint": self.install_hint,
             "reason": self.reason,
         }
+
+    def resolved_install_hint(self) -> str:
+        """The install command to show a user, with a kind-based fallback."""
+        if self.install_hint:
+            return self.install_hint
+        if self.kind == "python":
+            return f"pip install {self.name}"
+        if self.kind == "npm":
+            return f"npm install -g {self.name}"
+        return f"Install {self.name}"
 
 
 @dataclass(frozen=True)
@@ -642,7 +659,12 @@ def build_requirements_document(requirements: "Requirements") -> Dict[str, Any]:
 
 
 def pip_cli_requirement(
-    name: str, version: Optional[str], reason: str, *, optional: bool = False
+    name: str,
+    version: Optional[str],
+    reason: str,
+    *,
+    optional: bool = False,
+    extra: Optional[str] = None,
 ) -> Requirement:
     """A pip-installed tool invoked as a CLI binary — the common gate case.
 
@@ -650,6 +672,10 @@ def pip_cli_requirement(
     run as a command, so they install via pip (``kind="python"``) yet are
     detected on PATH (``probe="binary"``). ``version`` is an EXACT pin; keep it
     in sync with pyproject's declared floor (a drift test guards this).
+
+    ``extra`` names the slop-mop extras group that bundles this tool (``lint``,
+    ``typing``, ``analysis``, ``security``) so the env-doctor can tell a slop-mop
+    user to ``pipx install slopmop[<extra>]`` — one command for the whole group.
     """
     return Requirement(
         kind="python",
@@ -658,6 +684,7 @@ def pip_cli_requirement(
         probe="binary",
         reason=reason,
         optional=optional,
+        install_hint=f"pipx install slopmop[{extra}]" if extra else "",
     )
 
 

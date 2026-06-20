@@ -296,6 +296,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             name="bandit",
             optional=True,
             reason="static security analysis of Python code",
+            install_hint="pipx install slopmop[security]",
         ),
         "semgrep": Requirement(
             kind="python",
@@ -303,6 +304,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             probe="binary",
             optional=True,
             reason="pattern-based security scanning (pip-installed, run as a binary)",
+            install_hint="pipx install slopmop[security]",
         ),
         "detect-secrets": Requirement(  # pragma: allowlist secret
             kind="python",
@@ -310,6 +312,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             import_name="detect_secrets",  # pragma: allowlist secret
             optional=True,
             reason="scans for secrets committed to the repo",
+            install_hint="pipx install slopmop[security]",
         ),
     }
 
@@ -653,6 +656,7 @@ class SecurityCheck(SecurityLocalCheck):
                     import_name="pip_audit",
                     optional=True,
                     reason="audits installed dependencies for known CVEs (OSV database)",
+                    install_hint="pipx install slopmop[security]",
                 ),
             )
         )
