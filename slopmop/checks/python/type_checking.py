@@ -36,7 +36,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    Requirements,
     ToolContext,
+    pip_cli_requirement,
 )
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
@@ -241,6 +243,18 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
     required_tools = ["pyright"]
     role = CheckRole.FOUNDATION
 
+    def requirements(self) -> Requirements:
+        # REQUIRED, not optional: type checking cannot run at all without
+        # pyright, so a missing pyright is a could-not-run ERROR (see run()),
+        # not a silent WARN that lets unchecked code pass the gate.
+        return Requirements(
+            items=(
+                pip_cli_requirement(
+                    "pyright", "1.1.408", "static type checking of Python code"
+                ),
+            )
+        )
+
     @property
     def name(self) -> str:
         return "type-blindness.py"
@@ -433,17 +447,20 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         """Run pyright type checking with prescriptive output."""
         start_time = time.time()
 
-        # Check pyright is installed
+        # pyright is REQUIRED: without it the gate cannot assess types at all,
+        # so a missing pyright is a visible could-not-run ERROR that fails the
+        # verdict — not a silent WARN that lets unchecked code pass. (Previously
+        # this WARNed, which was the exact silent-enforcement gap the contract's
+        # three-state model exists to close.)
+        blocked = self.requirement_block_result(
+            project_root, duration=time.time() - start_time
+        )
+        if blocked is not None:
+            return blocked
+
         pyright_path = _find_pyright(project_root)
-        if not pyright_path:
-            msg = "pyright not found"
-            return self._create_result(
-                status=CheckStatus.WARNED,
-                duration=time.time() - start_time,
-                error=msg,
-                fix_suggestion="Install pyright: pip install pyright",
-                findings=[Finding(message=msg, level=FindingLevel.WARNING)],
-            )
+        if not pyright_path:  # pragma: no cover - guarded by requirement_block_result
+            pyright_path = "pyright"
 
         # Generate a hidden overlay config in the project root so any relative
         # include/extends paths resolve exactly the same way pyright expects.

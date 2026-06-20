@@ -54,11 +54,12 @@ class TestPythonTypeCheckingCheck:
         reason = check.skip_reason(str(tmp_path))
         assert "Python" in reason or "python" in reason.lower()
 
-    @patch(
-        "slopmop.checks.python.type_checking._find_pyright",
-        return_value=None,
-    )
-    def test_run_pyright_not_installed(self, _mock_find, tmp_path):
+    @patch("slopmop.checks.base.find_tool", return_value=None)
+    def test_run_pyright_not_installed_is_could_not_run_error(
+        self, _mock_find, tmp_path
+    ):
+        # pyright is REQUIRED: missing pyright is a could-not-run ERROR (fails
+        # the verdict), NOT a silent WARN that lets unchecked code pass.
         from slopmop.checks.python.type_checking import PythonTypeCheckingCheck
 
         (tmp_path / "src").mkdir()
@@ -67,8 +68,9 @@ class TestPythonTypeCheckingCheck:
         check = PythonTypeCheckingCheck({})
         result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.WARNED
-        assert "pyright" in result.error.lower()
+        assert result.status == CheckStatus.ERROR
+        assert not result.passed  # ERROR fails all_passed → blocks merge
+        assert "pyright" in (result.error or "").lower()
 
     @patch(
         "slopmop.checks.python.type_checking._find_pyright",
