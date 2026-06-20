@@ -346,9 +346,11 @@ jobs:
             output=f"{workflow}:2:5: bad event [syntax-check]\n",
         )
 
-        with patch("shutil.which", return_value="/usr/bin/actionlint"):
-            with patch.object(check._runner, "run", return_value=mock_result):
-                findings = check._actionlint_findings(workflow, tmp_path)
+        # Detection now happens once in run(); the resolved path is passed in.
+        with patch.object(check._runner, "run", return_value=mock_result):
+            findings = check._actionlint_findings(
+                workflow, tmp_path, "/usr/bin/actionlint"
+            )
 
         assert findings[0].rule_id == "actionlint:syntax-check"
         assert findings[0].file == ".github/workflows/ci.yml"
@@ -359,9 +361,10 @@ jobs:
         check = GitHubActionsHygieneCheck({"run_actionlint": True})
         mock_result = MagicMock(returncode=1, output="plain failure")
 
-        with patch("shutil.which", return_value="/usr/bin/actionlint"):
-            with patch.object(check._runner, "run", return_value=mock_result):
-                findings = check._actionlint_findings(workflow, tmp_path)
+        with patch.object(check._runner, "run", return_value=mock_result):
+            findings = check._actionlint_findings(
+                workflow, tmp_path, "/usr/bin/actionlint"
+            )
 
         assert findings[0].rule_id == "actionlint"
         assert findings[0].message == "plain failure"
@@ -371,11 +374,48 @@ jobs:
         check = GitHubActionsHygieneCheck({"run_actionlint": True})
         mock_result = MagicMock(returncode=0, output="")
 
-        with patch("shutil.which", return_value="/usr/bin/actionlint"):
-            with patch.object(check._runner, "run", return_value=mock_result):
-                assert check._actionlint_findings(workflow, tmp_path) == []
+        # Exit 0 → no findings even with actionlint resolved.
+        with patch.object(check._runner, "run", return_value=mock_result):
+            assert (
+                check._actionlint_findings(workflow, tmp_path, "/usr/bin/actionlint")
+                == []
+            )
 
-        assert _check()._actionlint_findings(workflow, tmp_path) == []
+        # No resolved path (unfound/disabled) → no findings, no subprocess.
+        assert check._actionlint_findings(workflow, tmp_path, None) == []
+        # Config-disabled gates don't resolve actionlint at all.
+        assert _check()._actionlint_path(str(tmp_path)) is None
+
+    def test_passed_note_distinguishes_all_three_states(self, tmp_path):
+        # The pass note must distinguish disabled / checked / not-installed —
+        # all three states, not just one (#305 review).
+        _write_workflow(tmp_path, "name: CI\non: push\n")
+        # Resolution flows through the shared base helper now, not the gate.
+        find_tool = "slopmop.checks.base.find_tool"
+
+        # 1. Disabled by config → "disabled".
+        disabled = GitHubActionsHygieneCheck({"run_actionlint": False}).run(
+            str(tmp_path)
+        )
+        assert disabled.status == CheckStatus.PASSED
+        assert "actionlint disabled" in disabled.output
+
+        # 2. Enabled + resolvable + clean run → "checked".
+        check = GitHubActionsHygieneCheck({"run_actionlint": True})
+        clean = MagicMock(returncode=0, output="")
+        with (
+            patch(find_tool, return_value="/usr/bin/actionlint"),
+            patch.object(check._runner, "run", return_value=clean),
+        ):
+            checked = check.run(str(tmp_path))
+        assert "actionlint checked" in checked.output
+
+        # 3. Enabled + not resolvable → "not installed".
+        with patch(find_tool, return_value=None):
+            missing = GitHubActionsHygieneCheck({"run_actionlint": True}).run(
+                str(tmp_path)
+            )
+        assert "actionlint not installed" in missing.output
 
     def test_with_repo_relative_file_handles_no_file_and_outside_root(self, tmp_path):
         check = _check()

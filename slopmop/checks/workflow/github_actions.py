@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import re
-import shutil
 import time
 from pathlib import Path
 from typing import ClassVar, Iterable, Iterator, List, Optional, cast
@@ -17,6 +16,8 @@ from slopmop.checks.base import (
     GateCategory,
     GateLevel,
     RemediationChurn,
+    Requirement,
+    Requirements,
     ToolContext,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
@@ -264,6 +265,44 @@ class GitHubActionsHygieneCheck(BaseCheck):
             ),
         ]
 
+    def requirements(self) -> Requirements:
+        """actionlint, declared so doctor/the Action can offer to install it.
+
+        Optional: the gate's native workflow-hygiene checks run regardless;
+        actionlint adds deeper syntax linting. Config-gated — when
+        ``run_actionlint`` is off, this repo needs nothing here.
+        """
+        if not self.config.get("run_actionlint", True):
+            return Requirements()
+        return Requirements(
+            items=(
+                Requirement(
+                    kind="system",
+                    name="actionlint",
+                    reason=(
+                        "lints GitHub Actions workflow syntax beyond "
+                        "slop-mop's native checks"
+                    ),
+                    optional=True,  # native checks still run without it
+                ),
+            )
+        )
+
+    def _actionlint_path(self, project_root: str) -> Optional[str]:
+        """Resolve actionlint via the gate's own declared requirement.
+
+        Resolves whatever the requirement declares (name + ``alternatives``)
+        through the shared :meth:`BaseCheck.resolve_requirement_path`, so the
+        gate runs exactly the tool ``missing_requirements``/doctor consider
+        satisfied — "what the gate looks for" and "what it declares" can't
+        drift. Returns ``None`` when ``run_actionlint`` is off (no requirement
+        declared) or the tool isn't found.
+        """
+        for req in self.requirements().items:
+            if req.name == "actionlint":
+                return self.resolve_requirement_path(req, project_root)
+        return None
+
     def is_applicable(self, project_root: str) -> bool:
         root = Path(project_root)
         workflow_dirs = self.config.get("workflow_dirs") or [".github/workflows"]
@@ -278,7 +317,8 @@ class GitHubActionsHygieneCheck(BaseCheck):
         workflow_dirs = self.config.get("workflow_dirs") or [".github/workflows"]
         workflows = _workflow_files(root, workflow_dirs)
         findings: list[Finding] = []
-        actionlint_available = False
+        # Resolve actionlint once per run, not once per workflow file.
+        actionlint_path = self._actionlint_path(str(root))
 
         for path in workflows:
             rel_path = _rel(path, root)
@@ -292,18 +332,16 @@ class GitHubActionsHygieneCheck(BaseCheck):
                 continue
 
             findings.extend(self._workflow_findings(workflow, rel_path, lines))
-            findings.extend(self._actionlint_findings(path, root))
-            actionlint_available = (
-                actionlint_available or shutil.which("actionlint") is not None
-            )
+            findings.extend(self._actionlint_findings(path, root, actionlint_path))
 
         elapsed = time.perf_counter() - start
         if not findings:
-            note = (
-                "actionlint checked"
-                if actionlint_available
-                else "actionlint not installed"
-            )
+            if not self.config.get("run_actionlint", True):
+                note = "actionlint disabled"
+            elif actionlint_path is not None:
+                note = "actionlint checked"
+            else:
+                note = "actionlint not installed"
             return self._create_result(
                 status=CheckStatus.PASSED,
                 duration=elapsed,
@@ -447,12 +485,12 @@ class GitHubActionsHygieneCheck(BaseCheck):
                 )
         return findings
 
-    def _actionlint_findings(self, path: Path, root: Path) -> list[Finding]:
-        if not self.config.get("run_actionlint", True) or not shutil.which(
-            "actionlint"
-        ):
+    def _actionlint_findings(
+        self, path: Path, root: Path, actionlint: Optional[str]
+    ) -> list[Finding]:
+        if not actionlint:
             return []
-        result = self._runner.run(["actionlint", str(path)], cwd=str(root), timeout=30)
+        result = self._runner.run([actionlint, str(path)], cwd=str(root), timeout=30)
         if result.returncode == 0:
             return []
         findings: list[Finding] = []
