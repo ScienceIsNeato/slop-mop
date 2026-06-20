@@ -10,9 +10,9 @@ from slopmop.checks.base import (
     ConfigField,
     Flaw,
     GateCategory,
+    RemediationChurn,
     Requirement,
     Requirements,
-    RemediationChurn,
     ToolContext,
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
