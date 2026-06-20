@@ -20,9 +20,11 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     RemediationChurn,
+    Requirements,
     ToolContext,
     count_source_scope,
     find_tool,
+    pip_cli_requirement,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.core.result import (
@@ -88,6 +90,19 @@ class DeadCodeCheck(BaseCheck):
     required_tools = ["vulture"]
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
+
+    def requirements(self) -> Requirements:
+        # Optional: a missing vulture WARNs (degrades), it doesn't fail the gate.
+        return Requirements(
+            items=(
+                pip_cli_requirement(
+                    "vulture",
+                    "2.14",
+                    "detects unused (dead) Python code",
+                    optional=True,
+                ),
+            )
+        )
 
     @property
     def name(self) -> str:

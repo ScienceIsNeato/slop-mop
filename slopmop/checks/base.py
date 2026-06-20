@@ -641,6 +641,26 @@ def build_requirements_document(requirements: "Requirements") -> Dict[str, Any]:
     }
 
 
+def pip_cli_requirement(
+    name: str, version: Optional[str], reason: str, *, optional: bool = False
+) -> Requirement:
+    """A pip-installed tool invoked as a CLI binary — the common gate case.
+
+    Most Python quality tools (black, mypy, vulture, …) ship on PyPI but are
+    run as a command, so they install via pip (``kind="python"``) yet are
+    detected on PATH (``probe="binary"``). ``version`` is an EXACT pin; keep it
+    in sync with pyproject's declared floor (a drift test guards this).
+    """
+    return Requirement(
+        kind="python",
+        name=name,
+        version=version,
+        probe="binary",
+        reason=reason,
+        optional=optional,
+    )
+
+
 class BaseCheck(ABC):
     """Abstract base class for all quality gate checks.
 

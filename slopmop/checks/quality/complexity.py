@@ -21,7 +21,9 @@ from slopmop.checks.base import (
     Flaw,
     GateCategory,
     RemediationChurn,
+    Requirements,
     ToolContext,
+    pip_cli_requirement,
     should_prune_dir,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
@@ -65,6 +67,19 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
     required_tools = ["radon"]
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_LIKELY
+
+    def requirements(self) -> Requirements:
+        # Optional: a missing radon WARNs (degrades), it doesn't fail the gate.
+        return Requirements(
+            items=(
+                pip_cli_requirement(
+                    "radon",
+                    "6.0.1",
+                    "measures cyclomatic complexity",
+                    optional=True,
+                ),
+            )
+        )
 
     @property
     def name(self) -> str:
@@ -151,8 +166,12 @@ class ComplexityCheck(BaseCheck, PythonCheckMixin):
                 output="No src_dirs configured and no Python files found.",
             )
 
+        # Invoke the same radon the requirement resolves (venv-aware), not a
+        # bare name PATH may not see.
+        (radon_req,) = self.requirements().items
+        radon = self.resolve_requirement_path(radon_req, project_root) or "radon"
         cmd = [
-            "radon",
+            radon,
             "cc",
             "--min",
             "D",
