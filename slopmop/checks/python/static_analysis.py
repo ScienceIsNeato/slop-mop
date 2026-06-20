@@ -92,7 +92,6 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["mypy"]
     role = CheckRole.FOUNDATION
 
     def requirements(self) -> Requirements:
@@ -100,7 +99,11 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         return Requirements(
             items=(
                 pip_cli_requirement(
-                    "mypy", "1.19.1", "static type analysis", optional=True
+                    "mypy",
+                    "1.19.1",
+                    "static type analysis",
+                    optional=True,
+                    extra="typing",
                 ),
             )
         )

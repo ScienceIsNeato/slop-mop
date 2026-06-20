@@ -20,6 +20,7 @@ from slopmop.checks.dart.common import (
     FLUTTER_CACHE_NOT_WRITABLE,
     FLUTTER_CACHE_PERMISSION_ERROR,
     FLUTTER_INSTALL_FIX_SUGGESTION,
+    FLUTTER_INSTALL_HINT,
     FLUTTER_NOT_AVAILABLE,
     find_pubspec_dirs,
     format_package_label,
@@ -37,7 +38,6 @@ class FlutterAnalyzeCheck(BaseCheck):
     """Run flutter analyze across all discovered pubspec packages."""
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["flutter"]
 
     def requirements(self) -> Requirements:
         # Optional: a missing flutter WARNs (degrades), it does not fail
@@ -48,13 +48,13 @@ class FlutterAnalyzeCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="flutter",
+                    install_hint=FLUTTER_INSTALL_HINT,
                     optional=True,
                     reason="static analysis of Flutter/Dart code",
                 ),
             )
         )
 
-    install_hint = "path"
     role = CheckRole.FOUNDATION
 
     @property

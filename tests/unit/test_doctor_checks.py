@@ -367,7 +367,10 @@ class TestToolInventoryCheck:
             ("black", "gate.complex", "install-cmd"),
         ]
         with (
-            patch("slopmop.doctor.sm_env.REQUIRED_TOOLS", fake_required),
+            patch(
+                "slopmop.doctor.sm_env.gate_tool_inventory",
+                return_value=fake_required,
+            ),
             patch("slopmop.doctor.sm_env.find_tool", return_value=None),
         ):
             r = ToolInventoryCheck().run(ctx)
@@ -399,7 +402,10 @@ class TestToolInventoryCheck:
             return "/bin/black" if name == "black" else None
 
         with (
-            patch("slopmop.doctor.sm_env.REQUIRED_TOOLS", fake_required),
+            patch(
+                "slopmop.doctor.sm_env.gate_tool_inventory",
+                return_value=fake_required,
+            ),
             patch("slopmop.doctor.sm_env.find_tool", side_effect=fake_find),
             patch(
                 "slopmop.subprocess.validator.CommandValidator.validate",
@@ -988,18 +994,21 @@ class TestCheckVersionConstraint:
 class TestToolInventoryVersionViolations:
     """ToolInventoryCheck covers version-violation reporting paths."""
 
+    def _fake_gate(self, *reqs):
+        from slopmop.checks.base import Requirements
+
+        check = MagicMock()
+        check.requirements.return_value = Requirements(items=tuple(reqs))
+        check.missing_requirements.return_value = []
+        return check
+
     def test_version_violation_reported_as_fail(self, ctx):
-        """When tool is found but version constraint fails → FAIL."""
-        from slopmop.checks.base import BaseCheck
+        """Tool found but older than its declared pin → FAIL (pin is a floor)."""
+        from slopmop.checks.base import Requirement
 
-        class FakeGate(BaseCheck):
-            name = "test:fake-version-gate"
-            required_tools = ["black"]
-            required_tool_versions = {"black": ">=999.0"}
-
-            def run(self, project_root, config=None):  # type: ignore[override]
-                return self._pass()
-
+        check = self._fake_gate(
+            Requirement(kind="python", name="black", version="999.0")
+        )
         with (
             patch(
                 "slopmop.doctor.sm_env.find_tool",
@@ -1013,7 +1022,7 @@ class TestToolInventoryVersionViolations:
                 "slopmop.core.registry.get_registry",
                 return_value=MagicMock(
                     list_checks=lambda: ["test:fake-version-gate"],
-                    _check_classes={"test:fake-version-gate": FakeGate},
+                    get_check=lambda name, cfg: check,
                 ),
             ),
         ):
@@ -1021,30 +1030,13 @@ class TestToolInventoryVersionViolations:
         assert r.status is DoctorStatus.FAIL
         assert "version constraint" in r.summary
 
-    def test_later_stricter_version_constraint_is_not_deduped_away(self, ctx):
-        """Differing specs for the same tool must each be checked."""
-        from slopmop.checks.base import BaseCheck
+    def test_same_tool_pin_across_gates_is_reported_once(self, ctx):
+        """A tool pinned at the same version in two gates is deduped."""
+        from slopmop.checks.base import Requirement
 
-        class BroadGate(BaseCheck):
-            name = "test:broad-gate"
-            required_tools = ["black"]
-            required_tool_versions = {"black": ">=22.0"}
-
-            def run(self, project_root, config=None):  # type: ignore[override]
-                return self._pass()
-
-        class StrictGate(BaseCheck):
-            name = "test:strict-gate"
-            required_tools = ["black"]
-            required_tool_versions = {"black": ">=24.0"}
-
-            def run(self, project_root, config=None):  # type: ignore[override]
-                return self._pass()
-
-        def fake_check(_tool, _path, spec):
-            if spec == ">=24.0":
-                return "found 23.0.0, requires >=24.0"
-            return None
+        a = self._fake_gate(Requirement(kind="python", name="black", version="24.0"))
+        b = self._fake_gate(Requirement(kind="python", name="black", version="24.0"))
+        gates = {"test:gate-a": a, "test:gate-b": b}
 
         with (
             patch(
@@ -1053,29 +1045,21 @@ class TestToolInventoryVersionViolations:
             ),
             patch(
                 "slopmop.doctor.sm_env._check_version_constraint",
-                side_effect=fake_check,
+                return_value="found 23.0.0, requires >=24.0",
             ),
             patch(
                 "slopmop.core.registry.get_registry",
                 return_value=MagicMock(
-                    list_checks=lambda: ["test:broad-gate", "test:strict-gate"],
-                    _check_classes={
-                        "test:broad-gate": BroadGate,
-                        "test:strict-gate": StrictGate,
-                    },
+                    list_checks=lambda: list(gates),
+                    get_check=lambda name, cfg: gates[name],
                 ),
             ),
         ):
             r = ToolInventoryCheck().run(ctx)
 
         assert r.status is DoctorStatus.FAIL
-        assert r.data["version_violations"] == [
-            {
-                "tool": "black",
-                "gate": "test:strict-gate",
-                "message": "found 23.0.0, requires >=24.0",
-            }
-        ]
+        assert len(r.data["version_violations"]) == 1
+        assert r.data["version_violations"][0]["tool"] == "black"
 
 
 # ── sm_env.GateDiagnosticsCheck ──────────────────────────────────────────

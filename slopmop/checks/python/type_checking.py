@@ -240,7 +240,6 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
     """
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["pyright"]
     role = CheckRole.FOUNDATION
 
     def requirements(self) -> Requirements:
@@ -250,7 +249,10 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
         return Requirements(
             items=(
                 pip_cli_requirement(
-                    "pyright", "1.1.408", "static type checking of Python code"
+                    "pyright",
+                    "1.1.408",
+                    "static type checking of Python code",
+                    extra="typing",
                 ),
             )
         )

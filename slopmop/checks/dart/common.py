@@ -6,6 +6,11 @@ from typing import Iterable, List
 FLUTTER_CACHE_PERMISSION_ERROR = "engine.stamp: Operation not permitted"
 FLUTTER_NOT_AVAILABLE = "flutter not available"
 FLUTTER_INSTALL_FIX_SUGGESTION = "Install Flutter SDK and ensure `flutter` is on PATH"
+# Install-hint commands carried on the requirement contract (env-doctor fix).
+FLUTTER_INSTALL_HINT = (
+    "Install Flutter SDK: https://docs.flutter.dev/get-started/install"
+)
+DART_INSTALL_HINT = "Install Dart SDK: https://dart.dev/get-dart"
 FLUTTER_CACHE_NOT_WRITABLE = (
     "Flutter SDK cache path is not writable in this environment"
 )

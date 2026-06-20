@@ -397,25 +397,22 @@ def _enable_gate(
     # missing before their first run.  Informational only — never
     # blocks enable, and a bug in doctor must not break config.
     try:
-        from slopmop.checks.base import find_tool
-
         ensure_checks_registered()
         registry = get_registry()
         check = registry.get_check(gate_name, config)
         if check is not None:
-            missing = [
-                t
-                for t in check.required_tools
-                if find_tool(t, str(project_root)) is None
-            ]
+            missing = check.missing_requirements(str(project_root))
             if missing:
-                hint = check.install_hint
-                print(f"\n  ⚠️  Missing tools: {', '.join(missing)}")
-                if hint == "pip":
-                    print(f"     → pip install {' '.join(missing)}")
-                else:
-                    for t in missing:
-                        print(f"     → Install {t} and ensure it is on PATH")
+                names = [r.name for r in missing]
+                print(f"\n  ⚠️  Missing tools: {', '.join(names)}")
+                # Each requirement carries its own install command (slop-mop
+                # extras group, SDK URL, …); dedup identical ones.
+                seen: set[str] = set()
+                for req in missing:
+                    hint = req.resolved_install_hint()
+                    if hint not in seen:
+                        seen.add(hint)
+                        print(f"     → {hint}")
     except (ImportError, KeyError, ValueError, OSError) as exc:
         import logging
 

@@ -602,6 +602,12 @@ class Requirement:
     alternatives: tuple[str, ...] = ()
     probe: str = ""  # "" = default by kind; "binary" | "import" | "env" | "none"
     import_name: str = ""  # for probe="import" when it differs from name
+    # User-facing install command for slop-mop's OWN env-doctor remediation —
+    # e.g. "pipx install slopmop[security]" or "Install Flutter SDK: …". Distinct
+    # from how the downstream Action installs (name + version + kind): this tells
+    # a slop-mop *user* how to fix their environment. Empty ⇒ doctor falls back
+    # to a kind-based default ("pip install <name>").
+    install_hint: str = ""
 
     def to_manifest(self) -> Dict[str, Any]:
         """Serialize to the deterministic manifest shape doctor/the Action read."""
@@ -613,8 +619,21 @@ class Requirement:
             "alternatives": sorted(self.alternatives),
             "probe": self.probe,
             "import_name": self.import_name,
+            "install_hint": self.install_hint,
             "reason": self.reason,
         }
+
+    def resolved_install_hint(self) -> str:
+        """The remediation to show a user, with a kind-based fallback."""
+        if self.install_hint:
+            return self.install_hint
+        if self.kind == "python":
+            return f"pip install {self.name}"
+        if self.kind == "npm":
+            return f"npm install -g {self.name}"
+        if self.kind == "env":
+            return f"Set the {self.name} environment variable"
+        return f"Install {self.name}"
 
 
 @dataclass(frozen=True)
@@ -642,7 +661,12 @@ def build_requirements_document(requirements: "Requirements") -> Dict[str, Any]:
 
 
 def pip_cli_requirement(
-    name: str, version: Optional[str], reason: str, *, optional: bool = False
+    name: str,
+    version: Optional[str],
+    reason: str,
+    *,
+    optional: bool = False,
+    extra: Optional[str] = None,
 ) -> Requirement:
     """A pip-installed tool invoked as a CLI binary — the common gate case.
 
@@ -650,6 +674,10 @@ def pip_cli_requirement(
     run as a command, so they install via pip (``kind="python"``) yet are
     detected on PATH (``probe="binary"``). ``version`` is an EXACT pin; keep it
     in sync with pyproject's declared floor (a drift test guards this).
+
+    ``extra`` names the slop-mop extras group that bundles this tool (``lint``,
+    ``typing``, ``analysis``, ``security``) so the env-doctor can tell a slop-mop
+    user to ``pipx install slopmop[<extra>]`` — one command for the whole group.
     """
     return Requirement(
         kind="python",
@@ -658,6 +686,7 @@ def pip_cli_requirement(
         probe="binary",
         reason=reason,
         optional=optional,
+        install_hint=f"pipx install slopmop[{extra}]" if extra else "",
     )
 
 
@@ -729,26 +758,10 @@ class BaseCheck(ABC):
     # rather than relying on gate-name string matching.
     is_formatting_gate: ClassVar[bool] = False
 
-    # Tools this gate needs at runtime.  Doctor uses this to verify
-    # tool availability *before* the gate runs.  Opt-in: gates that
-    # don't declare this are still diagnosed by tool_context heuristics
-    # (e.g. NODE gates check for node_modules, PROJECT gates check for
-    # venv), but SM_TOOL gates should list specific executables.
-    required_tools: ClassVar[List[str]] = []
-
-    # Minimum version constraints for tools declared in ``required_tools``.
-    # Maps tool name → PEP 440 version specifier string (e.g. ``">=24.0"``).
-    # Doctor uses this to call ``<tool> --version`` and warn when the
-    # installed version does not satisfy the constraint.  Opt-in: most
-    # gates leave this empty.
-    required_tool_versions: ClassVar[Dict[str, str]] = {}
-
-    # How to install missing tools.  Doctor reads this to generate
-    # actionable remediation hints.  Use "pip" for Python-ecosystem
-    # tools, or a freeform string like "Install {tool} from https://..."
-    # for tools that aren't pip-installable.  Default "pip" covers most
-    # SM_TOOL gates.  Override in subclasses for non-pip tools.
-    install_hint: ClassVar[str] = "pip"
+    # External tools a gate needs are declared via requirements() (the
+    # Requirement contract — name, exact pin, kind/probe, install_hint). The
+    # former required_tools / required_tool_versions / install_hint class
+    # attributes have been retired in favour of that single source.
 
     def __init__(
         self, config: Dict[str, Any], runner: Optional[SubprocessRunner] = None

@@ -24,39 +24,9 @@ from slopmop.checks.mixins import (
 #   testing   — pytest, pytest-cov, diff-cover
 #   all       — everything above
 
-# Install-command constants (one source of truth for each extra group)
-_INSTALL_LINT = "pipx install slopmop[lint]"
-_INSTALL_TYPING = "pipx install slopmop[typing]"
-_INSTALL_ANALYSIS = "pipx install slopmop[analysis]"
-_INSTALL_SECURITY = "pipx install slopmop[security]"
-_INSTALL_DART = "Install Dart SDK: https://dart.dev/get-dart"
-_INSTALL_FLUTTER = "Install Flutter SDK: https://docs.flutter.dev/get-started/install"
-
-REQUIRED_TOOLS: List[Tuple[str, str, str]] = [
-    # Lint & format (sloppy-formatting.py gate) → [lint] extra
-    ("black", "laziness:sloppy-formatting.py", _INSTALL_LINT),
-    ("isort", "laziness:sloppy-formatting.py", _INSTALL_LINT),
-    ("autoflake", "laziness:sloppy-formatting.py", _INSTALL_LINT),
-    ("flake8", "laziness:sloppy-formatting.py", _INSTALL_LINT),
-    # Static analysis → [analysis] extra
-    ("vulture", "laziness:dead-code.py", _INSTALL_ANALYSIS),
-    # Type checking → [typing] extra
-    ("mypy", "overconfidence:missing-annotations.py", _INSTALL_TYPING),
-    ("pyright", "overconfidence:type-blindness.py", _INSTALL_TYPING),
-    # Security scanning → [security] extra
-    ("bandit", "myopia:vulnerability-blindness.py", _INSTALL_SECURITY),
-    ("semgrep", "myopia:vulnerability-blindness.py", _INSTALL_SECURITY),
-    ("detect-secrets", "myopia:vulnerability-blindness.py", _INSTALL_SECURITY),
-    ("pip-audit", "myopia:dependency-risk.py", _INSTALL_SECURITY),
-    # Complexity scanning → [analysis] extra
-    ("radon", "laziness:complexity-creep.py", _INSTALL_ANALYSIS),
-    # Dart/Flutter maintenance gates
-    ("flutter", "overconfidence:missing-annotations.dart", _INSTALL_FLUTTER),
-    ("flutter", "overconfidence:untested-code.dart", _INSTALL_FLUTTER),
-    ("dart", "laziness:sloppy-formatting.dart", _INSTALL_DART),
-    # Dart/Flutter coverage gate
-    ("flutter", "overconfidence:coverage-gaps.dart", _INSTALL_FLUTTER),
-]
+# The tool inventory (which tool, which gate, how to install it) is no longer
+# hand-maintained here — it is derived from each gate's requirements() via
+# slopmop.checks.tool_inventory.gate_tool_inventory(). See _detect_tools().
 
 # Canonical language keys derived from scc --format json output.
 _PYTHON_LANGS = {"python"}
@@ -186,11 +156,15 @@ def _detect_tools(project_root: Path) -> Dict[str, Any]:
         - available_tools: list of tool names that are installed
         - missing_tools: list of (tool_name, check_name, install_command) for missing tools
     """
+    from slopmop.checks.tool_inventory import gate_tool_inventory
+    from slopmop.doctor.sm_env import _load_repo_config
+
     available: List[str] = []
     missing: List[Tuple[str, str, str]] = []
     seen_available: Set[str] = set()
 
-    for tool_name, check_name, install_cmd in REQUIRED_TOOLS:
+    config = _load_repo_config(project_root)
+    for tool_name, check_name, install_cmd in gate_tool_inventory(config):
         found = find_tool(tool_name, str(project_root))
         if found:
             if tool_name not in seen_available:

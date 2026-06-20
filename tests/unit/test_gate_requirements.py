@@ -455,10 +455,10 @@ class TestVersionPinsTrackPyproject:
 
 
 class TestAllToolGatesDeclareRequirements:
-    """Registry-wide invariant: every gate that needs external tools declares
-    them via requirements(). Guards against a new gate re-introducing the
-    scattered-detection problem, and keeps the legacy required_tools list in
-    sync with the contract until the doctor migration retires it."""
+    """Registry-wide invariant: the requirements() contract is now the single
+    source of "what external tools do gates need". These guard that the derived
+    inventory stays complete and well-formed (the legacy required_tools /
+    REQUIRED_TOOLS sources have been retired)."""
 
     def _registry(self):
         from slopmop.checks import ensure_checks_registered
@@ -467,27 +467,44 @@ class TestAllToolGatesDeclareRequirements:
         ensure_checks_registered()
         return get_registry()
 
-    def test_required_tools_gates_declare_matching_requirements(self):
-        registry = self._registry()
-        offenders = []
-        for name in registry.list_checks():
-            check = registry.get_check(name, {})
-            if check is None:
-                continue
-            legacy = list(getattr(check, "required_tools", []) or [])
-            if not legacy:
-                continue
-            covered = set()
-            for req in check.requirements().items:
-                covered.add(req.name)
-                covered.update(req.alternatives)
-            missing = [t for t in legacy if t not in covered]
-            if missing:
-                offenders.append((name, missing))
-        assert not offenders, (
-            "gates list required_tools without a matching requirements() "
-            f"declaration: {offenders}"
-        )
+    def test_inventory_covers_the_core_first_party_tools(self):
+        # The derived inventory must keep covering the tools the gates run — a
+        # snapshot so a future gate that drops a requirement is caught.
+        from slopmop.checks.tool_inventory import gate_tool_inventory
+
+        tools = {t for t, _gate, _hint in gate_tool_inventory()}
+        expected = {
+            "black",
+            "isort",
+            "autoflake",
+            "flake8",
+            "ruff",
+            "mypy",
+            "pyright",
+            "vulture",
+            "radon",
+            "bandit",
+            "semgrep",
+            "detect-secrets",  # pragma: allowlist secret
+            "pip-audit",
+            "flutter",
+            "dart",
+        }
+        assert expected <= tools, f"inventory missing: {expected - tools}"
+
+    def test_inventory_rows_carry_a_nonempty_install_hint(self):
+        from slopmop.checks.tool_inventory import gate_tool_inventory
+
+        for tool, gate, hint in gate_tool_inventory():
+            assert hint, f"{tool} (in {gate}) has no install hint"
+
+    def test_security_tools_share_the_extras_install_hint(self):
+        # The extras-group remediation that REQUIRED_TOOLS used to hardcode is
+        # now derived from requirements().
+        from slopmop.checks.security import SecurityCheck
+
+        for req in SecurityCheck({}).requirements().items:
+            assert req.resolved_install_hint() == "pipx install slopmop[security]"
 
     def test_every_declared_requirement_is_well_formed(self):
         registry = self._registry()
@@ -506,3 +523,139 @@ class TestAllToolGatesDeclareRequirements:
                     assert not any(
                         c in req.version for c in "<>=~ "
                     ), f"{name}: {req.name} version {req.version!r} looks like a range"
+
+
+class TestMigrationCoverage:
+    """Exercise the consumer-migration code paths."""
+
+    def test_resolved_install_hint_fallbacks(self):
+        assert (
+            Requirement(
+                kind="python", name="x", install_hint="custom hint"
+            ).resolved_install_hint()
+            == "custom hint"
+        )
+        assert (
+            Requirement(kind="python", name="bandit").resolved_install_hint()
+            == "pip install bandit"
+        )
+        assert (
+            Requirement(kind="npm", name="jscpd").resolved_install_hint()
+            == "npm install -g jscpd"
+        )
+        assert (
+            Requirement(kind="system", name="flutter").resolved_install_hint()
+            == "Install flutter"
+        )
+
+    def test_inventory_skips_env_requirements(self, monkeypatch):
+        # env-kind requirements are not installable tools — excluded.
+        from slopmop.checks import tool_inventory
+
+        class _FakeReg:
+            def list_checks(self):
+                return ["fake:gate"]
+
+            def get_check(self, name, cfg):
+                return _EnvAndToolGate({})
+
+        class _EnvAndToolGate(_ToollessGate):
+            def requirements(self):
+                return Requirements(
+                    items=(
+                        Requirement(kind="env", name="GH_TOKEN"),
+                        Requirement(kind="system", name="sometool"),
+                    )
+                )
+
+        # tool_inventory lazily imports these — patch them at their source.
+        import slopmop.checks as checks_mod
+        import slopmop.core.registry as reg_mod
+
+        monkeypatch.setattr(reg_mod, "get_registry", lambda: _FakeReg())
+        monkeypatch.setattr(checks_mod, "ensure_checks_registered", lambda: None)
+        rows = tool_inventory.gate_tool_inventory()
+        names = {t for t, _g, _h in rows}
+        assert "sometool" in names
+        assert "GH_TOKEN" not in names
+
+    def test_gate_preflight_missing_tools_uses_requirements(
+        self, monkeypatch, tmp_path
+    ):
+        from pathlib import Path
+
+        from slopmop.doctor.gate_preflight import _missing_required_tools
+
+        monkeypatch.setattr("slopmop.checks.base.find_tool", lambda name, root: None)
+        gate = _RequiredToolGate({})
+        assert _missing_required_tools(gate, Path(tmp_path)) == ("frobnicate",)
+
+
+class TestDoctorMigrationFixes:
+    """Cover the #310 review-fix paths."""
+
+    def test_resolved_install_hint_env_fallback(self):
+        assert (
+            Requirement(kind="env", name="GH_TOKEN").resolved_install_hint()
+            == "Set the GH_TOKEN environment variable"
+        )
+
+    def test_load_repo_config_reads_sb_config(self, tmp_path):
+        import json
+
+        from slopmop.doctor.sm_env import _load_repo_config
+
+        assert _load_repo_config(tmp_path) == {}  # missing file → {}
+        (tmp_path / ".sb_config.json").write_text(json.dumps({"k": "v"}))
+        assert _load_repo_config(tmp_path) == {"k": "v"}
+        (tmp_path / ".sb_config.json").write_text("not json{")
+        assert _load_repo_config(tmp_path) == {}  # invalid → {}
+
+    def test_optional_missing_tool_does_not_block_preflight(
+        self, monkeypatch, tmp_path
+    ):
+        from pathlib import Path
+
+        from slopmop.doctor.gate_preflight import _missing_required_tools
+
+        class _OptionalToolGate(_ToollessGate):
+            def requirements(self) -> Requirements:
+                return Requirements(
+                    items=(
+                        Requirement(kind="system", name="opt", optional=True),
+                        Requirement(kind="system", name="req", optional=False),
+                    )
+                )
+
+        monkeypatch.setattr("slopmop.checks.base.find_tool", lambda *_a: None)
+        # Only the required tool counts toward "blocked".
+        assert _missing_required_tools(_OptionalToolGate({}), Path(tmp_path)) == (
+            "req",
+        )
+
+    def test_inventory_forwards_config_to_get_check(self, monkeypatch):
+        # Config-awareness: the repo config reaches get_check so config-gated
+        # requirements reflect the repo (#310 review).
+        from unittest.mock import MagicMock
+
+        from slopmop.checks import tool_inventory
+
+        captured = {}
+
+        class _Reg:
+            def list_checks(self):
+                return ["g"]
+
+            def get_check(self, name, cfg):
+                captured["cfg"] = cfg
+                m = MagicMock()
+                m.requirements.return_value = Requirements()
+                return m
+
+        import slopmop.checks as checks_mod
+        import slopmop.core.registry as reg_mod
+
+        monkeypatch.setattr(reg_mod, "get_registry", lambda: _Reg())
+        monkeypatch.setattr(checks_mod, "ensure_checks_registered", lambda: None)
+        tool_inventory.gate_tool_inventory({"x": 1})
+        assert captured["cfg"] == {"x": 1}

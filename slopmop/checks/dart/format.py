@@ -16,7 +16,11 @@ from slopmop.checks.base import (
     find_tool,
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
-from slopmop.checks.dart.common import find_pubspec_dirs, format_package_label
+from slopmop.checks.dart.common import (
+    DART_INSTALL_HINT,
+    find_pubspec_dirs,
+    format_package_label,
+)
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -30,7 +34,6 @@ class DartFormatCheck(BaseCheck):
     """Check canonical Dart formatting across the repo."""
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["dart"]
 
     def requirements(self) -> Requirements:
         # Optional: a missing dart WARNs (degrades), it does not fail
@@ -41,13 +44,13 @@ class DartFormatCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="dart",
+                    install_hint=DART_INSTALL_HINT,
                     optional=True,
                     reason="formats Dart code",
                 ),
             )
         )
 
-    install_hint = "path"
     role = CheckRole.FOUNDATION
 
     @property

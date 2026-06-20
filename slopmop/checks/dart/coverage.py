@@ -26,6 +26,7 @@ from slopmop.checks.dart.common import (
     FLUTTER_CACHE_NOT_WRITABLE,
     FLUTTER_CACHE_PERMISSION_ERROR,
     FLUTTER_INSTALL_FIX_SUGGESTION,
+    FLUTTER_INSTALL_HINT,
     FLUTTER_NOT_AVAILABLE,
     NO_FLUTTER_TEST_DIRECTORIES_FOUND,
     find_pubspec_dirs,
@@ -59,7 +60,6 @@ class DartCoverageCheck(BaseCheck):
     """Flutter test coverage gate (parses coverage/lcov.info)."""
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["flutter"]
 
     def requirements(self) -> Requirements:
         # Optional: a missing flutter WARNs (degrades), it does not fail
@@ -70,13 +70,13 @@ class DartCoverageCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="flutter",
+                    install_hint=FLUTTER_INSTALL_HINT,
                     optional=True,
                     reason="measures Flutter/Dart test coverage",
                 ),
             )
         )
 
-    install_hint = "path"
     role = CheckRole.FOUNDATION
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_UNLIKELY
 

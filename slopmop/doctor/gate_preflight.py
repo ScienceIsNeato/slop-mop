@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple, cast
 
 from slopmop.checks import ensure_checks_registered
-from slopmop.checks.base import BaseCheck, find_tool
+from slopmop.checks.base import BaseCheck
 from slopmop.checks.custom import register_custom_gates
 from slopmop.core.registry import get_registry
 
@@ -94,12 +94,15 @@ def _gate_config_fingerprint(config: Dict[str, Any], gate_name: str) -> str:
 
 
 def _missing_required_tools(check: BaseCheck, project_root: Path) -> Tuple[str, ...]:
-    missing: List[str] = []
-    root = str(project_root)
-    for tool in check.required_tools:
-        if find_tool(tool, root) is None:
-            missing.append(tool)
-    return tuple(sorted(missing))
+    # Only REQUIRED tools block a gate — an absent optional tool just degrades
+    # it (the gate WARNs and runs), so it must not count as "blocked".
+    return tuple(
+        sorted(
+            req.name
+            for req in check.missing_requirements(str(project_root))
+            if not req.optional
+        )
+    )
 
 
 def gather_gate_preflight_records(

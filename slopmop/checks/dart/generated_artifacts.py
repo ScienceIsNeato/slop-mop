@@ -16,7 +16,11 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
-from slopmop.checks.dart.common import find_pubspec_dirs, unique_strings
+from slopmop.checks.dart.common import (
+    FLUTTER_INSTALL_HINT,
+    find_pubspec_dirs,
+    unique_strings,
+)
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_SHOWN = 20
@@ -26,7 +30,6 @@ class DartGeneratedArtifactsCheck(BaseCheck):
     """Fail when Flutter build/tool artifacts are committed."""
 
     tool_context = ToolContext.SM_TOOL
-    required_tools = ["flutter"]
 
     def requirements(self) -> Requirements:
         # Optional: a missing flutter WARNs (degrades), it does not fail
@@ -37,13 +40,13 @@ class DartGeneratedArtifactsCheck(BaseCheck):
                 Requirement(
                     kind="system",
                     name="flutter",
+                    install_hint=FLUTTER_INSTALL_HINT,
                     optional=True,
                     reason="checks generated Dart artifacts are current",
                 ),
             )
         )
 
-    install_hint = "path"
     role = CheckRole.DIAGNOSTIC
     remediation_churn = RemediationChurn.DOWNSTREAM_CHANGES_VERY_UNLIKELY
 
