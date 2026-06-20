@@ -531,6 +531,86 @@ STANDARD_CONFIG_FIELDS = [
 ]
 
 
+# ── Gate external-dependency contract ────────────────────────────────
+#
+# Gates that shell out to external tools declare what they need here so a
+# single authority — ``sm doctor`` and, downstream, the GitHub Action — can
+# enumerate and install dependencies from one source of truth instead of each
+# gate detecting tools ad hoc (the scattered ``shutil.which`` problem).
+#
+# The manifest these produce is a CONSUMED CONTRACT (doctor reads it; the
+# Action installs from it), so its shape is versioned. Bump the schema version
+# on any breaking change to the serialized field set.
+REQUIREMENTS_MANIFEST_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class Requirement:
+    """A single external dependency an enabled gate needs to run.
+
+    ``optional`` encodes the distinction that matters for a CI merge gate:
+
+    - **required** (``optional=False``) — the gate *cannot run* without it.
+      A missing required tool must surface a visible, non-green
+      "could-not-run" state, never a silent pass. (See
+      :meth:`BaseCheck.requirement_block_result`.)
+    - **optional** (``optional=True``) — the gate degrades but still runs;
+      a missing optional tool is reported (so doctor can recommend it) but
+      does not block.
+
+    ``version`` is an EXACT pin (e.g. ``"1.7.5"``), never a floor. The pin is
+    part of the gate definition — bumping a scanner can change findings — so it
+    is bumped deliberately via a reviewed change, not floated at install time.
+    ``None`` means "any present version is acceptable" (e.g. system ``git``).
+
+    ``alternatives`` lists interchangeable names that also satisfy the
+    requirement (any one present is enough) — for tools resolvable under more
+    than one binary name / install path.
+    """
+
+    kind: str  # "system" | "python" | "npm" | "env"
+    name: str
+    version: Optional[str] = None  # exact pin; None = any present version
+    reason: str = ""
+    optional: bool = False
+    alternatives: tuple[str, ...] = ()
+
+    def to_manifest(self) -> Dict[str, Any]:
+        """Serialize to the deterministic manifest shape doctor/the Action read."""
+        return {
+            "kind": self.kind,
+            "name": self.name,
+            "version": self.version,
+            "optional": self.optional,
+            "alternatives": list(self.alternatives),
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
+class Requirements:
+    """The set of external dependencies a gate needs given its current config."""
+
+    items: tuple[Requirement, ...] = ()
+
+    def to_manifest(self) -> List[Dict[str, Any]]:
+        """Manifest entries, sorted by (kind, name) so output is byte-stable."""
+        ordered = sorted(self.items, key=lambda r: (r.kind, r.name))
+        return [r.to_manifest() for r in ordered]
+
+
+def build_requirements_document(requirements: "Requirements") -> Dict[str, Any]:
+    """Wrap requirement entries in a schema-versioned manifest document.
+
+    This is the unit doctor emits and the Action consumes. The
+    ``schema_version`` is mandatory and load-bearing: consumers pin on it.
+    """
+    return {
+        "schema_version": REQUIREMENTS_MANIFEST_SCHEMA_VERSION,
+        "requirements": requirements.to_manifest(),
+    }
+
+
 class BaseCheck(ABC):
     """Abstract base class for all quality gate checks.
 
@@ -751,6 +831,72 @@ class BaseCheck(ABC):
             List of all ConfigField definitions (standard + check-specific)
         """
         return STANDARD_CONFIG_FIELDS + self.config_schema
+
+    def requirements(self) -> Requirements:
+        """External tools/packages this gate needs to run, given its config.
+
+        The default is none. Gates that shell out to external tools (linters,
+        scanners, npm CLIs, ``gh``) override this so a single authority can
+        enumerate dependencies instead of each gate detecting tools ad hoc.
+
+        Return value is CONFIG-DEPENDENT: a gate whose tool is gated behind a
+        config flag should return an empty :class:`Requirements` when that flag
+        is off, so the manifest reflects only what *this* repo's config needs.
+        """
+        return Requirements()
+
+    def missing_requirements(self, project_root: str) -> List[Requirement]:
+        """Return the declared requirements whose tool can't be resolved.
+
+        Only ``system`` requirements are resolved in-process (via
+        :func:`find_tool`, honouring ``alternatives``); ``python``/``npm``/
+        ``env`` kinds are enumerated for doctor/the Action but not probed here
+        (that resolution belongs to the installing layer, not the gate).
+        """
+        missing: List[Requirement] = []
+        for req in self.requirements().items:
+            if req.kind != "system":
+                continue
+            candidates = (req.name, *req.alternatives)
+            if not any(find_tool(name, project_root) for name in candidates):
+                missing.append(req)
+        return missing
+
+    def requirement_block_result(
+        self, project_root: str, duration: float = 0.0
+    ) -> Optional[CheckResult]:
+        """Return an ERROR result if a REQUIRED tool is missing, else ``None``.
+
+        This is the "could-not-run" state: a required dependency that isn't
+        installed means the gate cannot do its job, and the run must be visibly
+        non-green rather than silently passing. ``ERROR`` fails the overall
+        verdict (``all_passed`` counts errors), so branch protection is not
+        bypassed by a broken environment.
+
+        Missing *optional* requirements return ``None`` here — the gate runs in
+        a degraded mode and reports the absence elsewhere (doctor recommends
+        the tool); they never block.
+
+        A gate that shells out to a required tool calls this at the top of
+        ``run()`` and returns the result if it is not ``None``.
+        """
+        required_missing = [
+            r for r in self.missing_requirements(project_root) if not r.optional
+        ]
+        if not required_missing:
+            return None
+        names = ", ".join(sorted(r.name for r in required_missing))
+        return self._create_result(
+            status=CheckStatus.ERROR,
+            duration=duration,
+            output=(
+                f"Cannot run {self.name}: required tool(s) not installed: "
+                f"{names}. Run `sm doctor` for the exact install commands, then "
+                f"re-run. (This is an environment failure, not a code failure — "
+                f"the gate did not run.)"
+            ),
+            error=f"missing required tools: {names}",
+        )
 
     def init_config(self, project_root: str) -> Dict[str, Any]:
         """Return init-time config overrides discovered by this gate.

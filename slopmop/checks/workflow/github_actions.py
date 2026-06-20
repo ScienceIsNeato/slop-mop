@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import re
-import shutil
 import time
 from pathlib import Path
 from typing import ClassVar, Iterable, Iterator, List, Optional, cast
@@ -17,7 +16,10 @@ from slopmop.checks.base import (
     GateCategory,
     GateLevel,
     RemediationChurn,
+    Requirement,
+    Requirements,
     ToolContext,
+    find_tool,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -264,6 +266,40 @@ class GitHubActionsHygieneCheck(BaseCheck):
             ),
         ]
 
+    def requirements(self) -> Requirements:
+        """actionlint, declared so doctor/the Action can offer to install it.
+
+        Optional: the gate's native workflow-hygiene checks run regardless;
+        actionlint adds deeper syntax linting. Config-gated — when
+        ``run_actionlint`` is off, this repo needs nothing here.
+        """
+        if not self.config.get("run_actionlint", True):
+            return Requirements()
+        return Requirements(
+            items=(
+                Requirement(
+                    kind="system",
+                    name="actionlint",
+                    reason=(
+                        "lints GitHub Actions workflow syntax beyond "
+                        "slop-mop's native checks"
+                    ),
+                    optional=True,  # native checks still run without it
+                ),
+            )
+        )
+
+    def _actionlint_path(self, project_root: str) -> Optional[str]:
+        """Resolve the actionlint executable via the declared requirement.
+
+        Single detection path (venv-aware ``find_tool``) instead of an inline
+        ``shutil.which`` — so "what the gate looks for" and "what the gate
+        declares" can never drift.
+        """
+        if not self.config.get("run_actionlint", True):
+            return None
+        return find_tool("actionlint", project_root)
+
     def is_applicable(self, project_root: str) -> bool:
         root = Path(project_root)
         workflow_dirs = self.config.get("workflow_dirs") or [".github/workflows"]
@@ -294,7 +330,7 @@ class GitHubActionsHygieneCheck(BaseCheck):
             findings.extend(self._workflow_findings(workflow, rel_path, lines))
             findings.extend(self._actionlint_findings(path, root))
             actionlint_available = (
-                actionlint_available or shutil.which("actionlint") is not None
+                actionlint_available or self._actionlint_path(str(root)) is not None
             )
 
         elapsed = time.perf_counter() - start
@@ -448,11 +484,10 @@ class GitHubActionsHygieneCheck(BaseCheck):
         return findings
 
     def _actionlint_findings(self, path: Path, root: Path) -> list[Finding]:
-        if not self.config.get("run_actionlint", True) or not shutil.which(
-            "actionlint"
-        ):
+        actionlint = self._actionlint_path(str(root))
+        if not actionlint:
             return []
-        result = self._runner.run(["actionlint", str(path)], cwd=str(root), timeout=30)
+        result = self._runner.run([actionlint, str(path)], cwd=str(root), timeout=30)
         if result.returncode == 0:
             return []
         findings: list[Finding] = []
