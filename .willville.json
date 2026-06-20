@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Made the post-push helper drive a PR all the way to green on its own, instead of stopping halfway — PR #302, clean and ready",
-    "direction": "So agents stop handing back half-finished PRs; folded the same 'not done until it's green' rule into the shared instructions",
-    "last_update": "2026-06-19T16:16:00Z"
+    "status": "Made `sm sail` drive a change all the way to a green PR on its own, so there's one command to run instead of a handful — PR #302, green",
+    "direction": "Point everyone at that single command and tuck the rest of the tooling behind it",
+    "last_update": "2026-06-19T22:01:00Z"
   }
 }
