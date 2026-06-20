@@ -452,3 +452,57 @@ class TestVersionPinsTrackPyproject:
                 assert Version(req.version) >= Version(
                     floor
                 ), f"{req.name} pin {req.version} is below pyproject floor {floor}"
+
+
+class TestAllToolGatesDeclareRequirements:
+    """Registry-wide invariant: every gate that needs external tools declares
+    them via requirements(). Guards against a new gate re-introducing the
+    scattered-detection problem, and keeps the legacy required_tools list in
+    sync with the contract until the doctor migration retires it."""
+
+    def _registry(self):
+        from slopmop.checks import ensure_checks_registered
+        from slopmop.core.registry import get_registry
+
+        ensure_checks_registered()
+        return get_registry()
+
+    def test_required_tools_gates_declare_matching_requirements(self):
+        registry = self._registry()
+        offenders = []
+        for name in registry.list_checks():
+            check = registry.get_check(name, {})
+            if check is None:
+                continue
+            legacy = list(getattr(check, "required_tools", []) or [])
+            if not legacy:
+                continue
+            covered = set()
+            for req in check.requirements().items:
+                covered.add(req.name)
+                covered.update(req.alternatives)
+            missing = [t for t in legacy if t not in covered]
+            if missing:
+                offenders.append((name, missing))
+        assert not offenders, (
+            "gates list required_tools without a matching requirements() "
+            f"declaration: {offenders}"
+        )
+
+    def test_every_declared_requirement_is_well_formed(self):
+        registry = self._registry()
+        valid_kinds = {"system", "python", "npm", "env"}
+        valid_probes = {"", "binary", "import", "env", "none"}
+        for name in registry.list_checks():
+            check = registry.get_check(name, {})
+            if check is None:
+                continue
+            for req in check.requirements().items:
+                assert req.kind in valid_kinds, f"{name}: bad kind {req.kind!r}"
+                assert req.probe in valid_probes, f"{name}: bad probe {req.probe!r}"
+                assert req.name, f"{name}: empty requirement name"
+                # version is an exact pin or None — never a floor specifier.
+                if req.version is not None:
+                    assert not any(
+                        c in req.version for c in "<>=~ "
+                    ), f"{name}: {req.name} version {req.version!r} looks like a range"
