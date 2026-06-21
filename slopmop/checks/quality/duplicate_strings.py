@@ -188,21 +188,29 @@ class StringDuplicationCheck(BaseCheck):
         )
 
     def requirements(self) -> Requirements:
-        """The Node runtime that runs the find-duplicate-strings tool.
+        """The find-duplicate-strings scanner and the Node runtime it needs.
 
-        Optional: when Node (or a global ``find-duplicate-strings`` binary) is
-        absent the gate degrades to a WARNED result rather than failing. The
-        tool script itself ships vendored with slop-mop; ``node`` is the only
-        external dependency, and declaring it lets doctor/the Action ensure it
-        is present instead of the gate discovering it missing at runtime.
+        Both optional: when absent the gate degrades to a WARNED result rather
+        than failing. The vendored copy under ``tools/`` is a *development*
+        convenience — its built ``lib/`` and ``node_modules/`` are gitignored, so
+        it isn't present in a fresh clone or a pip/pipx-installed slop-mop. A
+        deployed slop-mop (e.g. the GitHub Action) therefore needs the scanner
+        from npm; declaring it here puts it in the dependency manifest so the
+        Action installs it instead of the gate discovering it missing at runtime.
         """
         return Requirements(
             items=(
                 Requirement(
+                    kind="npm",
+                    name="find-duplicate-strings",
+                    version="3.1.1",
+                    optional=True,
+                    reason="the string-duplication scanner CLI",
+                ),
+                Requirement(
                     kind="system",
                     name="node",
                     optional=True,
-                    alternatives=("find-duplicate-strings",),
                     reason="runtime for the find-duplicate-strings duplication scanner",
                 ),
             )

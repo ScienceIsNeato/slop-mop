@@ -58,3 +58,15 @@ def test_includes_comment_in_new_gitignore(tmp_path: Path) -> None:
     ensure_slopmop_gitignored(tmp_path)
     content = (tmp_path / ".gitignore").read_text(encoding="utf-8")
     assert "# slop-mop working directory" in content
+
+
+def test_recognizes_contents_form_glob(tmp_path: Path) -> None:
+    # Repos that commit a file under .slopmop/ (e.g. required-deps.json for the
+    # v2 Action) use the `.slopmop/*` contents form so the file stays
+    # re-includable. The function must treat that as already-ignored and NOT
+    # append a duplicate `.slopmop/` directory rule.
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text(".slopmop/*\n!.slopmop/required-deps.json\n", encoding="utf-8")
+    assert ensure_slopmop_gitignored(tmp_path) is False
+    content = gitignore.read_text(encoding="utf-8")
+    assert content.count(".slopmop/") == 2  # the glob + the negation, nothing new
