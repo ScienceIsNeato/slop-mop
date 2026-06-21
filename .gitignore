@@ -61,7 +61,14 @@ AGENTS.md
 .clinerules/
 .roo/
 .windsurf/
+# slop-mop working directory (machine-local state). The literal `.slopmop/`
+# line is required by `ensure_slopmop_gitignored` (exact-match), so it stays;
+# the three lines after it re-include just the committed dependency manifest
+# the v2 action installs from, while keeping everything else ignored.
 .slopmop/
+!.slopmop/
+.slopmop/*
+!.slopmop/required-deps.json
 
 # Claude Code session state (hooks, settings, transcripts)
 .claude/

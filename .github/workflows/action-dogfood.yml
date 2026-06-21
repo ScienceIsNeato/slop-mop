@@ -1,9 +1,13 @@
 # Dogfood the published Marketplace action against slop-mop itself.
 #
-# This runs ScienceIsNeato/slop-mop-action@v1 — the exact ref consumers
+# This runs ScienceIsNeato/slop-mop-action@v2 — the exact ref consumers
 # use — so we find out immediately if a slopmop release breaks the
 # action's grade/SARIF/output contract. It is intentionally NOT pinned to
-# a SHA: the whole point is to validate what `@v1` resolves to today.
+# a SHA: the whole point is to validate what `@v2` resolves to today.
+#
+# v2 installs gate tools from the committed .slopmop/required-deps.json
+# (`sm doctor --required-deps`) and fails if that manifest has drifted, so
+# this job also exercises the deterministic-install + drift-guard path.
 #
 # Advisory by design. The repo's own gates (slopmop-sarif.yml) own
 # enforcement; this job only fails if the action itself breaks, not on
@@ -26,7 +30,7 @@ concurrency:
 
 jobs:
   dogfood:
-    name: slop-mop-action @v1
+    name: slop-mop-action @v2
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -38,8 +42,42 @@ jobs:
           # from the real gate and inflates "provisional".
           fetch-depth: 0
 
+      # Type-aware gates (pyright/mypy) resolve imports against a detected venv
+      # (./venv, ./.venv, or $VIRTUAL_ENV). The v2 action installs slop-mop and
+      # the gate tools, but NOT this project's own dependencies — so without a
+      # project venv, pyright can't resolve our imports (e.g. the tomli fallback,
+      # which ships transitively via semgrep) and type-blindness fails on
+      # phantom "unknown type" findings. A real consumer installs their deps
+      # before this step; we mirror that here.
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install project deps into ./venv (for type-aware gate resolution)
+        run: |
+          python -m venv venv
+          ./venv/bin/pip install --upgrade pip
+          ./venv/bin/pip install -e ".[all]"
+
+      # actionlint is a system tool the manifest can't install (Go binary). It's
+      # applicable here (we have workflows), so provide it on PATH — otherwise
+      # myopia:github-actions-hygiene warns-and-skips its actionlint pass. A real
+      # consumer with workflows would do the same.
+      - name: Install actionlint (for the github-actions-hygiene gate)
+        run: |
+          ver=1.7.12
+          sha256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ver}/actionlint_${ver}_linux_amd64.tar.gz"
+          # Verify integrity against the pinned checksum before trusting the binary.
+          echo "${sha256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          sudo mv actionlint /usr/local/bin/actionlint
+          rm -f actionlint.tar.gz
+          actionlint --version
+
       - id: sm
-        uses: ScienceIsNeato/slop-mop-action@v1
+        uses: ScienceIsNeato/slop-mop-action@v2
         with:
           command: scour
           fail-on-failure: "false"

@@ -1,0 +1,172 @@
+{
+  "requirements": [
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[lint]",
+      "kind": "python",
+      "name": "autoflake",
+      "optional": true,
+      "probe": "binary",
+      "reason": "removes unused imports/variables",
+      "version": "2.3.3"
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[security]",
+      "kind": "python",
+      "name": "bandit",
+      "optional": true,
+      "probe": "",
+      "reason": "static security analysis of Python code",
+      "version": null
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[lint]",
+      "kind": "python",
+      "name": "black",
+      "optional": true,
+      "probe": "binary",
+      "reason": "code formatting",
+      "version": "26.5.1"
+    },
+    {
+      "alternatives": [],
+      "import_name": "detect_secrets",
+      "install_hint": "pipx install slopmop[security]",
+      "kind": "python",
+      "name": "detect-secrets",
+      "optional": true,
+      "probe": "",
+      "reason": "scans for secrets committed to the repo",
+      "version": null
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[lint]",
+      "kind": "python",
+      "name": "flake8",
+      "optional": true,
+      "probe": "binary",
+      "reason": "style linting",
+      "version": "7.3.0"
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[lint]",
+      "kind": "python",
+      "name": "isort",
+      "optional": true,
+      "probe": "binary",
+      "reason": "import sorting",
+      "version": "8.0.1"
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[typing]",
+      "kind": "python",
+      "name": "mypy",
+      "optional": true,
+      "probe": "binary",
+      "reason": "static type analysis",
+      "version": "1.19.1"
+    },
+    {
+      "alternatives": [],
+      "import_name": "pip_audit",
+      "install_hint": "pipx install slopmop[security]",
+      "kind": "python",
+      "name": "pip-audit",
+      "optional": true,
+      "probe": "import",
+      "reason": "audits installed dependencies for known CVEs (OSV database)",
+      "version": null
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[typing]",
+      "kind": "python",
+      "name": "pyright",
+      "optional": false,
+      "probe": "binary",
+      "reason": "static type checking of Python code",
+      "version": "1.1.408"
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[analysis]",
+      "kind": "python",
+      "name": "radon",
+      "optional": true,
+      "probe": "binary",
+      "reason": "measures cyclomatic complexity",
+      "version": "6.0.1"
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[lint]",
+      "kind": "python",
+      "name": "ruff",
+      "optional": true,
+      "probe": "binary",
+      "reason": "fast linting + formatting",
+      "version": "0.15.0"
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[security]",
+      "kind": "python",
+      "name": "semgrep",
+      "optional": true,
+      "probe": "binary",
+      "reason": "pattern-based security scanning (pip-installed, run as a binary)",
+      "version": null
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "pipx install slopmop[analysis]",
+      "kind": "python",
+      "name": "vulture",
+      "optional": true,
+      "probe": "binary",
+      "reason": "detects unused (dead) Python code",
+      "version": "2.14"
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
+      "install_hint": "",
+      "kind": "system",
+      "name": "actionlint",
+      "optional": true,
+      "probe": "",
+      "reason": "lints GitHub Actions workflow syntax beyond slop-mop's native checks",
+      "version": null
+    },
+    {
+      "alternatives": [
+        "find-duplicate-strings"
+      ],
+      "import_name": "",
+      "install_hint": "",
+      "kind": "system",
+      "name": "node",
+      "optional": true,
+      "probe": "",
+      "reason": "runtime for the find-duplicate-strings duplication scanner",
+      "version": null
+    }
+  ],
+  "schema_version": 1
+}
