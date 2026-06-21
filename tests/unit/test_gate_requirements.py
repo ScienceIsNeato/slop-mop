@@ -372,13 +372,20 @@ class TestHardGateRequirements:
         (ds,) = reqs.items
         assert ds.import_name == "detect_secrets"  # pragma: allowlist secret
 
-    def test_duplicate_strings_declares_node(self):
+    def test_duplicate_strings_declares_scanner_and_node(self):
         from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
 
-        (req,) = StringDuplicationCheck({}).requirements().items
-        assert req.name == "node"
-        assert req.optional is True
-        assert "find-duplicate-strings" in req.alternatives
+        reqs = StringDuplicationCheck({}).requirements().items
+        by_name = {r.name: r for r in reqs}
+        # The scanner is an npm tool (the vendored copy is dev-only, gitignored),
+        # so a deployed slop-mop installs it from npm — pinned, optional.
+        scanner = by_name["find-duplicate-strings"]
+        assert scanner.kind == "npm"
+        assert scanner.version == "3.1.1"
+        assert scanner.optional is True
+        # node is the runtime, also optional (gate WARNs if absent).
+        assert by_name["node"].kind == "system"
+        assert by_name["node"].optional is True
 
 
 class TestPythonToolGates:

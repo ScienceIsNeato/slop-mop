@@ -143,7 +143,12 @@ def ensure_slopmop_gitignored(project_root: Path) -> bool:
         content = gitignore.read_text(encoding="utf-8")
         for line in content.splitlines():
             stripped = line.strip()
-            if stripped == _SLOPMOP_GITIGNORE_ENTRY:
+            # Treat both the directory form (``.slopmop/``) and the contents
+            # form (``.slopmop/*``) as "already ignored". The contents form is
+            # what repos use to keep a committed file under .slopmop/ (e.g.
+            # ``required-deps.json`` for the v2 Action) re-includable; without
+            # recognizing it we'd append a duplicate ``.slopmop/`` on every run.
+            if stripped in (_SLOPMOP_GITIGNORE_ENTRY, _SLOPMOP_GITIGNORE_ENTRY + "*"):
                 return False
         # Ensure we start on a new line
         if content and not content.endswith("\n"):

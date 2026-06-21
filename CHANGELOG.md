@@ -6,6 +6,25 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.11.0
+
+### Gate dependencies
+
+- **The string-duplication scanner is a declared npm dependency** (#316) — the
+  `myopia:string-duplication` gate now declares `find-duplicate-strings` (npm,
+  pinned) in its `requirements()`, so it appears in `sm doctor --required-deps`
+  and the v2 GitHub Action installs it. The vendored copy under `tools/` is a
+  development convenience whose built output is gitignored, so it isn't present
+  in a fresh clone or a pip/pipx-installed slop-mop — without this the gate
+  warned-and-skipped in CI.
+
+### Fixes
+
+- **`.slopmop/` gitignore management recognizes the contents form** (#316) —
+  `ensure_slopmop_gitignored` now treats `.slopmop/*` (used by repos that commit
+  a file under `.slopmop/`, e.g. `required-deps.json` for the v2 Action) as
+  already-ignored, instead of appending a duplicate `.slopmop/` rule each run.
+
 ## 2.10.0
 
 ### Gate dependencies
