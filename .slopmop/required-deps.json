@@ -3,6 +3,17 @@
     {
       "alternatives": [],
       "import_name": "",
+      "install_hint": "",
+      "kind": "npm",
+      "name": "find-duplicate-strings",
+      "optional": true,
+      "probe": "",
+      "reason": "the string-duplication scanner CLI",
+      "version": "3.1.1"
+    },
+    {
+      "alternatives": [],
+      "import_name": "",
       "install_hint": "pipx install slopmop[lint]",
       "kind": "python",
       "name": "autoflake",
@@ -155,9 +166,7 @@
       "version": null
     },
     {
-      "alternatives": [
-        "find-duplicate-strings"
-      ],
+      "alternatives": [],
       "import_name": "",
       "install_hint": "",
       "kind": "system",
