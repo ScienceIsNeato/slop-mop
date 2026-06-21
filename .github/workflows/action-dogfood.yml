@@ -42,6 +42,23 @@ jobs:
           # from the real gate and inflates "provisional".
           fetch-depth: 0
 
+      # Type-aware gates (pyright/mypy) resolve imports against a detected venv
+      # (./venv, ./.venv, or $VIRTUAL_ENV). The v2 action installs slop-mop and
+      # the gate tools, but NOT this project's own dependencies — so without a
+      # project venv, pyright can't resolve our imports (e.g. the tomli fallback,
+      # which ships transitively via semgrep) and type-blindness fails on
+      # phantom "unknown type" findings. A real consumer installs their deps
+      # before this step; we mirror that here.
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install project deps into ./venv (for type-aware gate resolution)
+        run: |
+          python -m venv venv
+          ./venv/bin/pip install --upgrade pip
+          ./venv/bin/pip install -e ".[all]"
+
       - id: sm
         uses: ScienceIsNeato/slop-mop-action@v2
         with:
