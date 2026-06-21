@@ -18,7 +18,11 @@
 #       Workflow:   release.yml
 #       Environment: pypi
 #   - Add a RELEASE_PR_TOKEN secret from a fine-grained PAT or GitHub App token
-#     that can create PRs, read checks, merge PRs, and trigger follow-up workflows
+#     that can create PRs, read checks, merge PRs, and trigger follow-up workflows.
+#     IMPORTANT: it must also have **write (contents + pull-requests) access to
+#     ScienceIsNeato/slop-mop-action** — the "Bump slop-mop-action pin" job clones
+#     and opens a PR there. Without that scope that job 403s (best-effort, so the
+#     release still ships) and the action's slopmop-version must be bumped by hand.
 #   - (Optional) Do the same on https://test.pypi.org for staging
 
 name: Release
