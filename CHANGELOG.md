@@ -6,6 +6,17 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.10.0
+
+### Gate dependencies
+
+- **`sm doctor --required-deps` is applicability-aware** (#315) — the dependency
+  manifest now excludes tools belonging to gates that don't apply to the repo
+  (e.g. the Dart/Flutter gates when there's no `pubspec.yaml`). A gate that
+  won't run doesn't make its tools "required", so the manifest — and the v2
+  GitHub Action that installs from it — reflects exactly what the repo actually
+  needs, instead of warning about system tools for gates that never execute.
+
 ## 2.9.0
 
 ### Gate dependencies
