@@ -718,6 +718,11 @@ class TestRequiredDepsManifest:
     def test_emitter_outputs_schema_versioned_manifest(self, capsys, tmp_path):
         from slopmop.cli.doctor import _print_required_deps
 
+        # The emitter filters by applicability, so the repo needs Python content
+        # for the Python tool-gates (black/mypy/pyright/bandit) to apply.
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "__init__.py").write_text("x = 1\n")
+
         assert _print_required_deps(tmp_path) == 0
         doc = json.loads(capsys.readouterr().out)
         assert doc["schema_version"] == REQUIREMENTS_MANIFEST_SCHEMA_VERSION
@@ -790,3 +795,63 @@ class TestRequiredDepsManifest:
             ValueError, match="Conflicting requirements for tool 'black'"
         ):
             tool_inventory.aggregate_requirements()
+
+    def test_aggregate_filters_not_applicable_gates(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from slopmop.checks import tool_inventory
+
+        def gate(applicable, *reqs):
+            m = MagicMock()
+            m.requirements.return_value = Requirements(items=tuple(reqs))
+            m.is_applicable.return_value = applicable
+            return m
+
+        gates = {
+            "applies": gate(True, Requirement(kind="system", name="actionlint")),
+            "nope": gate(False, Requirement(kind="system", name="dart")),
+        }
+        import slopmop.checks as checks_mod
+        import slopmop.core.registry as reg_mod
+
+        monkeypatch.setattr(
+            reg_mod,
+            "get_registry",
+            lambda: MagicMock(
+                list_checks=lambda: list(gates), get_check=lambda n, c: gates[n]
+            ),
+        )
+        monkeypatch.setattr(checks_mod, "ensure_checks_registered", lambda: None)
+
+        # With a project_root, the not-applicable gate's tool is excluded.
+        filtered = tool_inventory.aggregate_requirements({}, project_root="/repo")
+        assert sorted(r.name for r in filtered.items) == ["actionlint"]
+        # Without a project_root, the full set is returned (back-compat).
+        full = tool_inventory.aggregate_requirements({})
+        assert sorted(r.name for r in full.items) == ["actionlint", "dart"]
+
+    def test_aggregate_includes_gate_when_is_applicable_raises(self, monkeypatch):
+        # Conservative: an is_applicable that blows up must not silently drop a
+        # potentially-needed tool.
+        from unittest.mock import MagicMock
+
+        from slopmop.checks import tool_inventory
+
+        boom = MagicMock()
+        boom.requirements.return_value = Requirements(
+            items=(Requirement(kind="system", name="actionlint"),)
+        )
+        boom.is_applicable.side_effect = RuntimeError("cannot tell")
+
+        import slopmop.checks as checks_mod
+        import slopmop.core.registry as reg_mod
+
+        monkeypatch.setattr(
+            reg_mod,
+            "get_registry",
+            lambda: MagicMock(list_checks=lambda: ["g"], get_check=lambda n, c: boom),
+        )
+        monkeypatch.setattr(checks_mod, "ensure_checks_registered", lambda: None)
+
+        out = tool_inventory.aggregate_requirements({}, project_root="/repo")
+        assert [r.name for r in out.items] == ["actionlint"]
