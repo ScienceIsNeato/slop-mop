@@ -55,7 +55,22 @@ def gate_tool_inventory(
     return sorted(rows)
 
 
-def aggregate_requirements(config: Optional[Dict[str, Any]] = None) -> "Requirements":
+def _gate_applies(check: Any, project_root: str) -> bool:
+    """Whether a gate applies to this repo, defaulting to True on error.
+
+    Conservative: if ``is_applicable`` raises, we keep the gate's tools rather
+    than risk dropping a genuinely-needed dependency from the manifest.
+    """
+    try:
+        return bool(check.is_applicable(project_root))
+    except Exception:  # noqa: BLE001 — better to over-include than miss a tool
+        return True
+
+
+def aggregate_requirements(
+    config: Optional[Dict[str, Any]] = None,
+    project_root: Optional[str] = None,
+) -> "Requirements":
     """Union of every gate's requirements(), deduped by tool name.
 
     This is what ``sm doctor --required-deps`` serializes into the manifest the
@@ -63,6 +78,12 @@ def aggregate_requirements(config: Optional[Dict[str, Any]] = None) -> "Requirem
     (install channel), exact pin, and probe. Config-dependent like the
     inventory — pass the repo config to reflect only the tools THIS repo's gates
     need. Deterministic: the Requirements manifest sorts by (kind, name).
+
+    When ``project_root`` is given, gates that are *not applicable* to that repo
+    (e.g. the Dart gates in a project with no ``pubspec.yaml``) are skipped —
+    a gate that won't run doesn't make its tools "required", so the manifest
+    reflects exactly what THIS repo actually needs. Omit it (the default) to get
+    the full config-enabled tool set regardless of applicability.
     """
     from slopmop.checks import ensure_checks_registered
     from slopmop.checks.base import Requirements
@@ -78,6 +99,8 @@ def aggregate_requirements(config: Optional[Dict[str, Any]] = None) -> "Requirem
             continue
         check = registry.get_check(gate_name, config)
         if check is None:
+            continue
+        if project_root is not None and not _gate_applies(check, project_root):
             continue
         for req in check.requirements().items:
             # Dedup by tool name — a tool has one pin/kind regardless of how

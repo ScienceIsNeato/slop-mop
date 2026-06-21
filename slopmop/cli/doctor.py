@@ -263,16 +263,20 @@ def _print_gates_tree(project_root: Path, json_mode: bool = False) -> int:
 def _print_required_deps(project_root: Path) -> int:
     """Emit the external-dependency manifest the GitHub Action installs from.
 
-    A schema-versioned JSON document — the union of every gate's requirements()
-    for THIS repo's config — so the Action can install each tool by its exact
-    pin and install channel deterministically.
+    A schema-versioned JSON document — the union of every *applicable* gate's
+    requirements() for THIS repo's config — so the Action can install each tool
+    by its exact pin and install channel deterministically. Gates that don't
+    apply to the repo (e.g. Dart gates with no pubspec) are excluded: their
+    tools aren't needed because the gate won't run.
     """
     from slopmop.checks.base import build_requirements_document
     from slopmop.checks.tool_inventory import aggregate_requirements
     from slopmop.doctor.sm_env import _load_repo_config
 
     config = _load_repo_config(project_root)
-    document = build_requirements_document(aggregate_requirements(config))
+    document = build_requirements_document(
+        aggregate_requirements(config, project_root=str(project_root))
+    )
     print(json.dumps(document, indent=2, sort_keys=True))
     return 0
 
