@@ -155,28 +155,6 @@
       "version": null
     },
     {
-      "alternatives": [],
-      "import_name": "",
-      "install_hint": "Install Dart SDK: https://dart.dev/get-dart",
-      "kind": "system",
-      "name": "dart",
-      "optional": true,
-      "probe": "",
-      "reason": "formats Dart code",
-      "version": null
-    },
-    {
-      "alternatives": [],
-      "import_name": "",
-      "install_hint": "Install Flutter SDK: https://docs.flutter.dev/get-started/install",
-      "kind": "system",
-      "name": "flutter",
-      "optional": true,
-      "probe": "",
-      "reason": "static analysis of Flutter/Dart code",
-      "version": null
-    },
-    {
       "alternatives": [
         "find-duplicate-strings"
       ],

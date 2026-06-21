@@ -59,6 +59,18 @@ jobs:
           ./venv/bin/pip install --upgrade pip
           ./venv/bin/pip install -e ".[all]"
 
+      # actionlint is a system tool the manifest can't install (Go binary). It's
+      # applicable here (we have workflows), so provide it on PATH — otherwise
+      # myopia:github-actions-hygiene warns-and-skips its actionlint pass. A real
+      # consumer with workflows would do the same.
+      - name: Install actionlint (for the github-actions-hygiene gate)
+        run: |
+          ver=1.7.12
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ver}/actionlint_${ver}_linux_amd64.tar.gz" \
+            | tar -xz actionlint
+          sudo mv actionlint /usr/local/bin/actionlint
+          actionlint --version
+
       - id: sm
         uses: ScienceIsNeato/slop-mop-action@v2
         with:
