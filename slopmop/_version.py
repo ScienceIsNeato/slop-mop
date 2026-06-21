@@ -11,4 +11,4 @@ automatically. Everything else derives from it:
   from this value, so a mismatch can never be merged.
 """
 
-__version__ = "2.10.0"
+__version__ = "2.11.0"
