@@ -66,9 +66,14 @@ jobs:
       - name: Install actionlint (for the github-actions-hygiene gate)
         run: |
           ver=1.7.12
-          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ver}/actionlint_${ver}_linux_amd64.tar.gz" \
-            | tar -xz actionlint
+          sha256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ver}/actionlint_${ver}_linux_amd64.tar.gz"
+          # Verify integrity against the pinned checksum before trusting the binary.
+          echo "${sha256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
           sudo mv actionlint /usr/local/bin/actionlint
+          rm -f actionlint.tar.gz
           actionlint --version
 
       - id: sm
