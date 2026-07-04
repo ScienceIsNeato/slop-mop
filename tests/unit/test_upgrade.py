@@ -20,12 +20,12 @@ from slopmop.cli.upgrade import (
     _is_editable_install,
     _require_packaging,
     _run_upgrade_install,
-    _running_from_source_checkout,
     _upgrade_command,
     _validate_target_version,
     _validate_upgraded_install,
     _validated_pypi_url,
     cmd_upgrade,
+    running_from_source_checkout,
 )
 from tests.upgrade_scenario_helpers import materialize_upgrade_scenario
 
@@ -124,13 +124,13 @@ class TestMetadataHelpers:
         (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
         (tmp_path / ".git").write_text("gitdir: .git/modules/x\n")
         with patch("slopmop.cli.upgrade._module_root", return_value=tmp_path):
-            assert _running_from_source_checkout() is True
+            assert running_from_source_checkout() is True
 
     def test_running_from_source_checkout_false_for_installed_package(
         self, tmp_path: Path
     ):
         with patch("slopmop.cli.upgrade._module_root", return_value=tmp_path):
-            assert _running_from_source_checkout() is False
+            assert running_from_source_checkout() is False
 
 
 class TestPypiVersionHelpers:
@@ -267,7 +267,7 @@ class TestInstallCommandHelpers:
 
 
 class TestUpgradeCommand:
-    @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=True)
+    @patch("slopmop.cli.upgrade.running_from_source_checkout", return_value=True)
     def test_upgrade_rejects_source_checkout(self, _mock_checkout, tmp_path, capsys):
         args = argparse.Namespace(
             project_root=str(tmp_path),
@@ -285,7 +285,7 @@ class TestUpgradeCommand:
     @patch("slopmop.cli.upgrade._resolve_target_version", return_value="0.9.1")
     @patch("slopmop.cli.upgrade._detect_install_type", return_value="venv")
     @patch("slopmop.cli.upgrade._installed_version", return_value="0.9.0")
-    @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
+    @patch("slopmop.cli.upgrade.running_from_source_checkout", return_value=False)
     def test_check_mode_does_not_mutate(
         self,
         _mock_checkout,
@@ -314,7 +314,7 @@ class TestUpgradeCommand:
     @patch("slopmop.cli.upgrade._detect_install_type", return_value="venv")
     @patch("slopmop.cli.upgrade._installed_version_fresh", return_value="0.9.1")
     @patch("slopmop.cli.upgrade._installed_version", return_value="0.9.0")
-    @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
+    @patch("slopmop.cli.upgrade.running_from_source_checkout", return_value=False)
     def test_upgrade_runs_backup_install_migrations_and_validation(
         self,
         _mock_checkout,
@@ -356,7 +356,7 @@ class TestUpgradeCommand:
     @patch("slopmop.cli.upgrade._resolve_target_version", return_value="0.9.0")
     @patch("slopmop.cli.upgrade._detect_install_type", return_value="venv")
     @patch("slopmop.cli.upgrade._installed_version", return_value="0.9.0")
-    @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
+    @patch("slopmop.cli.upgrade.running_from_source_checkout", return_value=False)
     def test_upgrade_noops_when_already_current(
         self,
         _mock_checkout,
@@ -385,7 +385,7 @@ class TestUpgradeCommand:
     @patch("slopmop.cli.upgrade._detect_install_type", return_value="venv")
     @patch("slopmop.cli.upgrade._installed_version_fresh", return_value="0.9.1")
     @patch("slopmop.cli.upgrade._installed_version", return_value="0.9.0")
-    @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
+    @patch("slopmop.cli.upgrade.running_from_source_checkout", return_value=False)
     def test_upgrade_reports_validation_failure(
         self,
         _mock_checkout,
@@ -426,7 +426,7 @@ class TestUpgradeCommand:
         side_effect=UpgradeError("bad install"),
     )
     @patch("slopmop.cli.upgrade._installed_version", return_value="0.9.0")
-    @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
+    @patch("slopmop.cli.upgrade.running_from_source_checkout", return_value=False)
     def test_upgrade_fails_for_unsupported_install(
         self,
         _mock_checkout,
@@ -462,7 +462,7 @@ class TestUpgradeCommand:
     @patch("slopmop.cli.upgrade._installed_version_fresh")
     @patch("slopmop.cli.upgrade._detect_install_type", return_value="venv")
     @patch("slopmop.cli.upgrade._installed_version")
-    @patch("slopmop.cli.upgrade._running_from_source_checkout", return_value=False)
+    @patch("slopmop.cli.upgrade.running_from_source_checkout", return_value=False)
     def test_upgrade_runs_real_migrations_for_fixture_scenarios(
         self,
         _mock_checkout,
@@ -586,7 +586,7 @@ class TestMissingDependencyGuard:
         with (
             patch("builtins.__import__", side_effect=_fake_import),
             patch(
-                "slopmop.cli.upgrade._running_from_source_checkout", return_value=False
+                "slopmop.cli.upgrade.running_from_source_checkout", return_value=False
             ),
         ):
             with pytest.raises(MissingDependencyError):

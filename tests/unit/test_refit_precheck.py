@@ -144,3 +144,36 @@ class TestApplyReviewActions:
 
         assert error is not None
         assert "Disable overconfidence:coverage-gaps.js" in error
+
+
+class TestPreflightConfigSources:
+    """Preflight must see the same RESOLVED config the gates run with.
+
+    Regression: the loader used to read only .sb_config.json, silently
+    ignoring [tool.slopmop] in pyproject.toml — so refit/doctor readiness
+    disagreed with the actual sm swab/scour behavior on pyproject-configured
+    repos (like slop-mop itself).
+    """
+
+    def test_pyproject_only_config_is_honored(self, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.slopmop]\ndisabled_gates = ["myopia:github-actions-hygiene"]\n'
+        )
+        from slopmop.doctor.gate_preflight import _load_gate_preflight_config
+
+        cfg = _load_gate_preflight_config(tmp_path)
+        assert cfg.get("disabled_gates") == ["myopia:github-actions-hygiene"]
+
+    def test_sb_config_layers_over_pyproject(self, tmp_path: Path) -> None:
+        # Same layering contract as sm swab/scour: pyproject is the base,
+        # .sb_config.json wins on conflicts.
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.slopmop]\ndisabled_gates = ["a:b"]\n'
+        )
+        (tmp_path / ".sb_config.json").write_text('{"disabled_gates": ["c:d"]}')
+        from slopmop.doctor.gate_preflight import _load_gate_preflight_config
+        from slopmop.sm import load_config
+
+        cfg = _load_gate_preflight_config(tmp_path)
+        assert cfg == load_config(tmp_path)  # byte-identical resolution
+        assert cfg.get("disabled_gates") == ["c:d"]

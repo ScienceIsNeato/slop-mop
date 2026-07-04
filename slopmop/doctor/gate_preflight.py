@@ -47,14 +47,19 @@ class GatePreflightRecord:
 
 
 def _load_gate_preflight_config(project_root: Path) -> Dict[str, Any]:
-    path = project_root / ".sb_config.json"
-    if not path.exists():
-        return {}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
-    return cast(Dict[str, Any], raw) if isinstance(raw, dict) else {}
+    """Load the repo's RESOLVED config via the canonical loader.
+
+    Delegates to ``load_repo_config`` (``.sb_config.json`` merged with
+    ``[tool.slopmop]`` from pyproject.toml) so preflight sees exactly the
+    config that ``sm swab``/``sm scour`` run with. A previous version read
+    only ``.sb_config.json``, which silently ignored pyproject-configured
+    repos — refit/doctor readiness then disagreed with the actual gate run.
+    """
+    # Function-local import: sm_env pulls helpers from this module, so a
+    # module-level import here would be circular (house style for doctor).
+    from slopmop.doctor.sm_env import load_repo_config
+
+    return load_repo_config(project_root)
 
 
 def _as_dict_or_empty(value: Any) -> Dict[str, Any]:

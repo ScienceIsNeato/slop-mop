@@ -72,7 +72,7 @@ def _module_root() -> Path:
     return Path(slopmop.__file__).resolve().parent.parent
 
 
-def _running_from_source_checkout() -> bool:
+def running_from_source_checkout() -> bool:
     root = _module_root()
     return (root / "pyproject.toml").exists() and (root / ".git").exists()
 
@@ -395,7 +395,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
     _require_packaging()
     version_class = _packaging_version_class()
     project_root = Path(getattr(args, "project_root", ".")).resolve()
-    if _running_from_source_checkout():
+    if running_from_source_checkout():
         print(f"❌ {SOURCE_CHECKOUT_UPGRADE_ERROR}", file=sys.stderr)
         return 1
     try:

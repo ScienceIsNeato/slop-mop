@@ -184,7 +184,7 @@ def _normalize_buff_args(args: argparse.Namespace) -> argparse.Namespace:
     )
 
 
-def _load_json_file(path: Path) -> dict[str, Any]:
+def load_json_file(path: Path) -> dict[str, Any]:
     """Load a JSON file and enforce object shape."""
 
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -220,7 +220,7 @@ def _load_latest_protocol(project_root: str, pr_number: int) -> dict[str, Any] |
     protocol_path = loop_dir / "protocol.json"
     if not protocol_path.exists():
         return None
-    return _load_json_file(protocol_path)
+    return load_json_file(protocol_path)
 
 
 def _select_iteration_batch(

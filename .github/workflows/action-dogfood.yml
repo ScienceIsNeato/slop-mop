@@ -9,10 +9,15 @@
 # (`sm doctor --required-deps`) and fails if that manifest has drifted, so
 # this job also exercises the deterministic-install + drift-guard path.
 #
-# Advisory by design. The repo's own gates (slopmop-sarif.yml) own
-# enforcement; this job only fails if the action itself breaks, not on
-# scour findings (fail-on-failure: false). SARIF upload is left to the
-# primary gate to avoid duplicate Code Scanning alerts.
+# Mostly advisory — but with a floor. The repo's own gates
+# (slopmop-sarif.yml) own finding-level enforcement, so raw scour exit
+# codes don't fail this job (fail-on-failure: false) and warnings stay
+# advisory. However, a FAILING gate under the action when the primary gate
+# is green means the action's environment broke something — exactly what
+# dogfooding exists to catch — so minimum-grade "A" fails the job on any
+# failing gate rather than smiling green over a failed verdict (which
+# masked a real type-blindness regression once). SARIF upload is left to
+# the primary gate to avoid duplicate Code Scanning alerts.
 name: Action Dogfood
 
 on:
@@ -81,6 +86,10 @@ jobs:
         with:
           command: scour
           fail-on-failure: "false"
+          # Grade floor: any FAILING gate (grade < A) fails this job — a
+          # divergence from the green primary gate is an action-env bug.
+          # Warnings (still grade A) remain advisory.
+          minimum-grade: "A"
           upload-sarif: "false"
 
       - name: Report hull grade
