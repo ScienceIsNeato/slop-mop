@@ -189,9 +189,9 @@ def _print_gates_tree(project_root: Path, json_mode: bool = False) -> int:
     registry = get_registry()
     root = str(project_root)
     # requirements() is config-dependent, so render with THIS repo's config.
-    from slopmop.doctor.sm_env import _load_repo_config
+    from slopmop.doctor.sm_env import load_repo_config
 
-    config = _load_repo_config(project_root)
+    config = load_repo_config(project_root)
 
     swab_gates: List[Tuple[str, str, List[Tuple[str, bool]]]] = []
     scour_gates: List[Tuple[str, str, List[Tuple[str, bool]]]] = []
@@ -271,9 +271,9 @@ def _print_required_deps(project_root: Path) -> int:
     """
     from slopmop.checks.base import build_requirements_document
     from slopmop.checks.tool_inventory import aggregate_requirements
-    from slopmop.doctor.sm_env import _load_repo_config
+    from slopmop.doctor.sm_env import load_repo_config
 
-    config = _load_repo_config(project_root)
+    config = load_repo_config(project_root)
     document = build_requirements_document(
         aggregate_requirements(config, project_root=str(project_root))
     )

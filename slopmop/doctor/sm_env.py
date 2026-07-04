@@ -114,7 +114,7 @@ class SmPipCheck(DoctorCheck):
         )
 
 
-def _load_repo_config(project_root: object) -> Dict[str, Any]:
+def load_repo_config(project_root: object) -> Dict[str, Any]:
     """Load this repo's RESOLVED config (``.sb_config.json`` merged with
     ``[tool.slopmop]`` from pyproject.toml) so config-dependent requirements()
     match exactly what ``sm swab``/``sm scour`` run with.
@@ -235,7 +235,7 @@ class ToolInventoryCheck(DoctorCheck):
         validator_rejects: List[Tuple[str, str]] = []
         seen: set[str] = set()
 
-        config = _load_repo_config(root)
+        config = load_repo_config(root)
         for tool_name, check_name, install_cmd in gate_tool_inventory(config):
             if tool_name in seen:
                 continue
@@ -383,7 +383,7 @@ class PypiVersionCheck(DoctorCheck):
             _installed_version,
             _is_editable_install,
             _packaging_version_class,
-            _running_from_source_checkout,
+            running_from_source_checkout,
         )
 
         try:
@@ -412,7 +412,7 @@ class PypiVersionCheck(DoctorCheck):
 
         # Editable / source-checkout installs can't use ``sm upgrade``
         # — tell the developer the correct path instead.
-        is_dev = _running_from_source_checkout() or _is_editable_install()
+        is_dev = running_from_source_checkout() or _is_editable_install()
         if is_dev:
             return self._ok(
                 f"slopmop {current} (dev install; {latest} on PyPI)",
@@ -454,7 +454,7 @@ class GateReadinessCheck(DoctorCheck):
         # requirements() is config-dependent (configured scanners, run_actionlint
         # …), so instantiate each gate with THIS repo's config for accurate
         # readiness rather than the defaults.
-        config = _load_repo_config(ctx.project_root)
+        config = load_repo_config(ctx.project_root)
 
         total_gates = 0
         ready_gates = 0

@@ -35,7 +35,7 @@ from slopmop.cli._refit_precheck import (
     precheck_path,
     save_precheck,
 )
-from slopmop.cli.buff import _load_json_file
+from slopmop.cli.buff import load_json_file
 from slopmop.cli.scan_triage import write_json_out
 from slopmop.core.registry import get_registry
 from slopmop.reporting.envelope import Status, build_envelope
@@ -303,7 +303,7 @@ def _load_plan(project_root: Path) -> Dict[str, Any]:
     path = _plan_path(project_root)
     if not path.exists():
         raise FileNotFoundError("No refit plan found. Run `sm refit --start`.")
-    return _load_json_file(path)
+    return load_json_file(path)
 
 
 def _save_protocol(project_root: Path, protocol: Dict[str, Any]) -> None:
@@ -528,7 +528,7 @@ def _build_plan(project_root: Path, scour_artifact_path: Path) -> Dict[str, Any]
     register_custom_gates(config)
     registry = get_registry()
 
-    artifact = _load_json_file(scour_artifact_path)
+    artifact = load_json_file(scour_artifact_path)
     failing_results = _failed_results_from_scour_artifact(artifact)
 
     checks: List[BaseCheck] = []

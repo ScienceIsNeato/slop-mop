@@ -14,10 +14,10 @@ from slopmop.cli.hooks import (
     _generate_merged_branch_guard,
     _generate_passthrough_hook,
     _generate_pre_push_hook_script,
-    _get_git_hooks_dir,
     _global_hooks_dir,
     _parse_hook_info,
     cmd_commit_hooks,
+    get_git_hooks_dir,
 )
 
 
@@ -44,12 +44,12 @@ class TestGitHooksFunctions:
     def test_get_git_hooks_dir(self, tmp_path):
         """Returns hooks dir for git repo."""
         (tmp_path / ".git").mkdir()
-        result = _get_git_hooks_dir(tmp_path)
+        result = get_git_hooks_dir(tmp_path)
         assert result == tmp_path / ".git" / "hooks"
 
     def test_get_git_hooks_dir_not_git(self, tmp_path):
         """Returns None for non-git directory."""
-        result = _get_git_hooks_dir(tmp_path)
+        result = get_git_hooks_dir(tmp_path)
         assert result is None
 
     def test_generate_hook_script(self):

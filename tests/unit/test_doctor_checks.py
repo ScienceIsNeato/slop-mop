@@ -163,7 +163,7 @@ class TestSmResolutionCheck:
     def test_no_sm_on_path_source_checkout_warns(self, ctx, monkeypatch, tmp_path):
         monkeypatch.setenv("PATH", str(tmp_path / "empty"))
         with patch(
-            "slopmop.cli.upgrade._running_from_source_checkout",
+            "slopmop.cli.upgrade.running_from_source_checkout",
             return_value=True,
         ):
             r = SmResolutionCheck().run(ctx)
@@ -173,7 +173,7 @@ class TestSmResolutionCheck:
     def test_no_sm_on_path_installed_fails(self, ctx, monkeypatch, tmp_path):
         monkeypatch.setenv("PATH", str(tmp_path / "empty"))
         with patch(
-            "slopmop.cli.upgrade._running_from_source_checkout",
+            "slopmop.cli.upgrade.running_from_source_checkout",
             return_value=False,
         ):
             r = SmResolutionCheck().run(ctx)

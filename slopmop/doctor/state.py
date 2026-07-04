@@ -399,9 +399,9 @@ class StateCommitHookCheck(DoctorCheck):
     can_fix = True
 
     def _hook_path(self, ctx: DoctorContext) -> Optional[Path]:
-        from slopmop.cli.hooks import _get_git_hooks_dir
+        from slopmop.cli.hooks import get_git_hooks_dir
 
-        hooks_dir = _get_git_hooks_dir(ctx.project_root)
+        hooks_dir = get_git_hooks_dir(ctx.project_root)
         return (hooks_dir / "pre-commit") if hooks_dir else None
 
     def _hook_is_slopmop(self, hook_path: Path) -> bool:

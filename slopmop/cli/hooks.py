@@ -97,7 +97,7 @@ fi
 """
 
 
-def _get_git_hooks_dir(project_root: Path) -> Optional[Path]:
+def get_git_hooks_dir(project_root: Path) -> Optional[Path]:
     """Find the .git/hooks directory for a project."""
     git_dir = project_root / ".git"
     if not git_dir.is_dir():
@@ -693,7 +693,7 @@ def cmd_commit_hooks(args: argparse.Namespace) -> int:
     if not args.hooks_action:
         args.hooks_action = "status"
 
-    hooks_dir = _get_git_hooks_dir(project_root)
+    hooks_dir = get_git_hooks_dir(project_root)
 
     # Global install/uninstall targets ~/.slopmop/git-hooks via core.hooksPath,
     # so it doesn't need to run inside a git repo. Per-repo actions do.
@@ -729,7 +729,7 @@ HOOK_PARK_SUFFIX = ".refit-parked"
 
 def _pre_commit_hook_path(project_root: Path) -> Optional[Path]:
     """Return the canonical pre-commit hook path for *project_root*."""
-    hooks_dir = _get_git_hooks_dir(project_root)
+    hooks_dir = get_git_hooks_dir(project_root)
     if hooks_dir is None:
         return None
     return hooks_dir / "pre-commit"

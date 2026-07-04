@@ -513,6 +513,16 @@ jobs:
             "/^[[:space:]]*slopmop-version:/,/default:/ s|^([[:space:]]*)default:.*|\\1default: \"==${VERSION}\"|" \
             action.yml
 
+          # Postcondition: the pin must now be present. A structural change in
+          # action.yml can make the sed match NOTHING — which previously fell
+          # through to the "already pinned" branch below and reported a false
+          # success. Fail loudly instead (continue-on-error on this step keeps
+          # the release itself shipping).
+          if ! grep -qE "^[[:space:]]*default:[[:space:]]*\"==${VERSION}\"" action.yml; then
+            echo "::error::sed did not produce a slopmop-version pin of ==${VERSION} in ${ACTION_REPO}/action.yml — its structure may have changed. Bump the pin manually."
+            exit 1
+          fi
+
           if git diff --quiet; then
             echo "${ACTION_REPO} already pinned to ==${VERSION}; nothing to do."
             exit 0

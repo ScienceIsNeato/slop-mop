@@ -154,9 +154,9 @@ class SmResolutionCheck(DoctorCheck):
         }
 
         if not first:
-            from slopmop.cli.upgrade import _running_from_source_checkout
+            from slopmop.cli.upgrade import running_from_source_checkout
 
-            if _running_from_source_checkout():
+            if running_from_source_checkout():
                 return self._warn(
                     "sm not on PATH (source checkout)",
                     detail=(

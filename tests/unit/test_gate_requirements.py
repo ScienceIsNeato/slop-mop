@@ -610,13 +610,13 @@ class TestDoctorMigrationFixes:
     def test_load_repo_config_reads_sb_config(self, tmp_path):
         import json
 
-        from slopmop.doctor.sm_env import _load_repo_config
+        from slopmop.doctor.sm_env import load_repo_config
 
-        assert _load_repo_config(tmp_path) == {}  # missing file → {}
+        assert load_repo_config(tmp_path) == {}  # missing file → {}
         (tmp_path / ".sb_config.json").write_text(json.dumps({"k": "v"}))
-        assert _load_repo_config(tmp_path) == {"k": "v"}
+        assert load_repo_config(tmp_path) == {"k": "v"}
         (tmp_path / ".sb_config.json").write_text("not json{")
-        assert _load_repo_config(tmp_path) == {}  # invalid → {}
+        assert load_repo_config(tmp_path) == {}  # invalid → {}
 
     def test_optional_missing_tool_does_not_block_preflight(
         self, monkeypatch, tmp_path
