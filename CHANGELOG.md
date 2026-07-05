@@ -6,6 +6,47 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.12.0
+
+### New gate checks
+
+- **`unpinned-action-ref` in `myopia:github-actions-hygiene`** (#326) — GitHub
+  Actions referenced by mutable tag/branch refs (`@v5`, `@main`) are now
+  findings; an immutable pin is a full 40-hex commit SHA. Local (`./`) and
+  `docker://` refs are exempt, and deliberate moving tags (e.g. a first-party
+  action) can be exempted via the new `allow_unpinned` config list.
+  **Upgrade note:** repos with tag-pinned actions will see new findings —
+  remediation is pin-to-SHA or allowlist.
+
+### Fixes
+
+- **Preflight and `sm config` honored less of the config than the executor** (#324, #326,
+  #327) — three divergences in "is this gate enabled / what config applies"
+  are fixed: `sm refit --start`/doctor readiness ignored `[tool.slopmop]` in
+  pyproject.toml; preflight and `sm config` ignored category-level
+  `enabled: false`; and the venv-detection logic in the pyright gate could
+  drift from the shared helpers. All of these now delegate to single
+  canonical implementations (`slopmop/core/gate_config.py`,
+  `slopmop.checks.mixins.detect_venv_path`).
+- **Uppercase 40-hex SHAs count as pinned** (#326) — git SHAs are
+  case-insensitive hex.
+
+### Internals
+
+- **One gate-name parser** (#327) — the `category:gate` format is parsed by
+  `GateRef` everywhere (25+ ad-hoc `split(":")` sites removed), and the dead
+  structured-config enablement API (zero consumers, inverted defaults) is
+  deleted.
+- **Named timeout tiers** (#327) — `checks/timeouts.py` replaces ~60 scattered
+  timeout literals with six intent-named constants; no value changes.
+- **Real-registry smoke tests + self-sufficient functional tests** (#326) —
+  registration/priority regressions can no longer hide behind mocked
+  registries or test-ordering luck.
+- **CI hygiene** (#324, #325) — the action dogfood enforces a minimum grade
+  (no more green badge over a failed verdict) and provisions project deps via
+  the action's `project-install` input (#327); the release workflow fails
+  loudly if the action-pin bump produces no change; artifact retention capped.
+
 ## 2.11.0
 
 ### Gate dependencies
