@@ -29,8 +29,9 @@ _PYTHON_HEREDOC_RE = re.compile(
 _ACTIONLINT_RE = re.compile(r"^(.*?):(\d+):(\d+):\s*(.*?)(?:\s+\[(.+)\])?$")
 # An immutable pin is a FULL 40-hex commit SHA — abbreviated SHAs are
 # forgeable (an attacker can mine a colliding short prefix) and tags/branches
-# are mutable, so neither counts as pinned.
-_FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
+# are mutable, so neither counts as pinned. Case-insensitive: git SHAs are
+# hex and GitHub accepts either case in ``uses:`` refs.
+_FULL_SHA_RE = re.compile(r"[0-9a-fA-F]{40}")
 _DEPRECATED_ACTION_MIN_MAJOR = {
     "actions/checkout": (5, "actions/checkout@v5"),
     "actions/setup-python": (6, "actions/setup-python@v6"),

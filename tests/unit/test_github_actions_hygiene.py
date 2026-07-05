@@ -507,6 +507,22 @@ jobs:
         )
         assert result.status == CheckStatus.PASSED
 
+    def test_uppercase_full_sha_pin_is_clean(self, tmp_path):
+        # Git SHAs are hex and GitHub accepts either case in uses: refs.
+        result = self._run(
+            tmp_path,
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@48B55A011BDA9F5D6AEB4C2D9C7362E8DAE4041E # v6.4.0
+""",
+        )
+        assert result.status == CheckStatus.PASSED
+
     def test_short_sha_is_not_a_pin(self, tmp_path):
         # Abbreviated SHAs are forgeable — only the full 40-hex counts.
         result = self._run(
