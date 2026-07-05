@@ -37,6 +37,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
+from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -151,7 +152,9 @@ class JavaScriptTypesCheck(BaseCheck, JavaScriptCheckMixin):
         # Install deps if needed
         if not self.has_node_modules(project_root):
             npm_cmd = self._get_npm_install_command(project_root)
-            npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
+            npm_result = self._run_command(
+                npm_cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT
+            )
             if not npm_result.success:
                 return self._create_result(
                     status=CheckStatus.ERROR,

@@ -25,6 +25,7 @@ from slopmop.checks.dart.common import (
     find_pubspec_dirs,
     format_package_label,
 )
+from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -115,7 +116,7 @@ class FlutterAnalyzeCheck(BaseCheck):
             result = self._run_command(
                 [flutter_path, "analyze"],
                 cwd=str(package_dir),
-                timeout=300,
+                timeout=HEAVY_TASK_TIMEOUT,
             )
             if result.timed_out:
                 return self._create_result(

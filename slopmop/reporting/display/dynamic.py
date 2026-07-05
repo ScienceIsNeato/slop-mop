@@ -11,6 +11,7 @@ import time
 from typing import Dict, List, Optional
 
 from slopmop.constants import ROLE_BADGES, STATUS_EMOJI
+from slopmop.core.gate_config import GateRef
 from slopmop.core.result import CheckResult, CheckStatus, ScopeInfo
 from slopmop.reporting.display import config
 from slopmop.reporting.display.colors import (
@@ -757,7 +758,7 @@ class DynamicDisplay:
         stats = info.timing_stats
         if stats and stats.median > 0:
             ratio = elapsed / stats.median
-            category = info.name.split(":")[0] if ":" in info.name else ""
+            category = GateRef.parse(info.name).category
             cat_color = category_header_color(category, self._colors_enabled) or None
 
             if ratio > 1.0:

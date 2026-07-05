@@ -16,6 +16,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
+from slopmop.checks.timeouts import DEFAULT_TOOL_TIMEOUT
 from slopmop.core.result import Finding, FindingLevel
 
 if TYPE_CHECKING:
@@ -356,7 +357,7 @@ class DetectSecretsMixin:
         # timeout — a flaky false failure, not a real finding (barnacle #244).
         scan_paths = self._detect_secrets_scan_paths(project_root)
         cmd.extend(scan_paths)
-        result = self._run_command(cmd, cwd=project_root, timeout=60)
+        result = self._run_command(cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT)
 
         if result.success:
             try:

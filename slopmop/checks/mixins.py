@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import List, Optional, cast
 
 from slopmop.checks.base import count_source_scope
+from slopmop.checks.timeouts import PROBE_TIMEOUT
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -130,7 +131,7 @@ def _git_tracked_python_files_exist(project_root: Path) -> bool | None:
             cwd=project_root,
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=PROBE_TIMEOUT,
             check=False,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
@@ -346,7 +347,7 @@ class PythonCheckMixin:
                 [python_path, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=PROBE_TIMEOUT,
             )
             return result.stdout.strip()
         except Exception:

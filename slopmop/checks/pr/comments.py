@@ -22,6 +22,7 @@ from slopmop.checks.base import (
     GateCategory,
     GateLevel,
 )
+from slopmop.checks.timeouts import PROBE_TIMEOUT, QUICK_COMMAND_TIMEOUT
 from slopmop.constants import NOT_A_GIT_REPO, action_buff_inspect_pr
 from slopmop.core.result import CheckResult, CheckStatus, Finding
 
@@ -124,7 +125,7 @@ class PRCommentsCheck(BaseCheck):
                 ["gh", "--version"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=PROBE_TIMEOUT,
                 cwd=project_root,
             )
             if result.returncode != 0:
@@ -147,7 +148,7 @@ class PRCommentsCheck(BaseCheck):
                 ["gh", "--version"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=PROBE_TIMEOUT,
                 cwd=project_root,
             )
             if result.returncode != 0:
@@ -220,7 +221,7 @@ class PRCommentsCheck(BaseCheck):
                 ["git", "branch", "--show-current"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=PROBE_TIMEOUT,
                 cwd=project_root,
             )
             if branch_result.returncode != 0 or not branch_result.stdout.strip():
@@ -305,7 +306,7 @@ class PRCommentsCheck(BaseCheck):
                 ["git", "remote", "get-url", "origin"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=PROBE_TIMEOUT,
                 cwd=project_root,
             )
             if result.returncode != 0:
@@ -371,7 +372,7 @@ class PRCommentsCheck(BaseCheck):
                 ],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=QUICK_COMMAND_TIMEOUT,
                 cwd=project_root,
             )
 
@@ -473,7 +474,7 @@ class PRCommentsCheck(BaseCheck):
                 ],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=QUICK_COMMAND_TIMEOUT,
                 cwd=project_root,
             )
 

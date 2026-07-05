@@ -19,6 +19,7 @@ from slopmop.checks.constants import (
     js_no_tests_fix_suggestion,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
+from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT, SLOW_TOOL_TIMEOUT
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -173,7 +174,9 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
             project_root
         ):
             npm_cmd = self._get_npm_install_command(project_root)
-            npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
+            npm_result = self._run_command(
+                npm_cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT
+            )
             if not npm_result.success:
                 return self._create_result(
                     status=CheckStatus.ERROR,
@@ -183,7 +186,9 @@ class JavaScriptTestsCheck(BaseCheck, JavaScriptCheckMixin):
                 )
 
         test_cmd = self._get_test_command()
-        result = self._run_command(test_cmd, cwd=project_root, timeout=300)
+        result = self._run_command(
+            test_cmd, cwd=project_root, timeout=HEAVY_TASK_TIMEOUT
+        )
 
         duration = time.time() - start_time
 

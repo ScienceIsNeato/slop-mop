@@ -14,6 +14,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
+from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.constants import NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 from slopmop.utils.jsonc import loads_jsonc
@@ -117,7 +118,9 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
 
         if not self.has_node_modules(project_root):
             npm_cmd = self._get_npm_install_command(project_root)
-            npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
+            npm_result = self._run_command(
+                npm_cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT
+            )
             if not npm_result.success:
                 return self._create_result(
                     status=CheckStatus.ERROR,
@@ -155,7 +158,7 @@ class JavaScriptDeadCodeCheck(BaseCheck, JavaScriptCheckMixin):
                         break
 
         try:
-            result = self._run_command(cmd, cwd=project_root, timeout=120)
+            result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
         finally:
             if tmp_config_path and os.path.exists(tmp_config_path):
                 os.unlink(tmp_config_path)

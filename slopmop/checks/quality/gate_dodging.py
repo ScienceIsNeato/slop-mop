@@ -31,6 +31,7 @@ from slopmop.checks.base import (
     GateCategory,
     RemediationChurn,
 )
+from slopmop.checks.timeouts import PROBE_TIMEOUT
 from slopmop.constants import NOT_A_GIT_REPO
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -342,7 +343,7 @@ def _detect_pr_for_gate(project_root: str) -> Optional[int]:
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=PROBE_TIMEOUT,
             cwd=project_root,
         )
         if branch_result.returncode != 0 or not branch_result.stdout.strip():

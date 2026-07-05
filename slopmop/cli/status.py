@@ -42,6 +42,7 @@ _CATEGORY_ORDER = [
 # Marker written into slop-mop-managed git hooks.
 # Import the canonical marker from hooks.py to keep in sync.
 from slopmop.cli.hooks import SB_HOOK_MARKER as _SB_HOOK_MARKER
+from slopmop.core.gate_config import GateRef
 
 
 def _get_category_display(category_key: str) -> Tuple[str, str]:
@@ -202,7 +203,7 @@ def _print_gate_inventory(
         if not is_app:
             na_gates.append((gate, reason))
         else:
-            cat_key = gate.split(":")[0]
+            cat_key = GateRef.parse(gate).category
             by_category[cat_key].append(gate)
 
     sorted_cats = sorted(
@@ -221,7 +222,7 @@ def _print_gate_inventory(
         print(f"{emoji} {display}")
 
         for gate in gates:
-            gate_name = gate.split(":", 1)[1]
+            gate_name = GateRef.parse(gate).gate
 
             line = _format_gate_line(
                 gate_name,
@@ -237,7 +238,7 @@ def _print_gate_inventory(
             print(line)
 
     if na_gates:
-        names = [g.split(":", 1)[1] for g, _ in sorted(na_gates)]
+        names = [GateRef.parse(g).gate for g, _ in sorted(na_gates)]
         prefix = f"   ⊘ {len(na_gates)} n/a: "
         body = ", ".join(names)
         wrapped = textwrap.fill(

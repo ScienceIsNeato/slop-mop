@@ -13,6 +13,7 @@ from slopmop.core.config import (
     get_current_pr_number,
 )
 from slopmop.core.config import set_current_pr_number as set_current_pr_selection
+from slopmop.core.gate_config import GateRef, is_gate_enabled
 from slopmop.core.registry import get_registry
 from slopmop.utils import as_str_list
 
@@ -26,26 +27,20 @@ def _as_dict(value: Any) -> dict[str, Any] | None:
 
 
 def _is_gate_enabled(cfg: dict[str, Any], full_name: str) -> bool:
-    """Return whether a gate is enabled across both config representations."""
-    disabled = as_str_list(cfg.get("disabled_gates", []))
-    if full_name in disabled:
-        return False
-    if ":" not in full_name:
-        return True
+    """Delegate to the canonical enablement semantics.
 
-    category, gate = full_name.split(":", 1)
-    category_cfg = _as_dict(cfg.get(category))
-    gates_cfg = _as_dict(category_cfg.get("gates") if category_cfg else None)
-    gate_cfg = _as_dict(gates_cfg.get(gate) if gates_cfg else None)
-    if isinstance(gate_cfg, dict) and "enabled" in gate_cfg:
-        return bool(gate_cfg.get("enabled"))
-    return True
+    The previous local implementation ignored a category-level
+    ``enabled: false``, so ``sm config`` could report gates enabled that the
+    executor would skip. Delegating closes that divergence.
+    """
+    return is_gate_enabled(cfg, full_name)
 
 
 def _set_gate_enabled(cfg: dict[str, Any], full_name: str, enabled: bool) -> None:
     """Set gate enabled state in both nested and legacy config forms."""
-    if ":" in full_name:
-        category, gate = full_name.split(":", 1)
+    ref = GateRef.parse(full_name)
+    if ref.is_qualified:
+        category, gate = ref.category, ref.gate
         cat_any = _as_dict(cfg.get(category))
         cat: dict[str, Any]
         if cat_any is not None:
@@ -81,9 +76,10 @@ def _set_gate_enabled(cfg: dict[str, Any], full_name: str, enabled: bool) -> Non
 
 def _gate_cfg_dict(cfg: dict[str, Any], full_name: str) -> dict[str, Any] | None:
     """Return the nested gate config dict, creating parents as needed."""
-    if ":" not in full_name:
+    ref = GateRef.parse(full_name)
+    if not ref.is_qualified:
         return None
-    category, gate = full_name.split(":", 1)
+    category, gate = ref.category, ref.gate
     category_cfg = _as_dict(cfg.get(category))
     if category_cfg is None:
         category_cfg = {}
@@ -285,9 +281,9 @@ def _normalize_flat_keys(data: Dict[str, Any]) -> Dict[str, Any]:
     normalized: Dict[str, Any] = {}
 
     for key, value in data.items():
-        if ":" in key:
-            parts = key.split(":", 1)
-            category, gate_name = parts[0], parts[1]
+        ref = GateRef.parse(key)
+        if ref.is_qualified:
+            category, gate_name = ref.category, ref.gate
             if category in category_keys and isinstance(value, dict):
                 # Merge into hierarchical structure
                 if category not in normalized:
@@ -465,9 +461,10 @@ def _show_config(project_root: Path, config_file: Path, config: dict[str, Any]) 
     registry = get_registry()
 
     def _gate_cfg_view(full_name: str) -> dict[str, Any]:
-        if ":" not in full_name:
+        ref = GateRef.parse(full_name)
+        if not ref.is_qualified:
             return {}
-        category, gate = full_name.split(":", 1)
+        category, gate = ref.category, ref.gate
         category_cfg = _as_dict(config.get(category))
         gates_cfg = _as_dict(category_cfg.get("gates") if category_cfg else None)
         gate_cfg = _as_dict(gates_cfg.get(gate) if gates_cfg else None)

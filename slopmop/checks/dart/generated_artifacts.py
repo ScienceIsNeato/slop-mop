@@ -21,6 +21,7 @@ from slopmop.checks.dart.common import (
     find_pubspec_dirs,
     unique_strings,
 )
+from slopmop.checks.timeouts import QUICK_COMMAND_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 MAX_SHOWN = 20
@@ -97,7 +98,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
         ]
 
         git_result = self._run_command(
-            ["git", "ls-files"], cwd=project_root, timeout=30
+            ["git", "ls-files"], cwd=project_root, timeout=QUICK_COMMAND_TIMEOUT
         )
         duration = time.time() - start_time
         if not git_result.success:

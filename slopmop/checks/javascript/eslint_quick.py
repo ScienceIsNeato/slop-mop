@@ -18,6 +18,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
+from slopmop.checks.timeouts import QUICK_COMMAND_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # ESLint stylish format detail line:  line:col  error|warning  message  rule-id
@@ -131,7 +132,7 @@ class FrontendCheck(BaseCheck, JavaScriptCheckMixin):
             "--quiet",  # errors only
         ] + js_dirs
 
-        result = self._run_command(cmd, cwd=project_root, timeout=30)
+        result = self._run_command(cmd, cwd=project_root, timeout=QUICK_COMMAND_TIMEOUT)
         duration = time.time() - start_time
 
         if result.success:

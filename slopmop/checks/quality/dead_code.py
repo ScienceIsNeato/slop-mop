@@ -27,6 +27,7 @@ from slopmop.checks.base import (
     pip_cli_requirement,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
+from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -253,7 +254,7 @@ class DeadCodeCheck(BaseCheck):
     def run(self, project_root: str) -> CheckResult:
         start_time = time.time()
         cmd = self._build_command(project_root)
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
+        result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
         duration = time.time() - start_time
 
         # Handle tool not installed — warn but don't block

@@ -16,6 +16,8 @@ from typing import Any, Callable, Dict, Iterable, List, Sequence, cast
 
 from packaging.version import Version
 
+from slopmop.core.gate_config import GateRef
+
 # ---------------------------------------------------------------------------
 # Config file constant (matches slopmop.core.config.CONFIG_FILE)
 # ---------------------------------------------------------------------------
@@ -227,7 +229,7 @@ def find_stale_gate_references(
 
     for key, value in config.items():
         if ":" in key and isinstance(value, dict):
-            category = key.split(":", 1)[0]
+            category = GateRef.parse(key).category
             if category in _CONFIG_CATEGORY_KEYS:
                 _record(key, "flat gate config")
             continue
@@ -436,7 +438,8 @@ def _sync_built_in_gate_applicability(project_root: Path) -> None:
         if not isinstance(full_name_any, str) or ":" not in full_name_any:
             continue
         full_name = full_name_any
-        category, gate_name = full_name.split(":", 1)
+        ref = GateRef.parse(full_name)
+        category, gate_name = ref.category, ref.gate
 
         gate_configs: List[Dict[str, Any]] = []
         category_raw = data.get(category)

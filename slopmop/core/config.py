@@ -164,12 +164,6 @@ class CategoryConfig:
         """Get configuration for a specific gate."""
         return self.gates.get(gate_name, GateConfig())
 
-    def is_gate_enabled(self, gate_name: str) -> bool:
-        """Check if a specific gate is enabled (requires language enabled too)."""
-        if not self.enabled:
-            return False
-        return self.get_gate_config(gate_name).enabled
-
 
 # Backward-compatible alias
 LanguageConfig = CategoryConfig
@@ -254,13 +248,6 @@ class SlopmopConfig:
 
     # Backward-compatible alias
     get_language_config = get_category_config
-
-    def is_gate_enabled(self, category_key: str, gate_name: str = "") -> bool:
-        """Check if a gate is enabled (category:gate format or separate args)."""
-        if ":" in category_key:
-            category_key, gate_name = category_key.split(":", 1)
-        cat_config = self.get_category_config(category_key)
-        return cat_config.is_gate_enabled(gate_name)
 
 
 def config_file_path(project_root: str | Path) -> Path:

@@ -33,6 +33,7 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.checks.security._detect_secrets import DetectSecretsMixin
+from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.constants import NO_ISSUES_FOUND
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -483,7 +484,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             # B101 = assert usage, B110 = try-except-pass (common patterns)
             cmd.extend(["--skip", "B101,B110"])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
+        result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
 
         # Try to parse JSON from stdout only - stderr contains warnings that aren't issues
         # Bandit returns non-zero for any findings including LOW severity
@@ -544,7 +545,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
         for d in self._get_exclude_dirs():
             cmd.extend(["--exclude", d])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
+        result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
 
         if result.success:
             return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
@@ -958,7 +959,7 @@ class SecurityCheck(SecurityLocalCheck):
             for req_file in req_files:
                 cmd.extend(["-r", req_file])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
+        result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
 
         if result.timed_out:
             return SecuritySubResult(

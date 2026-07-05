@@ -19,6 +19,7 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # mypy error code pattern: file.py:10: error: message  [code]
@@ -325,7 +326,7 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
         source_dirs = self._detect_source_dirs(project_root)
         cmd = self._build_command(source_dirs, project_root)
-        result = self._run_command(cmd, cwd=project_root, timeout=120)
+        result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
 
         duration = time.time() - start_time
 
