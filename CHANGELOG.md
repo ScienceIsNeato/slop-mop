@@ -20,13 +20,14 @@ Format: one `## X.Y.Z` section per release, newest first.
 
 ### Fixes
 
-- **Preflight/config honored less config than the executor** (#324, #326,
+- **Preflight and `sm config` honored less of the config than the executor** (#324, #326,
   #327) — three divergences in "is this gate enabled / what config applies"
   are fixed: `sm refit --start`/doctor readiness ignored `[tool.slopmop]` in
   pyproject.toml; preflight and `sm config` ignored category-level
   `enabled: false`; and the venv-detection logic in the pyright gate could
   drift from the shared helpers. All of these now delegate to single
-  canonical implementations (`core/gate_config.py`, `mixins.detect_venv_path`).
+  canonical implementations (`slopmop/core/gate_config.py`,
+  `slopmop.checks.mixins.detect_venv_path`).
 - **Uppercase 40-hex SHAs count as pinned** (#326) — git SHAs are
   case-insensitive hex.
 
