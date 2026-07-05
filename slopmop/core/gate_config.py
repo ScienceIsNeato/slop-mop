@@ -30,7 +30,8 @@ import it without joining slop-mop's deferred-import circularity dance.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Tuple, cast
+from collections.abc import Mapping
+from typing import Any, cast
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ class GateRef:
     gate: str
 
     @classmethod
-    def parse(cls, name: str) -> "GateRef":
+    def parse(cls, name: str) -> GateRef:
         category, sep, gate = name.partition(":")
         if not sep:
             return cls(category="", gate=name)
@@ -63,11 +64,11 @@ class GateRef:
         return f"{self.category}:{self.gate}"
 
 
-def _mapping_or_empty(value: object) -> Dict[str, Any]:
-    return cast(Dict[str, Any], value) if isinstance(value, dict) else {}
+def _mapping_or_empty(value: object) -> dict[str, Any]:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
-def gate_enablement(config: Mapping[str, Any], full_name: str) -> Tuple[bool, str]:
+def gate_enablement(config: Mapping[str, Any], full_name: str) -> tuple[bool, str]:
     """Return ``(enabled, reason_if_disabled)`` for a gate in a raw config.
 
     ``reason`` is ``""`` when the gate is enabled. See the module docstring

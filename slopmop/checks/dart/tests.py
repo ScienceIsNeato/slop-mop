@@ -127,7 +127,7 @@ class FlutterTestsCheck(BaseCheck):
                     status=CheckStatus.FAILED,
                     duration=time.time() - start_time,
                     output=result.output,
-                    error=f"Flutter tests timed out after 15 minutes ({label})",
+                    error=f"Flutter tests timed out after {EXHAUSTIVE_TASK_TIMEOUT}s ({label})",
                     findings=[
                         Finding(
                             message=f"Flutter tests timed out in {label}",

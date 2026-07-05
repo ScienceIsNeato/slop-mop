@@ -119,7 +119,7 @@ class DartFormatCheck(BaseCheck):
                     status=CheckStatus.FAILED,
                     duration=time.time() - start_time,
                     output=result.output,
-                    error=f"{label}: dart format timed out after 2 minutes",
+                    error=f"{label}: dart format timed out after {SLOW_TOOL_TIMEOUT}s",
                     findings=[
                         Finding(
                             message=f"{label}: dart format timed out",
