@@ -27,6 +27,7 @@ from slopmop.checks.dart.common import (
     find_pubspec_dirs,
     format_package_label,
 )
+from slopmop.checks.timeouts import EXHAUSTIVE_TASK_TIMEOUT
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -119,7 +120,7 @@ class FlutterTestsCheck(BaseCheck):
             result = self._run_command(
                 [flutter_path, "test"],
                 cwd=str(package_dir),
-                timeout=900,
+                timeout=EXHAUSTIVE_TASK_TIMEOUT,
             )
             if result.timed_out:
                 return self._create_result(

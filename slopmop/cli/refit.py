@@ -37,6 +37,7 @@ from slopmop.cli._refit_precheck import (
 )
 from slopmop.cli.buff import load_json_file
 from slopmop.cli.scan_triage import write_json_out
+from slopmop.core.gate_config import GateRef
 from slopmop.core.registry import get_registry
 from slopmop.reporting.envelope import Status, build_envelope
 from slopmop.utils import iso_now
@@ -420,7 +421,7 @@ def _save_plan(project_root: Path, plan: Dict[str, Any]) -> None:
 
 
 def _gate_family(name: str) -> str:
-    return name.split(":", 1)[1] if ":" in name else name
+    return GateRef.parse(name).gate
 
 
 def _phase_label_for_check(check: BaseCheck) -> str:

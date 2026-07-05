@@ -8,7 +8,7 @@ import concurrent.futures
 import logging
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from slopmop.checks.base import BaseCheck
 from slopmop.core.cache import (
@@ -18,6 +18,7 @@ from slopmop.core.cache import (
     save_cache,
     store_result,
 )
+from slopmop.core.gate_config import gate_enablement
 from slopmop.core.registry import CheckRegistry, get_registry
 from slopmop.core.result import (
     CheckResult,
@@ -37,38 +38,12 @@ def _is_gate_enabled_in_config(
 ) -> Tuple[bool, str]:
     """Check if a gate is enabled in the config.
 
-    Args:
-        check: The check instance
-        config: Configuration dictionary from .sb_config.json
-
-    Returns:
-        Tuple of (is_enabled, reason_if_disabled)
+    Thin wrapper over the canonical
+    :func:`slopmop.core.gate_config.gate_enablement` — the executor's
+    historical semantics ARE the canonical ones (it decides what actually
+    runs), so this delegates instead of re-deriving the nested-dict walk.
     """
-    # Check the disabled_gates list first (sm config --disable uses this)
-    disabled_gates_val: object = config.get("disabled_gates", [])
-    if isinstance(disabled_gates_val, list) and check.full_name in disabled_gates_val:
-        return False, f"{check.full_name} is in disabled_gates list"
-
-    category_key = check.category.key  # e.g., "overconfidence", "laziness", "myopia"
-    gate_name = check.name  # e.g., "lint-format", "dead-code.py"
-
-    # Check if language/category is enabled
-    category_val: object = config.get(category_key)
-    if isinstance(category_val, dict):
-        cat_dict = cast(Dict[str, Any], category_val)
-        if cat_dict.get("enabled") is False:
-            return False, f"{category_key} language is disabled in config"
-
-        # Check if specific gate is disabled
-        gates_val = cat_dict.get("gates")
-        if isinstance(gates_val, dict) and gate_name in gates_val:
-            gate_cfg = cast(Dict[str, Any], gates_val).get(gate_name)
-            if isinstance(gate_cfg, dict):
-                gate_dict = cast(Dict[str, Any], gate_cfg)
-                if gate_dict.get("enabled") is False:
-                    return False, f"{check.full_name} is disabled in config"
-
-    return True, ""
+    return gate_enablement(config, check.full_name)
 
 
 class CheckExecutor:

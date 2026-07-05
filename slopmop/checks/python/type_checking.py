@@ -41,6 +41,7 @@ from slopmop.checks.base import (
     pip_cli_requirement,
 )
 from slopmop.checks.mixins import PythonCheckMixin, detect_venv_path
+from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 from slopmop.utils.jsonc import loads_jsonc
 
@@ -458,7 +459,7 @@ class PythonTypeCheckingCheck(BaseCheck, PythonCheckMixin):
             result = self._run_command(
                 [pyright_path, "--outputjson", "--project", str(config_path)],
                 cwd=project_root,
-                timeout=120,
+                timeout=SLOW_TOOL_TIMEOUT,
             )
 
             duration = time.time() - start_time

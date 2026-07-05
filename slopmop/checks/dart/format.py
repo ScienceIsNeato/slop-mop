@@ -21,6 +21,7 @@ from slopmop.checks.dart.common import (
     find_pubspec_dirs,
     format_package_label,
 )
+from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -111,7 +112,7 @@ class DartFormatCheck(BaseCheck):
             result = self._run_command(
                 [dart_path, "format", "--output=none", "--set-exit-if-changed", "."],
                 cwd=str(package_dir),
-                timeout=120,
+                timeout=SLOW_TOOL_TIMEOUT,
             )
             if result.timed_out:
                 return self._create_result(

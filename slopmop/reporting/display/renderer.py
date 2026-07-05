@@ -8,6 +8,7 @@ import shutil
 import unicodedata
 from typing import List, Optional
 
+from slopmop.core.gate_config import GateRef
 from slopmop.core.result import ScopeInfo
 from slopmop.reporting.display import config
 
@@ -495,6 +496,4 @@ def strip_category_prefix(check_name: str) -> str:
     Returns:
         Check name without category prefix
     """
-    if ":" in check_name:
-        return check_name.split(":", 1)[1]
-    return check_name
+    return GateRef.parse(check_name).gate

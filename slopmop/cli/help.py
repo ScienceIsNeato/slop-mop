@@ -7,6 +7,7 @@ from typing import Dict, List
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import GateCategory
 from slopmop.constants import ROLE_BADGES
+from slopmop.core.gate_config import GateRef
 from slopmop.core.registry import get_registry
 
 
@@ -100,7 +101,7 @@ def _show_all_gates() -> int:
             gates_by_category[check.category].append(name)
         else:
             # Fallback: parse category from gate name prefix (e.g. "laziness:sloppy-formatting.py")
-            cat_key = name.split(":")[0] if ":" in name else "general"
+            cat_key = GateRef.parse(name).category or "general"
             cat = GateCategory.from_key(cat_key)
             if cat:
                 gates_by_category[cat].append(name)

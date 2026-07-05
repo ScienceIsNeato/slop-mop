@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
 from slopmop.checks.metadata import builtin_reasoning_for_check_class
+from slopmop.core.gate_config import GateRef
 from slopmop.core.result import CheckDefinition
 from slopmop.utils import as_str_list, dedupe_str_list, normalize_path_filter
 
@@ -318,10 +319,11 @@ class CheckRegistry:
         Returns:
             Configuration dictionary for the specific gate
         """
-        if ":" not in name:
+        ref = GateRef.parse(name)
+        if not ref.is_qualified:
             return {}
 
-        category, gate_name = name.split(":", 1)
+        category, gate_name = ref.category, ref.gate
 
         # Get category config (e.g., python, javascript, security)
         cat_config = full_config.get(category, {})

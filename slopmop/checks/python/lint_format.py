@@ -31,6 +31,7 @@ from slopmop.checks.base import (
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.checks.python._host_formatter import detect_host_python_formatter
+from slopmop.checks.timeouts import DEFAULT_TOOL_TIMEOUT
 from slopmop.constants import ISSUES_FOUND_TEMPLATE
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -233,7 +234,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "format", "."],
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if result.success:
             fixed = True
@@ -244,7 +245,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "check", "--fix", "--select", "I,F401", "."],
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if result.success:
             fixed = True
@@ -271,7 +272,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 ".",
             ],
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if result.success:
             fixed = True
@@ -289,7 +290,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     target,
                 ],
                 cwd=project_root,
-                timeout=60,
+                timeout=DEFAULT_TOOL_TIMEOUT,
             )
             if result.success:
                 fixed = True
@@ -298,7 +299,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         isort_cmd = ["isort", "--profile", "black"]
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
         isort_cmd.extend(["--skip-glob=.*", "."])
-        result = self._run_command(isort_cmd, cwd=project_root, timeout=60)
+        result = self._run_command(
+            isort_cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT
+        )
         if result.success:
             fixed = True
 
@@ -418,7 +421,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "format", "--check", "."],
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if not result.success:
             output = (result.output or "").strip()
@@ -432,7 +435,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "check", "--select", "I", "."],
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if not result.success:
             output = (result.output or "").strip()
@@ -475,7 +478,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     target,
                 ],
                 cwd=project_root,
-                timeout=60,
+                timeout=DEFAULT_TOOL_TIMEOUT,
             )
             if not result.success:
                 output = (result.output or "").strip()
@@ -509,7 +512,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Skip hidden directories (e.g. .claude/, .git/) that contain
         # tool infrastructure rather than project source code.
         isort_cmd.extend(["--skip-glob=.*", "."])
-        result = self._run_command(isort_cmd, cwd=project_root, timeout=60)
+        result = self._run_command(
+            isort_cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT
+        )
 
         if not result.success:
             # isort outputs "ERROR: file.py ..." or "Skipped X files"
@@ -576,7 +581,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             ]
             + targets,
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
 
         if not result.success and result.output.strip():

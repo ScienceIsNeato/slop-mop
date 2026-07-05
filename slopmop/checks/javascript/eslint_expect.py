@@ -30,6 +30,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
+from slopmop.checks.timeouts import DEFAULT_TOOL_TIMEOUT, SLOW_TOOL_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # Shared constants for test file discovery — single source of truth so
@@ -223,7 +224,9 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             )
 
             env = {**os.environ, "ESLINT_USE_FLAT_CONFIG": "false"}
-            result = self._run_command(cmd, cwd=project_root, timeout=120, env=env)
+            result = self._run_command(
+                cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT, env=env
+            )
             duration = time.time() - start_time
 
             # Parse ESLint JSON output
@@ -298,7 +301,9 @@ class JavaScriptExpectCheck(BaseCheck, JavaScriptCheckMixin):
             "--no-fund",
             "--loglevel=error",
         ]
-        result = self._run_command(install_cmd, cwd=project_root, timeout=60)
+        result = self._run_command(
+            install_cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT
+        )
         if result.returncode != 0:
             return self._create_result(
                 status=CheckStatus.ERROR,

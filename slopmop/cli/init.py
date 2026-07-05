@@ -13,6 +13,7 @@ from slopmop import __version__
 from slopmop.checks.base import SCOPE_EXCLUDED_DIRS
 from slopmop.cli.config import _as_dict, _deep_merge
 from slopmop.cli.detection import detect_project_type
+from slopmop.core.gate_config import GateRef
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -253,7 +254,8 @@ def _apply_user_config(base_config: Dict[str, Any], config: Dict[str, Any]) -> N
         if not isinstance(gate_full_name, str):
             continue
         if ":" in gate_full_name:
-            category, gate = gate_full_name.split(":", 1)
+            _ref = GateRef.parse(gate_full_name)
+            category, gate = _ref.category, _ref.gate
             section = _as_dict(base_config.get(category))
             if section is None:
                 continue
@@ -313,7 +315,8 @@ def _disable_checks_with_missing_tools(
         # Parse check name: "laziness:dead-code.py" -> category="laziness", gate="dead-code.py"
         if ":" not in check_name:
             continue
-        category, gate = check_name.split(":", 1)
+        _ref = GateRef.parse(check_name)
+        category, gate = _ref.category, _ref.gate
 
         section = _as_dict(base_config.get(category))
         if section is None:
@@ -381,7 +384,8 @@ def _disable_non_applicable_by_applicability(
             continue
         if ":" not in full_name:
             continue
-        category, gate_name = full_name.split(":", 1)
+        _ref = GateRef.parse(full_name)
+        category, gate_name = _ref.category, _ref.gate
         section = _as_dict(base_config.get(category))
         if section is None:
             continue
@@ -442,7 +446,8 @@ def _apply_gate_init_config(base_config: Dict[str, Any], project_root: Path) -> 
         if not isinstance(full_name_any, str) or ":" not in full_name_any:
             continue
         full_name = full_name_any
-        category, gate_name = full_name.split(":", 1)
+        _ref = GateRef.parse(full_name)
+        category, gate_name = _ref.category, _ref.gate
 
         section = _as_dict(base_config.get(category))
         if section is None:

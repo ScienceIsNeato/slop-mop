@@ -31,6 +31,7 @@ from slopmop.checks.dart.common import (
     NO_FLUTTER_TEST_DIRECTORIES_FOUND,
     find_pubspec_dirs,
 )
+from slopmop.checks.timeouts import EXHAUSTIVE_TASK_TIMEOUT
 from slopmop.constants import COVERAGE_BELOW_THRESHOLD
 from slopmop.core.result import (
     CheckResult,
@@ -166,7 +167,7 @@ class DartCoverageCheck(BaseCheck):
         result = self._run_command(
             [flutter_path, "test", "--coverage"],
             cwd=str(package_dir),
-            timeout=900,
+            timeout=EXHAUSTIVE_TASK_TIMEOUT,
         )
         if not result.success or result.timed_out:
             if FLUTTER_CACHE_PERMISSION_ERROR in (result.output or ""):

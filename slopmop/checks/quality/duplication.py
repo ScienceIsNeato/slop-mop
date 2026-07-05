@@ -31,6 +31,7 @@ from slopmop.checks.base import (
     count_source_scope,
     should_prune_dir,
 )
+from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT, QUICK_COMMAND_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 DEFAULT_THRESHOLD = 5.0  # Percent duplication allowed
@@ -203,7 +204,9 @@ class RepeatedCodeCheck(BaseCheck):
     def _check_jscpd_availability(self, project_root: str) -> Optional[str]:
         """Check if jscpd is available. Returns error message or None."""
         result = self._run_command(
-            ["npx", "--yes", "jscpd", "--version"], cwd=project_root, timeout=30
+            ["npx", "--yes", "jscpd", "--version"],
+            cwd=project_root,
+            timeout=QUICK_COMMAND_TIMEOUT,
         )
         if result.returncode != 0:
             return "jscpd not available"
@@ -372,7 +375,9 @@ class RepeatedCodeCheck(BaseCheck):
                 report_output, include_dirs, min_tokens, min_lines
             )
 
-            result = self._run_command(cmd, cwd=project_root, timeout=300)
+            result = self._run_command(
+                cmd, cwd=project_root, timeout=HEAVY_TASK_TIMEOUT
+            )
             duration = time.time() - start_time
 
             report_path = os.path.join(report_output, "jscpd-report.json")

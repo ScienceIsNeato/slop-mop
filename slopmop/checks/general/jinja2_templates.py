@@ -18,6 +18,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.checks.timeouts import DEFAULT_TOOL_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 
@@ -180,7 +181,7 @@ class TemplateValidationCheck(BaseCheck, PythonCheckMixin):
             "--tb=short",
             "-x",
         ]
-        result = self._run_command(cmd, cwd=project_root, timeout=60)
+        result = self._run_command(cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT)
         duration = time.time() - start_time
 
         if result.success:

@@ -26,6 +26,7 @@ from slopmop.checks.constants import (
     skip_reason_no_test_files,
 )
 from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 # pytest's short-summary line format is stable across 6.x/7.x/8.x:
@@ -279,7 +280,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 "--tb=short",
             ]
 
-        result = self._run_command(cmd, cwd=project_root, timeout=300)
+        result = self._run_command(cmd, cwd=project_root, timeout=HEAVY_TASK_TIMEOUT)
         duration = time.time() - start_time
         return self._evaluate_pytest_result(result, duration, use_testmon)
 

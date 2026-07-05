@@ -34,6 +34,7 @@ from slopmop.checks.constants import (
     skip_reason_no_test_files,
 )
 from slopmop.checks.mixins import PythonCheckMixin
+from slopmop.checks.timeouts import QUICK_COMMAND_TIMEOUT
 from slopmop.constants import (
     COVERAGE_BELOW_THRESHOLD,
     COVERAGE_GUIDANCE_FOOTER,
@@ -270,7 +271,7 @@ class PythonCoverageCheck(BaseCheck, PythonCheckMixin):
                 "--fail-under=0",
             ],
             cwd=project_root,
-            timeout=30,
+            timeout=QUICK_COMMAND_TIMEOUT,
         )
 
         duration = time.time() - start_time
@@ -829,7 +830,7 @@ class PythonDiffCoverageCheck(BaseCheck, PythonCheckMixin):
                 "*.py",
             ],
             cwd=project_root,
-            timeout=30,
+            timeout=QUICK_COMMAND_TIMEOUT,
         )
         duration = time.time() - start_time
 

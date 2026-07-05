@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Sequence, Tuple, cast
 from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import BaseCheck
 from slopmop.checks.custom import register_custom_gates
+from slopmop.core.gate_config import GateRef, is_gate_enabled
 from slopmop.core.registry import get_registry
 
 
@@ -67,20 +68,13 @@ def _as_dict_or_empty(value: Any) -> Dict[str, Any]:
 
 
 def _gate_enabled(config: Dict[str, Any], gate_name: str) -> bool:
-    disabled: list[Any] = config.get("disabled_gates", [])
-    if isinstance(disabled, list) and gate_name in [
-        v for v in disabled if isinstance(v, str)
-    ]:
-        return False
-    if ":" not in gate_name:
-        return True
-    category, gate = gate_name.split(":", 1)
-    category_cfg = _as_dict_or_empty(config.get(category))
-    gates_cfg = _as_dict_or_empty(category_cfg.get("gates"))
-    gate_cfg = _as_dict_or_empty(gates_cfg.get(gate))
-    if "enabled" not in gate_cfg:
-        return True
-    return bool(gate_cfg.get("enabled"))
+    """Delegate to the canonical enablement semantics.
+
+    The previous local implementation ignored a category-level
+    ``enabled: false`` — so preflight/doctor reported gates as enabled that
+    the executor would skip. Delegating closes that divergence.
+    """
+    return is_gate_enabled(config, gate_name)
 
 
 def _gate_config_fingerprint(config: Dict[str, Any], gate_name: str) -> str:
@@ -88,11 +82,11 @@ def _gate_config_fingerprint(config: Dict[str, Any], gate_name: str) -> str:
         "gate": gate_name,
         "enabled": _gate_enabled(config, gate_name),
     }
-    if ":" in gate_name:
-        category, gate = gate_name.split(":", 1)
-        category_cfg = _as_dict_or_empty(config.get(category))
+    ref = GateRef.parse(gate_name)
+    if ref.is_qualified:
+        category_cfg = _as_dict_or_empty(config.get(ref.category))
         gates_cfg = _as_dict_or_empty(category_cfg.get("gates"))
-        gate_cfg = _as_dict_or_empty(gates_cfg.get(gate))
+        gate_cfg = _as_dict_or_empty(gates_cfg.get(ref.gate))
         payload["gate_config"] = gate_cfg
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return sha256(encoded.encode("utf-8")).hexdigest()

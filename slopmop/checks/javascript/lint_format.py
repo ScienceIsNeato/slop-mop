@@ -17,6 +17,7 @@ from slopmop.checks.base import (
     ToolContext,
 )
 from slopmop.checks.mixins import JavaScriptCheckMixin
+from slopmop.checks.timeouts import DEFAULT_TOOL_TIMEOUT, SLOW_TOOL_TIMEOUT
 from slopmop.constants import ISSUES_FOUND_TEMPLATE, NPM_INSTALL_FAILED
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
@@ -415,14 +416,14 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         result = self._run_command(
             ["deno", "lint", "--fix"] + targets,
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if result.success:
             fixed = True
         result = self._run_command(
             ["deno", "fmt"] + targets,
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if result.success:
             fixed = True
@@ -439,7 +440,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         # Install deps if needed
         if not self.has_node_modules(project_root):
             npm_cmd = self._get_npm_install_command(project_root)
-            self._run_command(npm_cmd, cwd=project_root, timeout=120)
+            self._run_command(npm_cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
 
         # Keep implicit Node auto-fix formatter-only. Type-aware ESLint --fix
         # can be arbitrarily expensive in hook/agent contexts and is better
@@ -447,7 +448,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         result = self._run_command(
             ["npx", "--yes", "prettier", *prettier_args],
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if result.success:
             fixed = True
@@ -568,7 +569,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         result = self._run_command(
             ["deno", "lint", "--json"] + targets,
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if not result.success:
             findings: List[Finding] = []
@@ -626,7 +627,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         result = self._run_command(
             ["deno", "fmt", "--check"] + targets,
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
         if not result.success:
             msg = "Formatting issues found"
@@ -658,7 +659,9 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
         # Install deps if needed
         if not self.has_node_modules(project_root):
             npm_cmd = self._get_npm_install_command(project_root)
-            npm_result = self._run_command(npm_cmd, cwd=project_root, timeout=120)
+            npm_result = self._run_command(
+                npm_cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT
+            )
             if not npm_result.success:
                 return self._create_result(
                     status=CheckStatus.ERROR,
@@ -719,7 +722,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 "--quiet",
             ],
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
 
         if not result.success and result.output.strip():
@@ -797,7 +800,7 @@ class JavaScriptLintFormatCheck(BaseCheck, JavaScriptCheckMixin):
                 *self._get_node_prettier_args(project_root, for_write=False),
             ],
             cwd=project_root,
-            timeout=60,
+            timeout=DEFAULT_TOOL_TIMEOUT,
         )
 
         if not result.success:

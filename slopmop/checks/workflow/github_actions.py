@@ -20,6 +20,7 @@ from slopmop.checks.base import (
     Requirements,
     ToolContext,
 )
+from slopmop.checks.timeouts import QUICK_COMMAND_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
 _WORKFLOW_EXTENSIONS = frozenset({".yml", ".yaml"})
@@ -554,7 +555,9 @@ class GitHubActionsHygieneCheck(BaseCheck):
     ) -> list[Finding]:
         if not actionlint:
             return []
-        result = self._runner.run([actionlint, str(path)], cwd=str(root), timeout=30)
+        result = self._runner.run(
+            [actionlint, str(path)], cwd=str(root), timeout=QUICK_COMMAND_TIMEOUT
+        )
         if result.returncode == 0:
             return []
         findings: list[Finding] = []
