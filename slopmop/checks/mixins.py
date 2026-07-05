@@ -73,6 +73,14 @@ PYTHON_SOURCE_PATH = "system_path"
 PYTHON_SOURCE_NOT_FOUND = "not_found"
 
 
+# Recognized project-venv directory names, in priority order. The single
+# source of truth for every consumer that resolves a project environment —
+# detect_venv_path (pyright config), has_project_venv, and the mixin's
+# python resolution must agree on this, or gates silently analyze
+# different environments.
+VENV_DIR_NAMES = ("venv", ".venv")
+
+
 def _find_python_in_venv(venv_path: Path) -> Optional[str]:
     """Return the ``python`` inside *venv_path* or None if none exists."""
     for subpath in ["bin/python", "Scripts/python.exe"]:
@@ -85,12 +93,33 @@ def _find_python_in_venv(venv_path: Path) -> Optional[str]:
 def has_project_venv(project_root: str | Path) -> bool:
     """True when *project_root* contains a ``venv/`` or ``.venv/``."""
     root = Path(project_root)
-    for venv_dir in ("venv", ".venv"):
+    for venv_dir in VENV_DIR_NAMES:
         if (root / venv_dir / "bin" / "python").exists():
             return True
         if (root / venv_dir / "Scripts" / "python.exe").exists():
             return True
     return False
+
+
+def detect_venv_path(project_root: str) -> tuple[Optional[str], Optional[str]]:
+    """Detect the project venv as a ``(parent_dir, venv_name)`` pair.
+
+    The shape pyright's ``venvPath``/``venv`` config wants, hosted here so
+    every consumer resolves the same environment (this used to live in
+    type_checking.py as a private duplicate that could drift from
+    ``has_project_venv``). Priority: project-local venvs in
+    ``VENV_DIR_NAMES`` order, then ``$VIRTUAL_ENV``. Returns
+    ``(None, None)`` when nothing is found.
+    """
+    for venv_name in VENV_DIR_NAMES:
+        if (Path(project_root) / venv_name).exists():
+            return project_root, venv_name
+
+    virtual_env = os.environ.get("VIRTUAL_ENV")
+    if virtual_env and Path(virtual_env).exists():
+        return str(Path(virtual_env).parent), Path(virtual_env).name
+
+    return None, None
 
 
 def _git_tracked_python_files_exist(project_root: Path) -> bool | None:
