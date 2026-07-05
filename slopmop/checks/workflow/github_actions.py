@@ -27,6 +27,11 @@ _PYTHON_HEREDOC_RE = re.compile(
     r"\b(?:python|python3(?:\.\d+)?)\b.*<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?"
 )
 _ACTIONLINT_RE = re.compile(r"^(.*?):(\d+):(\d+):\s*(.*?)(?:\s+\[(.+)\])?$")
+# An immutable pin is a FULL 40-hex commit SHA — abbreviated SHAs are
+# forgeable (an attacker can mine a colliding short prefix) and tags/branches
+# are mutable, so neither counts as pinned. Case-insensitive: git SHAs are
+# hex and GitHub accepts either case in ``uses:`` refs.
+_FULL_SHA_RE = re.compile(r"[0-9a-fA-F]{40}")
 _DEPRECATED_ACTION_MIN_MAJOR = {
     "actions/checkout": (5, "actions/checkout@v5"),
     "actions/setup-python": (6, "actions/setup-python@v6"),
@@ -263,6 +268,15 @@ class GitHubActionsHygieneCheck(BaseCheck):
                 default=True,
                 description="Run actionlint when the executable is available on PATH",
             ),
+            ConfigField(
+                name="allow_unpinned",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "owner/repo action prefixes exempt from the unpinned-ref "
+                    "check (deliberate moving tags, e.g. a first-party action)"
+                ),
+            ),
         ]
 
     def requirements(self) -> Requirements:
@@ -375,6 +389,9 @@ class GitHubActionsHygieneCheck(BaseCheck):
                     findings.extend(
                         self._deprecated_action_findings(uses, rel_path, lines)
                     )
+                    findings.extend(
+                        self._unpinned_action_findings(uses, rel_path, lines)
+                    )
                 if _uses_checkout(step):
                     findings.extend(
                         self._checkout_permission_findings(
@@ -410,6 +427,53 @@ class GitHubActionsHygieneCheck(BaseCheck):
                 line=_line_for_uses(lines, uses_value),
                 rule_id="deprecated-action-version",
                 fix_strategy=f"Upgrade to {replacement} or a newer supported major.",
+            )
+        ]
+
+    def _unpinned_action_findings(
+        self,
+        uses_value: str,
+        rel_path: str,
+        lines: list[str],
+    ) -> list[Finding]:
+        """Flag third-party actions referenced by mutable tag/branch refs.
+
+        A tag like ``@v5`` can be repointed by whoever controls the action
+        repo, silently changing the code CI executes — the supply-chain gap
+        is closed by pinning to an immutable full commit SHA. Deliberate
+        moving tags (e.g. a first-party action whose major tag is the
+        delivery channel) can be exempted via the ``allow_unpinned`` config
+        list, which matches the ``owner/repo`` prefix case-insensitively.
+        """
+        # Local composite actions and docker images aren't owner/repo@ref
+        # marketplace actions — the pinning model doesn't apply.
+        if uses_value.startswith("./") or uses_value.startswith("docker://"):
+            return []
+        action, ref = _action_ref(uses_value)
+        if not ref:
+            return []
+        if _FULL_SHA_RE.fullmatch(ref):
+            return []
+        from slopmop.utils import as_str_list
+
+        allow = [a.lower() for a in as_str_list(self.config.get("allow_unpinned"))]
+        if any(action == a or action.startswith(a + "/") for a in allow):
+            return []
+        return [
+            Finding(
+                message=(
+                    f"Unpinned GitHub Action ref: {uses_value} — a mutable "
+                    "tag/branch can be repointed to different code"
+                ),
+                level=FindingLevel.ERROR,
+                file=rel_path,
+                line=_line_for_uses(lines, uses_value),
+                rule_id="unpinned-action-ref",
+                fix_strategy=(
+                    "Pin to the full commit SHA (uses: owner/repo@<40-hex-sha> "
+                    "# vX.Y.Z), or add the action to this gate's "
+                    "allow_unpinned config if the moving tag is deliberate."
+                ),
             )
         ]
 

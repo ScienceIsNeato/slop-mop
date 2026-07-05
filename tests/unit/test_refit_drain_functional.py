@@ -19,6 +19,26 @@ import pytest
 
 from slopmop.cli._refit_formatting import drain_formatting_before_commit
 
+
+@pytest.fixture(autouse=True)
+def _functional_environment(isolated_git_env):
+    """Make these functional tests self-sufficient and machine-independent.
+
+    Two ingredients, found the hard way:
+    - ``ensure_checks_registered()``: drain resolves formatters through the
+      process-global registry. In a full suite run some earlier test file
+      populates it; run this file in isolation and the registry is empty, so
+      drain silently no-ops — no formatting, no style commit. That was the
+      real cause of "fails locally, passes CI".
+    - ``isolated_git_env``: real commits must not inherit the developer's
+      machine git config (global core.hooksPath etc.) — defense-in-depth so
+      the tests see the same bare git environment CI does.
+    """
+    from slopmop.checks import ensure_checks_registered
+
+    ensure_checks_registered()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

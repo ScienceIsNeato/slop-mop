@@ -1,5 +1,6 @@
 """Pytest configuration and fixtures for slopmop tests."""
 
+import os
 from pathlib import Path
 from typing import Generator
 from unittest.mock import MagicMock, Mock
@@ -141,3 +142,23 @@ def make_mock_status_registry(all_gates=None, swab_gates=None, scour_gates=None)
     mock_check.skip_reason.return_value = ""
     mock_reg.get_check.return_value = mock_check
     return mock_reg
+
+
+@pytest.fixture
+def isolated_git_env(monkeypatch, tmp_path_factory):
+    """Shield real-git tests from the developer's machine git config.
+
+    Functional tests that create real repos and commit in them inherit the
+    developer's global/system git config through the environment — most
+    destructively a machine-wide ``core.hooksPath`` (e.g. slop-mop's own gang
+    hooks), whose hooks then intercept the test repos' commits and change
+    observable behavior (tests pass on bare CI runners, fail on hook-managed
+    workstations). Point git at an empty global config and a null system
+    config so tests see the same bare environment CI does. Env vars propagate
+    to every subprocess the code under test spawns.
+    """
+    fake_global = tmp_path_factory.mktemp("gitcfg") / "gitconfig"
+    fake_global.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(fake_global))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+    return fake_global

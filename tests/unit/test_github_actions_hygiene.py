@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from slopmop.checks import ensure_checks_registered
 from slopmop.checks.workflow import GitHubActionsHygieneCheck
 from slopmop.checks.workflow.github_actions import (
     _action_ref,
@@ -30,6 +31,9 @@ def _check() -> GitHubActionsHygieneCheck:
 
 class TestGitHubActionsHygieneCheck:
     def test_name_and_registration(self):
+        # Registry is a process-global other test files usually populate first;
+        # register explicitly so this test passes in isolation too.
+        ensure_checks_registered()
         check = _check()
 
         assert check.full_name == "myopia:github-actions-hygiene"
@@ -50,8 +54,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       - run: python --version
 """,
         )
@@ -104,7 +108,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 """,
         )
 
@@ -123,7 +127,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 """,
         )
 
@@ -143,7 +147,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
 """,
         )
 
@@ -171,6 +175,11 @@ jobs:
         assert result.status == CheckStatus.FAILED
         assert result.findings[0].rule_id == "deprecated-action-version"
         assert "actions/checkout@v5" in result.findings[0].fix_strategy
+        # A deprecated tag ref is also an unpinned ref — both findings fire.
+        assert {f.rule_id for f in result.findings} == {
+            "deprecated-action-version",
+            "unpinned-action-ref",
+        }
 
     def test_empty_and_non_mapping_workflows_are_safe_noops(self, tmp_path):
         _write_workflow(tmp_path, "", "empty.yml")
@@ -214,7 +223,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 """,
             )
 
@@ -235,7 +244,7 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 """,
         )
 
@@ -255,7 +264,7 @@ jobs:
   codecov:
     runs-on: ubuntu-latest
     steps:
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@0fb7178a7dbf82e28a83dcf4e123a4c26e0d4f9d # v5
         with:
           use_oidc: true
   npm:
@@ -286,7 +295,7 @@ jobs:
       id-token: write
     runs-on: ubuntu-latest
     steps:
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
 """,
         )
 
@@ -438,3 +447,133 @@ jobs:
         files = _workflow_files(tmp_path, [".github/workflows", "missing"])
 
         assert [path.name for path in files] == ["ci.yaml", "ci.yml"]
+
+
+class TestUnpinnedActionRefs:
+    """The unpinned-action-ref check: mutable tags/branches vs SHA pins."""
+
+    def _run(self, tmp_path, body, config=None):
+        _write_workflow(tmp_path, body)
+        cfg = {"run_actionlint": False}
+        cfg.update(config or {})
+        return GitHubActionsHygieneCheck(cfg).run(str(tmp_path))
+
+    def test_tag_ref_is_flagged(self, tmp_path):
+        result = self._run(
+            tmp_path,
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v6
+""",
+        )
+        assert result.status == CheckStatus.FAILED
+        (finding,) = result.findings
+        assert finding.rule_id == "unpinned-action-ref"
+        assert "actions/setup-node@v6" in finding.message
+
+    def test_branch_ref_is_flagged(self, tmp_path):
+        result = self._run(
+            tmp_path,
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: someorg/some-action@main
+""",
+        )
+        assert result.status == CheckStatus.FAILED
+        assert result.findings[0].rule_id == "unpinned-action-ref"
+
+    def test_full_sha_pin_is_clean(self, tmp_path):
+        result = self._run(
+            tmp_path,
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+""",
+        )
+        assert result.status == CheckStatus.PASSED
+
+    def test_uppercase_full_sha_pin_is_clean(self, tmp_path):
+        # Git SHAs are hex and GitHub accepts either case in uses: refs.
+        result = self._run(
+            tmp_path,
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@48B55A011BDA9F5D6AEB4C2D9C7362E8DAE4041E # v6.4.0
+""",
+        )
+        assert result.status == CheckStatus.PASSED
+
+    def test_short_sha_is_not_a_pin(self, tmp_path):
+        # Abbreviated SHAs are forgeable — only the full 40-hex counts.
+        result = self._run(
+            tmp_path,
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@48b55a0
+""",
+        )
+        assert result.status == CheckStatus.FAILED
+        assert result.findings[0].rule_id == "unpinned-action-ref"
+
+    def test_allowlist_exempts_exact_and_subpath(self, tmp_path):
+        result = self._run(
+            tmp_path,
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ScienceIsNeato/slop-mop-action@v2
+      - uses: github/codeql-action/upload-sarif@v4
+""",
+            config={
+                "allow_unpinned": [
+                    "scienceisneato/slop-mop-action",
+                    "github/codeql-action",
+                ]
+            },
+        )
+        assert result.status == CheckStatus.PASSED
+
+    def test_local_and_docker_refs_are_exempt(self, tmp_path):
+        result = self._run(
+            tmp_path,
+            """
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/local-thing
+      - uses: docker://alpine:latest
+""",
+        )
+        assert result.status == CheckStatus.PASSED

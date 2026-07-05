@@ -186,3 +186,9 @@ pip_audit_ignore_vulns = [
 pip_audit_ignore_vulns = [
     "GHSA-5239-wwwm-4pmq",  # pygments ReDoS (CVE-2026-4539), low severity, no fix available
 ]
+
+[tool.slopmop.myopia.gates."github-actions-hygiene"]
+# The dogfood deliberately tracks the moving @v2 major tag — that tag is the
+# delivery channel for action fixes and validating what consumers resolve is
+# the dogfood's whole point. Everything else must be SHA-pinned.
+allow_unpinned = ["scienceisneato/slop-mop-action"]
