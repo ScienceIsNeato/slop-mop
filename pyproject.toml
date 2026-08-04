@@ -180,11 +180,33 @@ exclude = ["tests/**", "venv/**", "build/**", "dist/**"]
 [tool.slopmop.myopia.gates."dependency-risk.py"]
 pip_audit_ignore_vulns = [
     "GHSA-5239-wwwm-4pmq",  # pygments ReDoS (CVE-2026-4539), low severity, no fix available
+    # mcp 1.23.3 server-transport advisories, reachable only if you RUN an MCP
+    # server: cross-client task access (3481), HTTP transports not verifying the
+    # authenticated principal (3482), WebSocket Host/Origin validation (3483).
+    # slop-mop never imports mcp — it arrives transitively via semgrep, which we
+    # only ever invoke as a CLI scanner, so none of these code paths execute.
+    # No upgrade path: semgrep pins mcp==1.23.3 exactly (still true on 1.172.0),
+    # so a floor-pin like the pyjwt/python-multipart ones above is unsatisfiable.
+    # Re-check when semgrep unpins mcp, then drop these three.
+    "PYSEC-2026-3481",
+    "PYSEC-2026-3482",
+    "PYSEC-2026-3483",
 ]
 
 [tool.slopmop.myopia.gates."vulnerability-blindness.py"]
 pip_audit_ignore_vulns = [
     "GHSA-5239-wwwm-4pmq",  # pygments ReDoS (CVE-2026-4539), low severity, no fix available
+    # mcp 1.23.3 server-transport advisories, reachable only if you RUN an MCP
+    # server: cross-client task access (3481), HTTP transports not verifying the
+    # authenticated principal (3482), WebSocket Host/Origin validation (3483).
+    # slop-mop never imports mcp — it arrives transitively via semgrep, which we
+    # only ever invoke as a CLI scanner, so none of these code paths execute.
+    # No upgrade path: semgrep pins mcp==1.23.3 exactly (still true on 1.172.0),
+    # so a floor-pin like the pyjwt/python-multipart ones above is unsatisfiable.
+    # Re-check when semgrep unpins mcp, then drop these three.
+    "PYSEC-2026-3481",
+    "PYSEC-2026-3482",
+    "PYSEC-2026-3483",
 ]
 
 [tool.slopmop.myopia.gates."github-actions-hygiene"]
