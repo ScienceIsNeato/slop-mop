@@ -343,6 +343,14 @@ class ToolInventoryCheck(DoctorCheck):
             "fix_hint": "\n".join(fix_lines) if fix_lines else None,
             "data": data,
         }
+        # A tool that is MISSING or rejected by the validator cannot run at all —
+        # that's a hard FAIL. A tool that is merely older than a gate's pin still
+        # runs; it may just behave slightly differently. Failing on that blocked
+        # `sm refit` entirely for anyone a single patch release behind (e.g.
+        # black 26.5.0 vs a 26.5.1 pin), which is far too brittle a gate on
+        # onboarding. Warn instead, so the drift is visible but not fatal.
+        if not missing and not validator_rejects:
+            return self._warn("; ".join(summary_bits), **kw)
         return self._fail("; ".join(summary_bits), **kw)
 
     def run(self, ctx: DoctorContext) -> DoctorResult:

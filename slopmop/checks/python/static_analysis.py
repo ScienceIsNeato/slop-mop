@@ -358,6 +358,31 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
             output = self._format_summary(error_lines, code_counts)
             total = sum(code_counts.values())
 
+            # mypy exited non-zero but produced no parseable type errors, which
+            # means it never completed the analysis — a duplicate module name,
+            # an unreadable config, a bad MYPYPATH. Reporting "0 type error(s)
+            # found" as FAILED hands the user a red gate with nothing to fix.
+            # Surface it as could-not-run with mypy's own words instead, the
+            # same three-state contract missing *tools* already use.
+            if total == 0:
+                detail = (result.output or "").strip() or "(no output from mypy)"
+                msg = "mypy could not complete its analysis"
+                return self._create_result(
+                    status=CheckStatus.ERROR,
+                    duration=duration,
+                    output=detail,
+                    error=msg,
+                    fix_suggestion=(
+                        "mypy exited non-zero without reporting type errors, so it "
+                        "failed to run rather than finding problems. Read its output "
+                        "above — common causes are duplicate module names (the same "
+                        "filename vendored in several directories), an invalid "
+                        "mypy config, or an unresolvable import root. Reproduce "
+                        "directly with: mypy <your source dir>"
+                    ),
+                    findings=[Finding(message=msg, level=FindingLevel.ERROR)],
+                )
+
             fix_parts = ["Fix type annotations or update function signatures."]
             if "type-arg" in code_counts:
                 fix_parts.append(
