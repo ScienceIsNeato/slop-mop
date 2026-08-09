@@ -47,3 +47,61 @@ GitHub) and `checkout@v3`/`setup-python@v4` (deprecated). rulebook-ai's CI has
 been red on `main` since 2025-09; the `build` job (which uses upload-artifact@v3)
 and `lint` both fail while `test` passes. Logs are expired so causation isn't
 provable, but the gate identified a real, live breakage in one run.
+
+---
+
+## 3. `refit` is hard-blocked by patch-level tool drift
+
+`sm refit --start` refused to run: `black found 26.5.0, requires >=26.5.1`
+(and autoflake 2.3.1 vs 2.3.3). A user one patch release behind cannot onboard
+at all until they chase the exact pin. Preflight should warn, not block, on
+patch-level drift.
+
+## 4. `sm init` disables gates, then `sm refit` blocks on init's own choice
+
+`init` shipped `deceptiveness:gate-dodging` and `laziness:silenced-gates`
+disabled. `refit --start` then refused to proceed until each was justified with
+a bug reference or approved — demanding the user account for a decision the
+tool made for them. (Enabling them also dirties the tree, which trips refit's
+clean-tree precondition: a second round-trip.)
+
+## 5. Gate fails with zero findings — and the message is unactionable
+
+`overconfidence:missing-annotations.py` reported:
+
+```
+Status: failed
+Error: 0 type error(s) found
+--- Output ---
+0 type error(s):
+```
+
+Root cause: mypy exits non-zero on a **module-resolution** error
+(`Duplicate module named 'llm_api'` — the 7 vendored copies from barnacle #1),
+not a type error. The gate treats any non-zero mypy exit as "type errors" and
+reports the parsed count (0). A user sees a failing gate with nothing to fix.
+
+**Fix direction:** distinguish "tool failed to run" (→ could-not-run ERROR with
+the tool's stderr) from "tool ran and found N issues". The requirements
+contract already models this three-state idea for missing tools; it should
+extend to tools that run but abort.
+
+## 6. Inconsistent remediation guidance between sibling gates
+
+`laziness:repeated-code` tells you about `exclude_dirs` and prints the exact
+`sm config --set` command. `myopia:ambiguity-mines.py` has the *identical*
+`exclude_dirs`/`include_dirs` schema but its fix text only says "Consolidate
+duplicate function definitions" — the escape hatch is undiscoverable.
+`overconfidence:missing-annotations.py` (a mypy gate) suggests
+`ruff format . && ruff check --fix` — the wrong tool entirely.
+
+---
+
+## Refit progress log (real run)
+
+| Step | Gate | Outcome |
+| --- | --- | --- |
+| 1 | `myopia:dependency-risk.py` | fixed: real B310 scheme validation + 7 false-positive placeholders tagged (8 → 0) |
+| 2 | `laziness:repeated-code` | config: excluded distributed template packs (49 → 0) |
+| 3 | `myopia:ambiguity-mines.py` | config: excluded vendored copies + test helpers (26 → 0) |
+| 4 | `overconfidence:missing-annotations.py` | **BLOCKED** — barnacle #5 (fails with 0 findings) |
