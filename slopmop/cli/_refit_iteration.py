@@ -484,7 +484,12 @@ def process_current_plan_item(
             lines.append(f"  ({gate} depends on it and cannot run until it passes)")
         lines.extend(_summarise_failure_artifact(artifact_path))
         lines.append(f"Full artifact: {artifact_path}")
-        log_file = actual_log or current_item.get("log_file")
+        if actual_gate and actual_gate != gate:
+            # The iterated gate's log belongs to a different gate and was not
+            # rewritten by this run — showing it is what caused the confusion.
+            log_file = actual_log
+        else:
+            log_file = actual_log or current_item.get("log_file")
         if log_file:
             lines.append(f"Latest log: {log_file}")
         lines.append("Fix the issue, then rerun: sm refit --iterate")

@@ -461,9 +461,13 @@ class StringDuplicationCheck(BaseCheck):
                 # start argument this produced paths like
                 # "../../../../../private/Users/..." — unreadable, and not
                 # clickable in an editor or CI annotation.
+                # Both sides are realpath'd first: the scanner emits resolved
+                # absolute paths, so a symlinked project root (/Users vs
+                # /private/Users on macOS) would otherwise escape upward again.
                 try:
-                    rel_path = os.path.relpath(file_path, project_root or os.getcwd())
-                except ValueError:
+                    start = os.path.realpath(project_root or os.getcwd())
+                    rel_path = os.path.relpath(os.path.realpath(file_path), start)
+                except (ValueError, OSError):
                     rel_path = file_path
                 lines.append(f"    - {rel_path}")
             if len(files) > 3:
@@ -727,7 +731,7 @@ class StringDuplicationCheck(BaseCheck):
                 Finding(
                     message=(
                         f'Duplicate string "{display}" '
-                        f'({item.get("count", 0)} occurrences)'
+                        f"({item.get('count', 0)} occurrences)"
                     ),
                     level=FindingLevel.ERROR,
                     file=first,

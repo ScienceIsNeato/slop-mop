@@ -760,9 +760,9 @@ class TestRunPipAudit:
 
         # Verify the command's first element is the project Python, not sys.executable
         cmd_used = mock_cmd.call_args[0][0]
-        assert cmd_used[0] == str(
-            fake_python
-        ), f"Expected project Python {fake_python}, got {cmd_used[0]}"
+        assert cmd_used[0] == str(fake_python), (
+            f"Expected project Python {fake_python}, got {cmd_used[0]}"
+        )
         # With a project venv, environment-scan mode: no -r flag
         assert "-r" not in cmd_used
 
@@ -999,3 +999,33 @@ class TestScannerStartupFailures:
 
         assert result.passed is False
         assert result.warned is False
+
+    def test_local_run_warns_when_scanner_never_started(self, tmp_path):
+        """A broken install must never render as 'All security checks passed'."""
+        check = SecurityLocalCheck({"scanners": ["bandit"]})
+        broken = self._broken_install(stdout="not json")
+        broken.stderr = "ModuleNotFoundError: No module named 'bandit'"
+        broken.output = "ModuleNotFoundError: No module named 'bandit'"
+
+        with patch.object(check, "_run_command", return_value=broken):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert "did not run" in (result.error or "")
+        assert "All security checks passed" not in (result.output or "")
+        assert result.findings
+
+    def test_local_run_still_passes_when_scanners_are_clean(self, tmp_path):
+        check = SecurityLocalCheck({"scanners": ["bandit"]})
+        clean = MagicMock()
+        clean.stdout = json.dumps({"results": []})
+        clean.stderr = ""
+        clean.output = ""
+        clean.success = True
+        clean.returncode = 0
+        clean.timed_out = False
+
+        with patch.object(check, "_run_command", return_value=clean):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED

@@ -1,6 +1,7 @@
 """Tests for string duplication check (wrapper for find-duplicate-strings)."""
 
 import json
+import os
 import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -621,12 +622,13 @@ class TestFindingPathsAreProjectRelative:
             {
                 "key": "a repeated message",
                 "count": 3,
+                "fileCount": 1,
                 "files": [str(tmp_path / "pkg" / "mod.py")],
             }
         ]
         out = check._format_findings(findings, str(tmp_path))
 
-        assert "pkg/mod.py" in out
+        assert os.path.join("pkg", "mod.py") in out
         assert ".." not in out
 
     def test_falls_back_to_cwd_when_root_absent(self, tmp_path, monkeypatch):
@@ -636,7 +638,12 @@ class TestFindingPathsAreProjectRelative:
         monkeypatch.chdir(tmp_path)
         check = StringDuplicationCheck({})
         findings = [
-            {"key": "msg here now", "count": 2, "files": [str(tmp_path / "x.py")]}
+            {
+                "key": "msg here now",
+                "count": 2,
+                "fileCount": 1,
+                "files": [str(tmp_path / "x.py")],
+            }
         ]
         out = check._format_findings(findings)
 
@@ -648,18 +655,46 @@ class TestFindingPathsAreProjectRelative:
         Replacing only the unresolved spelling matched the suffix and left
         "/private" glued to the project path.
         """
-        import os
+        from slopmop.checks.quality.duplicate_strings import _remap_scan_paths
 
         tmp_dir = "/var/folders/ab/sm-string-dup-XYZ"
         resolved = "/private" + tmp_dir
         project_root = "/Users/pacey/proj"
         stdout = f'{{"file": "{resolved}/pkg/mod.py"}}'
 
-        for candidate in sorted({tmp_dir, resolved}, key=len, reverse=True):
-            stdout = stdout.replace(candidate, project_root)
+        remapped = _remap_scan_paths(stdout, tmp_dir, project_root)
 
-        assert stdout == '{"file": "/Users/pacey/proj/pkg/mod.py"}'
-        assert "/private" not in stdout
+        assert remapped == '{"file": "/Users/pacey/proj/pkg/mod.py"}'
+        assert "/private" not in remapped
         assert not os.path.relpath(
             "/Users/pacey/proj/pkg/mod.py", project_root
         ).startswith("..")
+
+
+class TestSymlinkedProjectRoot:
+    def test_symlinked_root_still_yields_relative_paths(self, tmp_path):
+        """The scanner emits realpaths; a symlinked root must still match."""
+        from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
+
+        real_root = tmp_path / "real"
+        (real_root / "pkg").mkdir(parents=True)
+        target = real_root / "pkg" / "mod.py"
+        target.write_text("x = 1\n")
+
+        link_root = tmp_path / "linked"
+        link_root.symlink_to(real_root)
+
+        check = StringDuplicationCheck({})
+        findings = [
+            {
+                "key": "a repeated message",
+                "count": 3,
+                "fileCount": 1,
+                # What the scanner actually emits: a resolved realpath.
+                "files": [str(target.resolve())],
+            }
+        ]
+        out = check._format_findings(findings, str(link_root))
+
+        assert os.path.join("pkg", "mod.py") in out
+        assert ".." not in out
