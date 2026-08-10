@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List, Optional, cast
 
 from slopmop import __version__
 from slopmop.checks.base import SCOPE_EXCLUDED_DIRS
@@ -611,10 +611,13 @@ def _write_config(
             f"🔧 Added {len(suggested_custom)} custom gate(s) for detected language(s)"
         )
 
-    # Merge with existing config if present
+    # Merge with existing config if present. Kept in scope so provenance
+    # stamping below can honour markers the operator already owns.
+    existing_config: Optional[Dict[str, Any]] = None
     if config_file.exists():
         try:
             existing = cast(Dict[str, Any], json.loads(config_file.read_text()))
+            existing_config = existing
             backup_path = backup_config(config_file)
             if backup_path:
                 print(f"📦 Backed up existing config to: {backup_path}")
@@ -642,7 +645,7 @@ def _write_config(
     # tell "the tool made this call" from "a human made this call". Without
     # it, `sm refit --start` demanded the user justify — with a bug reference
     # — disables that init itself had just written.
-    _stamp_auto_disabled_provenance(base_config, config)
+    _stamp_auto_disabled_provenance(base_config, config, existing_config)
 
     config_file.write_text(json.dumps(base_config, indent=2) + "\n")
     print(f"✅ Configuration saved to: {config_file}")
@@ -658,14 +661,40 @@ DISABLED_BY_KEY = "disabled_by"
 
 
 def _stamp_auto_disabled_provenance(
-    base_config: Dict[str, Any], user_config: Dict[str, Any]
+    base_config: Dict[str, Any],
+    user_config: Dict[str, Any],
+    existing_config: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Record whether init or the user disabled each disabled gate."""
+    """Record whether init or the user disabled each disabled gate.
+
+    ``existing_config`` is the config already on disk. A gate the operator
+    turned off by hand (or via ``sm config --disable``) carries no entry in
+    ``disabled_gates``, so without consulting the previous file a re-run of
+    ``sm init`` would relabel their deliberate choice as the tool's own and
+    refit would silently stop asking about it. Prior ``"user"`` provenance
+    therefore wins over a fresh ``"init"`` stamp.
+    """
     user_disabled = {
         name
         for name in _as_list(user_config.get("disabled_gates", []))
         if isinstance(name, str)
     }
+
+    def _previous_marker(category: str, gate: str) -> Optional[str]:
+        if not existing_config:
+            return None
+        section = _as_dict(existing_config.get(category))
+        if section is None:
+            return None
+        gates = _as_dict(section.get("gates"))
+        if gates is None:
+            return None
+        gate_cfg = _as_dict(gates.get(gate))
+        if gate_cfg is None:
+            return None
+        marker = gate_cfg.get(DISABLED_BY_KEY)
+        return marker if isinstance(marker, str) else None
+
     for cat_key in base_config:
         section = _as_dict(base_config.get(cat_key))
         if section is None:
@@ -681,7 +710,13 @@ def _stamp_auto_disabled_provenance(
                 gate_cfg.pop(DISABLED_BY_KEY, None)
                 continue
             full_name = f"{cat_key}:{gate_name}"
-            gate_cfg[DISABLED_BY_KEY] = "user" if full_name in user_disabled else "init"
+            if full_name in user_disabled:
+                gate_cfg[DISABLED_BY_KEY] = "user"
+                continue
+            # A hand-disabled gate stays user-owned across re-runs, otherwise
+            # init would quietly adopt the operator's decision as its own.
+            previous = _previous_marker(cat_key, gate_name)
+            gate_cfg[DISABLED_BY_KEY] = "user" if previous == "user" else "init"
 
 
 def cmd_init(args: argparse.Namespace) -> int:

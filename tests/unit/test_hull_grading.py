@@ -260,7 +260,10 @@ class TestAdapterSurfacing:
             "failing": 1,
             "warned": 0,
             "provisional": False,
-            "findings": 0,
+            # The failing gate in this fixture carries no structured
+            # findings; it still counts as one so a failing run never
+            # renders as "0 findings".
+            "findings": 1,
         }
 
     def test_json_payload_omits_grade_on_partial_run(self, tmp_path):

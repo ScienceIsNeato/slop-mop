@@ -123,6 +123,14 @@ def compute_hull_grade(
         grade, level = ("A", "seaworthy") if warned > 0 else ("A+", "shipshape")
     else:
         grade, level = _GRADE_BY_FAILING[min(failing, 4)]
+    # previous_findings arrives from persisted JSON. bool is a subclass of
+    # int and a negative count is corrupt — both would yield a false delta.
+    if (
+        isinstance(previous_findings, bool)
+        or previous_findings is not None
+        and (not isinstance(previous_findings, int) or previous_findings < 0)
+    ):
+        previous_findings = None
     return HullGrade(
         grade=grade,
         level=level,

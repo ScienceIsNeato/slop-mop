@@ -117,7 +117,7 @@ class TestPythonStaticAnalysisCheck:
 
     # --- Command building ---
 
-    def test_build_command_strict(self, tmp_path):
+    def test_build_command_strict(self):
         """Test command includes strict flags by default."""
         check = PythonStaticAnalysisCheck({})
         cmd = check._build_command(["src"])
@@ -125,7 +125,7 @@ class TestPythonStaticAnalysisCheck:
         assert "--disallow-any-generics" in cmd
         assert "--ignore-missing-imports" in cmd
 
-    def test_build_command_basic(self, tmp_path):
+    def test_build_command_basic(self):
         """Test command excludes strict flags when disabled."""
         check = PythonStaticAnalysisCheck({"strict_typing": False})
         cmd = check._build_command(["src"])

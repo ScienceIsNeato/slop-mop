@@ -118,7 +118,15 @@ class TestCollapseDuplicateFileFindings:
                 fix_strategy="do the thing",
                 level=FindingLevel.WARNING,
             ),
-            Finding(message="boom", file=b, line=1, level=FindingLevel.WARNING),
+            Finding(
+                message="boom",
+                file=b,
+                line=1,
+                column=3,
+                rule_id="R123",
+                fix_strategy="do the thing",
+                level=FindingLevel.WARNING,
+            ),
         ]
 
         out, collapsed = collapse_duplicate_file_findings(findings, str(tmp_path))
@@ -170,3 +178,68 @@ class TestCollapseDuplicateFileFindings:
 
         assert collapsed == 1
         assert len(out) == 1
+
+    def test_different_rule_ids_are_distinct_diagnostics(self, tmp_path):
+        """Same line + message but different rule = two real findings."""
+        body = "x = 1\n"
+        a = _write(tmp_path, "a/mod.py", body)
+        b = _write(tmp_path, "b/mod.py", body)
+        findings = [
+            Finding(message="same text", file=a, line=1, rule_id="E1"),
+            Finding(message="same text", file=b, line=1, rule_id="E2"),
+        ]
+
+        out, collapsed = collapse_duplicate_file_findings(findings, str(tmp_path))
+
+        assert collapsed == 0
+        assert len(out) == 2
+
+    def test_different_columns_are_distinct_diagnostics(self, tmp_path):
+        body = "x = 1\n"
+        a = _write(tmp_path, "a/mod.py", body)
+        b = _write(tmp_path, "b/mod.py", body)
+        findings = [
+            Finding(message="same text", file=a, line=1, column=1),
+            Finding(message="same text", file=b, line=1, column=9),
+        ]
+
+        out, collapsed = collapse_duplicate_file_findings(findings, str(tmp_path))
+
+        assert collapsed == 0
+        assert len(out) == 2
+
+    def test_survivor_keeps_its_original_position(self, tmp_path):
+        """A collapsed survivor must not sink to the bottom of the report."""
+        body = "x = 1\n"
+        a = _write(tmp_path, "a/dup.py", body)
+        b = _write(tmp_path, "b/dup.py", body)
+        solo = _write(tmp_path, "z/solo.py", "y = 2\n")
+        findings = [
+            Finding(message="dup issue", file=a, line=1),
+            Finding(message="dup issue", file=b, line=1),
+            Finding(message="later issue", file=solo, line=1),
+        ]
+
+        out, collapsed = collapse_duplicate_file_findings(findings, str(tmp_path))
+
+        assert collapsed == 1
+        assert [f.message.split(" [")[0] for f in out] == [
+            "dup issue",
+            "later issue",
+        ]
+
+    def test_paths_escaping_project_root_are_never_hashed(self, tmp_path):
+        """Findings come from external tools — never read outside the repo."""
+        outside = tmp_path.parent / "outside_secret.py"
+        outside.write_text("x = 1\n")
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        findings = [
+            Finding(message="same", file="../outside_secret.py", line=1),
+            Finding(message="same", file=str(outside), line=1),
+        ]
+
+        out, collapsed = collapse_duplicate_file_findings(findings, str(proj))
+
+        assert collapsed == 0
+        assert len(out) == 2

@@ -116,3 +116,51 @@ class TestPreviousFindingsLookup:
 
         self._write_scour(tmp_path, {"data": {"summary": {}}})
         assert _previous_findings_count(str(tmp_path)) is None
+
+
+class TestFindingsCountRobustness:
+    """The count must never understate a failing run."""
+
+    def test_gate_without_structured_findings_counts_as_one(self):
+        """A gate can fail with raw output and no Finding objects.
+
+        Counting those as zero would render "F — scuttled · 0 findings",
+        which reads as "nothing is wrong" on a failing run.
+        """
+        from slopmop.core.result import CheckResult, CheckStatus
+
+        bare = CheckResult(
+            name="x:y", status=CheckStatus.FAILED, duration=0.1, findings=[]
+        )
+        assert (len(bare.findings) if bare.findings else 1) == 1
+
+    def test_negative_previous_findings_is_rejected(self):
+        from slopmop.reporting.grading import compute_hull_grade
+
+        g = compute_hull_grade(failing=1, warned=0, findings=3, previous_findings=-5)
+        assert g.previous_findings is None
+        assert g.findings_delta is None
+
+    def test_bool_previous_findings_is_rejected(self):
+        """bool is a subclass of int — True would become a delta of 1."""
+        from slopmop.reporting.grading import compute_hull_grade
+
+        g = compute_hull_grade(
+            failing=1, warned=0, findings=3, previous_findings=True  # type: ignore[arg-type]
+        )
+        assert g.previous_findings is None
+
+
+class TestPreviousFindingsValidation:
+    def test_negative_and_bool_in_artifact_are_rejected(self, tmp_path):
+        import json as _json
+
+        from slopmop.reporting.report import _previous_findings_count
+
+        d = tmp_path / ".slopmop"
+        d.mkdir()
+        for bad in (-1, True, "12", None):
+            (d / "last_scour.json").write_text(
+                _json.dumps({"data": {"hull_grade": {"findings": bad}}})
+            )
+            assert _previous_findings_count(str(tmp_path)) is None

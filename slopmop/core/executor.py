@@ -1083,7 +1083,11 @@ class CheckExecutor:
                         f"Cache hit for {check.full_name} "
                         f"(status={cached.status.value})"
                     )
-                    return cached
+                    # Caches written before the collapse existed (or by an
+                    # older slop-mop) still hold per-copy duplicates, so a
+                    # cache hit would report inflated counts. Normalize on the
+                    # way out too — the operation is idempotent.
+                    return _collapse_duplicate_findings(cached, project_root)
 
         logger.debug(f"Running {check.display_name}")
 

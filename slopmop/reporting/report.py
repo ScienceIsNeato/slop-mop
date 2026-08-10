@@ -230,7 +230,11 @@ def _previous_findings_count(project_root: Optional[str]) -> Optional[int]:
     if not hull:
         return None
     value = hull.get("findings")
-    return value if isinstance(value, int) else None
+    # bool is a subclass of int, and a negative count is corrupt — either
+    # would produce a nonsense delta.
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 @dataclass
@@ -362,8 +366,14 @@ class RunReport:
                 # Findings across every non-green gate: the number that
                 # actually moves when someone does a pass of real work, unlike
                 # the letter (which only counts failing GATES).
+                # findings are optional: a gate can fail with raw output and
+                # no structured Finding objects. Counting those as 0 would
+                # render "F — scuttled · 0 findings", which reads as "nothing
+                # is wrong" on a failing run. Fall back to 1 per such gate so
+                # the number is never smaller than the truth.
                 total_findings = sum(
-                    len(r.findings) for r in (*failed, *errored, *warned)
+                    len(r.findings) if r.findings else 1
+                    for r in (*failed, *errored, *warned)
                 )
                 hull_grade = compute_hull_grade(
                     failing=len(failed) + len(errored),

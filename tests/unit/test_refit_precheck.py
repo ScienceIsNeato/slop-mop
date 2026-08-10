@@ -356,3 +356,37 @@ class TestToolOwnedDisableProvenance:
         from slopmop.cli._refit_precheck import _disabled_by_tool
 
         assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_rerun_preserves_hand_disabled_provenance(self):
+        """A gate the operator turned off by hand stays user-owned.
+
+        Regression: a plain `sm init` re-run relabeled deliberate manual
+        disables as "init", after which refit silently stopped asking about
+        them — the tool would have quietly adopted the human's decision as
+        its own.
+        """
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {"myopia": {"gates": {"g": {"enabled": False}}}}
+        existing = {
+            "myopia": {"gates": {"g": {"enabled": False, "disabled_by": "user"}}}
+        }
+        _stamp_auto_disabled_provenance(base, {}, existing)
+        assert base["myopia"]["gates"]["g"]["disabled_by"] == "user"
+
+    def test_rerun_keeps_tool_owned_as_tool_owned(self):
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {"myopia": {"gates": {"g": {"enabled": False}}}}
+        existing = {
+            "myopia": {"gates": {"g": {"enabled": False, "disabled_by": "init"}}}
+        }
+        _stamp_auto_disabled_provenance(base, {}, existing)
+        assert base["myopia"]["gates"]["g"]["disabled_by"] == "init"
+
+    def test_first_run_without_existing_config(self):
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {"myopia": {"gates": {"g": {"enabled": False}}}}
+        _stamp_auto_disabled_provenance(base, {}, None)
+        assert base["myopia"]["gates"]["g"]["disabled_by"] == "init"

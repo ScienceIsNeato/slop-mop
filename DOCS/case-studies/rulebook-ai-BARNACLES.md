@@ -69,7 +69,7 @@ clean-tree precondition: a second round-trip.)
 
 `overconfidence:missing-annotations.py` reported:
 
-```
+```text
 Status: failed
 Error: 0 type error(s) found
 --- Output ---
