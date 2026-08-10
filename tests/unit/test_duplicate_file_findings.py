@@ -138,3 +138,35 @@ class TestCollapseDuplicateFileFindings:
 
         assert collapsed == 0
         assert out[0].message == "solo"  # no "[also in ...]" suffix
+
+    def test_oversized_files_are_never_hashed(self, tmp_path, monkeypatch):
+        """A huge duplicate asset isn't what this is for — skip, don't merge."""
+        import slopmop.checks.duplicate_files as mod
+
+        monkeypatch.setattr(mod, "_MAX_HASH_BYTES", 4)
+        body = "this is longer than four bytes\n"
+        a = _write(tmp_path, "a/big.py", body)
+        b = _write(tmp_path, "b/big.py", body)
+        findings = [
+            Finding(message="same", file=a, line=1),
+            Finding(message="same", file=b, line=1),
+        ]
+
+        out, collapsed = collapse_duplicate_file_findings(findings, str(tmp_path))
+
+        assert collapsed == 0
+        assert len(out) == 2
+
+    def test_absolute_paths_resolve(self, tmp_path):
+        body = "x = 1\n"
+        _write(tmp_path, "a/mod.py", body)
+        _write(tmp_path, "b/mod.py", body)
+        findings = [
+            Finding(message="same", file=str(tmp_path / "a" / "mod.py"), line=1),
+            Finding(message="same", file=str(tmp_path / "b" / "mod.py"), line=1),
+        ]
+
+        out, collapsed = collapse_duplicate_file_findings(findings, str(tmp_path))
+
+        assert collapsed == 1
+        assert len(out) == 1

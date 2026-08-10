@@ -251,3 +251,108 @@ class TestToolOwnedDisableProvenance:
             '{"myopia": {"gates": {"g": {"enabled": false,' ' "disabled_by": "init"}}}}'
         )
         assert _disabled_by_tool(tmp_path, "myopia:g") is True
+
+    def test_bare_gate_name_is_not_tool_owned(self, tmp_path):
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        (tmp_path / ".sb_config.json").write_text("{}")
+        assert _disabled_by_tool(tmp_path, "no-category") is False
+
+    def test_malformed_config_shapes_are_safe(self, tmp_path):
+        """Every wrong-shape branch must return False, never raise."""
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        cfg = tmp_path / ".sb_config.json"
+        for body in (
+            '{"myopia": "not-a-dict"}',
+            '{"myopia": {"gates": "not-a-dict"}}',
+            '{"myopia": {"gates": {"g": "not-a-dict"}}}',
+            '{"myopia": {}}',
+        ):
+            cfg.write_text(body)
+            assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_unreadable_config_is_not_tool_owned(self, tmp_path):
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        (tmp_path / ".sb_config.json").write_text("{not valid json")
+        assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_user_owned_disable_still_asks(self, tmp_path):
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        (tmp_path / ".sb_config.json").write_text(
+            '{"myopia": {"gates": {"g": {"enabled": false,' ' "disabled_by": "user"}}}}'
+        )
+        assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_build_entry_auto_accepts_tool_owned_disable(self, tmp_path):
+        """End-to-end: a tool-disabled gate lands as auto_disabled, not pending."""
+        from slopmop.cli._refit_precheck import _build_gate_entry
+        from slopmop.doctor.gate_preflight import GatePreflightRecord
+
+        (tmp_path / ".sb_config.json").write_text(
+            '{"myopia": {"gates": {"g": {"enabled": false,' ' "disabled_by": "init"}}}}'
+        )
+        record = GatePreflightRecord(
+            gate="myopia:g",
+            display_name="G",
+            enabled=False,
+            applicable=True,
+            skip_reason="",
+            config_fingerprint="fp",
+            missing_tools=(),
+        )
+
+        entry = _build_gate_entry(tmp_path, record, None)
+
+        assert entry["review_status"] == "auto_disabled"
+        assert "sm init" in (entry["blocker_reason"] or "")
+        assert entry["reviewed_at"]
+
+    def test_build_entry_still_pends_human_owned_disable(self, tmp_path):
+        from slopmop.cli._refit_precheck import _build_gate_entry
+        from slopmop.doctor.gate_preflight import GatePreflightRecord
+
+        (tmp_path / ".sb_config.json").write_text(
+            '{"myopia": {"gates": {"g": {"enabled": false,' ' "disabled_by": "user"}}}}'
+        )
+        record = GatePreflightRecord(
+            gate="myopia:g",
+            display_name="G",
+            enabled=False,
+            applicable=True,
+            skip_reason="",
+            config_fingerprint="fp",
+            missing_tools=(),
+        )
+
+        entry = _build_gate_entry(tmp_path, record, None)
+
+        assert entry["review_status"] == "pending"
+        assert entry["blocker_reason"] is None
+
+    def test_stamp_skips_non_dict_sections_and_gates(self):
+        """Malformed config shapes must not raise while stamping."""
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {
+            "scalar": "not-a-dict",
+            "no_gates": {"other": 1},
+            "bad_gates": {"gates": "not-a-dict"},
+            "mixed": {"gates": {"ok": {"enabled": False}, "bad": "not-a-dict"}},
+        }
+        _stamp_auto_disabled_provenance(base, {})
+        assert base["mixed"]["gates"]["ok"]["disabled_by"] == "init"
+
+    def test_config_load_failure_is_not_tool_owned(self, tmp_path, monkeypatch):
+        """If the config can't be loaded at all, ask the human."""
+        import slopmop.doctor.sm_env as sm_env
+
+        def boom(_root):
+            raise RuntimeError("config subsystem down")
+
+        monkeypatch.setattr(sm_env, "load_repo_config", boom)
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        assert _disabled_by_tool(tmp_path, "myopia:g") is False

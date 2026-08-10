@@ -70,3 +70,49 @@ class TestFindingsProgress:
         assert d["findings"] == 5
         assert "previous_findings" not in d
         assert "findings_delta" not in d
+
+
+class TestPreviousFindingsLookup:
+    """The delta source: the prior run's hull_grade in last_scour.json."""
+
+    def _write_scour(self, root, payload):
+        d = root / ".slopmop"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "last_scour.json").write_text(__import__("json").dumps(payload))
+
+    def test_reads_findings_from_prior_run(self, tmp_path):
+        from slopmop.reporting.report import _previous_findings_count
+
+        self._write_scour(tmp_path, {"data": {"hull_grade": {"findings": 57}}})
+        assert _previous_findings_count(str(tmp_path)) == 57
+
+    def test_missing_file_returns_none(self, tmp_path):
+        from slopmop.reporting.report import _previous_findings_count
+
+        assert _previous_findings_count(str(tmp_path)) is None
+
+    def test_no_project_root_returns_none(self):
+        from slopmop.reporting.report import _previous_findings_count
+
+        assert _previous_findings_count(None) is None
+
+    def test_unreadable_json_returns_none(self, tmp_path):
+        from slopmop.reporting.report import _previous_findings_count
+
+        d = tmp_path / ".slopmop"
+        d.mkdir()
+        (d / "last_scour.json").write_text("{not json")
+        assert _previous_findings_count(str(tmp_path)) is None
+
+    def test_pre_findings_artifact_returns_none(self, tmp_path):
+        """A run recorded before the findings field existed has no delta."""
+        from slopmop.reporting.report import _previous_findings_count
+
+        self._write_scour(tmp_path, {"data": {"hull_grade": {"grade": "F"}}})
+        assert _previous_findings_count(str(tmp_path)) is None
+
+    def test_no_hull_grade_returns_none(self, tmp_path):
+        from slopmop.reporting.report import _previous_findings_count
+
+        self._write_scour(tmp_path, {"data": {"summary": {}}})
+        assert _previous_findings_count(str(tmp_path)) is None
