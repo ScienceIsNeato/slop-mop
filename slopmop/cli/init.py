@@ -638,9 +638,50 @@ def _write_config(
     _disable_checks_with_missing_tools(base_config, detected)
     _disable_non_applicable_by_applicability(base_config, project_root)
 
+    # Stamp provenance on every gate init turned off, so later tooling can
+    # tell "the tool made this call" from "a human made this call". Without
+    # it, `sm refit --start` demanded the user justify — with a bug reference
+    # — disables that init itself had just written.
+    _stamp_auto_disabled_provenance(base_config, config)
+
     config_file.write_text(json.dumps(base_config, indent=2) + "\n")
     print(f"✅ Configuration saved to: {config_file}")
     _print_next_steps(config)
+
+
+#: Marker written next to ``enabled: false`` recording who disabled a gate.
+#: ``"init"`` means slop-mop's own detection turned it off (no Python found,
+#: tool missing, gate not applicable). ``"user"`` means the operator asked for
+#: it. Consumers — notably ``sm refit`` — must only demand justification for
+#: the latter.
+DISABLED_BY_KEY = "disabled_by"
+
+
+def _stamp_auto_disabled_provenance(
+    base_config: Dict[str, Any], user_config: Dict[str, Any]
+) -> None:
+    """Record whether init or the user disabled each disabled gate."""
+    user_disabled = {
+        name
+        for name in _as_list(user_config.get("disabled_gates", []))
+        if isinstance(name, str)
+    }
+    for cat_key in base_config:
+        section = _as_dict(base_config.get(cat_key))
+        if section is None:
+            continue
+        gates = _as_dict(section.get("gates"))
+        if gates is None:
+            continue
+        for gate_name, gate_config in gates.items():
+            if not isinstance(gate_config, dict):
+                continue
+            gate_cfg = cast(Dict[str, Any], gate_config)
+            if gate_cfg.get("enabled") is not False:
+                gate_cfg.pop(DISABLED_BY_KEY, None)
+                continue
+            full_name = f"{cat_key}:{gate_name}"
+            gate_cfg[DISABLED_BY_KEY] = "user" if full_name in user_disabled else "init"
 
 
 def cmd_init(args: argparse.Namespace) -> int:

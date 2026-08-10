@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
+from slopmop.core.gate_config import GateRef
 from slopmop.doctor.gate_preflight import (
     GatePreflightRecord,
     gather_gate_preflight_records,
@@ -96,6 +97,35 @@ def _previous_entry(
     return None
 
 
+def _disabled_by_tool(project_root: Path, gate: str) -> bool:
+    """True when ``sm init`` — not the operator — disabled *gate*.
+
+    Reads the ``disabled_by`` marker init stamps beside ``enabled: false``.
+    A config written before that marker existed, or hand-edited, reports
+    False so the operator is still asked: unknown provenance is treated as
+    human-owned, which is the safe direction.
+    """
+    try:
+        from slopmop.doctor.sm_env import load_repo_config
+
+        config = load_repo_config(project_root)
+    except Exception:  # noqa: BLE001 — provenance is advisory
+        return False
+    ref = GateRef.parse(gate)
+    if not ref.is_qualified:
+        return False
+    section = config.get(ref.category)
+    if not isinstance(section, dict):
+        return False
+    gates = cast(Dict[str, Any], section).get("gates")
+    if not isinstance(gates, dict):
+        return False
+    gate_cfg = cast(Dict[str, Any], gates).get(ref.gate)
+    if not isinstance(gate_cfg, dict):
+        return False
+    return str(cast(Dict[str, Any], gate_cfg).get("disabled_by") or "") == "init"
+
+
 def _preserved_review_status(
     record: GatePreflightRecord,
     previous_entry: Optional[Dict[str, Any]],
@@ -105,7 +135,7 @@ def _preserved_review_status(
     if previous_entry.get("config_fingerprint") != record.config_fingerprint:
         return "pending", None, None, None
     status = str(previous_entry.get("review_status") or "pending")
-    if status not in {"approved", "blocked_disabled"}:
+    if status not in {"approved", "blocked_disabled", "auto_disabled"}:
         return "pending", None, None, None
     return (
         status,
@@ -135,10 +165,21 @@ def _build_gate_entry(
         probe_status = "runnable" if probe_exit_code in {0, 1} else "blocked"
 
     if not record.enabled and review_status != "blocked_disabled":
-        review_status = "pending"
-        reviewed_at = None
-        blocker_issue = None
-        blocker_reason = None
+        # A gate that slop-mop's OWN detection turned off (no Python in the
+        # repo, tool absent, gate not applicable) is not a decision the
+        # operator made, so demanding they justify it — with a bug reference,
+        # no less — is asking them to account for the tool's own choice.
+        # Auto-accept those; a human-owned disable still needs a decision.
+        if _disabled_by_tool(project_root, record.gate):
+            review_status = "auto_disabled"
+            reviewed_at = _precheck_timestamp()
+            blocker_issue = None
+            blocker_reason = "disabled by sm init (tool-owned default)"
+        else:
+            review_status = "pending"
+            reviewed_at = None
+            blocker_issue = None
+            blocker_reason = None
     if record.enabled and probe_status != "runnable":
         review_status = "pending"
         reviewed_at = None
@@ -264,7 +305,10 @@ def pending_fidelity_entries(precheck: Dict[str, Any]) -> List[Dict[str, Any]]:
             ):
                 pending.append(entry)
             continue
-        if str(entry.get("review_status")) != "blocked_disabled":
+        if str(entry.get("review_status")) not in {
+            "blocked_disabled",
+            "auto_disabled",
+        }:
             pending.append(entry)
     return pending
 
