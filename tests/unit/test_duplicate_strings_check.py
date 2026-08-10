@@ -650,24 +650,32 @@ class TestFindingPathsAreProjectRelative:
         assert "x.py" in out
 
     def test_resolved_tempdir_paths_map_back_to_project(self, tmp_path):
-        """macOS hands back /var/... while the scanner reports /private/var/...
+        """The scanner reports RESOLVED paths, the caller holds the raw one.
 
+        On macOS /var is a symlink to /private/var, so tempfile hands back
+        /var/folders/... while the scanner reports /private/var/folders/...
         Replacing only the unresolved spelling matched the suffix and left
-        "/private" glued to the project path.
+        "/private" glued to the front of the project path. A real symlink is
+        used here so the two spellings genuinely differ on any platform.
         """
         from slopmop.checks.quality.duplicate_strings import _remap_scan_paths
 
-        tmp_dir = "/var/folders/ab/sm-string-dup-XYZ"
-        resolved = "/private" + tmp_dir
-        project_root = "/Users/pacey/proj"
-        stdout = f'{{"file": "{resolved}/pkg/mod.py"}}'
+        real_tmp = tmp_path / "real_tmp"
+        real_tmp.mkdir()
+        link_tmp = tmp_path / "link_tmp"
+        link_tmp.symlink_to(real_tmp)
 
-        remapped = _remap_scan_paths(stdout, tmp_dir, project_root)
+        project_root = str(tmp_path / "proj")
+        # What the scanner emits: the resolved spelling.
+        stdout = json.dumps({"file": f"{real_tmp}/pkg/mod.py"})
 
-        assert remapped == '{"file": "/Users/pacey/proj/pkg/mod.py"}'
-        assert "/private" not in remapped
+        # What the caller passes: the unresolved spelling it created.
+        remapped = _remap_scan_paths(stdout, str(link_tmp), project_root)
+
+        assert json.loads(remapped)["file"] == f"{project_root}/pkg/mod.py"
+        assert str(real_tmp) not in remapped
         assert not os.path.relpath(
-            "/Users/pacey/proj/pkg/mod.py", project_root
+            json.loads(remapped)["file"], project_root
         ).startswith("..")
 
 
