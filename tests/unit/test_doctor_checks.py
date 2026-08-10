@@ -1002,8 +1002,13 @@ class TestToolInventoryVersionViolations:
         check.missing_requirements.return_value = []
         return check
 
-    def test_version_violation_reported_as_fail(self, ctx):
-        """Tool found but older than its declared pin → FAIL (pin is a floor)."""
+    def test_version_violation_reported_as_warn(self, ctx):
+        """Tool found but older than its pin → WARN, not FAIL.
+
+        The pin is a floor, but an out-of-date tool still RUNS. Failing here
+        hard-blocked `sm refit` for anyone a single patch behind, so version
+        drift warns while missing/rejected tools keep failing.
+        """
         from slopmop.checks.base import Requirement
 
         check = self._fake_gate(
@@ -1027,7 +1032,7 @@ class TestToolInventoryVersionViolations:
             ),
         ):
             r = ToolInventoryCheck().run(ctx)
-        assert r.status is DoctorStatus.FAIL
+        assert r.status is DoctorStatus.WARN
         assert "version constraint" in r.summary
 
     def test_same_tool_pin_across_gates_is_reported_once(self, ctx):
@@ -1057,7 +1062,7 @@ class TestToolInventoryVersionViolations:
         ):
             r = ToolInventoryCheck().run(ctx)
 
-        assert r.status is DoctorStatus.FAIL
+        assert r.status is DoctorStatus.WARN
         assert len(r.data["version_violations"]) == 1
         assert r.data["version_violations"][0]["tool"] == "black"
 

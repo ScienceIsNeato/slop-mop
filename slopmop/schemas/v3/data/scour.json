@@ -51,22 +51,39 @@
   },
   "$defs": {
     "hull_grade": {
-      "description": "Deterministic hull rating for the full run: letter grade plus boat-condition level. Absent on partial (-g) runs. 'provisional' means operational skips (missing tool, fail-fast, time budget) may have hidden failing gates.",
+      "description": "Deterministic hull rating for the full run: letter grade plus boat-condition level. Absent on partial (-g) runs. 'provisional' means operational skips (missing tool, fail-fast, time budget) may have hidden failing gates. 'findings' counts issues across all non-green gates \u2014 the letter only counts failing GATES, so findings move between letter changes and show progress on repos that sit at one grade through substantial work. 'previous_findings'/'findings_delta' appear when a prior run is on disk.",
       "type": "object",
       "required": [
         "grade",
         "level",
         "failing",
         "warned",
-        "provisional"
+        "provisional",
+        "findings"
       ],
       "additionalProperties": false,
       "properties": {
         "grade": {
-          "enum": ["A+", "A", "B", "C", "D", "F", "N/A"]
+          "enum": [
+            "A+",
+            "A",
+            "B",
+            "C",
+            "D",
+            "F",
+            "N/A"
+          ]
         },
         "level": {
-          "enum": ["shipshape", "seaworthy", "serviceable", "weathered", "fouled", "scuttled", "dry-dock"]
+          "enum": [
+            "shipshape",
+            "seaworthy",
+            "serviceable",
+            "weathered",
+            "fouled",
+            "scuttled",
+            "dry-dock"
+          ]
         },
         "failing": {
           "type": "integer",
@@ -78,6 +95,17 @@
         },
         "provisional": {
           "type": "boolean"
+        },
+        "findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previous_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "findings_delta": {
+          "type": "integer"
         }
       }
     },

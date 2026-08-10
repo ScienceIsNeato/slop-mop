@@ -177,3 +177,216 @@ class TestPreflightConfigSources:
         cfg = _load_gate_preflight_config(tmp_path)
         assert cfg == load_config(tmp_path)  # byte-identical resolution
         assert cfg.get("disabled_gates") == ["c:d"]
+
+
+class TestToolOwnedDisableProvenance:
+    """refit must only demand justification for decisions a HUMAN made.
+
+    `sm init` disables gates by its own detection (no Python found, tool
+    absent, gate not applicable). refit then listed those as pending and
+    refused to plan until each was approved or given a bug reference —
+    asking the operator to account for the tool's own choice.
+    """
+
+    def test_init_stamps_provenance_on_disabled_gates(self):
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {
+            "myopia": {
+                "gates": {
+                    "a": {"enabled": False},
+                    "b": {"enabled": False},
+                    "c": {"enabled": True},
+                }
+            }
+        }
+        _stamp_auto_disabled_provenance(base, {"disabled_gates": ["myopia:b"]})
+        gates = base["myopia"]["gates"]
+        assert gates["a"]["disabled_by"] == "init"  # tool's own call
+        assert gates["b"]["disabled_by"] == "user"  # operator asked
+        assert "disabled_by" not in gates["c"]  # enabled gates unmarked
+
+    def test_enabling_a_gate_clears_the_marker(self):
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {"myopia": {"gates": {"a": {"enabled": True, "disabled_by": "init"}}}}
+        _stamp_auto_disabled_provenance(base, {})
+        assert "disabled_by" not in base["myopia"]["gates"]["a"]
+
+    def test_tool_owned_disable_is_not_pending(self, tmp_path):
+        from slopmop.cli._refit_precheck import pending_fidelity_entries
+
+        precheck = {
+            "gates": [
+                {
+                    "gate": "myopia:auto-off",
+                    "applicable": True,
+                    "enabled": False,
+                    "review_status": "auto_disabled",
+                },
+                {
+                    "gate": "myopia:human-off",
+                    "applicable": True,
+                    "enabled": False,
+                    "review_status": "pending",
+                },
+            ]
+        }
+        pending = pending_fidelity_entries(precheck)
+        assert [p["gate"] for p in pending] == ["myopia:human-off"]
+
+    def test_unknown_provenance_still_asks(self, tmp_path):
+        """A hand-edited or pre-marker config is treated as human-owned."""
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        (tmp_path / ".sb_config.json").write_text(
+            '{"myopia": {"gates": {"g": {"enabled": false}}}}'
+        )
+        assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_init_owned_disable_is_recognized(self, tmp_path):
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        (tmp_path / ".sb_config.json").write_text(
+            '{"myopia": {"gates": {"g": {"enabled": false,' ' "disabled_by": "init"}}}}'
+        )
+        assert _disabled_by_tool(tmp_path, "myopia:g") is True
+
+    def test_bare_gate_name_is_not_tool_owned(self, tmp_path):
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        (tmp_path / ".sb_config.json").write_text("{}")
+        assert _disabled_by_tool(tmp_path, "no-category") is False
+
+    def test_malformed_config_shapes_are_safe(self, tmp_path):
+        """Every wrong-shape branch must return False, never raise."""
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        cfg = tmp_path / ".sb_config.json"
+        for body in (
+            '{"myopia": "not-a-dict"}',
+            '{"myopia": {"gates": "not-a-dict"}}',
+            '{"myopia": {"gates": {"g": "not-a-dict"}}}',
+            '{"myopia": {}}',
+        ):
+            cfg.write_text(body)
+            assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_unreadable_config_is_not_tool_owned(self, tmp_path):
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        (tmp_path / ".sb_config.json").write_text("{not valid json")
+        assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_user_owned_disable_still_asks(self, tmp_path):
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        (tmp_path / ".sb_config.json").write_text(
+            '{"myopia": {"gates": {"g": {"enabled": false,' ' "disabled_by": "user"}}}}'
+        )
+        assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_build_entry_auto_accepts_tool_owned_disable(self, tmp_path):
+        """End-to-end: a tool-disabled gate lands as auto_disabled, not pending."""
+        from slopmop.cli._refit_precheck import _build_gate_entry
+        from slopmop.doctor.gate_preflight import GatePreflightRecord
+
+        (tmp_path / ".sb_config.json").write_text(
+            '{"myopia": {"gates": {"g": {"enabled": false,' ' "disabled_by": "init"}}}}'
+        )
+        record = GatePreflightRecord(
+            gate="myopia:g",
+            display_name="G",
+            enabled=False,
+            applicable=True,
+            skip_reason="",
+            config_fingerprint="fp",
+            missing_tools=(),
+        )
+
+        entry = _build_gate_entry(tmp_path, record, None)
+
+        assert entry["review_status"] == "auto_disabled"
+        assert "sm init" in (entry["blocker_reason"] or "")
+        assert entry["reviewed_at"]
+
+    def test_build_entry_still_pends_human_owned_disable(self, tmp_path):
+        from slopmop.cli._refit_precheck import _build_gate_entry
+        from slopmop.doctor.gate_preflight import GatePreflightRecord
+
+        (tmp_path / ".sb_config.json").write_text(
+            '{"myopia": {"gates": {"g": {"enabled": false,' ' "disabled_by": "user"}}}}'
+        )
+        record = GatePreflightRecord(
+            gate="myopia:g",
+            display_name="G",
+            enabled=False,
+            applicable=True,
+            skip_reason="",
+            config_fingerprint="fp",
+            missing_tools=(),
+        )
+
+        entry = _build_gate_entry(tmp_path, record, None)
+
+        assert entry["review_status"] == "pending"
+        assert entry["blocker_reason"] is None
+
+    def test_stamp_skips_non_dict_sections_and_gates(self):
+        """Malformed config shapes must not raise while stamping."""
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {
+            "scalar": "not-a-dict",
+            "no_gates": {"other": 1},
+            "bad_gates": {"gates": "not-a-dict"},
+            "mixed": {"gates": {"ok": {"enabled": False}, "bad": "not-a-dict"}},
+        }
+        _stamp_auto_disabled_provenance(base, {})
+        assert base["mixed"]["gates"]["ok"]["disabled_by"] == "init"
+
+    def test_config_load_failure_is_not_tool_owned(self, tmp_path, monkeypatch):
+        """If the config can't be loaded at all, ask the human."""
+        import slopmop.doctor.sm_env as sm_env
+
+        def boom(_root):
+            raise RuntimeError("config subsystem down")
+
+        monkeypatch.setattr(sm_env, "load_repo_config", boom)
+        from slopmop.cli._refit_precheck import _disabled_by_tool
+
+        assert _disabled_by_tool(tmp_path, "myopia:g") is False
+
+    def test_rerun_preserves_hand_disabled_provenance(self):
+        """A gate the operator turned off by hand stays user-owned.
+
+        Regression: a plain `sm init` re-run relabeled deliberate manual
+        disables as "init", after which refit silently stopped asking about
+        them — the tool would have quietly adopted the human's decision as
+        its own.
+        """
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {"myopia": {"gates": {"g": {"enabled": False}}}}
+        existing = {
+            "myopia": {"gates": {"g": {"enabled": False, "disabled_by": "user"}}}
+        }
+        _stamp_auto_disabled_provenance(base, {}, existing)
+        assert base["myopia"]["gates"]["g"]["disabled_by"] == "user"
+
+    def test_rerun_keeps_tool_owned_as_tool_owned(self):
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {"myopia": {"gates": {"g": {"enabled": False}}}}
+        existing = {
+            "myopia": {"gates": {"g": {"enabled": False, "disabled_by": "init"}}}
+        }
+        _stamp_auto_disabled_provenance(base, {}, existing)
+        assert base["myopia"]["gates"]["g"]["disabled_by"] == "init"
+
+    def test_first_run_without_existing_config(self):
+        from slopmop.cli.init import _stamp_auto_disabled_provenance
+
+        base = {"myopia": {"gates": {"g": {"enabled": False}}}}
+        _stamp_auto_disabled_provenance(base, {}, None)
+        assert base["myopia"]["gates"]["g"]["disabled_by"] == "init"

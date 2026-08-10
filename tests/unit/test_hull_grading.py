@@ -81,6 +81,9 @@ class TestComputeHullGrade:
             "failing": 1,
             "warned": 2,
             "provisional": True,
+            # Findings ride alongside the letter so progress is visible
+            # between grade changes; absent a prior run there is no delta.
+            "findings": 0,
         }
 
     def test_dry_dock_grade(self):
@@ -257,6 +260,10 @@ class TestAdapterSurfacing:
             "failing": 1,
             "warned": 0,
             "provisional": False,
+            # The failing gate in this fixture carries no structured
+            # findings; it still counts as one so a failing run never
+            # renders as "0 findings".
+            "findings": 1,
         }
 
     def test_json_payload_omits_grade_on_partial_run(self, tmp_path):

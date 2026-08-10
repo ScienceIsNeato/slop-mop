@@ -34,7 +34,11 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 from slopmop.utils import is_path_excluded
 
 _AMBIGUITY_MINE_FIX = (
-    "Consolidate duplicate function definitions to eliminate ambiguity mines."
+    "Consolidate duplicate function definitions to eliminate ambiguity mines. "
+    "If the duplicates are vendored copies, distributed templates, or test "
+    "helpers — where repetition is the design, not a defect — exclude those "
+    "paths instead of refactoring them: "
+    "sm config --set myopia:ambiguity-mines.py exclude_dirs '[\"path/**\"]'"
 )
 
 # Function names expected to appear in multiple files — not ambiguous.

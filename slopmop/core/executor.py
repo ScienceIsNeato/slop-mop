@@ -33,6 +33,45 @@ logger = logging.getLogger(__name__)
 _SKIP_FAIL_FAST = "Skipped due to fail-fast"
 
 
+def _collapse_duplicate_findings(result: CheckResult, project_root: str) -> CheckResult:
+    """Merge findings repeated across byte-identical copies of a file.
+
+    A repo that distributes templates or vendors a tool contains identical
+    copies of the same source file, so every gate reports the same defect once
+    per copy. Collapsing here keeps the first-run finding count honest without
+    each gate having to know about it. Failures are swallowed deliberately —
+    noise reduction must never break a gate's real result.
+    """
+    if not result.findings:
+        return result
+    try:
+        from slopmop.checks.duplicate_files import collapse_duplicate_file_findings
+
+        merged, collapsed = collapse_duplicate_file_findings(
+            result.findings, project_root
+        )
+        if not collapsed:
+            return result
+        result.findings = merged
+        note = (
+            f"({collapsed} finding(s) collapsed: the same issue in "
+            f"byte-identical copies of the same file.)"
+        )
+        result.output = f"{result.output}\n\n{note}" if result.output else note
+        # The gate baked its own count into `error` before we collapsed, so a
+        # summary reading "5 findings" would contradict the single line now
+        # shown. Annotate rather than rewrite — each gate phrases its count
+        # differently, and silently changing their number would be worse.
+        if result.error:
+            result.error = (
+                f"{result.error} ({len(merged)} unique; "
+                f"{collapsed} in identical copies)"
+            )
+    except Exception as exc:  # noqa: BLE001 — cosmetic pass, never fatal
+        logger.debug(f"finding collapse skipped for {result.name}: {exc}")
+    return result
+
+
 def _is_gate_enabled_in_config(
     check: BaseCheck, config: Dict[str, Any]
 ) -> Tuple[bool, str]:
@@ -1044,7 +1083,11 @@ class CheckExecutor:
                         f"Cache hit for {check.full_name} "
                         f"(status={cached.status.value})"
                     )
-                    return cached
+                    # Caches written before the collapse existed (or by an
+                    # older slop-mop) still hold per-copy duplicates, so a
+                    # cache hit would report inflated counts. Normalize on the
+                    # way out too — the operation is idempotent.
+                    return _collapse_duplicate_findings(cached, project_root)
 
         logger.debug(f"Running {check.display_name}")
 
@@ -1071,6 +1114,11 @@ class CheckExecutor:
         # Run the check
         try:
             result = check.run(project_root)
+            # Collapse the same defect repeated across byte-identical copies of
+            # a file (distributed templates, vendored tools, starter packs).
+            # Applied here rather than per-gate so every gate benefits from one
+            # hook — see checks/duplicate_files.py.
+            result = _collapse_duplicate_findings(result, project_root)
             # Attach scope metrics if the check reported them
             if scope is not None and result.scope is None:
                 result.scope = scope
