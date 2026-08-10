@@ -760,9 +760,9 @@ class TestRunPipAudit:
 
         # Verify the command's first element is the project Python, not sys.executable
         cmd_used = mock_cmd.call_args[0][0]
-        assert cmd_used[0] == str(fake_python), (
-            f"Expected project Python {fake_python}, got {cmd_used[0]}"
-        )
+        assert cmd_used[0] == str(
+            fake_python
+        ), f"Expected project Python {fake_python}, got {cmd_used[0]}"
         # With a project venv, environment-scan mode: no -r flag
         assert "-r" not in cmd_used
 
