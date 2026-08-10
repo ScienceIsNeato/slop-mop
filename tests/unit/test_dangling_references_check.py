@@ -177,3 +177,36 @@ class TestNoFalsePositives:
         sub.mkdir()
         (sub / "page.md").write_text("[home](../guide.md)\n")
         assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_fenced_code_block_skipped(self, tmp_path):
+        # handlers[key](arg) is python subscript-then-call, not a link
+        (tmp_path / "README.md").write_text(
+            "# Doc\n\n```python\nreturn handlers[parsed_args.command](parsed_args)\n```\n"
+        )
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_tilde_fence_skipped(self, tmp_path):
+        (tmp_path / "README.md").write_text(
+            "~~~python\nd = cfg[name](value)\n~~~\n"
+        )
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_inline_code_span_skipped(self, tmp_path):
+        (tmp_path / "README.md").write_text("Call `handlers[cmd](args)` to run.\n")
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_link_after_fence_still_checked(self, tmp_path):
+        # closing the fence must re-enable checking, or real breaks slip through
+        (tmp_path / "README.md").write_text(
+            "```python\nx = a[b](c)\n```\n\n[gone](./missing.md)\n"
+        )
+        result = _dr_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert "missing.md" in str(result.findings[0].message)
+
+    def test_code_span_as_link_text_still_checked(self, tmp_path):
+        # blanking the span must not swallow the link's target
+        (tmp_path / "README.md").write_text("[`spec.md`](./missing_spec.md)\n")
+        result = _dr_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert "missing_spec.md" in str(result.findings[0].message)

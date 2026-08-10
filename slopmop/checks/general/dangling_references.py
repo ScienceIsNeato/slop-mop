@@ -35,7 +35,7 @@ import os
 import re
 import time
 from pathlib import Path, PurePosixPath
-from typing import ClassVar, List, Optional
+from typing import ClassVar, List, Optional, Tuple
 from urllib.parse import unquote
 
 from slopmop.checks.base import (
@@ -87,6 +87,12 @@ _INLINE_RE = re.compile(r"!?\[[^\]]*\]\(\s*(<[^>]+>|(?:[^()\s]+|\([^)]*\))+)")
 _REFDEF_RE = re.compile(r"^\s*\[[^\]]+\]:\s*(<[^>]+>|\S+)")
 # A leading URL scheme (mailto:, http:, tel:, …).
 _SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
+# Fenced code block delimiter: up to 3 spaces of indent, then 3+ ` or ~.
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+# An inline code span. Subscript-then-call syntax such as
+# ``handlers[key](arg)`` is indistinguishable from a markdown link, so code
+# spans are blanked before targets are extracted.
+_INLINE_CODE_RE = re.compile(r"`+[^`]*`+")
 
 
 class DanglingReferencesCheck(BaseCheck):
@@ -241,8 +247,8 @@ def _scan_markdown(md: Path, root: Path) -> List[Finding]:
         return []
     rel_md = md.relative_to(root).as_posix()
     findings: List[Finding] = []
-    for lineno, line in enumerate(text.splitlines(), 1):
-        for raw in _iter_targets(line):
+    for lineno, line in _iter_prose_lines(text):
+        for raw in _iter_targets(_blank_inline_code(line)):
             target = _checkable_path(raw)
             if target is None:
                 continue
@@ -257,6 +263,40 @@ def _scan_markdown(md: Path, root: Path) -> List[Finding]:
                     )
                 )
     return findings
+
+
+def _iter_prose_lines(text: str) -> List[Tuple[int, str]]:
+    """Yield ``(lineno, line)`` for lines outside fenced code blocks.
+
+    Code samples are not prose: ``handlers[key](arg)`` in a python block
+    matches the inline-link pattern exactly, and reporting it as a broken
+    link sends the reader chasing a target that was never a link.
+    """
+    lines: List[Tuple[int, str]] = []
+    fence: Optional[Tuple[str, int]] = None
+    for lineno, line in enumerate(text.splitlines(), 1):
+        marker = _FENCE_RE.match(line)
+        if marker:
+            char, width = marker.group(1)[0], len(marker.group(1))
+            if fence is None:
+                fence = (char, width)
+            elif char == fence[0] and width >= fence[1] and not marker.group(2).strip():
+                # A closing fence matches the opener's character, is at least
+                # as long, and carries no info string.
+                fence = None
+            continue
+        if fence is None:
+            lines.append((lineno, line))
+    return lines
+
+
+def _blank_inline_code(line: str) -> str:
+    """Replace inline code spans with spaces, preserving line length.
+
+    Blanking rather than deleting keeps a real link's target intact when the
+    link *text* is code, as in ``[`spec.md`](../spec.md)``.
+    """
+    return _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), line)
 
 
 def _iter_targets(line: str) -> List[str]:
