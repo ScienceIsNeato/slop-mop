@@ -113,10 +113,11 @@ formatter is passed the project root.
 
 ## 8. `dangling-references` could not tell code from prose
 
-Python subscript-then-call is byte-identical to a markdown link, so a
-documented `handlers[parsed_args.command](parsed_args)` inside a ```python
-fence was reported as a broken link to a target named `parsed_args`. The
-scanner walked every line with no notion of code blocks.
+Python subscript-then-call — indexing a dict of handlers, then calling the
+result — is byte-identical to markdown link syntax. A code sample using that
+form inside a fenced python block was reported as a broken link, with the
+call's argument name as the supposed target. The scanner walked every line
+with no notion of code blocks.
 
 On this repo it was the *only* remaining "broken link" after 12 genuine ones
 were repaired — the single finding standing between the gate and green was
