@@ -4,7 +4,7 @@ Split out of test_python_checks.py when that file crossed the code-sprawl
 limit — this class carries its own fixtures and reads better standalone.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
 from slopmop.core.result import CheckStatus

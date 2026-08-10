@@ -30,7 +30,8 @@ Actions annotations) slot in without touching enrichment logic.
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Dict, List, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, List, Optional, cast
 
 from slopmop.core.result import (
     CheckResult,
@@ -193,6 +194,45 @@ def _structured_console_lines(
     return lines
 
 
+def _previous_findings_count(project_root: Optional[str]) -> Optional[int]:
+    """Findings recorded by the last full run, for the grade's delta.
+
+    Reads ``.slopmop/last_scour.json``. Returns ``None`` when there is no
+    prior run, the file predates the ``findings`` field, or anything is
+    unreadable — a missing delta just hides the sub-line, it never blocks a
+    report.
+    """
+    if not project_root:
+        return None
+    try:
+        import json as _json
+
+        path = Path(project_root) / ".slopmop" / "last_scour.json"
+        if not path.exists():
+            return None
+        data = _json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+    def _find_hull(node: object) -> Optional[Dict[str, object]]:
+        if isinstance(node, dict):
+            mapping = cast(Dict[str, object], node)
+            hg = mapping.get("hull_grade")
+            if isinstance(hg, dict):
+                return cast(Dict[str, object], hg)
+            for value in mapping.values():
+                found = _find_hull(value)
+                if found is not None:
+                    return found
+        return None
+
+    hull = _find_hull(data)
+    if not hull:
+        return None
+    value = hull.get("findings")
+    return value if isinstance(value, int) else None
+
+
 @dataclass
 class RunReport:
     """Canonical enriched view of a validation run.
@@ -319,10 +359,18 @@ class RunReport:
                     for r in status_buckets[CheckStatus.SKIPPED]
                     if r.skip_reason not in deterministic_skips
                 ]
+                # Findings across every non-green gate: the number that
+                # actually moves when someone does a pass of real work, unlike
+                # the letter (which only counts failing GATES).
+                total_findings = sum(
+                    len(r.findings) for r in (*failed, *errored, *warned)
+                )
                 hull_grade = compute_hull_grade(
                     failing=len(failed) + len(errored),
                     warned=len(warned),
                     provisional=bool(operational_skips),
+                    findings=total_findings,
+                    previous_findings=_previous_findings_count(project_root),
                 )
 
         return cls(

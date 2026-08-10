@@ -19,7 +19,6 @@ from slopmop.checks.python.coverage import (
     _resolve_uncovered_range,
     _test_file_for,
 )
-from slopmop.checks.python.static_analysis import PythonStaticAnalysisCheck
 from slopmop.checks.python.tests import (
     PythonTestsCheck,
     _is_failed_summary_line,
