@@ -603,3 +603,41 @@ class TestStringDuplicationCacheInputs:
         fp1 = check_default.cache_inputs(str(tmp_path))
         fp2 = check_strict.cache_inputs(str(tmp_path))
         assert fp1 != fp2
+
+
+class TestFindingPathsAreProjectRelative:
+    """Paths must be relative to the PROJECT, not the shell's cwd.
+
+    Regression: `os.path.relpath(file_path)` with no start argument produced
+    output like "../../../../../private/Users/..." — unreadable, and not
+    clickable in an editor or CI annotation.
+    """
+
+    def test_paths_are_relative_to_project_root(self, tmp_path):
+        from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
+
+        check = StringDuplicationCheck({})
+        findings = [
+            {
+                "key": "a repeated message",
+                "count": 3,
+                "files": [str(tmp_path / "pkg" / "mod.py")],
+            }
+        ]
+        out = check._format_findings(findings, str(tmp_path))
+
+        assert "pkg/mod.py" in out
+        assert ".." not in out
+
+    def test_falls_back_to_cwd_when_root_absent(self, tmp_path, monkeypatch):
+        """Callers that pass no root keep the previous behaviour."""
+        from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
+
+        monkeypatch.chdir(tmp_path)
+        check = StringDuplicationCheck({})
+        findings = [
+            {"key": "msg here now", "count": 2, "files": [str(tmp_path / "x.py")]}
+        ]
+        out = check._format_findings(findings)
+
+        assert "x.py" in out

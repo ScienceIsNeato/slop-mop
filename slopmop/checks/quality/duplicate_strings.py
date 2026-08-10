@@ -412,7 +412,9 @@ class StringDuplicationCheck(BaseCheck):
 
         return False
 
-    def _format_findings(self, findings: list[dict[str, Any]]) -> str:
+    def _format_findings(
+        self, findings: list[dict[str, Any]], project_root: str = ""
+    ) -> str:
         """Format findings into human-readable output."""
         if not findings:
             return "No duplicate strings found that meet the threshold."
@@ -437,9 +439,12 @@ class StringDuplicationCheck(BaseCheck):
 
             # Show first 3 files
             for file_path in files[:3]:
-                # Make path relative if possible
+                # Relative to the PROJECT, not the shell's cwd. Without the
+                # start argument this produced paths like
+                # "../../../../../private/Users/..." — unreadable, and not
+                # clickable in an editor or CI annotation.
                 try:
-                    rel_path = os.path.relpath(file_path)
+                    rel_path = os.path.relpath(file_path, project_root or os.getcwd())
                 except ValueError:
                     rel_path = file_path
                 lines.append(f"    - {rel_path}")
@@ -789,7 +794,7 @@ class StringDuplicationCheck(BaseCheck):
 
         # Filter and format results
         filtered = self._filter_results(findings, effective_config)
-        output = self._format_findings(filtered)
+        output = self._format_findings(filtered, project_root)
 
         if filtered:
             return self._create_result(
