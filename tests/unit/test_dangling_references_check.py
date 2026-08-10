@@ -186,9 +186,7 @@ class TestNoFalsePositives:
         assert _dr_run(tmp_path).status == CheckStatus.PASSED
 
     def test_tilde_fence_skipped(self, tmp_path):
-        (tmp_path / "README.md").write_text(
-            "~~~python\nd = cfg[name](value)\n~~~\n"
-        )
+        (tmp_path / "README.md").write_text("~~~python\nd = cfg[name](value)\n~~~\n")
         assert _dr_run(tmp_path).status == CheckStatus.PASSED
 
     def test_inline_code_span_skipped(self, tmp_path):
