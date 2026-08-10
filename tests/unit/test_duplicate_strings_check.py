@@ -641,3 +641,25 @@ class TestFindingPathsAreProjectRelative:
         out = check._format_findings(findings)
 
         assert "x.py" in out
+
+    def test_resolved_tempdir_paths_map_back_to_project(self, tmp_path):
+        """macOS hands back /var/... while the scanner reports /private/var/...
+
+        Replacing only the unresolved spelling matched the suffix and left
+        "/private" glued to the project path.
+        """
+        import os
+
+        tmp_dir = "/var/folders/ab/sm-string-dup-XYZ"
+        resolved = "/private" + tmp_dir
+        project_root = "/Users/pacey/proj"
+        stdout = f'{{"file": "{resolved}/pkg/mod.py"}}'
+
+        for candidate in sorted({tmp_dir, resolved}, key=len, reverse=True):
+            stdout = stdout.replace(candidate, project_root)
+
+        assert stdout == '{"file": "/Users/pacey/proj/pkg/mod.py"}'
+        assert "/private" not in stdout
+        assert not os.path.relpath(
+            "/Users/pacey/proj/pkg/mod.py", project_root
+        ).startswith("..")

@@ -35,6 +35,24 @@ STRING_LITERAL_PATTERN = re.compile(
 )
 
 
+def _remap_scan_paths(stdout: str, tmp_dir: str, project_root: str) -> str:
+    """Rewrite tempdir paths in scanner output back to project paths.
+
+    The scanner reports RESOLVED paths. On macOS ``tempfile`` hands back
+    ``/var/folders/...`` while the resolved form is
+    ``/private/var/folders/...``, so replacing only the unresolved spelling
+    matched the suffix and left ``/private`` glued to the front of the
+    project path, producing findings like
+    ``../../../../../private/Users/.../web_scraper.py``. Swap the longest
+    spelling first so one form can't partially match inside the other.
+    """
+    for candidate in sorted(
+        {tmp_dir, str(Path(tmp_dir).resolve())}, key=len, reverse=True
+    ):
+        stdout = stdout.replace(candidate, project_root)
+    return stdout
+
+
 class StringDuplicationCheck(BaseCheck):
     """Duplicate string literal detection.
 
@@ -773,7 +791,7 @@ class StringDuplicationCheck(BaseCheck):
         stderr = result.stderr.strip() if result.stderr else ""
 
         if tmp_dir and stdout:
-            stdout = stdout.replace(tmp_dir, project_root)
+            stdout = _remap_scan_paths(stdout, tmp_dir, project_root)
 
         if not stdout:
             return self._create_result(
