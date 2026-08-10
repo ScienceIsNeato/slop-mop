@@ -56,6 +56,30 @@ def _scanner_failed_to_start(output: str) -> bool:
     return any(marker in output for marker in _SCANNER_STARTUP_FAILURE_MARKERS)
 
 
+def _scanner_did_not_run(name: str, output: str) -> "SecuritySubResult":
+    """Build the degraded result for a scanner that never started.
+
+    Reported as a warning rather than a failure: nothing was scanned, so
+    there is no finding to report — only a broken environment to repair.
+    """
+    return SecuritySubResult(
+        name,
+        True,
+        f"{name} did not run ({(output or '').strip()[-160:]}); "
+        f"install it with: {_SECURITY_INSTALL_HINT}",
+        warned=True,
+        sarif_findings=[
+            Finding(
+                message=(
+                    f"{name} did not run, so its scan was skipped — "
+                    f"install it with: {_SECURITY_INSTALL_HINT}"
+                ),
+                level=FindingLevel.WARNING,
+            )
+        ],
+    )
+
+
 # Canonical remediations for common bandit test IDs.  These are the fixes
 # bandit's own docs prescribe — we're not guessing, we're relaying the
 # tool's documented resolution.  Rules not in this map get no
@@ -524,6 +548,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             return SecuritySubResult("bandit", False, detail, sarif)
         except json.JSONDecodeError:
             # If JSON parsing fails, check stderr for actual errors
+            if _scanner_failed_to_start(result.output):
+                return _scanner_did_not_run("bandit", result.output)
             if result.stderr and "error" in result.stderr.lower():
                 return SecuritySubResult("bandit", False, result.stderr[-500:])
             # Otherwise bandit ran but produced no JSON (likely no issues)
@@ -585,6 +611,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                 )
             return SecuritySubResult("semgrep", False, detail, sarif)
         except json.JSONDecodeError:
+            if _scanner_failed_to_start(result.output):
+                return _scanner_did_not_run("semgrep", result.output)
             if result.returncode == 1 and result.stderr:
                 return SecuritySubResult("semgrep", False, result.stderr[-300:])
             return SecuritySubResult("semgrep", True, "Scan completed")
@@ -1005,6 +1033,8 @@ class SecurityCheck(SecurityLocalCheck):
         except json.JSONDecodeError:
             if result.success:
                 return SecuritySubResult("pip-audit", True, "No vulnerabilities found")
+            if _scanner_failed_to_start(result.output):
+                return _scanner_did_not_run("pip-audit", result.output)
             return SecuritySubResult(
                 "pip-audit",
                 False,
