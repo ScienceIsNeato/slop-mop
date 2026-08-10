@@ -97,6 +97,67 @@ duplicate function definitions" — the escape hatch is undiscoverable.
 
 ---
 
+
+## 7. `string-duplication` reported paths relative to nothing
+
+`_format_findings` called `os.path.relpath(file_path)` with no start
+directory, so paths resolved against the *process* cwd rather than the
+project root. Underneath it, the scanner ran in a tempdir: on macOS
+`tempfile` hands back `/var/folders/...` while the scanner reports the
+resolved `/private/var/folders/...`, so replacing only the unresolved
+spelling matched the suffix and left `/private` glued to the front of every
+path. Findings pointed at files that did not exist.
+
+**Fixed** — the remap now tries both spellings longest-first, and the
+formatter is passed the project root.
+
+## 8. `dangling-references` could not tell code from prose
+
+Python subscript-then-call is byte-identical to a markdown link, so a
+documented `handlers[parsed_args.command](parsed_args)` inside a ```python
+fence was reported as a broken link to a target named `parsed_args`. The
+scanner walked every line with no notion of code blocks.
+
+On this repo it was the *only* remaining "broken link" after 12 genuine ones
+were repaired — the single finding standing between the gate and green was
+not a defect at all.
+
+**Fixed** — fenced blocks are skipped and inline code spans are blanked
+(preserving line length, so a link whose *text* is code still gets checked).
+
+## 9. A security scanner that never ran was reported as a finding
+
+`_scanner_failed_to_start()` existed, with a comment naming this exact
+failure mode: *"Reporting 'No module named detect_secrets' as SLOP DETECTED
+tells a user they have a leaked secret when they have a broken install."*
+
+It was never called from anywhere.
+
+So on a repo whose venv lacked pip-audit, `dependency-risk` failed with
+"1 security scanner(s) found issues" and a single finding of "pip-audit
+found issues" — naming a vulnerability that does not exist, while hiding
+that nothing had been audited at all.
+
+**Fixed** — bandit, semgrep and pip-audit now route startup failures to a
+warned result naming the install command. A scanner that ran and genuinely
+errored still fails.
+
+## 10. `refit --iterate` named the wrong failing gate
+
+A targeted scour runs the requested gate *plus its dependencies*, so when a
+dependency fails the run stops on a different gate than the one being
+iterated. The block message named the iterated gate anyway, and pointed at
+that gate's log — which had not been rewritten, so it showed the previous
+run's output.
+
+In this run: iterating `missing-annotations` while `sloppy-formatting`
+failed reported *"stopped on failing gate: missing-annotations"* next to a
+stale 13-error mypy log, with the real one-line ruff failure nowhere in
+sight. The artifact's own `first_to_fix` had it right the whole time.
+
+**Fixed** — the failing gate and log now come from `first_to_fix`, and the
+summariser describes the failed result instead of `results[0]`.
+
 ## Refit progress log (real run)
 
 | Step | Gate | Outcome |
@@ -104,4 +165,16 @@ duplicate function definitions" — the escape hatch is undiscoverable.
 | 1 | `myopia:dependency-risk.py` | fixed: real B310 scheme validation + 7 false-positive placeholders tagged (8 → 0) |
 | 2 | `laziness:repeated-code` | config: excluded distributed template packs (49 → 0) |
 | 3 | `myopia:ambiguity-mines.py` | config: excluded vendored copies + test helpers (26 → 0) |
-| 4 | `overconfidence:missing-annotations.py` | **BLOCKED** — barnacle #5 (fails with 0 findings) |
+| 4 | `overconfidence:missing-annotations.py` | fixed: 13 mypy errors incl. 2 latent crashes; duplicate-module abort excluded (13 → 0) |
+| 5 | `myopia:string-duplication.py` | config + barnacles #7 (2 path bugs fixed in slop-mop) |
+| 6 | `myopia:code-sprawl` | fixed: `create_parser()` split into per-group builders; vendored mirror excluded (3 → 0) |
+| 7 | `overconfidence:dangling-references` | fixed: 12 real broken links; 13th was barnacle #8 (13 → 0) |
+| 8 | `myopia:dependency-risk.py` | barnacle #9 — missing scanner reported as a finding |
+| 9 | `overconfidence:type-blindness.py` | fixed: 18 real pyright errors via a typed yaml boundary (555 → 18 → 0) |
+| 10 | `overconfidence:untested-code.py` | fixed: a regression *I* introduced — scheme validation broke `file:` index URLs (3 failing tests → 0) |
+| 11 | `myopia:just-this-once.py` | fixed: 25 tests covering the changed lines |
+| 12 | `overconfidence:coverage-gaps.py` | baselined at measured 40%; changed-line ratchet enforces improvement |
+
+**Final: A+ — shipshape, 0 findings, 21 gates passing.** (Baseline: 8 failing.)
+
+Their own suite went 53 passing / 3 failing → **81 passing / 0 failing**.
