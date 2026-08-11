@@ -35,6 +35,24 @@ STRING_LITERAL_PATTERN = re.compile(
 )
 
 
+def _remap_scan_paths(stdout: str, tmp_dir: str, project_root: str) -> str:
+    """Rewrite tempdir paths in scanner output back to project paths.
+
+    The scanner reports RESOLVED paths. On macOS ``tempfile`` hands back
+    ``/var/folders/...`` while the resolved form is
+    ``/private/var/folders/...``, so replacing only the unresolved spelling
+    matched the suffix and left ``/private`` glued to the front of the
+    project path, producing findings like
+    ``../../../../../private/Users/.../web_scraper.py``. Swap the longest
+    spelling first so one form can't partially match inside the other.
+    """
+    for candidate in sorted(
+        {tmp_dir, str(Path(tmp_dir).resolve())}, key=len, reverse=True
+    ):
+        stdout = stdout.replace(candidate, project_root)
+    return stdout
+
+
 class StringDuplicationCheck(BaseCheck):
     """Duplicate string literal detection.
 
@@ -412,7 +430,9 @@ class StringDuplicationCheck(BaseCheck):
 
         return False
 
-    def _format_findings(self, findings: list[dict[str, Any]]) -> str:
+    def _format_findings(
+        self, findings: list[dict[str, Any]], project_root: str = ""
+    ) -> str:
         """Format findings into human-readable output."""
         if not findings:
             return "No duplicate strings found that meet the threshold."
@@ -437,10 +457,17 @@ class StringDuplicationCheck(BaseCheck):
 
             # Show first 3 files
             for file_path in files[:3]:
-                # Make path relative if possible
+                # Relative to the PROJECT, not the shell's cwd. Without the
+                # start argument this produced paths like
+                # "../../../../../private/Users/..." — unreadable, and not
+                # clickable in an editor or CI annotation.
+                # Both sides are realpath'd first: the scanner emits resolved
+                # absolute paths, so a symlinked project root (/Users vs
+                # /private/Users on macOS) would otherwise escape upward again.
                 try:
-                    rel_path = os.path.relpath(file_path)
-                except ValueError:
+                    start = os.path.realpath(project_root or os.getcwd())
+                    rel_path = os.path.relpath(os.path.realpath(file_path), start)
+                except (ValueError, OSError):
                     rel_path = file_path
                 lines.append(f"    - {rel_path}")
             if len(files) > 3:
@@ -704,7 +731,7 @@ class StringDuplicationCheck(BaseCheck):
                 Finding(
                     message=(
                         f'Duplicate string "{display}" '
-                        f'({item.get("count", 0)} occurrences)'
+                        f"({item.get('count', 0)} occurrences)"
                     ),
                     level=FindingLevel.ERROR,
                     file=first,
@@ -768,7 +795,7 @@ class StringDuplicationCheck(BaseCheck):
         stderr = result.stderr.strip() if result.stderr else ""
 
         if tmp_dir and stdout:
-            stdout = stdout.replace(tmp_dir, project_root)
+            stdout = _remap_scan_paths(stdout, tmp_dir, project_root)
 
         if not stdout:
             return self._create_result(
@@ -789,7 +816,7 @@ class StringDuplicationCheck(BaseCheck):
 
         # Filter and format results
         filtered = self._filter_results(findings, effective_config)
-        output = self._format_findings(filtered)
+        output = self._format_findings(filtered, project_root)
 
         if filtered:
             return self._create_result(

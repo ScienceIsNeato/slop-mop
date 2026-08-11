@@ -1,6 +1,7 @@
 """Tests for string duplication check (wrapper for find-duplicate-strings)."""
 
 import json
+import os
 import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -603,3 +604,105 @@ class TestStringDuplicationCacheInputs:
         fp1 = check_default.cache_inputs(str(tmp_path))
         fp2 = check_strict.cache_inputs(str(tmp_path))
         assert fp1 != fp2
+
+
+class TestFindingPathsAreProjectRelative:
+    """Paths must be relative to the PROJECT, not the shell's cwd.
+
+    Regression: `os.path.relpath(file_path)` with no start argument produced
+    output like "../../../../../private/Users/..." — unreadable, and not
+    clickable in an editor or CI annotation.
+    """
+
+    def test_paths_are_relative_to_project_root(self, tmp_path):
+        from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
+
+        check = StringDuplicationCheck({})
+        findings = [
+            {
+                "key": "a repeated message",
+                "count": 3,
+                "fileCount": 1,
+                "files": [str(tmp_path / "pkg" / "mod.py")],
+            }
+        ]
+        out = check._format_findings(findings, str(tmp_path))
+
+        assert os.path.join("pkg", "mod.py") in out
+        assert ".." not in out
+
+    def test_falls_back_to_cwd_when_root_absent(self, tmp_path, monkeypatch):
+        """Callers that pass no root keep the previous behaviour."""
+        from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
+
+        monkeypatch.chdir(tmp_path)
+        check = StringDuplicationCheck({})
+        findings = [
+            {
+                "key": "msg here now",
+                "count": 2,
+                "fileCount": 1,
+                "files": [str(tmp_path / "x.py")],
+            }
+        ]
+        out = check._format_findings(findings)
+
+        assert "x.py" in out
+
+    def test_resolved_tempdir_paths_map_back_to_project(self, tmp_path):
+        """The scanner reports RESOLVED paths, the caller holds the raw one.
+
+        On macOS /var is a symlink to /private/var, so tempfile hands back
+        /var/folders/... while the scanner reports /private/var/folders/...
+        Replacing only the unresolved spelling matched the suffix and left
+        "/private" glued to the front of the project path. A real symlink is
+        used here so the two spellings genuinely differ on any platform.
+        """
+        from slopmop.checks.quality.duplicate_strings import _remap_scan_paths
+
+        real_tmp = tmp_path / "real_tmp"
+        real_tmp.mkdir()
+        link_tmp = tmp_path / "link_tmp"
+        link_tmp.symlink_to(real_tmp)
+
+        project_root = str(tmp_path / "proj")
+        # What the scanner emits: the resolved spelling.
+        stdout = json.dumps({"file": f"{real_tmp}/pkg/mod.py"})
+
+        # What the caller passes: the unresolved spelling it created.
+        remapped = _remap_scan_paths(stdout, str(link_tmp), project_root)
+
+        assert json.loads(remapped)["file"] == f"{project_root}/pkg/mod.py"
+        assert str(real_tmp) not in remapped
+        assert not os.path.relpath(
+            json.loads(remapped)["file"], project_root
+        ).startswith("..")
+
+
+class TestSymlinkedProjectRoot:
+    def test_symlinked_root_still_yields_relative_paths(self, tmp_path):
+        """The scanner emits realpaths; a symlinked root must still match."""
+        from slopmop.checks.quality.duplicate_strings import StringDuplicationCheck
+
+        real_root = tmp_path / "real"
+        (real_root / "pkg").mkdir(parents=True)
+        target = real_root / "pkg" / "mod.py"
+        target.write_text("x = 1\n")
+
+        link_root = tmp_path / "linked"
+        link_root.symlink_to(real_root)
+
+        check = StringDuplicationCheck({})
+        findings = [
+            {
+                "key": "a repeated message",
+                "count": 3,
+                "fileCount": 1,
+                # What the scanner actually emits: a resolved realpath.
+                "files": [str(target.resolve())],
+            }
+        ]
+        out = check._format_findings(findings, str(link_root))
+
+        assert os.path.join("pkg", "mod.py") in out
+        assert ".." not in out

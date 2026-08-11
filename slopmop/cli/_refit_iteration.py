@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import slopmop.cli.refit as _refit
 from slopmop.cli._refit_formatting import (
@@ -63,10 +63,14 @@ def _summarise_failure_artifact(artifact_path: Path) -> List[str]:
     results_raw = data.get("results")
     if not isinstance(results_raw, list) or not results_raw:
         return []
-    first = cast(Any, results_raw[0])
-    if not isinstance(first, dict):
+    raw_entries = cast(List[Any], results_raw)
+    entries = [cast(Dict[str, Any], r) for r in raw_entries if isinstance(r, dict)]
+    if not entries:
         return []
-    result = cast(Dict[str, Any], first)
+    # A targeted scour also runs the gate's dependencies, so the first result
+    # is not necessarily the one that failed.
+    failed = [r for r in entries if r.get("status") == "failed"]
+    result = failed[0] if failed else entries[0]
 
     lines: List[str] = []
     findings_raw = result.get("findings")
@@ -89,6 +93,35 @@ def _summarise_failure_artifact(artifact_path: Path) -> List[str]:
         lines.append(f"  Fix: {fix.strip()}")
 
     return lines
+
+
+def _artifact_failing_gate(artifact_path: Path) -> Tuple[Optional[str], Optional[str]]:
+    """Return ``(gate, log_file)`` for the gate that actually failed.
+
+    A targeted scour runs the requested gate *and its dependencies*, so the
+    gate being iterated is not always the one that failed. The artifact's
+    ``first_to_fix`` names the real one; reporting the iterated gate instead
+    sends the reader to a log that was never rewritten.
+    """
+    try:
+        raw = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, None
+    if not isinstance(raw, dict):
+        return None, None
+    data_raw = cast(Dict[str, Any], raw).get("data")
+    if not isinstance(data_raw, dict):
+        return None, None
+    first_raw = cast(Dict[str, Any], data_raw).get("first_to_fix")
+    if not isinstance(first_raw, dict):
+        return None, None
+    first = cast(Dict[str, Any], first_raw)
+    gate = first.get("gate")
+    log_file = first.get("log_file")
+    return (
+        gate if isinstance(gate, str) and gate else None,
+        log_file if isinstance(log_file, str) and log_file else None,
+    )
 
 
 def _block_continue_plan(
@@ -442,13 +475,23 @@ def process_current_plan_item(
             increment_attempt=True,
         )
     if exit_code == 1:
+        actual_gate, actual_log = _artifact_failing_gate(artifact_path)
+        failing_gate = actual_gate or gate
         lines = [
-            f"Refit stopped on failing gate: {gate}",
+            f"Refit stopped on failing gate: {failing_gate}",
         ]
+        if actual_gate and actual_gate != gate:
+            lines.append(f"  ({gate} depends on it and cannot run until it passes)")
         lines.extend(_summarise_failure_artifact(artifact_path))
         lines.append(f"Full artifact: {artifact_path}")
-        if current_item.get("log_file"):
-            lines.append(f"Latest log: {current_item['log_file']}")
+        if actual_gate and actual_gate != gate:
+            # The iterated gate's log belongs to a different gate and was not
+            # rewritten by this run — showing it is what caused the confusion.
+            log_file = actual_log
+        else:
+            log_file = actual_log or current_item.get("log_file")
+        if log_file:
+            lines.append(f"Latest log: {log_file}")
         lines.append("Fix the issue, then rerun: sm refit --iterate")
         return _block_continue_plan(
             args,

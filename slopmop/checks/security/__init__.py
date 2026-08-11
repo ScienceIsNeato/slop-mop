@@ -56,6 +56,31 @@ def _scanner_failed_to_start(output: str) -> bool:
     return any(marker in output for marker in _SCANNER_STARTUP_FAILURE_MARKERS)
 
 
+def _scanner_did_not_run(name: str, output: str) -> "SecuritySubResult":
+    """Build the degraded result for a scanner that never started.
+
+    Reported as a warning rather than a failure: nothing was scanned, so
+    there is no finding to report — only a broken environment to repair.
+    """
+    return SecuritySubResult(
+        name,
+        True,
+        f"{name} did not run ({(output or '').strip()[-160:]}); "
+        f"install it with: {_SECURITY_INSTALL_HINT}",
+        warned=True,
+        did_not_run=True,
+        sarif_findings=[
+            Finding(
+                message=(
+                    f"{name} did not run, so its scan was skipped — "
+                    f"install it with: {_SECURITY_INSTALL_HINT}"
+                ),
+                level=FindingLevel.WARNING,
+            )
+        ],
+    )
+
+
 # Canonical remediations for common bandit test IDs.  These are the fixes
 # bandit's own docs prescribe — we're not guessing, we're relaying the
 # tool's documented resolution.  Rules not in this map get no
@@ -117,6 +142,9 @@ class SecuritySubResult:
         default_factory=lambda: cast(List[Finding], [])
     )
     warned: bool = False
+    #: True when the scanner never started (broken install), as opposed to
+    #: having run and reported something non-blocking.
+    did_not_run: bool = False
 
 
 class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
@@ -200,8 +228,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                 field_type="string",
                 default=None,
                 description=(
-                    "Path to detect-secrets baseline file (typically "
-                    ".secrets.baseline)"
+                    "Path to detect-secrets baseline file (typically .secrets.baseline)"
                 ),
                 required=False,
             ),
@@ -361,6 +388,60 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                 skipped.append(_SCANNER_NOT_INSTALLED.format(name=name))
         return sub_checks, skipped
 
+    def _warnings_only_result(
+        self,
+        warnings: List["SecuritySubResult"],
+        duration: float,
+    ) -> CheckResult:
+        """Build a WARNED result when no scanners failed outright."""
+        detail = "\n\n".join(f"[{w.name}]\n{w.findings}" for w in warnings)
+        warning_findings = self._collect_findings(
+            warnings, fallback_level=FindingLevel.WARNING
+        )
+        # A scanner that never started needs an install, not risk triage.
+        if all(w.did_not_run for w in warnings):
+            error = f"{len(warnings)} security scanner(s) did not run"
+            fix_suggestion = (
+                "Nothing was scanned by the tool(s) above, so this is not a "
+                "clean bill of health. Install them with: "
+                f"{_SECURITY_INSTALL_HINT}"
+            )
+        else:
+            error = f"{len(warnings)} security scanner(s) reported non-blocking risk"
+            fix_suggestion = (
+                "No patched versions are currently available for the "
+                "advisories above. Track upstream releases, reassess "
+                "risk periodically, and only use pip_audit_ignore_vulns "
+                "when you have documented acceptance criteria."
+            )
+        return self._create_result(
+            status=CheckStatus.WARNED,
+            duration=duration,
+            output=detail,
+            error=error,
+            fix_suggestion=fix_suggestion,
+            findings=warning_findings,
+        )
+
+    @staticmethod
+    def _collect_findings(
+        sub_results: List["SecuritySubResult"],
+        fallback_level: FindingLevel,
+    ) -> List[Finding]:
+        """Gather SARIF findings from sub-results with a fallback level."""
+        findings: List[Finding] = []
+        for r in sub_results:
+            if r.sarif_findings:
+                findings.extend(r.sarif_findings)
+            else:
+                findings.append(
+                    Finding(
+                        message=f"{r.name} found issues",
+                        level=fallback_level,
+                    )
+                )
+        return findings
+
     def run(self, project_root: str) -> CheckResult:
         """Run configured security checks in parallel.
 
@@ -405,8 +486,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]
+        warnings = [r for r in results if r.warned and r.passed]
 
-        if not failures:
+        if not failures and not warnings:
             tools = ", ".join(r.name for r in results)
             skip_note = f" [skipped: {', '.join(skipped)}]" if skipped else ""
             return self._create_result(
@@ -414,6 +496,10 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                 duration=duration,
                 output=f"All security checks passed ({tools}){skip_note}",
             )
+
+        if warnings and not failures:
+            # Never report "all passed" for a scanner that never started.
+            return self._warnings_only_result(warnings, duration)
 
         detail = "\n\n".join(f"[{f.name}]\n{f.findings}" for f in failures)
         # Flatten per-scanner structured findings; fall back to one
@@ -524,6 +610,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             return SecuritySubResult("bandit", False, detail, sarif)
         except json.JSONDecodeError:
             # If JSON parsing fails, check stderr for actual errors
+            if _scanner_failed_to_start(result.output):
+                return _scanner_did_not_run("bandit", result.output)
             if result.stderr and "error" in result.stderr.lower():
                 return SecuritySubResult("bandit", False, result.stderr[-500:])
             # Otherwise bandit ran but produced no JSON (likely no issues)
@@ -585,6 +673,8 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                 )
             return SecuritySubResult("semgrep", False, detail, sarif)
         except json.JSONDecodeError:
+            if _scanner_failed_to_start(result.output):
+                return _scanner_did_not_run("semgrep", result.output)
             if result.returncode == 1 and result.stderr:
                 return SecuritySubResult("semgrep", False, result.stderr[-300:])
             return SecuritySubResult("semgrep", True, "Scan completed")
@@ -703,32 +793,6 @@ class SecurityCheck(SecurityLocalCheck):
 
         return self._failures_result(failures, warnings, duration)
 
-    def _warnings_only_result(
-        self,
-        warnings: List["SecuritySubResult"],
-        duration: float,
-    ) -> CheckResult:
-        """Build a WARNED result when no scanners failed outright."""
-        detail = "\n\n".join(f"[{w.name}]\n{w.findings}" for w in warnings)
-        warning_findings = self._collect_findings(
-            warnings, fallback_level=FindingLevel.WARNING
-        )
-        return self._create_result(
-            status=CheckStatus.WARNED,
-            duration=duration,
-            output=detail,
-            error=(
-                f"{len(warnings)} security scanner(s) reported " "non-blocking risk"
-            ),
-            fix_suggestion=(
-                "No patched versions are currently available for the "
-                "advisories above. Track upstream releases, reassess "
-                "risk periodically, and only use pip_audit_ignore_vulns "
-                "when you have documented acceptance criteria."
-            ),
-            findings=warning_findings,
-        )
-
     def _failures_result(
         self,
         failures: List["SecuritySubResult"],
@@ -768,25 +832,6 @@ class SecurityCheck(SecurityLocalCheck):
             fix_suggestion=fix_suggestion,
             findings=all_findings,
         )
-
-    @staticmethod
-    def _collect_findings(
-        sub_results: List["SecuritySubResult"],
-        fallback_level: FindingLevel,
-    ) -> List[Finding]:
-        """Gather SARIF findings from sub-results with a fallback level."""
-        findings: List[Finding] = []
-        for r in sub_results:
-            if r.sarif_findings:
-                findings.extend(r.sarif_findings)
-            else:
-                findings.append(
-                    Finding(
-                        message=f"{r.name} found issues",
-                        level=fallback_level,
-                    )
-                )
-        return findings
 
     @staticmethod
     def _has_fix_versions(vulnerability: Dict[str, Any]) -> bool:
@@ -1005,6 +1050,8 @@ class SecurityCheck(SecurityLocalCheck):
         except json.JSONDecodeError:
             if result.success:
                 return SecuritySubResult("pip-audit", True, "No vulnerabilities found")
+            if _scanner_failed_to_start(result.output):
+                return _scanner_did_not_run("pip-audit", result.output)
             return SecuritySubResult(
                 "pip-audit",
                 False,

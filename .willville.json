@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Teaching each check to declare what tools it needs, so one place can install them — did the two tricky ones (security scanners, duplicate-strings) on PR #306, stacked on #305",
-    "direction": "Convert the rest of the checks the same way, then let doctor read the list and have the GitHub Action install from it",
-    "last_update": "2026-06-20T02:25:00Z"
+    "status": "Ran slop-mop cold on a stranger's repo (rulebook-ai) as a case study and drove it from failing to a clean bill of health — the run shook out four of our own bugs, up on PR #332",
+    "direction": "Write the case study up for the site now that we have the before and after numbers",
+    "last_update": "2026-08-10T21:45:00Z"
   }
 }

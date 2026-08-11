@@ -177,3 +177,54 @@ class TestNoFalsePositives:
         sub.mkdir()
         (sub / "page.md").write_text("[home](../guide.md)\n")
         assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_fenced_code_block_skipped(self, tmp_path):
+        # handlers[key](arg) is python subscript-then-call, not a link
+        (tmp_path / "README.md").write_text(
+            "# Doc\n\n```python\nreturn handlers[parsed_args.command](parsed_args)\n```\n"
+        )
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_tilde_fence_skipped(self, tmp_path):
+        (tmp_path / "README.md").write_text("~~~python\nd = cfg[name](value)\n~~~\n")
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_inline_code_span_skipped(self, tmp_path):
+        (tmp_path / "README.md").write_text("Call `handlers[cmd](args)` to run.\n")
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_link_after_fence_still_checked(self, tmp_path):
+        # closing the fence must re-enable checking, or real breaks slip through
+        (tmp_path / "README.md").write_text(
+            "```python\nx = a[b](c)\n```\n\n[gone](./missing.md)\n"
+        )
+        result = _dr_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert "missing.md" in str(result.findings[0].message)
+        # Blanking must preserve position, so the link keeps its real line.
+        assert result.findings[0].line == 5
+
+    def test_code_span_as_link_text_still_checked(self, tmp_path):
+        # blanking the span must not swallow the link's target
+        (tmp_path / "README.md").write_text("[`spec.md`](./missing_spec.md)\n")
+        result = _dr_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert "missing_spec.md" in str(result.findings[0].message)
+
+    def test_multi_backtick_span_closes_on_equal_run(self, tmp_path):
+        # A shorter run inside the span must not close it early.
+        (tmp_path / "README.md").write_text("``a` [gone](./missing.md)``\n")
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_code_span_wrapping_lines_is_blanked(self, tmp_path):
+        # The span opens on line 1 and closes on line 2; neither is prose.
+        (tmp_path / "README.md").write_text("`handlers[key](arg)\nmore`\n")
+        assert _dr_run(tmp_path).status == CheckStatus.PASSED
+
+    def test_unclosed_backtick_does_not_swallow_later_links(self, tmp_path):
+        # An unmatched backtick is literal text, not an open span — a real
+        # broken link after it must still be reported.
+        (tmp_path / "README.md").write_text("a ` stray tick\n\n[gone](./missing.md)\n")
+        result = _dr_run(tmp_path)
+        assert result.status == CheckStatus.FAILED
+        assert "missing.md" in str(result.findings[0].message)

@@ -932,3 +932,100 @@ class TestRunPipAudit:
         (req_dir / "dev.txt").write_text("")
         found = SecurityCheck._find_requirements_files(str(tmp_path))
         assert len(found) == 2
+
+
+class TestScannerStartupFailures:
+    """A scanner that never started is a broken env, not a security finding."""
+
+    def _broken_install(self, stdout=""):
+        mock_result = MagicMock()
+        mock_result.stdout = stdout
+        mock_result.stderr = "No module named pip_audit"
+        mock_result.output = "No module named pip_audit"
+        mock_result.success = False
+        mock_result.returncode = 1
+        mock_result.timed_out = False
+        return mock_result
+
+    def test_pip_audit_missing_module_warns_not_fails(self, tmp_path):
+        # pip-audit short-circuits without a manifest, so give it one.
+        (tmp_path / "requirements.txt").write_text("requests==2.31.0\n")
+        check = SecurityCheck({})
+        with patch.object(check, "_run_command", return_value=self._broken_install()):
+            result = check._run_pip_audit(str(tmp_path))
+
+        # Nothing was scanned, so there is no vulnerability to report.
+        assert result.passed is True
+        assert result.warned is True
+        assert "did not run" in result.findings
+
+    def test_bandit_missing_module_warns_not_fails(self, tmp_path):
+        check = SecurityLocalCheck({})
+        mock_result = self._broken_install(stdout="not json")
+        mock_result.stderr = "ModuleNotFoundError: No module named 'bandit'"
+        mock_result.output = "ModuleNotFoundError: No module named 'bandit'"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_bandit(str(tmp_path))
+
+        assert result.warned is True
+        assert result.passed is True
+
+    def test_semgrep_missing_module_warns_not_fails(self, tmp_path):
+        check = SecurityLocalCheck({})
+        mock_result = self._broken_install(stdout="not json")
+        mock_result.stderr = "No module named semgrep"
+        mock_result.output = "No module named semgrep"
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_semgrep(str(tmp_path))
+
+        assert result.warned is True
+        assert result.passed is True
+
+    def test_real_scan_failure_still_fails(self, tmp_path):
+        """A scanner that ran and errored must NOT be softened to a warning."""
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.stdout = "not json"
+        mock_result.stderr = "semgrep error: invalid rule config"
+        mock_result.output = "semgrep error: invalid rule config"
+        mock_result.success = False
+        mock_result.returncode = 1
+        mock_result.timed_out = False
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_semgrep(str(tmp_path))
+
+        assert result.passed is False
+        assert result.warned is False
+
+    def test_local_run_warns_when_scanner_never_started(self, tmp_path):
+        """A broken install must never render as 'All security checks passed'."""
+        check = SecurityLocalCheck({"scanners": ["bandit"]})
+        broken = self._broken_install(stdout="not json")
+        broken.stderr = "ModuleNotFoundError: No module named 'bandit'"
+        broken.output = "ModuleNotFoundError: No module named 'bandit'"
+
+        with patch.object(check, "_run_command", return_value=broken):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert "did not run" in (result.error or "")
+        assert "All security checks passed" not in (result.output or "")
+        assert result.findings
+
+    def test_local_run_still_passes_when_scanners_are_clean(self, tmp_path):
+        check = SecurityLocalCheck({"scanners": ["bandit"]})
+        clean = MagicMock()
+        clean.stdout = json.dumps({"results": []})
+        clean.stderr = ""
+        clean.output = ""
+        clean.success = True
+        clean.returncode = 0
+        clean.timed_out = False
+
+        with patch.object(check, "_run_command", return_value=clean):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.PASSED
