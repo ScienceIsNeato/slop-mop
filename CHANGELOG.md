@@ -53,10 +53,13 @@ against this repo. The case-study artifacts are in `DOCS/case-studies/`.
   project path. Paths are now project-relative, with both spellings remapped
   and symlinked roots resolved on both sides.
 - **`dangling-references` could not tell code from prose** (#332) — Python
-  subscript-then-call is byte-identical to markdown link syntax, so a
-  documented `handlers[key](arg)` inside a fenced block was reported as a
-  broken link. Fenced blocks are now skipped and inline code spans blanked,
-  with multi-backtick and line-wrapping spans handled.
+  subscript-then-call — indexing a dict of handlers, then calling the result
+  — is byte-identical to markdown link syntax, so a code sample using that
+  form inside a fenced block was reported as a broken link, with the call's
+  argument name as the supposed target. Fenced blocks are now skipped and
+  inline code spans blanked, with multi-backtick and line-wrapping spans
+  handled. (Written without the literal form: the released version flagged
+  this very entry.)
 - **`sm refit --iterate` named the wrong failing gate** (#332) — a targeted
   scour runs the requested gate *and its dependencies*, so a failing
   dependency was reported under the iterated gate's name, pointing at that
