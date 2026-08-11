@@ -178,4 +178,4 @@ summariser describes the failed result instead of `results[0]`.
 
 **Final: A+ — shipshape, 0 findings, 21 gates passing.** (Baseline: 8 failing.)
 
-Their own suite went 53 passing / 3 failing → **81 passing / 0 failing**.
+Their own suite: **56 passing at the merge-base, 81 passing at the end** (25 added). An earlier draft of this line read "53 passing / 3 failing → 81 passing", which implied we inherited three broken tests. We did not — those three were *our* regression, from the scheme validation in step 1, and the `git stash` baseline that appeared to clear us only removed *uncommitted* work. See barnacle 10's neighbours in the ledger.
