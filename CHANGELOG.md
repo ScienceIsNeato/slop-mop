@@ -54,8 +54,8 @@ against this repo. The case-study artifacts are in `DOCS/case-studies/`.
   and symlinked roots resolved on both sides.
 - **`dangling-references` could not tell code from prose** (#332) — Python
   subscript-then-call — indexing a dict of handlers, then calling the result
-  — is byte-identical to markdown link syntax, so a code sample using that
-  form inside a fenced block was reported as a broken link, with the call's
+  — matches the inline-link pattern exactly, so a code sample using that form
+  inside a fenced block was reported as a broken link, with the call's
   argument name as the supposed target. Fenced blocks are now skipped and
   inline code spans blanked, with multi-backtick and line-wrapping spans
   handled. (Written without the literal form: the released version flagged
@@ -79,8 +79,9 @@ against this repo. The case-study artifacts are in `DOCS/case-studies/`.
 
 - **Ignore three `mcp` server-transport advisories** (#330) — PYSEC-2026-3481,
   3482 and 3483 have no upgrade path: `mcp` arrives transitively from semgrep,
-  which pins `mcp==1.23.3` exactly, on the latest release as well. Documented
-  with a re-check trigger rather than left to fail the weekly scan.
+  which pins `mcp==1.23.3` exactly, still true as of semgrep 1.172.0. The
+  ignore must be re-checked when semgrep unpins `mcp`; until then the weekly
+  scheduled scan would fail every week on an advisory nothing can act on.
 - **Case-study artifacts and barnacle write-up** (#331, #333) — baseline and
   final scour artifacts plus the full ledger, including a correction to a
   test-count claim that credited us with a repair we had not made.
