@@ -178,4 +178,13 @@ summariser describes the failed result instead of `results[0]`.
 
 **Final: A+ — shipshape, 0 findings, 21 gates passing.** (Baseline: 8 failing.)
 
-Their own suite went 53 passing / 3 failing → **81 passing / 0 failing**.
+Their own suite: **56 passing at the merge-base, 81 passing at the end**
+(25 added).
+
+An earlier draft of this line read "53 passing / 3 failing → 81 passing",
+which implied we inherited three broken tests. We did not. Those three were
+*our* regression — the URL-scheme validation from step 1 dropped `file:`
+support, which their community-index tests depend on — and the `git stash`
+check that appeared to clear us only removes *uncommitted* work, so the
+already-committed break survived it. Step 10 in the log above is where it
+was found and fixed.
