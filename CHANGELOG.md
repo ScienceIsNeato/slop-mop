@@ -6,6 +6,86 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.13.0
+
+Everything below except the `mcp` advisory came out of running `sm refit`
+cold against a repository nobody here had seen — `botingw/rulebook-ai` — and
+hitting the tool's own defects along the way. Ten were filed as barnacles
+against this repo. The case-study artifacts are in `DOCS/case-studies/`.
+
+### Behavior changes
+
+- **A security scanner that fails to start is no longer a finding** (#332) —
+  when bandit, semgrep or pip-audit could not be imported, the gate reported
+  "N security scanner(s) found issues" with a fabricated finding naming a
+  vulnerability that did not exist, while concealing that nothing had been
+  scanned. The guard for this already existed in the codebase and was never
+  called. Startup failures now produce a **WARNED** result naming the install
+  command. **Upgrade note:** a repo whose environment is missing a scanner
+  moves from FAILED to WARNED — the gate stops failing, so check `sm doctor`
+  if you were relying on that failure. A scanner that ran and genuinely
+  errored still FAILS.
+- **Findings across byte-identical copies of a file are collapsed** (#331) —
+  repos that vendor or distribute duplicated trees reported the same defect
+  once per copy (one unused import in seven identical template copies read as
+  five to seven findings). Survivors carry an `[also in N identical copies]`
+  note. **Upgrade note:** reported finding counts will drop on such repos.
+  The underlying files are unchanged; only the deduplicated count is new.
+- **Version drift in `sm doctor` warns instead of failing** (#331) — a
+  patch-level mismatch between an installed tool and its pin blocked
+  `sm refit` outright. Missing and rejected tools still FAIL.
+- **`missing-annotations` reports a could-not-run as ERROR** (#331) — when
+  mypy exited non-zero for a non-type reason (duplicate module names, config
+  errors) the gate reported `FAILED: 0 type error(s) found` with empty
+  output. It now returns ERROR carrying mypy's own message. Genuine type
+  errors still FAIL.
+- **The hull grade label carries a findings count and delta** (#331) — e.g.
+  `F — scuttled · 20 findings (down 37)`. The **letter grades are unchanged**,
+  so `minimum-grade` in the GitHub Action behaves exactly as before.
+
+### Fixes
+
+- **`string-duplication` reported paths that did not exist** (#332) — two
+  layered bugs: `os.path.relpath` was called with no start directory, so
+  paths resolved against the process working directory; and on macOS the
+  scanner's resolved `/private/var/...` tempdir spelling did not match the
+  unresolved `/var/...` one, leaving `/private` glued to the front of every
+  project path. Paths are now project-relative, with both spellings remapped
+  and symlinked roots resolved on both sides.
+- **`dangling-references` could not tell code from prose** (#332) — Python
+  subscript-then-call — indexing a dict of handlers, then calling the result
+  — matches the inline-link pattern exactly, so a code sample using that form
+  inside a fenced block was reported as a broken link, with the call's
+  argument name as the supposed target. Fenced blocks are now skipped and
+  inline code spans blanked, with multi-backtick and line-wrapping spans
+  handled. (Written without the literal form: the released version flagged
+  this very entry.)
+- **`sm refit --iterate` named the wrong failing gate** (#332) — a targeted
+  scour runs the requested gate *and its dependencies*, so a failing
+  dependency was reported under the iterated gate's name, pointing at that
+  gate's log, which had not been rewritten and still showed the previous
+  run's output. The failing gate and log now come from the artifact's
+  `first_to_fix`.
+- **`sm init` disabled gates, then `sm refit` blocked on init's own choice**
+  (#331) — auto-disabled gates now record that provenance, and refit treats a
+  tool-owned disable as resolved rather than pending review. A gate you
+  disabled yourself is still yours, and stays that way across re-runs.
+- **`ambiguity-mines` did not mention `exclude_dirs`** (#331) — vendored and
+  distributed copies should be excluded rather than refactored, which is what
+  its sibling `repeated-code` already advised. The hint now names the option
+  and prints the command.
+
+### Chores
+
+- **Ignore three `mcp` server-transport advisories** (#330) — PYSEC-2026-3481,
+  3482 and 3483 have no upgrade path: `mcp` arrives transitively from semgrep,
+  which pins `mcp==1.23.3` exactly, still true as of semgrep 1.172.0. The
+  ignore must be re-checked when semgrep unpins `mcp`; until then the weekly
+  scheduled scan would fail every week on an advisory nothing can act on.
+- **Case-study artifacts and barnacle write-up** (#331, #333) — baseline and
+  final scour artifacts plus the full ledger, including a correction to a
+  test-count claim that credited us with a repair we had not made.
+
 ## 2.12.0
 
 ### New gate checks
