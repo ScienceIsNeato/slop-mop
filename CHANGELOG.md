@@ -6,6 +6,24 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.13.2
+
+### Bug fixes
+
+- **A formatter/linter that runs out of time is no longer reported as a
+  finding** — a killed `isort` surfaced as "Import order issues found" with
+  no file to look at, and a killed `black` as "Formatting check failed",
+  sending people hunting for drift that was never detected. Each tool now
+  says it ran out of time and names the knob that fixes it. Same pathology as
+  the detect-secrets timeout fixed in 2.13.1, in the lint/format gate.
+
+### New configuration
+
+- **`tool_timeout` on `laziness:sloppy-formatting.py`** (default 60) — a
+  large tree can format in 40-55s standalone and tip past the fixed ceiling
+  once `scour` runs gates in parallel. Raising the timeout is the honest fix;
+  the alternative was narrowing what gets formatted.
+
 ## 2.13.1
 
 ### Bug fixes

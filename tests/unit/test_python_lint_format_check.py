@@ -409,3 +409,65 @@ class TestPythonLintFormatCheck:
         assert any(
             "corrupted" in f.message for f in findings
         ), "Expected raw output snippet in finding"
+
+
+class TestToolTimeouts:
+    """A killed formatter reached no verdict — it is not a finding."""
+
+    def _timed_out(self):
+        return SubprocessResult(
+            returncode=-9, stdout="", stderr="", duration=60.0, timed_out=True
+        )
+
+    def test_isort_timeout_is_not_reported_as_import_drift(self, tmp_path):
+        """Regression: a killed isort said 'Import order issues found'.
+
+        With no ERROR lines to name a file, the message pointed at nothing —
+        sending people looking for drift that was never detected.
+        """
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_isort(str(tmp_path))
+
+        assert result is not None
+        assert "did not finish" in result
+        assert "NOT a formatting finding" in result
+        assert "Import order issues" not in result
+
+    def test_black_timeout_is_not_reported_as_formatting_drift(self, tmp_path):
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_black(str(tmp_path))
+
+        assert result is not None
+        assert "did not finish" in result
+
+    def test_tool_timeout_is_configurable(self):
+        """A large tree can legitimately need longer than the default."""
+        assert PythonLintFormatCheck({})._tool_timeout() == 60
+        assert PythonLintFormatCheck({"tool_timeout": 180})._tool_timeout() == 180
+
+    def test_tool_timeout_ignores_junk_values(self):
+        """Garbage or non-positive config falls back to the default."""
+        assert PythonLintFormatCheck({"tool_timeout": "abc"})._tool_timeout() == 60
+        assert PythonLintFormatCheck({"tool_timeout": 0})._tool_timeout() == 60
+        assert PythonLintFormatCheck({"tool_timeout": -5})._tool_timeout() == 60
+
+    def test_configured_timeout_reaches_the_subprocess(self, tmp_path):
+        """The knob must actually be handed to the runner."""
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="", stderr="", duration=1.0
+        )
+
+        check = PythonLintFormatCheck({"tool_timeout": 240}, runner=mock_runner)
+        check._check_isort(str(tmp_path))
+
+        assert mock_runner.run.call_args.kwargs["timeout"] == 240

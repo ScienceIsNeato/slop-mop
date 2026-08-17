@@ -178,6 +178,20 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 permissiveness="lower_is_stricter",
             ),
             ConfigField(
+                name="tool_timeout",
+                field_type="integer",
+                default=DEFAULT_TOOL_TIMEOUT,
+                description=(
+                    "Seconds each formatter/linter subprocess may run. The "
+                    "default suits most repos, but a large tree can format in "
+                    "40-55s standalone and tip past it once scour runs gates "
+                    "in parallel — which surfaced as a phantom formatting "
+                    "finding. Raise this rather than narrowing what gets "
+                    "formatted."
+                ),
+                permissiveness="lower_is_stricter",
+            ),
+            ConfigField(
                 name="formatter",
                 field_type="string",
                 default="auto",
@@ -192,6 +206,31 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 ),
             ),
         ]
+
+    def _tool_timeout(self) -> int:
+        """Per-subprocess ceiling, overridable via the ``tool_timeout`` config."""
+        try:
+            configured = int(self.config.get("tool_timeout", DEFAULT_TOOL_TIMEOUT))
+        except (TypeError, ValueError):
+            return DEFAULT_TOOL_TIMEOUT
+        return configured if configured > 0 else DEFAULT_TOOL_TIMEOUT
+
+    def _timed_out_message(self, tool: str, result: object) -> Optional[str]:
+        """Honest text for a killed subprocess, or None if it wasn't killed.
+
+        A tool that ran out of time reached no verdict, so it says nothing
+        about the code. Reporting it as "issues found" — with no file to look
+        at — sends people hunting for formatting drift that was never
+        detected. Name what happened and the knob that fixes it.
+        """
+        if not getattr(result, "timed_out", False):
+            return None
+        return (
+            f"{tool} did not finish within {self._tool_timeout()}s, so it "
+            "reached no verdict — this is NOT a formatting finding. Large "
+            "trees can tip past the limit when gates run in parallel; raise "
+            "this gate's tool_timeout."
+        )
 
     def _effective_formatter(self, project_root: str) -> Optional[str]:
         """Return 'ruff', 'black', or None (use black defaults).
@@ -234,7 +273,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "format", "."],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if result.success:
             fixed = True
@@ -245,7 +284,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "check", "--fix", "--select", "I,F401", "."],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if result.success:
             fixed = True
@@ -272,7 +311,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 ".",
             ],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if result.success:
             fixed = True
@@ -290,7 +329,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     target,
                 ],
                 cwd=project_root,
-                timeout=DEFAULT_TOOL_TIMEOUT,
+                timeout=self._tool_timeout(),
             )
             if result.success:
                 fixed = True
@@ -300,7 +339,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
         isort_cmd.extend(["--skip-glob=.*", "."])
         result = self._run_command(
-            isort_cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT
+            isort_cmd, cwd=project_root, timeout=self._tool_timeout()
         )
         if result.success:
             fixed = True
@@ -421,7 +460,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "format", "--check", "."],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if not result.success:
             output = (result.output or "").strip()
@@ -435,7 +474,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "check", "--select", "I", "."],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if not result.success:
             output = (result.output or "").strip()
@@ -478,9 +517,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     target,
                 ],
                 cwd=project_root,
-                timeout=DEFAULT_TOOL_TIMEOUT,
+                timeout=self._tool_timeout(),
             )
             if not result.success:
+                timed_out = self._timed_out_message("black", result)
+                if timed_out:
+                    return timed_out
                 output = (result.output or "").strip()
                 # Distinguish tool-installation failures from real formatting
                 # issues.  A broken black (missing dependency, bad interpreter,
@@ -513,10 +555,13 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # tool infrastructure rather than project source code.
         isort_cmd.extend(["--skip-glob=.*", "."])
         result = self._run_command(
-            isort_cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT
+            isort_cmd, cwd=project_root, timeout=self._tool_timeout()
         )
 
         if not result.success:
+            timed_out = self._timed_out_message("isort", result)
+            if timed_out:
+                return timed_out
             # isort outputs "ERROR: file.py ..." or "Skipped X files"
             # Extract file paths from output for actionable feedback
             output = result.output if result.output else ""
@@ -581,9 +626,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             ]
             + targets,
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
 
+        timed_out = self._timed_out_message("flake8", result)
+        if timed_out:
+            return timed_out, []
         if not result.success and result.output.strip():
             lines = result.output.strip().split("\n")
             findings: List[Finding] = []
