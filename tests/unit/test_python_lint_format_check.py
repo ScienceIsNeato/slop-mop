@@ -138,15 +138,45 @@ class TestPythonLintFormatCheck:
         assert "node_modules" not in targets
 
     def test_get_python_targets_includes_standard_dirs(self, tmp_path):
-        """Test _get_python_targets includes src, tests, lib dirs."""
+        """Directories holding Python are targeted, wherever they sit.
+
+        Selection is by CONTENT, not by name. The old name-based heuristic
+        (src/tests/test/lib, or a top-level dir with ``__init__.py``) missed
+        any repo keeping its code one level down — ``server/app`` beside a
+        ``client/`` — and returned an EMPTY list, which made flake8 silently
+        check nothing while reporting no errors.
+        """
         (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("import os\n")
         (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_app.py").write_text("import os\n")
+        # Nested one level down — the layout the old heuristic could not see.
+        (tmp_path / "server" / "app").mkdir(parents=True)
+        (tmp_path / "server" / "app" / "main.py").write_text("import os\n")
 
         check = PythonLintFormatCheck({})
         targets = check._get_python_targets(str(tmp_path))
+        joined = " ".join(targets)
 
-        assert "src" in targets
-        assert "tests" in targets
+        assert "src" in joined
+        assert "tests" in joined
+        # The nested tree is covered — as `server` when the whole directory is
+        # clean (one cheap argument) or as `server/app` when something beside
+        # it had to be pruned. Either way flake8 now sees it.
+        assert "server" in joined
+        assert "." not in targets  # not the everything fallback
+
+    def test_get_python_targets_falls_back_when_no_python(self, tmp_path):
+        """A tree with no Python yields '.', never an empty list.
+
+        An empty list reads as "nothing to check" and lets a gate report a
+        clean pass without having looked at anything.
+        """
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "readme.md").write_text("hi\n")
+
+        check = PythonLintFormatCheck({})
+        assert check._get_python_targets(str(tmp_path)) == ["."]
 
     def test_auto_fix_falls_back_to_current_dir(self, tmp_path):
         """Test auto_fix uses '.' when no targets found."""
@@ -409,3 +439,121 @@ class TestPythonLintFormatCheck:
         assert any(
             "corrupted" in f.message for f in findings
         ), "Expected raw output snippet in finding"
+
+
+class TestToolTimeouts:
+    """A killed formatter reached no verdict — it is not a finding."""
+
+    def _timed_out(self):
+        return SubprocessResult(
+            returncode=-9, stdout="", stderr="", duration=60.0, timed_out=True
+        )
+
+    def test_isort_timeout_is_not_reported_as_import_drift(self, tmp_path):
+        """Regression: a killed isort said 'Import order issues found'.
+
+        With no ERROR lines to name a file, the message pointed at nothing —
+        sending people looking for drift that was never detected.
+        """
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_isort(str(tmp_path))
+
+        assert result is not None
+        assert "did not finish" in result
+        assert "NOT a formatting finding" in result
+        assert "Import order issues" not in result
+
+    def test_black_timeout_is_not_reported_as_formatting_drift(self, tmp_path):
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_black(str(tmp_path))
+
+        assert result is not None
+        assert "did not finish" in result
+
+    def test_tool_timeout_is_configurable(self):
+        """A large tree can legitimately need longer than the default."""
+        assert PythonLintFormatCheck({})._tool_timeout() == 60
+        assert PythonLintFormatCheck({"tool_timeout": 180})._tool_timeout() == 180
+
+    def test_tool_timeout_ignores_junk_values(self):
+        """Garbage or non-positive config falls back to the default."""
+        assert PythonLintFormatCheck({"tool_timeout": "abc"})._tool_timeout() == 60
+        assert PythonLintFormatCheck({"tool_timeout": 0})._tool_timeout() == 60
+        assert PythonLintFormatCheck({"tool_timeout": -5})._tool_timeout() == 60
+
+    def test_configured_timeout_reaches_the_subprocess(self, tmp_path):
+        """The knob must actually be handed to the runner."""
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=0, stdout="", stderr="", duration=1.0
+        )
+
+        check = PythonLintFormatCheck({"tool_timeout": 240}, runner=mock_runner)
+        check._check_isort(str(tmp_path))
+
+        assert mock_runner.run.call_args.kwargs["timeout"] == 240
+
+
+class TestTimeoutNeverBecomesAFinding:
+    """Review feedback on #338: honest TEXT wasn't enough — the status lied."""
+
+    def _timed_out(self):
+        return SubprocessResult(
+            returncode=-9, stdout="", stderr="", duration=60.0, timed_out=True
+        )
+
+    def test_timeout_only_run_warns_instead_of_failing(self, tmp_path):
+        """A run whose every issue is a timeout must WARN, not FAIL.
+
+        The first pass made the message honest but still returned FAILED with
+        an invented ERROR finding, so callers saw SLOP DETECTED and went
+        looking for drift that was never detected.
+        """
+        (tmp_path / "app.py").write_text("import os\n")
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert not result.findings  # nothing was detected, so invent nothing
+
+    def test_ruff_format_timeout_is_not_drift(self, tmp_path):
+        """The ruff paths were missed by the first pass."""
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_ruff_format(str(tmp_path))
+
+        assert result is not None
+        assert "did not finish" in result
+        assert "Ruff format check failed" not in result
+
+    def test_ruff_imports_timeout_is_not_drift(self, tmp_path):
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_ruff_imports(str(tmp_path))
+
+        assert result is not None
+        assert "did not finish" in result
+        assert "Import order issues" not in result
+
+    def test_real_failure_alongside_timeout_still_fails(self, tmp_path):
+        """A genuine finding must not be downgraded just because something
+        else timed out — only an all-timeout run warns."""
+        check = PythonLintFormatCheck({})
+        assert check._is_all_timeouts(["[timed-out] isort ...", "real drift"]) is False
+        assert check._is_all_timeouts(["[timed-out] isort ..."]) is True

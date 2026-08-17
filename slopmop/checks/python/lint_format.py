@@ -12,7 +12,6 @@ instead of running black/isort/autoflake.  This prevents formatting churn
 when the host's CI would immediately reformat slop-mop's output.
 """
 
-import os
 import re
 import time
 from typing import List, Optional
@@ -27,6 +26,7 @@ from slopmop.checks.base import (
     Requirements,
     ToolContext,
     pip_cli_requirement,
+    resolve_tool_paths,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
@@ -44,6 +44,12 @@ _FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
 # skip without treating it as a pass.
 _BLACK_SKIPPED = "__BLACK_SKIPPED_BROKEN_INSTALL__"
 _RUFF_SKIPPED = "__RUFF_SKIPPED_NOT_INSTALLED__"
+
+# Prefix carried by every "this tool ran out of time" message, so run() can
+# tell a killed subprocess apart from a real finding. Without it, honest
+# timeout TEXT still arrived as a FAILED result with an invented finding —
+# the phantom this gate exists to prevent.
+_TIMED_OUT_MARKER = "[timed-out]"
 
 _DEFAULT_EXCLUDE_DIRS = [
     "venv",
@@ -178,6 +184,20 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 permissiveness="lower_is_stricter",
             ),
             ConfigField(
+                name="tool_timeout",
+                field_type="integer",
+                default=DEFAULT_TOOL_TIMEOUT,
+                description=(
+                    "Seconds each formatter/linter subprocess may run. The "
+                    "default suits most repos, but a large tree can format in "
+                    "40-55s standalone and tip past it once scour runs gates "
+                    "in parallel — which surfaced as a phantom formatting "
+                    "finding. Raise this rather than narrowing what gets "
+                    "formatted."
+                ),
+                permissiveness="lower_is_stricter",
+            ),
+            ConfigField(
                 name="formatter",
                 field_type="string",
                 default="auto",
@@ -192,6 +212,54 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 ),
             ),
         ]
+
+    def _tool_timeout(self) -> int:
+        """Per-subprocess ceiling, overridable via the ``tool_timeout`` config."""
+        try:
+            configured = int(self.config.get("tool_timeout", DEFAULT_TOOL_TIMEOUT))
+        except (TypeError, ValueError):
+            return DEFAULT_TOOL_TIMEOUT
+        return configured if configured > 0 else DEFAULT_TOOL_TIMEOUT
+
+    def _is_all_timeouts(self, issues: List[str]) -> bool:
+        """True when every issue is a killed tool rather than a real finding."""
+        return bool(issues) and all(_TIMED_OUT_MARKER in i for i in issues)
+
+    def _timeout_warning(
+        self, issues: List[str], output_parts: List[str], duration: float
+    ) -> CheckResult:
+        """WARNED, with no fabricated finding, for a run that only timed out.
+
+        A killed tool reached no verdict, so FAILED plus an invented Finding
+        would be exactly the phantom this gate exists to prevent.
+        """
+        return self._create_result(
+            status=CheckStatus.WARNED,
+            duration=duration,
+            output="\n".join(output_parts),
+            error="; ".join(issues),
+            fix_suggestion=(
+                "Raise this gate's tool_timeout, or narrow the scan with "
+                "exclude_dirs."
+            ),
+        )
+
+    def _timed_out_message(self, tool: str, result: object) -> Optional[str]:
+        """Honest text for a killed subprocess, or None if it wasn't killed.
+
+        A tool that ran out of time reached no verdict, so it says nothing
+        about the code. Reporting it as "issues found" — with no file to look
+        at — sends people hunting for formatting drift that was never
+        detected. Name what happened and the knob that fixes it.
+        """
+        if not getattr(result, "timed_out", False):
+            return None
+        return (
+            f"{_TIMED_OUT_MARKER} {tool} did not finish within "
+            f"{self._tool_timeout()}s, so it reached no verdict — this is NOT "
+            "a formatting finding. Large trees can tip past the limit when "
+            "gates run in parallel; raise this gate's tool_timeout."
+        )
 
     def _effective_formatter(self, project_root: str) -> Optional[str]:
         """Return 'ruff', 'black', or None (use black defaults).
@@ -234,7 +302,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "format", "."],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if result.success:
             fixed = True
@@ -245,7 +313,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "check", "--fix", "--select", "I,F401", "."],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if result.success:
             fixed = True
@@ -259,7 +327,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Find Python source directories to format
         targets = self._get_python_targets(project_root)
         if not targets:
-            targets = ["."]
+            # Nothing the tools care about. Falling back to "." here would
+            # format the entire tree, including everything git told us to skip.
+            return False
 
         # Run autoflake first to remove unused imports
         result = self._run_command(
@@ -269,10 +339,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "--remove-all-unused-imports",
                 "--recursive",
                 f"--exclude={','.join(_DEFAULT_EXCLUDE_DIRS)}",
-                ".",
-            ],
+            ]
+            + targets,
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if result.success:
             fixed = True
@@ -290,7 +360,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     target,
                 ],
                 cwd=project_root,
-                timeout=DEFAULT_TOOL_TIMEOUT,
+                timeout=self._tool_timeout(),
             )
             if result.success:
                 fixed = True
@@ -298,9 +368,17 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Run isort — skip hidden directories to match _check_isort behaviour
         isort_cmd = ["isort", "--profile", "black"]
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
-        isort_cmd.extend(["--skip-glob=.*", "."])
+        targets = self._get_python_targets(project_root)
+        if not targets:
+            # Nothing to sort. Report what earlier steps fixed rather
+            # than None — this path returns a bool.
+            return fixed
+        isort_cmd.append("--skip-glob=.*")
+        # Explicit targets, never ".": isort's --skip is a post-filter, so a
+        # bare "." still walks (and opens) every file in a nested .venv.
+        isort_cmd.extend(targets)
         result = self._run_command(
-            isort_cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT
+            isort_cmd, cwd=project_root, timeout=self._tool_timeout()
         )
         if result.success:
             fixed = True
@@ -308,24 +386,31 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         return fixed
 
     def _get_python_targets(self, project_root: str) -> List[str]:
-        """Get Python directories to lint/format."""
-        targets: List[str] = []
-        exclude_dirs = set(_DEFAULT_EXCLUDE_DIRS)
+        """Paths to hand the formatters and linters.
 
-        for entry in os.listdir(project_root):
-            if entry in exclude_dirs or entry.startswith("."):
-                continue
-            entry_path = os.path.join(project_root, entry)
-            if os.path.isdir(entry_path):
-                # Check if it's a Python package or has Python files
-                if os.path.exists(os.path.join(entry_path, "__init__.py")):
-                    targets.append(entry)
-                elif entry in ("src", "tests", "test", "lib"):
-                    targets.append(entry)
-            elif entry.endswith(".py"):
-                targets.append(entry)
+        This used to inspect only TOP-LEVEL entries, adding a directory just
+        for holding ``__init__.py`` or being named src/tests/test/lib. A repo
+        that keeps its code one level down — ``server/app`` next to
+        ``client/`` — matched none of those, so the list came back EMPTY and
+        flake8 silently checked nothing while reporting "no critical errors".
+        A gate that passes without looking is worse than one that fails.
 
-        return targets
+        The shared resolver walks the tree instead, pruning vendored and
+        excluded directories at any depth, so nested layouts are found and a
+        nested virtualenv still isn't scanned.
+        """
+        return resolve_tool_paths(
+            project_root,
+            exclude_dirs=self._configured_excludes(),
+            extensions={".py", ".pyi"},
+        )
+
+    def _configured_excludes(self) -> List[str]:
+        """This gate's default excludes plus anything the project configured."""
+        configured = self.config.get("exclude_dirs", [])
+        if isinstance(configured, str):
+            configured = [configured]
+        return list(_DEFAULT_EXCLUDE_DIRS) + list(configured)
 
     def run(self, project_root: str) -> CheckResult:
         """Run lint and format checks.
@@ -395,6 +480,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         duration = time.time() - start_time
 
         if issues:
+            if self._is_all_timeouts(issues):
+                return self._timeout_warning(issues, output_parts, duration)
             msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
             final_findings = (
                 flake8_findings
@@ -421,9 +508,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "format", "--check", "."],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if not result.success:
+            timed_out = self._timed_out_message("ruff format", result)
+            if timed_out:
+                return timed_out
             output = (result.output or "").strip()
             if COMMAND_NOT_FOUND in output:
                 return _RUFF_SKIPPED
@@ -435,9 +525,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         result = self._run_command(
             ["ruff", "check", "--select", "I", "."],
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
         if not result.success:
+            timed_out = self._timed_out_message("ruff check --select I", result)
+            if timed_out:
+                return timed_out
             output = (result.output or "").strip()
             if COMMAND_NOT_FOUND in output:
                 return _RUFF_SKIPPED
@@ -478,9 +571,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     target,
                 ],
                 cwd=project_root,
-                timeout=DEFAULT_TOOL_TIMEOUT,
+                timeout=self._tool_timeout(),
             )
             if not result.success:
+                timed_out = self._timed_out_message("black", result)
+                if timed_out:
+                    return timed_out
                 output = (result.output or "").strip()
                 # Distinguish tool-installation failures from real formatting
                 # issues.  A broken black (missing dependency, bad interpreter,
@@ -511,12 +607,21 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
         # Skip hidden directories (e.g. .claude/, .git/) that contain
         # tool infrastructure rather than project source code.
-        isort_cmd.extend(["--skip-glob=.*", "."])
+        targets = self._get_python_targets(project_root)
+        if not targets:
+            return None  # nothing to sort
+        isort_cmd.append("--skip-glob=.*")
+        # Explicit targets, never ".": isort's --skip is a post-filter, so a
+        # bare "." still walks (and opens) every file in a nested .venv.
+        isort_cmd.extend(targets)
         result = self._run_command(
-            isort_cmd, cwd=project_root, timeout=DEFAULT_TOOL_TIMEOUT
+            isort_cmd, cwd=project_root, timeout=self._tool_timeout()
         )
 
         if not result.success:
+            timed_out = self._timed_out_message("isort", result)
+            if timed_out:
+                return timed_out
             # isort outputs "ERROR: file.py ..." or "Skipped X files"
             # Extract file paths from output for actionable feedback
             output = result.output if result.output else ""
@@ -581,9 +686,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             ]
             + targets,
             cwd=project_root,
-            timeout=DEFAULT_TOOL_TIMEOUT,
+            timeout=self._tool_timeout(),
         )
 
+        timed_out = self._timed_out_message("flake8", result)
+        if timed_out:
+            return timed_out, []
         if not result.success and result.output.strip():
             lines = result.output.strip().split("\n")
             findings: List[Finding] = []

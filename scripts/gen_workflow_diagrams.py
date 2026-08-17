@@ -29,12 +29,11 @@ from scripts._freshness import (  # noqa: E402
     report_up_to_date,
 )
 from slopmop.checks import ensure_checks_registered  # noqa: E402
-from slopmop.checks.base import CheckRole, GateLevel  # noqa: E402
+from slopmop.checks.base import GateLevel  # noqa: E402
 from slopmop.core.registry import get_registry  # noqa: E402
 from slopmop.workflow.state_machine import (  # noqa: E402
     MACHINE,
     TRANSITIONS,
-    WorkflowState,
 )
 
 OUTPUT_PATH = REPO_ROOT / "DOCS" / "WORKFLOW.md"

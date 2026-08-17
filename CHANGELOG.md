@@ -6,6 +6,48 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.13.2
+
+### The fix that matters: ask git what the source is
+
+Gates hand their tool a path and trust the tool's ignore flag to skip the
+rest. Those flags are POST-FILTERS — `isort --skip`, `detect-secrets
+--exclude-files`, `flake8 --extend-exclude` all still walk and open the files
+first. So a repo with a nested `.venv`, an uploads directory, or agent
+worktrees pays full price for directories its config explicitly excluded, and
+the gate blows its timeout. Every name list we add loses to the next repo's
+layout: `.venv` vs `env`, `storage`, `.claude/worktrees`, `test-results`.
+
+**The repository already knows.** `resolve_tool_paths()` now asks
+`git ls-files -co --exclude-standard` and hands tools exactly the project's
+own files, falling back to a walk when git is unavailable. On the repo that
+surfaced this, git listed **139 Python files in 24ms where walking found
+20,445** — and the isort check went from **47.8s to 0.22s**. One helper, used
+by every gate, so this class of failure is fixed once rather than per gate.
+
+### Bug fixes
+
+- **flake8 silently checked nothing on nested layouts** — `_get_python_targets`
+  only inspected TOP-LEVEL entries, adding a directory for being named
+  src/tests/test/lib or holding `__init__.py`. A repo keeping code one level
+  down (`server/app` beside `client/`) matched none of them, so the target list
+  came back empty and the gate reported "no critical errors" without looking at
+  a single file. Selection is now by content.
+
+- **A formatter/linter that runs out of time is no longer reported as a
+  finding** — a killed `isort` surfaced as "Import order issues found" with
+  no file to look at, and a killed `black` as "Formatting check failed",
+  sending people hunting for drift that was never detected. Each tool now
+  says it ran out of time and names the knob that fixes it. Same pathology as
+  the detect-secrets timeout fixed in 2.13.1, in the lint/format gate.
+
+### New configuration
+
+- **`tool_timeout` on `laziness:sloppy-formatting.py`** (default 60) — a
+  large tree can format in 40-55s standalone and tip past the fixed ceiling
+  once `scour` runs gates in parallel. Raising the timeout is the honest fix;
+  the alternative was narrowing what gets formatted.
+
 ## 2.13.1
 
 ### Bug fixes

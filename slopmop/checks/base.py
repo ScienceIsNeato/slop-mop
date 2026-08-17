@@ -8,12 +8,13 @@ existing code.
 import logging
 import os
 import shutil
+import subprocess
 import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Dict, Iterable, List, Optional
 
 from slopmop.checks.metadata import Reasoning, builtin_reasoning_for_check_class
 from slopmop.core.result import (
@@ -304,6 +305,165 @@ def should_prune_dir(name: str) -> bool:
     Pass the *name* component of the directory, not a full path.
     """
     return name.startswith(".") or name in SCOPE_EXCLUDED_DIRS
+
+
+def is_vendored_dir(path: str) -> bool:
+    """True for a directory that holds third-party code, whatever it's named.
+
+    Name lists miss the common cases: a virtualenv can be ``.venv``, ``env``,
+    ``server/.venv``, or anything else the author chose. The marker files are
+    definitive, so look for those instead of guessing from the name.
+    """
+    for marker in ("pyvenv.cfg", "site-packages"):
+        if os.path.exists(os.path.join(path, marker)):
+            return True
+    return False
+
+
+def git_project_files(
+    project_root: str,
+    extensions: Optional[set[str]] = None,
+    timeout: int = 30,
+) -> Optional[List[str]]:
+    """Files the repository itself considers part of the project, or None.
+
+    ``git ls-files -co --exclude-standard`` lists tracked files plus untracked
+    ones that aren't ignored — exactly "the project's own files", straight from
+    the authority that already knows. Returns None when this isn't a git repo
+    or git can't be run, so callers fall back to walking.
+    """
+    try:
+        result = subprocess.run(  # nosec B603 B607 - fixed argv, no shell
+            ["git", "ls-files", "-co", "--exclude-standard", "-z"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    files = [entry for entry in result.stdout.split("\0") if entry]
+    if extensions is not None:
+        files = [f for f in files if os.path.splitext(f)[1] in extensions]
+    return files
+
+
+def resolve_tool_paths(
+    project_root: str,
+    exclude_dirs: Optional[Iterable[str]] = None,
+    extensions: Optional[set[str]] = None,
+    max_depth: int = 6,
+    max_paths: int = 300,
+) -> List[str]:
+    """Concrete paths to hand an external tool, with non-source trees pruned.
+
+    Most tools take an ignore flag — ``isort --skip``, ``flake8
+    --extend-exclude``, ``detect-secrets --exclude-files`` — but apply it as a
+    POST-FILTER: the walk still descends into ``node_modules`` or a nested
+    ``.venv`` and pays to open every file it finds there. Handing such a tool
+    ``.`` therefore costs full price for directories the config excluded.
+
+    **The repository already knows what is source.** Ask git and the guessing
+    disappears: no name list keeps up with ``.venv`` vs ``env``, an uploads
+    directory full of customer images, agent worktrees under ``.claude``, or
+    whatever the next repo invents. On the repo that surfaced this, git listed
+    139 Python files in 24ms where walking found 20,445 — the difference
+    between a 0.3s check and one that blew its 60s timeout and reported the
+    kill as a phantom finding.
+
+    Falls back to walking (pruning excluded and vendored directories at any
+    depth) when there's no git available, so non-repo projects still work. This
+    is the single place that decides what any tool sees, so a fix here fixes
+    every gate at once.
+
+    Returns ``["."]`` when nothing needs pruning or the list would exceed
+    ``max_paths``, so callers always get a usable, correct target list.
+    """
+    excluded = set(SCOPE_EXCLUDED_DIRS) | set(exclude_dirs or ())
+
+    tracked = git_project_files(project_root, extensions)
+    if tracked is not None:
+        kept = [f for f in tracked if not is_path_excluded(f, excluded)]
+        if not kept:
+            # Git answered and nothing matched. That is a real answer — the
+            # project has no such files, or the config excluded them all — so
+            # hand back nothing. Falling back to "." here would scan the whole
+            # tree, re-walking exactly what we set out to skip.
+            return []
+        if len(kept) <= max_paths:
+            return sorted(kept)
+        # Too many files for one argv: collapse to their directories. Files at
+        # the repo root have no parent, so they stay as themselves — mapping
+        # them to "." would put the entire tree back in scope and undo the
+        # pruning this function exists to do.
+        collapsed = {os.path.dirname(f) or f for f in kept}
+        return sorted(collapsed)
+
+    def is_excluded(rel: str, abs_path: str) -> bool:
+        name = os.path.basename(rel)
+        if should_prune_dir(name):
+            return True
+        if is_path_excluded(rel, excluded):
+            return True
+        return os.path.isdir(abs_path) and is_vendored_dir(abs_path)
+
+    def walk(rel: str, depth: int) -> tuple[List[str], bool, bool]:
+        """(paths, contains_relevant_file, anything_dropped) for ``rel``."""
+        abs_path = os.path.join(project_root, rel) if rel else project_root
+        try:
+            children = sorted(os.listdir(abs_path))
+        except OSError:
+            return ([rel] if rel else []), True, False
+
+        dropped = False
+        files: List[str] = []
+        subdirs: List[tuple[str, List[str], bool, bool]] = []
+        relevant = False
+
+        for name in children:
+            child_rel = f"{rel}/{name}" if rel else name
+            child_abs = os.path.join(project_root, child_rel)
+            if is_excluded(child_rel, child_abs):
+                dropped = True
+                continue
+            if os.path.isdir(child_abs):
+                if depth + 1 >= max_depth:
+                    subdirs.append((child_rel, [child_rel], True, False))
+                    relevant = True
+                    continue
+                sub_paths, sub_relevant, sub_dropped = walk(child_rel, depth + 1)
+                subdirs.append((child_rel, sub_paths, sub_relevant, sub_dropped))
+                if sub_relevant:
+                    relevant = True
+                else:
+                    # A subtree with nothing the tool cares about is one more
+                    # thing it would otherwise walk.
+                    dropped = True
+            elif extensions is None or os.path.splitext(name)[1] in extensions:
+                files.append(child_rel)
+                relevant = True
+            else:
+                dropped = True
+
+        dropped_below = any(sub_dropped for _, _, _, sub_dropped in subdirs)
+        # Nothing dropped anywhere beneath: hand the whole directory over as a
+        # single cheap argument.
+        if rel and relevant and not dropped and not dropped_below:
+            return [rel], True, False
+
+        out = list(files)
+        for _, sub_paths, sub_relevant, _ in subdirs:
+            if sub_relevant:
+                out.extend(sub_paths)
+        return out, relevant, (dropped or dropped_below)
+
+    paths, _relevant, _dropped = walk("", 0)
+    if not paths or len(paths) > max_paths:
+        return ["."]
+    return paths
 
 
 # Source-code file extensions used for project-size metrics (e.g. sm status).
