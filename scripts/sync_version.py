@@ -147,7 +147,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.check:
         version, problems = check()
         if problems:
-            print(f"Version drift from slopmop/_version.py ({version}):", file=sys.stderr)
+            print(
+                f"Version drift from slopmop/_version.py ({version}):", file=sys.stderr
+            )
             for problem in problems:
                 print(f"  - {problem}", file=sys.stderr)
             return 1

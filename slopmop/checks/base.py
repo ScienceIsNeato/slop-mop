@@ -385,17 +385,22 @@ def resolve_tool_paths(
     excluded = set(SCOPE_EXCLUDED_DIRS) | set(exclude_dirs or ())
 
     tracked = git_project_files(project_root, extensions)
-    if tracked is not None and tracked:
+    if tracked is not None:
         kept = [f for f in tracked if not is_path_excluded(f, excluded)]
         if not kept:
-            return ["."]
+            # Git answered and nothing matched. That is a real answer — the
+            # project has no such files, or the config excluded them all — so
+            # hand back nothing. Falling back to "." here would scan the whole
+            # tree, re-walking exactly what we set out to skip.
+            return []
         if len(kept) <= max_paths:
             return sorted(kept)
-        # Too many files to pass individually: collapse to their directories,
-        # which stays correct because git already told us these trees hold
-        # project files.
-        dirs = sorted({os.path.dirname(f) or "." for f in kept})
-        return dirs if len(dirs) <= max_paths else ["."]
+        # Too many files for one argv: collapse to their directories. Files at
+        # the repo root have no parent, so they stay as themselves — mapping
+        # them to "." would put the entire tree back in scope and undo the
+        # pruning this function exists to do.
+        collapsed = {os.path.dirname(f) or f for f in kept}
+        return sorted(collapsed)
 
     def is_excluded(rel: str, abs_path: str) -> bool:
         name = os.path.basename(rel)

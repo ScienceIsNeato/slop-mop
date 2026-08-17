@@ -501,3 +501,59 @@ class TestToolTimeouts:
         check._check_isort(str(tmp_path))
 
         assert mock_runner.run.call_args.kwargs["timeout"] == 240
+
+
+class TestTimeoutNeverBecomesAFinding:
+    """Review feedback on #338: honest TEXT wasn't enough — the status lied."""
+
+    def _timed_out(self):
+        return SubprocessResult(
+            returncode=-9, stdout="", stderr="", duration=60.0, timed_out=True
+        )
+
+    def test_timeout_only_run_warns_instead_of_failing(self, tmp_path):
+        """A run whose every issue is a timeout must WARN, not FAIL.
+
+        The first pass made the message honest but still returned FAILED with
+        an invented ERROR finding, so callers saw SLOP DETECTED and went
+        looking for drift that was never detected.
+        """
+        (tmp_path / "app.py").write_text("import os\n")
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+        assert not result.findings  # nothing was detected, so invent nothing
+
+    def test_ruff_format_timeout_is_not_drift(self, tmp_path):
+        """The ruff paths were missed by the first pass."""
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_ruff_format(str(tmp_path))
+
+        assert result is not None
+        assert "did not finish" in result
+        assert "Ruff format check failed" not in result
+
+    def test_ruff_imports_timeout_is_not_drift(self, tmp_path):
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = self._timed_out()
+
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result = check._check_ruff_imports(str(tmp_path))
+
+        assert result is not None
+        assert "did not finish" in result
+        assert "Import order issues" not in result
+
+    def test_real_failure_alongside_timeout_still_fails(self, tmp_path):
+        """A genuine finding must not be downgraded just because something
+        else timed out — only an all-timeout run warns."""
+        check = PythonLintFormatCheck({})
+        assert check._is_all_timeouts(["[timed-out] isort ...", "real drift"]) is False
+        assert check._is_all_timeouts(["[timed-out] isort ..."]) is True

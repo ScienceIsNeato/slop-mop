@@ -12,7 +12,6 @@ instead of running black/isort/autoflake.  This prevents formatting churn
 when the host's CI would immediately reformat slop-mop's output.
 """
 
-import os
 import re
 import time
 from typing import List, Optional
@@ -45,6 +44,12 @@ _FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
 # skip without treating it as a pass.
 _BLACK_SKIPPED = "__BLACK_SKIPPED_BROKEN_INSTALL__"
 _RUFF_SKIPPED = "__RUFF_SKIPPED_NOT_INSTALLED__"
+
+# Prefix carried by every "this tool ran out of time" message, so run() can
+# tell a killed subprocess apart from a real finding. Without it, honest
+# timeout TEXT still arrived as a FAILED result with an invented finding —
+# the phantom this gate exists to prevent.
+_TIMED_OUT_MARKER = "[timed-out]"
 
 _DEFAULT_EXCLUDE_DIRS = [
     "venv",
@@ -216,6 +221,29 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             return DEFAULT_TOOL_TIMEOUT
         return configured if configured > 0 else DEFAULT_TOOL_TIMEOUT
 
+    def _is_all_timeouts(self, issues: List[str]) -> bool:
+        """True when every issue is a killed tool rather than a real finding."""
+        return bool(issues) and all(_TIMED_OUT_MARKER in i for i in issues)
+
+    def _timeout_warning(
+        self, issues: List[str], output_parts: List[str], duration: float
+    ) -> CheckResult:
+        """WARNED, with no fabricated finding, for a run that only timed out.
+
+        A killed tool reached no verdict, so FAILED plus an invented Finding
+        would be exactly the phantom this gate exists to prevent.
+        """
+        return self._create_result(
+            status=CheckStatus.WARNED,
+            duration=duration,
+            output="\n".join(output_parts),
+            error="; ".join(issues),
+            fix_suggestion=(
+                "Raise this gate's tool_timeout, or narrow the scan with "
+                "exclude_dirs."
+            ),
+        )
+
     def _timed_out_message(self, tool: str, result: object) -> Optional[str]:
         """Honest text for a killed subprocess, or None if it wasn't killed.
 
@@ -227,10 +255,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if not getattr(result, "timed_out", False):
             return None
         return (
-            f"{tool} did not finish within {self._tool_timeout()}s, so it "
-            "reached no verdict — this is NOT a formatting finding. Large "
-            "trees can tip past the limit when gates run in parallel; raise "
-            "this gate's tool_timeout."
+            f"{_TIMED_OUT_MARKER} {tool} did not finish within "
+            f"{self._tool_timeout()}s, so it reached no verdict — this is NOT "
+            "a formatting finding. Large trees can tip past the limit when "
+            "gates run in parallel; raise this gate's tool_timeout."
         )
 
     def _effective_formatter(self, project_root: str) -> Optional[str]:
@@ -299,7 +327,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Find Python source directories to format
         targets = self._get_python_targets(project_root)
         if not targets:
-            targets = ["."]
+            # Nothing the tools care about. Falling back to "." here would
+            # format the entire tree, including everything git told us to skip.
+            return False
 
         # Run autoflake first to remove unused imports
         result = self._run_command(
@@ -338,10 +368,15 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Run isort — skip hidden directories to match _check_isort behaviour
         isort_cmd = ["isort", "--profile", "black"]
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
+        targets = self._get_python_targets(project_root)
+        if not targets:
+            # Nothing to sort. Report what earlier steps fixed rather
+            # than None — this path returns a bool.
+            return fixed
         isort_cmd.append("--skip-glob=.*")
         # Explicit targets, never ".": isort's --skip is a post-filter, so a
         # bare "." still walks (and opens) every file in a nested .venv.
-        isort_cmd.extend(self._get_python_targets(project_root))
+        isort_cmd.extend(targets)
         result = self._run_command(
             isort_cmd, cwd=project_root, timeout=self._tool_timeout()
         )
@@ -445,6 +480,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         duration = time.time() - start_time
 
         if issues:
+            if self._is_all_timeouts(issues):
+                return self._timeout_warning(issues, output_parts, duration)
             msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
             final_findings = (
                 flake8_findings
@@ -474,6 +511,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             timeout=self._tool_timeout(),
         )
         if not result.success:
+            timed_out = self._timed_out_message("ruff format", result)
+            if timed_out:
+                return timed_out
             output = (result.output or "").strip()
             if COMMAND_NOT_FOUND in output:
                 return _RUFF_SKIPPED
@@ -488,6 +528,9 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             timeout=self._tool_timeout(),
         )
         if not result.success:
+            timed_out = self._timed_out_message("ruff check --select I", result)
+            if timed_out:
+                return timed_out
             output = (result.output or "").strip()
             if COMMAND_NOT_FOUND in output:
                 return _RUFF_SKIPPED
@@ -564,10 +607,13 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
         # Skip hidden directories (e.g. .claude/, .git/) that contain
         # tool infrastructure rather than project source code.
+        targets = self._get_python_targets(project_root)
+        if not targets:
+            return None  # nothing to sort
         isort_cmd.append("--skip-glob=.*")
         # Explicit targets, never ".": isort's --skip is a post-filter, so a
         # bare "." still walks (and opens) every file in a nested .venv.
-        isort_cmd.extend(self._get_python_targets(project_root))
+        isort_cmd.extend(targets)
         result = self._run_command(
             isort_cmd, cwd=project_root, timeout=self._tool_timeout()
         )
