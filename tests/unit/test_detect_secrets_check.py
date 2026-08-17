@@ -51,10 +51,88 @@ class TestRunDetectSecrets:
         assert "node_modules" not in paths
         assert ".git" not in paths
 
+    def test_scan_paths_prune_excluded_dirs_nested_under_kept_ones(self, tmp_path):
+        """Excluded dirs are pruned at ANY depth, not just the top level.
+
+        Regression for barnacle #244: build output normally lives *under* a
+        directory that must still be scanned (``client/build`` beside
+        ``client/lib``). Passing ``client`` whole re-hashed exactly the
+        artifacts the config excluded, so the scan still blew the 60s timeout
+        on repos that had configured their excludes correctly.
+        """
+        (tmp_path / "client" / "lib").mkdir(parents=True)
+        (tmp_path / "client" / "lib" / "main.dart").write_text("void main() {}\n")
+        (tmp_path / "client" / "build").mkdir()
+        (tmp_path / "client" / "build" / "huge.js").write_text("x = 1\n")
+        (tmp_path / "client" / ".dart_tool").mkdir()
+
+        check = SecurityLocalCheck({"exclude_dirs": ["build", ".dart_tool"]})
+        paths = check._detect_secrets_scan_paths(str(tmp_path))
+
+        # The parent is expanded so the excluded children can be dropped...
+        assert "client" not in paths
+        assert any(p.startswith("client/lib") for p in paths)
+        # ...and nothing under an excluded dir is handed to the scanner.
+        assert not any("build" in p for p in paths)
+        assert not any(".dart_tool" in p for p in paths)
+
+    def test_scan_paths_keep_clean_dirs_whole(self, tmp_path):
+        """A directory with nothing excluded below it is passed as one path.
+
+        Enumerating every leaf would bloat the argv for no benefit — the win
+        only exists where something actually gets pruned.
+        """
+        (tmp_path / "server" / "app").mkdir(parents=True)
+        (tmp_path / "server" / "app" / "main.py").write_text("x = 1\n")
+
+        check = SecurityLocalCheck({"exclude_dirs": ["build"]})
+        paths = check._detect_secrets_scan_paths(str(tmp_path))
+
+        assert paths == ["server"]
+
+    def test_scan_paths_fall_back_when_expansion_explodes(self, tmp_path):
+        """A repo that fans out past the cap gets the shallow list instead.
+
+        A multi-thousand-entry argv risks ARG_MAX; coverage is identical
+        either way, so the safe list wins.
+        """
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "build").mkdir()  # forces expansion of pkg/
+        for i in range(450):
+            (tmp_path / "pkg" / f"mod_{i:03d}.py").write_text("x = 1\n")
+
+        check = SecurityLocalCheck({"exclude_dirs": ["build"]})
+        paths = check._detect_secrets_scan_paths(str(tmp_path))
+
+        assert paths == ["pkg"]
+
     def test_scan_paths_empty_when_root_unlistable(self):
         """Unlistable root falls back to whole-tree scan (no path args)."""
         check = SecurityLocalCheck({})
         assert check._detect_secrets_scan_paths("/nonexistent/path/xyz") == []
+
+    def test_detect_secrets_timeout_is_not_a_finding(self, tmp_path):
+        """A killed scan reached no verdict, so it cannot report a secret.
+
+        Regression for barnacle #244: the timeout surfaced as SLOP DETECTED
+        with "(location unknown)" as the only detail, sending people hunting
+        for a leaked credential that was never actually found.
+        """
+        check = SecurityLocalCheck({})
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.timed_out = True
+        mock_result.stdout = mock_result.output = ""
+
+        with patch.object(check, "_run_command", return_value=mock_result):
+            result = check._run_detect_secrets(str(tmp_path))
+
+        assert result.name == "detect-secrets"
+        assert result.passed is True
+        assert result.warned is True
+        assert "did not finish" in result.findings
+        # The message must name the lever that actually fixes it.
+        assert "exclude_dirs" in result.findings
 
     def test_detect_secrets_scopes_walk_to_unexcluded_paths(self, tmp_path):
         """_run_detect_secrets passes scoped paths so the walk is pruned.
@@ -108,6 +186,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False  # a real failure, not a timeout
         mock_result.stdout = mock_result.output = (
             "/path/to/python: No module named detect_secrets\n"  # pragma: allowlist secret
         )
@@ -126,6 +205,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False  # a real failure, not a timeout
         mock_result.stdout = mock_result.output = (
             "detect-secrets: error: unrecognized arguments: --bogus"
         )
@@ -464,6 +544,7 @@ class TestRunDetectSecrets:
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = False
+        mock_result.timed_out = False  # a real failure, not a timeout
         mock_result.stdout = mock_result.output = "Error running scan"
 
         with patch.object(check, "_run_command", return_value=mock_result):
