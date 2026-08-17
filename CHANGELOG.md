@@ -6,6 +6,28 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.13.1
+
+### Bug fixes
+
+- **detect-secrets no longer times out on repos that exclude their build
+  output** (#244) — scan-path pruning only looked at *top-level* entries, but
+  excluded artifacts almost always live one level down: `client/build` beside
+  `client/lib`, `server/.venv` beside `server/app`. The parent was handed over
+  whole, so the scanner re-hashed exactly the directories the config had
+  excluded and blew the 60s ceiling anyway. Pruning is now nested — a
+  directory containing an excluded descendant is expanded into its surviving
+  children, while a directory with nothing excluded below it is still passed
+  as a single path. Depth- and count-capped, falling back to the previous
+  shallow list if a repo fans out past the cap.
+- **A detect-secrets timeout is no longer reported as a finding** (#244) — a
+  killed scan reached no verdict, so it says nothing about whether a secret
+  exists, but it surfaced as SLOP DETECTED with `(location unknown)` as the
+  only detail. It now **WARNS** and names the lever that fixes it
+  (`exclude_dirs`), matching how the module already treats a scanner that
+  fails to start. **Upgrade note:** a repo whose secret scan was timing out
+  moves from FAILED to WARNED.
+
 ## 2.13.0
 
 Everything below except the `mcp` advisory came out of running `sm refit`
