@@ -28,6 +28,16 @@ if TYPE_CHECKING:
 _GIT_SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 _HEX_HIGH_ENTROPY_STRING = "Hex High Entropy String"
 
+# How deep to descend while pruning excluded directories out of the scan path
+# list. Excluded build/tooling dirs live a level or two down (``client/build``,
+# ``server/.venv``, ``deploy/ansible/.venv-ansible``); past that the win stops
+# paying for the extra listdir calls, so we hand the directory over whole.
+_MAX_SCAN_PATH_DEPTH = 4
+# Ceiling on how many paths we hand to one detect-secrets invocation. A repo
+# that fans out past this gets the shallower (parent-level) list instead — a
+# long argv risks ARG_MAX and buys nothing.
+_MAX_SCAN_PATHS = 400
+
 
 class DetectSecretsMixin:
     """detect-secrets scan invocation, path scoping, and finding filters."""
@@ -48,7 +58,7 @@ class DetectSecretsMixin:
         def _get_exclude_dirs(self) -> List[str]: ...
 
     def _detect_secrets_scan_paths(self, project_root: str) -> List[str]:
-        """Top-level entries to hand ``detect-secrets scan``, excluded dirs pruned.
+        """Paths to hand ``detect-secrets scan``, with excluded dirs pruned.
 
         detect-secrets has no flag that prunes the directory *walk*:
         ``--exclude-files`` (and a baseline ``exclude.files`` regex) only filter
@@ -57,6 +67,14 @@ class DetectSecretsMixin:
         sits right on the 60s timeout and makes the gate flaky (barnacle #244).
         Sibling scanners (bandit/semgrep) scope their walk via ``--exclude``;
         detect-secrets only accepts explicit paths, so we pass them.
+
+        Pruning is NESTED, not just top-level. Excluded build output usually
+        lives *under* a directory we must still scan — ``client/build`` beside
+        ``client/lib``, ``server/.venv`` beside ``server/app``. Passing the
+        parent whole re-hashes exactly the artifacts the config asked us to
+        skip, which is what still tripped the timeout on repos that had
+        configured those excludes correctly. So a directory containing an
+        excluded descendant is expanded into its surviving children instead.
 
         We reuse :meth:`_is_path_excluded_for_detect_secrets` — the exact
         predicate that already post-filters findings — so the set of files
@@ -67,15 +85,60 @@ class DetectSecretsMixin:
         can't be listed or every top-level entry is excluded, so we never
         accidentally narrow coverage to nothing.
         """
+        paths = self._expand_scan_paths(project_root, "", 0)
+        # Too many paths: fall back to the shallow list rather than risk a
+        # gigantic argv. Coverage is identical either way; only speed differs.
+        if len(paths) > _MAX_SCAN_PATHS:
+            try:
+                entries = sorted(os.listdir(project_root))
+            except OSError:
+                return []
+            return [
+                name
+                for name in entries
+                if not self._is_path_excluded_for_detect_secrets(name)
+            ]
+        return paths
+
+    def _expand_scan_paths(self, project_root: str, rel: str, depth: int) -> List[str]:
+        """Scan paths for the directory ``rel`` (``""`` = the project root).
+
+        Returns ``[rel]`` when nothing beneath it is excluded — handing over a
+        whole directory is cheaper than enumerating it. Otherwise returns the
+        surviving children, recursively.
+        """
+        abs_path = os.path.join(project_root, rel) if rel else project_root
         try:
-            entries = sorted(os.listdir(project_root))
+            children = sorted(os.listdir(abs_path))
         except OSError:
-            return []
-        return [
-            name
-            for name in entries
-            if not self._is_path_excluded_for_detect_secrets(name)
-        ]
+            # Unreadable: hand it over as-is and let detect-secrets decide.
+            return [rel] if rel else []
+
+        kept: List[str] = []
+        pruned_here = False
+        for name in children:
+            child = f"{rel}/{name}" if rel else name
+            if self._is_path_excluded_for_detect_secrets(child):
+                pruned_here = True
+                continue
+            kept.append(child)
+
+        expanded: List[str] = []
+        deeper_pruned = False
+        for child in kept:
+            child_abs = os.path.join(project_root, child)
+            if depth + 1 < _MAX_SCAN_PATH_DEPTH and os.path.isdir(child_abs):
+                sub = self._expand_scan_paths(project_root, child, depth + 1)
+                # A child that came back as itself had nothing pruned below it.
+                if sub != [child]:
+                    deeper_pruned = True
+                expanded.extend(sub)
+            else:
+                expanded.append(child)
+
+        if not pruned_here and not deeper_pruned and rel:
+            return [rel]
+        return expanded
 
     def _is_path_excluded_for_detect_secrets(self, path: str) -> bool:
         """Return True when a path should be ignored by detect-secrets parsing."""
@@ -393,6 +456,25 @@ class DetectSecretsMixin:
                 True,
                 "detect-secrets could not run (module not importable) — "
                 "skipped. Reinstall with: pipx install --force 'slopmop[all]'",
+                warned=True,
+            )
+
+        # A timeout is not a finding. The scan was killed before it could
+        # reach a verdict, so it says nothing about whether a secret exists —
+        # reporting it as SLOP DETECTED sends people hunting for a leaked
+        # credential that was never found, with "(location unknown)" as the
+        # only clue (barnacle #244). Warn instead, and name the actual lever:
+        # excluding generated directories is what brings the scan back under
+        # the ceiling.
+        if getattr(result, "timed_out", False):
+            return SecuritySubResult(
+                "detect-secrets",
+                True,
+                f"detect-secrets did not finish within {DEFAULT_TOOL_TIMEOUT}s "
+                "— no verdict, so nothing is being reported as a secret. Add "
+                "generated/vendored directories (build output, caches, virtual "
+                "envs) to this gate's exclude_dirs so the scan has less to "
+                "hash.",
                 warned=True,
             )
 
