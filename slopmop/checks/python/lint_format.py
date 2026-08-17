@@ -27,6 +27,7 @@ from slopmop.checks.base import (
     Requirements,
     ToolContext,
     pip_cli_requirement,
+    resolve_tool_paths,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
@@ -308,8 +309,8 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 "--remove-all-unused-imports",
                 "--recursive",
                 f"--exclude={','.join(_DEFAULT_EXCLUDE_DIRS)}",
-                ".",
-            ],
+            ]
+            + targets,
             cwd=project_root,
             timeout=self._tool_timeout(),
         )
@@ -337,7 +338,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # Run isort — skip hidden directories to match _check_isort behaviour
         isort_cmd = ["isort", "--profile", "black"]
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
-        isort_cmd.extend(["--skip-glob=.*", "."])
+        isort_cmd.append("--skip-glob=.*")
+        # Explicit targets, never ".": isort's --skip is a post-filter, so a
+        # bare "." still walks (and opens) every file in a nested .venv.
+        isort_cmd.extend(self._get_python_targets(project_root))
         result = self._run_command(
             isort_cmd, cwd=project_root, timeout=self._tool_timeout()
         )
@@ -347,24 +351,31 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         return fixed
 
     def _get_python_targets(self, project_root: str) -> List[str]:
-        """Get Python directories to lint/format."""
-        targets: List[str] = []
-        exclude_dirs = set(_DEFAULT_EXCLUDE_DIRS)
+        """Paths to hand the formatters and linters.
 
-        for entry in os.listdir(project_root):
-            if entry in exclude_dirs or entry.startswith("."):
-                continue
-            entry_path = os.path.join(project_root, entry)
-            if os.path.isdir(entry_path):
-                # Check if it's a Python package or has Python files
-                if os.path.exists(os.path.join(entry_path, "__init__.py")):
-                    targets.append(entry)
-                elif entry in ("src", "tests", "test", "lib"):
-                    targets.append(entry)
-            elif entry.endswith(".py"):
-                targets.append(entry)
+        This used to inspect only TOP-LEVEL entries, adding a directory just
+        for holding ``__init__.py`` or being named src/tests/test/lib. A repo
+        that keeps its code one level down — ``server/app`` next to
+        ``client/`` — matched none of those, so the list came back EMPTY and
+        flake8 silently checked nothing while reporting "no critical errors".
+        A gate that passes without looking is worse than one that fails.
 
-        return targets
+        The shared resolver walks the tree instead, pruning vendored and
+        excluded directories at any depth, so nested layouts are found and a
+        nested virtualenv still isn't scanned.
+        """
+        return resolve_tool_paths(
+            project_root,
+            exclude_dirs=self._configured_excludes(),
+            extensions={".py", ".pyi"},
+        )
+
+    def _configured_excludes(self) -> List[str]:
+        """This gate's default excludes plus anything the project configured."""
+        configured = self.config.get("exclude_dirs", [])
+        if isinstance(configured, str):
+            configured = [configured]
+        return list(_DEFAULT_EXCLUDE_DIRS) + list(configured)
 
     def run(self, project_root: str) -> CheckResult:
         """Run lint and format checks.
@@ -553,7 +564,10 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
         # Skip hidden directories (e.g. .claude/, .git/) that contain
         # tool infrastructure rather than project source code.
-        isort_cmd.extend(["--skip-glob=.*", "."])
+        isort_cmd.append("--skip-glob=.*")
+        # Explicit targets, never ".": isort's --skip is a post-filter, so a
+        # bare "." still walks (and opens) every file in a nested .venv.
+        isort_cmd.extend(self._get_python_targets(project_root))
         result = self._run_command(
             isort_cmd, cwd=project_root, timeout=self._tool_timeout()
         )

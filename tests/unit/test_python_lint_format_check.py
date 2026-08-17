@@ -138,15 +138,45 @@ class TestPythonLintFormatCheck:
         assert "node_modules" not in targets
 
     def test_get_python_targets_includes_standard_dirs(self, tmp_path):
-        """Test _get_python_targets includes src, tests, lib dirs."""
+        """Directories holding Python are targeted, wherever they sit.
+
+        Selection is by CONTENT, not by name. The old name-based heuristic
+        (src/tests/test/lib, or a top-level dir with ``__init__.py``) missed
+        any repo keeping its code one level down — ``server/app`` beside a
+        ``client/`` — and returned an EMPTY list, which made flake8 silently
+        check nothing while reporting no errors.
+        """
         (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("import os\n")
         (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_app.py").write_text("import os\n")
+        # Nested one level down — the layout the old heuristic could not see.
+        (tmp_path / "server" / "app").mkdir(parents=True)
+        (tmp_path / "server" / "app" / "main.py").write_text("import os\n")
 
         check = PythonLintFormatCheck({})
         targets = check._get_python_targets(str(tmp_path))
+        joined = " ".join(targets)
 
-        assert "src" in targets
-        assert "tests" in targets
+        assert "src" in joined
+        assert "tests" in joined
+        # The nested tree is covered — as `server` when the whole directory is
+        # clean (one cheap argument) or as `server/app` when something beside
+        # it had to be pruned. Either way flake8 now sees it.
+        assert "server" in joined
+        assert "." not in targets  # not the everything fallback
+
+    def test_get_python_targets_falls_back_when_no_python(self, tmp_path):
+        """A tree with no Python yields '.', never an empty list.
+
+        An empty list reads as "nothing to check" and lets a gate report a
+        clean pass without having looked at anything.
+        """
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "readme.md").write_text("hi\n")
+
+        check = PythonLintFormatCheck({})
+        assert check._get_python_targets(str(tmp_path)) == ["."]
 
     def test_auto_fix_falls_back_to_current_dir(self, tmp_path):
         """Test auto_fix uses '.' when no targets found."""
