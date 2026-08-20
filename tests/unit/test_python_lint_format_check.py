@@ -627,3 +627,45 @@ class TestFindingsCarryTheirSection:
             "issue(s) found" not in f.message for f in result.findings
         ), f"bare count leaked into findings: {[f.message for f in result.findings]}"
         assert any("Isort" in f.message for f in result.findings)
+
+
+class TestReviewEdgeCases:
+    """From review on #340: the two shapes the first cut got wrong."""
+
+    def test_black_parse_failures_are_not_labeled_as_drift(self, tmp_path):
+        """'would reformat' on a file black REFUSED to parse sends the reader
+        chasing style drift when the file has a syntax error."""
+        (tmp_path / "test.py").write_text("x = 1\n")
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout=(
+                "would reformat src/ok.py\n"
+                "error: cannot format src/broken.py: Cannot parse: 1:11: x"
+            ),
+            stderr="",
+            duration=1.0,
+        )
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        _, findings = check._check_black(str(tmp_path))
+        by_file = {f.file: f.message for f in findings}
+        assert by_file["src/ok.py"] == "black would reformat this file"
+        assert "parse error" in by_file["src/broken.py"]
+        assert "would reformat" not in by_file["src/broken.py"]
+
+    def test_isort_unparseable_error_lines_fall_back_cleanly(self, tmp_path):
+        """ERROR lines whose shape defeats filename extraction must not render
+        'Import order issues:' over a blank list."""
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="ERROR:",  # degenerate: no filename to extract
+            stderr="",
+            duration=1.0,
+        )
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        result, findings = check._check_isort(str(tmp_path))
+        assert result == "Import order issues found"
+        assert findings == []
+        assert "Import order issues:\n" not in (result or "")

@@ -693,14 +693,16 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
 
         # Combine and return black's actual output (it includes file:line info)
         combined = "\n".join(all_output)
-        files = re.findall(
-            r"^(?:would reformat (.+)|error: cannot format ([^:]+):.*)$",
-            combined,
-            re.M,
-        )
+        # The two failure shapes deserve different words: "would reformat" on
+        # a file black REFUSED to parse would send the reader chasing style
+        # drift when the file has a syntax error.
+        drift = re.findall(r"^would reformat (.+)$", combined, re.M)
+        broken = re.findall(r"^error: cannot format ([^:]+):.*$", combined, re.M)
         findings = self._files_to_findings(
-            sorted({a or b for a, b in files}),
-            "black would reformat this file",
+            sorted(set(drift)), "black would reformat this file", project_root
+        ) + self._files_to_findings(
+            sorted(set(broken)),
+            "black cannot format this file (parse error)",
             project_root,
         )
         if combined:
@@ -741,6 +743,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     parts = line.split(" ")
                     if len(parts) >= 2:
                         file_names.append(str(parts[1]))
+                if not file_names:
+                    # ERROR lines whose shape we failed to parse: fall back to
+                    # the generic message rather than a blank file list — the
+                    # labeled-text fallback in run() then carries isort's
+                    # actual output into the findings.
+                    return "Import order issues found", []
                 findings = self._files_to_findings(
                     file_names,
                     "Imports are incorrectly sorted (isort)",
