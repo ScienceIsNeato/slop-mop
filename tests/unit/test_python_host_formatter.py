@@ -383,9 +383,10 @@ class TestRuffSkippedAndErrorPaths:
             returncode=1, stdout="", stderr="", duration=0.1
         )
         check = PythonLintFormatCheck({"formatter": "ruff"}, runner=runner)
-        result = check._check_ruff_imports(str(tmp_path))
+        result, findings = check._check_ruff_imports(str(tmp_path))
 
         assert result == "Import order issues found"
+        assert findings == []  # nothing parseable to attach
 
     def test_check_ruff_imports_many_lines_truncates(self, tmp_path):
         many_lines = "\n".join(
@@ -396,7 +397,7 @@ class TestRuffSkippedAndErrorPaths:
             returncode=1, stdout=many_lines, stderr="", duration=0.1
         )
         check = PythonLintFormatCheck({"formatter": "ruff"}, runner=runner)
-        result = check._check_ruff_imports(str(tmp_path))
+        result, _ = check._check_ruff_imports(str(tmp_path))
 
         assert result is not None
         assert "... and 5 more" in result

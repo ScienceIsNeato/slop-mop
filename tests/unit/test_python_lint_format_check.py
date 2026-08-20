@@ -195,7 +195,7 @@ class TestPythonLintFormatCheck:
         """Test _check_black returns None when no targets."""
         # Empty directory
         check = PythonLintFormatCheck({})
-        result = check._check_black(str(tmp_path))
+        result, _ = check._check_black(str(tmp_path))
 
         assert result is None
 
@@ -210,7 +210,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_black(str(tmp_path))
+        result, _ = check._check_black(str(tmp_path))
 
         # Returns actual output from black
         assert result == "oh no an error occurred"
@@ -228,7 +228,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_black(str(tmp_path))
+        result, _ = check._check_black(str(tmp_path))
 
         assert result is not None
         # Returns raw black output
@@ -249,7 +249,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_black(str(tmp_path))
+        result, _ = check._check_black(str(tmp_path))
 
         assert result is not None
         # Returns raw output - all files included (reporter handles truncation)
@@ -276,7 +276,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_black(str(tmp_path))
+        result, _ = check._check_black(str(tmp_path))
         assert result == _BLACK_SKIPPED
 
     def test_check_black_import_error_skips(self, tmp_path):
@@ -294,7 +294,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_black(str(tmp_path))
+        result, _ = check._check_black(str(tmp_path))
         assert result == _BLACK_SKIPPED
 
     def test_check_black_filename_containing_import_error_not_skipped(self, tmp_path):
@@ -310,7 +310,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_black(str(tmp_path))
+        result, _ = check._check_black(str(tmp_path))
         # Real formatting failure — not treated as a broken installation
         assert result is not None
         assert result != "__BLACK_SKIPPED_BROKEN_INSTALL__"
@@ -354,7 +354,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_isort(str(tmp_path))
+        result, _ = check._check_isort(str(tmp_path))
 
         assert result is not None
         assert "Import order issues:" in result
@@ -374,7 +374,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_isort(str(tmp_path))
+        result, _ = check._check_isort(str(tmp_path))
 
         assert result is not None
         assert "Import order issues:" in result
@@ -396,7 +396,7 @@ class TestPythonLintFormatCheck:
         )
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_isort(str(tmp_path))
+        result, _ = check._check_isort(str(tmp_path))
 
         assert result == "Import order issues found"
 
@@ -460,7 +460,7 @@ class TestToolTimeouts:
         mock_runner.run.return_value = self._timed_out()
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_isort(str(tmp_path))
+        result, _ = check._check_isort(str(tmp_path))
 
         assert result is not None
         assert "did not finish" in result
@@ -473,7 +473,7 @@ class TestToolTimeouts:
         mock_runner.run.return_value = self._timed_out()
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_black(str(tmp_path))
+        result, _ = check._check_black(str(tmp_path))
 
         assert result is not None
         assert "did not finish" in result
@@ -534,7 +534,7 @@ class TestTimeoutNeverBecomesAFinding:
         mock_runner.run.return_value = self._timed_out()
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_ruff_format(str(tmp_path))
+        result, _ = check._check_ruff_format(str(tmp_path))
 
         assert result is not None
         assert "did not finish" in result
@@ -545,7 +545,7 @@ class TestTimeoutNeverBecomesAFinding:
         mock_runner.run.return_value = self._timed_out()
 
         check = PythonLintFormatCheck({}, runner=mock_runner)
-        result = check._check_ruff_imports(str(tmp_path))
+        result, _ = check._check_ruff_imports(str(tmp_path))
 
         assert result is not None
         assert "did not finish" in result
@@ -557,3 +557,73 @@ class TestTimeoutNeverBecomesAFinding:
         check = PythonLintFormatCheck({})
         assert check._is_all_timeouts(["[timed-out] isort ...", "real drift"]) is False
         assert check._is_all_timeouts(["[timed-out] isort ..."]) is True
+
+
+class TestFindingsCarryTheirSection:
+    """A failed section must never collapse into a location-less count.
+
+    A release pipeline once stalled two full gate cycles on
+    "(location unknown) — 1 issue(s) found": one isort-dirty file whose name
+    the gate had parsed and then thrown away. The findings are the only part
+    of a CI run a reader sees — they must name the file, or failing that, the
+    tool and its output.
+    """
+
+    def _failing_isort_check(self, tmp_path, stdout):
+        (tmp_path / "test.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1, stdout=stdout, stderr="", duration=1.0
+        )
+        return PythonLintFormatCheck({}, runner=mock_runner)
+
+    def test_isort_failure_yields_per_file_findings(self, tmp_path):
+        check = self._failing_isort_check(
+            tmp_path, "ERROR: src/foo.py Imports are incorrectly sorted"
+        )
+        _, findings = check._check_isort(str(tmp_path))
+        assert [f.file for f in findings] == ["src/foo.py"]
+        assert "isort" in findings[0].message
+
+    def test_absolute_paths_become_project_relative(self, tmp_path):
+        check = self._failing_isort_check(
+            tmp_path,
+            f"ERROR: {tmp_path}/pkg/mod.py Imports are incorrectly sorted",
+        )
+        _, findings = check._check_isort(str(tmp_path))
+        assert [f.file for f in findings] == ["pkg/mod.py"]
+
+    def test_black_failure_yields_per_file_findings(self, tmp_path):
+        (tmp_path / "test.py").write_text("x = 1\n")
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1,
+            stdout="would reformat src/bar.py",
+            stderr="",
+            duration=1.0,
+        )
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        _, findings = check._check_black(str(tmp_path))
+        assert [f.file for f in findings] == ["src/bar.py"]
+
+    def test_run_never_reports_a_bare_count(self, tmp_path, monkeypatch):
+        """The regression itself: a failed run's findings must identify the
+        tool or the file — the count template alone is what rendered as
+        "(location unknown)" in CI."""
+        (tmp_path / "test.py").write_text("import b\nimport a\n")
+        check = PythonLintFormatCheck({})
+        monkeypatch.setattr(check, "_effective_formatter", lambda root: "black")
+        monkeypatch.setattr(check, "_check_black", lambda root: (None, []))
+        monkeypatch.setattr(
+            check,
+            "_check_isort",
+            lambda root: ("Import order issues found", []),
+        )
+        monkeypatch.setattr(check, "_check_flake8", lambda root: (None, []))
+        result = check.run(str(tmp_path))
+        assert result.status == CheckStatus.FAILED
+        assert result.findings, "a failed run must carry findings"
+        assert all(
+            "issue(s) found" not in f.message for f in result.findings
+        ), f"bare count leaked into findings: {[f.message for f in result.findings]}"
+        assert any("Isort" in f.message for f in result.findings)

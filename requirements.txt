@@ -17,11 +17,11 @@ vulture>=2.14
 radon>=5.1.0
 
 # Linting and formatting
-black>=26.3.1
-isort>=5.12.0
-autoflake>=2.0.0
-flake8>=6.0.0
-ruff>=0.1.0
+black==26.5.1
+isort==8.0.1
+autoflake==2.3.3
+flake8==7.3.0
+ruff==0.16.3
 
 # Type checking
 mypy>=1.17.0
