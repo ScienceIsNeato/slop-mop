@@ -46,6 +46,11 @@ _FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
 _BLACK_SKIPPED = "__BLACK_SKIPPED_BROKEN_INSTALL__"
 _RUFF_SKIPPED = "__RUFF_SKIPPED_NOT_INSTALLED__"
 
+# Shared fallback when an import-order tool fails without naming files —
+# three call sites (isort, ruff --select I, and the empty-extraction
+# guard), one string.
+_IMPORT_ORDER_ISSUES = "Import order issues found"
+
 # Prefix carried by every "this tool ran out of time" message, so run() can
 # tell a killed subprocess apart from a real finding. Without it, honest
 # timeout TEXT still arrived as a FAILED result with an invented finding —
@@ -644,7 +649,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     f"Import order issues:\n  {shown}\n  ... and {len(lines)-5} more",
                     findings,
                 )
-            return "Import order issues found", findings
+            return _IMPORT_ORDER_ISSUES, findings
         return None, []
 
     def _check_black(self, project_root: str) -> tuple[Optional[str], List[Finding]]:
@@ -756,7 +761,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     # the generic message rather than a blank file list — the
                     # labeled-text fallback in run() then carries isort's
                     # actual output into the findings.
-                    return "Import order issues found", []
+                    return _IMPORT_ORDER_ISSUES, []
                 findings = self._files_to_findings(
                     file_names,
                     "Imports are incorrectly sorted (isort)",
@@ -772,7 +777,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                         f"Import order issues:\n  {shown}\n  ... and {remaining} more",
                         findings,
                     )
-            return "Import order issues found", []
+            return _IMPORT_ORDER_ISSUES, []
         return None, []
 
     def _check_flake8(self, project_root: str) -> tuple[Optional[str], List[Finding]]:
