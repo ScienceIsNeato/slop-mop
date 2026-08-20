@@ -46,13 +46,21 @@ dependencies = [
 templates = [
     "jinja2>=3.0.0",
 ]
-# Formatting & linting
+# Formatting & linting.
+#
+# EXACT pins, deliberately: these tools' OPINIONS are the gate's verdict. A
+# floor (>=) means `pipx install slopmop==X` resolves whatever is newest at
+# install time, so the same slopmop version passes a repo on one machine and
+# fails it in CI when a formatter releases new style rules — a release
+# pipeline once stalled on exactly that with zero changed lines in the repo
+# under test. Upgrading a formatter is a deliberate slopmop release with a
+# changelog entry, never a side effect of reinstalling.
 lint = [
-    "black>=26.3.1",
-    "isort>=5.12.0",
-    "autoflake>=2.0.0",
-    "flake8>=6.0.0",
-    "ruff>=0.1.0",
+    "black==26.5.1",
+    "isort==8.0.1",
+    "autoflake==2.3.3",
+    "flake8==7.3.0",
+    "ruff==0.16.3",
 ]
 # Type checking
 typing = [

@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Wrote up the rulebook-ai run as the site's second case study — PR #13 on the website, plus a small honesty fix to our own notes in #333",
-    "direction": "Both are waiting on a merge; after that the story is live and we can look for the next repo to try this on",
-    "last_update": "2026-08-11T08:00:00Z"
+    "status": "Chasing down why a release got blocked by a formatting check that wouldn't say which file was wrong — fixing the check so it always names names, and pinning our linting tools so they stop drifting under us",
+    "direction": "PR up for review, then a release so the barbershop project can pick up the fix",
+    "last_update": "2026-08-20T04:30:00Z"
   }
 }

@@ -6,6 +6,35 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.13.3
+
+### Findings name names — "(location unknown)" retired for lint sections
+
+A release pipeline stalled two full gate cycles on
+`laziness:sloppy-formatting.py — "1 issue(s) found — (location unknown)"`.
+The culprit was ONE isort-dirty file whose path the gate had parsed into its
+log output — and then discarded, building its Finding from the bare count.
+CI renders findings, not log files, so the reader got a number and no way to
+act on it.
+
+Every lint section (black, isort, ruff format, ruff `--select I`) now returns
+structured findings: per-file entries with project-relative paths where the
+tool output names files, and the section's labeled text (`Isort: …`) where it
+doesn't. The count template survives only as the summary line; it can no
+longer be the sole finding. Absolute tool paths are relativized so SARIF and
+report locations stay stable across machines.
+
+### The verdict tools are pinned exactly
+
+The `lint` extra declared floors (`black>=26.3.1`, `isort>=5.12.0`,
+`ruff>=0.1.0`, …), so `pipx install slopmop==X` resolved whatever was newest
+at install time. The same slopmop version could pass a repo on one machine
+and fail it in CI purely because a formatter released new style opinions
+between installs — with zero changed lines in the repo under test. black,
+isort, autoflake, flake8, and ruff are now `==` pins; upgrading a formatter
+is a deliberate slopmop release with a changelog entry, never a side effect
+of reinstalling.
+
 ## 2.13.2
 
 ### The fix that matters: ask git what the source is

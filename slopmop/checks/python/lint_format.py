@@ -12,6 +12,7 @@ instead of running black/isort/autoflake.  This prevents formatting churn
 when the host's CI would immediately reformat slop-mop's output.
 """
 
+import os
 import re
 import time
 from typing import List, Optional
@@ -44,6 +45,11 @@ _FLAKE8_RE = re.compile(r"^(.+?):(\d+):(\d+): (\w+) (.+)$")
 # skip without treating it as a pass.
 _BLACK_SKIPPED = "__BLACK_SKIPPED_BROKEN_INSTALL__"
 _RUFF_SKIPPED = "__RUFF_SKIPPED_NOT_INSTALLED__"
+
+# Shared fallback when an import-order tool fails without naming files —
+# three call sites (isort, ruff --select I, and the empty-extraction
+# guard), one string.
+_IMPORT_ORDER_ISSUES = "Import order issues found"
 
 # Prefix carried by every "this tool ran out of time" message, so run() can
 # tell a killed subprocess apart from a real finding. Without it, honest
@@ -142,7 +148,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 ),
                 pip_cli_requirement(
                     "ruff",
-                    "0.15.0",
+                    "0.16.3",
                     "fast linting + formatting",
                     optional=True,
                     extra="lint",
@@ -412,6 +418,78 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             configured = [configured]
         return list(_DEFAULT_EXCLUDE_DIRS) + list(configured)
 
+    def _run_formatter_sections(
+        self,
+        formatter: Optional[str],
+        project_root: str,
+        issues: List[str],
+        labeled_issues: List[tuple[str, str, bool]],
+        section_findings: List[Finding],
+        output_parts: List[str],
+    ) -> str:
+        """Run the formatter-mode sections, appending into the accumulators.
+
+        Returns the fix hint for whichever mode ran. Split from run() so the
+        orchestration stays under the sprawl limit this gate itself enforces.
+        """
+        if formatter == "none":
+            output_parts.append("Formatting skipped (formatter: none)")
+            fix_hint = "Run: flake8 --select=E9,F63,F7,F82,F401 . to check syntax"
+        elif formatter == "ruff":
+            # Check 1: ruff format
+            fmt_result, fmt_findings = self._check_ruff_format(project_root)
+            if fmt_result == _RUFF_SKIPPED:
+                output_parts.append("Ruff format: ⚠️ Skipped (ruff not installed)")
+            elif fmt_result:
+                issues.append(fmt_result)
+                labeled_issues.append(("Ruff format", fmt_result, bool(fmt_findings)))
+                section_findings.extend(fmt_findings)
+                output_parts.append(f"Ruff format: {fmt_result}")
+            else:
+                output_parts.append("Ruff format: ✅ Formatting OK")
+
+            # Check 2: ruff import order
+            import_result, import_findings = self._check_ruff_imports(project_root)
+            if import_result == _RUFF_SKIPPED:
+                output_parts.append("Ruff imports: ⚠️ Skipped (ruff not installed)")
+            elif import_result:
+                issues.append(import_result)
+                labeled_issues.append(
+                    ("Ruff imports", import_result, bool(import_findings))
+                )
+                section_findings.extend(import_findings)
+                output_parts.append(f"Ruff imports: {import_result}")
+            else:
+                output_parts.append("Ruff imports: ✅ Import order OK")
+
+            fix_hint = "Run: ruff format . && ruff check --fix --select I,F401 ."
+        else:
+            # Check 1: Black formatting
+            black_result, black_findings = self._check_black(project_root)
+            if black_result == _BLACK_SKIPPED:
+                output_parts.append("Black: ⚠️ Skipped (broken installation)")
+            elif black_result:
+                issues.append(black_result)
+                labeled_issues.append(("Black", black_result, bool(black_findings)))
+                section_findings.extend(black_findings)
+                output_parts.append(f"Black: {black_result}")
+            else:
+                output_parts.append("Black: ✅ Formatting OK")
+
+            # Check 2: Isort imports
+            isort_result, isort_findings = self._check_isort(project_root)
+            if isort_result:
+                issues.append(isort_result)
+                labeled_issues.append(("Isort", isort_result, bool(isort_findings)))
+                section_findings.extend(isort_findings)
+                output_parts.append(f"Isort: {isort_result}")
+            else:
+                output_parts.append("Isort: ✅ Import order OK")
+
+            fix_hint = "Run: black . && isort . to auto-fix formatting"
+
+        return fix_hint
+
     def run(self, project_root: str) -> CheckResult:
         """Run lint and format checks.
 
@@ -422,57 +500,29 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         formatter = self._effective_formatter(project_root)
         issues: List[str] = []
         output_parts: List[str] = []
+        # (label, section text) for every failed section, plus any per-file
+        # findings the section could parse. The labels exist because a bare
+        # count is what CI renders when findings carry nothing — a release
+        # once stalled two gate cycles on "(location unknown) — 1 issue(s)
+        # found" whose culprit was a single file the log named all along.
+        labeled_issues: List[tuple[str, str, bool]] = []
+        section_findings: List[Finding] = []
 
-        if formatter == "none":
-            output_parts.append("Formatting skipped (formatter: none)")
-            fix_hint = "Run: flake8 --select=E9,F63,F7,F82,F401 . to check syntax"
-        elif formatter == "ruff":
-            # Check 1: ruff format
-            fmt_result = self._check_ruff_format(project_root)
-            if fmt_result == _RUFF_SKIPPED:
-                output_parts.append("Ruff format: ⚠️ Skipped (ruff not installed)")
-            elif fmt_result:
-                issues.append(fmt_result)
-                output_parts.append(f"Ruff format: {fmt_result}")
-            else:
-                output_parts.append("Ruff format: ✅ Formatting OK")
-
-            # Check 2: ruff import order
-            import_result = self._check_ruff_imports(project_root)
-            if import_result == _RUFF_SKIPPED:
-                output_parts.append("Ruff imports: ⚠️ Skipped (ruff not installed)")
-            elif import_result:
-                issues.append(import_result)
-                output_parts.append(f"Ruff imports: {import_result}")
-            else:
-                output_parts.append("Ruff imports: ✅ Import order OK")
-
-            fix_hint = "Run: ruff format . && ruff check --fix --select I,F401 ."
-        else:
-            # Check 1: Black formatting
-            black_result = self._check_black(project_root)
-            if black_result == _BLACK_SKIPPED:
-                output_parts.append("Black: ⚠️ Skipped (broken installation)")
-            elif black_result:
-                issues.append(black_result)
-                output_parts.append(f"Black: {black_result}")
-            else:
-                output_parts.append("Black: ✅ Formatting OK")
-
-            # Check 2: Isort imports
-            isort_result = self._check_isort(project_root)
-            if isort_result:
-                issues.append(isort_result)
-                output_parts.append(f"Isort: {isort_result}")
-            else:
-                output_parts.append("Isort: ✅ Import order OK")
-
-            fix_hint = "Run: black . && isort . to auto-fix formatting"
+        fix_hint = self._run_formatter_sections(
+            formatter,
+            project_root,
+            issues,
+            labeled_issues,
+            section_findings,
+            output_parts,
+        )
 
         # Check 3: Flake8 critical errors (always)
         flake8_result, flake8_findings = self._check_flake8(project_root)
         if flake8_result:
             issues.append(flake8_result)
+            labeled_issues.append(("Flake8", flake8_result, bool(flake8_findings)))
+            section_findings.extend(flake8_findings)
             output_parts.append(f"Flake8: {flake8_result}")
         else:
             output_parts.append("Flake8: ✅ No critical errors")
@@ -483,11 +533,23 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             if self._is_all_timeouts(issues):
                 return self._timeout_warning(issues, output_parts, duration)
             msg = ISSUES_FOUND_TEMPLATE.format(count=len(issues))
-            final_findings = (
-                flake8_findings
-                if flake8_findings
-                else [Finding(message=msg, level=FindingLevel.ERROR)]
-            )
+            # Every failed section must be visible in the findings — a bare
+            # "N issue(s) found" with no file and no tool name renders as
+            # "(location unknown)" in CI and tells the reader nothing; a
+            # release once stalled two gate cycles tracing exactly that.
+            # Sections that parsed file paths are already per-file findings;
+            # a section that could not contributes its labeled text instead,
+            # so the tool name and its output always reach the report.
+            final_findings = list(section_findings)
+            for label, text, had_findings in labeled_issues:
+                if had_findings:
+                    continue
+                summary = text if len(text) <= 400 else text[:400] + " …"
+                final_findings.append(
+                    Finding(message=f"{label}: {summary}", level=FindingLevel.ERROR)
+                )
+            if not final_findings:
+                final_findings = [Finding(message=msg, level=FindingLevel.ERROR)]
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
@@ -503,7 +565,34 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             output="\n".join(output_parts),
         )
 
-    def _check_ruff_format(self, project_root: str) -> Optional[str]:
+    @staticmethod
+    def _files_to_findings(
+        paths: List[str], message: str, project_root: str
+    ) -> List[Finding]:
+        """Per-file Findings with paths made project-relative.
+
+        Tools print absolute paths when handed absolute targets; Finding.file
+        is documented as relative-to-project-root, and SARIF/report rendering
+        depends on it.
+        """
+        findings: List[Finding] = []
+        for path in paths:
+            rel = path
+            try:
+                if os.path.isabs(path):
+                    candidate = os.path.relpath(path, project_root)
+                    if not candidate.startswith(".."):
+                        rel = candidate
+            except ValueError:
+                pass  # different drive on Windows — keep the absolute path
+            findings.append(
+                Finding(message=message, level=FindingLevel.ERROR, file=rel)
+            )
+        return findings
+
+    def _check_ruff_format(
+        self, project_root: str
+    ) -> tuple[Optional[str], List[Finding]]:
         """Check ruff formatting (equivalent of black --check)."""
         result = self._run_command(
             ["ruff", "format", "--check", "."],
@@ -513,14 +602,27 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if not result.success:
             timed_out = self._timed_out_message("ruff format", result)
             if timed_out:
-                return timed_out
+                return timed_out, []
             output = (result.output or "").strip()
             if COMMAND_NOT_FOUND in output:
-                return _RUFF_SKIPPED
-            return output or "Ruff format check failed"
-        return None
+                return _RUFF_SKIPPED, []
+            # Two output shapes across ruff versions: older ruffs print
+            # "Would reformat: path"; 0.16.x prints diagnostic blocks with
+            # " --> path:line" markers (verified against the pinned 0.16.3).
+            # Parsing only the old shape left Finding.file empty on exactly
+            # the version we ship — location-less findings again.
+            files = sorted(
+                set(re.findall(r"^Would reformat: (.+)$", output, re.M))
+                | set(re.findall(r"^\s*--> ([^:\n]+):\d+", output, re.M))
+            )
+            return output or "Ruff format check failed", self._files_to_findings(
+                files, "ruff format would reformat this file", project_root
+            )
+        return None, []
 
-    def _check_ruff_imports(self, project_root: str) -> Optional[str]:
+    def _check_ruff_imports(
+        self, project_root: str
+    ) -> tuple[Optional[str], List[Finding]]:
         """Check import order with ruff (equivalent of isort --check-only)."""
         result = self._run_command(
             ["ruff", "check", "--select", "I", "."],
@@ -530,20 +632,27 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if not result.success:
             timed_out = self._timed_out_message("ruff check --select I", result)
             if timed_out:
-                return timed_out
+                return timed_out, []
             output = (result.output or "").strip()
             if COMMAND_NOT_FOUND in output:
-                return _RUFF_SKIPPED
+                return _RUFF_SKIPPED, []
+            files = sorted(set(re.findall(r"^\s*--> ([^:\n]+):\d+", output, re.M)))
+            findings = self._files_to_findings(
+                files, "Import block is un-sorted (ruff --select I)", project_root
+            )
             if output:
                 lines = [line for line in output.splitlines() if line.strip()]
                 if len(lines) <= 5:
-                    return "Import order issues:\n  " + "\n  ".join(lines)
+                    return "Import order issues:\n  " + "\n  ".join(lines), findings
                 shown = "\n  ".join(lines[:5])
-                return f"Import order issues:\n  {shown}\n  ... and {len(lines)-5} more"
-            return "Import order issues found"
-        return None
+                return (
+                    f"Import order issues:\n  {shown}\n  ... and {len(lines)-5} more",
+                    findings,
+                )
+            return _IMPORT_ORDER_ISSUES, findings
+        return None, []
 
-    def _check_black(self, project_root: str) -> Optional[str]:
+    def _check_black(self, project_root: str) -> tuple[Optional[str], List[Finding]]:
         """Check black formatting.
 
         In normal operation, auto_fix() runs first, so failures here are typically:
@@ -553,7 +662,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         """
         targets = self._get_python_targets(project_root)
         if not targets:
-            return None  # No Python targets found
+            return None, []  # No Python targets found
 
         # Run black --check on all targets, collect any failures
         all_output: List[str] = []
@@ -576,7 +685,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             if not result.success:
                 timed_out = self._timed_out_message("black", result)
                 if timed_out:
-                    return timed_out
+                    return timed_out, []
                 output = (result.output or "").strip()
                 # Distinguish tool-installation failures from real formatting
                 # issues.  A broken black (missing dependency, bad interpreter,
@@ -584,7 +693,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 # Check line-starts to avoid false positives on filenames
                 # that happen to contain "ImportError" or "ModuleNotFoundError".
                 if _is_import_error(output):
-                    return _BLACK_SKIPPED  # tool broken, not a code issue
+                    return _BLACK_SKIPPED, []  # tool broken, not a code issue
                 any_failed = True
                 if output:
                     # Black outputs useful info like:
@@ -593,15 +702,27 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     all_output.append(output)
 
         if not any_failed:
-            return None
+            return None, []
 
         # Combine and return black's actual output (it includes file:line info)
         combined = "\n".join(all_output)
+        # The two failure shapes deserve different words: "would reformat" on
+        # a file black REFUSED to parse would send the reader chasing style
+        # drift when the file has a syntax error.
+        drift = re.findall(r"^would reformat (.+)$", combined, re.M)
+        broken = re.findall(r"^error: cannot format ([^:]+):.*$", combined, re.M)
+        findings = self._files_to_findings(
+            sorted(set(drift)), "black would reformat this file", project_root
+        ) + self._files_to_findings(
+            sorted(set(broken)),
+            "black cannot format this file (parse error)",
+            project_root,
+        )
         if combined:
-            return combined
-        return "Formatting check failed"
+            return combined, findings
+        return "Formatting check failed", findings
 
-    def _check_isort(self, project_root: str) -> Optional[str]:
+    def _check_isort(self, project_root: str) -> tuple[Optional[str], List[Finding]]:
         """Check isort import order."""
         isort_cmd = ["isort", "--check-only", "--profile", "black"]
         isort_cmd.extend(f"--skip={name}" for name in _DEFAULT_EXCLUDE_DIRS)
@@ -609,7 +730,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # tool infrastructure rather than project source code.
         targets = self._get_python_targets(project_root)
         if not targets:
-            return None  # nothing to sort
+            return None, []  # nothing to sort
         isort_cmd.append("--skip-glob=.*")
         # Explicit targets, never ".": isort's --skip is a post-filter, so a
         # bare "." still walks (and opens) every file in a nested .venv.
@@ -621,7 +742,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if not result.success:
             timed_out = self._timed_out_message("isort", result)
             if timed_out:
-                return timed_out
+                return timed_out, []
             # isort outputs "ERROR: file.py ..." or "Skipped X files"
             # Extract file paths from output for actionable feedback
             output = result.output if result.output else ""
@@ -635,17 +756,29 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                     parts = line.split(" ")
                     if len(parts) >= 2:
                         file_names.append(str(parts[1]))
+                if not file_names:
+                    # ERROR lines whose shape we failed to parse: fall back to
+                    # the generic message rather than a blank file list — the
+                    # labeled-text fallback in run() then carries isort's
+                    # actual output into the findings.
+                    return _IMPORT_ORDER_ISSUES, []
+                findings = self._files_to_findings(
+                    file_names,
+                    "Imports are incorrectly sorted (isort)",
+                    project_root,
+                )
                 if len(file_names) <= 5:
                     files_str = "\n  ".join(file_names)
-                    return f"Import order issues:\n  {files_str}"
+                    return f"Import order issues:\n  {files_str}", findings
                 else:
                     shown = "\n  ".join(file_names[:5])
                     remaining = len(file_names) - 5
                     return (
-                        f"Import order issues:\n  {shown}\n  ... and {remaining} more"
+                        f"Import order issues:\n  {shown}\n  ... and {remaining} more",
+                        findings,
                     )
-            return "Import order issues found"
-        return None
+            return _IMPORT_ORDER_ISSUES, []
+        return None, []
 
     def _check_flake8(self, project_root: str) -> tuple[Optional[str], List[Finding]]:
         """Check for critical flake8 errors.
