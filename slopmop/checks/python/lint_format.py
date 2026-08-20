@@ -143,7 +143,7 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 ),
                 pip_cli_requirement(
                     "ruff",
-                    "0.15.0",
+                    "0.16.3",
                     "fast linting + formatting",
                     optional=True,
                     extra="lint",
@@ -601,7 +601,15 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             output = (result.output or "").strip()
             if COMMAND_NOT_FOUND in output:
                 return _RUFF_SKIPPED, []
-            files = re.findall(r"^Would reformat: (.+)$", output, re.M)
+            # Two output shapes across ruff versions: older ruffs print
+            # "Would reformat: path"; 0.16.x prints diagnostic blocks with
+            # " --> path:line" markers (verified against the pinned 0.16.3).
+            # Parsing only the old shape left Finding.file empty on exactly
+            # the version we ship — location-less findings again.
+            files = sorted(
+                set(re.findall(r"^Would reformat: (.+)$", output, re.M))
+                | set(re.findall(r"^\s*--> ([^:\n]+):\d+", output, re.M))
+            )
             return output or "Ruff format check failed", self._files_to_findings(
                 files, "ruff format would reformat this file", project_root
             )

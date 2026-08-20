@@ -669,3 +669,57 @@ class TestReviewEdgeCases:
         assert result == "Import order issues found"
         assert findings == []
         assert "Import order issues:\n" not in (result or "")
+
+
+class TestRuffZeroSixteenOutputShape:
+    """Bugbot on #340: ruff 0.16.3 — the exact version the lint extra pins —
+    emits diagnostic blocks (' --> path:line'), not 'Would reformat: path'.
+    Parsing only the old shape left Finding.file empty on precisely the
+    version we ship. Output text below captured from the real 0.16.3 binary.
+    """
+
+    REAL_0163_OUTPUT = (
+        "unformatted: File would be reformatted\n"
+        " --> bad.py:1:2\n"
+        "  |\n"
+        "  - x=1\n"
+        "1 + x = 1\n"
+        "  |\n"
+    )
+
+    OLD_SHAPE_OUTPUT = "Would reformat: legacy.py\n1 file would be reformatted"
+
+    def _run(self, tmp_path, stdout):
+        (tmp_path / "t.py").touch()
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = SubprocessResult(
+            returncode=1, stdout=stdout, stderr="", duration=1.0
+        )
+        check = PythonLintFormatCheck({}, runner=mock_runner)
+        return check._check_ruff_format(str(tmp_path))
+
+    def test_pinned_ruff_diagnostic_shape_yields_file_findings(self, tmp_path):
+        _, findings = self._run(tmp_path, self.REAL_0163_OUTPUT)
+        assert [f.file for f in findings] == ["bad.py"]
+
+    def test_older_ruff_shape_still_parses(self, tmp_path):
+        _, findings = self._run(tmp_path, self.OLD_SHAPE_OUTPUT)
+        assert [f.file for f in findings] == ["legacy.py"]
+
+
+def test_requirements_ruff_matches_the_lint_extra_pin():
+    """The gate's declared ruff and the extra's pinned ruff must be the SAME
+    version — env-doctor and the install path disagreeing on the verdict tool
+    is the drift this PR exists to close."""
+    import pathlib
+    import re as _re
+
+    src = pathlib.Path("slopmop/checks/python/lint_format.py").read_text()
+    gate = _re.search(r'"ruff",\s*\n\s*"([0-9.]+)"', src)
+    pyproject = pathlib.Path("pyproject.toml").read_text()
+    extra = _re.search(r'"ruff==([0-9.]+)"', pyproject)
+    assert gate and extra
+    assert gate.group(1) == extra.group(1), (
+        f"gate declares ruff {gate.group(1)} but the lint extra pins "
+        f"{extra.group(1)}"
+    )
