@@ -644,3 +644,57 @@ class TestValidationSkipIsVisible:
 
         assert mock_run.called
         assert list(result.args) != upgrade_mod._VALIDATION_SKIPPED_ARGS
+
+
+class TestUpgradeSummaryOutput:
+    """The summary is the only thing most people read after an upgrade."""
+
+    def _summary(self, tmp_path: Path, validation, capsys) -> str:
+        from slopmop.cli import upgrade as upgrade_mod
+
+        upgrade_mod._print_upgrade_summary(
+            current_version="2.14.0",
+            installed_version="2.14.1",
+            backup_dir=tmp_path / "backup",
+            applied_migrations=[],
+            validation=validation,
+            project_root=tmp_path,
+        )
+        return capsys.readouterr().out
+
+    def test_skipped_validation_is_named_as_skipped(self, tmp_path: Path, capsys):
+        from slopmop.cli import upgrade as upgrade_mod
+
+        out = self._summary(
+            tmp_path,
+            subprocess.CompletedProcess(
+                args=upgrade_mod._VALIDATION_SKIPPED_ARGS,
+                returncode=0,
+                stdout="no slop-mop config here",
+                stderr="",
+            ),
+            capsys,
+        )
+        assert "Validation: skipped" in out
+        assert "no slop-mop config here" in out
+        # The claim that must not appear: a swab that never ran.
+        assert f"Validation: sm {upgrade_mod.VALIDATION_VERB}" not in out
+
+    def test_real_validation_is_named_as_run(self, tmp_path: Path, capsys):
+        from slopmop.cli import upgrade as upgrade_mod
+
+        out = self._summary(
+            tmp_path,
+            subprocess.CompletedProcess(args=["python"], returncode=0, stdout=""),
+            capsys,
+        )
+        assert f"Validation: sm {upgrade_mod.VALIDATION_VERB}" in out
+        assert "skipped" not in out
+
+    def test_migrations_are_listed_when_applied(self, tmp_path: Path, capsys):
+        out = self._summary(
+            tmp_path,
+            subprocess.CompletedProcess(args=["python"], returncode=0, stdout=""),
+            capsys,
+        )
+        assert "Migrations:" in out
