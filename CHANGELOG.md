@@ -29,8 +29,10 @@ times slower than the work it was doing, and one that could hang forever.
   report ran thirteen minutes before the user killed it. A directory with no
   slop-mop config cannot say whether an upgrade succeeded, so validation is
   now skipped there by name rather than scanned by accident.
-  **Upgrade note:** running `sm upgrade` outside a project now prints that it
-  skipped validation instead of scanning. Inside a project it is unchanged.
+  **Upgrade note:** running `sm upgrade` outside a project now prints
+  `Validation: skipped` instead of scanning. The summary previously said
+  `Validation: sm swab` unconditionally, which would have named a run that
+  never happened. Inside a project it is unchanged.
 
 - **29 CLI subprocess calls had no timeout** (#346) — gate checks have always
   gone through a runner that bounds them, but the CLI helpers called

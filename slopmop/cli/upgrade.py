@@ -331,6 +331,12 @@ def _run_upgrade_install(install_type: str, target_version: str) -> None:
         raise UpgradeError(f"Upgrade failed: {details}")
 
 
+#: Sentinel argv for the synthetic result returned when there is no project
+#: to validate. The summary line checks for it so it cannot report a swab
+#: that never ran.
+_VALIDATION_SKIPPED_ARGS: List[str] = ["<skipped: no project>"]
+
+
 def _validate_upgraded_install(
     project_root: Path, verbose: bool
 ) -> subprocess.CompletedProcess[str]:
@@ -347,7 +353,7 @@ def _validate_upgraded_install(
     """
     if not config_file_path(project_root).exists():
         return subprocess.CompletedProcess(
-            args=[],
+            args=_VALIDATION_SKIPPED_ARGS,
             returncode=0,
             stdout=(
                 f"Skipped post-upgrade validation: {project_root} has no "
@@ -416,6 +422,32 @@ def _packaging_invalid_version_class() -> type[Exception]:
     from packaging.version import InvalidVersion
 
     return InvalidVersion
+
+
+def _print_upgrade_summary(
+    *,
+    current_version: str,
+    installed_version: str,
+    backup_dir: Path,
+    applied_migrations: List[str],
+    validation: "subprocess.CompletedProcess[str]",
+    project_root: Path,
+) -> None:
+    """Report what the upgrade did, including what it deliberately did not do."""
+    print(f"✅ Upgraded slopmop: {current_version} -> {installed_version}")
+    print(f"📦 Backup: {backup_dir}")
+    if applied_migrations:
+        print(f"🔄 Migrations: {', '.join(applied_migrations)}")
+    else:
+        print(f"🔄 Migrations: {NO_MIGRATIONS}")
+    if list(validation.args) == _VALIDATION_SKIPPED_ARGS:
+        # Saying "Validation: sm swab" here would name a run that never
+        # happened, which is worse than saying nothing.
+        print(f"⏭️  Validation: skipped — {project_root} is not a slop-mop project")
+        if validation.stdout:
+            print(f"   {validation.stdout}")
+    else:
+        print(f"✔️  Validation: sm {VALIDATION_VERB}")
 
 
 def cmd_upgrade(args: argparse.Namespace) -> int:
@@ -505,11 +537,12 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
 
         return 1
 
-    print(f"✅ Upgraded slopmop: {current_version} -> {installed_version}")
-    print(f"📦 Backup: {backup_dir}")
-    if applied_migrations:
-        print(f"🔄 Migrations: {', '.join(applied_migrations)}")
-    else:
-        print(f"🔄 Migrations: {NO_MIGRATIONS}")
-    print(f"✔️  Validation: sm {VALIDATION_VERB}")
+    _print_upgrade_summary(
+        current_version=current_version,
+        installed_version=installed_version,
+        backup_dir=backup_dir,
+        applied_migrations=applied_migrations,
+        validation=validation,
+        project_root=project_root,
+    )
     return 0

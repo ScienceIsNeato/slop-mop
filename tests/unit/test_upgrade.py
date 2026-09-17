@@ -613,3 +613,34 @@ class TestMissingDependencyGuard:
         assert err.package == "packaging"
         assert err.verb == "upgrade"
         assert isinstance(err, ImportError)
+
+
+class TestValidationSkipIsVisible:
+    """A skipped validation must not be reported as a validation that ran."""
+
+    def test_summary_says_skipped_not_swabbed(self, tmp_path: Path, capsys):
+        """The success summary printed "Validation: sm swab" unconditionally.
+
+        Outside a project nothing is swabbed, so that line named a run that
+        never happened — the opposite of what the skip exists to communicate.
+        """
+        from slopmop.cli import upgrade as upgrade_mod
+
+        validation = upgrade_mod._validate_upgraded_install(tmp_path, False)
+        assert list(validation.args) == upgrade_mod._VALIDATION_SKIPPED_ARGS
+        assert "no slop-mop config" in validation.stdout
+
+    def test_inside_a_project_validation_actually_runs(self, tmp_path: Path):
+        from unittest.mock import patch
+
+        from slopmop.cli import upgrade as upgrade_mod
+
+        (tmp_path / ".sb_config.json").write_text("{}")
+        with patch.object(upgrade_mod, "bounded_run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["python"], returncode=0
+            )
+            result = upgrade_mod._validate_upgraded_install(tmp_path, False)
+
+        assert mock_run.called
+        assert list(result.args) != upgrade_mod._VALIDATION_SKIPPED_ARGS
