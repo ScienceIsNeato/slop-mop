@@ -6,6 +6,48 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.14.1
+
+A sweep for subprocess calls that could run away: one that made a gate eight
+times slower than the work it was doing, and one that could hang forever.
+
+### Fixes
+
+- **`laziness:sloppy-formatting.py` spawned black once per file** (#346) — on
+  a 300-file repo that is 300 process launches at roughly 75ms each: 22.6s of
+  a 27.1s gate, against about a second of actual formatting. `auto_fix` had
+  the same shape. Batched, the gate runs in 2.2s and the black step drops
+  from 22.57s to 0.18s. Worth stating plainly because the first guess was
+  wrong: this was never file discovery or cache hashing, which measure at
+  0.02s and 0.00s — it was the launches, and it was equally slow on a repo
+  with nothing ignored.
+
+- **`sm upgrade` could hang indefinitely** (#346) — it validates by running a
+  full swab against `project_root`, which defaults to the working directory,
+  and the call had no timeout. Run from a home directory, with no git repo
+  and no config to scope it, that walked hundreds of thousands of files; one
+  report ran thirteen minutes before the user killed it. A directory with no
+  slop-mop config cannot say whether an upgrade succeeded, so validation is
+  now skipped there by name rather than scanned by accident.
+  **Upgrade note:** running `sm upgrade` outside a project now prints that it
+  skipped validation instead of scanning. Inside a project it is unchanged.
+
+- **29 CLI subprocess calls had no timeout** (#346) — gate checks have always
+  gone through a runner that bounds them, but the CLI helpers called
+  subprocess directly: git, `gh`, the package install, the validation run.
+  All are bounded now, with the install and validation given a longer limit
+  than the git and `gh` default.
+  **Upgrade note:** a command that genuinely exceeds its limit now fails
+  instead of waiting forever. The default is generous for the metadata
+  commands these helpers run.
+
+- **Formatter targets could exceed the command-line limit** (#346) — removing
+  the arbitrary file ceiling in 2.14.0 left the non-git fallback returning an
+  unbounded list, so autoflake, isort and flake8 could each have failed
+  wholesale with "Argument list too long" rather than checking anything. The
+  fallback now applies the same platform-derived budget as the git-backed
+  path, and black batches within it.
+
 ## 2.14.0
 
 A gate can no longer see a file the repository ignores. Discovery now asks
