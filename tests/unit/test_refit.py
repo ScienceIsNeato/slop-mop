@@ -596,7 +596,7 @@ class TestCommitCurrentChanges:
             result.stderr = ""
             return result
 
-        monkeypatch.setattr(refit_mod.subprocess, "run", fake_run)
+        monkeypatch.setattr(refit_mod, "bounded_run", fake_run)
         code, _ = refit_mod._commit_current_changes(tmp_path, "test commit")
 
         assert code == 0
@@ -634,7 +634,7 @@ class TestRunScour:
             captured["check"] = check
             return SimpleNamespace(returncode=0)
 
-        monkeypatch.setattr(refit_mod.subprocess, "run", _fake_run)
+        monkeypatch.setattr(refit_mod, "bounded_run", _fake_run)
 
         exit_code = refit_mod._run_scour(
             tmp_path,

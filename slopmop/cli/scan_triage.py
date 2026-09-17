@@ -11,7 +11,6 @@ import argparse
 import json
 import re
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Literal, TypedDict, cast
@@ -25,6 +24,7 @@ from slopmop.reporting.rail import (
     normalize_actionable_row,
     sort_rows_by_remediation_order,
 )
+from slopmop.utils.proc import bounded_run
 
 ARTIFACT_NAME = "slopmop-results"
 ARTIFACT_JSON = "slopmop-results.json"
@@ -58,7 +58,7 @@ PRResolutionSource = Literal["explicit", "branch", "configured", "latest_open"]
 def _run_gh(args: list[str]) -> str:
     cmd = ["gh", *args]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = bounded_run(cmd, capture_output=True, text=True)
     except FileNotFoundError:
         raise TriageError(
             "gh CLI not found. Install it from https://cli.github.com/ "
@@ -71,7 +71,7 @@ def _run_gh(args: list[str]) -> str:
 
 
 def _run_local(cmd: list[str]) -> str:
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = bounded_run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
         raise TriageError(f"command failed: {' '.join(cmd)}\n{stderr}")

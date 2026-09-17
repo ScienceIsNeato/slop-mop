@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
+from slopmop.utils.proc import bounded_run
+
 # Hook markers
 SB_HOOK_MARKER = "# MANAGED BY SLOP-MOP"
 SB_HOOK_END_MARKER = "# END SLOP-MOP HOOK"
@@ -437,7 +439,7 @@ def _hooks_status(project_root: Path, hooks_dir: Path) -> int:
 
     # Surface the global install state so the user knows which hooks are active.
     global_dir = _global_hooks_dir()
-    current_hooks_path = subprocess.run(
+    current_hooks_path = bounded_run(
         ["git", "config", "--global", "--get", "core.hooksPath"],
         capture_output=True,
         text=True,
@@ -513,7 +515,7 @@ def _hooks_install(
     if not global_install:
         # Warn if machine-wide hooks are already active: local hooks written to
         # .git/hooks won't run while core.hooksPath shadows them.
-        current_hooks_path = subprocess.run(
+        current_hooks_path = bounded_run(
             ["git", "config", "--global", "--get", "core.hooksPath"],
             capture_output=True,
             text=True,
@@ -579,7 +581,7 @@ def _hooks_install(
                 pt_file.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
             )
 
-        existing_path = subprocess.run(
+        existing_path = bounded_run(
             ["git", "config", "--global", "--get", "core.hooksPath"],
             capture_output=True,
             text=True,
@@ -587,7 +589,7 @@ def _hooks_install(
         if existing_path and existing_path != str(target_dir):
             print(f"⚠️  Replacing existing global core.hooksPath: {existing_path}")
         try:
-            subprocess.run(
+            bounded_run(
                 ["git", "config", "--global", "core.hooksPath", str(target_dir)],
                 check=True,
             )
@@ -661,13 +663,13 @@ def _hooks_uninstall(
     if global_install:
         # Only unset core.hooksPath if it still points at our dir, so we don't
         # clobber a hooksPath the user set to something else.
-        current = subprocess.run(
+        current = bounded_run(
             ["git", "config", "--global", "--get", "core.hooksPath"],
             capture_output=True,
             text=True,
         ).stdout.strip()
         if current == str(target_dir):
-            subprocess.run(
+            bounded_run(
                 ["git", "config", "--global", "--unset", "core.hooksPath"],
                 check=False,
             )

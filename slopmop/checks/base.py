@@ -590,7 +590,12 @@ def resolve_tool_paths(
         return out, relevant, (dropped or dropped_below)
 
     paths, _relevant, _dropped = walk("", 0)
-    if not paths or (max_paths is not None and len(paths) > max_paths):
+    # The same bound as the git-backed branch above. Without it this path
+    # could hand a tool more arguments than the platform accepts, and every
+    # caller — autoflake, isort, flake8 — would fail wholesale with
+    # "Argument list too long" rather than checking anything.
+    limit = max_paths if max_paths is not None else argv_path_budget(paths)
+    if not paths or len(paths) > limit:
         return ["."]
     return paths
 

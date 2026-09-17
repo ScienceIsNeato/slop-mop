@@ -38,6 +38,7 @@ from slopmop.cli.scan_triage import (
 )
 from slopmop.core.result import CheckResult, CheckStatus
 from slopmop.reporting.envelope import Status, build_envelope
+from slopmop.utils.proc import bounded_run
 
 _RESOLUTION_SCENARIOS = {
     "fixed_in_code",
@@ -413,7 +414,7 @@ def _run_scour_quietly(project_root: str) -> int:
 
     output_path = Path(project_root) / ".slopmop" / "last_buff_iterate_scour.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
+    result = bounded_run(
         [
             sys.executable,
             "-m",
@@ -436,7 +437,7 @@ def _run_scour_quietly(project_root: str) -> int:
 def _push_current_branch(project_root: str) -> int:
     """Push the current branch to its configured upstream."""
 
-    result = subprocess.run(
+    result = bounded_run(
         ["git", "push"],
         capture_output=True,
         text=True,

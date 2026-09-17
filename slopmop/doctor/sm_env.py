@@ -494,7 +494,7 @@ class GateReadinessCheck(DoctorCheck):
         if not blocked_gates:
             return self._ok(
                 f"all {total_gates} gates ready",
-                detail=f"Run ``sm doctor --gates`` for the full dependency tree.",
+                detail="Run ``sm doctor --gates`` for the full dependency tree.",
                 data=data,
             )
 

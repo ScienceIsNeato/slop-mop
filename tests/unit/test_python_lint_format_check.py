@@ -723,3 +723,97 @@ def test_requirements_ruff_matches_the_lint_extra_pin():
         f"gate declares ruff {gate.group(1)} but the lint extra pins "
         f"{extra.group(1)}"
     )
+
+
+class TestBlackRunsOncePerGate:
+    """Spawning black per file cost a process launch each time.
+
+    On a 300-file repo that was 300 launches and ~22s of the gate's ~27s,
+    against roughly a second of actual formatting work.
+    """
+
+    def _repo(self, tmp_path):
+        import subprocess
+
+        (tmp_path / "src").mkdir()
+        for i in range(5):
+            (tmp_path / "src" / f"m{i}.py").write_text(f"x{i} = {i}\n")
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+        return tmp_path
+
+    def test_single_invocation_for_many_files(self, tmp_path, monkeypatch):
+        from slopmop.checks.python.lint_format import PythonLintFormatCheck
+
+        repo = self._repo(tmp_path)
+        check = PythonLintFormatCheck({})
+        calls = []
+        real = check._run_command
+
+        def _spy(command, **kwargs):
+            if command and "black" in str(command[0]):
+                calls.append(command)
+            return real(command, **kwargs)
+
+        monkeypatch.setattr(check, "_run_command", _spy)
+        check._check_black(str(repo))
+
+        assert len(calls) == 1, f"black spawned {len(calls)} times, expected 1"
+        # Every file still reaches it; batching must not narrow the scope.
+        assert sum(1 for a in calls[0] if a.endswith(".py")) == 5
+
+    def test_parse_error_does_not_hide_other_files(self, tmp_path):
+        """One unparseable file used to be reported alongside the rest; keep that."""
+        from slopmop.checks.python.lint_format import PythonLintFormatCheck
+
+        repo = self._repo(tmp_path)
+        (repo / "src" / "drift.py").write_text("def f( a,b ):\n  return    a+b\n")
+        (repo / "src" / "broken.py").write_text("def g(:\n")
+
+        result = PythonLintFormatCheck({}).run(str(repo))
+        files = {f.file for f in (result.findings or [])}
+        assert any("drift.py" in f for f in files), files
+        assert any("broken.py" in f for f in files), files
+
+
+class TestBlackBatchingEdges:
+    """Batching must not lose work or overflow the command line."""
+
+    def _repo(self, tmp_path, count=4):
+        import subprocess
+
+        (tmp_path / "src").mkdir()
+        for i in range(count):
+            (tmp_path / "src" / f"m{i}.py").write_text(f"x{i} = {i}\n")
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+        return tmp_path
+
+    def test_oversized_list_is_split_not_truncated(self, tmp_path, monkeypatch):
+        """An over-budget list used to fail wholesale with E2BIG."""
+        import slopmop.checks.python.lint_format as mod
+        from slopmop.checks.python.lint_format import PythonLintFormatCheck
+
+        self._repo(tmp_path, count=9)
+        check = PythonLintFormatCheck({})
+        monkeypatch.setattr(mod, "argv_path_budget", lambda _paths: 2)
+
+        batches = check._black_batches([f"f{i}.py" for i in range(9)])
+        assert len(batches) == 5, batches
+        assert sum(len(b) for b in batches) == 9  # nothing dropped
+
+    def test_parse_error_does_not_discard_reformatting(self, tmp_path):
+        """One bad file makes black exit nonzero; the rest were still fixed."""
+        from slopmop.checks.python.lint_format import PythonLintFormatCheck
+
+        repo = self._repo(tmp_path)
+        (repo / "src" / "drift.py").write_text("def f( a,b ):\n  return    a+b\n")
+        (repo / "src" / "broken.py").write_text("def g(:\n")
+
+        check = PythonLintFormatCheck({})
+        _, all_ok, reformatted, _failure = check._run_black(
+            [], check._get_python_targets(str(repo)), str(repo)
+        )
+        # Aggregate status is a failure, yet real work happened — auto_fix
+        # must report that rather than claiming nothing was fixed.
+        assert all_ok is False
+        assert reformatted is True
+        assert "a + b" in (repo / "src" / "drift.py").read_text()

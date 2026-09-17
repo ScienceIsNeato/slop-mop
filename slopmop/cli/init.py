@@ -62,13 +62,13 @@ def _print_detection_results(detected: Dict[str, Any]) -> None:
     print(f"  Python project:      {'✅' if detected['has_python'] else '❌'}")
     print(f"  JavaScript project:  {'✅' if detected['has_javascript'] else '❌'}")
     if detected.get("has_go"):
-        print(f"  Go project:          ✅")
+        print("  Go project:          ✅")
     if detected.get("has_rust"):
-        print(f"  Rust project:        ✅")
+        print("  Rust project:        ✅")
     if detected.get("has_c_cpp"):
-        print(f"  C/C++ project:       ✅")
+        print("  C/C++ project:       ✅")
     if detected.get("has_dart"):
-        print(f"  Dart/Flutter project: ✅")
+        print("  Dart/Flutter project: ✅")
     if detected.get("package_manager") and detected.get("package_manager") != "npm":
         print(f"  Package manager:     {detected['package_manager']}")
     print(f"  Has test directory:  {'✅' if detected['has_tests_dir'] else '❌'}")

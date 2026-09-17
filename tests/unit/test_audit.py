@@ -215,7 +215,7 @@ class TestRunGitCmd:
         """When git is not installed, _run_git_cmd must not raise."""
         from slopmop.cli.audit import _run_git_cmd
 
-        with patch("slopmop.cli.audit.subprocess.run", side_effect=OSError("no git")):
+        with patch("slopmop.cli.audit.bounded_run", side_effect=OSError("no git")):
             rc, output = _run_git_cmd(["rev-parse", "HEAD"], _REPO_ROOT)
         assert rc == 1
         assert output == ""
@@ -358,7 +358,7 @@ class TestRunGateInventory:
             artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_text(json.dumps(envelope), encoding="utf-8")
 
-        with patch("slopmop.cli.audit.subprocess.run", side_effect=_write_artifact):
+        with patch("slopmop.cli.audit.bounded_run", side_effect=_write_artifact):
             result = _run_gate_inventory(tmp_path, quiet=True)
 
         assert result == fake_data
@@ -366,7 +366,7 @@ class TestRunGateInventory:
     def test_returns_none_when_no_artifact(self, tmp_path: Path) -> None:
         from slopmop.cli.audit import _run_gate_inventory
 
-        with patch("slopmop.cli.audit.subprocess.run"):
+        with patch("slopmop.cli.audit.bounded_run"):
             result = _run_gate_inventory(tmp_path, quiet=True)
         assert result is None
 
@@ -378,7 +378,7 @@ class TestRunGateInventory:
         def _capture(*args: Any, **kwargs: Any) -> None:
             calls.append(args[0])
 
-        with patch("slopmop.cli.audit.subprocess.run", side_effect=_capture):
+        with patch("slopmop.cli.audit.bounded_run", side_effect=_capture):
             _run_gate_inventory(tmp_path, quiet=True)
 
         assert calls and "--quiet" in calls[0]
@@ -391,7 +391,7 @@ class TestRunGateInventory:
         def _capture(*args: Any, **kwargs: Any) -> None:
             calls.append(args[0])
 
-        with patch("slopmop.cli.audit.subprocess.run", side_effect=_capture):
+        with patch("slopmop.cli.audit.bounded_run", side_effect=_capture):
             _run_gate_inventory(tmp_path, quiet=False)
 
         assert calls and "--quiet" not in calls[0]
@@ -405,7 +405,7 @@ class TestRunGateInventory:
             artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_text("not json!!", encoding="utf-8")
 
-        with patch("slopmop.cli.audit.subprocess.run", side_effect=_write_bad):
+        with patch("slopmop.cli.audit.bounded_run", side_effect=_write_bad):
             result = _run_gate_inventory(tmp_path, quiet=True)
 
         assert result is None

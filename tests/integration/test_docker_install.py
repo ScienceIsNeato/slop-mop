@@ -321,7 +321,7 @@ class TestMixed:
         ]
         assert not failing_lines, (
             "repeated-code should be disabled (skipped) but was "
-            f"reported as failed:\n" + "\n".join(failing_lines)
+            "reported as failed:\n" + "\n".join(failing_lines)
         )
 
     def test_js_expect_gate_passes(self, result_mixed: RunResult) -> None:

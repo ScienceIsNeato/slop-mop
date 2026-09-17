@@ -254,7 +254,7 @@ class TestCreateBarnacleIssue:
             stdout="",
             stderr="failed creating issue titled [barnacle] network error",
         )
-        with patch("slopmop.cli.barnacle.subprocess.run", return_value=failed) as run:
+        with patch("slopmop.cli.barnacle.bounded_run", return_value=failed) as run:
             result, _body_path = create_barnacle_issue(
                 _issue(project_root=str(tmp_path))
             )

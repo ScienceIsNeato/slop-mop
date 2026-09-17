@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
@@ -41,6 +40,7 @@ from slopmop.core.gate_config import GateRef
 from slopmop.core.registry import get_registry
 from slopmop.reporting.envelope import Status, build_envelope
 from slopmop.utils import iso_now
+from slopmop.utils.proc import bounded_run
 from slopmop.workflow.state_machine import RepoPhase
 from slopmop.workflow.state_store import read_phase
 
@@ -155,7 +155,7 @@ def _load_config(project_root: Path) -> Dict[str, Any]:
 
 
 def _git_output(project_root: Path, *args: str) -> Tuple[int, str, str]:
-    result = subprocess.run(
+    result = bounded_run(
         ["git", *args],
         cwd=project_root,
         capture_output=True,
@@ -289,7 +289,7 @@ def _run_scour(
     env = os.environ.copy()
     env["SLOPMOP_SKIP_REPO_LOCK"] = "1"
     env["SLOPMOP_NESTED_VALIDATE_OWNER"] = _NESTED_VALIDATE_OWNER
-    result = subprocess.run(
+    result = bounded_run(
         command,
         cwd=project_root,
         env=env,
@@ -729,7 +729,7 @@ def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]
             ":!.slopmop",
         ],
     ):
-        add_result = subprocess.run(
+        add_result = bounded_run(
             add_cmd,
             cwd=project_root,
             capture_output=True,
@@ -740,7 +740,7 @@ def _commit_current_changes(project_root: Path, message: str) -> Tuple[int, str]
             detail = (add_result.stderr or add_result.stdout or "").strip()
             return add_result.returncode, detail or "git add failed"
 
-    commit_result = subprocess.run(
+    commit_result = bounded_run(
         ["git", "commit", "-m", message],
         cwd=project_root,
         capture_output=True,

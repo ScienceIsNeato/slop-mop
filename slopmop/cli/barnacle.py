@@ -26,6 +26,7 @@ from slopmop.utils import (
     markdown_bullets,
     markdown_numbered,
 )
+from slopmop.utils.proc import bounded_run
 
 SCHEMA_VERSION = "slopmop/barnacle-issue/v1"
 DEFAULT_REPO = "ScienceIsNeato/slop-mop"
@@ -86,7 +87,7 @@ def _installed_slopmop_version() -> str:
 
 def _run_git(project_root: str, *args: str) -> str:
     try:
-        result = subprocess.run(
+        result = bounded_run(
             ["git", *args],
             cwd=project_root,
             capture_output=True,
@@ -102,7 +103,7 @@ def _run_git(project_root: str, *args: str) -> str:
 
 def _git_dirty(project_root: str) -> bool:
     try:
-        result = subprocess.run(
+        result = bounded_run(
             ["git", "status", "--porcelain"],
             cwd=project_root,
             capture_output=True,
@@ -272,7 +273,7 @@ def _ensure_barnacle_label(repo: str) -> bool:
     ``gh label create --force`` upserts, so a pre-existing label is fine.
     """
     try:
-        result = subprocess.run(
+        result = bounded_run(
             [
                 "gh",
                 "label",
@@ -307,7 +308,7 @@ def create_barnacle_issue(
     """
     issue_body_path = write_issue_body_file(issue, body_file, body)
     try:
-        result = subprocess.run(
+        result = bounded_run(
             _issue_create_command(issue, issue.labels, issue_body_path),
             capture_output=True,
             text=True,
@@ -323,7 +324,7 @@ def create_barnacle_issue(
     # The repo lacks the `barnacle` label. Create it and retry with the label
     # so the barnacle stays discoverable.
     if _ensure_barnacle_label(issue.repo):
-        retry = subprocess.run(
+        retry = bounded_run(
             _issue_create_command(issue, issue.labels, issue_body_path),
             capture_output=True,
             text=True,
@@ -341,7 +342,7 @@ def create_barnacle_issue(
     )
     fallback_labels = tuple(label for label in issue.labels if label != "barnacle")
     return (
-        subprocess.run(
+        bounded_run(
             _issue_create_command(issue, fallback_labels, issue_body_path),
             capture_output=True,
             text=True,

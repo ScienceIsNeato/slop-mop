@@ -116,7 +116,7 @@ class TestScanTriageInternals:
         def fail_run(*_args, **_kwargs):
             return SimpleNamespace(returncode=1, stderr="boom", stdout="")
 
-        monkeypatch.setattr(triage.subprocess, "run", fail_run)
+        monkeypatch.setattr(triage, "bounded_run", fail_run)
 
         with pytest.raises(triage.TriageError):
             triage._run_gh(["repo", "view"])
