@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Iterable, List, Optional
+from typing import Any, ClassVar, Collection, Dict, Iterable, List, Optional
 
 from slopmop.checks.metadata import Reasoning, builtin_reasoning_for_check_class
 from slopmop.core.result import (
@@ -351,6 +351,81 @@ def git_project_files(
     return files
 
 
+def iter_project_files(
+    project_root: str,
+    extensions: Optional[Collection[str]] = None,
+    exclude_dirs: Optional[Iterable[str]] = None,
+    include_dirs: Optional[Iterable[str]] = None,
+) -> List[Path]:
+    """Every file a gate is allowed to look at, as absolute paths.
+
+    **A gate must never see a gitignored file.** Ignoring is the repository
+    stating that a path is not its code — build output, a virtualenv, vendored
+    trees, scratch directories, agent worktrees. Reporting findings in there is
+    noise at best, and on a repo carrying tens of gigabytes of ignored data it
+    is also the difference between a fast run and a walk of six figures' worth
+    of files, repeated once per gate.
+
+    ``git ls-files -co --exclude-standard`` is the authority and gets it all
+    right for free: nested ``.gitignore`` files, glob patterns, negations,
+    ``.git/info/exclude``, and the user's global excludes file. Hand-rolled
+    pattern matching gets the easy half and silently misses the rest.
+
+    Falls back to a *pruned* walk when this is not a git repository or git
+    cannot run. The fallback prunes as it descends rather than enumerating
+    everything and filtering afterwards, because the tree it is protecting
+    against is exactly the one that is expensive to enumerate.
+    """
+    root = Path(project_root)
+    excluded = set(exclude_dirs or ())
+    includes = [d for d in (include_dirs or ["."]) if d]
+
+    def _wanted(rel: Path, *, prune_dot_dirs: bool) -> bool:
+        if extensions is not None and rel.suffix not in extensions:
+            return False
+        if ".egg-info" in str(rel):
+            return False
+        # Only when guessing. should_prune_dir() drops every dot-directory,
+        # which is right for .venv and wrong for a tracked .github — and git's
+        # list has already excluded everything the repo ignores.
+        if prune_dot_dirs and any(should_prune_dir(part) for part in rel.parts[:-1]):
+            return False
+        if excluded and is_path_excluded(rel, excluded):
+            return False
+        if includes != ["."]:
+            posix = rel.as_posix()
+            if not any(
+                posix == inc or posix.startswith(f"{inc.rstrip('/')}/")
+                for inc in includes
+            ):
+                return False
+        return True
+
+    tracked = git_project_files(project_root)
+    if tracked is not None:
+        return [
+            root / rel
+            for rel in map(Path, tracked)
+            if _wanted(rel, prune_dot_dirs=False)
+        ]
+
+    found: List[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune in place so the walk never descends into the expensive trees.
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if not should_prune_dir(d)
+            and not is_path_excluded(Path(dirpath, d).relative_to(root), excluded)
+            and not is_vendored_dir(os.path.join(dirpath, d))
+        ]
+        for name in filenames:
+            rel = Path(dirpath, name).relative_to(root)
+            if _wanted(rel, prune_dot_dirs=True):
+                found.append(root / rel)
+    return found
+
+
 def resolve_tool_paths(
     project_root: str,
     exclude_dirs: Optional[Iterable[str]] = None,
@@ -519,46 +594,25 @@ def count_source_scope(
     Returns:
         ScopeInfo with file and line counts
     """
-    root = Path(project_root)
-    dirs = include_dirs or ["."]
     excluded = SCOPE_EXCLUDED_DIRS | (exclude_dirs or set())
 
     total_files = 0
     total_lines = 0
 
-    for dir_name in dirs:
-        scan_path = root / dir_name
-        if not scan_path.exists():
-            continue
-
-        for file_path in scan_path.rglob("*"):
-            if not file_path.is_file():
-                continue
-
-            # Skip excluded directories
-            rel_path = file_path.relative_to(root)
-            if is_path_excluded(rel_path, excluded):
-                continue
-            if any(should_prune_dir(p) for p in rel_path.parts[:-1]):
-                continue
-
-            # Skip .egg-info directories (not exact match, contains pattern)
-            rel_str = str(rel_path)
-            if ".egg-info" in rel_str:
-                continue
-
-            # Filter by extension if specified
-            if extensions and file_path.suffix not in extensions:
-                continue
-
-            total_files += 1
-            try:
-                content = file_path.read_text(errors="replace")
-                total_lines += content.count("\n") + (
-                    1 if content and not content.endswith("\n") else 0
-                )
-            except (OSError, UnicodeDecodeError):
-                pass  # Skip unreadable files
+    for file_path in iter_project_files(
+        project_root,
+        extensions=extensions or None,
+        exclude_dirs=excluded,
+        include_dirs=include_dirs,
+    ):
+        total_files += 1
+        try:
+            content = file_path.read_text(errors="replace")
+            total_lines += content.count("\n") + (
+                1 if content and not content.endswith("\n") else 0
+            )
+        except (OSError, UnicodeDecodeError):
+            pass  # Skip unreadable files
 
     return ScopeInfo(files=total_files, lines=total_lines)
 

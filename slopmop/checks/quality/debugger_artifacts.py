@@ -16,7 +16,6 @@ example from issue #53 — shipped built-in because every test repo in the
 beta exercise would benefit regardless of stack.
 """
 
-import os
 import re
 import time
 from pathlib import Path
@@ -31,9 +30,9 @@ from slopmop.checks.base import (
     GateCategory,
     RemediationChurn,
     ToolContext,
+    iter_project_files,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
-from slopmop.utils import is_path_excluded
 
 # (extensions, compiled-regex, human-label)
 _PATTERNS: List[Tuple[Tuple[str, ...], re.Pattern[str], str]] = [
@@ -141,14 +140,11 @@ class DebuggerArtifactsCheck(BaseCheck):
         ]
 
     def is_applicable(self, project_root: str) -> bool:
-        root = Path(project_root)
-        for _, dirs, files in os.walk(root):
-            dirs[:] = [
-                d for d in dirs if not (d.startswith(".") or d in _DEFAULT_EXCLUDE)
-            ]
-            if any(Path(f).suffix in _ALL_EXTS for f in files):
-                return True
-        return False
+        return bool(
+            iter_project_files(
+                project_root, extensions=_ALL_EXTS, exclude_dirs=_DEFAULT_EXCLUDE
+            )
+        )
 
     def skip_reason(self, project_root: str) -> str:
         return "No source files in supported languages found"
@@ -165,26 +161,16 @@ class DebuggerArtifactsCheck(BaseCheck):
         findings: List[Finding] = []
         files_scanned = 0
 
-        for root_dir, dirs, files in os.walk(root):
-            rel_root = Path(root_dir).relative_to(root)
-            dirs[:] = [
-                d
-                for d in dirs
-                if not (d.startswith(".") or is_path_excluded(rel_root / d, excluded))
-            ]
-            for fname in files:
-                fpath = Path(root_dir) / fname
-                if fpath.suffix not in _ALL_EXTS:
-                    continue
-                rel = rel_root / fname
-                if is_path_excluded(rel, excluded):
-                    continue
+        for fpath in iter_project_files(
+            project_root, extensions=_ALL_EXTS, exclude_dirs=excluded
+        ):
+            rel = fpath.relative_to(root)
 
-                files_scanned += 1
-                if files_scanned > max_files:
-                    return self._max_files_warning(max_files, start)
+            files_scanned += 1
+            if files_scanned > max_files:
+                return self._max_files_warning(max_files, start)
 
-                self._scan_file(fpath, rel, hits, findings)
+            self._scan_file(fpath, rel, hits, findings)
 
         elapsed = time.perf_counter() - start
 
