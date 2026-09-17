@@ -6,6 +6,61 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.14.0
+
+A gate can no longer see a file the repository ignores. Discovery now asks
+git rather than walking the tree, which is both a correctness fix and the
+largest performance change in a while.
+
+### Behavior changes
+
+- **Gitignored files are never scanned, counted, or cached** (#343) — the
+  previous implementation translated the root `.gitignore` into exclude
+  patterns by hand. Only directory entries survived that translation. Glob
+  patterns, nested `.gitignore` files, root-anchored patterns, negations,
+  `.git/info/exclude` and the user's global excludes file were all missed, so
+  a generated file under a scanned source directory was analysed and
+  reported. `git ls-files -co --exclude-standard` is the authority and gets
+  every one of those right.
+  **Upgrade note:** finding counts will drop on any repo that was having
+  ignored files scanned, and the first run after upgrading recomputes cache
+  fingerprints once, because ignored files no longer contribute to them.
+  Nothing was silenced — those findings were in files the repo already said
+  were not its code.
+
+- **`laziness:sloppy-formatting.py` accepts `exclude_dirs`** (#343) — the gate
+  read the value but never declared it, so `sm config --set` rejected it as an
+  unknown field and the runtime exclude merge, which only writes into declared
+  fields, skipped the gate entirely. That is why it kept walking virtualenvs
+  on a repo that ignores them.
+
+### Fixes
+
+- **Five gates reached the filesystem their own way** (#343) —
+  `ambiguity-mines`, `code-sprawl` and `dangling-references` walked it
+  directly; `repeated-code` and `missing-annotations` handed whole
+  directories to jscpd and mypy, neither of which knows what `.gitignore`
+  is. jscpd now gets its own `--gitignore`; mypy is handed the project's
+  files through an `@response` file, so no directory is ever crawled
+  regardless of repo size.
+
+- **Formatter targets collapsed to directories on ordinary repos** (#343) —
+  above 300 files the resolver replaced its file list with the parent
+  directories, and a directory handed to black or ruff is a directory they
+  crawl, ignored subtrees included. 300 was low enough that this was the
+  normal path rather than an edge case. There is no hand-picked ceiling any
+  more: the bound is this platform's `ARG_MAX`, measured at runtime, and
+  crossing it warns that exact targeting was lost instead of degrading in
+  silence.
+
+### Performance
+
+- Discovery on this repository drops from **34,354 files to 472**, and from
+  241ms to 18ms, paid once per gate rather than once. The report that
+  prompted the work had 137,457 files walked against 739 that git tracked —
+  43GB of orphaned images, stale agent worktrees, two virtualenvs — re-walked
+  by every gate on every run.
+
 ## 2.13.3
 
 ### Findings name names — "(location unknown)" retired for lint sections
