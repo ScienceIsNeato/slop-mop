@@ -131,3 +131,44 @@ class TestNonGitFallback:
         assert "pkg/mod.py" in found
         # The fallback prunes known-noise trees as it descends.
         assert "node_modules/junk.py" not in found
+
+
+class TestNoArbitraryFileCeiling:
+    """The bound on an explicit file list is the platform, not a magic number."""
+
+    def test_budget_is_derived_and_generous(self) -> None:
+        from slopmop.checks.base import argv_path_budget
+
+        # Derived from ARG_MAX, so it must comfortably exceed any real repo.
+        assert argv_path_budget(["some/path/to/module.py"] * 50) > 10_000
+
+    def test_budget_survives_unknown_platform(self, monkeypatch: Any) -> None:
+        import slopmop.checks.base as base
+
+        def _blow_up(_name: str) -> int:
+            raise ValueError("no such sysconf name")
+
+        monkeypatch.setattr(base.os, "sysconf", _blow_up)
+        # A conservative POSIX floor beats crashing or guessing high.
+        assert base.argv_path_budget() == 4096
+
+    def test_normal_repo_gets_files_not_directories(self, repo: Path) -> None:
+        from slopmop.checks.base import resolve_tool_paths
+
+        paths = resolve_tool_paths(str(repo), extensions={".py"})
+        assert paths
+        assert all(p.endswith(".py") for p in paths), paths
+
+    def test_collapse_warns_instead_of_degrading_silently(
+        self, repo: Path, caplog: Any
+    ) -> None:
+        """Losing exact targeting is a real loss and must be audible."""
+        import logging
+
+        from slopmop.checks.base import resolve_tool_paths
+
+        with caplog.at_level(logging.WARNING):
+            paths = resolve_tool_paths(str(repo), extensions={".py"}, max_paths=1)
+
+        assert any("command-line budget" in r.message for r in caplog.records)
+        assert not all(p.endswith(".py") for p in paths)

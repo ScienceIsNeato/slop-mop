@@ -429,12 +429,42 @@ def iter_project_files(
     return found
 
 
+# A repo with this many source files is unusual enough to be worth saying out
+# loud — it is the shape that turns a fast gate into a slow one — but it is a
+# remark, not a limit. Nothing is dropped because of it.
+LARGE_FILE_COUNT_REMARK = 5000
+
+
+def argv_path_budget(sample_paths: Optional[List[str]] = None) -> int:
+    """How many paths fit in one command line on this machine.
+
+    The only honest bound on an explicit file list is the platform's own
+    ``ARG_MAX``; any hand-picked number is either needlessly small or a
+    surprise ``E2BIG`` on someone else's repo. Measured from the real limit
+    minus the environment the child process inherits, with a margin for the
+    command's own flags.
+    """
+    try:
+        arg_max = os.sysconf("SC_ARG_MAX")
+    except (AttributeError, ValueError, OSError):
+        return 4096  # Unknown platform: assume a conservative POSIX minimum.
+    env_bytes = sum(len(k) + len(v) + 2 for k, v in os.environ.items())
+    budget = arg_max - env_bytes - 8192
+    if budget <= 0:
+        return 0
+    if sample_paths:
+        average = sum(len(p) + 1 for p in sample_paths) / len(sample_paths)
+    else:
+        average = 64.0
+    return max(int(budget / max(average, 1.0)), 0)
+
+
 def resolve_tool_paths(
     project_root: str,
     exclude_dirs: Optional[Iterable[str]] = None,
     extensions: Optional[set[str]] = None,
     max_depth: int = 6,
-    max_paths: int = 2000,
+    max_paths: Optional[int] = None,
 ) -> List[str]:
     """Concrete paths to hand an external tool, with non-source trees pruned.
 
@@ -457,8 +487,10 @@ def resolve_tool_paths(
     is the single place that decides what any tool sees, so a fix here fixes
     every gate at once.
 
-    Returns ``["."]`` when nothing needs pruning or the list would exceed
-    ``max_paths``, so callers always get a usable, correct target list.
+    Returns ``["."]`` when nothing needs pruning, so callers always get a
+    usable, correct target list. There is no arbitrary ceiling on the number
+    of files returned: the only bound is what fits in one command line on
+    this platform, and crossing it warns rather than degrading silently.
     """
     excluded = set(SCOPE_EXCLUDED_DIRS) | set(exclude_dirs or ())
 
@@ -471,15 +503,31 @@ def resolve_tool_paths(
             # hand back nothing. Falling back to "." here would scan the whole
             # tree, re-walking exactly what we set out to skip.
             return []
-        if len(kept) <= max_paths:
+        if len(kept) >= LARGE_FILE_COUNT_REMARK:
+            logger.warning(
+                "%s source files in scope — unusually large, so gate runs will "
+                "be slower than normal. Every one of them is tracked or "
+                "untracked-and-not-ignored, so this is the project's real "
+                "size rather than junk being scanned.",
+                f"{len(kept):,}",
+            )
+        limit = max_paths if max_paths is not None else argv_path_budget(kept)
+        if len(kept) <= limit:
             return sorted(kept)
-        # Last resort only. A directory handed to a formatter is a directory
-        # the formatter crawls, ignored subtrees included — a repo with its
-        # virtualenv under server/ gets it walked again. Explicit files are
-        # the whole point, so max_paths is set high enough that real repos
-        # never reach this, and reaching it is a known residual rather than
-        # the normal path. Files at the repo root have no parent and stay as
-        # themselves; mapping them to "." would restore the entire tree.
+        # Only reachable when the list genuinely cannot fit in one command
+        # line. A directory handed to a formatter is a directory it crawls,
+        # ignored subtrees included, so this is a real loss of the guarantee
+        # and is said out loud rather than degrading quietly. Files at the
+        # repo root have no parent and stay as themselves; mapping them to
+        # "." would restore the entire tree.
+        logger.warning(
+            "%s files exceed this platform's command-line budget (~%s paths); "
+            "passing directories instead, which lets the tool descend into "
+            "gitignored subtrees. Narrow the gate's include_paths to restore "
+            "exact file targeting.",
+            f"{len(kept):,}",
+            f"{limit:,}",
+        )
         collapsed = {os.path.dirname(f) or f for f in kept}
         return sorted(collapsed)
 
@@ -542,7 +590,7 @@ def resolve_tool_paths(
         return out, relevant, (dropped or dropped_below)
 
     paths, _relevant, _dropped = walk("", 0)
-    if not paths or len(paths) > max_paths:
+    if not paths or (max_paths is not None and len(paths) > max_paths):
         return ["."]
     return paths
 
