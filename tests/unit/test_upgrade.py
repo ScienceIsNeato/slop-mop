@@ -613,3 +613,88 @@ class TestMissingDependencyGuard:
         assert err.package == "packaging"
         assert err.verb == "upgrade"
         assert isinstance(err, ImportError)
+
+
+class TestValidationSkipIsVisible:
+    """A skipped validation must not be reported as a validation that ran."""
+
+    def test_summary_says_skipped_not_swabbed(self, tmp_path: Path, capsys):
+        """The success summary printed "Validation: sm swab" unconditionally.
+
+        Outside a project nothing is swabbed, so that line named a run that
+        never happened — the opposite of what the skip exists to communicate.
+        """
+        from slopmop.cli import upgrade as upgrade_mod
+
+        validation = upgrade_mod._validate_upgraded_install(tmp_path, False)
+        assert list(validation.args) == upgrade_mod._VALIDATION_SKIPPED_ARGS
+        assert "no slop-mop config" in validation.stdout
+
+    def test_inside_a_project_validation_actually_runs(self, tmp_path: Path):
+        from unittest.mock import patch
+
+        from slopmop.cli import upgrade as upgrade_mod
+
+        (tmp_path / ".sb_config.json").write_text("{}")
+        with patch.object(upgrade_mod, "bounded_run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["python"], returncode=0
+            )
+            result = upgrade_mod._validate_upgraded_install(tmp_path, False)
+
+        assert mock_run.called
+        assert list(result.args) != upgrade_mod._VALIDATION_SKIPPED_ARGS
+
+
+class TestUpgradeSummaryOutput:
+    """The summary is the only thing most people read after an upgrade."""
+
+    def _summary(self, tmp_path: Path, validation, capsys) -> str:
+        from slopmop.cli import upgrade as upgrade_mod
+
+        upgrade_mod._print_upgrade_summary(
+            current_version="2.14.0",
+            installed_version="2.14.1",
+            backup_dir=tmp_path / "backup",
+            applied_migrations=[],
+            validation=validation,
+            project_root=tmp_path,
+        )
+        return capsys.readouterr().out
+
+    def test_skipped_validation_is_named_as_skipped(self, tmp_path: Path, capsys):
+        from slopmop.cli import upgrade as upgrade_mod
+
+        out = self._summary(
+            tmp_path,
+            subprocess.CompletedProcess(
+                args=upgrade_mod._VALIDATION_SKIPPED_ARGS,
+                returncode=0,
+                stdout="no slop-mop config here",
+                stderr="",
+            ),
+            capsys,
+        )
+        assert "Validation: skipped" in out
+        assert "no slop-mop config here" in out
+        # The claim that must not appear: a swab that never ran.
+        assert f"Validation: sm {upgrade_mod.VALIDATION_VERB}" not in out
+
+    def test_real_validation_is_named_as_run(self, tmp_path: Path, capsys):
+        from slopmop.cli import upgrade as upgrade_mod
+
+        out = self._summary(
+            tmp_path,
+            subprocess.CompletedProcess(args=["python"], returncode=0, stdout=""),
+            capsys,
+        )
+        assert f"Validation: sm {upgrade_mod.VALIDATION_VERB}" in out
+        assert "skipped" not in out
+
+    def test_migrations_are_listed_when_applied(self, tmp_path: Path, capsys):
+        out = self._summary(
+            tmp_path,
+            subprocess.CompletedProcess(args=["python"], returncode=0, stdout=""),
+            capsys,
+        )
+        assert "Migrations:" in out
