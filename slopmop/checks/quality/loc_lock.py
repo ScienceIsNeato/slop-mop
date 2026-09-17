@@ -10,7 +10,6 @@ This is a cross-cutting quality check that applies to all source files.
 import ast
 import io
 import logging
-import os
 import re
 import time
 import tokenize
@@ -25,6 +24,7 @@ from slopmop.checks.base import (
     GateCategory,
     RemediationChurn,
     count_source_scope,
+    iter_project_files,
 )
 from slopmop.core.result import (
     CheckResult,
@@ -436,50 +436,37 @@ class LocLockCheck(BaseCheck):
 
         root = Path(project_root)
 
-        for include_dir in include_dirs:
-            scan_path = root / include_dir
-            if not scan_path.exists():
+        for file_path in iter_project_files(
+            project_root,
+            extensions=extensions,
+            exclude_dirs=excluded_dirs,
+            include_dirs=include_dirs,
+        ):
+            rel_path_obj = file_path.relative_to(root)
+            if self._should_skip_path(rel_path_obj, excluded_dirs):
                 continue
 
-            for root_dir, dirs, files in os.walk(scan_path):
-                rel_root = Path(root_dir).relative_to(root)
-                dirs[:] = [
-                    d
-                    for d in dirs
-                    if not (
-                        d.startswith(".")
-                        or self._should_skip_path(rel_root / d, excluded_dirs)
-                    )
-                ]
-                for fname in files:
-                    file_path = Path(root_dir) / fname
-                    if file_path.suffix not in extensions:
-                        continue
-                    rel_path_obj = rel_root / fname
-                    if self._should_skip_path(rel_path_obj, excluded_dirs):
-                        continue
+            rel_path = str(rel_path_obj)
 
-                    rel_path = str(rel_path_obj)
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="ignore")
 
-                    try:
-                        content = file_path.read_text(encoding="utf-8", errors="ignore")
+                line_count = _count_code_lines(content, file_path.suffix)
 
-                        line_count = _count_code_lines(content, file_path.suffix)
+                if line_count > max_file_lines:
+                    target = self._pick_move_target(content, file_path.suffix)
+                    file_violations.append((rel_path, line_count, target))
 
-                        if line_count > max_file_lines:
-                            target = self._pick_move_target(content, file_path.suffix)
-                            file_violations.append((rel_path, line_count, target))
+                funcs = self._find_functions(content, file_path.suffix)
+                for func_name, start_line, func_lines in funcs:
+                    if func_lines > max_func_lines:
+                        func_violations.append(
+                            (rel_path, func_name, start_line, func_lines)
+                        )
 
-                        funcs = self._find_functions(content, file_path.suffix)
-                        for func_name, start_line, func_lines in funcs:
-                            if func_lines > max_func_lines:
-                                func_violations.append(
-                                    (rel_path, func_name, start_line, func_lines)
-                                )
-
-                    except (OSError, UnicodeDecodeError) as e:
-                        logger.debug(f"Could not read {rel_path}: {e}")
-                        continue
+            except (OSError, UnicodeDecodeError) as e:
+                logger.debug(f"Could not read {rel_path}: {e}")
+                continue
 
         return file_violations, func_violations
 

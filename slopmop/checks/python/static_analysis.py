@@ -15,12 +15,18 @@ from slopmop.checks.base import (
     GateCategory,
     Requirements,
     ToolContext,
+    iter_project_files,
     pip_cli_requirement,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+
+# Past this many files the assembled mypy argv approaches the platform's
+# limit, so the gate hands over directories instead and accepts that ignored
+# files under them get checked.
+_MYPY_MAX_EXPLICIT_FILES = 2000
 
 # mypy error code pattern: file.py:10: error: message  [code]
 _MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
@@ -240,7 +246,20 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         # Invoke the mypy the requirement resolves (venv-aware), not a bare name.
         (mypy_req,) = self.requirements().items
         mypy = self.resolve_requirement_path(mypy_req, project_root) or "mypy"
-        cmd = [mypy, *source_dirs, "--ignore-missing-imports", "--no-strict-optional"]
+        # mypy crawls the directories it is given and knows nothing about
+        # .gitignore, so a generated or vendored file living under src/ gets
+        # type-checked. Naming the project's own files keeps ignored ones out.
+        # Directories remain the fallback past the cap, where the assembled
+        # argv would risk the platform limit.
+        targets = [
+            str(path.relative_to(project_root))
+            for path in iter_project_files(
+                project_root, extensions={".py"}, include_dirs=source_dirs
+            )
+        ]
+        if not targets or len(targets) > _MYPY_MAX_EXPLICIT_FILES:
+            targets = list(source_dirs)
+        cmd = [mypy, *targets, "--ignore-missing-imports", "--no-strict-optional"]
 
         if self._is_strict():
             cmd.extend(["--disallow-untyped-defs", "--disallow-any-generics"])

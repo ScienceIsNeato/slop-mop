@@ -31,7 +31,6 @@ left out.
 
 from __future__ import annotations
 
-import os
 import re
 import time
 from pathlib import Path, PurePosixPath
@@ -49,10 +48,9 @@ from slopmop.checks.base import (
     GateLevel,
     RemediationChurn,
     ToolContext,
-    should_prune_dir,
+    iter_project_files,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
-from slopmop.utils import is_path_excluded
 
 _EXCLUDED = SCOPE_EXCLUDED_DIRS | {"node_modules", "vendor", "dist", "build"}
 _MARKDOWN_EXTS = (".md", ".markdown")
@@ -221,19 +219,11 @@ def _iter_markdown_files(root: Path, excluded: set[str]) -> List[Path]:
     node_modules, .git, vendor, … — important since this gate applies to any
     repo with Markdown, where those trees can dwarf the source.
     """
-    out: List[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-        rel_dir = Path(dirpath).relative_to(root)
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if not should_prune_dir(d)
-            and not is_path_excluded(_rel_join(rel_dir, d), excluded)
-        ]
-        for name in filenames:
-            if PurePosixPath(name).suffix.lower() not in _MARKDOWN_EXTS:
-                continue
-            out.append(Path(dirpath) / name)
+    out = [
+        path
+        for path in iter_project_files(str(root), exclude_dirs=excluded)
+        if PurePosixPath(path.name).suffix.lower() in _MARKDOWN_EXTS
+    ]
     out.sort()
     return out
 
