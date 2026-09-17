@@ -23,11 +23,6 @@ from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 
-# Past this many files the assembled mypy argv approaches the platform's
-# limit, so the gate hands over directories instead and accepts that ignored
-# files under them get checked.
-_MYPY_MAX_EXPLICIT_FILES = 2000
-
 # mypy error code pattern: file.py:10: error: message  [code]
 _MYPY_ERROR_RE = re.compile(r"^(.+?):(\d+): error: (.+?)(?:\s+\[(\S+)\])?\s*$")
 
@@ -239,6 +234,19 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
         return source_dirs or ["."]
 
+    @staticmethod
+    def _write_response_file(targets: List[str], project_root: str) -> str:
+        """Persist the file list for mypy's ``@file`` argument syntax.
+
+        Kept under ``.slopmop/`` rather than the system temp dir so the path
+        stays short and relative entries resolve against the project root.
+        """
+        scratch = Path(project_root) / ".slopmop"
+        scratch.mkdir(parents=True, exist_ok=True)
+        response = scratch / "mypy-targets.txt"
+        response.write_text("\n".join(targets) + "\n", encoding="utf-8")
+        return str(response.relative_to(project_root))
+
     def _build_command(
         self, source_dirs: List[str], project_root: str = ""
     ) -> List[str]:
@@ -257,7 +265,12 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
                 project_root, extensions={".py"}, include_dirs=source_dirs
             )
         ]
-        if not targets or len(targets) > _MYPY_MAX_EXPLICIT_FILES:
+        if targets:
+            # mypy reads arguments from an @file, so the whole list fits no
+            # matter how large the repo. Handing it directories instead would
+            # let it crawl into ignored trees, which is the bug being fixed.
+            targets = [f"@{self._write_response_file(targets, project_root)}"]
+        else:
             targets = list(source_dirs)
         cmd = [mypy, *targets, "--ignore-missing-imports", "--no-strict-optional"]
 

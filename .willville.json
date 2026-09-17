@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Chasing down why a release got blocked by a formatting check that wouldn't say which file was wrong — fixing the check so it always names names, and pinning our linting tools so they stop drifting under us",
-    "direction": "PR up for review, then a release so the barbershop project can pick up the fix",
-    "last_update": "2026-08-20T04:30:00Z"
+    "status": "Stopping the checks from digging through files git was told to ignore — someone's repo had 137k files scanned when only 739 actually belonged to it, and every check was re-reading the pile",
+    "direction": "PR #343 is up and green; after that, looking at whether the slow test-running checks belong in the quick pass at all",
+    "last_update": "2026-09-16T22:55:00Z"
   }
 }

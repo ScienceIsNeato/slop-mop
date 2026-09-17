@@ -357,7 +357,10 @@ def iter_project_files(
     exclude_dirs: Optional[Iterable[str]] = None,
     include_dirs: Optional[Iterable[str]] = None,
 ) -> List[Path]:
-    """Every file a gate is allowed to look at, as absolute paths.
+    """Every file a gate is allowed to look at, each rooted at *project_root*.
+
+    Paths are absolute exactly when *project_root* is; callers that pass a
+    relative root get relative results and can still ``relative_to`` it.
 
     **A gate must never see a gitignored file.** Ignoring is the repository
     stating that a path is not its code — build output, a virtualenv, vendored
@@ -431,7 +434,7 @@ def resolve_tool_paths(
     exclude_dirs: Optional[Iterable[str]] = None,
     extensions: Optional[set[str]] = None,
     max_depth: int = 6,
-    max_paths: int = 300,
+    max_paths: int = 2000,
 ) -> List[str]:
     """Concrete paths to hand an external tool, with non-source trees pruned.
 
@@ -470,10 +473,13 @@ def resolve_tool_paths(
             return []
         if len(kept) <= max_paths:
             return sorted(kept)
-        # Too many files for one argv: collapse to their directories. Files at
-        # the repo root have no parent, so they stay as themselves — mapping
-        # them to "." would put the entire tree back in scope and undo the
-        # pruning this function exists to do.
+        # Last resort only. A directory handed to a formatter is a directory
+        # the formatter crawls, ignored subtrees included — a repo with its
+        # virtualenv under server/ gets it walked again. Explicit files are
+        # the whole point, so max_paths is set high enough that real repos
+        # never reach this, and reaching it is a known residual rather than
+        # the normal path. Files at the repo root have no parent and stay as
+        # themselves; mapping them to "." would restore the entire tree.
         collapsed = {os.path.dirname(f) or f for f in kept}
         return sorted(collapsed)
 

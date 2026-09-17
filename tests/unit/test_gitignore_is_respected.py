@@ -32,6 +32,8 @@ def repo(tmp_path: Path) -> Path:
         "vendor/\n"  # directory entry — the only class that used to work
         "*.generated.py\n"  # glob
         "/anchored.py\n"  # root-anchored
+        "logs/*\n"  # contents, not the dir: git cannot re-include from
+        "!logs/keep.log\n"  # an excluded directory, so this would be inert
     )
     (tmp_path / "deep" / "inner" / ".gitignore").write_text("nested.py\n")
 
@@ -43,7 +45,16 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "deep" / "inner" / "kept.py").write_text("u = 6\n")
     (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: ci\n")
 
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "drop.log").write_text("noise\n")
+    (tmp_path / "logs" / "keep.log").write_text("kept by negation\n")
+    (tmp_path / "excluded_by_info.py").write_text("t = 7\n")
+
     _git_in_fixture("init", cwd=tmp_path)
+    # Per-clone excludes live outside .gitignore and are never committed;
+    # the old translator did not look at them at all.
+    (tmp_path / ".git" / "info").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".git" / "info" / "exclude").write_text("excluded_by_info.py\n")
     _git_in_fixture("config", "user.email", "t@t.t", cwd=tmp_path)
     _git_in_fixture("config", "user.name", "t", cwd=tmp_path)
     _git_in_fixture("add", "-A", cwd=tmp_path)
@@ -75,6 +86,16 @@ class TestIgnoredFilesAreNeverReturned:
         found = _names(repo)
         assert "deep/inner/nested.py" not in found
         assert "deep/inner/kept.py" in found
+
+    def test_git_info_exclude(self, repo: Path) -> None:
+        """Per-clone excludes live outside .gitignore entirely."""
+        assert "excluded_by_info.py" not in _names(repo)
+
+    def test_negation_re_includes(self, repo: Path) -> None:
+        """Negations were dropped, so a re-included file stayed excluded."""
+        found = _names(repo)
+        assert "logs/drop.log" not in found
+        assert "logs/keep.log" in found
 
     def test_scope_counting_agrees(self, repo: Path) -> None:
         """Scope metrics must not count files the gate cannot scan."""
