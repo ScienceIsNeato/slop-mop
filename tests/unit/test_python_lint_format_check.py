@@ -773,3 +773,47 @@ class TestBlackRunsOncePerGate:
         files = {f.file for f in (result.findings or [])}
         assert any("drift.py" in f for f in files), files
         assert any("broken.py" in f for f in files), files
+
+
+class TestBlackBatchingEdges:
+    """Batching must not lose work or overflow the command line."""
+
+    def _repo(self, tmp_path, count=4):
+        import subprocess
+
+        (tmp_path / "src").mkdir()
+        for i in range(count):
+            (tmp_path / "src" / f"m{i}.py").write_text(f"x{i} = {i}\n")
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+        return tmp_path
+
+    def test_oversized_list_is_split_not_truncated(self, tmp_path, monkeypatch):
+        """An over-budget list used to fail wholesale with E2BIG."""
+        import slopmop.checks.python.lint_format as mod
+        from slopmop.checks.python.lint_format import PythonLintFormatCheck
+
+        self._repo(tmp_path, count=9)
+        check = PythonLintFormatCheck({})
+        monkeypatch.setattr(mod, "argv_path_budget", lambda _paths: 2)
+
+        batches = check._black_batches([f"f{i}.py" for i in range(9)])
+        assert len(batches) == 5, batches
+        assert sum(len(b) for b in batches) == 9  # nothing dropped
+
+    def test_parse_error_does_not_discard_reformatting(self, tmp_path):
+        """One bad file makes black exit nonzero; the rest were still fixed."""
+        from slopmop.checks.python.lint_format import PythonLintFormatCheck
+
+        repo = self._repo(tmp_path)
+        (repo / "src" / "drift.py").write_text("def f( a,b ):\n  return    a+b\n")
+        (repo / "src" / "broken.py").write_text("def g(:\n")
+
+        check = PythonLintFormatCheck({})
+        _, all_ok, reformatted, _failure = check._run_black(
+            [], check._get_python_targets(str(repo)), str(repo)
+        )
+        # Aggregate status is a failure, yet real work happened — auto_fix
+        # must report that rather than claiming nothing was fixed.
+        assert all_ok is False
+        assert reformatted is True
+        assert "a + b" in (repo / "src" / "drift.py").read_text()

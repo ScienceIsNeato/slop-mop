@@ -27,6 +27,7 @@ from slopmop.checks.base import (
     RemediationChurn,
     Requirements,
     ToolContext,
+    argv_path_budget,
     pip_cli_requirement,
     resolve_tool_paths,
 )
@@ -361,24 +362,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if result.success:
             fixed = True
 
-        # One invocation for every target. black accepts a file list, and
-        # spawning it per file costs a process launch each time — the launches,
-        # not the formatting, were the bulk of this gate's runtime.
-        # --extend-exclude still prevents recursive descent into nested
-        # migration/alembic dirs (#263).
-        result = self._run_command(
-            [
-                "black",
-                "--line-length",
-                "88",
-                "--extend-exclude",
-                _BLACK_EXTEND_EXCLUDE,
-            ]
-            + targets,
-            cwd=project_root,
-            timeout=self._tool_timeout(),
-        )
-        if result.success:
+        # Batched rather than one launch per file: the launches, not the
+        # formatting, were the bulk of this gate's runtime. --extend-exclude
+        # still prevents recursive descent into nested migration/alembic
+        # dirs (#263).
+        _, black_ok, reformatted, _failure = self._run_black([], targets, project_root)
+        if black_ok or reformatted:
             fixed = True
 
         # Run isort — skip hidden directories to match _check_isort behaviour
@@ -662,6 +651,60 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
             return _IMPORT_ORDER_ISSUES, findings
         return None, []
 
+    def _black_batches(self, targets: List[str]) -> List[List[str]]:
+        """Split targets into lists that each fit in one command line.
+
+        Normally this is a single batch — the budget runs to tens of
+        thousands of paths — but the non-git fallback can produce a list
+        longer than argv allows, and a batch that overflows fails wholesale
+        with "Argument list too long" rather than formatting anything.
+        """
+        budget = max(argv_path_budget(targets), 1)
+        if len(targets) <= budget:
+            return [targets]
+        return [targets[i : i + budget] for i in range(0, len(targets), budget)]
+
+    def _run_black(
+        self, extra_flags: List[str], targets: List[str], project_root: str
+    ) -> tuple[List[str], bool, bool, object]:
+        """Run black over *targets*, batched to fit argv.
+
+        Returns ``(outputs, all_succeeded, any_reformatted, first_failure)``.
+        ``any_reformatted`` is read
+        from black's own per-file ``reformatted <path>`` lines rather than the
+        exit status: one unparseable file makes the whole run exit nonzero
+        even though every other file was rewritten, and treating that as
+        "nothing was fixed" loses work that actually happened.
+        """
+        outputs: List[str] = []
+        all_succeeded = True
+        any_reformatted = False
+        first_failure: object = None
+        for batch in self._black_batches(targets):
+            result = self._run_command(
+                [
+                    "black",
+                    "--line-length",
+                    "88",
+                    "--extend-exclude",
+                    _BLACK_EXTEND_EXCLUDE,
+                ]
+                + extra_flags
+                + batch,
+                cwd=project_root,
+                timeout=self._tool_timeout(),
+            )
+            output = (result.output or "").strip()
+            if output:
+                outputs.append(output)
+            if re.search(r"^reformatted ", output, re.M):
+                any_reformatted = True
+            if not result.success:
+                all_succeeded = False
+                if first_failure is None:
+                    first_failure = result
+        return outputs, all_succeeded, any_reformatted, first_failure
+
     def _check_black(self, project_root: str) -> tuple[Optional[str], List[Finding]]:
         """Check black formatting.
 
@@ -677,27 +720,17 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # One invocation for the whole list. black names every file it has
         # something to say about, so batching loses no detail — and a parse
         # error in one file does not stop it reporting the rest.
-        result = self._run_command(
-            [
-                "black",
-                "--check",
-                "--line-length",
-                "88",
-                "--extend-exclude",
-                _BLACK_EXTEND_EXCLUDE,
-            ]
-            + targets,
-            cwd=project_root,
-            timeout=self._tool_timeout(),
+        outputs, all_succeeded, _, failure = self._run_black(
+            ["--check"], targets, project_root
         )
-        if result.success:
+        if all_succeeded:
             return None, []
 
-        timed_out = self._timed_out_message("black", result)
+        timed_out = self._timed_out_message("black", failure)
         if timed_out:
             return timed_out, []
 
-        combined = (result.output or "").strip()
+        combined = "\n".join(outputs).strip()
         # Distinguish tool-installation failures from real formatting issues.
         # A broken black (missing dependency, bad interpreter, import error)
         # is not a code-quality finding — skip it.  Check line-starts to avoid
