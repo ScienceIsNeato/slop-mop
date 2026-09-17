@@ -361,23 +361,25 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if result.success:
             fixed = True
 
-        # Run black on each target.  --extend-exclude prevents recursive
-        # descent into nested migration/alembic dirs (#263).
-        for target in targets:
-            result = self._run_command(
-                [
-                    "black",
-                    "--line-length",
-                    "88",
-                    "--extend-exclude",
-                    _BLACK_EXTEND_EXCLUDE,
-                    target,
-                ],
-                cwd=project_root,
-                timeout=self._tool_timeout(),
-            )
-            if result.success:
-                fixed = True
+        # One invocation for every target. black accepts a file list, and
+        # spawning it per file costs a process launch each time — the launches,
+        # not the formatting, were the bulk of this gate's runtime.
+        # --extend-exclude still prevents recursive descent into nested
+        # migration/alembic dirs (#263).
+        result = self._run_command(
+            [
+                "black",
+                "--line-length",
+                "88",
+                "--extend-exclude",
+                _BLACK_EXTEND_EXCLUDE,
+            ]
+            + targets,
+            cwd=project_root,
+            timeout=self._tool_timeout(),
+        )
+        if result.success:
+            fixed = True
 
         # Run isort — skip hidden directories to match _check_isort behaviour
         isort_cmd = ["isort", "--profile", "black"]
@@ -672,48 +674,36 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if not targets:
             return None, []  # No Python targets found
 
-        # Run black --check on all targets, collect any failures
-        all_output: List[str] = []
-        any_failed = False
-
-        for target in targets:
-            result = self._run_command(
-                [
-                    "black",
-                    "--check",
-                    "--line-length",
-                    "88",
-                    "--extend-exclude",
-                    _BLACK_EXTEND_EXCLUDE,
-                    target,
-                ],
-                cwd=project_root,
-                timeout=self._tool_timeout(),
-            )
-            if not result.success:
-                timed_out = self._timed_out_message("black", result)
-                if timed_out:
-                    return timed_out, []
-                output = (result.output or "").strip()
-                # Distinguish tool-installation failures from real formatting
-                # issues.  A broken black (missing dependency, bad interpreter,
-                # import error) is not a code-quality finding — skip it.
-                # Check line-starts to avoid false positives on filenames
-                # that happen to contain "ImportError" or "ModuleNotFoundError".
-                if _is_import_error(output):
-                    return _BLACK_SKIPPED, []  # tool broken, not a code issue
-                any_failed = True
-                if output:
-                    # Black outputs useful info like:
-                    # "error: cannot format file.py: Cannot parse: 1:11: message"
-                    # "would reformat file.py"
-                    all_output.append(output)
-
-        if not any_failed:
+        # One invocation for the whole list. black names every file it has
+        # something to say about, so batching loses no detail — and a parse
+        # error in one file does not stop it reporting the rest.
+        result = self._run_command(
+            [
+                "black",
+                "--check",
+                "--line-length",
+                "88",
+                "--extend-exclude",
+                _BLACK_EXTEND_EXCLUDE,
+            ]
+            + targets,
+            cwd=project_root,
+            timeout=self._tool_timeout(),
+        )
+        if result.success:
             return None, []
 
-        # Combine and return black's actual output (it includes file:line info)
-        combined = "\n".join(all_output)
+        timed_out = self._timed_out_message("black", result)
+        if timed_out:
+            return timed_out, []
+
+        combined = (result.output or "").strip()
+        # Distinguish tool-installation failures from real formatting issues.
+        # A broken black (missing dependency, bad interpreter, import error)
+        # is not a code-quality finding — skip it.  Check line-starts to avoid
+        # false positives on filenames containing "ImportError".
+        if _is_import_error(combined):
+            return _BLACK_SKIPPED, []  # tool broken, not a code issue
         # The two failure shapes deserve different words: "would reformat" on
         # a file black REFUSED to parse would send the reader chasing style
         # drift when the file has a syntax error.
