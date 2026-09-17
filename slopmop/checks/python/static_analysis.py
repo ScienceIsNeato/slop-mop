@@ -15,6 +15,7 @@ from slopmop.checks.base import (
     GateCategory,
     Requirements,
     ToolContext,
+    iter_project_files,
     pip_cli_requirement,
 )
 from slopmop.checks.constants import COMMAND_NOT_FOUND
@@ -233,6 +234,19 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
 
         return source_dirs or ["."]
 
+    @staticmethod
+    def _write_response_file(targets: List[str], project_root: str) -> str:
+        """Persist the file list for mypy's ``@file`` argument syntax.
+
+        Kept under ``.slopmop/`` rather than the system temp dir so the path
+        stays short and relative entries resolve against the project root.
+        """
+        scratch = Path(project_root) / ".slopmop"
+        scratch.mkdir(parents=True, exist_ok=True)
+        response = scratch / "mypy-targets.txt"
+        response.write_text("\n".join(targets) + "\n", encoding="utf-8")
+        return str(response.relative_to(project_root))
+
     def _build_command(
         self, source_dirs: List[str], project_root: str = ""
     ) -> List[str]:
@@ -240,7 +254,25 @@ class PythonStaticAnalysisCheck(BaseCheck, PythonCheckMixin):
         # Invoke the mypy the requirement resolves (venv-aware), not a bare name.
         (mypy_req,) = self.requirements().items
         mypy = self.resolve_requirement_path(mypy_req, project_root) or "mypy"
-        cmd = [mypy, *source_dirs, "--ignore-missing-imports", "--no-strict-optional"]
+        # mypy crawls the directories it is given and knows nothing about
+        # .gitignore, so a generated or vendored file living under src/ gets
+        # type-checked. Naming the project's own files keeps ignored ones out.
+        # Directories remain the fallback past the cap, where the assembled
+        # argv would risk the platform limit.
+        targets = [
+            str(path.relative_to(project_root))
+            for path in iter_project_files(
+                project_root, extensions={".py"}, include_dirs=source_dirs
+            )
+        ]
+        if targets:
+            # mypy reads arguments from an @file, so the whole list fits no
+            # matter how large the repo. Handing it directories instead would
+            # let it crawl into ignored trees, which is the bug being fixed.
+            targets = [f"@{self._write_response_file(targets, project_root)}"]
+        else:
+            targets = list(source_dirs)
+        cmd = [mypy, *targets, "--ignore-missing-imports", "--no-strict-optional"]
 
         if self._is_strict():
             cmd.extend(["--disallow-untyped-defs", "--disallow-any-generics"])

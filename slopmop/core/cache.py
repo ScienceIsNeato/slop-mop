@@ -23,14 +23,13 @@ Design decisions:
 import hashlib
 import json
 import logging
-import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
+from slopmop.checks.base import iter_project_files
 from slopmop.core.result import CheckResult, CheckStatus
-from slopmop.utils import is_path_excluded
 
 logger = logging.getLogger(__name__)
 
@@ -115,27 +114,17 @@ def hash_file_scope(
     # operations that touch mtimes without changing content won't bust
     # the cache — only genuine content changes do.
     # Streaming avoids holding all file contents in memory at once.
-    paths: list[tuple[str, Path]] = []
-    for dir_name in dirs:
-        scan_path = root / dir_name
-        if not scan_path.exists():
-            continue
-
-        for root_dir, dirs_list, files in os.walk(scan_path):
-            rel_root = Path(root_dir).relative_to(root)
-            dirs_list[:] = [
-                d
-                for d in dirs_list
-                if not (d.startswith(".") or d in excluded or ".egg-info" in d)
-            ]
-            for fname in files:
-                file_path = Path(root_dir) / fname
-                if file_path.suffix not in extensions:
-                    continue
-                rel = rel_root / fname
-                if is_path_excluded(rel, excluded) or ".egg-info" in rel.as_posix():
-                    continue
-                paths.append((str(rel), file_path))
+    # Same file set the gate will actually scan, so a gitignored file can
+    # neither contribute to the key nor bust the cache when it changes.
+    paths: list[tuple[str, Path]] = [
+        (str(file_path.relative_to(root)), file_path)
+        for file_path in iter_project_files(
+            project_root,
+            extensions=extensions,
+            exclude_dirs=excluded,
+            include_dirs=dirs,
+        )
+    ]
 
     paths.sort(key=lambda e: e[0])
     for rel_path, file_path in paths:
@@ -178,26 +167,15 @@ def compute_fingerprint(project_root: str) -> str:
     # and stash operations that touch mtimes without changing file content
     # won't invalidate the cache — only genuine content changes do.
     # Streaming avoids holding all file contents in memory at once.
-    paths: list[tuple[str, Path]] = []
-    for root_dir, dirs_list, files in os.walk(root):
-        rel_root = Path(root_dir).relative_to(root)
-        dirs_list[:] = [
-            d
-            for d in dirs_list
-            if not (
-                (d.startswith(".") and d != ".github")
-                or d in _EXCLUDED_DIRS
-                or ".egg-info" in d
-            )
-        ]
-        for fname in files:
-            file_path = Path(root_dir) / fname
-            if file_path.suffix not in _SOURCE_EXTENSIONS:
-                continue
-            rel = rel_root / fname
-            if any(p in _EXCLUDED_DIRS or ".egg-info" in p for p in rel.parts):
-                continue
-            paths.append((str(rel), file_path))
+    # The project's own files, per git. Tracked dot-directories such as
+    # .github stay in the fingerprint, so a workflow edit still invalidates
+    # the cache, while ignored trees cannot invalidate anything.
+    paths: list[tuple[str, Path]] = [
+        (str(file_path.relative_to(root)), file_path)
+        for file_path in iter_project_files(
+            str(root), extensions=_SOURCE_EXTENSIONS, exclude_dirs=_EXCLUDED_DIRS
+        )
+    ]
 
     # Sort for deterministic ordering
     paths.sort(key=lambda e: e[0])

@@ -18,6 +18,7 @@ import time
 from typing import List, Optional
 
 from slopmop.checks.base import (
+    EXCLUDE_DIRS_DESCRIPTION,
     BaseCheck,
     CheckRole,
     ConfigField,
@@ -182,6 +183,13 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
     @property
     def config_schema(self) -> List[ConfigField]:
         return [
+            ConfigField(
+                name="exclude_dirs",
+                field_type="string[]",
+                default=[],
+                description=EXCLUDE_DIRS_DESCRIPTION,
+                permissiveness="fewer_is_stricter",
+            ),
             ConfigField(
                 name="line_length",
                 field_type="integer",

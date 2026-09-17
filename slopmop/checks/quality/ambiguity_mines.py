@@ -29,9 +29,9 @@ from slopmop.checks.base import (
     ScopeInfo,
     ToolContext,
     count_source_scope,
+    iter_project_files,
 )
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
-from slopmop.utils import is_path_excluded
 
 _AMBIGUITY_MINE_FIX = (
     "Consolidate duplicate function definitions to eliminate ambiguity mines. "
@@ -305,55 +305,39 @@ class AmbiguityMinesCheck(BaseCheck):
         func_index: dict[str, list[tuple[str, int, str]]] = {}
         seen_files: set[str] = set()
 
-        for scan_dir in include_dirs:
-            base = (
-                os.path.join(project_root, scan_dir)
-                if scan_dir != "."
-                else project_root
-            )
-            for root, dirs, files in os.walk(base):
-                dirs[:] = [
-                    d
-                    for d in dirs
-                    if not d.endswith(".egg-info")
-                    and not is_path_excluded(
-                        os.path.relpath(os.path.join(root, d), project_root),
-                        skip_dirs,
-                    )
-                ]
-                for fname in files:
-                    if not fname.endswith(".py") or fname == "conftest.py":
-                        continue
-                    fpath = os.path.join(root, fname)
-                    rel = os.path.relpath(fpath, project_root)
-                    if is_path_excluded(rel, skip_dirs):
-                        continue
-                    if rel in seen_files:
-                        continue
-                    seen_files.add(rel)
-                    try:
-                        with open(fpath, encoding="utf-8") as f:
-                            source = f.read()
-                        tree = ast.parse(source, filename=rel)
-                    except (SyntaxError, UnicodeDecodeError):
-                        continue
-                    source_lines = source.splitlines(keepends=True)
-                    for node in ast.iter_child_nodes(tree):
-                        if not isinstance(
-                            node, (ast.FunctionDef, ast.AsyncFunctionDef)
-                        ):
-                            continue
-                        name = node.name
-                        if name in _AMBIGUITY_MINE_SKIP_NAMES or (
-                            name.startswith("__") and name.endswith("__")
-                        ):
-                            continue
-                        if self._is_suppressed(source_lines, node.lineno):
-                            continue
-                        func_src = self._extract_function_source(source_lines, node)
-                        func_index.setdefault(name, []).append(
-                            (rel, node.lineno, func_src)
-                        )
+        for path in iter_project_files(
+            project_root,
+            extensions={".py"},
+            exclude_dirs=skip_dirs,
+            include_dirs=include_dirs,
+        ):
+            fname = path.name
+            if fname == "conftest.py":
+                continue
+            fpath = str(path)
+            rel = os.path.relpath(fpath, project_root)
+            if rel in seen_files:
+                continue
+            seen_files.add(rel)
+            try:
+                with open(fpath, encoding="utf-8") as f:
+                    source = f.read()
+                tree = ast.parse(source, filename=rel)
+            except (SyntaxError, UnicodeDecodeError):
+                continue
+            source_lines = source.splitlines(keepends=True)
+            for node in ast.iter_child_nodes(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                name = node.name
+                if name in _AMBIGUITY_MINE_SKIP_NAMES or (
+                    name.startswith("__") and name.endswith("__")
+                ):
+                    continue
+                if self._is_suppressed(source_lines, node.lineno):
+                    continue
+                func_src = self._extract_function_source(source_lines, node)
+                func_index.setdefault(name, []).append((rel, node.lineno, func_src))
 
         findings: list[Finding] = []
         for name, locations in sorted(func_index.items()):

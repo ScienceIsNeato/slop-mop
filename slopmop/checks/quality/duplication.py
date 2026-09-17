@@ -243,6 +243,10 @@ class RepeatedCodeCheck(BaseCheck):
             "json",
             "--output",
             report_output,
+            # jscpd reads .gitignore itself; a gate must never report an
+            # ignored file, and its own flag is more reliable than mirroring
+            # the patterns into --ignore.
+            "--gitignore",
             "--ignore",
             ignore_str + ",cursor-rules,**/__tests__/**,**/*.test.*,**/*.spec.*",
         ] + include_dirs
