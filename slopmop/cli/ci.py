@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from slopmop.utils.proc import bounded_run
+
 
 def _format_elapsed(seconds: float) -> str:
     """Format seconds into human-readable elapsed time."""
@@ -104,7 +106,7 @@ def _fetch_checks(
     checks_list is None on error, empty list if no checks.
     """
     try:
-        result = subprocess.run(
+        result = bounded_run(
             [
                 "gh",
                 "pr",

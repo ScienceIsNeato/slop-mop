@@ -188,13 +188,13 @@ class TestDrainFormattingFunctional:
         ), f"Expected unrelated.py in drain commit, got: {committed_files}"
         assert (
             "gate_fix.py" not in committed_files
-        ), f"Drain commit should not contain gate_fix.py (it is the gate fix)"
+        ), "Drain commit should not contain gate_fix.py (it is the gate fix)"
 
         # gate_fix.py should still have modifications (committed separately later)
         fix_status = _git(
             tmp_path, "status", "--porcelain", "gate_fix.py"
         ).stdout.strip()
-        assert fix_status, f"gate_fix.py should still have modifications after drain"
+        assert fix_status, "gate_fix.py should still have modifications after drain"
 
     @_needs_formatters
     def test_drain_no_op_when_all_dirty_files_are_gate_fix(

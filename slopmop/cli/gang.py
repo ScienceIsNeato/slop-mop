@@ -24,11 +24,11 @@ import hashlib
 import importlib.resources
 import os
 import stat
-import subprocess
 import tempfile
 from pathlib import Path
 
 from slopmop.data.command_mapping import COMMAND_MAPPING, CommandMap
+from slopmop.utils.proc import bounded_run
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -285,7 +285,7 @@ def _validate_bash_syntax(content: bytes) -> tuple[bool, str]:
         f.write(content)
         tmp = Path(f.name)
     try:
-        result = subprocess.run(
+        result = bounded_run(
             ["bash", "-n", str(tmp)],
             capture_output=True,
             text=True,
@@ -588,13 +588,13 @@ def _gang_status() -> int:
     if _ALIASES_DEST.exists():
         print(f"  ✅ aliases.sh installed at {_ALIASES_DEST}")
     else:
-        print(f"  ✗  aliases.sh not installed (run: sm gang press)")
+        print("  ✗  aliases.sh not installed (run: sm gang press)")
 
     # git_wrapper.sh
     if _WRAPPER_DEST.exists():
         print(f"  ✅ git_wrapper.sh installed at {_WRAPPER_DEST}")
     else:
-        print(f"  ✗  git_wrapper.sh not installed")
+        print("  ✗  git_wrapper.sh not installed")
 
     # rc file wiring
     wired_new = [str(p) for p in _rc_candidates() if _rc_has_gang(p)]

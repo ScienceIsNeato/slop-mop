@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
-import subprocess
 from datetime import datetime, timezone
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Optional, cast
+
+from slopmop.utils.proc import bounded_run
 
 
 def iso_now() -> str:  # noqa: ambiguity-mine
@@ -167,7 +168,7 @@ def ensure_slopmop_gitignored(project_root: Path) -> bool:
 def git_current_branch(path: Optional[str] = None) -> str:
     """Return the current git branch name, or ``"unknown"`` if it cannot be determined."""
     try:
-        result = subprocess.run(
+        result = bounded_run(
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,

@@ -32,13 +32,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from slopmop.reporting.envelope import Status, build_envelope
+from slopmop.utils.proc import bounded_run
 
 _DEFAULT_OUTPUT = ".slopmop/audit-report.md"
 _SCHEMA = "slopmop/audit/v1"
@@ -56,7 +56,7 @@ def _run_git_cmd(args: List[str], cwd: str) -> Tuple[int, str]:
     a missing git binary the same as a failed command without crashing.
     """
     try:
-        result = subprocess.run(
+        result = bounded_run(
             ["git"] + args,
             cwd=cwd,
             capture_output=True,
@@ -238,7 +238,7 @@ def _run_gate_inventory(
     # When not in quiet mode, leave stdout/stderr connected to the
     # terminal so the progress display renders live.  capture_output
     # would silence it completely.
-    subprocess.run(
+    bounded_run(
         command,
         cwd=str(project_root),
         capture_output=quiet,
@@ -365,7 +365,7 @@ def _format_git_section(
     hotspots = git_data["hotspots"]
     if hotspots:
         lines.append(_HLINE)
-        lines.append(f"HIGH-RISK FILES (high churn AND high bug-commit count)")
+        lines.append("HIGH-RISK FILES (high churn AND high bug-commit count)")
         lines.append(_HLINE)
         for path, churn_count, bug_count in hotspots[:10]:
             lines.append(f"  churn={churn_count:>4}  bugs={bug_count:>4}  {path}")
@@ -482,7 +482,7 @@ def _build_report(
     git_data: Optional[Dict[str, Any]] = None,
 ) -> str:
     parts: List[str] = []
-    parts.append(f"# slop-mop audit report")
+    parts.append("# slop-mop audit report")
     parts.append(f"Generated: {timestamp}")
     parts.append(f"Project:   {Path(project_root).resolve()}")
     parts.append(f"Schema:    {_SCHEMA}")

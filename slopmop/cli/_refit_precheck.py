@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +15,7 @@ from slopmop.doctor.gate_preflight import (
     GatePreflightRecord,
     gather_gate_preflight_records,
 )
+from slopmop.utils.proc import bounded_run
 
 _PRECHECK_SCHEMA = "refit-precheck/v1"
 _NESTED_VALIDATE_OWNER = "refit"
@@ -70,7 +70,7 @@ def _run_gate_probe(project_root: Path, gate: str, artifact_path: Path) -> int:
     env = os.environ.copy()
     env["SLOPMOP_SKIP_REPO_LOCK"] = "1"
     env["SLOPMOP_NESTED_VALIDATE_OWNER"] = _NESTED_VALIDATE_OWNER
-    result = subprocess.run(
+    result = bounded_run(
         command,
         cwd=project_root,
         env=env,

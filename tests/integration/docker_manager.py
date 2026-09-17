@@ -317,10 +317,10 @@ class DockerManager:
             return shell_script
         return (
             shell_script
-            + f"; _SM_RC=$?"
+            + "; _SM_RC=$?"
             + f'; echo "{_EXTRACT_MARKER}"'
             + f'; cat "{extract_file}" 2>/dev/null || true'
-            + f"; exit $_SM_RC"
+            + "; exit $_SM_RC"
         )
 
     def _run_container_script(

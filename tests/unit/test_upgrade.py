@@ -99,14 +99,14 @@ class TestMetadataHelpers:
     def test_is_editable_install_false_without_payload(self, _mock_direct_url):
         assert _is_editable_install(None) is False
 
-    @patch("slopmop.cli.upgrade.subprocess.run")
+    @patch("slopmop.cli.upgrade.bounded_run")
     def test_installed_version_fresh_reads_version_in_subprocess(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
             args=["python"], returncode=0, stdout="0.9.1\n", stderr=""
         )
         assert _installed_version_fresh() == "0.9.1"
 
-    @patch("slopmop.cli.upgrade.subprocess.run")
+    @patch("slopmop.cli.upgrade.bounded_run")
     def test_installed_version_fresh_raises_on_failure(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
             args=["python"], returncode=1, stdout="", stderr="boom"
@@ -242,7 +242,7 @@ class TestInstallCommandHelpers:
         else:
             raise AssertionError("expected unsupported install type to fail")
 
-    @patch("slopmop.cli.upgrade.subprocess.run")
+    @patch("slopmop.cli.upgrade.bounded_run")
     def test_run_upgrade_install_raises_on_subprocess_failure(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
             args=["pip"], returncode=1, stdout="", stderr="kaboom"
@@ -254,16 +254,30 @@ class TestInstallCommandHelpers:
         else:
             raise AssertionError("expected install failure to raise UpgradeError")
 
-    @patch("slopmop.cli.upgrade.subprocess.run")
+    @patch("slopmop.cli.upgrade.bounded_run")
     def test_validate_upgraded_install_adds_verbose_flag(
         self, mock_run, tmp_path: Path
     ):
         mock_run.return_value = subprocess.CompletedProcess(
             args=["python"], returncode=0
         )
+        # Validation only runs where there is a project to validate.
+        (tmp_path / ".sb_config.json").write_text("{}")
         _validate_upgraded_install(tmp_path, True)
         command = mock_run.call_args.args[0]
         assert command[-1] == "--verbose"
+
+    def test_validation_skipped_outside_a_project(self, tmp_path: Path):
+        """`sm upgrade` from a home directory used to swab the whole tree.
+
+        project_root defaults to the working directory, so running the
+        upgrade from anywhere that is not a project pointed a full swab at
+        it. The reported case ran for thirteen minutes before the user
+        killed it.
+        """
+        result = _validate_upgraded_install(tmp_path, False)
+        assert result.returncode == 0
+        assert "no slop-mop config" in result.stdout
 
 
 class TestUpgradeCommand:

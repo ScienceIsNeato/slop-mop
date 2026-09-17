@@ -16,12 +16,14 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, TypedDict, cast
 
+from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT
 from slopmop.core.config import config_file_path, state_dir_path
 from slopmop.migrations import (
     planned_upgrade_migrations,
     run_upgrade_migrations,
     stamp_config_version,
 )
+from slopmop.utils.proc import bounded_run
 
 PACKAGE_NAME = "slopmop"
 PYPI_URL = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
@@ -96,7 +98,7 @@ def _installed_version_fresh() -> str:
             f"print(version({PACKAGE_NAME!r}))"
         ),
     ]
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = bounded_run(command, capture_output=True, text=True)
     if completed.returncode != 0:
         details = (
             completed.stderr.strip()
@@ -317,7 +319,9 @@ def _upgrade_command(install_type: str, target_version: str) -> List[str]:
 
 def _run_upgrade_install(install_type: str, target_version: str) -> None:
     command = _upgrade_command(install_type, target_version)
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = bounded_run(
+        command, capture_output=True, text=True, timeout=HEAVY_TASK_TIMEOUT
+    )
     if completed.returncode != 0:
         details = (
             completed.stderr.strip()
@@ -330,6 +334,28 @@ def _run_upgrade_install(install_type: str, target_version: str) -> None:
 def _validate_upgraded_install(
     project_root: Path, verbose: bool
 ) -> subprocess.CompletedProcess[str]:
+    """Prove the upgrade works by swabbing the project you are standing in.
+
+    Only when that is actually a project. ``sm upgrade`` upgrades the tool,
+    so it is reasonable to run from anywhere — and it defaults project_root
+    to the working directory. Run from a home directory that is neither a
+    git repo nor configured, the swab has nothing to scope it and walks
+    hundreds of thousands of files; the reported case took thirteen minutes
+    before the user killed it. A directory with no config cannot tell us
+    anything about whether the upgrade succeeded, so it is skipped by name
+    rather than scanned by accident.
+    """
+    if not config_file_path(project_root).exists():
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                f"Skipped post-upgrade validation: {project_root} has no "
+                "slop-mop config, so there is no project here to check. "
+                "Run `sm swab` inside a project to validate."
+            ),
+            stderr="",
+        )
     command = [
         sys.executable,
         "-m",
@@ -340,7 +366,9 @@ def _validate_upgraded_install(
     ]
     if verbose:
         command.append("--verbose")
-    return subprocess.run(command, capture_output=True, text=True)
+    return bounded_run(
+        command, capture_output=True, text=True, timeout=HEAVY_TASK_TIMEOUT
+    )
 
 
 def _print_check_plan(
