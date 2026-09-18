@@ -21,6 +21,7 @@ from slopmop.core.executor import CheckExecutor
 from slopmop.core.lock import SmLockError, max_expected_duration, sm_lock
 from slopmop.core.registry import get_registry
 from slopmop.core.result import CheckResult, CheckStatus
+from slopmop.core.run_context import set_run_level
 from slopmop.reporting.adapters import (
     ConsoleAdapter,
     JsonAdapter,
@@ -247,6 +248,12 @@ def _run_validation(
     Returns:
         Exit code (0 = all passed, 1 = failures).
     """
+    # Gates that are useful on every commit but only *blocking* before a PR
+    # need to know which run they are in. The level is known here and nowhere
+    # else downstream, so record it rather than thread a parameter through the
+    # registry, executor and every check signature. An explicit -g run has no
+    # level, and None is read as the stricter setting.
+    set_run_level(level_name)
 
     # Determine project root
     project_root = Path(args.project_root).resolve()
