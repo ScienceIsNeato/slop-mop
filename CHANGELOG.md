@@ -6,6 +6,55 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.15.0
+
+Unresolved PR commentary stops being a suggestion. You cannot instruct a
+model into reliably addressing review feedback; you can make the alternative
+fail.
+
+### Behavior changes
+
+- **Unresolved PR comments now block** (#349) — `myopia:ignored-feedback`
+  already turned unresolved review threads into a finding, but
+  `fail_on_unresolved` defaulted to `False`, so it only warned. An agent
+  optimising for a green board walks past a warning. It defaults to `True`
+  now, which turns "the agent should address commentary" into "the agent
+  cannot reach a clean board without addressing it" — a property that holds
+  for any model regardless of what its prompt says.
+  **Upgrade note:** repos with this gate enabled and no explicit
+  `fail_on_unresolved` will start failing scour where they previously warned.
+  Nothing is newly detected — the same threads were already reported, just
+  ignorably. Set `fail_on_unresolved: false` to restore the old behaviour.
+
+- **The gate runs on every commit, and warns there rather than blocking**
+  (#349) — it moved from scour to swab, where it costs about two seconds
+  against a live PR and steps aside entirely when there is no network, no
+  `gh`, or no PR. Severity follows the invocation: swab warns, scour fails,
+  and a targeted `-g` run takes the stricter reading so it never reports
+  more softly than the scour it stands in for.
+  Blocking on swab would deadlock the ordinary order of work — you fix the
+  code, try to commit the fix, and the thread is still open because you have
+  not pushed yet — so the commit path warns and the PR path blocks.
+  **Upgrade note:** expect a new warning on commits made while a review
+  thread is open. Offline, the gate skips, so this enforcement is absent
+  without a network; scour still catches it before the PR.
+
+- **The swab warning says what to do** (#349) — it names the PR, states that
+  it becomes a failure on scour, tells the agent to handle it in the next
+  commit, gives the command, points at the triage report, and says outright
+  that replying with why a comment does not apply is a resolution. Agents
+  otherwise read "resolve" as "must change code", which produces worse
+  outcomes than the warning did.
+
+### Fixes
+
+- **The run level no longer leaks into subprocesses** (#349) — the first cut
+  carried it in an environment variable, and gates spawn subprocesses
+  including the project's own pytest. The marker was inherited, so this gate
+  warned instead of failing inside a repo's test suite depending on which
+  slop-mop command launched it. A repository's test results must not depend
+  on that. The level is process-local, and two tests pin the property.
+
 ## 2.14.1
 
 A sweep for subprocess calls that could run away: one that made a gate eight
