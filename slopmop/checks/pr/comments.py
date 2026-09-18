@@ -25,6 +25,7 @@ from slopmop.checks.base import (
 from slopmop.checks.timeouts import PROBE_TIMEOUT, QUICK_COMMAND_TIMEOUT
 from slopmop.constants import NOT_A_GIT_REPO, action_buff_inspect_pr
 from slopmop.core.result import CheckResult, CheckStatus, Finding
+from slopmop.core.run_context import current_run_level
 
 
 class _PendingReviewsError(Exception):
@@ -57,7 +58,7 @@ class PRCommentsCheck(BaseCheck):
       sm scour -g myopia:ignored-feedback --verbose
     """
 
-    level = GateLevel.SCOUR
+    level = GateLevel.SWAB
     role = CheckRole.DIAGNOSTIC
 
     PROTOCOL_VERSION = "pr-feedback-v1"
@@ -106,8 +107,12 @@ class PRCommentsCheck(BaseCheck):
             ConfigField(
                 name="fail_on_unresolved",
                 field_type="bool",
-                default=False,
-                description="Whether to fail if unresolved comments exist",
+                default=True,
+                description=(
+                    "Fail when unresolved PR comments exist. A warning is easy "
+                    "for an agent optimising for a green board to walk past, "
+                    "which is exactly the behaviour this gate exists to stop."
+                ),
                 permissiveness="true_is_stricter",
             ),
         ]
@@ -1118,7 +1123,16 @@ class PRCommentsCheck(BaseCheck):
         """Build check result when unresolved PR threads exist."""
 
         # We have unresolved threads - classify/order by locked protocol
-        fail_on_unresolved = self.config.get("fail_on_unresolved", False)
+        fail_on_unresolved = self.config.get("fail_on_unresolved", True)
+        # Blocking on swab would deadlock the normal order of work: you fix
+        # the code, try to commit the fix, and the thread is still open on
+        # GitHub because you have not pushed it yet. Warn on every commit so
+        # it cannot be forgotten; block before the PR, where it matters.
+        if fail_on_unresolved and current_run_level() == "swab":
+            fail_on_unresolved = False
+            swab_advisory = True
+        else:
+            swab_advisory = False
         try:
             ordered_threads = self._classify_and_order_threads(threads)
         except ValueError as exc:
@@ -1190,16 +1204,53 @@ class PRCommentsCheck(BaseCheck):
                 duration=duration,
                 output=summary,
                 error=f"{count} unresolved PR comment(s)",
-                fix_suggestion=f"Read full report: cat {report_file}",
+                fix_suggestion=(
+                    f"Work the threads with: sm buff {pr_number}. Each one is "
+                    "resolved by fixing it, or by replying with why it does "
+                    "not apply — both count, ignoring it does not. Full "
+                    f"report: {report_file}"
+                ),
                 status_detail=detail,
                 findings=structured,
             )
         else:
+            if swab_advisory:
+                headline = (
+                    f"⚠️  OUTSTANDING PR COMMENTARY — {count} unresolved "
+                    f"thread(s) on PR #{pr_number} for this branch.\n"
+                    "This is a WARNING now and will FAIL on scour, so the PR "
+                    "cannot go out until it is handled.\n"
+                    "Address this commentary as part of your NEXT COMMIT. A "
+                    "thread is resolved by fixing it, or by replying with why "
+                    "it does not apply — both count; ignoring it does not.\n"
+                    f"Work them with: sm buff {pr_number}\n"
+                    f"Full triage report: {report_file}\n"
+                )
+            else:
+                headline = (
+                    f"⚠️ {count} unresolved comment(s) — "
+                    "set fail_on_unresolved: true to block on this\n"
+                )
             return self._create_result(
                 status=CheckStatus.WARNED,
                 duration=duration,
-                output=f"⚠️ {count} unresolved comment(s) — "
-                f"set fail_on_unresolved: true to block on this\n\n" + summary,
+                output=headline + "\n" + summary,
+                error=(
+                    (
+                        f"{count} unresolved PR comment(s) — warning now, "
+                        "failure on scour"
+                    )
+                    if swab_advisory
+                    else None
+                ),
+                fix_suggestion=(
+                    (
+                        f"Run: sm buff {pr_number} and work each thread to a "
+                        "resolution before your next commit."
+                    )
+                    if swab_advisory
+                    else None
+                ),
                 status_detail=detail,
                 findings=structured,
             )

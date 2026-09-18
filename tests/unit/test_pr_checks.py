@@ -222,11 +222,61 @@ class TestPRCommentsCheck:
         ):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.WARNED
+        # Blocking by default: a warning is trivially walked past by an agent
+        # optimising for a green board, which is the behaviour this stops.
+        assert result.status == CheckStatus.FAILED
         assert "1 unresolved" in result.output
         assert result.status_detail == "1 unresolved"
         # Summary output should have category counts and file path
         assert "pr_123_comments_report.md" in result.output
+
+    def test_opt_out_still_warns(self, tmp_path):
+        """The escape hatch must keep working for repos that want advisory."""
+        threads = [
+            {
+                "thread_id": "PRRT_456",
+                "is_outdated": False,
+                "body": "Consider renaming this",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 7,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+        check = PRCommentsCheck({"fail_on_unresolved": False})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=456),
+            patch.object(check, "_get_repo_info", return_value=("owner", "repo")),
+            patch.object(check, "_get_unresolved_threads", return_value=threads),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+
+    def test_failure_names_the_remediation_command(self, tmp_path):
+        """A blocking gate's fix_suggestion is what the agent acts on."""
+        threads = [
+            {
+                "thread_id": "PRRT_789",
+                "is_outdated": False,
+                "body": "This is wrong",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 1,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+        check = PRCommentsCheck({})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=789),
+            patch.object(check, "_get_repo_info", return_value=("owner", "repo")),
+            patch.object(check, "_get_unresolved_threads", return_value=threads),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert "sm buff 789" in (result.fix_suggestion or "")
+        # Replying with why it does not apply is a legitimate resolution.
+        assert "does not apply" in (result.fix_suggestion or "")
 
     def test_run_with_fail_on_unresolved_enabled(self, tmp_path):
         """Test run returns FAILED when fail_on_unresolved is True."""
@@ -822,3 +872,96 @@ class TestPRCommentsCheck:
         loop_dir = check._next_protocol_loop_dir(str(tmp_path), 85)
 
         assert loop_dir.name == "loop-002"
+
+
+class TestSeverityFollowsRunLevel:
+    """Warn on every commit; block before the PR goes out.
+
+    Blocking on swab deadlocks the normal order of work: you fix the code,
+    try to commit the fix, and the thread is still open on GitHub because you
+    have not pushed it yet.
+    """
+
+    THREADS = [
+        {
+            "thread_id": "PRRT_lvl",
+            "is_outdated": False,
+            "body": "Please fix the null check",
+            "author": "reviewer",
+            "path": "src/f.py",
+            "line": 42,
+            "created_at": "2024-01-01T00:00:00Z",
+        }
+    ]
+
+    def _run(self, tmp_path, monkeypatch, level):
+        from slopmop.core.run_context import run_level
+
+        self._level_ctx = run_level(level)
+        self._level_ctx.__enter__()
+        check = PRCommentsCheck({})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=349),
+            patch.object(check, "_get_repo_info", return_value=("o", "r")),
+            patch.object(check, "_get_unresolved_threads", return_value=self.THREADS),
+        ):
+            try:
+                return check.run(str(tmp_path))
+            finally:
+                self._level_ctx.__exit__(None, None, None)
+
+    def test_swab_warns(self, tmp_path, monkeypatch):
+        assert self._run(tmp_path, monkeypatch, "swab").status == CheckStatus.WARNED
+
+    def test_scour_fails(self, tmp_path, monkeypatch):
+        assert self._run(tmp_path, monkeypatch, "scour").status == CheckStatus.FAILED
+
+    def test_targeted_run_takes_the_strict_reading(self, tmp_path, monkeypatch):
+        """An explicit -g run has no level and must not report softer."""
+        assert self._run(tmp_path, monkeypatch, None).status == CheckStatus.FAILED
+
+    def test_swab_warning_says_everything_the_agent_needs(self, tmp_path, monkeypatch):
+        result = self._run(tmp_path, monkeypatch, "swab")
+        out = result.output
+        assert "OUTSTANDING PR COMMENTARY" in out
+        assert "will FAIL on scour" in out  # why it matters now
+        assert "NEXT COMMIT" in out  # when to act
+        assert "sm buff 349" in out  # how to act
+        assert "does not apply" in out  # replying is a resolution
+        assert "pr_349_comments_report.md" in out  # the triage output
+        # A warning with no error text is easy to scroll past in a summary.
+        assert "failure on scour" in (result.error or "")
+
+    def test_runs_at_swab_level(self):
+        """It has to be selected for swab at all to warn there."""
+        from slopmop.checks.base import GateLevel
+
+        assert PRCommentsCheck.level == GateLevel.SWAB
+
+
+class TestRunLevelDoesNotLeakToSubprocesses:
+    """An env marker would change gate behaviour inside the project's tests.
+
+    Gates spawn subprocesses — including pytest, via untested-code. An
+    inherited marker made this gate warn instead of fail inside a repo's own
+    suite depending on which command launched it. This is the regression that
+    caught it.
+    """
+
+    def test_level_is_not_exported_to_the_environment(self):
+        import os
+
+        from slopmop.core.run_context import current_run_level, run_level
+
+        with run_level("swab"):
+            assert current_run_level() == "swab"
+            assert "SLOPMOP_RUN_LEVEL" not in os.environ
+
+    def test_level_restores_after_the_block(self):
+        from slopmop.core.run_context import current_run_level, run_level
+
+        with run_level("scour"):
+            with run_level("swab"):
+                assert current_run_level() == "swab"
+            assert current_run_level() == "scour"
+        assert current_run_level() is None
