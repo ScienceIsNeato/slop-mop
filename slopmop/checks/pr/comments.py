@@ -106,8 +106,12 @@ class PRCommentsCheck(BaseCheck):
             ConfigField(
                 name="fail_on_unresolved",
                 field_type="bool",
-                default=False,
-                description="Whether to fail if unresolved comments exist",
+                default=True,
+                description=(
+                    "Fail when unresolved PR comments exist. A warning is easy "
+                    "for an agent optimising for a green board to walk past, "
+                    "which is exactly the behaviour this gate exists to stop."
+                ),
                 permissiveness="true_is_stricter",
             ),
         ]
@@ -1118,7 +1122,7 @@ class PRCommentsCheck(BaseCheck):
         """Build check result when unresolved PR threads exist."""
 
         # We have unresolved threads - classify/order by locked protocol
-        fail_on_unresolved = self.config.get("fail_on_unresolved", False)
+        fail_on_unresolved = self.config.get("fail_on_unresolved", True)
         try:
             ordered_threads = self._classify_and_order_threads(threads)
         except ValueError as exc:
@@ -1190,7 +1194,12 @@ class PRCommentsCheck(BaseCheck):
                 duration=duration,
                 output=summary,
                 error=f"{count} unresolved PR comment(s)",
-                fix_suggestion=f"Read full report: cat {report_file}",
+                fix_suggestion=(
+                    f"Work the threads with: sm buff {pr_number}. Each one is "
+                    "resolved by fixing it, or by replying with why it does "
+                    "not apply — both count, ignoring it does not. Full "
+                    f"report: {report_file}"
+                ),
                 status_detail=detail,
                 findings=structured,
             )

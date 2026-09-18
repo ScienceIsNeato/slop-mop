@@ -222,11 +222,61 @@ class TestPRCommentsCheck:
         ):
             result = check.run(str(tmp_path))
 
-        assert result.status == CheckStatus.WARNED
+        # Blocking by default: a warning is trivially walked past by an agent
+        # optimising for a green board, which is the behaviour this stops.
+        assert result.status == CheckStatus.FAILED
         assert "1 unresolved" in result.output
         assert result.status_detail == "1 unresolved"
         # Summary output should have category counts and file path
         assert "pr_123_comments_report.md" in result.output
+
+    def test_opt_out_still_warns(self, tmp_path):
+        """The escape hatch must keep working for repos that want advisory."""
+        threads = [
+            {
+                "thread_id": "PRRT_456",
+                "is_outdated": False,
+                "body": "Consider renaming this",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 7,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+        check = PRCommentsCheck({"fail_on_unresolved": False})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=456),
+            patch.object(check, "_get_repo_info", return_value=("owner", "repo")),
+            patch.object(check, "_get_unresolved_threads", return_value=threads),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert result.status == CheckStatus.WARNED
+
+    def test_failure_names_the_remediation_command(self, tmp_path):
+        """A blocking gate's fix_suggestion is what the agent acts on."""
+        threads = [
+            {
+                "thread_id": "PRRT_789",
+                "is_outdated": False,
+                "body": "This is wrong",
+                "author": "reviewer",
+                "path": "src/file.py",
+                "line": 1,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+        check = PRCommentsCheck({})
+        with (
+            patch.object(check, "_detect_pr_number", return_value=789),
+            patch.object(check, "_get_repo_info", return_value=("owner", "repo")),
+            patch.object(check, "_get_unresolved_threads", return_value=threads),
+        ):
+            result = check.run(str(tmp_path))
+
+        assert "sm buff 789" in (result.fix_suggestion or "")
+        # Replying with why it does not apply is a legitimate resolution.
+        assert "does not apply" in (result.fix_suggestion or "")
 
     def test_run_with_fail_on_unresolved_enabled(self, tmp_path):
         """Test run returns FAILED when fail_on_unresolved is True."""
