@@ -677,9 +677,7 @@ class TestIntegrationAliasesSh:
         assert result.returncode == 1
         assert "fake-gh" not in result.stdout
 
-    def test_wrapper_alone_passes_through_outside_a_repo(
-        self, tmp_path: Path
-    ) -> None:
+    def test_wrapper_alone_passes_through_outside_a_repo(self, tmp_path: Path) -> None:
         """Failing closed must not mean blocking everywhere.
 
         The inlined check is the only thing standing between "enforced in a
@@ -753,7 +751,7 @@ class TestGangStaleness:
         if stamp is not None:
             body = g._generate_aliases_sh(stamp).decode("utf-8")
         else:
-            body = "#!/usr/bin/env bash\n# hand written\ngh() { command gh \"$@\"; }\n"
+            body = '#!/usr/bin/env bash\n# hand written\ngh() { command gh "$@"; }\n'
         dest.write_text(body, encoding="utf-8")
         monkeypatch.setattr(g, "_ALIASES_DEST", dest)
         return dest
