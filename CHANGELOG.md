@@ -6,6 +6,62 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.16.0
+
+Press-ganging was switched off in every AI coding session, and had been for
+months. It looked installed the whole time.
+
+### Behavior changes
+
+- **Shell intercepts enforce on their own** (#352) — each generated wrapper
+  called a shared `_sm_in_slopmop_repo` helper to decide whether it was inside
+  a slop-mop repo. Tools that snapshot a shell's active functions do not carry
+  it: Claude Code's snapshot held all fourteen public wrappers and no
+  definition of the private helper. Every intercept therefore ran a missing
+  command, printed `command not found`, took the `||` branch and executed the
+  real tool. `gh pr view` — blocked by name, with a paragraph explaining why
+  `mergeable` is not merge-readiness — ran unblocked inside a repo carrying a
+  `.slopmop` marker.
+  The previous attempt guarded the call with `type` so the stray stderr line
+  went away while the fallthrough stayed, trading a loud broken guardrail for
+  a silent one in exactly the shells the mechanism exists for. Each wrapper
+  now inlines its own marker walk instead: identical behaviour sourced,
+  copied or snapshotted, with no second definition left to lose, and no
+  `dirname` subprocess per directory level.
+  **Upgrade note:** intercepts start firing in agent shells, so commands that
+  have been passing through there — `gh pr view`, `gh run watch`, raw
+  `pytest`, `mypy` — begin getting blocked. That is the intended behaviour
+  returning, not a new restriction. It takes effect only once the block is
+  re-pressed on a machine.
+
+### Fixes
+
+- **A stale press is now visible** (#352) — `~/.slopmop/aliases.sh` is
+  generated into `$HOME` once and was then never revisited, so every fix to
+  wrapper generation reached the source and no machine. One install was still
+  running the wrappers 2.0.0 emitted, fifteen minor releases later. The file
+  has stamped its own generating version on line 2 the entire time and
+  nothing read it. `sm doctor` gains `sm_env.gang`, which compares that stamp
+  against the running version and hands over the re-press command. It reports
+  only — regenerating machine-wide shell intercepts is not a repair `--fix`
+  should make unasked.
+
+- **`sm upgrade` refreshes an existing press** (#352) — upgrading is the
+  moment the generated block is known to be behind, so it is the moment to
+  redo it. Only when a block is already pressed: pressing one on a machine
+  that never opted in would alias commands system-wide as a side effect of an
+  upgrade. It runs out of process, because after the install the running
+  interpreter still holds the pre-upgrade slopmop and generating in-place
+  would write the old wrappers under the new version's stamp — stale content
+  labelled fresh, which would defeat the check above.
+
+- **The action's `required-deps` manifest matches its pins again** (#353) —
+  `pyproject.toml` had pinned `ruff==0.16.3` while the committed manifest
+  still advertised `0.15.0`. The dogfood job runs this repo through the
+  action at `@v2`, and that tag had been sitting on a 2.12.0-era commit, so
+  nothing was verifying against a current gate config. Moving the tag
+  surfaced the drift on its first day.
+
 ## 2.15.0
 
 Unresolved PR commentary stops being a suggestion. You cannot instruct a
