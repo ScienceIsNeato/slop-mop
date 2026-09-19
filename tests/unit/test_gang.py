@@ -645,29 +645,77 @@ class TestIntegrationAliasesSh:
         assert "[slop-mop]" not in result.stderr
         assert "fake-gh" in result.stdout
 
-    def test_missing_repo_guard_helper_falls_through_silently(
+    def test_wrapper_still_intercepts_when_snapshotted_alone(
         self, tmp_path: Path
     ) -> None:
-        """Wrapper without its _sm_in_slopmop_repo helper must not spam errors.
+        """A wrapper lifted out on its own must still enforce.
 
-        Regression: tools like Claude Code snapshot active shell functions and
-        can capture a wrapper (e.g. ``gh``) without its private helper. Calling
-        the missing helper printed ``command not found`` on every invocation.
-        The wrapper must fail open — run the real command, silently.
+        Regression, and the expensive kind: tools that snapshot a shell's
+        active functions capture the public wrappers without private helpers.
+        Claude Code's snapshot held all fourteen wrappers and no definition of
+        the old ``_sm_in_slopmop_repo``, so every intercept hit a missing
+        command and fell through to the real tool. Press-ganging was off in
+        precisely the shells it is aimed at, for months, and the only symptom
+        was a stray ``command not found`` on stderr.
+
+        Extracting one function body is exactly what the snapshot does, so the
+        wrapper must carry everything it needs to decide.
         """
         aliases = self._make_aliases(tmp_path)
         fake_bin = self._make_fake_bin(tmp_path, ("sm", "gh"))
-        # Source, then drop the helper to simulate the snapshot picking up the
-        # wrapper alone. ``gh run watch`` would otherwise be blocked in-repo.
-        result = self._bash(
-            aliases,
-            fake_bin,
-            "unset -f _sm_in_slopmop_repo; gh run watch",
+        gh_only = tmp_path / "gh_only.sh"
+        body = aliases.read_text(encoding="utf-8")
+        start = body.index("gh() {")
+        gh_only.write_text(body[start : body.index("\n}", start) + 2], encoding="utf-8")
+
+        assert "_sm_in_slopmop_repo" not in gh_only.read_text(encoding="utf-8")
+
+        # cwd is the slop-mop repo, which carries a .slopmop marker.
+        result = self._bash(gh_only, fake_bin, "gh run watch")
+        assert "[slop-mop]" in result.stderr
+        assert "sm buff watch" in result.stderr
+        assert result.returncode == 1
+        assert "fake-gh" not in result.stdout
+
+    def test_wrapper_alone_passes_through_outside_a_repo(self, tmp_path: Path) -> None:
+        """Failing closed must not mean blocking everywhere.
+
+        The inlined check is the only thing standing between "enforced in a
+        slop-mop repo" and "this machine's gh is broken", so prove it from the
+        same extracted-wrapper starting point.
+        """
+        aliases = self._make_aliases(tmp_path)
+        fake_bin = self._make_fake_bin(tmp_path, ("sm", "gh"))
+        gh_only = tmp_path / "gh_only.sh"
+        body = aliases.read_text(encoding="utf-8")
+        start = body.index("gh() {")
+        gh_only.write_text(body[start : body.index("\n}", start) + 2], encoding="utf-8")
+
+        # tmp_path has no .slopmop marker at any level.
+        outside = tmp_path / "nowhere" / "deep"
+        outside.mkdir(parents=True)
+        env = {**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"}
+        result = subprocess.run(
+            ["bash", "-c", f"source {shlex.quote(str(gh_only))} && gh run watch"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=outside,
         )
-        assert "command not found" not in result.stderr
-        assert "_sm_in_slopmop_repo" not in result.stderr
         assert "[slop-mop]" not in result.stderr
+        assert "command not found" not in result.stderr
         assert "fake-gh" in result.stdout
+
+    def test_generated_script_carries_no_shared_helper(self, tmp_path: Path) -> None:
+        """No wrapper may depend on a second definition being in scope."""
+        aliases = self._make_aliases(tmp_path)
+        assert "_sm_in_slopmop_repo" not in aliases.read_text(encoding="utf-8")
+
+    def test_repo_guard_spawns_no_subprocess_per_level(self, tmp_path: Path) -> None:
+        """The walk is parameter expansion; dirname ran once per directory level."""
+        aliases = self._make_aliases(tmp_path).read_text(encoding="utf-8")
+        assert "dirname" not in aliases
+        assert '_d="${_d%/*}"' in aliases
 
     def test_sm_not_found_falls_through_to_real_command(self, tmp_path: Path) -> None:
         """When sm is absent from PATH, intercepts fall through to the real command."""
@@ -684,3 +732,120 @@ class TestIntegrationAliasesSh:
         )
         assert "[slop-mop]" not in result.stderr
         assert "fake-pytest" in result.stdout
+
+
+class TestGangStaleness:
+    """The generated block lives in $HOME and nothing used to revisit it.
+
+    That is how a machine pressed at 2.0.0 kept running 2.0.0 wrappers
+    through fifteen minor releases: the file has always stamped its own
+    generating version on line 2, and no code read it.
+    """
+
+    @staticmethod
+    def _press(tmp_path: Path, monkeypatch, stamp: str | None) -> Path:
+        """Write an aliases.sh stamped as *stamp* and point gang at it."""
+        import slopmop.cli.gang as g
+
+        dest = tmp_path / "aliases.sh"
+        if stamp is not None:
+            body = g._generate_aliases_sh(stamp).decode("utf-8")
+        else:
+            body = '#!/usr/bin/env bash\n# hand written\ngh() { command gh "$@"; }\n'
+        dest.write_text(body, encoding="utf-8")
+        monkeypatch.setattr(g, "_ALIASES_DEST", dest)
+        return dest
+
+    def test_matching_version_is_not_stale(self, tmp_path: Path, monkeypatch) -> None:
+        from slopmop import __version__
+        from slopmop.cli.gang import stale_gang_version
+
+        self._press(tmp_path, monkeypatch, __version__)
+        assert stale_gang_version() is None
+
+    def test_older_version_is_reported(self, tmp_path: Path, monkeypatch) -> None:
+        from slopmop.cli.gang import installed_gang_version, stale_gang_version
+
+        self._press(tmp_path, monkeypatch, "2.0.0")
+        assert installed_gang_version() == "2.0.0"
+        assert stale_gang_version() == "2.0.0"
+
+    def test_unstamped_file_reports_no_version(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Hand-edited or pre-stamp: unknowable, so not silently called current."""
+        from slopmop.cli.gang import installed_gang_version, stale_gang_version
+
+        self._press(tmp_path, monkeypatch, None)
+        assert installed_gang_version() is None
+        assert stale_gang_version() is None
+
+    def test_nothing_pressed_is_not_stale(self, tmp_path: Path, monkeypatch) -> None:
+        import slopmop.cli.gang as g
+
+        monkeypatch.setattr(g, "_ALIASES_DEST", tmp_path / "absent.sh")
+        assert g.gang_is_pressed() is False
+        assert g.installed_gang_version() is None
+        assert g.stale_gang_version() is None
+
+    def test_stamp_survives_a_regeneration_round_trip(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Re-pressing must clear staleness, or the doctor warning never goes away."""
+        from slopmop import __version__
+        from slopmop.cli.gang import stale_gang_version
+
+        self._press(tmp_path, monkeypatch, "2.0.0")
+        assert stale_gang_version() == "2.0.0"
+        self._press(tmp_path, monkeypatch, __version__)
+        assert stale_gang_version() is None
+
+
+class TestGangDoctorCheck:
+    def test_warns_when_pressed_block_is_behind(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import slopmop.cli.gang as g
+        from slopmop.doctor.base import DoctorContext, DoctorStatus
+        from slopmop.doctor.sm_env import GangFreshnessCheck
+
+        dest = tmp_path / "aliases.sh"
+        dest.write_bytes(g._generate_aliases_sh("2.0.0"))
+        monkeypatch.setattr(g, "_ALIASES_DEST", dest)
+
+        result = GangFreshnessCheck().run(DoctorContext(project_root=tmp_path))
+        assert result.status is DoctorStatus.WARN
+        assert "2.0.0" in result.summary
+        assert result.fix_hint and "sm gang press" in result.fix_hint
+        # Reporting only: regenerating machine-wide shell intercepts is not
+        # something --fix may do unasked.
+        assert result.can_fix is False
+
+    def test_ok_when_current(self, tmp_path: Path, monkeypatch) -> None:
+        import slopmop.cli.gang as g
+        from slopmop import __version__
+        from slopmop.doctor.base import DoctorContext, DoctorStatus
+        from slopmop.doctor.sm_env import GangFreshnessCheck
+
+        dest = tmp_path / "aliases.sh"
+        dest.write_bytes(g._generate_aliases_sh(__version__))
+        monkeypatch.setattr(g, "_ALIASES_DEST", dest)
+
+        result = GangFreshnessCheck().run(DoctorContext(project_root=tmp_path))
+        assert result.status is DoctorStatus.OK
+
+    def test_skips_when_machine_never_pressed(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import slopmop.cli.gang as g
+        from slopmop.doctor.base import DoctorContext, DoctorStatus
+        from slopmop.doctor.sm_env import GangFreshnessCheck
+
+        monkeypatch.setattr(g, "_ALIASES_DEST", tmp_path / "absent.sh")
+        result = GangFreshnessCheck().run(DoctorContext(project_root=tmp_path))
+        assert result.status is DoctorStatus.SKIP
+
+    def test_registered_in_the_explicit_registry(self) -> None:
+        from slopmop.doctor import CHECKS_BY_NAME
+
+        assert "sm_env.gang" in CHECKS_BY_NAME

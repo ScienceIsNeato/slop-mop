@@ -16,7 +16,7 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, TypedDict, cast
 
-from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT
+from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT, SLOW_TOOL_TIMEOUT
 from slopmop.core.config import config_file_path, state_dir_path
 from slopmop.migrations import (
     planned_upgrade_migrations,
@@ -424,6 +424,60 @@ def _packaging_invalid_version_class() -> type[Exception]:
     return InvalidVersion
 
 
+def _repress_gang(installed_version: str) -> Optional[str]:
+    """Regenerate an already-pressed gang block against the new version.
+
+    ``~/.slopmop/aliases.sh`` is generated once into ``$HOME``, and nothing
+    ever went back for it. Every fix to wrapper generation therefore landed in
+    the source and reached no machine: one install here was still running the
+    wrappers 2.0.0 emitted, fifteen minor releases later, with shell
+    enforcement silently disabled the whole time. Upgrading is the moment the
+    generated artifact is known to be behind, so it is the moment to redo it.
+
+    Only when a block is already pressed. Pressing one on a machine that never
+    opted in would alias commands system-wide as a side effect of an upgrade,
+    which is not ours to decide.
+
+    Run as a subprocess rather than calling ``_gang_press`` directly: this
+    process still holds the *pre-upgrade* slopmop in memory, so generating
+    in-process would write the old wrappers under the new version's stamp —
+    stale content labelled fresh, which is worse than leaving it alone.
+
+    Returns a message for the summary, or None when there was nothing to do.
+    """
+    from slopmop.cli.gang import GANG_CONFIRM_PHRASE, gang_is_pressed
+
+    if not gang_is_pressed():
+        return None
+
+    try:
+        proc = bounded_run(
+            [
+                sys.executable,
+                "-m",
+                PACKAGE_NAME,
+                "gang",
+                "press",
+                "--confirm",
+                GANG_CONFIRM_PHRASE,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=SLOW_TOOL_TIMEOUT,
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        # An upgrade that installed cleanly has not failed because the shell
+        # block could not be refreshed, so say what happened and carry on.
+        return f"⚠️  Gang block not refreshed ({exc}) — re-run: sm gang press"
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+        tail = detail[-1] if detail else f"exit {proc.returncode}"
+        return f"⚠️  Gang block not refreshed ({tail}) — re-run: sm gang press"
+
+    return f"🔗 Gang block re-pressed for {installed_version}"
+
+
 def _print_upgrade_summary(
     *,
     current_version: str,
@@ -432,6 +486,7 @@ def _print_upgrade_summary(
     applied_migrations: List[str],
     validation: "subprocess.CompletedProcess[str]",
     project_root: Path,
+    gang_note: Optional[str] = None,
 ) -> None:
     """Report what the upgrade did, including what it deliberately did not do."""
     print(f"✅ Upgraded slopmop: {current_version} -> {installed_version}")
@@ -448,6 +503,8 @@ def _print_upgrade_summary(
             print(f"   {validation.stdout}")
     else:
         print(f"✔️  Validation: sm {VALIDATION_VERB}")
+    if gang_note:
+        print(gang_note)
 
 
 def cmd_upgrade(args: argparse.Namespace) -> int:
@@ -544,5 +601,6 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         applied_migrations=applied_migrations,
         validation=validation,
         project_root=project_root,
+        gang_note=_repress_gang(installed_version),
     )
     return 0
