@@ -49,6 +49,7 @@ from slopmop.doctor.project_env import (
 )
 from slopmop.doctor.runtime import PlatformCheck, SmResolutionCheck
 from slopmop.doctor.sm_env import (
+    GangFreshnessCheck,
     GateDiagnosticsCheck,
     GateReadinessCheck,
     InstallModeCheck,
@@ -84,6 +85,7 @@ ALL_CHECKS: List[type[DoctorCheck]] = [
     InstallModeCheck,
     PypiVersionCheck,
     SmPipCheck,
+    GangFreshnessCheck,
     ToolInventoryCheck,
     GateReadinessCheck,
     GateDiagnosticsCheck,
