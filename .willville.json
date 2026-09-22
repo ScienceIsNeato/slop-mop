@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Fixing what onboarding a new repo turned up \u2014 the cleanup pass was rewriting and committing files people had explicitly told it to leave alone, and setup could die outright on a slow check",
-    "direction": "Make adding slop-mop to an existing project boring, since that first hour is where people give up",
+    "status": "Cutting a release with the onboarding fixes \u2014 the cleanup pass now leaves alone what you tell it to, and setup no longer dies on a slow check",
+    "direction": "Back to the new repo to see how far onboarding gets now",
     "last_update": "2026-09-22T00:00:00Z"
   }
 }

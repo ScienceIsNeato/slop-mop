@@ -6,6 +6,75 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.17.0
+
+Onboarding a new repo produced three barnacles. The worst of them was a
+cleanup pass rewriting and committing files the repository had explicitly
+scoped out — declared three ways, honoured none.
+
+### Behavior changes
+
+- **Category-level scope settings now reach their gates** (#359) — gate
+  config was read from `[category]["gates"][gate]` and nowhere else, so
+  anything set beside `gates` — `laziness: {include_dirs: [...], gates: {...}}`
+  — was read by nobody and reported by nobody. A silent no-op is
+  indistinguishable from a working setting, which is how a repo that scoped
+  all five categories to one package had its whole tree formatted anyway.
+  `include_dirs`, `src_dirs`, `exclude_dirs`, `extra_exclude_paths` and
+  `include_paths` now inherit from the category; a gate that sets one still
+  wins. Non-scope keys deliberately do not inherit — a category-wide
+  `threshold` would silently redefine unrelated gates.
+  **Upgrade note:** if your config already has one of those keys at category
+  level, it starts taking effect. It was doing nothing before, so gates in
+  that category may now look at less than they did. That is what the setting
+  asked for, but it is a real change in what gets scanned.
+
+- **The refit formatting pass respects your config** (#359) — it built its
+  formatting gates with an empty config, so nothing reached them: not the
+  repo's `exclude_paths`, not `include_dirs`, not the gate's own
+  `exclude_dirs`. A formatting gate auto-fixes, so an unconfigured one
+  rewrites every file it can find — and refit commits the result without
+  prompting. It now goes through the registry like every other caller, and
+  skips gates the repo disabled.
+  **Upgrade note:** `sm refit --start` will format less than it used to on
+  any repo that had configured a scope. If you were relying on it formatting
+  everything, clear the scope or run the formatter yourself.
+
+### Fixes
+
+- **`laziness:sloppy-formatting.py` honours `include_dirs`** (#359) — it
+  neither declared the field nor passed it on, so a project that scoped the
+  gate still had every Python file examined and, because this gate
+  auto-fixes, rewritten. `resolve_tool_paths` takes the filter now, which is
+  where it belongs: that function decides what every gate sees, so a gate
+  resolving its own scope is one more place for the filter to go missing.
+  Include values are normalised, so `./pkg`, `pkg/` and `pkg` all mean the
+  same directory rather than silently meaning "no scope".
+
+- **`sm refit --start` survives a slow gate** (#356) — a probe that outran
+  its budget raised `TimeoutExpired` through the command, which died with a
+  raw traceback. The probe is deterministic, so it died identically on every
+  retry and onboarding simply stopped, with nothing saying which gate or what
+  to do. A probe answers "can this gate run here", and taking too long is an
+  answer: it is recorded against that gate, the remaining gates are still
+  probed, and the message says the gate is not broken and offers a way
+  forward. The budget now matches the work — a probe is a full single-gate
+  scour, not the git call the old default was inherited from.
+
+- **Reviewing a precheck no longer re-probes everything** (#358) — every
+  `sm refit --start --approve-gate` rebuilt the precheck first, running a
+  full single-gate scour for every gate, so a twenty-gate review cost twenty
+  complete prechecks. It was also approving output nobody had read: the flag
+  records that "a gate's current precheck output looks trustworthy", and the
+  output was regenerated before the approval landed. A review-only invocation
+  now records the decision against the run it was made about, and falls back
+  to a rebuild when the saved config fingerprints no longer match.
+
+- **The formatting commit says what it contains** (#359) — it reported a
+  count and committed. It now lists the files and flags any that fall outside
+  the configured scope, so an unscoped pass is visible while it happens
+  rather than afterwards in `git log`.
+
 ## 2.16.0
 
 Press-ganging was switched off in every AI coding session, and had been for
