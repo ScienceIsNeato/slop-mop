@@ -390,3 +390,108 @@ class TestToolOwnedDisableProvenance:
         base = {"myopia": {"gates": {"g": {"enabled": False}}}}
         _stamp_auto_disabled_provenance(base, {}, None)
         assert base["myopia"]["gates"]["g"]["disabled_by"] == "init"
+
+
+class TestProbeTimeout:
+    """A probe that runs out of time is an answer, not a crash.
+
+    ``bounded_run`` raises ``TimeoutExpired`` rather than swallowing it, so
+    that callers which can continue say so. The probe caller never did: the
+    exception left ``sm refit --start`` as a raw traceback, and because the
+    probe is deterministic it died the same way on every retry. Onboarding
+    stopped with no indication of which gate or what to do (#356).
+    """
+
+    @staticmethod
+    def _record(gate: str = "overconfidence:type-blindness.py") -> GatePreflightRecord:
+        return GatePreflightRecord(
+            gate=gate,
+            display_name=gate.split(":")[-1],
+            enabled=True,
+            applicable=True,
+            skip_reason="",
+            config_fingerprint="fp",
+            missing_tools=(),
+        )
+
+    def test_probe_returns_sentinel_instead_of_raising(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        import subprocess
+
+        def _timeout(*_args, **_kwargs):
+            raise subprocess.TimeoutExpired(cmd="sm scour", timeout=300)
+
+        monkeypatch.setattr(precheck_mod, "bounded_run", _timeout)
+        code = precheck_mod._run_gate_probe(
+            tmp_path, "overconfidence:type-blindness.py", tmp_path / "a.json"
+        )
+        assert code == precheck_mod.PROBE_TIMED_OUT
+
+    def test_build_precheck_survives_a_timing_out_gate(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        """The whole point: the other gates still get probed."""
+        slow = self._record("overconfidence:type-blindness.py")
+        fast = self._record("laziness:dead-code.py")
+        monkeypatch.setattr(
+            precheck_mod, "gather_gate_preflight_records", lambda _root: [slow, fast]
+        )
+
+        def _probe(_root, gate, _artifact):
+            return precheck_mod.PROBE_TIMED_OUT if gate == slow.gate else 0
+
+        monkeypatch.setattr(precheck_mod, "_run_gate_probe", _probe)
+
+        precheck = precheck_mod.build_precheck(tmp_path)
+
+        entries = {entry["gate"]: entry for entry in precheck["gates"]}
+        assert entries[slow.gate]["probe_status"] == "timed_out"
+        assert entries[fast.gate]["probe_status"] == "runnable"
+
+    def test_timed_out_is_not_reported_as_a_gate_failure(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        """ "blocked" sends you hunting for a tool that is installed and fine."""
+        record = self._record()
+        monkeypatch.setattr(
+            precheck_mod, "gather_gate_preflight_records", lambda _root: [record]
+        )
+        monkeypatch.setattr(
+            precheck_mod, "_run_gate_probe", lambda *_a: precheck_mod.PROBE_TIMED_OUT
+        )
+
+        precheck = precheck_mod.build_precheck(tmp_path)
+        entry = precheck["gates"][0]
+        assert entry["probe_status"] == "timed_out"
+        assert entry["probe_status"] != "blocked"
+        # It still stops the plan — output for that gate is unknown.
+        assert precheck_mod.blocked_runnability_entries(precheck) == [entry]
+        assert precheck["status"] == "blocked_on_gate_runnability"
+
+    def test_probe_gets_a_budget_fit_for_a_full_gate_scour(self) -> None:
+        """120s was inherited from git/gh calls; a probe scours the repo."""
+        from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
+
+        assert precheck_mod._PROBE_TIMEOUT > SLOW_TOOL_TIMEOUT
+
+    def test_timeout_message_says_what_to_do(self, tmp_path: Path) -> None:
+        from slopmop.cli.refit import _runnability_block_lines
+
+        precheck = {
+            "gates": [
+                {
+                    "gate": "overconfidence:type-blindness.py",
+                    "applicable": True,
+                    "enabled": True,
+                    "probe_status": "timed_out",
+                    "missing_tools": [],
+                }
+            ]
+        }
+        text = "\n".join(_runnability_block_lines(tmp_path, precheck))
+        assert "overconfidence:type-blindness.py" in text
+        assert "exceeded" in text
+        # Must not imply broken tooling, and must offer a way forward.
+        assert "not broken" in text
+        assert "include_dirs" in text or "disable it" in text

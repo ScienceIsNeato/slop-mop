@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Fixing the command guardrails, which turned out to be switched off in every AI coding session for months — they looked installed but quietly waved everything through. PR #352 up",
-    "direction": "Also making the tool notice when its installed shell bits are out of date, since that's how this went unnoticed so long",
-    "last_update": "2026-09-18T00:00:00Z"
+    "status": "Fixing what onboarding a new repo turned up \u2014 the cleanup pass was rewriting and committing files people had explicitly told it to leave alone, and setup could die outright on a slow check",
+    "direction": "Make adding slop-mop to an existing project boring, since that first hour is where people give up",
+    "last_update": "2026-09-22T00:00:00Z"
   }
 }

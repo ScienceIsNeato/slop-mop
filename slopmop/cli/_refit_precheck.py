@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
+from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT
 from slopmop.core.gate_config import GateRef
 from slopmop.doctor.gate_preflight import (
     GatePreflightRecord,
@@ -19,6 +21,16 @@ from slopmop.utils.proc import bounded_run
 
 _PRECHECK_SCHEMA = "refit-precheck/v1"
 _NESTED_VALIDATE_OWNER = "refit"
+
+# A probe is a full single-gate scour of the whole repo, not a quick health
+# ping. The default bound suits the git and gh calls it was inherited from;
+# a type checker over a few dozen modules legitimately runs longer, and on a
+# cold cache reliably did.
+_PROBE_TIMEOUT = HEAVY_TASK_TIMEOUT
+
+# Distinct from any real exit status, so a probe that ran out of time is not
+# reported as a gate that failed.
+PROBE_TIMED_OUT = -1
 
 
 def _precheck_timestamp() -> str:
@@ -52,6 +64,20 @@ def save_precheck(project_root: Path, precheck: Dict[str, Any]) -> None:
 
 
 def _run_gate_probe(project_root: Path, gate: str, artifact_path: Path) -> int:
+    """Run one gate and report its exit status, or ``PROBE_TIMED_OUT``.
+
+    ``bounded_run`` raises :class:`subprocess.TimeoutExpired` rather than
+    swallowing it, so that callers which can carry on say so explicitly. This
+    one never did: a gate that outran the bound took the exception all the way
+    out through ``sm refit --start``, which died with a raw traceback. Worse,
+    it died the same way on every retry — the probe is deterministic, so
+    onboarding simply stopped, with no message saying which gate or what to do
+    (#356).
+
+    A probe exists to answer "can this gate run here". Taking too long is an
+    answer, not a crash: report it against that gate and let the remaining
+    gates be probed.
+    """
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     command = [
         sys.executable,
@@ -70,14 +96,18 @@ def _run_gate_probe(project_root: Path, gate: str, artifact_path: Path) -> int:
     env = os.environ.copy()
     env["SLOPMOP_SKIP_REPO_LOCK"] = "1"
     env["SLOPMOP_NESTED_VALIDATE_OWNER"] = _NESTED_VALIDATE_OWNER
-    result = bounded_run(
-        command,
-        cwd=project_root,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = bounded_run(
+            command,
+            cwd=project_root,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_PROBE_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return PROBE_TIMED_OUT
     return result.returncode
 
 
@@ -162,7 +192,14 @@ def _build_gate_entry(
         artifact = _probe_artifact_path(project_root, record.gate)
         probe_exit_code = _run_gate_probe(project_root, record.gate, artifact)
         artifact_value = str(artifact)
-        probe_status = "runnable" if probe_exit_code in {0, 1} else "blocked"
+        if probe_exit_code == PROBE_TIMED_OUT:
+            # Its own status, not "blocked": nothing is wrong with the gate or
+            # the environment, it simply needs longer than the probe allows.
+            # Calling that "blocked" sends the operator hunting for a missing
+            # tool that is installed and working.
+            probe_status = "timed_out"
+        else:
+            probe_status = "runnable" if probe_exit_code in {0, 1} else "blocked"
 
     if not record.enabled and review_status != "blocked_disabled":
         # A gate that slop-mop's OWN detection turned off (no Python in the
@@ -276,6 +313,12 @@ def apply_review_actions(
 
 
 def blocked_runnability_entries(precheck: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Gates that could not be probed — errored, or ran out of time.
+
+    A timed-out probe belongs here rather than being dropped: the plan cannot
+    be built from a gate whose current output is unknown. It keeps its own
+    ``probe_status`` so the report can say which of the two happened.
+    """
     raw = precheck.get("gates")
     if not isinstance(raw, list):
         return []
@@ -285,7 +328,7 @@ def blocked_runnability_entries(precheck: Dict[str, Any]) -> List[Dict[str, Any]
         for entry in entries
         if bool(entry.get("applicable"))
         and bool(entry.get("enabled"))
-        and str(entry.get("probe_status")) == "blocked"
+        and str(entry.get("probe_status")) in {"blocked", "timed_out"}
     ]
 
 
