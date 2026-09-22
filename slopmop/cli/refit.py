@@ -935,6 +935,39 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
     return True
 
 
+def _precheck_matches_current_config(
+    project_root: Path, precheck: Dict[str, Any]
+) -> bool:
+    """Does a saved precheck still describe the gates as configured now?
+
+    Reuse is safe only while the recorded output is still about the current
+    configuration. Gate preflight already fingerprints each gate's config, so
+    comparing those answers the question without re-probing anything: a gate
+    that appeared, vanished, or was reconfigured since the probe invalidates
+    the run it belongs to.
+    """
+    from slopmop.doctor.gate_preflight import (  # noqa: PLC0415
+        gather_gate_preflight_records,
+    )
+
+    raw = precheck.get("gates")
+    if not isinstance(raw, list):
+        return False
+
+    recorded = {
+        str(entry.get("gate")): str(entry.get("config_fingerprint") or "")
+        for entry in cast(List[Dict[str, Any]], raw)
+    }
+    try:
+        current = {
+            record.gate: record.config_fingerprint
+            for record in gather_gate_preflight_records(project_root)
+        }
+    except Exception:  # noqa: BLE001 — unreadable config means "rebuild it"
+        return False
+    return recorded == current
+
+
 def _run_start_precheck_stage(
     args: argparse.Namespace, project_root: Path
 ) -> Optional[Dict[str, Any]]:
@@ -951,8 +984,17 @@ def _run_start_precheck_stage(
     # every gate with a full single-gate scour, so working through a
     # twenty-gate precheck one decision at a time meant twenty complete
     # prechecks (#358). Record the decision against the run it was made about.
+    #
+    # Only while it still describes the gates. `build_precheck` compares
+    # config fingerprints and resets a stale approval; skipping the rebuild
+    # skips that comparison too, so a config edited since the probe could have
+    # its old output approved and then be planned against the new config.
     precheck: Dict[str, Any]
-    if (approve_gates or record_blocker) and previous_precheck is not None:
+    if (
+        (approve_gates or record_blocker)
+        and previous_precheck is not None
+        and _precheck_matches_current_config(project_root, previous_precheck)
+    ):
         precheck = previous_precheck
     else:
         precheck = build_precheck(project_root, previous=previous_precheck)

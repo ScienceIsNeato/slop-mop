@@ -195,13 +195,19 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 name="include_dirs",
                 field_type="string[]",
                 default=[],
+                # Deliberately unclassified. Both directions of the existing
+                # comparison are wrong here: dropping an entry narrows what is
+                # checked, so "fewer" is *more* permissive, not stricter — and
+                # an empty list means the whole project, so the broadest
+                # setting of all looks like the smallest list. Until the
+                # comparison understands that, claiming a direction would have
+                # gate-dodging waving through the narrowing it exists to catch.
                 description=(
                     "Restrict this gate to these directories. Empty means the "
                     "whole project. This gate auto-fixes, so an unscoped run "
                     "rewrites every Python file it can see — declare the scope "
                     "here and it is honoured by the check and the fix alike."
                 ),
-                permissiveness="fewer_is_stricter",
             ),
             ConfigField(
                 name="line_length",

@@ -55,9 +55,43 @@ def _collect_applicable_formatters(project_root_str: str) -> List[BaseCheck]:
         check = registry.get_check(name, full_config)
         if check is None:
             continue
+        # `get_check` builds whatever it is asked for; it does not decide
+        # whether the repo wants the gate. Reading the config and then
+        # rewriting files with a formatter the repo switched off would be the
+        # same defect this function is being fixed for, one field along.
+        if not _gate_is_enabled(name, full_config):
+            continue
         if check.is_applicable(project_root_str):
             applicable.append(check)
     return applicable
+
+
+def _gate_is_enabled(name: str, full_config: Dict[str, Any]) -> bool:
+    """Has the repo left this gate on?
+
+    Absent means on: that is the default everywhere else, and a formatting
+    gate the repo never mentioned should behave as it always has.
+    """
+    from slopmop.core.gate_config import GateRef  # noqa: PLC0415
+
+    ref = GateRef.parse(name)
+    if not ref.is_qualified:
+        return True
+
+    raw_category = full_config.get(ref.category)
+    if not isinstance(raw_category, dict):
+        return True
+    category = cast(Dict[str, Any], raw_category)
+    if category.get("enabled") is False:
+        return False
+
+    raw_gates = category.get("gates")
+    if not isinstance(raw_gates, dict):
+        return True
+    raw_gate = cast(Dict[str, Any], raw_gates).get(ref.gate)
+    if not isinstance(raw_gate, dict):
+        return True
+    return cast(Dict[str, Any], raw_gate).get("enabled") is not False
 
 
 def _out_of_scope_warning(project_root: Path, paths: List[str]) -> List[str]:

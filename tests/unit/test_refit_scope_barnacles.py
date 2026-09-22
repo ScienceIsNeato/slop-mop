@@ -10,6 +10,7 @@ These pin each link in that chain separately, so a future break names itself.
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 from pathlib import Path
@@ -33,8 +34,22 @@ def _loaded_config(root: Path) -> Dict[str, Any]:
     return load_config(root)
 
 
-def _git(*args: str, cwd: Path) -> None:
-    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+def _commit_initial_repo(root: Path) -> None:
+    """Make *root* a git repo with one commit.
+
+    Named for what it does rather than the tool it uses: a second bare
+    ``_git`` helper alongside the one in test_refit_drain_functional.py — same
+    name, different signature, different ``check`` behaviour — is the exact
+    ambiguity the myopia gate exists to catch.
+    """
+    for args in (
+        ("init",),
+        ("config", "user.email", "t@t.t"),
+        ("config", "user.name", "t"),
+        ("add", "-A"),
+        ("commit", "-m", "init"),
+    ):
+        subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -57,11 +72,7 @@ def scoped_repo(tmp_path: Path) -> Path:
     }
     (tmp_path / ".sb_config.json").write_text(json.dumps(config))
 
-    _git("init", cwd=tmp_path)
-    _git("config", "user.email", "t@t.t", cwd=tmp_path)
-    _git("config", "user.name", "t", cwd=tmp_path)
-    _git("add", "-A", cwd=tmp_path)
-    _git("commit", "-m", "init", cwd=tmp_path)
+    _commit_initial_repo(tmp_path)
     return tmp_path
 
 
@@ -269,6 +280,9 @@ class TestReviewReusesThePrecheck:
             lambda *a, **k: calls.append(1) or self._precheck(),
         )
         monkeypatch.setattr(refit_mod, "save_precheck", lambda *a, **k: None)
+        monkeypatch.setattr(
+            refit_mod, "_precheck_matches_current_config", lambda *a: True
+        )
 
         refit_mod._run_start_precheck_stage(
             self._args(approve_gate=["laziness:dead-code.py"]), tmp_path
@@ -288,6 +302,9 @@ class TestReviewReusesThePrecheck:
             lambda *a, **k: calls.append(1) or self._precheck(),
         )
         monkeypatch.setattr(refit_mod, "save_precheck", lambda *a, **k: None)
+        monkeypatch.setattr(
+            refit_mod, "_precheck_matches_current_config", lambda *a: True
+        )
 
         refit_mod._run_start_precheck_stage(
             self._args(
@@ -345,3 +362,275 @@ class TestReviewReusesThePrecheck:
             argv += ["--approve-gate", gate]
         parsed = create_parser().parse_args(argv)
         assert parsed.approve_gate == gates
+
+
+class TestQuarantineCommitIsLegible:
+    """The commit lands unasked, so its contents must be readable as it happens.
+
+    It printed a count alone: a pass that rewrote 46 files across excluded
+    directories announced "46 file(s) reformatted" and committed, leaving the
+    damage to be found later in git log (#357).
+    """
+
+    @staticmethod
+    def _args():
+        import argparse
+
+        return argparse.Namespace(json_output=False)
+
+    @staticmethod
+    def _wire(monkeypatch, scoped_repo: Path, changed: list[str]) -> list[list[str]]:
+        """Stub the formatters and git; return the list of git argv calls made."""
+        from slopmop.cli import _refit_formatting as fmt
+
+        class _Fmt:
+            name = "sloppy-formatting.py"
+            display_name = "sloppy-formatting.py"
+            config: Dict[str, Any] = {}
+
+            def auto_fix(self, _root: str) -> bool:
+                return True
+
+        monkeypatch.setattr(
+            fmt, "_collect_applicable_formatters", lambda _root: [_Fmt()]
+        )
+        # Clean before formatting, `changed` afterwards.
+        states = iter([[], [f" M {p}" for p in changed]])
+        monkeypatch.setattr(
+            fmt._refit, "_worktree_status", lambda _root: next(states, [])
+        )
+        calls: list[list[str]] = []
+
+        def _git_output(_root: Path, *args: str):
+            calls.append(list(args))
+            return 0, "", ""
+
+        monkeypatch.setattr(fmt._refit, "_git_output", _git_output)
+        monkeypatch.setattr(fmt._refit, "_current_head", lambda _root: "abc12345")
+        return calls
+
+    def test_files_are_listed_before_the_commit(
+        self, scoped_repo: Path, monkeypatch, capsys
+    ) -> None:
+        from slopmop.cli import _refit_formatting as fmt
+
+        self._wire(monkeypatch, scoped_repo, ["paperbot/bot.py"])
+        assert fmt.run_formatting_quarantine_commit(self._args(), scoped_repo) is True
+
+        out = capsys.readouterr().out
+        assert "1 file(s) reformatted:" in out
+        assert "paperbot/bot.py" in out
+        assert "Formatting commit created" in out
+
+    def test_out_of_scope_files_are_flagged_before_committing(
+        self, scoped_repo: Path, monkeypatch, capsys
+    ) -> None:
+        """The thing that would have caught the reported blowup as it happened."""
+        from slopmop.cli import _refit_formatting as fmt
+
+        self._wire(monkeypatch, scoped_repo, ["paperbot/bot.py", "demo.py"])
+        fmt.run_formatting_quarantine_commit(self._args(), scoped_repo)
+
+        out = capsys.readouterr().out
+        warn_index = out.index("fall outside")
+        assert (
+            out.index("Committing as dedicated") > warn_index
+        ), "the warning must appear before the commit line, not after"
+
+    def test_long_lists_are_truncated(
+        self, scoped_repo: Path, monkeypatch, capsys
+    ) -> None:
+        from slopmop.cli import _refit_formatting as fmt
+
+        many = [f"paperbot/mod{i}.py" for i in range(40)]
+        self._wire(monkeypatch, scoped_repo, many)
+        fmt.run_formatting_quarantine_commit(self._args(), scoped_repo)
+
+        out = capsys.readouterr().out
+        assert "40 file(s) reformatted:" in out
+        assert f"... and {40 - fmt._FORMATTING_PREVIEW_LIMIT} more" in out
+
+    def test_nothing_to_format_makes_no_commit(
+        self, scoped_repo: Path, monkeypatch, capsys
+    ) -> None:
+        from slopmop.cli import _refit_formatting as fmt
+
+        calls = self._wire(monkeypatch, scoped_repo, [])
+        assert fmt.run_formatting_quarantine_commit(self._args(), scoped_repo) is True
+        assert calls == []
+        assert "already fully formatted" in capsys.readouterr().out
+
+
+class TestReviewFindings:
+    """Cases raised in review on #359, each a way the scope fix could misfire."""
+
+    def test_include_dirs_spellings_all_match(self, scoped_repo: Path) -> None:
+        """`./paperbot`, `paperbot/` and a backslash name the same directory.
+
+        Every other path filter is normalized; an unnormalized one turns a
+        declared scope into no scope at all, which is the failure this PR is
+        about.
+        """
+        expected = ["paperbot/bot.py"]
+        for spelling in ("paperbot", "./paperbot", "paperbot/", "paperbot\\"):
+            assert (
+                resolve_tool_paths(
+                    str(scoped_repo), extensions={".py"}, include_dirs=[spelling]
+                )
+                == expected
+            ), spelling
+
+    def test_include_dirs_declares_no_permissiveness_direction(self) -> None:
+        """Both directions of the existing comparison are wrong for this field.
+
+        Dropping an entry narrows what is checked, so "fewer" is more
+        permissive rather than stricter, and `[]` means the whole project — so
+        the broadest setting looks like the smallest list.
+        """
+        field = next(
+            f
+            for f in PythonLintFormatCheck({}).config_schema
+            if f.name == "include_dirs"
+        )
+        assert field.permissiveness is None
+
+    def test_a_disabled_formatter_is_not_run(self, tmp_path: Path) -> None:
+        """Reading the config and then ignoring `enabled: false` is the same bug."""
+        from slopmop.cli._refit_formatting import _collect_applicable_formatters
+
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "mod.py").write_text("x=1\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps(
+                {
+                    "laziness": {
+                        "enabled": True,
+                        "gates": {"sloppy-formatting.py": {"enabled": False}},
+                    }
+                }
+            )
+        )
+        _commit_initial_repo(tmp_path)
+
+        names = {c.name for c in _collect_applicable_formatters(str(tmp_path))}
+        assert "sloppy-formatting.py" not in names
+
+    def test_a_disabled_category_is_not_run(self, tmp_path: Path) -> None:
+        from slopmop.cli._refit_formatting import _collect_applicable_formatters
+
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "mod.py").write_text("x=1\n")
+        (tmp_path / ".sb_config.json").write_text(
+            json.dumps({"laziness": {"enabled": False, "gates": {}}})
+        )
+        _commit_initial_repo(tmp_path)
+
+        names = {c.name for c in _collect_applicable_formatters(str(tmp_path))}
+        assert "sloppy-formatting.py" not in names
+
+    def test_an_unmentioned_gate_still_runs(self, scoped_repo: Path) -> None:
+        """Absent means on — a repo that never named the gate keeps today's behaviour."""
+        from slopmop.cli._refit_formatting import _collect_applicable_formatters
+
+        assert _collect_applicable_formatters(str(scoped_repo))
+
+
+class TestStalePrecheckIsRejected:
+    """Reuse is only safe while the saved run still describes the gates.
+
+    ``build_precheck`` compares config fingerprints and resets an approval
+    whose gate was reconfigured. Skipping the rebuild skips that comparison,
+    so a config edited after the probe could have its old output approved and
+    then be planned against the new config.
+    """
+
+    @staticmethod
+    def _saved(fingerprint: str = "fp") -> Dict[str, Any]:
+        return {
+            "gates": [
+                {"gate": "laziness:dead-code.py", "config_fingerprint": fingerprint}
+            ]
+        }
+
+    @staticmethod
+    def _records(monkeypatch, fingerprint: str) -> None:
+        import slopmop.doctor.gate_preflight as gp
+        from slopmop.doctor.gate_preflight import GatePreflightRecord
+
+        monkeypatch.setattr(
+            gp,
+            "gather_gate_preflight_records",
+            lambda _root: [
+                GatePreflightRecord(
+                    gate="laziness:dead-code.py",
+                    display_name="dead-code.py",
+                    enabled=True,
+                    applicable=True,
+                    skip_reason="",
+                    config_fingerprint=fingerprint,
+                    missing_tools=(),
+                )
+            ],
+        )
+
+    def test_matching_fingerprints_allow_reuse(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from slopmop.cli.refit import _precheck_matches_current_config
+
+        self._records(monkeypatch, "fp")
+        assert _precheck_matches_current_config(tmp_path, self._saved("fp")) is True
+
+    def test_changed_fingerprint_forces_a_rebuild(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from slopmop.cli.refit import _precheck_matches_current_config
+
+        self._records(monkeypatch, "fp-new")
+        assert _precheck_matches_current_config(tmp_path, self._saved("fp")) is False
+
+    def test_a_new_gate_forces_a_rebuild(self, tmp_path: Path, monkeypatch) -> None:
+        """A gate that appeared since the probe has no reviewed output at all."""
+        from slopmop.cli.refit import _precheck_matches_current_config
+
+        self._records(monkeypatch, "fp")
+        saved = {"gates": []}
+        assert _precheck_matches_current_config(tmp_path, saved) is False
+
+    def test_corrupt_precheck_forces_a_rebuild(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from slopmop.cli.refit import _precheck_matches_current_config
+
+        self._records(monkeypatch, "fp")
+        assert _precheck_matches_current_config(tmp_path, {}) is False
+
+    def test_stale_precheck_is_rebuilt_before_approval(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """End to end: the approval must not land on output that moved on."""
+        from slopmop.cli import refit as refit_mod
+
+        calls: list[int] = []
+        monkeypatch.setattr(refit_mod, "load_precheck", lambda _root: self._saved())
+        monkeypatch.setattr(
+            refit_mod,
+            "build_precheck",
+            lambda *a, **k: calls.append(1) or self._saved(),
+        )
+        monkeypatch.setattr(refit_mod, "save_precheck", lambda *a, **k: None)
+        monkeypatch.setattr(
+            refit_mod, "_precheck_matches_current_config", lambda *a: False
+        )
+
+        refit_mod._run_start_precheck_stage(
+            argparse.Namespace(
+                approve_gate=["laziness:dead-code.py"],
+                record_blocker=None,
+                blocker_issue=None,
+                blocker_reason=None,
+                json_output=True,
+            ),
+            tmp_path,
+        )
+        assert calls == [1], "a stale precheck was reused for an approval"

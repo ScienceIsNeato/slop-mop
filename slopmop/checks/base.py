@@ -24,7 +24,7 @@ from slopmop.core.result import (
     ScopeInfo,
 )
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
-from slopmop.utils import is_path_excluded
+from slopmop.utils import is_path_excluded, normalize_path_filter
 
 logger = logging.getLogger(__name__)
 
@@ -474,7 +474,16 @@ def _within_include_dirs(rel: str, includes: List[str]) -> bool:
 
 
 def _normalized_includes(include_dirs: Optional[Iterable[str]]) -> List[str]:
-    return [d for d in (include_dirs or ()) if d and d != "."]
+    """Config spellings reduced to the form repo-relative paths come in.
+
+    ``./paperbot``, ``paperbot/`` and ``paperbot\\`` all name the same
+    directory, and a caller comparing raw strings matches none of them against
+    ``paperbot/bot.py``. Every other path filter already goes through
+    ``normalize_path_filter``; this one has to as well or a scope declared with
+    a leading ``./`` silently means "no scope".
+    """
+    normalized = (normalize_path_filter(d) for d in (include_dirs or ()) if d)
+    return [d for d in normalized if d and d != "."]
 
 
 def resolve_tool_paths(
