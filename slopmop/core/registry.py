@@ -6,7 +6,7 @@ check discovery and configuration-based selection.
 
 import logging
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type, cast
 
 from slopmop.checks.base import BaseCheck, GateLevel, RemediationChurn
 from slopmop.checks.metadata import builtin_reasoning_for_check_class
@@ -55,6 +55,21 @@ def _path_pattern_variants(value: str) -> List[str]:
             ]
         )
     return dedupe_str_list(variants)
+
+
+# Settings a category may declare once for every gate beneath it. Scope only:
+# a category-wide `threshold` or `enabled` would silently redefine unrelated
+# gates, whereas "look at these directories" means the same thing to all of
+# them. A gate that names the key itself still wins.
+_CATEGORY_INHERITED_KEYS = frozenset(
+    {
+        "include_dirs",
+        "src_dirs",
+        "exclude_dirs",
+        "extra_exclude_paths",
+        "include_paths",
+    }
+)
 
 
 def _merge_runtime_path_filters(
@@ -310,7 +325,16 @@ class CheckRegistry:
     def _extract_gate_config(
         self, name: str, full_config: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Extract gate-specific config from full config.
+        """Extract gate-specific config, inheriting category-level scope keys.
+
+        This used to return ``[category]["gates"][gate]`` alone. Anything set
+        beside ``gates`` — ``laziness: {include_dirs: [...], gates: {...}}`` —
+        was read by nobody and reported by nobody: a silent no-op that looked
+        exactly like a working setting. A repo scoping all five categories to
+        one package had its whole tree formatted and committed anyway, because
+        not one of those five settings reached a gate (#357).
+
+        Category values are defaults; anything the gate sets wins.
 
         Args:
             name: Check name in format 'category:check-name'
@@ -332,7 +356,14 @@ class CheckRegistry:
         gates = cat_config.get("gates", {})
 
         # Get specific gate config
-        gate_config = gates.get(gate_name, {}).copy()
+        gate_config = cast(Dict[str, Any], gates.get(gate_name, {})).copy()
+
+        inherited = {
+            key: value
+            for key, value in cast(Dict[str, Any], cat_config).items()
+            if key in _CATEGORY_INHERITED_KEYS and key not in gate_config
+        }
+        gate_config.update(inherited)
 
         return gate_config
 

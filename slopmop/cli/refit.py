@@ -24,6 +24,7 @@ from slopmop.checks import ensure_checks_registered
 from slopmop.checks.base import BaseCheck, RemediationChurn
 from slopmop.checks.custom import register_custom_gates
 from slopmop.cli._refit_precheck import (
+    _PROBE_TIMEOUT,
     apply_review_actions,
     approved_entries,
     blocked_runnability_entries,
@@ -653,16 +654,32 @@ def _runnability_block_lines(project_root: Path, precheck: Dict[str, Any]) -> Li
         f"Precheck: {_precheck_path(project_root)}",
         f"Blocked gates: {len(blocked)}",
     ]
+    timed_out = False
     for entry in blocked[:5]:
         gate = str(entry.get("gate", "?"))
         missing_tools = cast(List[str], entry.get("missing_tools") or [])
-        if missing_tools:
+        if str(entry.get("probe_status")) == "timed_out":
+            # Nothing is broken here, so do not send them tool-hunting.
+            timed_out = True
+            lines.append(
+                f"  - {gate}: probe exceeded {_PROBE_TIMEOUT}s and was stopped"
+            )
+        elif missing_tools:
             lines.append(f"  - {gate}: missing tools ({', '.join(missing_tools)})")
         else:
             artifact = entry.get("probe_artifact")
             lines.append(f"  - {gate}: execution errored (artifact: {artifact})")
     if len(blocked) > 5:
         lines.append(f"  ... and {len(blocked) - 5} more")
+    if timed_out:
+        # The previous behaviour was an uncaught TimeoutExpired traceback that
+        # recurred on every retry, with nothing saying which gate or what to
+        # do next (#356). Say both.
+        lines.append(
+            "A timed-out gate is not broken — it needs longer than the probe "
+            "allows. Narrow its scope with include_dirs/exclude_paths, or "
+            "disable it in .sb_config.json to continue onboarding without it."
+        )
     lines.append("Resolve the tooling/setup issue, then rerun: sm refit --start")
     return lines
 
@@ -918,11 +935,70 @@ def _ensure_start_prerequisites(args: argparse.Namespace, project_root: Path) ->
     return True
 
 
+def _precheck_matches_current_config(
+    project_root: Path, precheck: Dict[str, Any]
+) -> bool:
+    """Does a saved precheck still describe the gates as configured now?
+
+    Reuse is safe only while the recorded output is still about the current
+    configuration. Gate preflight already fingerprints each gate's config, so
+    comparing those answers the question without re-probing anything: a gate
+    that appeared, vanished, or was reconfigured since the probe invalidates
+    the run it belongs to.
+    """
+    from slopmop.doctor.gate_preflight import (  # noqa: PLC0415
+        gather_gate_preflight_records,
+    )
+
+    raw = precheck.get("gates")
+    if not isinstance(raw, list):
+        return False
+
+    recorded = {
+        str(entry.get("gate")): str(entry.get("config_fingerprint") or "")
+        for entry in cast(List[Dict[str, Any]], raw)
+    }
+    try:
+        current = {
+            record.gate: record.config_fingerprint
+            for record in gather_gate_preflight_records(project_root)
+        }
+    except Exception:  # noqa: BLE001 — unreadable config means "rebuild it"
+        return False
+    return recorded == current
+
+
 def _run_start_precheck_stage(
     args: argparse.Namespace, project_root: Path
 ) -> Optional[Dict[str, Any]]:
     previous_precheck = load_precheck(project_root)
-    precheck = build_precheck(project_root, previous=previous_precheck)
+    approve_gates = cast(List[str], getattr(args, "approve_gate", []))
+    record_blocker = cast(Optional[str], getattr(args, "record_blocker", None))
+
+    # Approving a gate is a judgement about the precheck output the operator
+    # just read — "this gate's current output looks trustworthy". Rebuilding
+    # the precheck first would apply that judgement to freshly generated
+    # output nobody reviewed, which is not what was approved.
+    #
+    # It is also what made reviewing expensive: every invocation re-probed
+    # every gate with a full single-gate scour, so working through a
+    # twenty-gate precheck one decision at a time meant twenty complete
+    # prechecks (#358). Record the decision against the run it was made about.
+    #
+    # Only while it still describes the gates. `build_precheck` compares
+    # config fingerprints and resets a stale approval; skipping the rebuild
+    # skips that comparison too, so a config edited since the probe could have
+    # its old output approved and then be planned against the new config.
+    precheck: Dict[str, Any]
+    if (
+        (approve_gates or record_blocker)
+        and previous_precheck is not None
+        and _precheck_matches_current_config(project_root, previous_precheck)
+    ):
+        precheck = previous_precheck
+    else:
+        precheck = build_precheck(project_root, previous=previous_precheck)
+
     review_error = apply_review_actions(
         precheck,
         approve_gates=cast(List[str], getattr(args, "approve_gate", [])),

@@ -18,27 +18,118 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, cast
 
 import slopmop.cli.refit as _refit
 from slopmop.checks.base import BaseCheck
 
 _status_path = _refit._status_path  # shared helper — defined in refit.py
 
+# Enough to see what is happening without burying the next line of output.
+_FORMATTING_PREVIEW_LIMIT = 25
+
 
 def _collect_applicable_formatters(project_root_str: str) -> List[BaseCheck]:
-    """Return instances of all registered formatting gates that are applicable."""
+    """Applicable formatting gates, configured the way the repo configured them.
+
+    These were built with ``config={}``. A formatting gate auto-fixes, so an
+    unconfigured one rewrites every file it can find: the repo's
+    ``exclude_paths``, its ``include_dirs``, the gate's own ``exclude_dirs`` —
+    none of it was loaded, because the config was never read. That is how a
+    run scoped to a single package reformatted and committed 46 files across
+    directories the repo had explicitly excluded (#357).
+
+    Going through the registry is what every other caller does, and it applies
+    the same repo-wide path filters the gates get during a normal scour.
+    """
     from slopmop.core.registry import get_registry  # noqa: PLC0415
+    from slopmop.sm import load_config  # noqa: PLC0415
 
     registry = get_registry()
+    full_config = load_config(Path(project_root_str))
+
     applicable: List[BaseCheck] = []
-    for check_cls in registry._check_classes.values():
+    for name, check_cls in registry._check_classes.items():
         if not getattr(check_cls, "is_formatting_gate", False):
             continue
-        check = check_cls(config={})
+        check = registry.get_check(name, full_config)
+        if check is None:
+            continue
+        # `get_check` builds whatever it is asked for; it does not decide
+        # whether the repo wants the gate. Reading the config and then
+        # rewriting files with a formatter the repo switched off would be the
+        # same defect this function is being fixed for, one field along.
+        if not _gate_is_enabled(name, full_config):
+            continue
         if check.is_applicable(project_root_str):
             applicable.append(check)
     return applicable
+
+
+def _gate_is_enabled(name: str, full_config: Dict[str, Any]) -> bool:
+    """Has the repo left this gate on?
+
+    Absent means on: that is the default everywhere else, and a formatting
+    gate the repo never mentioned should behave as it always has.
+    """
+    from slopmop.core.gate_config import GateRef  # noqa: PLC0415
+
+    ref = GateRef.parse(name)
+    if not ref.is_qualified:
+        return True
+
+    raw_category = full_config.get(ref.category)
+    if not isinstance(raw_category, dict):
+        return True
+    category = cast(Dict[str, Any], raw_category)
+    if category.get("enabled") is False:
+        return False
+
+    raw_gates = category.get("gates")
+    if not isinstance(raw_gates, dict):
+        return True
+    raw_gate = cast(Dict[str, Any], raw_gates).get(ref.gate)
+    if not isinstance(raw_gate, dict):
+        return True
+    return cast(Dict[str, Any], raw_gate).get("enabled") is not False
+
+
+def _out_of_scope_warning(project_root: Path, paths: List[str]) -> List[str]:
+    """Flag a formatting pass that reached outside the repo's declared scope.
+
+    Belt and braces for a step that rewrites source and commits without being
+    asked: if the scope filters are ever bypassed again, this says so at the
+    moment it happens instead of leaving it to be found in ``git log``.
+    """
+    from slopmop.checks.base import _within_include_dirs  # noqa: PLC0415
+    from slopmop.sm import load_config  # noqa: PLC0415
+
+    try:
+        full_config = load_config(project_root)
+    except Exception:  # noqa: BLE001 — a warning must never break the commit
+        return []
+
+    includes: List[str] = []
+    for category in full_config.values():
+        if not isinstance(category, dict):
+            continue
+        raw = cast(Dict[str, Any], category).get("include_dirs")
+        declared: List[Any] = (
+            [raw] if isinstance(raw, str) else cast(List[Any], raw or [])
+        )
+        includes.extend(str(value) for value in declared)
+    if not includes:
+        return []
+
+    strays = [p for p in paths if not _within_include_dirs(p, sorted(set(includes)))]
+    if not strays:
+        return []
+    return [
+        f"  ⚠️  {len(strays)} file(s) fall outside the configured include_dirs "
+        f"({', '.join(sorted(set(includes)))}).",
+        "     Check the scope before this commit lands: sm refit --start "
+        "reformats and commits without prompting.",
+    ]
 
 
 def run_formatting_quarantine_commit(
@@ -93,10 +184,21 @@ def run_formatting_quarantine_commit(
         return True
 
     if not json_mode:
-        print(
-            f"  → {len(formatter_paths)} file(s) reformatted.\n"
-            "  Committing as dedicated formatting commit…"
-        )
+        # This commit lands without being asked, so what it contains has to be
+        # readable at the moment it happens. It previously printed a count
+        # alone: a run that reformatted 46 files across directories the repo
+        # had scoped out said "46 file(s) reformatted" and committed, and the
+        # damage was only discoverable afterwards in git log (#357). A list is
+        # the difference between noticing now and reverting by hand later.
+        print(f"  → {len(formatter_paths)} file(s) reformatted:")
+        for path in formatter_paths[:_FORMATTING_PREVIEW_LIMIT]:
+            print(f"      {path}")
+        if len(formatter_paths) > _FORMATTING_PREVIEW_LIMIT:
+            remaining = len(formatter_paths) - _FORMATTING_PREVIEW_LIMIT
+            print(f"      ... and {remaining} more")
+        for line in _out_of_scope_warning(project_root, formatter_paths):
+            print(line)
+        print("  Committing as dedicated formatting commit…")
 
     code, _, err = _refit._git_output(project_root, "add", "--", *formatter_paths)
     if code != 0:

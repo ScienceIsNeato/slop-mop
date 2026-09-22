@@ -24,7 +24,7 @@ from slopmop.core.result import (
     ScopeInfo,
 )
 from slopmop.subprocess.runner import SubprocessResult, SubprocessRunner, get_runner
-from slopmop.utils import is_path_excluded
+from slopmop.utils import is_path_excluded, normalize_path_filter
 
 logger = logging.getLogger(__name__)
 
@@ -459,12 +459,40 @@ def argv_path_budget(sample_paths: Optional[List[str]] = None) -> int:
     return max(int(budget / max(average, 1.0)), 0)
 
 
+def _within_include_dirs(rel: str, includes: List[str]) -> bool:
+    """Is *rel* inside one of the directories the project scoped a gate to?
+
+    ``includes`` empty means unscoped, which is the default and matches "the
+    whole project".
+    """
+    if not includes:
+        return True
+    posix = rel.replace(os.sep, "/")
+    return any(
+        posix == inc or posix.startswith(f"{inc.rstrip('/')}/") for inc in includes
+    )
+
+
+def _normalized_includes(include_dirs: Optional[Iterable[str]]) -> List[str]:
+    """Config spellings reduced to the form repo-relative paths come in.
+
+    ``./paperbot``, ``paperbot/`` and ``paperbot\\`` all name the same
+    directory, and a caller comparing raw strings matches none of them against
+    ``paperbot/bot.py``. Every other path filter already goes through
+    ``normalize_path_filter``; this one has to as well or a scope declared with
+    a leading ``./`` silently means "no scope".
+    """
+    normalized = (normalize_path_filter(d) for d in (include_dirs or ()) if d)
+    return [d for d in normalized if d and d != "."]
+
+
 def resolve_tool_paths(
     project_root: str,
     exclude_dirs: Optional[Iterable[str]] = None,
     extensions: Optional[set[str]] = None,
     max_depth: int = 6,
     max_paths: Optional[int] = None,
+    include_dirs: Optional[Iterable[str]] = None,
 ) -> List[str]:
     """Concrete paths to hand an external tool, with non-source trees pruned.
 
@@ -491,12 +519,23 @@ def resolve_tool_paths(
     usable, correct target list. There is no arbitrary ceiling on the number
     of files returned: the only bound is what fits in one command line on
     this platform, and crossing it warns rather than degrading silently.
+
+    ``include_dirs`` narrows the result to those directories. It belongs here
+    rather than in each gate: this function is where every gate's targets are
+    decided, and a gate that resolved its own would be one more place for the
+    filter to go missing — which is exactly how an auto-fixing formatter came
+    to rewrite files the project had scoped out (#357).
     """
     excluded = set(SCOPE_EXCLUDED_DIRS) | set(exclude_dirs or ())
+    includes = _normalized_includes(include_dirs)
 
     tracked = git_project_files(project_root, extensions)
     if tracked is not None:
-        kept = [f for f in tracked if not is_path_excluded(f, excluded)]
+        kept = [
+            f
+            for f in tracked
+            if not is_path_excluded(f, excluded) and _within_include_dirs(f, includes)
+        ]
         if not kept:
             # Git answered and nothing matched. That is a real answer — the
             # project has no such files, or the config excluded them all — so
@@ -537,6 +576,20 @@ def resolve_tool_paths(
             return True
         if is_path_excluded(rel, excluded):
             return True
+        if includes:
+            if os.path.isdir(abs_path):
+                # Descend only where an include still lies ahead or around
+                # us. ``include_dirs=["a/b"]`` has to keep "a" to ever reach
+                # "a/b", so a directory survives when it is inside an include
+                # OR an include is inside it.
+                posix = rel.replace(os.sep, "/")
+                if not _within_include_dirs(posix, includes) and not any(
+                    inc == posix or inc.startswith(f"{posix.rstrip('/')}/")
+                    for inc in includes
+                ):
+                    return True
+            elif not _within_include_dirs(rel, includes):
+                return True
         return os.path.isdir(abs_path) and is_vendored_dir(abs_path)
 
     def walk(rel: str, depth: int) -> tuple[List[str], bool, bool]:

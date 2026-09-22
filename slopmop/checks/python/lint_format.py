@@ -192,6 +192,24 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
                 permissiveness="fewer_is_stricter",
             ),
             ConfigField(
+                name="include_dirs",
+                field_type="string[]",
+                default=[],
+                # Deliberately unclassified. Both directions of the existing
+                # comparison are wrong here: dropping an entry narrows what is
+                # checked, so "fewer" is *more* permissive, not stricter — and
+                # an empty list means the whole project, so the broadest
+                # setting of all looks like the smallest list. Until the
+                # comparison understands that, claiming a direction would have
+                # gate-dodging waving through the narrowing it exists to catch.
+                description=(
+                    "Restrict this gate to these directories. Empty means the "
+                    "whole project. This gate auto-fixes, so an unscoped run "
+                    "rewrites every Python file it can see — declare the scope "
+                    "here and it is honoured by the check and the fix alike."
+                ),
+            ),
+            ConfigField(
                 name="line_length",
                 field_type="integer",
                 default=88,
@@ -403,10 +421,19 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         The shared resolver walks the tree instead, pruning vendored and
         excluded directories at any depth, so nested layouts are found and a
         nested virtualenv still isn't scanned.
+
+        ``include_dirs`` narrows this to the directories the project named.
+        This gate ignored it entirely — it neither declared the field nor
+        passed it on — so a repo that scoped every category to one package
+        still had its whole tree formatted, and, because this gate auto-fixes,
+        *rewritten*: thirteen loose scripts outside the configured scope were
+        reformatted and committed (#357). Every other path filter was honoured;
+        this one silently was not.
         """
         return resolve_tool_paths(
             project_root,
             exclude_dirs=self._configured_excludes(),
+            include_dirs=self._configured_includes(),
             extensions={".py", ".pyi"},
         )
 
@@ -416,6 +443,19 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         if isinstance(configured, str):
             configured = [configured]
         return list(_DEFAULT_EXCLUDE_DIRS) + list(configured)
+
+    def _configured_includes(self) -> Optional[List[str]]:
+        """Directories the project scoped this gate to, if it named any.
+
+        ``None`` means "the whole project", which is the right default and the
+        only behaviour this gate used to have.
+        """
+        configured = self.config.get("include_dirs") or self.config.get("src_dirs")
+        if not configured:
+            return None
+        if isinstance(configured, str):
+            return [configured]
+        return list(configured)
 
     def _run_formatter_sections(
         self,
