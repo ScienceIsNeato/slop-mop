@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
-from slopmop.checks.base import iter_project_files
+from slopmop.checks.base import SOURCE_EXTENSIONS, iter_project_files
 from slopmop.core.result import CheckResult, CheckStatus
 
 logger = logging.getLogger(__name__)
@@ -50,25 +50,28 @@ _EXCLUDED_DIRS = {
     "logs",
 }
 
-# Source extensions to include in the fingerprint.
-# Markdown is intentionally included because some gates read generated docs
-# and README state; excluding docs would let those gates return stale cache hits.
-_SOURCE_EXTENSIONS = {
+# Non-code inputs that still change what a gate should conclude. Markdown is
+# here because some gates read generated docs and README state; excluding docs
+# would let those gates return stale cache hits.
+_NON_CODE_EXTENSIONS = {
     ".md",
-    ".py",
-    ".js",
-    ".ts",
-    ".jsx",
-    ".tsx",
     ".json",
-    ".yml",
-    ".yaml",
-    ".toml",
     ".cfg",
     ".ini",
-    ".sh",
-    ".bash",
+    ".lock",
+    ".arb",
 }
+
+# Source extensions to include in the fingerprint.
+#
+# Derived from the language list rather than kept in parallel with it. A
+# hand-maintained copy had drifted: it never gained ``.dart``, so a Dart-only
+# edit left the fingerprint unchanged and every Dart gate replayed its last
+# cached PASS — a formatter rejecting a file while slop-mop reported it clean
+# (#364). Go, Rust, Java, Kotlin, Swift, C, C++, C#, PHP and Ruby were invisible
+# for the same reason. One list means the next language added cannot be
+# forgotten here.
+_SOURCE_EXTENSIONS = set(SOURCE_EXTENSIONS) | _NON_CODE_EXTENSIONS
 
 
 def _cache_path(project_root: str) -> Path:

@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Fixing checks that were reporting a pass without actually looking \u2014 the security scan never read its own results, and in a worktree the whole test suite was quietly skipped",
-    "direction": "Make a green board mean something again before adding anything new",
+    "status": "Speeding up the Flutter side \u2014 the test suite was running twice per check and the cache never noticed Dart files changing, so it served old results",
+    "direction": "Also letting a repo point coverage at the part it actually maintains",
     "last_update": "2026-09-26T00:00:00Z"
   }
 }

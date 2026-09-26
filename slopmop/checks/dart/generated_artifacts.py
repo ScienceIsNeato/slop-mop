@@ -18,6 +18,7 @@ from slopmop.checks.base import (
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 from slopmop.checks.dart.common import (
     FLUTTER_INSTALL_HINT,
+    dart_cache_inputs,
     find_pubspec_dirs,
     unique_strings,
 )
@@ -206,3 +207,7 @@ class DartGeneratedArtifactsCheck(BaseCheck):
             if path.startswith(prefix + "/"):
                 return path[len(prefix) + 1 :]
         return None
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to Dart inputs — see ``dart_cache_inputs``."""
+        return dart_cache_inputs(self, project_root)

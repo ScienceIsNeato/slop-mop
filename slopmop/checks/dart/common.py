@@ -75,3 +75,24 @@ def unique_strings(values: Iterable[str]) -> List[str]:
         seen.add(value)
         out.append(value)
     return out
+
+
+DART_CACHE_EXTENSIONS = {".dart", ".yaml", ".lock", ".arb"}
+
+
+def dart_cache_inputs(check: object, project_root: str) -> str:
+    """Fingerprint only the files a Dart gate actually reads.
+
+    Without an override these gates fell back to the whole-project
+    fingerprint, so editing a ``.py`` or a ``.md`` reran a Flutter suite that
+    takes one to three minutes and could not have been affected (#364).
+
+    The scope is Dart sources plus the files that change what a build
+    resolves to: ``pubspec.yaml`` and its lockfile, and ``.arb`` localization
+    data that generates Dart. Anything outside that cannot change a Dart
+    gate's verdict.
+    """
+    from slopmop.core.cache import hash_file_scope
+
+    config = getattr(check, "config", {}) or {}
+    return hash_file_scope(project_root, ["."], DART_CACHE_EXTENSIONS, config)

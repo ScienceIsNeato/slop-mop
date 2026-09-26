@@ -22,6 +22,7 @@ from slopmop.checks.dart.common import (
     FLUTTER_INSTALL_FIX_SUGGESTION,
     FLUTTER_INSTALL_HINT,
     FLUTTER_NOT_AVAILABLE,
+    dart_cache_inputs,
     find_pubspec_dirs,
     format_package_label,
 )
@@ -170,3 +171,7 @@ class FlutterAnalyzeCheck(BaseCheck):
             duration=time.time() - start_time,
             output="\n".join(outputs) or "flutter analyze clean",
         )
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to Dart inputs — see ``dart_cache_inputs``."""
+        return dart_cache_inputs(self, project_root)

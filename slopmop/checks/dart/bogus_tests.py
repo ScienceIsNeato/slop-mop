@@ -20,7 +20,11 @@ from slopmop.checks.constants import (
     NO_PUBSPEC_YAML_FOUND,
     tautological_assertion_reason,
 )
-from slopmop.checks.dart.common import find_dart_test_files, find_pubspec_dirs
+from slopmop.checks.dart.common import (
+    dart_cache_inputs,
+    find_dart_test_files,
+    find_pubspec_dirs,
+)
 from slopmop.core.result import (
     CheckResult,
     CheckStatus,
@@ -264,3 +268,7 @@ class DartBogusTestsCheck(BaseCheck):
             if pattern.search(body):
                 return label
         return None
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to Dart inputs — see ``dart_cache_inputs``."""
+        return dart_cache_inputs(self, project_root)
