@@ -502,99 +502,77 @@ class PythonCheckMixin:
         return None
 
     def get_project_python(self, project_root: str) -> str:
-        """Get the Python executable for the project.
+        """The Python executable gates should run the project's code with.
 
-        Uses stepped fallback (project-local venvs prioritized):
-        1. ./venv/bin/python or ./.venv/bin/python (project-local - highest priority)
-        2. VIRTUAL_ENV environment variable (if no project venv exists)
-        3. sys.executable (slop-mop's Python - has all bundled tools)
-        4. python3/python in PATH (system Python - last resort)
+        Delegates the actual search to :func:`resolve_project_python` and adds
+        only what a check needs on top: a per-project cache and a warning the
+        first time a project falls back to something that is not its own venv.
 
-        Warnings are logged once per project when:
-        - Using project venv while VIRTUAL_ENV points to a different venv
-        - Falling back to system Python or sys.executable (non-venv)
+        It used to carry a second copy of that search. The copies drifted: the
+        worktree fallback was added to one of them, so ``has_project_venv``
+        began reporting a venv the worktree could borrow while this function
+        kept handing pytest slop-mop's own interpreter. The gate stopped
+        skipping and started failing in 1.4s against the wrong Python, which
+        is a worse failure than the one being fixed (#367). One search now.
         """
         if project_root in PythonCheckMixin._python_cache:
             return PythonCheckMixin._python_cache[project_root]
 
-        root = Path(project_root)
+        python_path, source = resolve_project_python(project_root)
         should_warn = project_root not in PythonCheckMixin._venv_warning_shown
-
-        # PRIORITY 1: Check common venv locations in project FIRST
-        for venv_dir in ["venv", ".venv"]:
-            python_path = self._find_python_in_venv(root / venv_dir)
-            if python_path:
-                # Warn if VIRTUAL_ENV is set to a different location
-                virtual_env = os.environ.get("VIRTUAL_ENV")
-                if virtual_env and should_warn:
-                    project_venv_path = (root / venv_dir).resolve()
-                    virtual_env_path = Path(virtual_env).resolve()
-                    if project_venv_path != virtual_env_path:
-                        logger.warning(
-                            f"⚠️  Using project venv: {project_venv_path}\n"
-                            f"   VIRTUAL_ENV is set to: {virtual_env_path}\n"
-                            "   This is intentional - project venvs take priority."
-                        )
-                        PythonCheckMixin._venv_warning_shown.add(project_root)
-                return self._cache_and_return(project_root, python_path)
-
-        # PRIORITY 2: Fall back to VIRTUAL_ENV if no project venv exists
-        virtual_env = os.environ.get("VIRTUAL_ENV")
-        if virtual_env:
-            python_path = self._find_python_in_venv(Path(virtual_env))
-            if python_path:
-                if should_warn:
-                    logger.warning(
-                        f"⚠️  No project venv found. Using VIRTUAL_ENV: {virtual_env}\n"
-                        "   Consider creating ./venv or ./.venv with project dependencies."
-                    )
-                    PythonCheckMixin._venv_warning_shown.add(project_root)
-                return self._cache_and_return(project_root, python_path)
-            if should_warn:
-                logger.warning(
-                    f"VIRTUAL_ENV={virtual_env} set but no Python found there. "
-                    "Continuing with fallback detection."
-                )
-
-        # No venv found - mark as warned and try sm's own Python
         if should_warn:
             PythonCheckMixin._venv_warning_shown.add(project_root)
+            self._warn_about_python_source(project_root, python_path, source)
+        return self._cache_and_return(project_root, python_path)
 
-        # PRIORITY 3: slop-mop's own Python (has all bundled tools: pip-audit,
-        # bandit, detect-secrets, etc.).  Preferred over bare system Python which
-        # almost certainly does NOT have these modules installed.
-        if sys.executable:
-            if should_warn:
-                version = self._get_python_version(sys.executable)
-                logger.warning(
-                    f"⚠️  No virtual environment found in {project_root}. "
-                    f"Using slop-mop's Python: {sys.executable} ({version}). "
-                    "Security scans will work, but pip-audit will only audit "
-                    "packages installed in slop-mop's environment. "
-                    "Consider creating a venv with project dependencies."
-                )
-            return self._cache_and_return(project_root, sys.executable)
-
-        # PRIORITY 4: system Python in PATH (last resort)
-        for python_name in ["python3", "python"]:
-            system_python = shutil.which(python_name)
-            if system_python:
-                if should_warn:
-                    version = self._get_python_version(system_python)
-                    logger.warning(
-                        f"⚠️  No Python found for slop-mop. "
-                        f"Falling back to system: {system_python} ({version}). "
-                        "Security tools (pip-audit, bandit) may not be available."
-                    )
-                return self._cache_and_return(project_root, system_python)
-
-        # Nothing found at all
-        if should_warn:
+    def _warn_about_python_source(
+        self, project_root: str, python_path: str, source: str
+    ) -> None:
+        """Say so when the interpreter is not the project's own venv."""
+        if source == PYTHON_SOURCE_PROJECT_VENV:
+            virtual_env = os.environ.get("VIRTUAL_ENV")
+            if not virtual_env:
+                return
+            if Path(python_path).resolve().is_relative_to(Path(virtual_env).resolve()):
+                return
             logger.warning(
-                "⚠️  No Python found anywhere. Security checks will fail. "
-                "Create a venv in your project or install Python."
+                f"\u26a0\ufe0f  Using project venv: {python_path}\n"
+                f"   VIRTUAL_ENV is set to: {virtual_env}\n"
+                "   This is intentional - project venvs take priority."
             )
-        return self._cache_and_return(project_root, "python3")
+            return
+
+        if source == PYTHON_SOURCE_VIRTUAL_ENV:
+            logger.warning(
+                f"\u26a0\ufe0f  No project venv found. Using VIRTUAL_ENV: {python_path}\n"
+                "   Consider creating ./venv or ./.venv with project dependencies."
+            )
+            return
+
+        if source == PYTHON_SOURCE_SYS_EXECUTABLE:
+            version = self._get_python_version(python_path)
+            logger.warning(
+                f"\u26a0\ufe0f  No virtual environment found in {project_root}. "
+                f"Using slop-mop's Python: {python_path} ({version}). "
+                "Security scans will work, but pip-audit will only audit "
+                "packages installed in slop-mop's environment. "
+                "Consider creating a venv with project dependencies."
+            )
+            return
+
+        if source == PYTHON_SOURCE_PATH:
+            version = self._get_python_version(python_path)
+            logger.warning(
+                f"\u26a0\ufe0f  No Python found for slop-mop. "
+                f"Falling back to system: {python_path} ({version}). "
+                "Security tools (pip-audit, bandit) may not be available."
+            )
+            return
+
+        logger.warning(
+            "\u26a0\ufe0f  No Python found anywhere. Security checks will fail. "
+            "Create a venv in your project or install Python."
+        )
 
     def _python_execution_failed_hint(self) -> str:
         """Return helpful hint text for Python execution failures.

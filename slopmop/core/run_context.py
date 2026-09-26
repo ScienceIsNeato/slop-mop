@@ -15,10 +15,26 @@ value out of the environment.
 
 from __future__ import annotations
 
+import time
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-__all__ = ["current_run_level", "run_level", "set_run_level"]
+__all__ = [
+    "RUN_STARTED_AT",
+    "current_run_level",
+    "run_level",
+    "set_run_level",
+]
+
+# When this process began, near enough. slop-mop is a CLI: one invocation is
+# one process, so any file written after this timestamp was written during
+# this run.
+#
+# That is the question a gate reading another gate's artifact actually needs
+# answered. Comparing against the *reading* gate's own start time answers a
+# different one, and gets it wrong whenever the writer is ordered before the
+# reader — which `depends_on` guarantees (#363).
+RUN_STARTED_AT = time.time()
 
 _RUN_LEVEL: Optional[str] = None
 
