@@ -381,7 +381,14 @@ def iter_project_files(
     """
     root = Path(project_root)
     excluded = set(exclude_dirs or ())
-    includes = [d for d in (include_dirs or ["."]) if d]
+    # "." is the project root, so listing it means the whole tree — including
+    # alongside other entries. It used to be handled only as the exact list
+    # ["."]; any longer list containing it was matched as a literal path
+    # prefix, which nothing starts with. So ``include_dirs: [".", "src"]`` —
+    # what `sm init` writes — matched zero files, and the gate passed in
+    # hundredths of a second having looked at nothing. Adding a directory
+    # must never narrow the scope to nothing.
+    includes = _normalized_includes(include_dirs if include_dirs else ["."])
 
     def _wanted(rel: Path, *, prune_dot_dirs: bool) -> bool:
         if extensions is not None and rel.suffix not in extensions:
@@ -395,13 +402,10 @@ def iter_project_files(
             return False
         if excluded and is_path_excluded(rel, excluded):
             return False
-        if includes != ["."]:
-            posix = rel.as_posix()
-            if not any(
-                posix == inc or posix.startswith(f"{inc.rstrip('/')}/")
-                for inc in includes
-            ):
-                return False
+        # Empty means unscoped — _normalized_includes drops "." for exactly
+        # that reason, so there is no longer a magic list to compare against.
+        if not _within_include_dirs(rel.as_posix(), includes):
+            return False
         return True
 
     tracked = git_project_files(project_root)
@@ -481,9 +485,17 @@ def _normalized_includes(include_dirs: Optional[Iterable[str]]) -> List[str]:
     ``paperbot/bot.py``. Every other path filter already goes through
     ``normalize_path_filter``; this one has to as well or a scope declared with
     a leading ``./`` silently means "no scope".
+
+    Returns ``[]`` — unscoped — when the project root is one of the entries.
+    The root contains everything, so listing it alongside other directories
+    cannot mean less than everything. Treating it as a literal path prefix is
+    what made ``include_dirs: [".", "src"]``, the value ``sm init`` writes,
+    match zero files and pass a gate in hundredths of a second.
     """
-    normalized = (normalize_path_filter(d) for d in (include_dirs or ()) if d)
-    return [d for d in normalized if d and d != "."]
+    normalized = [normalize_path_filter(d) for d in (include_dirs or ()) if d]
+    if any(d in ("", ".") for d in normalized):
+        return []
+    return [d for d in normalized if d]
 
 
 def resolve_tool_paths(
@@ -643,6 +655,14 @@ def resolve_tool_paths(
         return out, relevant, (dropped or dropped_below)
 
     paths, _relevant, _dropped = walk("", 0)
+    if not paths and includes:
+        # An include scope that matched nothing is an answer: those
+        # directories hold no files of this kind. Falling back to "." would
+        # hand the tool the whole tree — the exact opposite of the scope the
+        # project asked for, and how a narrow config could silently widen
+        # into a full scan. The git-backed branch already returns nothing
+        # here; this one must agree.
+        return []
     # The same bound as the git-backed branch above. Without it this path
     # could hand a tool more arguments than the platform accepts, and every
     # caller — autoflake, isort, flake8 — would fail wholesale with

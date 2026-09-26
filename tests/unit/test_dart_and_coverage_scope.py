@@ -21,7 +21,14 @@ from slopmop.checks.python.tests import (
 from slopmop.core.cache import _SOURCE_EXTENSIONS, compute_fingerprint
 
 
-def _init_repo(root: Path) -> None:
+def _make_git_repo(root: Path) -> None:
+    """Named for what it makes, not the tool it uses.
+
+    A bare `_init_repo` collides with the one in
+    test_refit_drain_functional.py — different signature, different
+    behaviour, same name. That is the ambiguity the myopia gate catches,
+    and this is the second one this week.
+    """
     for args in (
         ("init", "-q", "."),
         ("config", "user.email", "t@t.t"),
@@ -37,7 +44,7 @@ def dart_repo(tmp_path: Path) -> Path:
     (tmp_path / "lib" / "main.dart").write_text("void main() {}\n")
     (tmp_path / "README.md").write_text("# demo\n")
     (tmp_path / "tool.py").write_text("x = 1\n")
-    _init_repo(tmp_path)
+    _make_git_repo(tmp_path)
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-qm", "init"], cwd=tmp_path, check=True, capture_output=True
@@ -236,3 +243,81 @@ class TestCoverageIsScopeable:
             "overconfidence:untested-code.py", config
         )
         assert gate_cfg.get("include_dirs") == ["paperbot"]
+
+
+class TestRootInIncludeDirsMeansEverything:
+    """Adding a directory to include_dirs must never shrink the scope to nothing.
+
+    ``include_dirs: [".", "src"]`` — the value ``sm init`` writes — matched
+    zero files. "." was special-cased only as the exact list ``["."]``; in any
+    longer list it was compared as a literal path prefix, and no repo-relative
+    path starts with "./". The gate then passed in hundredths of a second
+    having looked at nothing.
+
+    Found because it had been silently disabling this repo's own
+    ambiguity-mines gate locally while CI, reading a different config, kept
+    catching what it missed.
+    """
+
+    @pytest.fixture
+    def tree(self, tmp_path: Path) -> Path:
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "mod.py").write_text("x = 1\n")
+        (tmp_path / "other").mkdir()
+        (tmp_path / "other" / "thing.py").write_text("y = 2\n")
+        (tmp_path / "root.py").write_text("z = 3\n")
+        return tmp_path
+
+    @staticmethod
+    def _both(root: Path, include_dirs):
+        from slopmop.checks.base import iter_project_files, resolve_tool_paths
+
+        return (
+            len(
+                iter_project_files(
+                    str(root), extensions={".py"}, include_dirs=include_dirs
+                )
+            ),
+            len(
+                resolve_tool_paths(
+                    str(root), extensions={".py"}, include_dirs=include_dirs
+                )
+            ),
+        )
+
+    def test_root_plus_another_dir_scans_everything(self, tree: Path) -> None:
+        """The exact reported shape."""
+        assert self._both(tree, [".", "src"]) == (3, 3)
+
+    def test_bare_root_scans_everything(self, tree: Path) -> None:
+        assert self._both(tree, ["."]) == (3, 3)
+
+    def test_unset_scans_everything(self, tree: Path) -> None:
+        assert self._both(tree, None) == (3, 3)
+
+    def test_a_real_subdir_still_narrows(self, tree: Path) -> None:
+        """The fix must not turn every scope into no scope."""
+        assert self._both(tree, ["pkg"]) == (1, 1)
+
+    def test_several_subdirs_accumulate(self, tree: Path) -> None:
+        assert self._both(tree, ["pkg", "other"]) == (2, 2)
+
+    def test_a_nonexistent_dir_still_scans_nothing(self, tree: Path) -> None:
+        """Naming only a directory that isn't there is a real empty scope."""
+        assert self._both(tree, ["src"]) == (0, 0)
+
+    def test_dot_slash_spellings_agree(self, tree: Path) -> None:
+        assert self._both(tree, ["./pkg"]) == self._both(tree, ["pkg"])
+
+    def test_the_two_resolvers_never_disagree(self, tree: Path) -> None:
+        """They are separately implemented; a divergence is a silent scope bug."""
+        for include_dirs in (
+            None,
+            ["."],
+            [".", "src"],
+            ["pkg"],
+            ["pkg", "other"],
+            ["src"],
+        ):
+            a, b = self._both(tree, include_dirs)
+            assert a == b, f"{include_dirs}: iter={a} resolve={b}"
