@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Speeding up the Flutter side \u2014 the test suite was running twice per check and the cache never noticed Dart files changing, so it served old results",
-    "direction": "Also letting a repo point coverage at the part it actually maintains",
+    "status": "Writing up the release notes for everything that came out of onboarding two new repos \u2014 mostly checks that were quietly passing without looking",
+    "direction": "Get the release out so the fixes reach the repos that reported them",
     "last_update": "2026-09-26T00:00:00Z"
   }
 }

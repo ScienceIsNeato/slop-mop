@@ -8,26 +8,55 @@ Format: one `## X.Y.Z` section per release, newest first.
 
 ## 2.17.0
 
-Onboarding a new repo produced three barnacles. The worst of them was a
-cleanup pass rewriting and committing files the repository had explicitly
-scoped out — declared three ways, honoured none.
+Onboarding two new repos produced eight barnacles. Most of them were the same
+thing wearing different clothes: a gate reporting a pass for work it had not
+done. A security scan that never read its own results. A test suite skipped in
+a worktree while the run said everything passed. A cache serving a green result
+for code it could not see changing. A scope setting that silently matched
+nothing, and a cleanup pass that rewrote files the repo had told it to leave
+alone.
 
 ### Behavior changes
 
-- **Category-level scope settings now reach their gates** (#359) — gate
-  config was read from `[category]["gates"][gate]` and nowhere else, so
-  anything set beside `gates` — `laziness: {include_dirs: [...], gates: {...}}`
-  — was read by nobody and reported by nobody. A silent no-op is
-  indistinguishable from a working setting, which is how a repo that scoped
-  all five categories to one package had its whole tree formatted anyway.
-  `include_dirs`, `src_dirs`, `exclude_dirs`, `extra_exclude_paths` and
-  `include_paths` now inherit from the category; a gate that sets one still
-  wins. Non-scope keys deliberately do not inherit — a category-wide
-  `threshold` would silently redefine unrelated gates.
+- **semgrep findings now fail the security gate** (#366) — `semgrep scan`
+  exits 0 whether or not it found anything; non-zero needs `--error`. The gate
+  read the exit status and returned "No issues found" before opening the
+  report, which made its entire findings branch unreachable on every normal
+  run. A scan returning 34 findings was reported clean. The exit status now
+  says only that semgrep ran.
+  **Upgrade note: expect findings on your first run after upgrading, and
+  expect most of them to be noise.** On this repo it surfaced seven, and not
+  one was a real defect — four from a Python-3.7 compatibility ruleset on a
+  repo requiring 3.10, and three rules that are sound in general but wrong at
+  those lines. Two levers, deliberately different: `semgrep_exclude_rules`
+  takes rule or ruleset ids that *cannot* apply to your project, and a finding
+  you simply judge wrong is suppressed at the line with `# nosemgrep: <rule>`
+  and a reason. Both default to nothing, so nothing is waved through on your
+  behalf. Budget an hour for that first pass.
+
+- **A `.` in `include_dirs` means the whole project, including alongside other
+  entries** (#369) — it was special-cased only as the exact list `["."]`. In
+  any longer list it was compared as a literal path prefix, and no
+  repo-relative path starts with `./`, so `include_dirs: [".", "src"]` — the
+  value `sm init` writes — matched zero files and passed its gate in
+  hundredths of a second having looked at nothing.
+  **Upgrade note:** a gate that has been quietly scanning nothing will start
+  scanning, and may report findings that were always there. Check any config
+  with `.` plus another directory; that is the shape that was broken.
+
+- **Category-level scope settings now reach their gates** (#359) — gate config
+  was read from `[category]["gates"][gate]` and nowhere else, so anything set
+  beside `gates` — `laziness: {include_dirs: [...], gates: {...}}` — was read
+  by nobody and reported by nobody. A silent no-op is indistinguishable from a
+  working setting, which is how a repo that scoped all five categories to one
+  package had its whole tree formatted anyway. `include_dirs`, `src_dirs`,
+  `exclude_dirs`, `extra_exclude_paths` and `include_paths` now inherit from
+  the category; a gate that sets one still wins. Non-scope keys deliberately
+  do not inherit — a category-wide `threshold` would silently redefine
+  unrelated gates.
   **Upgrade note:** if your config already has one of those keys at category
-  level, it starts taking effect. It was doing nothing before, so gates in
-  that category may now look at less than they did. That is what the setting
-  asked for, but it is a real change in what gets scanned.
+  level, it starts taking effect, so gates in that category may look at less
+  than they did. That is what the setting asked for, but it is a real change.
 
 - **The refit formatting pass respects your config** (#359) — it built its
   formatting gates with an empty config, so nothing reached them: not the
@@ -36,44 +65,88 @@ scoped out — declared three ways, honoured none.
   rewrites every file it can find — and refit commits the result without
   prompting. It now goes through the registry like every other caller, and
   skips gates the repo disabled.
-  **Upgrade note:** `sm refit --start` will format less than it used to on
-  any repo that had configured a scope. If you were relying on it formatting
-  everything, clear the scope or run the formatter yourself.
+  **Upgrade note:** `sm refit --start` will format less than it used to on any
+  repo that had configured a scope.
 
 ### Fixes
 
+- **A semgrep timeout is no longer reported as a completed scan** (#365) — a
+  scan killed by the timeout produces no JSON, which fell through to
+  `"Scan completed"`. Timeouts now fail and say the scan is incomplete so
+  nothing was verified; unparseable output fails too. The "when in doubt,
+  pass" fallback is gone.
+
+- **A git worktree finds the project's virtual environment** (#367) — venvs
+  are gitignored, so a worktree never has one; it lives in the checkout it was
+  made in. Looking only under the project root found none, so the test gate
+  warned and returned in about a millisecond while scour reported all-passed,
+  with a roughly 3000-test suite never run and one suppressed warning as the
+  only trace. Discovery falls back to the main checkout, and the warning now
+  names the consequence — "did not run, so nothing it covers was verified" —
+  rather than only the missing prerequisite.
+
+- **The result cache notices every language it supports** (#364) — it kept its
+  own extension list beside the one in `checks/base.py`, and that copy had
+  drifted. `.dart` was never added, so a Dart-only edit left the fingerprint
+  unchanged and every Dart gate replayed its last cached pass: a formatter
+  rejecting a file while slop-mop called it clean. Go, Rust, Java, Kotlin,
+  Swift, C, C++, C#, PHP and Ruby were invisible for the same reason. The
+  fingerprint now derives from one list, and a test asserts the two cannot
+  diverge again.
+
+- **Dart gates no longer rerun on unrelated edits** (#364) — with no
+  `cache_inputs` override they fell back to the whole-project fingerprint, so
+  editing a `.py` or a `.md` reran a Flutter suite that takes one to three
+  minutes. All six now scope to Dart sources plus what decides a build:
+  pubspec, its lockfile, and `.arb` localization data.
+
+- **One Flutter suite per scour instead of two** (#363) — `untested-code.dart`
+  ran `flutter test` and `coverage-gaps.dart` ran `flutter test --coverage`:
+  the same suite twice, the two slowest gates in the run at 189s and 203s on a
+  1404-test client. The tests gate now runs with coverage and coverage-gaps
+  reads the report it leaves, which is how the Python pair has always worked.
+  Reuse is guarded on modification time, because a report from an earlier run
+  describes code that has since changed.
+
+- **Coverage can be pointed at the code you maintain** (#362) — `--cov=.` was
+  hardcoded, and a command-line `--cov` overrides the config file, so a
+  `.coveragerc` saying otherwise had no effect at all. A repo with a
+  maintained package beside unmaintained scripts could not scope the
+  measurement by any means. The target is now derived: the gate's
+  `include_dirs` first, then a coverage source the project declared in its own
+  config, and the whole tree only when nobody has said anything.
+
+- **An include scope that matches nothing scans nothing** (#369) — the
+  non-git walk returned `["."]` when no file matched, turning a narrow config
+  into a full scan. The git-backed path already returned nothing; they agree
+  now.
+
 - **`laziness:sloppy-formatting.py` honours `include_dirs`** (#359) — it
   neither declared the field nor passed it on, so a project that scoped the
-  gate still had every Python file examined and, because this gate
-  auto-fixes, rewritten. `resolve_tool_paths` takes the filter now, which is
-  where it belongs: that function decides what every gate sees, so a gate
-  resolving its own scope is one more place for the filter to go missing.
-  Include values are normalised, so `./pkg`, `pkg/` and `pkg` all mean the
-  same directory rather than silently meaning "no scope".
+  gate still had every Python file examined and, because this gate auto-fixes,
+  rewritten. Include values are normalised, so `./pkg`, `pkg/` and `pkg` all
+  mean the same directory rather than silently meaning "no scope".
 
-- **`sm refit --start` survives a slow gate** (#356) — a probe that outran
-  its budget raised `TimeoutExpired` through the command, which died with a
-  raw traceback. The probe is deterministic, so it died identically on every
-  retry and onboarding simply stopped, with nothing saying which gate or what
-  to do. A probe answers "can this gate run here", and taking too long is an
-  answer: it is recorded against that gate, the remaining gates are still
-  probed, and the message says the gate is not broken and offers a way
-  forward. The budget now matches the work — a probe is a full single-gate
-  scour, not the git call the old default was inherited from.
+- **`sm refit --start` survives a slow gate** (#356) — a probe that outran its
+  budget raised `TimeoutExpired` through the command, which died with a raw
+  traceback. The probe is deterministic, so it died identically on every retry
+  and onboarding simply stopped, with nothing saying which gate or what to do.
+  Taking too long is now an answer: it is recorded against that gate, the
+  remaining gates are still probed, and the message says the gate is not
+  broken and offers a way forward.
 
 - **Reviewing a precheck no longer re-probes everything** (#358) — every
-  `sm refit --start --approve-gate` rebuilt the precheck first, running a
-  full single-gate scour for every gate, so a twenty-gate review cost twenty
-  complete prechecks. It was also approving output nobody had read: the flag
-  records that "a gate's current precheck output looks trustworthy", and the
-  output was regenerated before the approval landed. A review-only invocation
-  now records the decision against the run it was made about, and falls back
-  to a rebuild when the saved config fingerprints no longer match.
+  `sm refit --start --approve-gate` rebuilt the precheck first, running a full
+  single-gate scour for every gate, so a twenty-gate review cost twenty
+  complete prechecks. It was also approving output nobody had read. A
+  review-only invocation now records the decision against the run it was made
+  about, and falls back to a rebuild when the saved config fingerprints no
+  longer match.
 
-- **The formatting commit says what it contains** (#359) — it reported a
+- **The refit formatting commit says what it contains** (#359) — it reported a
   count and committed. It now lists the files and flags any that fall outside
-  the configured scope, so an unscoped pass is visible while it happens
-  rather than afterwards in `git log`.
+  the configured scope, so an unscoped pass is visible while it happens rather
+  than afterwards in `git log`.
 
 ## 2.16.0
 
