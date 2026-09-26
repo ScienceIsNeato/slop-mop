@@ -65,6 +65,10 @@ def __getattr__(name: str) -> Any:
     if target is None:
         raise AttributeError(name)
     module_name, attr_name = target
+    # module_name is read from _EXPORT_MAP, a literal table in this file. The
+    # caller supplies only the attribute name, and an unknown one has already
+    # raised AttributeError above.
+    # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
     module = import_module(module_name)
     value = getattr(module, attr_name)
     globals()[name] = value

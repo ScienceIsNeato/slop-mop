@@ -224,6 +224,22 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                 permissiveness="fewer_is_stricter",
             ),
             ConfigField(
+                name="semgrep_exclude_rules",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "semgrep rule or ruleset IDs that do not apply to this "
+                    "project, e.g. 'python.lang.compatibility.python37' on a "
+                    "repo that requires a newer Python. A prefix matches the "
+                    "whole ruleset. This is for rules that cannot be true "
+                    "here — not for accepting findings that are: suppress "
+                    "those at the line with '# nosemgrep: <rule>' and a "
+                    "reason, so the judgement sits next to the code it is "
+                    "about."
+                ),
+                permissiveness="fewer_is_stricter",
+            ),
+            ConfigField(
                 name="config_file_path",
                 field_type="string",
                 default=None,
@@ -541,6 +557,20 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
         """Get directories to exclude from config or defaults."""
         return self.config.get("exclude_dirs", EXCLUDED_DIRS)
 
+    def _semgrep_excluded_rules(self) -> List[str]:
+        """Rule IDs this project has declared inapplicable.
+
+        Empty by default: a repo starts by seeing everything semgrep reports,
+        and removes only what it can say is impossible here. Nothing is
+        excluded on the project's behalf, because a security finding waved
+        through by a default nobody chose is how the gate stopped meaning
+        anything in the first place.
+        """
+        configured = self.config.get("semgrep_exclude_rules", [])
+        if isinstance(configured, str):
+            configured = [configured]
+        return [str(rule) for rule in cast(List[Any], configured) if rule]
+
     def _run_bandit(self, project_root: str) -> SecuritySubResult:
         """Run bandit static analysis."""
         # Check for bandit-specific config file (e.g., .bandit, pyproject.toml with [tool.bandit])
@@ -618,7 +648,25 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             return SecuritySubResult("bandit", True, NO_ISSUES_FOUND)
 
     def _run_semgrep(self, project_root: str) -> SecuritySubResult:
-        """Run semgrep static analysis."""
+        """Run semgrep static analysis and report what it actually found.
+
+        Two ways this used to report a pass without one:
+
+        ``semgrep scan`` exits 0 whether or not it found anything — non-zero
+        needs ``--error``. The old code took a zero exit as "no issues found"
+        and returned before parsing, so the entire findings branch below was
+        unreachable on every normal run. A scan returning 34 findings was
+        reported as clean (#366).
+
+        And a scan killed by the timeout produces no JSON, which fell through
+        to ``return True, "Scan completed"`` — a scan that never completed,
+        reported as a completed scan (#365). A security gate that passes when
+        it is uncertain is worse than one that is absent, because it is
+        believed.
+
+        The exit status now says only that semgrep ran. Everything else comes
+        from the report.
+        """
         # Invoke the same executable the availability probe resolved. Detection
         # is venv-aware (find_tool), so a venv-only semgrep must be run by its
         # resolved path, not a bare name PATH can't see — otherwise broadening
@@ -635,49 +683,87 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
 
         result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
 
-        if result.success:
-            return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
+        if result.timed_out:
+            return SecuritySubResult(
+                "semgrep",
+                False,
+                f"semgrep exceeded {SLOW_TOOL_TIMEOUT}s and was stopped — the "
+                "scan is incomplete, so nothing here was verified. Narrow the "
+                "scanned tree with exclude_dirs, or raise the budget.",
+            )
 
         try:
             report = json.loads(result.stdout)
-            findings = report.get("results", [])
-            if not findings:
-                return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
-
-            critical = [
-                f
-                for f in findings
-                if f.get("extra", {}).get("severity") in ("ERROR", "WARNING")
-            ]
-            if not critical:
-                return SecuritySubResult("semgrep", True, "Only informational findings")
-
-            detail = "\n".join(
-                f"  [{f.get('extra', {}).get('severity', '?')}] "
-                f"{f.get('extra', {}).get('message', '')[:80]} "
-                f"- {f.get('path', '')}:{f.get('start', {}).get('line', '')}"
-                for f in critical[:10]
-            )
-            # semgrep has full file:line — emit per-issue Findings
-            sarif: List[Finding] = []
-            for f in critical:
-                line_no = f.get("start", {}).get("line")
-                sarif.append(
-                    Finding(
-                        message=f.get("extra", {}).get("message", "semgrep finding"),
-                        level=FindingLevel.ERROR,
-                        file=f.get("path") or None,
-                        line=line_no if isinstance(line_no, int) else None,
-                        rule_id=f.get("check_id"),
-                    )
-                )
-            return SecuritySubResult("semgrep", False, detail, sarif)
         except json.JSONDecodeError:
             if _scanner_failed_to_start(result.output):
                 return _scanner_did_not_run("semgrep", result.output)
-            if result.returncode == 1 and result.stderr:
-                return SecuritySubResult("semgrep", False, result.stderr[-300:])
-            return SecuritySubResult("semgrep", True, "Scan completed")
+            detail = (result.stderr or result.output or "").strip()[-300:]
+            return SecuritySubResult(
+                "semgrep",
+                False,
+                detail or f"semgrep produced no JSON report (exit {result.returncode})",
+            )
+
+        return self._semgrep_report_result(report, self._semgrep_excluded_rules())
+
+    @staticmethod
+    def _semgrep_report_result(
+        report: Dict[str, Any], excluded_rules: Optional[List[str]] = None
+    ) -> SecuritySubResult:
+        """Turn a parsed semgrep report into a sub-result.
+
+        Excluded rules are dropped here rather than passed to the CLI:
+        ``--exclude-rule`` is not available in every semgrep, and a flag an
+        older binary ignores would silently reinstate rules the project had
+        ruled out. Filtering what we parsed works on any version.
+        """
+        findings = cast(List[Dict[str, Any]], report.get("results") or [])
+        if excluded_rules:
+            findings = [
+                f
+                for f in findings
+                if not any(
+                    str(f.get("check_id") or "").startswith(rule)
+                    for rule in excluded_rules
+                )
+            ]
+        if not findings:
+            return SecuritySubResult("semgrep", True, NO_ISSUES_FOUND)
+
+        def _severity(finding: Dict[str, Any]) -> str:
+            extra = cast(Dict[str, Any], finding.get("extra") or {})
+            return str(extra.get("severity") or "?")
+
+        critical = [f for f in findings if _severity(f) in ("ERROR", "WARNING")]
+        if not critical:
+            return SecuritySubResult("semgrep", True, "Only informational findings")
+
+        def _message(finding: Dict[str, Any]) -> str:
+            extra = cast(Dict[str, Any], finding.get("extra") or {})
+            return str(extra.get("message") or "semgrep finding")
+
+        detail = "\n".join(
+            f"  [{_severity(f)}] {_message(f)[:80]} "
+            f"- {f.get('path', '')}:{cast(Dict[str, Any], f.get('start') or {}).get('line', '')}"
+            for f in critical[:10]
+        )
+        if len(critical) > 10:
+            detail += f"\n  ... and {len(critical) - 10} more"
+
+        # semgrep has full file:line — emit per-issue Findings
+        sarif: List[Finding] = []
+        for f in critical:
+            line_no = cast(Dict[str, Any], f.get("start") or {}).get("line")
+            sarif.append(
+                Finding(
+                    message=_message(f),
+                    level=FindingLevel.ERROR,
+                    file=cast(Optional[str], f.get("path")) or None,
+                    line=line_no if isinstance(line_no, int) else None,
+                    rule_id=cast(Optional[str], f.get("check_id")),
+                )
+            )
+        return SecuritySubResult("semgrep", False, detail, sarif)
 
 
 class SecurityCheck(SecurityLocalCheck):

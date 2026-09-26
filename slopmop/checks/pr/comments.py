@@ -876,6 +876,10 @@ class PRCommentsCheck(BaseCheck):
             self._build_commands_script(ordered_threads, pr_number, owner, repo),
             encoding="utf-8",
         )
+        # The rule reads 0o700 as permissive and suggests 0o644, which is the
+        # opposite: 0o644 is world-readable. This file holds PR resolution
+        # commands, so owner-only is the point.
+        # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
         os.chmod(commands_sh, 0o700)
         execution_log.write_text(
             "# Buff Protocol Execution Log\n\n"

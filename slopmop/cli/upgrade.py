@@ -220,6 +220,10 @@ def _validated_pypi_url() -> str:
 def _fetch_latest_pypi_version() -> str:
     try:
         safe_url = _validated_pypi_url()
+        # The rule flags a non-literal URL because urllib would honour
+        # file://. safe_url comes from _validated_pypi_url(), which raises
+        # unless the scheme is https and the host is pypi.org.
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urllib.request.urlopen(safe_url, timeout=5) as response:  # nosec B310
             payload = cast(PypiResponse, json.load(response))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:

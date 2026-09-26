@@ -37,7 +37,11 @@ class TestPythonProjectVenvWarning:
 
         assert result is not None
         assert result.status == CheckStatus.WARNED
-        assert result.error == "No project virtual environment found"
+        assert result.error is not None
+        assert result.error.startswith("No project virtual environment found")
+        # The consequence, not just the cause: a run where this gate never
+        # executed otherwise read as an environment note among the passes.
+        assert "did not run" in result.error
         assert result.suppress_sarif is True
         assert result.fix_suggestion is not None
         assert "Create a venv" in result.fix_suggestion
