@@ -29,9 +29,38 @@ from slopmop.checks.dart.common import (
     FLUTTER_INSTALL_HINT,
     FLUTTER_NOT_AVAILABLE,
     NO_FLUTTER_TEST_DIRECTORIES_FOUND,
+    dart_cache_inputs,
     find_pubspec_dirs,
 )
 from slopmop.checks.timeouts import EXHAUSTIVE_TASK_TIMEOUT
+
+# Matches the Python coverage gate's wait for coverage.xml: the gate that
+# writes the report runs concurrently with this one, so "absent right now"
+# does not mean "will not appear".
+LCOV_POLL_TIMEOUT = 10
+
+
+def _wait_for_lcov(path: Path, newer_than: float) -> bool:
+    """Poll for an lcov report written by ``untested-code.dart`` this run.
+
+    ``newer_than`` is what keeps this from becoming a false green: a report
+    left by an earlier run describes code that has since changed, and reading
+    it would report coverage for tests nobody just ran. Only a file written
+    after this check started can have come from the suite running alongside
+    it.
+    """
+    deadline = time.time() + LCOV_POLL_TIMEOUT
+    while time.time() < deadline:
+        try:
+            if path.exists() and path.stat().st_size > 0:
+                if path.stat().st_mtime >= newer_than:
+                    return True
+        except OSError:
+            pass
+        time.sleep(0.5)
+    return False
+
+
 from slopmop.constants import COVERAGE_BELOW_THRESHOLD
 from slopmop.core.result import (
     CheckResult,
@@ -102,6 +131,14 @@ class DartCoverageCheck(BaseCheck):
         return Flaw.OVERCONFIDENCE
 
     @property
+    def depends_on(self) -> List[str]:
+        # untested-code.dart runs the suite with --coverage and leaves the
+        # lcov this gate parses. Declaring it means a targeted `-g` run of
+        # this gate pulls the suite in rather than finding no report, and it
+        # matches how the Python pair is wired.
+        return ["overconfidence:untested-code.dart"]
+
+    @property
     def config_schema(self) -> List[ConfigField]:
         return [
             ConfigField(
@@ -164,6 +201,20 @@ class DartCoverageCheck(BaseCheck):
         aggregate: Dict[str, _FileCoverage],
         start_time: float,
     ) -> Optional[CheckResult]:
+        lcov_path = package_dir / "coverage" / "lcov.info"
+
+        # untested-code.dart runs the same suite with --coverage and leaves
+        # this file. Re-running it here meant a scour paid for the identical
+        # suite twice — the two slowest gates in the run, 189s and 203s on a
+        # 1404-test client (#363). Wait for its report the way the Python
+        # coverage gate waits for coverage.xml; they run concurrently, so it
+        # may not have landed yet.
+        if _wait_for_lcov(lcov_path, newer_than=start_time):
+            self._merge_lcov(project_root, lcov_path, aggregate)
+            return None
+
+        # No report: this gate was run on its own, or the suite never got far
+        # enough to write one. Run it, so a targeted `-g` still works.
         result = self._run_command(
             [flutter_path, "test", "--coverage"],
             cwd=str(package_dir),
@@ -199,7 +250,6 @@ class DartCoverageCheck(BaseCheck):
                 ),
             )
 
-        lcov_path = package_dir / "coverage" / "lcov.info"
         if not lcov_path.exists():
             pkg_rel = str(package_dir.relative_to(Path(project_root)))
             message = f"coverage/lcov.info not found in {pkg_rel}"
@@ -356,3 +406,7 @@ class DartCoverageCheck(BaseCheck):
 
             if line == "end_of_record":
                 current_file = None
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to Dart inputs — see ``dart_cache_inputs``."""
+        return dart_cache_inputs(self, project_root)

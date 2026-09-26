@@ -23,6 +23,7 @@ from slopmop.checks.dart.common import (
     FLUTTER_INSTALL_HINT,
     FLUTTER_NOT_AVAILABLE,
     NO_FLUTTER_TEST_DIRECTORIES_FOUND,
+    dart_cache_inputs,
     find_flutter_test_package_dirs,
     find_pubspec_dirs,
     format_package_label,
@@ -117,8 +118,15 @@ class FlutterTestsCheck(BaseCheck):
         outputs: List[str] = []
         for package_dir in package_dirs:
             label = format_package_label(project_root, package_dir)
+            # --coverage so one suite serves both gates. coverage-gaps.dart
+            # ran its own identical `flutter test --coverage` and depends on
+            # this gate's verdict anyway, so a scour paid for the same suite
+            # twice: 189s and 203s on a 1404-test client, the two longest
+            # gates in the run (#363). The Python pair has always worked this
+            # way — untested-code.py writes coverage.xml, coverage-gaps.py
+            # reads it.
             result = self._run_command(
-                [flutter_path, "test"],
+                [flutter_path, "test", "--coverage"],
                 cwd=str(package_dir),
                 timeout=EXHAUSTIVE_TASK_TIMEOUT,
             )
@@ -174,3 +182,7 @@ class FlutterTestsCheck(BaseCheck):
             duration=time.time() - start_time,
             output="\n".join(outputs) or "flutter test passed",
         )
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to Dart inputs — see ``dart_cache_inputs``."""
+        return dart_cache_inputs(self, project_root)

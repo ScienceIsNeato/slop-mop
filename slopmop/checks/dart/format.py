@@ -18,6 +18,7 @@ from slopmop.checks.base import (
 from slopmop.checks.constants import NO_PUBSPEC_YAML_FOUND
 from slopmop.checks.dart.common import (
     DART_INSTALL_HINT,
+    dart_cache_inputs,
     find_pubspec_dirs,
     format_package_label,
 )
@@ -152,3 +153,7 @@ class DartFormatCheck(BaseCheck):
             duration=duration,
             output="\n".join(outputs) or "Dart formatting OK",
         )
+
+    def cache_inputs(self, project_root: str) -> Optional[str]:
+        """Scope the cache to Dart inputs — see ``dart_cache_inputs``."""
+        return dart_cache_inputs(self, project_root)

@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import re
+import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+
+# tomllib is stdlib from 3.11; this package supports 3.10, where it is not.
+# Same shim the CLI already uses.
+if sys.version_info >= (3, 11):
+    import tomllib as _toml
+else:
+    import tomli as _toml  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
     from slopmop.subprocess.runner import SubprocessResult
@@ -88,6 +96,52 @@ def _parse_failed_lines(failed_tests: List[str]) -> List[Finding]:
             )
         )
     return structured
+
+
+def _project_declares_coverage_source(project_root: str) -> bool:
+    """Has the project already said which code coverage should measure?
+
+    coverage.py reads ``source``/``source_pkgs`` from .coveragerc, setup.cfg,
+    tox.ini or pyproject. If one is set, passing ``--cov=.`` overrides it —
+    which is how a repo could set it and see no effect at all.
+    """
+    import configparser  # noqa: PLC0415
+
+    root = Path(project_root)
+
+    for name, section in (
+        (".coveragerc", "run"),
+        ("setup.cfg", "coverage:run"),
+        ("tox.ini", "coverage:run"),
+    ):
+        path = root / name
+        if not path.exists():
+            continue
+        parser = configparser.ConfigParser()
+        try:
+            parser.read(path, encoding="utf-8")
+        except (configparser.Error, OSError):
+            continue
+        if parser.has_option(section, "source") or parser.has_option(
+            section, "source_pkgs"
+        ):
+            return True
+
+    pyproject = root / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            data = cast(
+                Dict[str, Any], _toml.loads(pyproject.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError):
+            return False
+        tool = cast(Dict[str, Any], data.get("tool") or {})
+        coverage = cast(Dict[str, Any], tool.get("coverage") or {})
+        run = coverage.get("run")
+        if isinstance(run, dict) and ("source" in run or "source_pkgs" in run):
+            return True
+
+    return False
 
 
 class PythonTestsCheck(BaseCheck, PythonCheckMixin):
@@ -194,7 +248,47 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 default=300,
                 description="Test execution timeout in seconds",
             ),
+            ConfigField(
+                name="include_dirs",
+                field_type="string[]",
+                default=[],
+                description=(
+                    "Packages to measure coverage for. Empty means the whole "
+                    "project. A repo with a maintained package beside "
+                    "unmaintained scripts can point coverage at the package, "
+                    "so the threshold describes the code it is meant to "
+                    "describe. Also settable once for the whole category."
+                ),
+            ),
         ]
+
+    def _coverage_args(self, project_root: str) -> List[str]:
+        """The ``--cov`` arguments, scoped the way the project asked.
+
+        This was a hardcoded ``--cov=.``, which measures every ``.py`` in the
+        repo — and, because a command-line ``--cov`` overrides the config
+        file, silently beat a ``.coveragerc`` that said otherwise. A repo with
+        a maintained package beside unmaintained research scripts could not
+        scope the measurement at all: not with ``exclude_paths``, not with
+        ``include_paths``, not with ``.coveragerc``. Every one of those
+        scripts came back 0% and dominated the project number (#362).
+
+        Precedence: this gate's ``include_dirs`` first, because it is the most
+        specific thing anyone said. Failing that, a coverage source the
+        project declared in its own config wins, expressed as a bare
+        ``--cov`` so pytest-cov reads that config instead of being overridden.
+        Only when nobody has said anything does the whole tree get measured.
+        """
+        include_dirs = self.config.get("include_dirs") or self.config.get("src_dirs")
+        if isinstance(include_dirs, str):
+            include_dirs = [include_dirs]
+        if include_dirs:
+            return [f"--cov={d}" for d in include_dirs if d]
+
+        if _project_declares_coverage_source(project_root):
+            return ["--cov"]
+
+        return ["--cov=."]
 
     def is_applicable(self, project_root: str) -> bool:
         """Applicable to Python projects; run() enforces test presence."""
@@ -273,7 +367,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 self.get_project_python(project_root),
                 "-m",
                 "pytest",
-                "--cov=.",
+                *self._coverage_args(project_root),
                 "--cov-report=xml:coverage.xml",
                 "--cov-report=term-missing",
                 "-v",
