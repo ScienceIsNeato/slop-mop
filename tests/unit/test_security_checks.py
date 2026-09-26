@@ -379,11 +379,16 @@ class TestRunSemgrep:
     """Tests for _run_semgrep method."""
 
     def test_semgrep_no_issues(self, tmp_path):
-        """Test _run_semgrep with no issues found."""
+        """A clean scan is an empty report, not merely a zero exit.
+
+        This used to assert that a zero exit alone meant clean, which is the
+        defect: semgrep exits 0 whether or not it found anything.
+        """
         check = SecurityLocalCheck({})
         mock_result = MagicMock()
         mock_result.success = True
         mock_result.timed_out = False
+        mock_result.stdout = json.dumps({"results": []})
 
         with patch.object(check, "_run_command", return_value=mock_result):
             result = check._run_semgrep(str(tmp_path))

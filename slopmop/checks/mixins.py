@@ -39,6 +39,7 @@ from slopmop.core.result import (
     FindingLevel,
     ScopeInfo,
 )
+from slopmop.utils.proc import bounded_run
 
 logger = logging.getLogger(__name__)
 _PYTHON_SOURCE_EXCLUDE_DIRS = {
@@ -92,13 +93,26 @@ def _find_python_in_venv(venv_path: Path) -> Optional[str]:
 
 
 def has_project_venv(project_root: str | Path) -> bool:
-    """True when *project_root* contains a ``venv/`` or ``.venv/``."""
+    """True when the project has a venv this checkout can use.
+
+    Includes the one belonging to a linked worktree's main checkout. Venvs are
+    gitignored, so a worktree never has its own — and this function is what
+    decides whether the test gate runs at all, so looking only under
+    *project_root* made every worktree scour skip its entire suite while
+    reporting a pass (#367).
+    """
     root = Path(project_root)
-    for venv_dir in VENV_DIR_NAMES:
-        if (root / venv_dir / "bin" / "python").exists():
-            return True
-        if (root / venv_dir / "Scripts" / "python.exe").exists():
-            return True
+    candidates = [root]
+    main_checkout = _main_worktree_root(root)
+    if main_checkout is not None:
+        candidates.append(main_checkout)
+
+    for candidate in candidates:
+        for venv_dir in VENV_DIR_NAMES:
+            if (candidate / venv_dir / "bin" / "python").exists():
+                return True
+            if (candidate / venv_dir / "Scripts" / "python.exe").exists():
+                return True
     return False
 
 
@@ -204,6 +218,19 @@ def resolve_project_python(project_root: str | Path) -> tuple[str, str]:
         if python_path:
             return python_path, PYTHON_SOURCE_PROJECT_VENV
 
+    # A git worktree has no venv of its own: venvs are gitignored, so they
+    # live in the checkout they were made in. Looking only under
+    # project_root therefore found nothing, the test gate warned "no project
+    # virtual environment found" and returned in a millisecond, and a scour
+    # that never ran a single test reported all_passed (#367). The worktree's
+    # main checkout is the same project, so its venv is the right one.
+    main_checkout = _main_worktree_root(root)
+    if main_checkout is not None:
+        for venv_dir in ("venv", ".venv"):
+            python_path = _find_python_in_venv(main_checkout / venv_dir)
+            if python_path:
+                return python_path, PYTHON_SOURCE_PROJECT_VENV
+
     virtual_env = os.environ.get("VIRTUAL_ENV")
     if virtual_env:
         python_path = _find_python_in_venv(Path(virtual_env))
@@ -219,6 +246,41 @@ def resolve_project_python(project_root: str | Path) -> tuple[str, str]:
             return system_python, PYTHON_SOURCE_PATH
 
     return "python3", PYTHON_SOURCE_NOT_FOUND
+
+
+def _main_worktree_root(root: Path) -> Optional[Path]:
+    """The main checkout backing *root*, when *root* is a linked worktree.
+
+    ``git rev-parse --git-common-dir`` answers with the shared ``.git``
+    directory — the main checkout's, not the worktree's private one — so its
+    parent is the checkout that owns things a worktree does not copy. Returns
+    ``None`` outside a repo, in the main checkout itself, or for a bare repo.
+    """
+    try:
+        proc = bounded_run(
+            ["git", "-C", str(root), "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+
+    common = Path(proc.stdout.strip())
+    if not common.is_absolute():
+        common = (root / common).resolve()
+    if common.name != ".git":
+        return None  # bare repo: no checkout to borrow a venv from
+
+    main_root = common.parent
+    try:
+        if main_root.resolve() == root.resolve():
+            return None  # already the main checkout
+    except OSError:
+        return None
+    return main_root
 
 
 def has_package_json(project_root: str | Path) -> bool:
@@ -414,7 +476,15 @@ class PythonCheckMixin:
         import time
 
         if not self.has_project_venv(project_root):
-            msg = "No project virtual environment found"
+            # Say that nothing was checked, not merely that a venv is absent.
+            # The old wording named the missing prerequisite and left the
+            # consequence implicit, so a run where the entire suite never
+            # executed read as a minor environment note among the passes
+            # (#367). What matters to the reader is the gap, not the cause.
+            msg = (
+                "No project virtual environment found — this check did not run, "
+                "so nothing it covers was verified"
+            )
             # Mixin is always composed with BaseCheck
             from slopmop.checks.base import BaseCheck
 

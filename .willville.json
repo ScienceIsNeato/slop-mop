@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Cutting a release with the onboarding fixes \u2014 the cleanup pass now leaves alone what you tell it to, and setup no longer dies on a slow check",
-    "direction": "Back to the new repo to see how far onboarding gets now",
-    "last_update": "2026-09-22T00:00:00Z"
+    "status": "Fixing checks that were reporting a pass without actually looking \u2014 the security scan never read its own results, and in a worktree the whole test suite was quietly skipped",
+    "direction": "Make a green board mean something again before adding anything new",
+    "last_update": "2026-09-26T00:00:00Z"
   }
 }
