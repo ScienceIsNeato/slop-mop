@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Two of last release's fixes didn't actually work in the real repo \u2014 the speed-up saved nothing and the worktree one only went halfway. Both corrected and measured on the real thing this time",
-    "direction": "Verify against the repo that reported the problem, not just a test",
+    "status": "Writing up the release notes for everything that came out of onboarding two new repos \u2014 mostly checks that were quietly passing without looking",
+    "direction": "Get the release out so the fixes reach the repos that reported them",
     "last_update": "2026-09-26T00:00:00Z"
   }
 }
