@@ -278,6 +278,35 @@ def _sail_scour_clean(args: argparse.Namespace, project_root: Path) -> int:
     return 0
 
 
+_FEEDBACK_GATE = "myopia:ignored-feedback"
+
+
+def _feedback_gate_unavailable(project_root: Path) -> str:
+    """Why the review-thread check cannot answer, or "" when it can.
+
+    Sail read this gate's exit status and took 0 for "no unresolved threads".
+    A gate that is disabled in the repo config also exits 0, and so sail
+    announced "All CI green, no unresolved threads" over a PR carrying five
+    of them (#322). Nothing had queried the threads; the gate had been turned
+    off and said nothing about it.
+
+    A verdict nobody computed is not a clean verdict. Ask whether the gate can
+    run before believing what its exit status implies.
+    """
+    from slopmop.core.gate_config import gate_enablement  # noqa: PLC0415
+    from slopmop.sm import load_config  # noqa: PLC0415
+
+    try:
+        config = load_config(project_root)
+    except Exception as exc:  # noqa: BLE001 — unreadable config is itself a hold
+        return f"could not read the repo config ({exc})"
+
+    enabled, reason = gate_enablement(config, _FEEDBACK_GATE)
+    if not enabled:
+        return reason or f"{_FEEDBACK_GATE} is not enabled"
+    return ""
+
+
 def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
     """S6 — PR_OPEN: buff watch first, then inspect CI + review threads."""
     # Sanity check: run ignored_feedback gate explicitly before advancing
@@ -285,6 +314,19 @@ def _sail_pr_open(args: argparse.Namespace, project_root: Path) -> int:
     _print_step(
         "💬", "Sanity check", "Running ignored-feedback gate as final validation..."
     )
+    unavailable = _feedback_gate_unavailable(project_root)
+    if unavailable:
+        _print_step(
+            "⚓",
+            "HOLD",
+            f"Cannot confirm review threads: {unavailable}.\n"
+            "   Sail will not report a PR as ready on a check that did not run.\n"
+            f"   Enable {_FEEDBACK_GATE}, or inspect the threads yourself: "
+            "sm buff inspect <PR#>",
+            force=True,
+        )
+        return 1
+
     from slopmop.cli import cmd_scour
 
     # Run just the ignored-feedback gate to catch pending reviews
@@ -376,6 +418,22 @@ def _sail_pr_ready(args: argparse.Namespace, project_root: Path) -> int:
     result = cmd_buff(buff_args)
     if result != 0:
         return result
+
+    # This is the line a human acts on, so it must not claim more than was
+    # checked. When the thread gate cannot run, say CI is green and say the
+    # threads are unverified — rather than asserting both (#322).
+    unavailable = _feedback_gate_unavailable(project_root)
+    if unavailable:
+        write_sail_mode(project_root, SailMode.TACKING)
+        print(
+            "\n⛵ sail → 🏁 PR ready for human review — threads UNVERIFIED\n"
+            "   All CI green.\n"
+            f"   Review threads were NOT checked: {unavailable}.\n"
+            "   Check them before merging: sm buff inspect <PR#>\n"
+            "   (Sail mode reset to tacking for the next feature.)\n",
+            flush=True,
+        )
+        return 0
 
     write_sail_mode(project_root, SailMode.TACKING)
     print(

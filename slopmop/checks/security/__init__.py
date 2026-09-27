@@ -224,6 +224,20 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                 permissiveness="fewer_is_stricter",
             ),
             ConfigField(
+                name="scanner_timeout",
+                field_type="integer",
+                default=SLOW_TOOL_TIMEOUT,
+                description=(
+                    "Seconds each security scanner may run. The default suits "
+                    "a local machine; a shared CI runner is slower and more "
+                    "variable, and the same commit that scans in 8s locally "
+                    "has been killed at the budget on ubuntu-latest. Raise "
+                    "this rather than narrowing what gets scanned — a scanner "
+                    "that is stopped verifies nothing."
+                ),
+                permissiveness="higher_is_stricter",
+            ),
+            ConfigField(
                 name="semgrep_exclude_rules",
                 field_type="string[]",
                 default=[],
@@ -553,6 +567,15 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             findings=all_findings,
         )
 
+    def _scanner_timeout(self) -> int:
+        """Seconds a scanner may run, per repo config (#323)."""
+        configured = self.config.get("scanner_timeout", SLOW_TOOL_TIMEOUT)
+        try:
+            timeout = int(configured)
+        except (TypeError, ValueError):
+            return SLOW_TOOL_TIMEOUT
+        return timeout if timeout > 0 else SLOW_TOOL_TIMEOUT
+
     def _get_exclude_dirs(self) -> List[str]:
         """Get directories to exclude from config or defaults."""
         return self.config.get("exclude_dirs", EXCLUDED_DIRS)
@@ -600,7 +623,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             # B101 = assert usage, B110 = try-except-pass (common patterns)
             cmd.extend(["--skip", "B101,B110"])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
+        result = self._run_command(
+            cmd, cwd=project_root, timeout=self._scanner_timeout()
+        )
 
         # Try to parse JSON from stdout only - stderr contains warnings that aren't issues
         # Bandit returns non-zero for any findings including LOW severity
@@ -681,13 +706,16 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
         for d in self._get_exclude_dirs():
             cmd.extend(["--exclude", d])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
+        result = self._run_command(
+            cmd, cwd=project_root, timeout=self._scanner_timeout()
+        )
 
         if result.timed_out:
             return SecuritySubResult(
                 "semgrep",
                 False,
-                f"semgrep exceeded {SLOW_TOOL_TIMEOUT}s and was stopped — the "
+                f"semgrep exceeded {self._scanner_timeout()}s and was stopped "
+                "— the "
                 "scan is incomplete, so nothing here was verified. Narrow the "
                 "scanned tree with exclude_dirs, or raise the budget.",
             )
@@ -1090,7 +1118,9 @@ class SecurityCheck(SecurityLocalCheck):
             for req_file in req_files:
                 cmd.extend(["-r", req_file])
 
-        result = self._run_command(cmd, cwd=project_root, timeout=SLOW_TOOL_TIMEOUT)
+        result = self._run_command(
+            cmd, cwd=project_root, timeout=self._scanner_timeout()
+        )
 
         if result.timed_out:
             return SecuritySubResult(
