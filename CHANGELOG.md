@@ -6,6 +6,36 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.17.1
+
+Two fixes from 2.17.0 did not do what they claimed. Both were caught by
+running 2.17.0 against the repo that reported the original problems, which is
+the only reason they were caught at all: both had passing unit tests.
+
+### Fixes
+
+- **The Dart suite really does run once per scour now** (#363) — 2.17.0 made
+  `coverage-gaps.dart` reuse the report `untested-code.dart` leaves, and
+  declared a dependency so the suite is ordered first. The freshness check
+  then accepted a report only if it was written after the *coverage gate*
+  started — which the dependency guarantees never happens. Every report was
+  rejected, the ten-second poll ran out, and the suite ran a second time
+  anyway. The measured saving was zero.
+  Freshness now compares against when the run began. On the reporting repo:
+  the coverage gate went from 92s to 0.04s, and reports the same 83.4% it
+  reports when it runs the suite itself. A report left by an earlier run is
+  still rejected, which is what the check was for.
+
+- **A worktree's test gate runs the project's Python** (#367) — 2.17.0 taught
+  slop-mop to borrow the main checkout's virtualenv from a linked worktree,
+  but put that in one of two functions that search for the project
+  interpreter. The test gate calls the other one. So the gate believed a venv
+  was available and then ran pytest with slop-mop's own interpreter: it
+  stopped skipping the suite and started failing against the wrong Python in
+  about a second, reporting "0 test(s) failed". That is worse than the bug it
+  replaced. The two searches are now one. On the reporting repo's worktree the
+  server suite runs and returns real results.
+
 ## 2.17.0
 
 Onboarding two new repos produced eight barnacles. Most of them were the same
