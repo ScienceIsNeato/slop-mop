@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Writing up the release notes for everything that came out of onboarding two new repos \u2014 mostly checks that were quietly passing without looking",
-    "direction": "Get the release out so the fixes reach the repos that reported them",
+    "status": "Pushing out a quick follow-up release \u2014 two fixes from the last one looked right but didn't actually work once tried on a real project",
+    "direction": "Then clearing the leftover issues",
     "last_update": "2026-09-26T00:00:00Z"
   }
 }
