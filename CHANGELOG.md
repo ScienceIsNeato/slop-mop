@@ -6,35 +6,62 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
-## 2.17.1
+## 2.18.0
 
-Two fixes from 2.17.0 did not do what they claimed. Both were caught by
-running 2.17.0 against the repo that reported the original problems, which is
-the only reason they were caught at all: both had passing unit tests.
+Two fixes from 2.17.0 did not do what they claimed, and the check that tells a
+human a PR is ready turned out to be claiming something nobody had verified.
+
+The first two were caught by running 2.17.0 against the repo that reported the
+original problems, which is the only reason they were caught at all: both had
+passing unit tests.
+
+### Behavior changes
+
+- **`sm sail` holds instead of claiming threads it did not check** (#322) —
+  sail ran the review-thread gate and read its exit status, taking 0 for "no
+  unresolved threads". A gate disabled in the repo config also exits 0, so
+  sail announced "All CI green, no unresolved threads" over a PR carrying five
+  of them. Nothing had queried the threads; the gate had been turned off and
+  said nothing about it.
+  Sail now asks whether the gate can run before believing what its exit status
+  implies. At PR_OPEN it holds and names the reason. At PR_READY — the line a
+  human acts on — it reports CI as green and the threads as UNVERIFIED, with
+  the command to check them, rather than asserting both.
+  **Upgrade note:** if you have `myopia:ignored-feedback` disabled on purpose,
+  `sm sail` will now hold at PR_OPEN rather than advancing. Re-enable the gate,
+  or check threads yourself with `sm buff inspect <PR#>`.
+
+- **Security scanner budgets are configurable** (#323) — `scanner_timeout`
+  defaults to the previous hardcoded value, so nothing changes unless you set
+  it. The report behind this was CI variance: the same commit that scans in 8s
+  locally has been killed at the 120s budget on a shared runner. A scanner that
+  is stopped verifies nothing, so raising the budget is the right lever rather
+  than narrowing what gets scanned. The timeout message now quotes the
+  configured budget instead of a constant that may no longer be in force.
 
 ### Fixes
 
 - **The Dart suite really does run once per scour now** (#363) — 2.17.0 made
   `coverage-gaps.dart` reuse the report `untested-code.dart` leaves, and
-  declared a dependency so the suite is ordered first. The freshness check
-  then accepted a report only if it was written after the *coverage gate*
-  started — which the dependency guarantees never happens. Every report was
-  rejected, the ten-second poll ran out, and the suite ran a second time
-  anyway. The measured saving was zero.
-  Freshness now compares against when the run began. On the reporting repo:
-  the coverage gate went from 92s to 0.04s, and reports the same 83.4% it
-  reports when it runs the suite itself. A report left by an earlier run is
-  still rejected, which is what the check was for.
+  declared a dependency so the suite is ordered first. The freshness check then
+  accepted a report only if written after the *coverage gate* started — which
+  that ordering guarantees never happens. Every report was rejected, the poll
+  ran out, and the suite ran a second time anyway. The measured saving was
+  zero.
+  Freshness now compares against when the run began. On the reporting repo the
+  coverage gate went from 92s to 0.04s, reporting the same 83.4% it reports
+  when it runs the suite itself. A report from an earlier run is still
+  rejected, which is what the check was for.
 
 - **A worktree's test gate runs the project's Python** (#367) — 2.17.0 taught
-  slop-mop to borrow the main checkout's virtualenv from a linked worktree,
-  but put that in one of two functions that search for the project
-  interpreter. The test gate calls the other one. So the gate believed a venv
-  was available and then ran pytest with slop-mop's own interpreter: it
-  stopped skipping the suite and started failing against the wrong Python in
-  about a second, reporting "0 test(s) failed". That is worse than the bug it
-  replaced. The two searches are now one. On the reporting repo's worktree the
-  server suite runs and returns real results.
+  slop-mop to borrow the main checkout's virtualenv from a linked worktree, but
+  put that in one of two functions that search for the project interpreter. The
+  test gate calls the other one. So the gate believed a venv was available and
+  then ran pytest with slop-mop's own interpreter: it stopped skipping the
+  suite and started failing against the wrong Python in about a second,
+  reporting "0 test(s) failed". That is worse than the bug it replaced. The two
+  searches are now one. On the reporting repo's worktree the server suite runs
+  and returns real results.
 
 ## 2.17.0
 
