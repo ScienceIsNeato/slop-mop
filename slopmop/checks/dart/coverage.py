@@ -45,9 +45,15 @@ def _wait_for_lcov(path: Path, newer_than: float) -> bool:
 
     ``newer_than`` is what keeps this from becoming a false green: a report
     left by an earlier run describes code that has since changed, and reading
-    it would report coverage for tests nobody just ran. Only a file written
-    after this check started can have come from the suite running alongside
-    it.
+    it would report coverage for tests nobody just ran.
+
+    It must be the *run's* start, not this check's. ``depends_on`` orders the
+    suite before this gate, so the report is always written before this gate
+    begins — comparing against this gate's own start rejected every report it
+    was meant to reuse, waited out the poll, and ran the whole suite again.
+    The saving was zero and the reason was a comment in this file claiming the
+    two gates run concurrently, which stopped being true the moment the
+    dependency was declared (#363).
     """
     deadline = time.time() + LCOV_POLL_TIMEOUT
     while time.time() < deadline:
@@ -69,6 +75,7 @@ from slopmop.core.result import (
     FindingLevel,
     ScopeInfo,
 )
+from slopmop.core.run_context import RUN_STARTED_AT
 
 DEFAULT_THRESHOLD = 80
 MAX_FILES_TO_SHOW = 5
@@ -206,10 +213,10 @@ class DartCoverageCheck(BaseCheck):
         # untested-code.dart runs the same suite with --coverage and leaves
         # this file. Re-running it here meant a scour paid for the identical
         # suite twice — the two slowest gates in the run, 189s and 203s on a
-        # 1404-test client (#363). Wait for its report the way the Python
-        # coverage gate waits for coverage.xml; they run concurrently, so it
-        # may not have landed yet.
-        if _wait_for_lcov(lcov_path, newer_than=start_time):
+        # 1404-test client (#363). depends_on orders that gate first, so the
+        # report is normally already here; the poll only covers the case where
+        # it is still being flushed.
+        if _wait_for_lcov(lcov_path, newer_than=RUN_STARTED_AT):
             self._merge_lcov(project_root, lcov_path, aggregate)
             return None
 

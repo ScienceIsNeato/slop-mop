@@ -1,7 +1,8 @@
 """Cache fingerprinting, Dart suite reuse, and coverage scoping.
 
-Three barnacles from a Flutter repo (#362, #363, #364). Two are about work
-being repeated; one is about work being skipped while a pass is reported.
+Barnacles from a Flutter repo (#362, #363, #364) plus the scope and
+interpreter bugs found while fixing them. Some are about work being
+repeated; the rest are about work being skipped while a pass is reported.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import subprocess
 import time
 from pathlib import Path
+from typing import Tuple
 
 import pytest
 
@@ -321,3 +323,151 @@ class TestRootInIncludeDirsMeansEverything:
         ):
             a, b = self._both(tree, include_dirs)
             assert a == b, f"{include_dirs}: iter={a} resolve={b}"
+
+
+class TestCoverageReuseSurvivesOrdering:
+    """The reuse in #363 saved nothing, because of how it decided freshness.
+
+    `depends_on` orders the suite before the coverage gate, so the report is
+    always written *before* that gate starts. Comparing the report's mtime
+    against the coverage gate's own start therefore rejected every report it
+    existed to reuse: it waited out the poll and ran the whole suite again.
+    Measured saving: zero.
+
+    The baseline has to be when the run began, not when the reader began.
+    """
+
+    @pytest.fixture
+    def report(self, tmp_path: Path) -> Path:
+        lcov = tmp_path / "coverage" / "lcov.info"
+        lcov.parent.mkdir(parents=True)
+        lcov.write_text("TN:\nSF:lib/main.dart\nend_of_record\n")
+        return lcov
+
+    def test_a_report_written_before_this_gate_started_is_reused(
+        self, report: Path
+    ) -> None:
+        """The real ordering. This is the case that regressed."""
+        from slopmop.checks.dart.coverage import _wait_for_lcov
+        from slopmop.core.run_context import RUN_STARTED_AT
+
+        time.sleep(0.02)
+        gate_start = time.time()
+        assert gate_start > report.stat().st_mtime, "fixture must predate the gate"
+
+        assert _wait_for_lcov(report, newer_than=RUN_STARTED_AT) is True
+
+    def test_a_report_from_an_earlier_run_is_still_rejected(self, report: Path) -> None:
+        """Staleness protection must survive the fix.
+
+        A report from a previous run describes code that has since changed.
+        """
+        import os
+
+        from slopmop.checks.dart.coverage import _wait_for_lcov
+        from slopmop.core.run_context import RUN_STARTED_AT
+
+        stale = RUN_STARTED_AT - 3600
+        os.utime(report, (stale, stale))
+        assert _wait_for_lcov(report, newer_than=RUN_STARTED_AT) is False
+
+    def test_the_run_baseline_precedes_any_gate(self) -> None:
+        """Whatever a gate later compares, the run started before it."""
+        from slopmop.core.run_context import RUN_STARTED_AT
+
+        assert RUN_STARTED_AT <= time.time()
+
+
+class TestOneSearchForTheProjectPython:
+    """#367's other half: two implementations of the same search, one fixed.
+
+    The worktree fallback went into `resolve_project_python`, but the test
+    gate calls `get_project_python`, which carried its own copy. So
+    `has_project_venv` began reporting a borrowable venv while pytest was
+    still handed slop-mop's own interpreter — the gate stopped skipping and
+    started failing against the wrong Python, which is a worse outcome than
+    the bug being fixed.
+    """
+
+    @pytest.fixture
+    def worktree(self, tmp_path: Path) -> Tuple[Path, Path]:
+        main = tmp_path / "main"
+        main.mkdir()
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=main, check=True, capture_output=True)
+
+        git("init", "-q", ".")
+        git("config", "user.email", "t@t.t")
+        git("config", "user.name", "t")
+        (main / ".gitignore").write_text("venv/\n")
+        (main / "mod.py").write_text("x = 1\n")
+        git("add", "-A")
+        git("commit", "-qm", "init")
+
+        venv_bin = main / "venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        python = venv_bin / "python"
+        python.write_text("#!/bin/sh\necho py\n")
+        python.chmod(0o755)
+
+        wt = tmp_path / "wt"
+        git("worktree", "add", "-q", str(wt), "-b", "feat/x")
+        return main, wt
+
+    @staticmethod
+    def _fresh_check():
+        from slopmop.checks.mixins import PythonCheckMixin
+        from slopmop.checks.python.tests import PythonTestsCheck
+
+        PythonCheckMixin._python_cache.clear()
+        PythonCheckMixin._venv_warning_shown.clear()
+        return PythonTestsCheck({})
+
+    def test_the_gate_runs_the_projects_python_from_a_worktree(
+        self, worktree: Tuple[Path, Path]
+    ) -> None:
+        main, wt = worktree
+        assert self._fresh_check().get_project_python(str(wt)) == str(
+            main / "venv" / "bin" / "python"
+        )
+
+    def test_both_searches_agree(self, worktree: Tuple[Path, Path]) -> None:
+        """A divergence here is invisible until a gate runs the wrong Python."""
+        from slopmop.checks.mixins import resolve_project_python
+
+        _, wt = worktree
+        assert self._fresh_check().get_project_python(str(wt)) == (
+            resolve_project_python(str(wt))[0]
+        )
+
+    def test_they_agree_in_the_main_checkout_too(
+        self, worktree: Tuple[Path, Path]
+    ) -> None:
+        from slopmop.checks.mixins import resolve_project_python
+
+        main, _ = worktree
+        assert self._fresh_check().get_project_python(str(main)) == (
+            resolve_project_python(str(main))[0]
+        )
+
+    def test_a_venvless_project_still_falls_back(self, tmp_path: Path) -> None:
+        """Delegation must not invent a venv where there is none."""
+        import sys
+
+        from slopmop.checks.mixins import resolve_project_python
+
+        chosen = self._fresh_check().get_project_python(str(tmp_path))
+        assert chosen == resolve_project_python(str(tmp_path))[0]
+        assert chosen == sys.executable
+
+    def test_the_result_is_cached_per_project(
+        self, worktree: Tuple[Path, Path]
+    ) -> None:
+        from slopmop.checks.mixins import PythonCheckMixin
+
+        _, wt = worktree
+        check = self._fresh_check()
+        first = check.get_project_python(str(wt))
+        assert PythonCheckMixin._python_cache[str(wt)] == first
+        assert check.get_project_python(str(wt)) == first
