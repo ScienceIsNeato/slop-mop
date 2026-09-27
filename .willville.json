@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Pushing out a quick follow-up release \u2014 two fixes from the last one looked right but didn't actually work once tried on a real project",
-    "direction": "Then clearing the leftover issues",
+    "status": "Clearing leftover issues \u2014 the big one was the ship-it check announcing 'no unresolved comments' when the thing that looks for comments had been switched off",
+    "direction": "Same theme as the last release: stop reporting a pass for work nobody did",
     "last_update": "2026-09-26T00:00:00Z"
   }
 }
