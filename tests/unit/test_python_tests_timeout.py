@@ -99,7 +99,24 @@ class TestTheSuiteGetsTheConfiguredBudget:
 
 
 class TestABadBudgetFallsBackRatherThanCrashing:
-    @pytest.mark.parametrize("bad", ["abc", "", None, 0, -5, [1], {"s": 1}])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "abc",
+            "",
+            None,
+            0,
+            -5,
+            [1],
+            {"s": 1},
+            True,
+            False,
+            450.9,
+            float("inf"),
+            float("-inf"),
+            float("nan"),
+        ],
+    )
     def test_nonsense_falls_back_to_the_default(self, bad: Any) -> None:
         assert PythonTestsCheck({"timeout": bad})._test_timeout() == HEAVY_TASK_TIMEOUT
 

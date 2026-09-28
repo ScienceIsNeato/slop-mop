@@ -286,9 +286,19 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
         stopped are the number actually enforced.
         """
         configured = self.config.get("timeout", HEAVY_TASK_TIMEOUT)
-        try:
-            timeout = int(configured)
-        except (TypeError, ValueError):
+        # Whole seconds only. int() would take True as a 1s budget, round
+        # 450.9 down without a word, and raise OverflowError on inf, which
+        # the executor reports as a gate ERROR instead of the default.
+        if isinstance(configured, bool):
+            return HEAVY_TASK_TIMEOUT
+        if isinstance(configured, int):
+            timeout = configured
+        elif isinstance(configured, str):
+            try:
+                timeout = int(configured)
+            except ValueError:
+                return HEAVY_TASK_TIMEOUT
+        else:
             return HEAVY_TASK_TIMEOUT
         if timeout <= 0:
             return HEAVY_TASK_TIMEOUT
