@@ -28,7 +28,6 @@ from slopmop.checks.base import (
 )
 from slopmop.checks.constants import (
     SKIP_NOT_PYTHON_PROJECT,
-    TESTS_TIMED_OUT_MSG,
     has_python_test_files,
     python_no_tests_fix_suggestion,
     skip_reason_no_test_files,
@@ -36,6 +35,7 @@ from slopmop.checks.constants import (
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.checks.timeouts import HEAVY_TASK_TIMEOUT
 from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
+from slopmop.subprocess.runner import SubprocessRunner
 
 # pytest's short-summary line format is stable across 6.x/7.x/8.x:
 #   FAILED tests/test_foo.py::TestBar::test_baz - AssertionError: expected 5, got 3
@@ -155,14 +155,19 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
 
     Configuration:
       test_dirs: ["tests"] — default pytest discovery directory.
-      timeout: 300 — 5-minute timeout. Long enough for large suites,
-          short enough to catch infinite loops.
+      timeout: 300 — seconds the suite may run. Long enough for large
+          suites, short enough to catch infinite loops. A slower CI
+          runner can raise it; the subprocess runner caps every command
+          at SubprocessRunner.MAX_TIMEOUT (600s), so values above that
+          run as 600.
 
     Common failures:
       Test failures: Output lists the specific failing test names.
           Run `pytest -v --tb=long <test_file>` for full tracebacks.
-      Timeout: Suite took > 5 minutes. Look for infinite loops,
-          missing mocks on network calls, or slow fixtures.
+      Timeout: Suite outran the configured timeout. Look for infinite
+          loops, missing mocks on network calls, or slow fixtures — or,
+          if the suite is simply that long on this machine, raise
+          `timeout`.
       Import errors: A test imports something that doesn't exist.
           Usually a missing dependency or renamed module.
 
@@ -245,8 +250,14 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
             ConfigField(
                 name="timeout",
                 field_type="integer",
-                default=300,
-                description="Test execution timeout in seconds",
+                default=HEAVY_TASK_TIMEOUT,
+                description=(
+                    "Seconds the test suite may run before it is stopped "
+                    "and the gate fails. Clamped to the subprocess "
+                    f"runner's ceiling ({SubprocessRunner.MAX_TIMEOUT}s); "
+                    "a value that is not a positive integer falls back to "
+                    f"{HEAVY_TASK_TIMEOUT}s."
+                ),
             ),
             ConfigField(
                 name="include_dirs",
@@ -261,6 +272,27 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 ),
             ),
         ]
+
+    def _test_timeout(self) -> int:
+        """Seconds the suite may run, per repo config.
+
+        ``timeout`` sat in the schema — documented, and written into every
+        generated config — while ``run()`` passed a hardcoded 300s. A repo
+        whose suite outgrew 300s on a slow CI runner could raise the setting
+        and still be killed at 300s.
+
+        Clamped here to the runner's ceiling, which would clamp it anyway,
+        so the number passed down and the number quoted when the suite is
+        stopped are the number actually enforced.
+        """
+        configured = self.config.get("timeout", HEAVY_TASK_TIMEOUT)
+        try:
+            timeout = int(configured)
+        except (TypeError, ValueError):
+            return HEAVY_TASK_TIMEOUT
+        if timeout <= 0:
+            return HEAVY_TASK_TIMEOUT
+        return min(timeout, SubprocessRunner.MAX_TIMEOUT)
 
     def _coverage_args(self, project_root: str) -> List[str]:
         """The ``--cov`` arguments, scoped the way the project asked.
@@ -374,7 +406,7 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
                 "--tb=short",
             ]
 
-        result = self._run_command(cmd, cwd=project_root, timeout=HEAVY_TASK_TIMEOUT)
+        result = self._run_command(cmd, cwd=project_root, timeout=self._test_timeout())
         duration = time.time() - start_time
         return self._evaluate_pytest_result(result, duration, use_testmon)
 
@@ -383,15 +415,26 @@ class PythonTestsCheck(BaseCheck, PythonCheckMixin):
     ) -> CheckResult:
         """Translate a pytest ``CommandResult`` into a ``CheckResult``."""
         if result.timed_out:
+            # Quote the budget actually in force: "5 minutes" under a
+            # configured 600s sends people hunting for a hang that isn't there.
+            budget = self._test_timeout()
+            message = (
+                f"Tests timed out after {budget}s and were stopped — the "
+                "suite did not finish, so nothing here was verified"
+            )
             return self._create_result(
                 status=CheckStatus.FAILED,
                 duration=duration,
                 output=result.output,
-                error=TESTS_TIMED_OUT_MSG,
-                fix_suggestion="Check for infinite loops or slow tests",
-                findings=[
-                    Finding(message=TESTS_TIMED_OUT_MSG, level=FindingLevel.ERROR)
-                ],
+                error=message,
+                fix_suggestion=(
+                    "Check for infinite loops, missing mocks on network "
+                    "calls, or slow fixtures. If the suite is simply that "
+                    "long on this machine (a slow CI runner), raise this "
+                    "gate's `timeout` — the runner allows up to "
+                    f"{SubprocessRunner.MAX_TIMEOUT}s."
+                ),
+                findings=[Finding(message=message, level=FindingLevel.ERROR)],
             )
 
         if not result.success:
