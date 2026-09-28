@@ -6,6 +6,26 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.18.1
+
+A setting that did nothing. The Python test gate has always offered a
+`timeout`, and every generated config writes one, but the gate never read it.
+
+### Fixes
+
+- **The Python test gate honours its `timeout` setting** —
+  `overconfidence:untested-code.py` declared `timeout` in its schema,
+  documented it, and then ran pytest under a hardcoded 300s. A repo whose
+  suite had grown to six minutes on a 2-vCPU CI runner was killed at 300s, and
+  raising the setting would have changed nothing. The same suite passes
+  locally in under three minutes, so the failure only ever showed up in CI,
+  under a message blaming a "5 minutes" budget nobody had chosen.
+  The gate now runs for the configured number of seconds. The default is
+  still 300, so nothing changes unless you set it. A value above 600s runs as
+  600, the subprocess runner's ceiling for any command, and the schema says
+  so. A value that is not a positive integer falls back to 300. The timeout
+  message quotes the budget that was in force and names the setting to raise.
+
 ## 2.18.0
 
 Two fixes from 2.17.0 did not do what they claimed, and the check that tells a
