@@ -40,6 +40,16 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
 _SECURITY_INSTALL_HINT = "pipx install slopmop[security]"
 
+# semgrep is executed, never imported, so it is not a library dependency of
+# slop-mop. Installing it into slop-mop's own environment pulled its whole
+# transitive tree in with it — mcp, opentelemetry-api and wcmatch, each
+# pinned by semgrep tightly enough that a floor-pin could not reach a
+# patched version. Those became slop-mop's vulnerabilities on paper and
+# took its scanning gate down for six weeks. Its own environment keeps
+# semgrep's dependencies semgrep's problem; find_tool resolves it from
+# PATH either way.
+_SEMGREP_INSTALL_HINT = "pipx install semgrep"
+
 # A scanner that fails to even start (its Python module isn't importable in the
 # interpreter we shell out to) is a tooling/environment problem, NOT a security
 # finding. Reporting "No module named detect_secrets" as SLOP DETECTED tells a
@@ -361,8 +371,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             name="semgrep",
             probe="binary",
             optional=True,
-            reason="pattern-based security scanning (pip-installed, run as a binary)",
-            install_hint=_SECURITY_INSTALL_HINT,
+            reason="pattern-based security scanning (standalone binary, not imported)",
+            install_hint=_SEMGREP_INSTALL_HINT,
+            isolated=True,
         ),
         "detect-secrets": Requirement(  # pragma: allowlist secret
             kind="python",

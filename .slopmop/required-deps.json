@@ -135,12 +135,13 @@
     {
       "alternatives": [],
       "import_name": "",
-      "install_hint": "pipx install slopmop[security]",
+      "install_hint": "pipx install semgrep",
+      "isolated": true,
       "kind": "python",
       "name": "semgrep",
       "optional": true,
       "probe": "binary",
-      "reason": "pattern-based security scanning (pip-installed, run as a binary)",
+      "reason": "pattern-based security scanning (standalone binary, not imported)",
       "version": null
     },
     {

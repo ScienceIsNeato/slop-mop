@@ -21,6 +21,7 @@ from slopmop.checks.python.tests import (
     _project_declares_coverage_source,
 )
 from slopmop.core.cache import _SOURCE_EXTENSIONS, compute_fingerprint
+from tests.git_helpers import add_worktree, commit_all, init_repo, run_git
 
 
 def _make_git_repo(root: Path) -> None:
@@ -31,12 +32,7 @@ def _make_git_repo(root: Path) -> None:
     behaviour, same name. That is the ambiguity the myopia gate catches,
     and this is the second one this week.
     """
-    for args in (
-        ("init", "-q", "."),
-        ("config", "user.email", "t@t.t"),
-        ("config", "user.name", "t"),
-    ):
-        subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+    init_repo(root)
 
 
 @pytest.fixture
@@ -47,10 +43,7 @@ def dart_repo(tmp_path: Path) -> Path:
     (tmp_path / "README.md").write_text("# demo\n")
     (tmp_path / "tool.py").write_text("x = 1\n")
     _make_git_repo(tmp_path)
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-qm", "init"], cwd=tmp_path, check=True, capture_output=True
-    )
+    commit_all(tmp_path)
     return tmp_path
 
 
@@ -394,16 +387,10 @@ class TestOneSearchForTheProjectPython:
         main = tmp_path / "main"
         main.mkdir()
 
-        def git(*args: str) -> None:
-            subprocess.run(["git", *args], cwd=main, check=True, capture_output=True)
-
-        git("init", "-q", ".")
-        git("config", "user.email", "t@t.t")
-        git("config", "user.name", "t")
+        init_repo(main)
         (main / ".gitignore").write_text("venv/\n")
         (main / "mod.py").write_text("x = 1\n")
-        git("add", "-A")
-        git("commit", "-qm", "init")
+        commit_all(main)
 
         venv_bin = main / "venv" / "bin"
         venv_bin.mkdir(parents=True)
@@ -412,7 +399,7 @@ class TestOneSearchForTheProjectPython:
         python.chmod(0o755)
 
         wt = tmp_path / "wt"
-        git("worktree", "add", "-q", str(wt), "-b", "feat/x")
+        add_worktree(main, wt, "feat/x")
         return main, wt
 
     @staticmethod

@@ -56,7 +56,7 @@ templates = [
 # under test. Upgrading a formatter is a deliberate slopmop release with a
 # changelog entry, never a side effect of reinstalling.
 lint = [
-    "black==26.5.1",
+    "black==26.10.1",
     "isort==8.0.1",
     "autoflake==2.3.3",
     "flake8==7.3.0",
@@ -83,7 +83,6 @@ security = [
     "python-multipart>=0.0.27",  # GHSA-pp6c-gr5w-3c5g via semgrep/mcp
     "pyjwt>=2.13.0",  # PYSEC-2026-175, PYSEC-2026-177, PYSEC-2026-179 via semgrep/mcp
     "starlette>=1.0.1",  # PYSEC-2026-161 via mcp/sse-starlette
-    "semgrep>=1.140.0",
     "pip-audit>=2.0.0",
 ]
 # Testing frameworks (for sm's own tests & PROJECT-context checks)
@@ -197,17 +196,14 @@ semgrep_exclude_rules = [
 ]
 pip_audit_ignore_vulns = [
     "GHSA-5239-wwwm-4pmq",  # pygments ReDoS (CVE-2026-4539), low severity, no fix available
-    # mcp 1.23.3 server-transport advisories, reachable only if you RUN an MCP
-    # server: cross-client task access (3481), HTTP transports not verifying the
-    # authenticated principal (3482), WebSocket Host/Origin validation (3483).
-    # slop-mop never imports mcp — it arrives transitively via semgrep, which we
-    # only ever invoke as a CLI scanner, so none of these code paths execute.
-    # No upgrade path: semgrep pins mcp==1.23.3 exactly (still true on 1.172.0),
-    # so a floor-pin like the pyjwt/python-multipart ones above is unsatisfiable.
-    # Re-check when semgrep unpins mcp, then drop these three.
-    "PYSEC-2026-3481",
-    "PYSEC-2026-3482",
-    "PYSEC-2026-3483",
+    # The three mcp entries that used to sit here are gone, and so is the
+    # reason for them. They were semgrep's transitive dependencies, pinned
+    # exactly by semgrep and therefore unfixable from here, so the only lever
+    # was an ignore that had to be re-earned every time mcp got a new
+    # advisory — which it did, three more times, taking CI down for six weeks.
+    # semgrep is no longer a library dependency of slop-mop; it is a binary we
+    # exec, installed in its own environment. Its dependency tree is no longer
+    # ours to audit or to excuse.
 ]
 
 [tool.slopmop.myopia.gates."vulnerability-blindness.py"]

@@ -503,8 +503,19 @@ class TestExecutorCache:
         second_duration = time.time() - t0
         assert s2.passed == 5
 
-        # Second run should be at least 5x faster (it's instant vs ~0.5s)
-        assert second_duration < first_duration / 5
+        # The invariant is that nothing re-executed; the speed follows from it.
+        # This used to assert `second < first / 5` on sub-second timings, which
+        # is noise-dominated once the suite runs under load — it failed at
+        # 0.083s against a 0.064s threshold while the cache was working
+        # perfectly, and blocked commits via the pre-commit hook, which is
+        # itself what loaded the machine.
+        #
+        # run_count is the real claim: a cached run executes no check. The
+        # timing assertion keeps a direction rather than a ratio, with the
+        # margin coming from the 0.1s each check sleeps on a real run.
+        for cls in checks:
+            assert cls.run_count == 1, f"{cls._name} re-executed on a cache hit"
+        assert second_duration < first_duration / 2
 
     def test_cache_invalidated_on_file_change(self, tmp_path):
         """Cache is invalidated when source files change."""

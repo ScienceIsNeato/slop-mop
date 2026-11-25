@@ -15,7 +15,6 @@ a green board is believed.
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -27,6 +26,7 @@ from slopmop.checks.mixins import (
     resolve_project_python,
 )
 from slopmop.checks.security import SecurityLocalCheck
+from tests.git_helpers import add_worktree, commit_all, init_repo, run_git
 
 
 def _semgrep_result(**kwargs: object) -> MagicMock:
@@ -163,16 +163,10 @@ def worktree(tmp_path: Path) -> tuple[Path, Path]:
     main = tmp_path / "main"
     main.mkdir()
 
-    def git(*args: str, cwd: Path = main) -> None:
-        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
-
-    git("init", "-q", ".")
-    git("config", "user.email", "t@t.t")
-    git("config", "user.name", "t")
+    init_repo(main)
     (main / ".gitignore").write_text("venv/\n")
     (main / "mod.py").write_text("x = 1\n")
-    git("add", "-A")
-    git("commit", "-qm", "init")
+    commit_all(main)
 
     venv_bin = main / "venv" / "bin"
     venv_bin.mkdir(parents=True)
@@ -181,7 +175,7 @@ def worktree(tmp_path: Path) -> tuple[Path, Path]:
     python.chmod(0o755)
 
     wt = tmp_path / "wt"
-    git("worktree", "add", "-q", str(wt), "-b", "feat/x")
+    add_worktree(main, wt, "feat/x")
     return main, wt
 
 
@@ -215,9 +209,7 @@ class TestWorktreeFindsTheProjectVenv:
 
     def test_a_venvless_project_still_reports_no_venv(self, tmp_path: Path) -> None:
         """The fallback must not invent a venv where the project has none."""
-        subprocess.run(
-            ["git", "init", "-q", "."], cwd=tmp_path, check=True, capture_output=True
-        )
+        run_git("init", "-q", ".", cwd=tmp_path)
         assert has_project_venv(tmp_path) is False
 
     def test_non_repo_directory_is_handled(self, tmp_path: Path) -> None:
@@ -236,9 +228,7 @@ class TestSkippedWorkSaysSoPlainly:
         from slopmop.checks.python.tests import PythonTestsCheck
 
         check = PythonTestsCheck({})
-        subprocess.run(
-            ["git", "init", "-q", "."], cwd=tmp_path, check=True, capture_output=True
-        )
+        run_git("init", "-q", ".", cwd=tmp_path)
         result = check.check_project_venv_or_warn(str(tmp_path), time.time())
 
         assert result is not None
