@@ -132,8 +132,12 @@ class PythonLintFormatCheck(BaseCheck, PythonCheckMixin):
         # failure. _run_command resolves each (venv-aware) at invocation time.
         return Requirements(
             items=(
+                # Must match the [lint] pin in pyproject.toml — this is the
+                # version the Action installs, so a stale value here ships the
+                # vulnerable release regardless of what pyproject says. 26.5.1
+                # carried CVE-2026-114134. A test asserts the two agree.
                 pip_cli_requirement(
-                    "black", "26.5.1", "code formatting", optional=True, extra="lint"
+                    "black", "26.10.1", "code formatting", optional=True, extra="lint"
                 ),
                 pip_cli_requirement(
                     "isort", "8.0.1", "import sorting", optional=True, extra="lint"

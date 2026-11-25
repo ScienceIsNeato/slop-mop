@@ -193,9 +193,9 @@ class TestGitIsRunWithoutInheritedRepositoryContext:
             out = run_git("rev-parse", "--show-toplevel", cwd=tmp_path)
 
         resolved = Path(out.stdout.decode().strip()).resolve()
-        assert resolved == tmp_path.resolve(), (
-            f"git answered for {resolved}, not the test's own repo"
-        )
+        assert (
+            resolved == tmp_path.resolve()
+        ), f"git answered for {resolved}, not the test's own repo"
 
     def test_worktrees_can_be_created_under_a_leaked_git_dir(
         self, tmp_path: Path
@@ -215,3 +215,63 @@ class TestGitIsRunWithoutInheritedRepositoryContext:
             add_worktree(main, tmp_path / "wt", "feat/x")
 
         assert (tmp_path / "wt").is_dir()
+
+
+class TestManifestPinsAgreeWithPyproject:
+    """Two copies of a version is two chances to ship the wrong one.
+
+    A gate's ``requirements()`` carries the version the Action installs, and
+    ``pyproject.toml`` carries the version a pip install resolves. They are
+    separate strings describing the same decision. Bumping black for
+    CVE-2026-114134 in pyproject alone left the manifest — and therefore every
+    CI run — still installing 26.5.1.
+
+    Only exact pins are compared. pyproject deliberately uses floors for tools
+    where any recent version will do; this is about the ones that claim to be
+    one specific release.
+    """
+
+    @staticmethod
+    def _exact_pyproject_pins() -> Dict[str, str]:
+        pins: Dict[str, str] = {}
+        extras = _pyproject()["project"]["optional-dependencies"]
+        for deps in extras.values():
+            for dep in deps:
+                if "==" not in dep or dep.startswith("slopmop["):
+                    continue
+                name, _, version = dep.partition("==")
+                pins[name.strip().lower()] = version.strip()
+        return pins
+
+    @staticmethod
+    def _exact_manifest_pins() -> Dict[str, str]:
+        import json
+
+        manifest = json.loads(
+            (PROJECT_ROOT / ".slopmop" / "required-deps.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        return {
+            r["name"].lower(): r["version"]
+            for r in manifest["requirements"]
+            if r.get("version")
+        }
+
+    def test_no_tool_is_pinned_to_two_different_versions(self) -> None:
+        pyproject = self._exact_pyproject_pins()
+        manifest = self._exact_manifest_pins()
+        shared = set(pyproject) & set(manifest)
+        assert shared, "expected at least one tool pinned exactly in both places"
+
+        drift = {
+            name: {"pyproject": pyproject[name], "manifest": manifest[name]}
+            for name in sorted(shared)
+            if pyproject[name] != manifest[name]
+        }
+        assert not drift, f"a pin was bumped in one place only: {drift}"
+
+    def test_black_is_patched_in_both(self) -> None:
+        """The specific instance that would have shipped the CVE to CI."""
+        assert self._exact_pyproject_pins()["black"] == "26.10.1"
+        assert self._exact_manifest_pins()["black"] == "26.10.1"

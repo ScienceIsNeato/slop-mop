@@ -7,7 +7,6 @@ repeated; the rest are about work being skipped while a pass is reported.
 
 from __future__ import annotations
 
-import subprocess
 import time
 from pathlib import Path
 from typing import Tuple
@@ -21,7 +20,7 @@ from slopmop.checks.python.tests import (
     _project_declares_coverage_source,
 )
 from slopmop.core.cache import _SOURCE_EXTENSIONS, compute_fingerprint
-from tests.git_helpers import add_worktree, commit_all, init_repo, run_git
+from tests.git_helpers import add_worktree, commit_all, init_repo
 
 
 def _make_git_repo(root: Path) -> None:

@@ -42,7 +42,7 @@
       "optional": true,
       "probe": "binary",
       "reason": "code formatting",
-      "version": "26.5.1"
+      "version": "26.10.1"
     },
     {
       "alternatives": [],
