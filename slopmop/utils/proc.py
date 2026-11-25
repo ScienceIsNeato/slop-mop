@@ -13,12 +13,13 @@ the bound — but there is no longer a way to forget one entirely.
 
 from __future__ import annotations
 
+import os
 import subprocess  # nosec B404 - this module exists to wrap it safely
 from typing import Any, List, Optional, cast
 
 from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 
-__all__ = ["bounded_run"]
+__all__ = ["bounded_run", "git_env"]
 
 
 def bounded_run(
@@ -47,3 +48,23 @@ def bounded_run(
             **kwargs,
         ),
     )
+
+
+def git_env(base: Optional[dict[str, str]] = None) -> dict[str, str]:
+    """An environment with git's repository pointers removed.
+
+    Git sets GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and friends for the
+    commands it invokes, so that a hook operates on the repository that
+    triggered it. slop-mop runs *from* a hook, and then runs git against
+    whatever project it is scanning — which is not necessarily that
+    repository.
+
+    Inheriting those pointers makes the answer wrong rather than absent:
+    asking `git -C <other-repo> rev-parse --git-common-dir` under a leaked
+    GIT_DIR returns the launching checkout, so worktree detection can borrow
+    a completely different project's virtualenv and report success.
+
+    Every ``GIT_*`` variable goes, not only the ones that bite today.
+    """
+    env = dict(base if base is not None else os.environ)
+    return {k: v for k, v in env.items() if not k.startswith("GIT_")}

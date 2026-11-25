@@ -15,11 +15,19 @@ These tests pin the rule that prevents it recurring.
 
 from __future__ import annotations
 
-import tomllib
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
+
+# tomllib is stdlib from 3.11; this project supports 3.10, where an
+# unconditional import stops pytest collecting this file entirely. Same
+# shim the CLI uses.
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib  # type: ignore[no-redef]
 
 from slopmop.checks.base import Requirement
 from slopmop.checks.security import SecurityLocalCheck
@@ -355,3 +363,76 @@ class TestCiInstallsSemgrepInIsolation:
         assert text.count('pip install -e ".[all]"') == text.count(
             "pipx install semgrep"
         )
+
+
+class TestGitProbesIgnoreInheritedPointers:
+    """slop-mop runs from a hook, then runs git against another project.
+
+    `git -C <root>` is not enough on its own: a leaked GIT_DIR wins over it.
+    `_main_worktree_root` asked an unrelated repository for its common dir and
+    got slop-mop's own checkout back, which would let worktree detection
+    borrow a different project's virtualenv and report success.
+
+    One scrubber, in production, shared with the test helpers — a second copy
+    of this rule is how several of this week's bugs happened.
+    """
+
+    def test_the_probe_is_not_fooled_by_a_leaked_git_dir(
+        self, tmp_path: Path
+    ) -> None:
+        import os
+        from unittest.mock import patch
+
+        from slopmop.checks.mixins import _main_worktree_root
+        from tests.git_helpers import commit_all, init_repo
+
+        init_repo(tmp_path)
+        (tmp_path / "f.txt").write_text("x\n")
+        commit_all(tmp_path)
+
+        with patch.dict(os.environ, {"GIT_DIR": str(PROJECT_ROOT / ".git")}):
+            answer = _main_worktree_root(tmp_path)
+
+        assert answer is None, (
+            f"probe answered for {answer} instead of the repo it was asked about"
+        )
+
+    def test_a_real_worktree_still_resolves_under_a_leak(
+        self, tmp_path: Path
+    ) -> None:
+        """Scrubbing must not break the detection it protects."""
+        import os
+        from unittest.mock import patch
+
+        from slopmop.checks.mixins import _main_worktree_root
+        from tests.git_helpers import add_worktree, commit_all, init_repo
+
+        main = tmp_path / "main"
+        main.mkdir()
+        init_repo(main)
+        (main / "f.txt").write_text("x\n")
+        commit_all(main)
+        wt = tmp_path / "wt"
+        add_worktree(main, wt, "feat/x")
+
+        with patch.dict(os.environ, {"GIT_DIR": str(PROJECT_ROOT / ".git")}):
+            answer = _main_worktree_root(wt)
+
+        assert answer is not None
+        assert answer.resolve() == main.resolve()
+
+    def test_there_is_one_scrubber(self) -> None:
+        """The test helper re-exports production, it does not reimplement it."""
+        from slopmop.utils.proc import git_env
+        from tests.git_helpers import clean_git_env
+
+        assert not [k for k in git_env() if k.startswith("GIT_")]
+        assert not [k for k in clean_git_env() if k.startswith("GIT_")]
+
+    def test_scrubbing_keeps_the_rest_of_the_environment(self) -> None:
+        import os
+
+        from slopmop.utils.proc import git_env
+
+        env = git_env()
+        assert "PATH" in env and env["PATH"] == os.environ.get("PATH")

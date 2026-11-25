@@ -17,20 +17,21 @@ anything inherited by a spawned test suite becomes part of its behaviour.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 from typing import Dict, Optional, Sequence
 
+from slopmop.utils.proc import git_env
+
 
 def clean_git_env(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """A copy of os.environ with git's repository pointers removed.
+    """Re-export of the production scrubber, so there is only one of them.
 
-    Every ``GIT_*`` variable goes, not just the three that bite today: the
-    point is that a test's git commands answer to the test's repository and
-    nothing else, whoever started the process.
+    slop-mop needs this for its own git probes; a separate copy here would be
+    a second definition of the same rule, which is how most of this week's
+    bugs happened.
     """
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env = git_env()
     if extra:
         env.update(extra)
     return env

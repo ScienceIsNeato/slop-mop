@@ -82,8 +82,9 @@ def _install_hint_for(name: str) -> str:
     return _SECURITY_INSTALL_HINT
 
 
-
-def _subresult_for_scanner_exception(name: str, exc: BaseException) -> "SecuritySubResult":
+def _subresult_for_scanner_exception(
+    name: str, exc: BaseException
+) -> "SecuritySubResult":
     """Turn an exception from a scanner into the right kind of result.
 
     A missing or unrunnable binary is an environment fact, not a security

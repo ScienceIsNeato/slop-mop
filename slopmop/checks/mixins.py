@@ -39,7 +39,7 @@ from slopmop.core.result import (
     FindingLevel,
     ScopeInfo,
 )
-from slopmop.utils.proc import bounded_run
+from slopmop.utils.proc import bounded_run, git_env
 
 logger = logging.getLogger(__name__)
 _PYTHON_SOURCE_EXCLUDE_DIRS = {
@@ -262,6 +262,9 @@ def _main_worktree_root(root: Path) -> Optional[Path]:
             capture_output=True,
             text=True,
             timeout=PROBE_TIMEOUT,
+            # -C alone is not enough: a leaked GIT_DIR wins over it, and this
+            # runs from a pre-commit hook, where one is always set.
+            env=git_env(),
         )
     except (subprocess.SubprocessError, OSError):
         return None
