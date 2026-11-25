@@ -377,9 +377,7 @@ class TestGitProbesIgnoreInheritedPointers:
     of this rule is how several of this week's bugs happened.
     """
 
-    def test_the_probe_is_not_fooled_by_a_leaked_git_dir(
-        self, tmp_path: Path
-    ) -> None:
+    def test_the_probe_is_not_fooled_by_a_leaked_git_dir(self, tmp_path: Path) -> None:
         import os
         from unittest.mock import patch
 
@@ -393,13 +391,11 @@ class TestGitProbesIgnoreInheritedPointers:
         with patch.dict(os.environ, {"GIT_DIR": str(PROJECT_ROOT / ".git")}):
             answer = _main_worktree_root(tmp_path)
 
-        assert answer is None, (
-            f"probe answered for {answer} instead of the repo it was asked about"
-        )
+        assert (
+            answer is None
+        ), f"probe answered for {answer} instead of the repo it was asked about"
 
-    def test_a_real_worktree_still_resolves_under_a_leak(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_real_worktree_still_resolves_under_a_leak(self, tmp_path: Path) -> None:
         """Scrubbing must not break the detection it protects."""
         import os
         from unittest.mock import patch
