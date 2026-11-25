@@ -432,3 +432,40 @@ class TestGitProbesIgnoreInheritedPointers:
 
         env = git_env()
         assert "PATH" in env and env["PATH"] == os.environ.get("PATH")
+
+
+class TestCommittedManifestIsCurrent:
+    """The committed manifest must match what this repo's code generates.
+
+    The Action's `verify-manifest` asks a different question — whether the
+    committed manifest matches what the *released* slopmop generates — which
+    no PR that changes `requirements()` can satisfy, because the manifest has
+    to lead the release it describes. That check is right for a consumer and
+    structurally unsatisfiable for this repo.
+
+    This is the invariant that actually protects us: regenerate from the code
+    in the tree and compare. It catches the real failure (someone edits
+    requirements and forgets `sm doctor --required-deps`), which is what let
+    a stale ruff pin sit in the manifest for weeks.
+    """
+
+    def test_regenerating_changes_nothing(self) -> None:
+        import json
+
+        from slopmop.checks.base import build_requirements_document
+        from slopmop.checks.tool_inventory import aggregate_requirements
+        from slopmop.doctor.sm_env import load_repo_config
+
+        config = load_repo_config(str(PROJECT_ROOT))
+        regenerated = build_requirements_document(
+            aggregate_requirements(config, project_root=str(PROJECT_ROOT))
+        )
+        committed = json.loads(
+            (PROJECT_ROOT / ".slopmop" / "required-deps.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert committed == regenerated, (
+            "committed manifest is stale — run: "
+            "sm doctor --required-deps > .slopmop/required-deps.json"
+        )
