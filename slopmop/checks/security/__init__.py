@@ -66,6 +66,40 @@ def _scanner_failed_to_start(output: str) -> bool:
     return any(marker in output for marker in _SCANNER_STARTUP_FAILURE_MARKERS)
 
 
+def _install_hint_for(name: str) -> str:
+    """The command that actually installs *name*.
+
+    Every scanner used to share one hint because every scanner lived in the
+    same extra. semgrep no longer does, so a shared hint would tell whoever
+    is missing it to run a command that installs everything except the thing
+    they need.
+    """
+    from slopmop.checks.security import SecurityLocalCheck  # noqa: PLC0415
+
+    req = SecurityLocalCheck._SCANNER_REQUIREMENTS.get(name)
+    if req is not None and req.install_hint:
+        return req.install_hint
+    return _SECURITY_INSTALL_HINT
+
+
+
+def _subresult_for_scanner_exception(name: str, exc: BaseException) -> "SecuritySubResult":
+    """Turn an exception from a scanner into the right kind of result.
+
+    A missing or unrunnable binary is an environment fact, not a security
+    finding. The dispatch used to fold every exception into a failed
+    sub-result, so a semgrep that was not installed came back as "semgrep
+    found issues" — a gate reporting a finding from a scanner that never ran.
+
+    Reachable in normal use now that semgrep installs separately from
+    slop-mop: a machine can satisfy the availability probe and still fail the
+    exec. Anything that is not an environment problem still fails, loudly.
+    """
+    if isinstance(exc, (FileNotFoundError, NotADirectoryError, PermissionError)):
+        return _scanner_did_not_run(name, str(exc))
+    return SecuritySubResult(name, False, f"Error: {exc}")
+
+
 def _scanner_did_not_run(name: str, output: str) -> "SecuritySubResult":
     """Build the degraded result for a scanner that never started.
 
@@ -76,7 +110,7 @@ def _scanner_did_not_run(name: str, output: str) -> "SecuritySubResult":
         name,
         True,
         f"{name} did not run ({(output or '').strip()[-160:]}); "
-        f"install it with: {_SECURITY_INSTALL_HINT}",
+        f"install it with: {_install_hint_for(name)}",
         warned=True,
         did_not_run=True,
         sarif_findings=[
@@ -523,7 +557,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                     results.append(future.result(timeout=180))
                 except Exception as e:
                     name = futures[future].replace("_run_", "")
-                    results.append(SecuritySubResult(name, False, f"Error: {e}"))
+                    results.append(_subresult_for_scanner_exception(name, e))
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]
@@ -899,7 +933,7 @@ class SecurityCheck(SecurityLocalCheck):
                     results.append(future.result(timeout=180))
                 except Exception as e:
                     name = futures[future].replace("_run_", "")
-                    results.append(SecuritySubResult(name, False, f"Error: {e}"))
+                    results.append(_subresult_for_scanner_exception(name, e))
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]

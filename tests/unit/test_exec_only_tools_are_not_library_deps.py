@@ -275,3 +275,83 @@ class TestManifestPinsAgreeWithPyproject:
         """The specific instance that would have shipped the CVE to CI."""
         assert self._exact_pyproject_pins()["black"] == "26.10.1"
         assert self._exact_manifest_pins()["black"] == "26.10.1"
+
+
+class TestAMissingScannerIsNotAFinding:
+    """A scanner that never ran has found nothing, by definition.
+
+    The dispatch folded every exception into a failed sub-result, so a
+    semgrep that was not installed came back as "semgrep found issues" — the
+    gate reporting a security finding from a scanner that had not executed.
+
+    Latent until now: semgrep was always present because it was a library
+    dependency. Unbundling makes it reachable, since a machine can satisfy
+    the availability probe and still fail the exec.
+    """
+
+    def test_a_missing_binary_degrades_instead_of_failing(self) -> None:
+        from slopmop.checks.security import _subresult_for_scanner_exception
+
+        sub = _subresult_for_scanner_exception(
+            "semgrep", FileNotFoundError(2, "No such file or directory: 'semgrep'")
+        )
+        assert sub.passed is True, "a scanner that did not run must not fail the gate"
+        assert sub.warned is True
+        assert sub.did_not_run is True
+        assert "found issues" not in sub.findings
+
+    def test_a_real_error_still_fails(self) -> None:
+        """Degrading must not swallow genuine scanner breakage."""
+        from slopmop.checks.security import _subresult_for_scanner_exception
+
+        sub = _subresult_for_scanner_exception("semgrep", ValueError("bad rule pack"))
+        assert sub.passed is False
+        assert "bad rule pack" in sub.findings
+
+    def test_the_remediation_can_install_the_missing_tool(self) -> None:
+        """The shared hint would send a semgrep user to an extra without it."""
+        from slopmop.checks.security import _subresult_for_scanner_exception
+
+        sub = _subresult_for_scanner_exception("semgrep", FileNotFoundError("nope"))
+        assert "pipx install semgrep" in sub.findings
+        assert "slopmop[security]" not in sub.findings
+
+    def test_bundled_scanners_keep_the_extras_hint(self) -> None:
+        from slopmop.checks.security import _subresult_for_scanner_exception
+
+        sub = _subresult_for_scanner_exception("bandit", FileNotFoundError("nope"))
+        assert "slopmop[security]" in sub.findings
+
+
+class TestCiInstallsSemgrepInIsolation:
+    """Unbundling is only real if nobody puts it back in the same venv."""
+
+    @staticmethod
+    def _workflow() -> str:
+        return (PROJECT_ROOT / ".github" / "workflows" / "slopmop-sarif.yml").read_text(
+            encoding="utf-8"
+        )
+
+    def test_ci_installs_semgrep_somewhere(self) -> None:
+        """It left [all], so CI has to ask for it explicitly or lose the gate."""
+        assert "install semgrep" in self._workflow()
+
+    def test_ci_never_pip_installs_it_into_the_audited_venv(self) -> None:
+        """`pip install semgrep` there would restore the tree pip-audit reads."""
+        offenders = [
+            line.strip()
+            for line in self._workflow().splitlines()
+            if "semgrep" in line
+            and "pip install" in line
+            and "pipx" not in line
+            and not line.strip().startswith("#")
+        ]
+        assert not offenders, offenders
+
+    def test_every_install_site_gets_it(self) -> None:
+        """Three jobs build a venv; a gate that silently skips in one is worse
+        than one that fails in all three."""
+        text = self._workflow()
+        assert text.count('pip install -e ".[all]"') == text.count(
+            "pipx install semgrep"
+        )
