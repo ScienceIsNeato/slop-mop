@@ -534,6 +534,6 @@ class TestEveryRemediationCanInstallWhatItNames:
         from slopmop.checks import security
 
         source = inspect.getsource(security._scanner_did_not_run)
-        assert "_SECURITY_INSTALL_HINT" not in source, (
-            "a per-scanner message is using the shared constant again"
-        )
+        assert (
+            "_SECURITY_INSTALL_HINT" not in source
+        ), "a per-scanner message is using the shared constant again"
