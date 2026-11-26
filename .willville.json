@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Fixing why the weekly security scan has been red since October \u2014 we were shipping a scanner as part of our own install, so its problems became ours",
-    "direction": "Install tools we only run, rather than bundling them in",
-    "last_update": "2026-11-25T00:00:00Z"
+    "status": "Security scan is green again after six weeks red — PR #385 up, waiting on review",
+    "direction": "Get it merged and cut 2.19.0, with a heads-up that the scanner now installs separately",
+    "last_update": "2026-11-26T07:15:00Z"
   }
 }
