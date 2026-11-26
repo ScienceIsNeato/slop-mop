@@ -558,7 +558,9 @@ class TestMissingBinaryIsDetectedTheWayItActuallyFails:
         from slopmop.checks.security import SecurityLocalCheck
 
         check = SecurityLocalCheck({})
-        result = check._run_command(["semgrep", "--version"], cwd="/nonexistent-dir-xyz")
+        result = check._run_command(
+            ["semgrep", "--version"], cwd="/nonexistent-dir-xyz"
+        )
         assert result.returncode != 0
 
     def test_command_not_found_counts_as_a_startup_failure(self) -> None:
