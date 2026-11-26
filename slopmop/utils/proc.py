@@ -21,6 +21,12 @@ from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
 
 __all__ = ["bounded_run", "git_env"]
 
+# GIT_* variables that only restrict where git may look. Keeping them is
+# strictly safer than dropping them: the risk being guarded against is a
+# probe resolving to the wrong repository, and these make that less likely,
+# not more. Everything else is a pointer and goes.
+_GIT_SCOPE_NARROWING_VARS = frozenset({"GIT_CEILING_DIRECTORIES"})
+
 
 def bounded_run(
     command: List[str],
@@ -64,7 +70,16 @@ def git_env(base: Optional[dict[str, str]] = None) -> dict[str, str]:
     GIT_DIR returns the launching checkout, so worktree detection can borrow
     a completely different project's virtualenv and report success.
 
-    Every ``GIT_*`` variable goes, not only the ones that bite today.
+    Every ``GIT_*`` variable goes except those that only *narrow* where git
+    may look. The distinction matters: dropping a pointer stops git being
+    redirected, but dropping a restriction lets it search further than the
+    user allowed. ``GIT_CEILING_DIRECTORIES`` is the live case — remove it
+    and the probe can walk up into an ancestor checkout, so a project that
+    is in no repository at all resolves to one and borrows its virtualenv.
     """
     env = dict(base if base is not None else os.environ)
-    return {k: v for k, v in env.items() if not k.startswith("GIT_")}
+    return {
+        k: v
+        for k, v in env.items()
+        if not k.startswith("GIT_") or k in _GIT_SCOPE_NARROWING_VARS
+    }

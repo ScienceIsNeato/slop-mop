@@ -58,6 +58,13 @@ _SEMGREP_INSTALL_HINT = "pipx install semgrep"
 _SCANNER_STARTUP_FAILURE_MARKERS = (
     "No module named",
     "ModuleNotFoundError",
+    # A scanner invoked as a binary fails differently from one imported as a
+    # module. SubprocessRunner catches FileNotFoundError and returns
+    # returncode=-1 with "Command not found: <name>", so no exception ever
+    # reaches the gate — only these two import markers were checked, and a
+    # missing binary therefore became a failed scan rather than an absent one.
+    # Reachable since semgrep started installing separately from slop-mop.
+    "Command not found:",
 )
 
 

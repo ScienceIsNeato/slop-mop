@@ -537,3 +537,102 @@ class TestEveryRemediationCanInstallWhatItNames:
         assert (
             "_SECURITY_INSTALL_HINT" not in source
         ), "a per-scanner message is using the shared constant again"
+
+
+class TestMissingBinaryIsDetectedTheWayItActuallyFails:
+    """The first attempt at this guarded an exception that never arrives.
+
+    `SubprocessRunner` catches `FileNotFoundError` and returns
+    `returncode=-1` with `Command not found: <name>` in stderr, so nothing
+    propagates to the gate. The dispatch handler added for `FileNotFoundError`
+    was dead code for this case, and the no-JSON path only matched import
+    errors — so a missing binary still failed the gate.
+
+    It looked fixed because the test mocked `side_effect=FileNotFoundError`:
+    the mock encoded the model, and the model was wrong. These exercise the
+    real runner instead.
+    """
+
+    def test_the_runner_returns_rather_than_raises(self) -> None:
+        """The premise. If this ever changes, the marker below is redundant."""
+        from slopmop.checks.security import SecurityLocalCheck
+
+        check = SecurityLocalCheck({})
+        result = check._run_command(["semgrep", "--version"], cwd="/nonexistent-dir-xyz")
+        assert result.returncode != 0
+
+    def test_command_not_found_counts_as_a_startup_failure(self) -> None:
+        from slopmop.checks.security import _scanner_failed_to_start
+
+        produced = (
+            "Command not found: semgrep\n"
+            "[Errno 2] No such file or directory: 'semgrep'"
+        )
+        assert _scanner_failed_to_start(produced) is True
+
+    def test_a_real_scan_error_is_still_a_failure(self) -> None:
+        """The marker must not swallow genuine scanner breakage."""
+        from slopmop.checks.security import _scanner_failed_to_start
+
+        assert _scanner_failed_to_start("semgrep: invalid rule pack") is False
+
+    def test_an_absent_binary_degrades_through_the_real_path(self) -> None:
+        """End to end, with no exception mocked anywhere."""
+        from unittest.mock import patch
+
+        import slopmop.checks.base as base
+        from slopmop.checks.security import SecurityLocalCheck
+
+        check = SecurityLocalCheck({})
+        missing = "/nonexistent/bin/semgrep"
+        with patch.object(base, "find_tool", return_value=missing):
+            with patch.object(check, "resolve_requirement_path", return_value=missing):
+                sub = check._run_semgrep(".")
+
+        assert sub.passed is True, "a missing binary must not fail the gate"
+        assert sub.did_not_run is True
+        assert "pipx install semgrep" in sub.findings
+
+
+class TestGitScrubbingKeepsRestrictions:
+    """Dropping a pointer is safe; dropping a restriction is not.
+
+    `git_env` removed every GIT_* variable, including
+    `GIT_CEILING_DIRECTORIES`, which only limits how far up git may search.
+    Without it the probe can walk into an ancestor checkout, so a project in
+    no repository at all resolves to one and borrows its virtualenv — the
+    opposite of what the scrubbing is for.
+    """
+
+    @staticmethod
+    def _scrubbed(extra: Dict[str, str]) -> Dict[str, str]:
+        import os
+        from unittest.mock import patch
+
+        from slopmop.utils.proc import git_env
+
+        with patch.dict(os.environ, extra, clear=True):
+            return git_env()
+
+    def test_pointers_are_removed(self) -> None:
+        env = self._scrubbed(
+            {
+                "GIT_DIR": "/elsewhere/.git",
+                "GIT_WORK_TREE": "/elsewhere",
+                "GIT_INDEX_FILE": "/elsewhere/.git/index",
+                "GIT_COMMON_DIR": "/elsewhere/.git",
+            }
+        )
+        assert not [k for k in env if k.startswith("GIT_")]
+
+    def test_the_ceiling_survives(self) -> None:
+        env = self._scrubbed(
+            {"GIT_DIR": "/elsewhere/.git", "GIT_CEILING_DIRECTORIES": "/home/user"}
+        )
+        assert env.get("GIT_CEILING_DIRECTORIES") == "/home/user"
+        assert "GIT_DIR" not in env
+
+    def test_an_unknown_git_variable_is_still_dropped(self) -> None:
+        """Default stays deny: only named restrictions are kept."""
+        env = self._scrubbed({"GIT_SOMETHING_NEW": "x"})
+        assert "GIT_SOMETHING_NEW" not in env
