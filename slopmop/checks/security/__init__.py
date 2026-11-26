@@ -118,7 +118,7 @@ def _scanner_did_not_run(name: str, output: str) -> "SecuritySubResult":
             Finding(
                 message=(
                     f"{name} did not run, so its scan was skipped — "
-                    f"install it with: {_SECURITY_INSTALL_HINT}"
+                    f"install it with: {_install_hint_for(name)}"
                 ),
                 level=FindingLevel.WARNING,
             )
@@ -477,10 +477,13 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
         # A scanner that never started needs an install, not risk triage.
         if all(w.did_not_run for w in warnings):
             error = f"{len(warnings)} security scanner(s) did not run"
+            # One hint per scanner, deduplicated. These no longer install from
+            # the same place: semgrep left the extra, so a single shared
+            # command would omit whichever scanner is actually missing.
+            hints = sorted({_install_hint_for(w.name) for w in warnings})
             fix_suggestion = (
                 "Nothing was scanned by the tool(s) above, so this is not a "
-                "clean bill of health. Install them with: "
-                f"{_SECURITY_INSTALL_HINT}"
+                "clean bill of health. Install them with: " + "; ".join(hints)
             )
         else:
             error = f"{len(warnings)} security scanner(s) reported non-blocking risk"

@@ -469,3 +469,71 @@ class TestCommittedManifestIsCurrent:
             "committed manifest is stale — run: "
             "sm doctor --required-deps > .slopmop/required-deps.json"
         )
+
+
+class TestEveryRemediationCanInstallWhatItNames:
+    """A hint that cannot install the missing tool is worse than none.
+
+    Review caught two survivors of the first pass. The human-readable string
+    was switched to the per-scanner hint and the SARIF message immediately
+    below it was not — so the GitHub Code Scanning alert, which is what most
+    people actually read, still told semgrep users to run a command that
+    installs everything except semgrep. The aggregate remediation had the same
+    problem with no scanner named at all.
+    """
+
+    def test_text_and_sarif_agree_for_every_scanner(self) -> None:
+        """They sit in the same function and drifted anyway."""
+        from slopmop.checks.security import _scanner_did_not_run
+
+        for name in ("semgrep", "bandit", "detect-secrets"):
+            sub = _scanner_did_not_run(name, "boom")
+            text_hint = sub.findings.split("install it with: ")[-1]
+            sarif_hint = sub.sarif_findings[0].message.split("install it with: ")[-1]
+            assert text_hint == sarif_hint, f"{name}: {text_hint!r} vs {sarif_hint!r}"
+
+    def test_semgrep_is_never_pointed_at_the_extra_it_left(self) -> None:
+        from slopmop.checks.security import _scanner_did_not_run
+
+        sub = _scanner_did_not_run("semgrep", "boom")
+        for message in (sub.findings, sub.sarif_findings[0].message):
+            assert "slopmop[security]" not in message, message
+            assert "pipx install semgrep" in message
+
+    def test_the_aggregate_remediation_covers_every_route(self) -> None:
+        """It names no scanner, so one shared command cannot be right."""
+        from slopmop.checks.security import SecurityLocalCheck, _scanner_did_not_run
+
+        warnings = [
+            _scanner_did_not_run("semgrep", "x"),
+            _scanner_did_not_run("bandit", "y"),
+        ]
+        result = SecurityLocalCheck({})._warnings_only_result(warnings, 0.0)
+        suggestion = result.fix_suggestion or ""
+        assert "pipx install semgrep" in suggestion
+        assert "slopmop[security]" in suggestion
+
+    def test_the_aggregate_does_not_repeat_a_shared_route(self) -> None:
+        from slopmop.checks.security import SecurityLocalCheck, _scanner_did_not_run
+
+        warnings = [
+            _scanner_did_not_run("bandit", "x"),
+            _scanner_did_not_run("detect-secrets", "y"),
+        ]
+        result = SecurityLocalCheck({})._warnings_only_result(warnings, 0.0)
+        assert (result.fix_suggestion or "").count("slopmop[security]") == 1
+
+    def test_no_scanner_message_hardcodes_the_shared_hint(self) -> None:
+        """The guard: any message naming a scanner must resolve its own hint.
+
+        Catches the next half-fix, where one of several strings in the same
+        function keeps the old constant.
+        """
+        import inspect
+
+        from slopmop.checks import security
+
+        source = inspect.getsource(security._scanner_did_not_run)
+        assert "_SECURITY_INSTALL_HINT" not in source, (
+            "a per-scanner message is using the shared constant again"
+        )
