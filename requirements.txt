@@ -17,7 +17,7 @@ vulture>=2.14
 radon>=5.1.0
 
 # Linting and formatting
-black==26.5.1
+black==26.10.1
 isort==8.0.1
 autoflake==2.3.3
 flake8==7.3.0
@@ -37,7 +37,6 @@ requests>=2.33.0
 python-multipart>=0.0.27
 pyjwt>=2.13.0
 starlette>=1.0.1
-semgrep>=1.140.0
 pip-audit>=2.0.0
 
 # Testing

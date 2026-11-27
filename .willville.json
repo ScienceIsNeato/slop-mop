@@ -1,7 +1,7 @@
 {
   "agent": {
-    "status": "Fixing a test-time setting that never did anything, so a slow CI runner can give the tests longer",
-    "direction": "Cut it as a small patch release so the app repo's release check stops getting cut off",
-    "last_update": "2026-09-27T00:00:00Z"
+    "status": "Security scan is green again after six weeks red — PR #385 up, waiting on review",
+    "direction": "Get it merged and cut 2.19.0, with a heads-up that the scanner now installs separately",
+    "last_update": "2026-11-26T07:15:00Z"
   }
 }

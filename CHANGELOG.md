@@ -6,6 +6,68 @@ body, so **a release cannot be published without a matching section here.**
 
 Format: one `## X.Y.Z` section per release, newest first.
 
+## 2.19.0
+
+The weekly code-scanning run had been red since October 19 — six consecutive
+failures — over four vulnerabilities. One was ours. The other three were
+semgrep's dependencies, in packages slop-mop has never imported a single line
+from, and they could not be fixed from here at all: semgrep pins each of them
+below the patched version, on its latest release as much as on ours.
+
+The ignore-list that had been holding this together was the real bug. Every
+new advisory against `mcp` meant another suppression, re-argued and re-earned,
+for code that does not run. The fix is to stop owning the tree: slop-mop
+*execs* semgrep, so semgrep belongs on `PATH`, not in slop-mop's dependencies.
+
+### Behavior changes
+
+- **semgrep is no longer a library dependency of `slopmop[security]`** —
+  slop-mop invokes semgrep as a subprocess and imports nothing from it, but it
+  was declared as a Python dependency, so semgrep's whole transitive tree
+  landed inside the environment slop-mop audits. `mcp`, `opentelemetry-api`
+  and `wcmatch` advisories were therefore reported *against slop-mop*, with no
+  upgrade path and no reachable code path. Four findings became zero, and the
+  scanner itself is unchanged.
+  **Upgrade note:** `pipx install slopmop[security]` no longer brings semgrep
+  with it. The semgrep scanner still runs whenever semgrep is on `PATH` —
+  install it alongside slop-mop with `pipx install semgrep`, in its own
+  environment. If you skip it, the security gate now says so out loud rather
+  than quietly scanning less (see the first fix below).
+
+- **`required-deps.json` can mark a tool as needing its own environment** — a
+  new optional `isolated` field. The GitHub Action `pipx install`s those tools
+  separately instead of `pipx inject`ing them into slop-mop's venv, which is
+  the mechanism that put the baggage inside the audited environment in the
+  first place. The manifest `schema_version` is unchanged at `1`, and older
+  consumers ignore the field, so no pinned Action breaks.
+
+### Fixes
+
+- **A scanner that never ran has not found nothing** — with semgrep absent,
+  the security gate reported "semgrep found issues". The subprocess runner
+  catches `FileNotFoundError` and returns `-1` with `Command not found:
+  semgrep` on stderr rather than raising, so the gate read the absence of the
+  tool as the output of the tool. A missing scanner now degrades to a warning
+  that names the command to install it, in the human-readable output and in
+  the SARIF alike — a verdict nobody computed is not a clean verdict, and it
+  is not a dirty one either.
+
+- **black's pin lived in two places and the Action read the stale one** —
+  `pyproject.toml` declares black for the `[lint]` extra, while
+  `lint_format.py` carried a second pin that is what actually drives
+  `required-deps.json`. Bumping the first alone would have left every Action
+  consumer installing the affected version while slop-mop's own CI went green.
+  Both now say `26.10.1`, and a test fails if they ever disagree again.
+
+- **`GIT_DIR` in the environment overrode the repository being inspected** —
+  worktree-root detection ran `git -C <path>`, but `-C` only changes the
+  working directory; an inherited `GIT_DIR` still wins. Under slop-mop's own
+  pre-commit hook, which exports it, an unrelated project resolved to
+  slop-mop's checkout. Git-invoking helpers now scrub inherited `GIT_*`
+  pointers, keeping `GIT_CEILING_DIRECTORIES`: that one narrows discovery
+  rather than redirecting it, and dropping it would have let git search
+  further up the filesystem than the caller allowed.
+
 ## 2.18.1
 
 A setting that did nothing. The Python test gate has always offered a

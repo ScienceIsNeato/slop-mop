@@ -505,13 +505,32 @@ class TestAllToolGatesDeclareRequirements:
         for tool, gate, hint in gate_tool_inventory():
             assert hint, f"{tool} (in {gate}) has no install hint"
 
-    def test_security_tools_share_the_extras_install_hint(self):
+    def test_bundled_security_tools_share_the_extras_install_hint(self):
         # The extras-group remediation that REQUIRED_TOOLS used to hardcode is
-        # now derived from requirements().
+        # now derived from requirements(). Tools installed in their own
+        # environment are the exception and are covered below.
         from slopmop.checks.security import SecurityCheck
 
         for req in SecurityCheck({}).requirements().items:
+            if req.isolated:
+                continue
             assert req.resolved_install_hint() == "pipx install slopmop[security]"
+
+    def test_isolated_tools_do_not_point_at_an_extra_that_lacks_them(self):
+        """An isolated tool is not in the extra, so that hint cannot install it.
+
+        semgrep kept the shared hint for a while after it stopped being a
+        library dependency, which would have told anyone missing it to run a
+        command that installs everything except the thing they need.
+        """
+        from slopmop.checks.security import SecurityCheck
+
+        isolated = [r for r in SecurityCheck({}).requirements().items if r.isolated]
+        assert isolated, "expected at least one isolated security tool"
+        for req in isolated:
+            hint = req.resolved_install_hint()
+            assert "slopmop[" not in hint, f"{req.name}: {hint}"
+            assert req.name in hint, f"{req.name}: {hint}"
 
     def test_every_declared_requirement_is_well_formed(self):
         registry = self._registry()

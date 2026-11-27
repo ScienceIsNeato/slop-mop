@@ -31,6 +31,7 @@ from slopmop.checks.base import (
     Requirements,
     ToolContext,
 )
+from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.checks.security._detect_secrets import DetectSecretsMixin
 from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
@@ -40,6 +41,16 @@ from slopmop.core.result import CheckResult, CheckStatus, Finding, FindingLevel
 _SCANNER_NOT_INSTALLED = "{name} (not installed)"
 _SECURITY_INSTALL_HINT = "pipx install slopmop[security]"
 
+# semgrep is executed, never imported, so it is not a library dependency of
+# slop-mop. Installing it into slop-mop's own environment pulled its whole
+# transitive tree in with it — mcp, opentelemetry-api and wcmatch, each
+# pinned by semgrep tightly enough that a floor-pin could not reach a
+# patched version. Those became slop-mop's vulnerabilities on paper and
+# took its scanning gate down for six weeks. Its own environment keeps
+# semgrep's dependencies semgrep's problem; find_tool resolves it from
+# PATH either way.
+_SEMGREP_INSTALL_HINT = "pipx install semgrep"
+
 # A scanner that fails to even start (its Python module isn't importable in the
 # interpreter we shell out to) is a tooling/environment problem, NOT a security
 # finding. Reporting "No module named detect_secrets" as SLOP DETECTED tells a
@@ -48,12 +59,58 @@ _SECURITY_INSTALL_HINT = "pipx install slopmop[security]"
 _SCANNER_STARTUP_FAILURE_MARKERS = (
     "No module named",
     "ModuleNotFoundError",
+    # A scanner invoked as a binary fails differently from one imported as a
+    # module. SubprocessRunner catches FileNotFoundError and returns
+    # returncode=-1 with "Command not found: <name>", so no exception ever
+    # reaches the gate — only these two import markers were checked, and a
+    # missing binary therefore became a failed scan rather than an absent one.
+    # Reachable since semgrep started installing separately from slop-mop.
+    #
+    # The sentinel is the runner's, not ours: five other gates already read it
+    # from constants, and a seventh spelling of the same string is how the
+    # rest of this week's bugs started.
+    COMMAND_NOT_FOUND,
 )
 
 
 def _scanner_failed_to_start(output: str) -> bool:
     """Return True when scanner output shows it never ran (import/startup error)."""
     return any(marker in output for marker in _SCANNER_STARTUP_FAILURE_MARKERS)
+
+
+def _install_hint_for(name: str) -> str:
+    """The command that actually installs *name*.
+
+    Every scanner used to share one hint because every scanner lived in the
+    same extra. semgrep no longer does, so a shared hint would tell whoever
+    is missing it to run a command that installs everything except the thing
+    they need.
+    """
+    from slopmop.checks.security import SecurityLocalCheck  # noqa: PLC0415
+
+    req = SecurityLocalCheck._SCANNER_REQUIREMENTS.get(name)
+    if req is not None and req.install_hint:
+        return req.install_hint
+    return _SECURITY_INSTALL_HINT
+
+
+def _subresult_for_scanner_exception(
+    name: str, exc: BaseException
+) -> "SecuritySubResult":
+    """Turn an exception from a scanner into the right kind of result.
+
+    A missing or unrunnable binary is an environment fact, not a security
+    finding. The dispatch used to fold every exception into a failed
+    sub-result, so a semgrep that was not installed came back as "semgrep
+    found issues" — a gate reporting a finding from a scanner that never ran.
+
+    Reachable in normal use now that semgrep installs separately from
+    slop-mop: a machine can satisfy the availability probe and still fail the
+    exec. Anything that is not an environment problem still fails, loudly.
+    """
+    if isinstance(exc, (FileNotFoundError, NotADirectoryError, PermissionError)):
+        return _scanner_did_not_run(name, str(exc))
+    return SecuritySubResult(name, False, f"Error: {exc}")
 
 
 def _scanner_did_not_run(name: str, output: str) -> "SecuritySubResult":
@@ -66,14 +123,14 @@ def _scanner_did_not_run(name: str, output: str) -> "SecuritySubResult":
         name,
         True,
         f"{name} did not run ({(output or '').strip()[-160:]}); "
-        f"install it with: {_SECURITY_INSTALL_HINT}",
+        f"install it with: {_install_hint_for(name)}",
         warned=True,
         did_not_run=True,
         sarif_findings=[
             Finding(
                 message=(
                     f"{name} did not run, so its scan was skipped — "
-                    f"install it with: {_SECURITY_INSTALL_HINT}"
+                    f"install it with: {_install_hint_for(name)}"
                 ),
                 level=FindingLevel.WARNING,
             )
@@ -361,8 +418,9 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
             name="semgrep",
             probe="binary",
             optional=True,
-            reason="pattern-based security scanning (pip-installed, run as a binary)",
-            install_hint=_SECURITY_INSTALL_HINT,
+            reason="pattern-based security scanning (standalone binary, not imported)",
+            install_hint=_SEMGREP_INSTALL_HINT,
+            isolated=True,
         ),
         "detect-secrets": Requirement(  # pragma: allowlist secret
             kind="python",
@@ -431,10 +489,13 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
         # A scanner that never started needs an install, not risk triage.
         if all(w.did_not_run for w in warnings):
             error = f"{len(warnings)} security scanner(s) did not run"
+            # One hint per scanner, deduplicated. These no longer install from
+            # the same place: semgrep left the extra, so a single shared
+            # command would omit whichever scanner is actually missing.
+            hints = sorted({_install_hint_for(w.name) for w in warnings})
             fix_suggestion = (
                 "Nothing was scanned by the tool(s) above, so this is not a "
-                "clean bill of health. Install them with: "
-                f"{_SECURITY_INSTALL_HINT}"
+                "clean bill of health. Install them with: " + "; ".join(hints)
             )
         else:
             error = f"{len(warnings)} security scanner(s) reported non-blocking risk"
@@ -512,7 +573,7 @@ class SecurityLocalCheck(BaseCheck, PythonCheckMixin, DetectSecretsMixin):
                     results.append(future.result(timeout=180))
                 except Exception as e:
                     name = futures[future].replace("_run_", "")
-                    results.append(SecuritySubResult(name, False, f"Error: {e}"))
+                    results.append(_subresult_for_scanner_exception(name, e))
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]
@@ -888,7 +949,7 @@ class SecurityCheck(SecurityLocalCheck):
                     results.append(future.result(timeout=180))
                 except Exception as e:
                     name = futures[future].replace("_run_", "")
-                    results.append(SecuritySubResult(name, False, f"Error: {e}"))
+                    results.append(_subresult_for_scanner_exception(name, e))
 
         duration = time.time() - start_time
         failures = [r for r in results if not r.passed]

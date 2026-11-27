@@ -153,6 +153,12 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -e ".[all]"
+          # semgrep is installed in its own environment, never into this
+          # venv. Injecting it here would put its dependency tree back into
+          # the environment pip-audit audits — which is the whole reason the
+          # scanning gate was red for six weeks. pipx puts its bin on PATH,
+          # which is where find_tool looks.
+          pipx install semgrep
 
       - name: Verify config migration coverage
         run: |
@@ -280,6 +286,12 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -e ".[all]"
+          # semgrep is installed in its own environment, never into this
+          # venv. Injecting it here would put its dependency tree back into
+          # the environment pip-audit audits — which is the whole reason the
+          # scanning gate was red for six weeks. pipx puts its bin on PATH,
+          # which is where find_tool looks.
+          pipx install semgrep
 
       - name: Run unit tests with coverage
         run: |
@@ -339,6 +351,12 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -e ".[all]"
+          # semgrep is installed in its own environment, never into this
+          # venv. Injecting it here would put its dependency tree back into
+          # the environment pip-audit audits — which is the whole reason the
+          # scanning gate was red for six weeks. pipx puts its bin on PATH,
+          # which is where find_tool looks.
+          pipx install semgrep
           pip install pytest
 
       - name: Run Docker integration tests

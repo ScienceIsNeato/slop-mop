@@ -74,6 +74,22 @@ jobs:
           # Warnings (still grade A) remain advisory.
           minimum-grade: "A"
           upload-sarif: "false"
+          # Off for this repo only, and not as a convenience.
+          #
+          # The check compares the committed manifest against what the
+          # *released* slopmop generates. For a consumer that is the right
+          # question. For slop-mop itself it is unsatisfiable: the manifest
+          # describes the code in this tree, so any PR touching a gate's
+          # requirements() must change it before the release that would make
+          # the two agree. It fails by construction and says nothing about
+          # whether the manifest is correct.
+          #
+          # The invariant that matters — the committed manifest matches what
+          # THIS repo's code generates — is asserted by
+          # TestCommittedManifestIsCurrent, which catches the real failure
+          # (editing requirements and forgetting to regenerate) on every run
+          # rather than once per release.
+          verify-manifest: "false"
           # Type-aware gates (pyright/mypy) resolve imports against a detected
           # venv (./venv, ./.venv, or $VIRTUAL_ENV); the action installs
           # slop-mop + gate tools, not this project's deps. Provision them via

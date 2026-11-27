@@ -955,6 +955,18 @@ class Requirement:
     # to a kind-based default ("pip install <name>").
     install_hint: str = ""
 
+    # True when the tool must live in its own environment rather than beside
+    # slop-mop. A tool slop-mop only ever execs has no reason to share an
+    # interpreter with it, and sharing is not free: semgrep's dependency tree
+    # became slop-mop's audited supply chain, and three of its pins were tight
+    # enough that no floor-pin could reach a patched version. Isolation makes
+    # that class of conflict unrepresentable.
+    #
+    # Additive on purpose — the manifest stays schema_version 1 and an older
+    # Action that ignores this field installs the tool the way it always has,
+    # which is today's behaviour rather than a new failure.
+    isolated: bool = False
+
     def to_manifest(self) -> Dict[str, Any]:
         """Serialize to the deterministic manifest shape doctor/the Action read."""
         return {
@@ -967,6 +979,7 @@ class Requirement:
             "import_name": self.import_name,
             "install_hint": self.install_hint,
             "reason": self.reason,
+            **({"isolated": True} if self.isolated else {}),
         }
 
     def resolved_install_hint(self) -> str:

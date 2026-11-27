@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from slopmop.checks.security import SecurityLocalCheck
 
 
@@ -977,6 +979,51 @@ class TestDetectSecretsHeuristics:
         check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
         known = check._load_detect_secrets_allowlist(str(tmp_path))
         assert ("a.py", "abc123") in known
+
+    def test_load_allowlist_survives_an_unreadable_baseline(self, tmp_path):
+        """An unreadable baseline is an empty allowlist, not an escaping error.
+
+        `Path.exists` re-raises PermissionError on Python 3.10-3.13 instead of
+        answering False, so a baseline behind a directory with no search
+        permission raised before `read_text` was ever reached. Escaping this
+        method sends it to the dispatch's exception mapper, which reads
+        PermissionError as "the scanner could not be run" — so a detect-secrets
+        scan that had already succeeded was downgraded to a warning and its
+        findings went unreported.
+
+        Patched rather than chmod'd so the contract is pinned on every
+        supported interpreter, including 3.14 where `exists` answers False.
+        """
+        check = SecurityLocalCheck({"config_file_path": ".secrets.baseline"})
+
+        with patch.object(
+            Path, "exists", side_effect=PermissionError("Permission denied")
+        ):
+            known = check._load_detect_secrets_allowlist(str(tmp_path))
+
+        assert known == set()
+
+    def test_load_allowlist_survives_a_real_unsearchable_directory(self, tmp_path):
+        """The same claim, against the filesystem rather than a mock.
+
+        On 3.10-3.13 this exercises the raise; on 3.14 `exists` answers False
+        and it exercises the ordinary missing-baseline path. Either way the
+        answer is an empty allowlist and nothing propagates.
+        """
+        import os
+
+        if os.getuid() == 0:  # pragma: no cover - root bypasses the mode bits
+            pytest.skip("root ignores directory permissions")
+
+        locked = tmp_path / "locked"
+        locked.mkdir()
+        (locked / ".secrets.baseline").write_text(json.dumps({"results": {}}))
+        os.chmod(locked, 0o000)
+        try:
+            check = SecurityLocalCheck({"config_file_path": "locked/.secrets.baseline"})
+            assert check._load_detect_secrets_allowlist(str(tmp_path)) == set()
+        finally:
+            os.chmod(locked, 0o700)
 
     def test_build_detect_secrets_sarif_populates_fix_strategy(self):
         real_secrets = {

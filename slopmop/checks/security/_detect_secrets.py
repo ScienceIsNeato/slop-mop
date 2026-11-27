@@ -346,9 +346,19 @@ class DetectSecretsMixin:
         if not config_file:
             return set()
         baseline_path = Path(project_root) / config_file
-        if not baseline_path.exists():
-            return set()
         try:
+            # Inside the try, not before it. On Python 3.10-3.13 `Path.exists`
+            # re-raises PermissionError rather than answering False — a
+            # baseline behind a directory with no search permission raises
+            # here, not at `read_text`. Escaping this method sends it to the
+            # dispatch's exception mapper, which reads PermissionError as "the
+            # scanner could not be run" and downgrades an already-successful
+            # scan to a warning, suppressing real secrets. An unreadable
+            # baseline means no allowlist, which fails toward reporting more.
+            # Python 3.14 answers False instead, so this only ever reproduced
+            # off the newest interpreter.
+            if not baseline_path.exists():
+                return set()
             baseline_raw: dict[str, Any] = json.loads(
                 baseline_path.read_text(encoding="utf-8")
             )
