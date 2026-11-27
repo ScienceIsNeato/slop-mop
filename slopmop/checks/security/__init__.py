@@ -31,6 +31,7 @@ from slopmop.checks.base import (
     Requirements,
     ToolContext,
 )
+from slopmop.checks.constants import COMMAND_NOT_FOUND
 from slopmop.checks.mixins import PythonCheckMixin
 from slopmop.checks.security._detect_secrets import DetectSecretsMixin
 from slopmop.checks.timeouts import SLOW_TOOL_TIMEOUT
@@ -64,7 +65,11 @@ _SCANNER_STARTUP_FAILURE_MARKERS = (
     # reaches the gate — only these two import markers were checked, and a
     # missing binary therefore became a failed scan rather than an absent one.
     # Reachable since semgrep started installing separately from slop-mop.
-    "Command not found:",
+    #
+    # The sentinel is the runner's, not ours: five other gates already read it
+    # from constants, and a seventh spelling of the same string is how the
+    # rest of this week's bugs started.
+    COMMAND_NOT_FOUND,
 )
 
 

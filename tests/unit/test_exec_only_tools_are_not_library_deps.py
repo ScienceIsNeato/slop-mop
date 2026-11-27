@@ -418,12 +418,17 @@ class TestGitProbesIgnoreInheritedPointers:
         assert answer.resolve() == main.resolve()
 
     def test_there_is_one_scrubber(self) -> None:
-        """The test helper re-exports production, it does not reimplement it."""
-        from slopmop.utils.proc import git_env
-        from tests.git_helpers import clean_git_env
+        """The test helper re-exports production, it does not reimplement it.
 
-        assert not [k for k in git_env() if k.startswith("GIT_")]
-        assert not [k for k in clean_git_env() if k.startswith("GIT_")]
+        Asserting that both come back free of GIT_* would pass for two
+        independent implementations that happen to agree on today's rules.
+        Asserting they are the same object is the claim being made.
+        """
+        from slopmop.utils import proc
+        from tests import git_helpers
+
+        assert git_helpers.git_env is proc.git_env
+        assert git_helpers.clean_git_env() == proc.git_env()
 
     def test_scrubbing_keeps_the_rest_of_the_environment(self) -> None:
         import os
@@ -597,13 +602,23 @@ class TestMissingBinaryIsDetectedTheWayItActuallyFails:
 
 
 class TestGitScrubbingKeepsRestrictions:
-    """Dropping a pointer is safe; dropping a restriction is not.
+    """Dropping a pointer is safe; dropping a restriction or config is not.
 
-    `git_env` removed every GIT_* variable, including
-    `GIT_CEILING_DIRECTORIES`, which only limits how far up git may search.
-    Without it the probe can walk into an ancestor checkout, so a project in
-    no repository at all resolves to one and borrows its virtualenv — the
-    opposite of what the scrubbing is for.
+    `git_env` removed every GIT_* variable. Two kinds of collateral damage
+    followed, in opposite directions:
+
+    - `GIT_CEILING_DIRECTORIES` only limits how far up git may search.
+      Without it the probe can walk into an ancestor checkout, so a project
+      in no repository at all resolves to one and borrows its virtualenv.
+    - `GIT_CONFIG_*` carries configuration, not location. Scrubbing
+      `GIT_CONFIG_COUNT` drops a `safe.directory` grant a container made
+      only through the environment, so a worktree owned by another user
+      stops resolving and the gate skips while reporting a pass — #367 by
+      another road. Scrubbing `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` hands
+      the developer's real ~/.gitconfig to tests that asked to be isolated
+      from it.
+
+    The default is still deny, which is what the last test here pins.
     """
 
     @staticmethod
@@ -634,7 +649,87 @@ class TestGitScrubbingKeepsRestrictions:
         assert env.get("GIT_CEILING_DIRECTORIES") == "/home/user"
         assert "GIT_DIR" not in env
 
+    def test_command_scope_config_survives(self) -> None:
+        """A `-c key=value` passed through the environment is not a pointer."""
+        env = self._scrubbed(
+            {
+                "GIT_DIR": "/elsewhere/.git",
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "safe.directory",
+                "GIT_CONFIG_VALUE_0": "/srv/checkout",
+            }
+        )
+        assert env.get("GIT_CONFIG_COUNT") == "1"
+        assert env.get("GIT_CONFIG_KEY_0") == "safe.directory"
+        assert env.get("GIT_CONFIG_VALUE_0") == "/srv/checkout"
+        assert "GIT_DIR" not in env
+
+    def test_config_file_selection_survives(self) -> None:
+        """The pair this repo's own test isolation is built on.
+
+        `isolated_git_env` in conftest points these at empty files so a
+        machine-wide core.hooksPath cannot reach test repositories. A test
+        that used that fixture and ran git through the scrubber would have
+        been handed the developer's real config back.
+        """
+        env = self._scrubbed(
+            {
+                "GIT_DIR": "/elsewhere/.git",
+                "GIT_CONFIG_GLOBAL": "/tmp/empty-gitconfig",
+                "GIT_CONFIG_SYSTEM": "/dev/null",
+            }
+        )
+        assert env.get("GIT_CONFIG_GLOBAL") == "/tmp/empty-gitconfig"
+        assert env.get("GIT_CONFIG_SYSTEM") == "/dev/null"
+        assert "GIT_DIR" not in env
+
+    def test_git_actually_reads_config_passed_through_the_scrubber(
+        self, tmp_path: Path
+    ) -> None:
+        """The point is not that the variables survive — it is that git obeys them.
+
+        Keeping the names in the dict proves nothing on its own; the trust a
+        container grants this way has to still be in force on the other side
+        of the scrub. A foreign-owned worktree cannot be built in a test, so
+        this asserts the mechanism directly: set a value only through
+        command-scope config, scrub, and ask git what it sees.
+        """
+        import os
+        import subprocess
+
+        from slopmop.utils.proc import git_env
+
+        env = git_env(
+            {
+                "PATH": os.environ.get("PATH", ""),
+                "GIT_DIR": "/elsewhere/.git",
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "user.name",
+                "GIT_CONFIG_VALUE_0": "scrubber-probe",
+            }
+        )
+
+        result = subprocess.run(  # nosec B603 B607 - fixed argv, no shell
+            ["git", "config", "--get", "user.name"],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert result.stdout.strip() == "scrubber-probe"
+
     def test_an_unknown_git_variable_is_still_dropped(self) -> None:
-        """Default stays deny: only named restrictions are kept."""
+        """Default stays deny: only named restrictions and config are kept."""
         env = self._scrubbed({"GIT_SOMETHING_NEW": "x"})
         assert "GIT_SOMETHING_NEW" not in env
+
+    def test_bare_git_config_is_not_mistaken_for_the_family(self) -> None:
+        """The keep rule is the `GIT_CONFIG_` prefix, not a substring of it.
+
+        The deprecated `GIT_CONFIG` selects a config file the way `GIT_DIR`
+        selects a repository, so it stays on the deny side.
+        """
+        env = self._scrubbed({"GIT_CONFIG": "/elsewhere/config"})
+        assert "GIT_CONFIG" not in env
